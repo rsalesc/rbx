@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 import { discoverPackages } from './discovery';
 import { log } from './log';
 import { PackageLayout } from './rbx/layout';
+import { PackageRunView } from './rbx/nodes';
 import { ArtifactStore, PackageRun } from './rbx/store';
 
 export class RunDataProvider {
@@ -97,5 +98,24 @@ export class RunDataProvider {
    */
   report(pkg: PackageLayout): Promise<PackageRun | undefined> {
     return this.storeFor(pkg).load();
+  }
+
+  /**
+   * Every discovered package paired with whatever run is on disk for it.
+   *
+   * The Run view deliberately does NOT use this -- it shows one problem and
+   * loads only that one, which is what stops a ten-problem contest paying for
+   * nine of them on every watcher tick. This is for the surfaces that are
+   * workspace-wide on purpose: the Problems panel reports a compile error in
+   * problem B while you are reading problem A, the same way the Explorer badges
+   * every package's declarations however few of them are on screen.
+   */
+  async loadAll(): Promise<PackageRunView[]> {
+    const packages = await this.discovered();
+    const views: PackageRunView[] = [];
+    for (const pkg of packages) {
+      views.push({ pkg, run: await this.report(pkg) });
+    }
+    return views;
   }
 }

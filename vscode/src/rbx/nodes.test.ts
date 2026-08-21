@@ -26,7 +26,11 @@ function solution(index: number, groups: readonly GroupRun[]): SolutionRun {
 }
 
 function run(solutions: readonly SolutionRun[]): PackageRun {
-  return { skeleton: { solutions: [], entries: [], groups: [] }, solutions };
+  return {
+    skeleton: { solutions: [], entries: [], groups: [], compilation: [] },
+    solutions,
+    findings: [],
+  };
 }
 
 const PKG: PackageLayout = { root: '/w/a' };

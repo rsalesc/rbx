@@ -90,22 +90,53 @@ export function registerCommands(
   register('rbx.refresh', () => data.refresh().then(() => active.refresh()));
 
   register('rbx.openSolution', async (node) => {
-    if (node?.kind !== 'solution') {
+    // Three row kinds reach the same file, and the only thing that differs is
+    // where in it to land: a solution row and a finding row open at the top,
+    // and a warning line under a finding opens at the line the compiler named.
+    // One command rather than two, because "open this solution's source" is one
+    // thing to ask for however the reader got to the row.
+    const target = ((): { path: string; declared: string; line: number } | undefined => {
+      switch (node?.kind) {
+        case 'solution':
+          return {
+            path: solutionSourcePath(node.pkg, node.run.solution.path),
+            declared: node.run.solution.path,
+            line: 0,
+          };
+        case 'finding':
+          return { path: node.finding.sourcePath, declared: node.finding.entry.path, line: 0 };
+        case 'findingWarning':
+          return {
+            path: node.finding.sourcePath,
+            declared: node.finding.entry.path,
+            // Compilers count lines from 1 and VS Code counts from 0.
+            line: Math.max(0, node.warning.line - 1),
+          };
+        default:
+          return undefined;
+      }
+    })();
+    if (target === undefined) {
       return;
     }
-    const source = solutionSourcePath(node.pkg, node.run.solution.path);
-    if ((await firstExisting([source])) === undefined) {
+    if ((await firstExisting([target.path])) === undefined) {
       // The skeleton names a solution `problem.rbx.yml` declares, so a missing
       // file means the package changed since the run, not that the row is bad.
       vscode.window.showInformationMessage(
-        `No file at ${node.run.solution.path}. The package may have changed since this run.`,
+        `No file at ${target.declared}. The package may have changed since this run.`,
       );
       return;
     }
-    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(source));
+    // The real file, not the `rbx:` scheme: this is the user's own source and
+    // the point of reaching it is to edit it.
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(target.path));
+    const position = new vscode.Position(target.line, 0);
     // `preview: true` to match every other row in the view: arrowing down a
     // list of solutions reuses one tab instead of littering the tab bar.
-    await vscode.window.showTextDocument(document, { preview: true });
+    await vscode.window.showTextDocument(document, {
+      preview: true,
+      selection: new vscode.Range(position, position),
+    });
   });
 
   register('rbx.openInput', async (node) => {
@@ -187,6 +218,26 @@ export function registerCommands(
       artifactUri(answer, `${prefix}/answer.out`),
       `${node.run.solution.path} · ${node.group.name}/${node.testcase.stem}`,
     );
+  });
+
+  register('rbx.openCompileLog', async (node) => {
+    if (node?.kind !== 'finding' && node?.kind !== 'findingWarning') {
+      return;
+    }
+    const finding = node.finding;
+    const realPath = await firstExisting([finding.logPath]);
+    if (realPath === undefined) {
+      vscode.window.showInformationMessage(
+        'The compiler output for this solution is no longer on disk. Run `rbx run` again.',
+      );
+      return;
+    }
+    // Through the `rbx:` scheme like every other artifact: read-only, streamed
+    // rather than held as a string -- a compile error can be a very long file --
+    // and titled after the solution it belongs to.
+    const uri = artifactUri(realPath, `${finding.entry.path}/compile.log`);
+    const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(document, { preview: true });
   });
 
   register('rbx.copyPath', async (node) => {

@@ -18,7 +18,7 @@ import * as vscode from 'vscode';
 import { ActiveProblem } from './activeProblem';
 import { log } from './log';
 import { packageLayout } from './rbx/layout';
-import { PackageRunView, RunNode, flattenNodes, nodeId } from './rbx/nodes';
+import { PackageRunView, RunNode, findingNodes, flattenNodes, nodeId } from './rbx/nodes';
 import { asSolutionLabelStyle } from './rbx/solutionLabel';
 import { EMPTY_MODEL, buildViewModel } from './rbx/viewModel';
 import { RunDataProvider } from './runData';
@@ -145,9 +145,12 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     const pkg = selected === undefined ? undefined : packageLayout(selected);
     const view: PackageRunView | undefined =
       pkg === undefined ? undefined : { pkg, run: await this.data.report(pkg) };
-    this.nodes = new Map(
-      (view === undefined ? [] : flattenNodes(view)).map((node) => [nodeId(node), node]),
-    );
+    // Both walks, because both produce rows the client can click: the tree's,
+    // and the compilation findings' -- including the warning lines under them,
+    // each of which resolves to the position it opens the source at.
+    const nodes: RunNode[] =
+      view === undefined ? [] : [...flattenNodes(view), ...findingNodes(view)];
+    this.nodes = new Map(nodes.map((node) => [nodeId(node), node]));
     const readable = view?.run !== undefined;
     const posted = this.posted;
     if (posted === undefined || posted.root !== selected || posted.readable !== readable) {
@@ -216,6 +219,11 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     <div id="header"></div>
     <div id="filter-host"></div>
     <div id="tree" role="tree" tabindex="-1"></div>
+    <!-- The findings panel is a flex sibling of the tree rather than a second
+         view in the container: only a webview can give the header a badge
+         coloured by severity, which is the whole point of it. It stays empty,
+         and hidden, whenever the compile phase had nothing to report. -->
+    <div id="findings"></div>
     <script nonce="${nonce}" src="${asset('webview', 'main.js')}"></script>
   </body>
 </html>`;

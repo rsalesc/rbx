@@ -40,10 +40,50 @@ export interface GroupEntry {
   readonly score?: number;
 }
 
+/** One warning the compiler emitted, as rbx parsed it. */
+export interface CompilationWarning {
+  /**
+   * The file the compiler named, package-relative.
+   *
+   * Not assumed to be the solution's own path: rbx keeps any first-party file
+   * that warned, and a diagnostic has to land on the file the compiler was
+   * talking about rather than on the file that was being compiled.
+   */
+  readonly file: string;
+  readonly line: number;
+  readonly flag?: string;
+  readonly msg: string;
+}
+
+/**
+ * What the compile phase had to say about one solution.
+ *
+ * rbx.box.compilation_findings.SolutionCompilation. A `FAILED` record is the
+ * *only* trace of a solution that did not compile: it is filtered out of
+ * `solutions` and `compiled_solutions` before the skeleton is written, so
+ * without this it would simply be missing from the view.
+ */
+export interface CompilationEntry {
+  readonly path: string;
+  /** The declaration, carried here because a failed solution has no SolutionEntry. */
+  readonly expectedOutcome?: string;
+  readonly status: 'WARNINGS' | 'FAILED';
+  /** Relative to the runs dir, e.g. `compilation/0.log`. */
+  readonly log: string;
+  readonly warnings: readonly CompilationWarning[];
+  /** A one-line cause, when there is one: `'g++' was not found`. */
+  readonly reason?: string;
+}
+
 export interface Skeleton {
   readonly solutions: readonly SolutionEntry[];
   readonly entries: readonly TestcaseEntry[];
   readonly groups: readonly GroupEntry[];
+  /**
+   * Empty for a run whose solutions all compiled cleanly -- and for any run by
+   * an rbx too old to write the field, which reads the same way on purpose.
+   */
+  readonly compilation: readonly CompilationEntry[];
 }
 
 export interface Evaluation {
@@ -141,7 +181,54 @@ export function parseSkeleton(raw: Wire): Skeleton | undefined {
     }
   }
 
-  return { solutions, entries, groups };
+  return { solutions, entries, groups, compilation: parseCompilation(root) };
+}
+
+function parseWarning(raw: Wire): CompilationWarning | undefined {
+  const file = asString(field(raw, 'file'));
+  const line = asNumber(field(raw, 'line'));
+  const msg = asString(field(raw, 'msg'));
+  if (file === undefined || line === undefined || msg === undefined) {
+    return undefined;
+  }
+  return { file, line, flag: asString(field(raw, 'flag')), msg };
+}
+
+/**
+ * The compilation records, dropping anything that does not carry the three
+ * fields a row cannot be drawn without: who, how badly, and where the compiler
+ * output went.
+ */
+function parseCompilation(root: Record<string, Wire>): CompilationEntry[] {
+  const entries: CompilationEntry[] = [];
+  for (const raw of asArray(root.compilation)) {
+    const entryPath = asString(field(raw, 'path'));
+    const status = asString(field(raw, 'status'));
+    const log = asString(field(raw, 'log'));
+    if (
+      entryPath === undefined ||
+      log === undefined ||
+      (status !== 'WARNINGS' && status !== 'FAILED')
+    ) {
+      continue;
+    }
+    const warnings: CompilationWarning[] = [];
+    for (const rawWarning of asArray(field(raw, 'warnings'))) {
+      const warning = parseWarning(rawWarning);
+      if (warning !== undefined) {
+        warnings.push(warning);
+      }
+    }
+    entries.push({
+      path: entryPath,
+      expectedOutcome: asString(field(raw, 'outcome')),
+      status,
+      log,
+      warnings,
+      reason: asString(field(raw, 'reason')),
+    });
+  }
+  return entries;
 }
 
 export function parseEvaluation(raw: Wire): Evaluation | undefined {

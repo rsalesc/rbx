@@ -14,6 +14,7 @@ import { ArtifactFileSystemProvider, SCHEME } from './artifactFs';
 import { registerCommands } from './commands';
 import { DeclaredIndex } from './declared';
 import { registerDecorations } from './decorations';
+import { registerDiagnostics } from './diagnostics';
 import { initLog, log } from './log';
 import { CONTEST_FILE_GLOB, CONTEST_MANIFEST, isContestVariantFile } from './rbx/contest';
 import { CACHE_DIR, PROBLEM_MANIFEST } from './rbx/layout';
@@ -54,6 +55,9 @@ export function activate(context: vscode.ExtensionContext): void {
   registerDecorations(context, declared);
   registerSolutionLens(context, declared);
   registerSolutionStatus(context, declared);
+  // Fed by the same `onDidChange` the run view is, so the Problems entries and
+  // the Compilation Findings panel can never describe different runs.
+  registerDiagnostics(context, data);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(RunViewProvider.viewType, view),

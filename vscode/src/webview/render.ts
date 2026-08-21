@@ -15,6 +15,8 @@
  */
 import type { ProblemChoice } from '../rbx/problems';
 import type {
+  FindingRow,
+  FindingWarning,
   GroupMismatch,
   HistogramSlice,
   MismatchDetail,
@@ -32,6 +34,13 @@ export interface UiState {
   readonly expanded: ReadonlySet<string>;
   readonly selected?: string;
   readonly filter: string;
+  /**
+   * Whether the Compilation Findings panel is open.
+   *
+   * Its own flag rather than an id in `expanded`: the panel is not a row, and
+   * the seed that opens it is a fact about the run rather than about a node.
+   */
+  readonly findingsOpen: boolean;
 }
 
 /**
@@ -571,11 +580,23 @@ const WELCOME =
  * The container itself is part of the static shell so that focus and scroll
  * survive a re-render; this returns only what goes inside it.
  */
+/**
+ * What the tree says when the run has no solutions but the compile phase does.
+ *
+ * The welcome text would be a lie here: there *is* a run, and the reason it
+ * looks like nothing happened is sitting in the panel below.
+ */
+const NOTHING_COMPILED =
+  '<div class="welcome">' +
+  '<p>No solution made it into this run.</p>' +
+  '<p>See <strong>Compilation Findings</strong> below for why.</p>' +
+  '</div>';
+
 export function renderTree(model: RunViewModel, state: UiState): string {
   if (model.empty) {
     // `viewsWelcome` does not apply to a webview view, so the copy that used to
     // live in package.json lives here now.
-    return WELCOME;
+    return model.findings === undefined ? WELCOME : NOTHING_COMPILED;
   }
 
   const rows = visibleRows(model, state);
@@ -725,5 +746,108 @@ export function renderSelector(problems: readonly ProblemChoice[], selected?: st
     // the user to guess what the option list is a list of.
     `<select id="problem" aria-label="Problem">${body}</select>` +
     '</div>'
+  );
+}
+
+/** The two buttons every finding row carries, on the right of its summary. */
+function findingActions(row: FindingRow): string {
+  // Buttons, not just a row-wide click: the row already has a meaning when
+  // clicked (open the log, or expand), and "take me to the source" is a second
+  // destination that would otherwise have nowhere to be asked for.
+  return (
+    '<span class="finding-actions">' +
+    `<button class="finding-action" data-action="source" title="Open ${escapeAttr(row.label)}">${codicon('go-to-file')}</button>` +
+    `<button class="finding-action" data-action="log" title="Open compiler output">${codicon('output')}</button>` +
+    '</span>'
+  );
+}
+
+/**
+ * One warning under an expanded row: where it is, and what kind it is.
+ *
+ * Not what it *says*. The message is the title attribute, because the panel is
+ * a third of a narrow sidebar and a compiler's own sentence is longer than the
+ * row it would have to fit in.
+ *
+ * A `button`, like every other target in this panel, so it is reachable by Tab.
+ * The panel is deliberately not a second `role="tree"`: a tree owes the reader
+ * a roving tab stop and arrow-key navigation, and a handful of buttons in the
+ * document order they are read in owes them nothing they do not already have.
+ */
+function warningLine(warning: FindingWarning): string {
+  const flag =
+    warning.flag === ''
+      ? ''
+      : `<span class="finding-flag">${escapeHtml(warning.flag)}</span>`;
+  return (
+    `<button class="finding-warning" data-id="${escapeAttr(warning.id)}" ` +
+    `title="${escapeAttr(warning.title)}">` +
+    `<span class="finding-line">${warning.line}</span>` +
+    flag +
+    '</button>'
+  );
+}
+
+function findingRowHtml(row: FindingRow, expanded: boolean): string {
+  const expandable = row.warnings.length > 0;
+  const hue = row.labelHue === undefined ? '' : ` hue-${row.labelHue}`;
+  const bold = row.labelBold ? ' bold' : '';
+  // The path stands in as the title when there is nothing else to say: a
+  // trimmed label still has to be able to say which `sols/` it came from.
+  const title = row.reason ?? row.labelTitle;
+  const twisty = expandable
+    ? `<button class="finding-twisty codicon codicon-${expanded ? 'chevron-down' : 'chevron-right'}" aria-expanded="${expanded}" title="Show warnings"></button>`
+    : '<span class="finding-twisty"></span>';
+  return (
+    `<div class="finding-row severity-${row.severity}" ` +
+    `data-id="${escapeAttr(row.id)}" ` +
+    `data-vscode-context='${escapeAttr(
+      JSON.stringify({
+        webviewSection: row.section,
+        rbxNodeId: row.id,
+        preventDefaultContextMenuItems: true,
+      }),
+    )}'` +
+    (title === undefined ? '' : ` title="${escapeAttr(title)}"`) +
+    '>' +
+    twisty +
+    `<span class="label${hue}${bold}">${escapeHtml(row.label)}</span>` +
+    `<span class="finding-summary hue-${row.severity === 'error' ? 'red' : 'yellow'}">${escapeHtml(row.summary)}</span>` +
+    findingActions(row) +
+    '</div>' +
+    (expandable && expanded
+      ? `<div class="finding-warnings">${row.warnings.map(warningLine).join('')}</div>`
+      : '')
+  );
+}
+
+/**
+ * The Compilation Findings panel, or nothing at all.
+ *
+ * Nothing at all is the common case and the point of it: a package whose
+ * solutions all compiled cleanly gets no panel, so the panel being on screen is
+ * itself the news -- the same rule the header strip follows.
+ *
+ * Collapsed, the header stays: the badge is how a warnings-only run gets
+ * noticed at all, since that run never opens the panel by itself.
+ */
+export function renderFindings(model: RunViewModel, state: UiState): string {
+  const findings = model.findings;
+  if (findings === undefined) {
+    return '';
+  }
+  const open = state.findingsOpen;
+  const body = open
+    ? `<div class="finding-rows">${findings.rows
+        .map((row) => findingRowHtml(row, state.expanded.has(row.id)))
+        .join('')}</div>`
+    : '';
+  return (
+    `<div class="findings-header" id="findings-header" role="button" tabindex="0" aria-expanded="${open}">` +
+    `<span class="twisty codicon codicon-${open ? 'chevron-down' : 'chevron-right'}"></span>` +
+    '<span class="findings-title">Compilation Findings</span>' +
+    `<span class="findings-badge hue-${findings.hue}">${findings.badge}</span>` +
+    '</div>' +
+    body
   );
 }
