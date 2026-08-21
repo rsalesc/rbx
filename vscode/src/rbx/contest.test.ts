@@ -157,6 +157,27 @@ problems:
   ]);
 });
 
+test('keeps a colour only when it is one', () => {
+  // rbx validates `color` (rbx/box/contest/schema.py), but nothing here has
+  // asked rbx anything: the file is read straight off disk, so a value rbx has
+  // never seen -- or would reject -- arrives intact. It is interpolated into a
+  // `style` attribute downstream, where the third value below is not a colour
+  // but a dot stretched over the whole view.
+  const parsed = parseContest({
+    problems: [
+      { short_name: 'A', color: '#ff0000' },
+      { short_name: 'B', color: 'red' },
+      { short_name: 'C', color: 'red;position:fixed;inset:0;width:100vw;height:100vh' },
+      { short_name: 'D', color: '#12345' },
+      { short_name: 'E', color: 'rgb(1,2,3)' },
+    ],
+  });
+  assert.deepStrictEqual(
+    parsed.problems.map((p) => p.color),
+    ['#ff0000', 'red', undefined, undefined, undefined],
+  );
+});
+
 test('skips a short name YAML did not give us as a string', () => {
   const parsed = contest(`
 problems:

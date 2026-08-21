@@ -17,6 +17,15 @@ const VARIANT_SUFFIX = '.rbx.yml';
 const VARIANT_ID = /^[A-Za-z][A-Za-z0-9_-]*$/;
 
 /**
+ * A glob loose enough to catch both spellings, for a host that wants to watch.
+ *
+ * Deliberately looser than either name -- a single `*` cannot say "either no id
+ * or a valid one" -- so a host matching with it must still put the basename
+ * through `CONTEST_MANIFEST`/`isContestVariantFile` before believing it.
+ */
+export const CONTEST_FILE_GLOB = `${VARIANT_PREFIX.slice(0, -1)}*${VARIANT_SUFFIX}`;
+
+/**
  * Whether `name` is a contest variant file rbx would actually load.
  *
  * The id between the fixed affixes is checked, not just the affixes: rbx skips
@@ -51,7 +60,13 @@ export interface ContestProblem {
 }
 
 export interface ParsedContest {
-  /** A dispatcher sentinel: the real contests are sibling `contest.<id>.rbx.yml`. */
+  /**
+   * A dispatcher sentinel: the real contests are sibling `contest.<id>.rbx.yml`.
+   *
+   * Informational only -- nothing branches on it. `contestIndex.ts` reads the
+   * canonical file *and* every variant unconditionally and merges them
+   * first-wins, precisely so it never has to ask which contest is selected.
+   */
   readonly useVariants: boolean;
   readonly problems: readonly ContestProblem[];
 }
@@ -66,6 +81,23 @@ const DISPATCHER: ParsedContest = Object.freeze({ useVariants: true, problems: N
 /** Reads a field as a string, treating the empty string as absent. */
 function nonEmptyString(value: Wire): string | undefined {
   return asString(value) || undefined;
+}
+
+/** A hex triplet (`#rgb`/`#rrggbb`) or a bare X11 colour name, and nothing else. */
+const COLOR = /^(#[0-9A-Fa-f]{3}|#[0-9A-Fa-f]{6}|[A-Za-z]+)$/;
+
+/**
+ * Keep a declared colour only if it is one.
+ *
+ * rbx validates `color` as hex-or-X11 (rbx/box/contest/schema.py), but the
+ * extension never asks rbx anything -- it reads `contest.rbx.yml` straight off
+ * disk, so a file rbx has never run against (or would reject outright) reaches
+ * the view unfiltered. The value ends up interpolated into a `style` attribute
+ * on the selector's dot, where `red;position:fixed;inset:0;width:100vw` is not
+ * a colour but a full-view overlay. Anything unrecognized loses its dot.
+ */
+function safeColor(value: string | undefined): string | undefined {
+  return value !== undefined && COLOR.test(value) ? value : undefined;
 }
 
 export function parseContest(raw: Wire): ParsedContest {
@@ -93,7 +125,7 @@ export function parseContest(raw: Wire): ParsedContest {
       shortName,
       // rbx defaults an unset path to `./{short_name}/`.
       path: nonEmptyString(fields.path) ?? shortName,
-      color: nonEmptyString(fields.color),
+      color: safeColor(nonEmptyString(fields.color)),
       // Counted off the survivors so a skipped entry leaves no hole.
       order: problems.length,
     });
