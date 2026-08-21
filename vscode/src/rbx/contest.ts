@@ -10,7 +10,12 @@ import { Wire, asArray, asRecord, asString } from './wire';
 /** One problem as its contest declares it. */
 export interface ContestProblem {
   readonly shortName: string;
-  /** Directory, relative to the contest root. Defaults to the short name. */
+  /**
+   * Directory, relative to the contest root. Defaults to the short name.
+   *
+   * Passed through exactly as written -- resolving and normalizing it is the
+   * host's job, so that `./A/`, `A` and `A//B` collapse onto one key there.
+   */
   readonly path: string;
   readonly color?: string;
   /** Position among the problems that survived parsing. */
@@ -23,7 +28,12 @@ export interface ParsedContest {
   readonly problems: readonly ContestProblem[];
 }
 
-const EMPTY: ParsedContest = { useVariants: false, problems: [] };
+// Both are handed out to every caller that hits their branch, so both are
+// frozen: `readonly` is compile-time only, and one cast-and-push downstream
+// would otherwise poison every later parse.
+const NO_PROBLEMS: readonly ContestProblem[] = Object.freeze([]);
+const EMPTY: ParsedContest = Object.freeze({ useVariants: false, problems: NO_PROBLEMS });
+const DISPATCHER: ParsedContest = Object.freeze({ useVariants: true, problems: NO_PROBLEMS });
 
 /** Reads a field as a string, treating the empty string as absent. */
 function nonEmptyString(value: Wire): string | undefined {
@@ -37,8 +47,9 @@ export function parseContest(raw: Wire): ParsedContest {
   }
   if (record.use_variants === true) {
     // A dispatcher declares nothing else; rbx rejects any other field alongside
-    // it (rbx/box/contest/schema.py:242).
-    return { useVariants: true, problems: [] };
+    // it (rbx/box/contest/schema.py:242), so anything listed here is ignored
+    // rather than trusted.
+    return DISPATCHER;
   }
   const problems: ContestProblem[] = [];
   for (const entry of asArray(record.problems)) {

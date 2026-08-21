@@ -1,7 +1,12 @@
 import * as assert from 'assert';
 import { test } from 'node:test';
+import { parse as parseYaml } from 'yaml';
 
-import { parseContest } from './contest';
+import { ParsedContest, parseContest } from './contest';
+
+function contest(yaml: string): ParsedContest {
+  return parseContest(parseYaml(yaml));
+}
 
 test('parses declared problems in file order', () => {
   const contest = parseContest({
@@ -25,7 +30,10 @@ test('defaults a problem path to its short name', () => {
 });
 
 test('reports a dispatcher as declaring no problems', () => {
-  assert.deepStrictEqual(parseContest({ use_variants: true }), {
+  // The problems are listed to pin the branch: rbx rejects this file outright,
+  // and reading its list anyway would give a dispatcher directory letters that
+  // belong to whichever variant is actually selected.
+  assert.deepStrictEqual(parseContest({ use_variants: true, problems: [{ short_name: 'A' }] }), {
     useVariants: true,
     problems: [],
   });
@@ -54,5 +62,35 @@ test('numbers order by surviving position, not by input index', () => {
   assert.deepStrictEqual(
     contest.problems.map((p) => p.order),
     [0, 1],
+  );
+});
+
+/**
+ * The shapes below come from YAML rather than object literals because they are
+ * the ones only a real, hand-edited file produces: a key with nothing after it
+ * parses as `null`, not as an absent key, and an unquoted letter-free
+ * short_name arrives as a number.
+ */
+test('a key left blank reads as unset, not as a value', () => {
+  const parsed = contest(`
+problems:
+  - short_name: A
+    path:
+    color:
+`);
+  assert.deepStrictEqual(parsed.problems, [
+    { shortName: 'A', path: 'A', color: undefined, order: 0 },
+  ]);
+});
+
+test('skips a short name YAML did not give us as a string', () => {
+  const parsed = contest(`
+problems:
+  - short_name: 1
+  - short_name: B
+`);
+  assert.deepStrictEqual(
+    parsed.problems.map((p) => p.shortName),
+    ['B'],
   );
 });
