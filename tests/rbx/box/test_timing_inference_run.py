@@ -75,6 +75,11 @@ class _Run:
         self.run_solutions = None
         self.print_run_report = None
         self.estimate = None
+        self.build_context = None
+
+    @property
+    def strategy(self):
+        return self.build_context.call_args.args[2]
 
     @property
     def tracked(self) -> List[str]:
@@ -122,7 +127,10 @@ async def _compute(
             return_value=structured or {},
         ),
         mock.patch(
-            'rbx.box.timing.estimate_time_limit',
+            'rbx.box.timing.build_estimation_context', return_value=mock.Mock()
+        ) as mock_context,
+        mock.patch(
+            'rbx.box.timing._estimate_and_validate',
             return_value=estimated or timing.TimingProfile(timeLimit=1000),
         ) as mock_estimate,
         mock.patch(
@@ -134,6 +142,7 @@ async def _compute(
         run.run_solutions = mock_run
         run.print_run_report = mock_report
         run.estimate = mock_estimate
+        run.build_context = mock_context
         result = await timing.compute_time_limits(
             check=True, detailed=False, formula=formula, auto=True
         )
@@ -256,7 +265,7 @@ async def test_custom_formula_forces_formula_mode_over_multipliers(pkg):
     # The custom formula overrides how the limit is derived, not the cap the
     # solutions are measured under -- that still comes from the configuration.
     assert run.timelimit_override == 6000
-    assert run.estimate.call_args.args[2].formula == 'slowest * 3'
+    assert run.strategy.formula == 'slowest * 3'
 
 
 async def test_the_estimation_run_never_doubles_the_time_limit(pkg):

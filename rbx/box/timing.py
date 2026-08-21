@@ -1363,6 +1363,73 @@ def _report_validation_outcome(
         )
 
 
+async def _estimate_and_validate(
+    ctx: _EstimationContext,
+    knowledge: timing_validation.SlowKnowledge,
+    auto: bool,
+    skip_slow: bool,
+    check: bool,
+    detailed: bool,
+    runs: int,
+) -> Optional[TimingProfile]:
+    """Estimate a limit and check it against the solutions expected to be too
+    slow, letting the setter re-decide until the two agree.
+
+    A violation is not fatal: it is new evidence. Carrying it back into the
+    picker is what makes the second pass better informed than the first -- the
+    preview can now show which groupings are impossible -- and the setter either
+    picks one that works, keeps the limit anyway, or gives up. Where there is no
+    picker to go back to, the violation is recorded and reported instead, and the
+    profile is written with it.
+    """
+    violated = False
+    while True:
+        picked = await ctx.prompt(auto=auto, knowledge=knowledge, allow_force=violated)
+        if picked is None:
+            ctx.console.print('[error]Time limit estimation cancelled.[/error]')
+            return None
+
+        profile = ctx.build(
+            picked, knowledge=knowledge, force=violated and picked.force
+        )
+        if profile is None:
+            return None
+
+        if skip_slow or picked.force:
+            return profile
+        if not can_validate_upper_bound(profile, ctx.upper_solutions):
+            return profile
+
+        outcome = await _validate_upper_bound(
+            profile,
+            ctx.upper_solutions,
+            knowledge,
+            check=check,
+            detailed=detailed,
+            runs=runs,
+        )
+        _report_validation_outcome(outcome, profile)
+        if outcome.ok:
+            return profile
+
+        violated = True
+        if auto or not ctx.can_prompt:
+            # Nothing to go back to: record what was found and write it anyway,
+            # so the profile carries the violation rather than hiding it.
+            ctx.console.print(
+                '[warning]⚠ The estimated time limit does not respect its upper '
+                'bound, and there is no grouping to re-pick. Writing it anyway; '
+                'the offending solutions are named under upperValidation in the '
+                'limits profile.[/warning]'
+            )
+            return ctx.build(picked, knowledge=knowledge, force=True, announce=False)
+
+        ctx.console.print(
+            '[warning]⚠ Re-opening the picker with what the check found. Regroup '
+            'to satisfy the bound, keep these limits anyway, or cancel.[/warning]'
+        )
+
+
 async def compute_time_limits(
     check: bool,
     detailed: bool,
@@ -1371,6 +1438,7 @@ async def compute_time_limits(
     formula: Optional[str] = None,
     auto: bool = False,
     share: Optional[str] = None,
+    skip_slow: bool = False,
 ):
     if package.get_main_solution() is None:
         # An error, not a warning: with no accepted solution nothing bounds the
@@ -1386,11 +1454,25 @@ async def compute_time_limits(
     if run is None:
         return None
 
-    estimated_tl = await estimate_time_limit(
+    knowledge = timing_validation.SlowKnowledge()
+    ctx = await build_estimation_context(
         console.console,
         run.result,
         run.strategy,
+        upper_solutions=get_inference_solutions(InferenceRole.UPPER),
+        knowledge=knowledge,
+    )
+    if ctx is None:
+        return None
+
+    estimated_tl = await _estimate_and_validate(
+        ctx,
+        knowledge,
         auto=auto,
+        skip_slow=skip_slow,
+        check=check,
+        detailed=detailed,
+        runs=runs,
     )
     if estimated_tl is None:
         return None
