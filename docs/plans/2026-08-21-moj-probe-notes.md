@@ -30,11 +30,19 @@ base64: invalid argument /path/to/wa.cpp
 Usage:	base64 [-Ddh] [-b num] [-i in_file] [-o out_file]
 ```
 
-The upstream fix is one character — `base64 < "$sol"` works on both BSD and GNU. **This
-should be reported to `cd-moj/moj-cli`.** Until it lands, `rbx time --runner moj` cannot
-work on macOS by shelling out to the CLI, and rbx cannot fix it from its side because the
-encoding happens inside `moj`. The probe below was obtained by putting a small `base64`
-shim ahead of the real binary on `PATH`; that is a debugging aid, not a shipping strategy.
+The fix is to redirect rather than pass the file — and `moj` already ships a portable helper
+for exactly this, `_b64enc` in `lib/core.sh` (`base64 -w0 < "$1" || base64 < "$1" | tr -d '\n'`),
+which `cmd_testrun` simply does not use.
+
+**Filed upstream as [`cd-moj/moj-cli#1`](https://github.com/cd-moj/moj-cli/pull/1)**
+(2026-08-21). Until it merges, `rbx time --runner moj` cannot work on macOS by shelling out
+to the CLI, and rbx cannot fix it from its side because the encoding happens inside `moj`.
+Note `moj update` re-fetches the server's build and **undoes any local patch**.
+
+The probe below was obtained by putting a small `base64` shim ahead of the real binary on
+`PATH`. That is a debugging aid, not a shipping strategy: rbx must not ship a shim for
+another tool's bug, so the MOJ runner stays unexercisable end-to-end on macOS until the PR
+lands.
 
 ---
 
