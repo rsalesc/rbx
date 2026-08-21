@@ -22,6 +22,7 @@ import tempfile
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import typer
+from pydantic import ValidationError
 
 from rbx import console
 from rbx.box import environment, package, tasks, timing_config
@@ -129,11 +130,12 @@ UNREPORTED_EXIT_STATUS = 'not reported'
 class _TestrunResult:
     """What one finished testrun tells rbx, shared by that solution's deferreds.
 
-    A dataclass rather than the bare `{name: test}` dict because two of these
-    fields exist to be *said* rather than read: what the judge left out, and
-    whether anyone has mentioned it yet. Both are decided on the background task
-    and reported from `_evaluation_from_job`, which is the only code here running
-    on the consumer's thread of control.
+    A dataclass rather than the bare `{name: test}` dict because four of these
+    fields exist to be *said* rather than read: what the judge left out, whether
+    the numbers came off the judge or off the cache, and whether anyone has
+    mentioned either yet. All of them are decided on the background task and
+    reported from `_evaluation_from_job`, which is the only code here running on
+    the consumer's thread of control.
     """
 
     run: str
@@ -145,6 +147,12 @@ class _TestrunResult:
     # Set the first time the missing ones are reported, so N deferreds over one
     # testrun produce one warning rather than N.
     warned: bool = False
+    # Whether this came out of the local testrun cache rather than off the judge.
+    # `run` is then the id of the testrun that was really measured, back when it
+    # was measured -- which is the id the setter needs to look the run up.
+    cached: bool = False
+    # Same idea as `warned`, for the cache-hit line.
+    announced: bool = False
 
 
 def _retrieve_exception(task: 'asyncio.Task') -> None:
@@ -174,6 +182,21 @@ def _retrieve_exception(task: 'asyncio.Task') -> None:
 # and losing it costs one redundant upload rather than correctness. See
 # `_recorded_fingerprint`.
 UPLOAD_STATE_NAME = 'moj-runner.json'
+
+# Where finished testruns are remembered, one JSON file per cache key.
+#
+# Beside the upload record, under the problem cache, and for the same reason: a
+# testrun is an observation this machine made about a package it uploaded, not
+# anything that belongs to the package itself. Nothing here may be committed --
+# it says what *a* judge park answered at *a* moment -- and losing it must cost a
+# redundant testrun, never a wrong measurement. See `_cache_key`.
+TESTRUN_CACHE_DIR_NAME = 'moj-testruns'
+
+# Bumped when a change would make an older entry read wrong. It is part of the
+# key rather than a field to validate, so entries of another version simply never
+# match -- there is nothing to migrate and nothing to delete, and the cost of a
+# bump is one redundant testrun per solution.
+TESTRUN_CACHE_VERSION = 1
 
 
 class MojRunnerError(RbxException):
@@ -298,6 +321,12 @@ class MojRunner:
         self._moj_id: Optional[str] = None
         self._packager: Optional[MojPackager] = None
         self._names_by_entry: Optional[Dict[Tuple[str, int], str]] = None
+        # The fingerprint of the probe package this run measures against, set
+        # whether or not it had to be uploaded -- the fast path skips the upload
+        # precisely *because* the judge already holds this package, so the
+        # fingerprint describes what is up there either way. It is the first term
+        # of the testrun cache key; see `_cache_key`.
+        self._fingerprint: Optional[str] = None
         # Created on first use rather than here: an `asyncio.Semaphore` belongs to
         # the loop that first awaits it, and nothing guarantees this object was
         # constructed inside the loop that will run it.
@@ -346,6 +375,7 @@ class MojRunner:
             self._build_probe(ctx, package_path, build_path, cap_ms)
 
             fingerprint = _directory_fingerprint(package_path)
+            self._fingerprint = fingerprint
             if await self._is_already_prepared(moj_id, fingerprint, ctx):
                 return
 
@@ -552,12 +582,57 @@ class MojRunner:
         seconds. Everything this learns is handed back and said by
         `_evaluation_from_job`, which runs on the consumer's own thread of
         control.
+
+        **The cache is consulted before the semaphore, not inside it.** A hit
+        costs one file read and no judge time at all, so making it queue behind
+        two real testruns would serialize free work behind expensive work for no
+        reason: a run where every solution hits would take as long as the slowest
+        thing already in flight.
         """
+        content = self._solution_content(solution)
+        key = self._cache_key(solution, content)
+
+        cached = _load_cached_testrun(key)
+        if cached is not None:
+            run, status = cached
+            # Deliberately put through the *same* derivation a fresh status goes
+            # through, rather than storing the derived `_TestrunResult`. That is
+            # what makes a hit and a miss provably identical: there is one place
+            # where a `TestrunStatus` becomes an rbx result, and both paths go
+            # through it. It also means the checks below still apply to a cached
+            # entry -- nothing that fails them was ever written, but a cache file
+            # is a file on disk and may have been anything by the time it is read.
+            result = self._result_from_status(solution, run, status, expected_names)
+            result.cached = True
+            return result
+
         assert self._testrun_slots is not None
         async with self._testrun_slots:
-            run = await self._submit(solution)
+            run = await self._submit(solution, content)
             status = await self._wait_for_testrun(run, solution)
 
+        result = self._result_from_status(solution, run, status, expected_names)
+        # Written only once the status has survived every check above, which is
+        # how "never cache a failure" is enforced: a compile error and an
+        # unrecognised verdict code both raise out of `_result_from_status` and
+        # never reach this line. See `_store_cached_testrun`.
+        _store_cached_testrun(key, run, status)
+        return result
+
+    def _result_from_status(
+        self,
+        solution: 'SolutionSkeleton',
+        run: str,
+        status: cli.TestrunStatus,
+        expected_names: List[str],
+    ) -> '_TestrunResult':
+        """One finished `TestrunStatus`, checked and paired onto rbx's testcases.
+
+        The single path from a judge response to a run's results, taken by a
+        fresh testrun and by a cache hit alike -- see `_submit_and_poll`. It
+        raises rather than returns on everything the runner refuses to interpret,
+        which is also what keeps those responses out of the cache.
+        """
         # Before anything is paired: a run that never entered the testset has no
         # per-testcase story to tell, and telling one anyway is what the first
         # end-to-end run did wrong. Raised, not degraded, for the same reason the
@@ -609,16 +684,21 @@ class MojRunner:
             run=run, tests=tests, expected=len(expected_names), missing=missing
         )
 
-    async def _submit(self, solution: 'SolutionSkeleton') -> str:
-        """Queue one solution with `moj testrun` and return the run id."""
+    def _solution_content(self, solution: 'SolutionSkeleton') -> bytes:
+        """The exact bytes that get submitted for this solution.
+
+        Amalgamated, because MOJ compiles a submission from one file. That is why
+        this -- and not the source path, nor its mtime -- is what the cache keys
+        on: amalgamation inlines the headers a solution includes, so two packages
+        can hand the judge the same path and different programs.
+        """
         # Asserted, not raised: `run_solution` cannot reach here without
         # `_names_for` having refused first, and `prepare` sets all three of these
         # together. See `_names_for` for the message a setter actually gets.
-        assert self._moj_id is not None
         assert self._packager is not None
 
         try:
-            content = self._packager.solution_content(solution)
+            return self._packager.solution_content(solution)
         except typer.Exit as e:
             # Same reasoning as `_build_probe`: `MojPackager` reports a setter
             # mistake -- here, a solution that does not reduce to one translation
@@ -631,6 +711,10 @@ class MojRunner:
                 f'solution rbx times has to reduce to one.'
             ) from e
 
+    async def _submit(self, solution: 'SolutionSkeleton', content: bytes) -> str:
+        """Queue one solution with `moj testrun` and return the run id."""
+        assert self._moj_id is not None
+
         with tempfile.TemporaryDirectory(prefix='rbx-moj-testrun-') as tmp:
             # The **basename is load-bearing**: `moj testrun` sends
             # `filename: basename(sol)` and the server picks the language off the
@@ -642,6 +726,66 @@ class MojRunner:
             # accept: rbx builds its package into a temp dir that is long gone by
             # now, and the id is what `prepare` decided to write to.
             return await cli.testrun(self._moj_id, source)
+
+    def _cache_key(self, solution: 'SolutionSkeleton', content: bytes) -> str:
+        """What makes a cached testrun *the same measurement* as a fresh one.
+
+        Three things, and the argument for each is what the cache is worth:
+
+        - **the package the judge holds**, as `prepare`'s `_directory_fingerprint`
+          of it. Everything the judge measures *against* is in there -- the
+          testcases, the checker, the compile scripts, and the cap (see below) --
+          so a package that fingerprints equal is a judge configured identically.
+          Reusing that fingerprint rather than inventing a second key means the
+          cache and the upload fast path can never disagree about what "the same
+          package" means.
+        - **the exact bytes submitted**, not the solution's path and not its
+          mtime. `solution_content` amalgamates, so a change in an included
+          header changes the program without touching the file rbx names -- and,
+          the other way round, a whitespace-only edit that amalgamates to the
+          same bytes really is the same submission.
+        - **the file name**, because MOJ picks the *language* off the extension
+          (`moj testrun` sends `filename: basename(sol)`), so it is part of the
+          submission rather than a label on it.
+
+        The remote problem id is in there too. It is very nearly implied by the
+        package fingerprint -- the same bytes measured on two `rbxt-` problems of
+        the same park measure the same -- but the id is what the timings were
+        actually observed against, and keying on it costs one hash update.
+
+        **The cap needs no term of its own.** It is emitted as `TLOVERRIDE` into
+        the package's `conf`, which `_directory_fingerprint` hashes along with
+        every other file; `test_a_changed_package_is_uploaded_again_even_though_
+        the_problem_is_ready` is what pins that. So phase 2, which re-uploads at
+        `timeLimitToTle x TL`, gets a different fingerprint and therefore a
+        different key for every solution -- exactly right, since those are
+        different measurements.
+
+        **What this cannot see** is the judge park itself. rbx has no way to ask
+        MOJ which package a problem currently holds (the CLI exposes no package
+        checksum), so a `moj upload` from another machine -- or by hand -- leaves
+        both this key and `prepare`'s record describing a package the server no
+        longer has. Nor does it see the park's hardware, its load, or a judge
+        joining or leaving: a cached timing is a measurement from whenever it was
+        taken. That is why the cache lives in the disposable problem cache and
+        why the hit says where to delete it.
+        """
+        assert self._moj_id is not None
+        assert self._fingerprint is not None
+
+        digest = hashlib.sha256()
+        # Framed with lengths, like `_directory_fingerprint`, so no field can be
+        # made to look like part of the next one.
+        for part in (
+            f'v{TESTRUN_CACHE_VERSION}'.encode(),
+            self._moj_id.encode(),
+            self._fingerprint.encode(),
+            solution.path.name.encode(),
+            content,
+        ):
+            digest.update(f'{len(part)}:'.encode())
+            digest.update(part)
+        return digest.hexdigest()
 
     async def _wait_for_testrun(
         self, run: str, solution: 'SolutionSkeleton'
@@ -694,6 +838,23 @@ class MojRunner:
             )
 
         result = await job
+
+        # Said out loud, and said here, for the same reason the missing-testcase
+        # warning is: a setter who expected a judge round-trip and got an answer
+        # instantly has to be told *why* it was instant, or the run reads as
+        # either magic or a bug. It also names the one way to force a real
+        # measurement -- see `_testrun_cache_dir` for why that is a directory to
+        # delete rather than a `--no-cache` flag.
+        if result.cached and not result.announced:
+            result.announced = True
+            console.console.print(
+                f'[status]Reused MOJ timings for [item]{solution.path}[/item] from '
+                f'testrun [item]{result.run}[/item]: the probe package and the '
+                f'submitted source are byte-for-byte the ones that run measured, '
+                f'so nothing was submitted to the judge.[/status]\n'
+                f'[status]Delete [item]{_testrun_cache_dir()}[/item] to measure it '
+                f'again.[/status]'
+            )
 
         # Once per testrun, not once per testcase, and only when the report has
         # actually got here. `warned` is set before anything awaits, so two
@@ -1175,6 +1336,129 @@ def _record_upload(moj_id: str, fingerprint: str) -> None:
 def _forget_upload() -> None:
     path = _upload_state_path()
     path.unlink(missing_ok=True)
+
+
+# -- the testrun cache ----------------------------------------------------------
+#
+# `rbx time` is a command a setter runs *again*: tweak a solution, re-estimate,
+# change the profile, look at the table once more. Every re-run used to re-submit
+# every solution, including ones whose source had not changed by a byte -- and a
+# testrun occupies a shared two-judge park for as long as the solution takes on
+# every test. So a finished testrun is remembered, keyed (see `_cache_key`) so
+# that a hit is provably the same measurement rather than merely a similar one.
+#
+# **There is no `--no-cache` flag**, deliberately. The two questions a flag would
+# answer both have better answers already: "I changed something" is what the key
+# is for, and it covers everything rbx can observe; "I want to see the variance"
+# is not a workflow this backend supports at all, since `nruns > 1` is refused
+# outright on a shared park (`RunnerCapabilities.supports_nruns`). What is left
+# is the blind spot no flag can fix either -- somebody else's upload, or a park
+# that changed underneath the numbers -- and for that the honest escape hatch is
+# to throw the observations away, which is one `rm -rf` of a directory the
+# cache-hit line prints by name. A flag would also have to be threaded through
+# `rbx time`, `timing.py` and `RunContext` to reach the one backend that means
+# anything by it.
+#
+# No expiry, no size cap, no eviction, for want of a problem they would solve: an
+# entry is a few hundred bytes of JSON, entries are only written for packages
+# that were really uploaded, and a stale entry is unreachable rather than wrong
+# -- its key names a package fingerprint no later run will ever produce again.
+
+
+def _testrun_cache_dir() -> pathlib.Path:
+    path = package.get_problem_cache_dir() / TESTRUN_CACHE_DIR_NAME
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _load_cached_testrun(key: str) -> Optional[Tuple[str, cli.TestrunStatus]]:
+    """The run id and finished status remembered under `key`, if any.
+
+    Anything unreadable -- absent, truncated, not JSON, not the shape it was
+    written in, written by a version of this code that meant something else by
+    it -- reads as a miss. That is the direction to fail in: a miss costs one
+    redundant testrun, while trusting a half-written file costs a wrong timing in
+    the number `rbx time` is about to write into a limits profile.
+    """
+    path = _testrun_cache_dir() / f'{key}.json'
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text())
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    run = payload.get('run')
+    # The shape check on `status` is belt-and-braces: every non-object JSON value
+    # fails `model_validate` anyway, so removing it changes no behaviour today
+    # (a mutation test confirmed it). It stays because it says what this file is
+    # supposed to contain at the point where that is being decided, rather than
+    # leaving it to be inferred from which exception pydantic happens to raise.
+    status = payload.get('status')
+    if not isinstance(run, str) or not run or not isinstance(status, dict):
+        return None
+    try:
+        return run, cli.TestrunStatus.model_validate(status)
+    except ValidationError:
+        return None
+
+
+def _store_cached_testrun(key: str, run: str, status: cli.TestrunStatus) -> None:
+    """Remember a testrun rbx was able to read in full.
+
+    **Only ever called for a status that already survived `_result_from_status`**,
+    which is what keeps a failure out of the cache. A run-level failure -- the
+    `Compilation Error` shape, a `done` run that never entered the testset -- is
+    a thing the setter is about to *fix*, and answering the next run from a
+    cached compile error would be maddening: the fix would appear to change
+    nothing. An unrecognised verdict code is excluded by the same rule, since it
+    is likewise a run rbx could not interpret.
+
+    A non-`Accepted` run **is** cached, on purpose. A WA, an RE or a TLE is a
+    legitimate, reproducible measurement of a solution that is *supposed* to fail
+    -- phase 2 exists to measure exactly those -- and the timings it produced are
+    as real as an accepted solution's. Only "rbx could not read this" is refused,
+    never "the judge did not like the solution".
+
+    Written whole and then moved into place, because a poll interrupted
+    mid-write would otherwise leave a truncated JSON file under a key that says
+    it describes a real measurement. `_load_cached_testrun` tolerates that
+    anyway; this makes it not happen.
+    """
+    directory = _testrun_cache_dir()
+    path = directory / f'{key}.json'
+    payload = {
+        'run': run,
+        # The status as the judge reported it, rather than the `_TestrunResult`
+        # derived from it: the derivation depends on which testcases *this* run
+        # asked about (`expected`, `missing`), so storing its output would bake
+        # one run's testset into an entry the next run reuses. Storing the input
+        # instead means a hit re-derives, through the same code, against whatever
+        # the current run asked for.
+        #
+        # `model_dump` keeps every field the model knows, including the run-level
+        # `verdict` / `verdict_canon` / `total_tests` that `ran_nothing` reads --
+        # so the cached entry can be checked on the way back in exactly as a
+        # fresh response is.
+        'status': status.model_dump(mode='json'),
+    }
+    try:
+        # Same directory, so the replace is atomic on every filesystem rbx runs
+        # on.
+        with tempfile.NamedTemporaryFile(
+            'w', dir=directory, prefix=f'.{key}-', suffix='.tmp', delete=False
+        ) as tmp:
+            tmp.write(json.dumps(payload, indent=2) + '\n')
+            temporary = pathlib.Path(tmp.name)
+        temporary.replace(path)
+    except OSError:
+        # A cache that cannot be written is a cache that is not there. The
+        # measurement in hand is unaffected, and saying anything here would be
+        # said from a background task, about something the setter did not ask
+        # for and cannot act on.
+        return
 
 
 # See `runners/local.py`: the Protocol is only load-bearing if something checks

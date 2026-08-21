@@ -374,5 +374,30 @@ the cross-machine follow-up buys little right now.
 | 7 | Wire into `timing._run_for_inference`; phase 2 upload at `timeLimitToTle x TL` and the remaining solutions | the full flow |
 | 8 | Cache testrun results by (package checksum, solution digest, `TLOVERRIDE`) | re-runs cost no judge time |
 
+**Task 8, as built.** The three terms the table names turned out to be two: `TLOVERRIDE`
+is emitted into the package's `conf`, so it is already inside `_directory_fingerprint` --
+which is also why phase 2 misses on every solution, exactly as "the consequence to design
+around" above says it must. So the key is (package fingerprint, remote problem id, the
+**amalgamated bytes** submitted, the submitted file name, a cache version). Not the source
+path and not its mtime: amalgamation inlines headers, so the same path can be two
+programs.
+
+What is stored is the judge's own `TestrunStatus`, run-level verdict included, rather than
+the `_TestrunResult` derived from it -- the derivation depends on which testcases the
+current run asked about, and a hit goes back through the same `_result_from_status` as a
+fresh response, which is what makes a hit and a miss produce identical `Evaluation`s.
+Nothing that raises out of that derivation is written, so a `Compilation Error` and an
+unrecognised verdict code are never cached; a WA or a TLE is, because it is a real
+measurement of a solution that is supposed to fail.
+
+It lives beside the upload record under `get_problem_cache_dir()`, for the same reason:
+losing it must cost a redundant testrun, never a wrong measurement. **What it cannot see**
+is what `prepare`'s fingerprint cannot see -- rbx has no way to ask MOJ which package a
+problem currently holds, so another machine's upload (or a `moj upload` by hand) is
+invisible to both -- plus the park itself: its hardware, its load, and which judge the
+server picked. A cached timing is a measurement from whenever it was taken. No
+`--no-cache` flag: the key covers everything rbx can observe, and for the blind spots the
+honest fix is to delete the directory the cache-hit line names.
+
 Task 0 gates 4 and 6; tasks 1 and 2 are independent of every MOJ-specific one and can land
 first on their own merits.

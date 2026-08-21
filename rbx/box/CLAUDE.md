@@ -183,6 +183,25 @@ a wrong verdict silently corrupts the time limit being estimated. A testcase MOJ
 report on becomes `SKIPPED` with no timing (never a zero), and only the `.eval` is written,
 never an empty `.out`.
 
+**Finished testruns are cached, so re-running `rbx time` costs no judge time.** The key
+(`_cache_key`) is the probe package's `_directory_fingerprint` -- which already contains
+the cap, since `TLOVERRIDE` is emitted into `conf` -- plus the remote problem id and the
+**amalgamated bytes** actually submitted (never the source path or its mtime: amalgamation
+inlines headers). What is stored is the judge's `TestrunStatus` itself, not the derived
+result, and a hit is put back through the same `_result_from_status` as a fresh response,
+so a hit and a miss produce identical `Evaluation`s and the entry is re-derived against
+whatever testcases *this* run asked about. Nothing that raises out of that derivation is
+ever written: a run-level failure (the `Compilation Error` shape) and an unrecognised
+verdict code are things the setter is about to fix, and a cached one would make the fix
+look like it did nothing. A **bad verdict is cached** -- a WA or a TLE is a real,
+reproducible measurement, and phase 2 exists to take exactly those. The cache lives beside
+the upload record in the disposable problem cache, is consulted *before* the concurrency
+slot (a hit costs no judge time and must not queue behind one that does), and is announced
+once per testrun from `_evaluation_from_job`, naming the directory to delete. There is no
+`--no-cache` flag: the key covers everything rbx can observe, and what it cannot observe --
+another machine's `moj upload`, a park that changed under the numbers -- is fixed by
+throwing the observations away.
+
 Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 
 ### Deferred Execution (`deferred.py`)
