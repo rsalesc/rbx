@@ -333,3 +333,14 @@ def test_violation_matches_the_bound_the_estimate_enforces(
     time, time_limit, ratio, violates
 ):
     assert timing.violates_upper_bound(time, time_limit, ratio) is violates
+
+
+async def test_a_slow_solution_that_says_nothing_validates_nothing():
+    # It was asked and produced no verdict at all -- it did not compile, say.
+    # Silence is not confirmation.
+    slow = _solution('sols/slow.cpp')
+    validation = await _validate(_profile(), [slow], structured={})
+    assert not validation.outcome.ok
+    assert validation.outcome.unmeasured == [slow]
+    assert validation.outcome.confirmed == []
+    assert validation.outcome.violating == []

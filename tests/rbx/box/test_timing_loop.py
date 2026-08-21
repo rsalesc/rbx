@@ -156,17 +156,34 @@ async def test_a_profile_with_nothing_to_check_is_returned_as_is():
     assert validated == []
 
 
-async def test_an_unbuildable_grouping_ends_the_loop():
-    ctx = _context(['cpp', 'py'])
-    ctx.prompt = mock.AsyncMock(return_value=_picked())
-    ctx.build = mock.Mock(return_value=None)
-    profile = await timing._estimate_and_validate(  # noqa: SLF001
+async def _drive(ctx, picks, auto=False):
+    return await timing._estimate_and_validate(  # noqa: SLF001
         ctx,
         timing_validation.SlowKnowledge(),
-        auto=False,
+        auto=auto,
         skip_slow=False,
         check=False,
         detailed=False,
         runs=0,
     )
+
+
+async def test_an_unbuildable_grouping_is_asked_about_again():
+    # Nothing but the grouping can make a limit impossible, so the setter gets
+    # to pick another one rather than being dropped out of the command.
+    ctx = _context(['cpp', 'py'])
+    ctx.prompt = mock.AsyncMock(side_effect=[_picked(), None])
+    ctx.build = mock.Mock(return_value=None)
+    profile = await _drive(ctx, None)
+    assert profile is None
+    assert ctx.prompt.await_count == 2
+    # The second prompt offers the override, since the first grouping failed.
+    assert ctx.prompt.await_args_list[1].kwargs['allow_force'] is True
+
+
+async def test_an_unbuildable_grouping_with_no_picker_ends_the_loop():
+    ctx = _context(['cpp', 'py'])
+    ctx.prompt = mock.AsyncMock(return_value=_picked())
+    ctx.build = mock.Mock(return_value=None)
+    profile = await _drive(ctx, None, auto=True)
     assert profile is None

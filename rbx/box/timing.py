@@ -1169,6 +1169,9 @@ class _ValidationOutcome:
 
     # Confirmed too slow: still running when the limit they had to clear elapsed.
     confirmed: List[Solution] = dataclasses.field(default_factory=list)
+    # Ran, or should have, and produced no verdict at all -- a solution that
+    # failed to compile, say. It answers nothing, so the bound is not checked.
+    unmeasured: List[Solution] = dataclasses.field(default_factory=list)
     # Fast enough to break the upper bound, with the time they actually took.
     violating: List[Tuple[Solution, int]] = dataclasses.field(default_factory=list)
     # Broke for a reason other than running out of time, so they are evidence of
@@ -1177,7 +1180,7 @@ class _ValidationOutcome:
 
     @property
     def ok(self) -> bool:
-        return not self.violating and not self.failed
+        return not self.violating and not self.failed and not self.unmeasured
 
 
 def _probe_limits(
@@ -1202,13 +1205,17 @@ async def _record_validation_run(
     solutions_run: List[Solution],
     limits: Dict[str, int],
     knowledge: timing_validation.SlowKnowledge,
-) -> List[Tuple[Solution, Outcome]]:
-    """Fold what the run said into ``knowledge``; return the solutions that broke
-    for a reason other than running out of time."""
+) -> Tuple[List[Tuple[Solution, Outcome]], List[Solution]]:
+    """Fold what the run said into ``knowledge``.
+
+    Returns the solutions that broke for a reason other than running out of time,
+    and the ones that produced no verdict at all.
+    """
     structured_evaluations = consume_and_key_evaluation_items(
         result.items, result.skeleton
     )
     failed: List[Tuple[Solution, Outcome]] = []
+    unmeasured: List[Solution] = []
     for solution in solutions_run:
         path = str(solution.path)
         outcomes: List[Outcome] = []
@@ -1241,7 +1248,10 @@ async def _record_validation_run(
             # Its time is the slowest testcase, as everywhere else: that is the
             # one the limit has to accommodate.
             knowledge.record_time(path, max(timings))
-    return failed
+        else:
+            # It was asked and said nothing -- it did not compile, or never ran.
+            unmeasured.append(solution)
+    return failed, unmeasured
 
 
 def _classify_slow_solutions(
@@ -1249,13 +1259,16 @@ def _classify_slow_solutions(
     upper_solutions: List[Solution],
     knowledge: timing_validation.SlowKnowledge,
     failed: List[Tuple[Solution, Outcome]],
+    unmeasured: Optional[List[Solution]] = None,
 ) -> _ValidationOutcome:
     """What is now known about every slow solution, not only the ones that just
     ran: an earlier iteration may already have settled some of them."""
     multipliers = profile.multipliers
     assert multipliers is not None and multipliers.timeLimitToTle is not None
+    unmeasured = unmeasured or []
     broken = {str(solution.path) for solution, _ in failed}
-    outcome = _ValidationOutcome(failed=list(failed))
+    broken.update(str(solution.path) for solution in unmeasured)
+    outcome = _ValidationOutcome(failed=list(failed), unmeasured=list(unmeasured))
     for solution in upper_solutions:
         path = str(solution.path)
         if path in broken:
@@ -1333,8 +1346,10 @@ async def _validate_upper_bound(
         gating_solutions=set(tracked_solutions),
     )
 
-    failed = await _record_validation_run(result, to_run, limits, knowledge)
-    return _classify_slow_solutions(profile, upper_solutions, knowledge, failed)
+    failed, unmeasured = await _record_validation_run(result, to_run, limits, knowledge)
+    return _classify_slow_solutions(
+        profile, upper_solutions, knowledge, failed, unmeasured
+    )
 
 
 def _report_validation_outcome(
@@ -1351,6 +1366,11 @@ def _report_validation_outcome(
         )
     for solution, outcome_value in outcome.failed:
         console.console.print(_failed_upper_message(solution, outcome_value))
+    for solution in outcome.unmeasured:
+        console.console.print(
+            f'[error]✗ {solution.href()} produced no verdict at all, so nothing '
+            f'checks that it is too slow for the estimated time limit.[/error]'
+        )
     for solution, time in outcome.violating:
         lang = find_language_name(solution)
         time_limit = profile.timeLimitPerLanguage.get(lang, profile.timeLimit)
@@ -1394,7 +1414,13 @@ async def _estimate_and_validate(
             picked, knowledge=knowledge, force=violated and picked.force
         )
         if profile is None:
-            return None
+            # No limit fits this grouping. Every reason for that is a property of
+            # the grouping, so ask again rather than giving up -- the setter can
+            # still cancel. With nothing to ask, there is nothing to do but stop.
+            if auto or not ctx.can_prompt:
+                return None
+            violated = True
+            continue
 
         if skip_slow or picked.force:
             return profile
