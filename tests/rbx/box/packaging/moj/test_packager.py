@@ -221,6 +221,34 @@ def test_conf_uses_the_rss_memory_knob(moj_package):
     assert 'TLOVERRIDE[default]=' in conf
 
 
+def test_the_file_ulimit_is_fixed_and_does_not_track_the_output_limit(
+    testing_pkg, tmp_path
+):
+    """MOJ applies `ULIMITS[-f]` to the **compile** step, not only to the solution.
+
+    Observed on the judge on 2026-08-21: a package whose `outputLimit` was 100 KB
+    made the linker die with `ld terminated with signal 25 [File size limit
+    exceeded]`, so every submission came back `Compilation Error` without reaching a
+    single test. Emitting the problem's own output limit here is therefore not a
+    tighter-is-safer choice -- it is what makes a problem unjudgeable.
+
+    So the number is fixed and generous, and this pins that it does not follow
+    `outputLimit` even when that is set absurdly low.
+    """
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.add_testgroup_with_manual_testcases('samples', [])
+    testing_pkg.yml.outputLimit = 100
+    testing_pkg.save()
+
+    pkg_path = run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
+    conf = (pkg_path / 'conf').read_text()
+
+    assert 'ULIMITS[-f]=102400' in conf
+    assert 'ULIMITS[-f]=100\n' not in conf
+
+
 def test_binary_problems_halt_at_the_first_failure(moj_binary_package):
     conf = (moj_binary_package / 'conf').read_text()
     assert 'STOPWHEN_WA=y' in conf

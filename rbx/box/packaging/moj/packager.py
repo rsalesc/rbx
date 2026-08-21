@@ -53,6 +53,27 @@ from rbx.config import get_default_app_path, get_testlib
 # keeps validate-problem.sh green until the setter fills it in on the server.
 DEFAULT_AUTHOR = 'Unknown\n'
 
+# `ULIMITS[-f]` in KB, and deliberately a **fixed, generous** number rather than the
+# problem's `outputLimit`.
+#
+# MOJ applies this ulimit to the **compile** step, not only to the running solution --
+# observed on the judge on 2026-08-21, packaging a problem whose `outputLimit` was
+# 100 KB:
+#
+#     collect2: fatal error: ld terminated with signal 25 [File size limit exceeded]
+#
+# The linker could not write the executable, so *every* submission came back
+# `Compilation Error` before reaching a single test. Any problem with a tight output
+# limit was therefore unjudgeable on MOJ.
+#
+# One knob cannot serve both purposes: a compile needs megabytes, while a sane output
+# limit is often a few hundred KB. Pinning it high is the side that fails safe -- the
+# cost is that **MOJ no longer enforces the problem's `outputLimit`**, so a runaway
+# solution is cut off here instead of at the setter's threshold. rbx still enforces
+# `outputLimit` locally, and a solution that overruns it is a package bug the setter
+# sees in `rbx run` long before MOJ would have said anything.
+OUTPUT_ULIMIT_KB = 100 * 1024
+
 # The group name rbx reserves for samples. MOJ requires them to be named `sample*`,
 # so this group alone is exempt from the testset prefix.
 SAMPLES_GROUP = 'samples'
@@ -636,8 +657,11 @@ class MojPackager(BasePackager):
             '# large heap without touching it, and feeds the JVM -Xmx via binfile.sh.',
             f'MEMLIMITMB={pkg.memoryLimit}',
             '',
-            '# Output limit, in KB on both sides.',
-            f'ULIMITS[-f]={pkg.outputLimit}',
+            '# File-size ulimit, in KB. Fixed at 100 MiB and deliberately NOT the',
+            "# problem's outputLimit: MOJ applies this to the compile step too, so a",
+            '# tight output limit makes the linker fail and every submission comes back',
+            '# Compilation Error. See OUTPUT_ULIMIT_KB.',
+            f'ULIMITS[-f]={OUTPUT_ULIMIT_KB}',
             '',
         ]
         lines.extend(self._time_limit_lines())

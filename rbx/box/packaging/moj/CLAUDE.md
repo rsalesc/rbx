@@ -133,6 +133,29 @@ there, so the saving buys nothing. This is also what makes the runner's
 `supports_abort=False` (“a testrun has already run every test by the time rbx sees
 it”) honest rather than merely usually-true.
 
+### `ULIMITS[-f]` is fixed, and deliberately not `outputLimit`
+
+`conf` emits `ULIMITS[-f]=102400` (100 MiB in KB), a constant — **not** the problem's
+`outputLimit`, which is what it used to be.
+
+MOJ applies this ulimit to the **compile** step, not only to the running solution.
+Observed on the judge on 2026-08-21, packaging a problem whose `outputLimit` was 100 KB:
+
+```
+collect2: fatal error: ld terminated with signal 25 [File size limit exceeded]
+```
+
+The linker could not write the executable, so *every* submission came back
+`Compilation Error` without reaching a single test — any problem with a tight output
+limit was simply unjudgeable on MOJ.
+
+One knob cannot serve both purposes: a compile needs megabytes, a sane output limit is
+often a few hundred KB. Pinning it high is the side that fails safe. The cost, stated
+plainly: **MOJ no longer enforces the problem's `outputLimit`** — a runaway solution is
+cut off at 100 MiB instead of the setter's threshold. rbx still enforces `outputLimit`
+locally, so a solution that overruns it shows up in `rbx run` long before MOJ would have
+said anything. See `OUTPUT_ULIMIT_KB` in [`packager.py`](packager.py).
+
 ## Test naming (`naming.py`)
 
 Samples are `sample001…`; everything else is `t<NN>_<group>_<NNN>` with `NN` the
