@@ -57,15 +57,14 @@ export class ActiveProblem {
     return this.selectedRoot;
   }
 
-  /** Show a problem. No-op when it is already showing, or is not a problem. */
+  /**
+   * Show a problem the user picked. No-op when already showing, or unknown.
+   *
+   * The explicit path, and the only one that writes the memento: the dropdown
+   * and the quick pick both land here.
+   */
   select(root: string): void {
-    if (root === this.selectedRoot || !this.knows(root)) {
-      return;
-    }
-    this.selectedRoot = root;
-    void this.memento.update(SELECTED_KEY, root);
-    log(`Showing ${root}.`);
-    this.changed.fire();
+    this.show(root, true);
   }
 
   /**
@@ -82,6 +81,12 @@ export class ActiveProblem {
    * why the rediscovery asked for here is the provider's and not just this
    * class's: `discovered()` is memoized (see `RunDataProvider.discovery`), so
    * re-reading it would hand back the very list that is missing the package.
+   *
+   * Shown but not remembered, for the same reason `refresh`'s fallback is not:
+   * nobody chose this. `rbx contest each run` would otherwise persist whichever
+   * problem the contest run happened to touch last, and a user who deliberately
+   * picked D would reopen the window on some other letter. Auto-switching is
+   * the feature; auto-persisting the auto-switch is a side effect of it.
    */
   async follow(root: string): Promise<void> {
     if (!this.knows(root)) {
@@ -94,7 +99,20 @@ export class ActiveProblem {
       // view that silently stays put while a different problem runs.
       log(`Not following the run in ${root}: it is not a discovered package.`);
     }
-    this.select(root);
+    this.show(root, false);
+  }
+
+  /** The one place the selection moves. `remember` writes it to the memento. */
+  private show(root: string, remember: boolean): void {
+    if (root === this.selectedRoot || !this.knows(root)) {
+      return;
+    }
+    this.selectedRoot = root;
+    if (remember) {
+      void this.memento.update(SELECTED_KEY, root);
+    }
+    log(`Showing ${root}.`);
+    this.changed.fire();
   }
 
   private knows(root: string | undefined): boolean {
