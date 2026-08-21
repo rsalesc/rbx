@@ -76,8 +76,33 @@ Calls `build()` then runs solutions based on verification level:
 
 1. **`run_solutions()`** -- Main entry point (called from `builder.verify()`)
 2. **`_get_report_skeleton()`** -- Compiles solutions, builds `SolutionReportSkeleton`
-3. **`_produce_solution_items()`** -- Creates `Deferred[Evaluation]` items per (solution, testcase)
+3. **`_produce_solution_items()`** -- Creates `Deferred[Evaluation]` items per (solution, testcase),
+   by asking a **`SolutionRunner`** (see below) for each solution's deferreds
 4. **`print_run_report()`** -- Drives deferred execution, displays live results
+
+### Runners (`runners/`)
+
+`run_solutions` decides *what* to run -- which solutions, which testcases, under which
+limits. A **`SolutionRunner`** (`runners/base.py`) decides *where*. `LocalRunner`
+(`runners/local.py`) is the sandbox on this machine and is the default; a remote judge
+reached over its own CLI is the other kind.
+
+The seam is **per solution**: `run_solution()` is handed a solution and its whole
+flattened testset in group order, and returns one `Deferred[Evaluation]` per entry. That
+grain is deliberate -- a remote judge judges one submission against every test at once, so
+a per-testcase seam would force every batch backend to coalesce calls back into a batch.
+
+Two things stay with the orchestrator rather than the backend:
+
+- **Abort/skip policy.** `_gated_evaluation()` wraps each returned deferred when a run asks
+  for `abort_on`, so every backend gets `_AbortGate` semantics for free instead of
+  re-implementing them. A run without `abort_on` gets the backend's deferreds
+  *unwrapped* -- a deliberate guarantee, pinned by a test.
+- **`RunnerCapabilities`.** What a backend can report (memory, artifacts, checker
+  messages, repeated runs). Declared rather than sniffed, so a consumer never reads a
+  `None` as zero and calls an unmeasured run instantaneous.
+
+Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 
 ### Deferred Execution (`deferred.py`)
 
