@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import { test } from 'node:test';
 import { parse as parseYaml } from 'yaml';
 
-import { ParsedContest, parseContest } from './contest';
+import { ParsedContest, parseContest, problemIdentities } from './contest';
 
 function contest(yaml: string): ParsedContest {
   return parseContest(parseYaml(yaml));
@@ -93,4 +93,49 @@ problems:
     parsed.problems.map((p) => p.shortName),
     ['B'],
   );
+});
+
+test('matches package roots to declared problems', () => {
+  const identities = problemIdentities(
+    '/c',
+    parseContest({
+      problems: [{ short_name: 'A' }, { short_name: 'B', path: 'problems/beta' }],
+    }),
+  );
+  assert.deepStrictEqual(identities.get('/c/A'), {
+    shortName: 'A',
+    color: undefined,
+    order: 0,
+  });
+  assert.deepStrictEqual(identities.get('/c/problems/beta'), {
+    shortName: 'B',
+    color: undefined,
+    order: 1,
+  });
+});
+
+test('normalizes a declared path before matching', () => {
+  // Contest files are hand-written: `./A/` and `A` name the same directory.
+  const identities = problemIdentities(
+    '/c',
+    parseContest({ problems: [{ short_name: 'A', path: './A/' }] }),
+  );
+  assert.strictEqual(identities.get('/c/A')?.shortName, 'A');
+});
+
+test('keeps the first of two problems naming the same directory', () => {
+  // Duplicating a problem block is how a setter adds one, and the file is read
+  // mid-keystroke -- before rbx has had any chance to reject the duplicate.
+  const identities = problemIdentities(
+    '/c',
+    parseContest({
+      problems: [{ short_name: 'A' }, { short_name: 'B', path: './A' }],
+    }),
+  );
+  assert.strictEqual(identities.size, 1);
+  assert.strictEqual(identities.get('/c/A')?.shortName, 'A');
+});
+
+test('declares nothing for a dispatcher', () => {
+  assert.strictEqual(problemIdentities('/c', parseContest({ use_variants: true })).size, 0);
 });

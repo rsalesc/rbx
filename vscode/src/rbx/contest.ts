@@ -5,6 +5,8 @@
  * only turns parsed YAML into identities. Nothing here throws -- a malformed
  * contest file must cost the packages their letters, never the view.
  */
+import * as path from 'path';
+
 import { Wire, asArray, asRecord, asString } from './wire';
 
 /** One problem as its contest declares it. */
@@ -71,4 +73,39 @@ export function parseContest(raw: Wire): ParsedContest {
     });
   }
   return { useVariants: false, problems };
+}
+
+/** A problem's contest-given identity, keyed by absolute package root. */
+export interface ProblemIdentity {
+  readonly shortName: string;
+  readonly color?: string;
+  readonly order: number;
+}
+
+/**
+ * Resolve each declared problem to the absolute root it names.
+ *
+ * `path.resolve` normalizes the hand-written spellings a contest file carries
+ * -- `./A/`, `A`, `problems/../A` all land on the same key -- so a match is a
+ * plain map lookup downstream rather than a path comparison at every use.
+ */
+export function problemIdentities(
+  contestRoot: string,
+  contest: ParsedContest,
+): Map<string, ProblemIdentity> {
+  const identities = new Map<string, ProblemIdentity>();
+  for (const problem of contest.problems) {
+    const root = path.resolve(contestRoot, problem.path);
+    // First declaration of a directory wins, the same rule `indexContests`
+    // applies across files -- a half-typed duplicate block must not steal the
+    // letter off the problem that is already there.
+    if (!identities.has(root)) {
+      identities.set(root, {
+        shortName: problem.shortName,
+        color: problem.color,
+        order: problem.order,
+      });
+    }
+  }
+  return identities;
 }
