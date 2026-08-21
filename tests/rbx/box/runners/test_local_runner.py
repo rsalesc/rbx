@@ -49,6 +49,9 @@ class RecordingRunner:
     calls: List[Tuple[str, List[GenerationTestcaseEntry]]] = dataclasses.field(
         default_factory=list
     )
+    # Every deferred handed back, flattened -- so a test can check what
+    # `run_solutions` did with them by identity.
+    returned: List[Deferred[Evaluation]] = dataclasses.field(default_factory=list)
 
     async def prepare(self, ctx: RunContext) -> None:
         assert not self.calls, 'prepare must come before any run_solution'
@@ -72,7 +75,9 @@ class RecordingRunner:
 
             return Deferred(run_fn)
 
-        return [make(entry) for entry in entries]
+        res = [make(entry) for entry in entries]
+        self.returned.extend(res)
+        return res
 
 
 @pytest.mark.test_pkg('problems/abort-groups')
@@ -127,6 +132,33 @@ async def test_every_solution_gets_its_own_call(pkg_from_testdata: pathlib.Path)
 
     assert runner.prepared == 1
     assert [path for path, _ in runner.calls] == ['sol.cpp', 'sol2.cpp']
+
+
+@pytest.mark.test_pkg('problems/abort-groups')
+async def test_a_run_without_abort_passes_the_deferreds_straight_through(
+    pkg_from_testdata: pathlib.Path,
+):
+    """No `abort_on` means no gate wrapper -- checked by identity, not by result.
+
+    This is the guarantee that keeps an ordinary run byte-identical to one with no
+    seam at all. Comparing evaluations would pass either way; only `is` can tell a
+    pass-through from a wrapper that happens to return the same verdict.
+    """
+    await _build_testset()
+    runner = RecordingRunner()
+
+    result = await run_solutions(
+        verification=VerificationLevel.FULL,
+        tracked_solutions=['sol.cpp'],
+        runner=runner,
+    )
+
+    # `strict` covers length; `is` is the whole point -- `Deferred` has no
+    # `__eq__`, so a list comparison here would only look like a value check.
+    assert all(
+        item.eval is deferred
+        for item, deferred in zip(result.items, runner.returned, strict=True)
+    )
 
 
 @pytest.mark.test_pkg('problems/abort-groups')

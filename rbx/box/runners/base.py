@@ -8,12 +8,16 @@ The seam is per **solution**, not per testcase, because that is the grain a remo
 judge works at: one submission is judged against every test at once. A per-testcase
 seam would force every batch backend to secretly coalesce calls back into a batch.
 
-Skipping and aborting are deliberately *not* a backend's business. `run_solutions`
-wraps every deferred a backend hands back with the gate logic, so a backend never
-reimplements it and every backend gets it identically.
+Skipping and aborting are deliberately *not* a backend's business. When a run asks
+for them, `run_solutions` wraps the deferreds a backend hands back with the gate
+logic, so a backend never reimplements it and every backend gets it identically.
+When it does not -- the common case -- the backend's own deferreds are passed
+through untouched, which is what keeps a plain run byte-identical to one that had
+no seam at all.
 """
 
 import dataclasses
+import typing
 from typing import TYPE_CHECKING, List, Optional, Protocol
 
 from rbx.box.deferred import Deferred
@@ -70,6 +74,7 @@ class RunContext:
     abort_on: Optional['AbortPredicate']
 
 
+@typing.runtime_checkable
 class SolutionRunner(Protocol):
     name: str
     caps: RunnerCapabilities

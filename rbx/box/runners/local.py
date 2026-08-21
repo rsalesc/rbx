@@ -73,6 +73,12 @@ class LocalRunner:
 
 
 # There is no type checker in this build, so the Protocol is only load-bearing if
-# something asserts it. A typo'd method name fails here, at import, rather than
-# at the one call site that would have used it.
-_: SolutionRunner = LocalRunner()
+# something checks it at run time. An annotated assignment would not have: Python
+# binds the value and ignores the annotation.
+#
+# `runtime_checkable` checks that the members are *present*, nothing more. It
+# catches a missing or misspelled `run_solution`, `prepare` or `caps` -- the
+# realistic way a new backend goes wrong -- but it does not compare signatures,
+# so a runner whose `run_solution` takes the wrong arguments still passes here
+# and fails at the call site instead.
+assert isinstance(LocalRunner(), SolutionRunner)

@@ -715,7 +715,7 @@ def _gated_evaluation(
     inner: Deferred[Evaluation],
     gate: _AbortGate,
     abort_on: AbortPredicate,
-    solution: Solution,
+    solution: SolutionSkeleton,
     entry: GenerationTestcaseEntry,
     group: GroupSkeleton,
     output_dir: pathlib.Path,
