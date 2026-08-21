@@ -26,6 +26,30 @@ Read from [`cd-moj/moj-cli`](https://github.com/cd-moj/moj-cli) (`moj`, build
 | `moj upload <id> <dir>` | Tars the directory itself and uploads. |
 | `moj whoami` | The login. |
 
+### Confirmed from the CLI source
+
+The repo is not readable anonymously (`raw.githubusercontent.com` 404s), so these were read
+through the authenticated contents API, from `moj` and `lib/core.sh`. Recording them here
+so nobody re-derives them:
+
+- **`moj whoami` does not honour `--json`.** It prints `login: <x>  nome: <y>` and the login
+  must be parsed out of that line (`cmd_whoami`).
+- **A session-less command exits non-zero and writes to stderr.**
+  `need_login(){ [[ -f "$(token_file)" ]] || die "faça '$MOJ_TOOL login' primeiro."; }` and
+  `die(){ printf '%s: %s\n' "$MOJ_TOOL" "$*" >&2; exit 1; }`. So a wrapper that captures
+  only stdout loses the reason.
+- **`moj testrun --no-wait` prints prose, not JSON, even under `--json`.** It returns at
+  `cmd_testrun`'s `[[ "$wait" == 1 ]] || { ...; return 0; }` — *before* the `RAW` branch
+  inside the polling loop — after `echo "enfileirado no juiz: run $run  (...)"`. The run id
+  has to be parsed out of that line. Passing `--json` to `testrun` therefore buys nothing.
+- **`moj --json testrun-status` is real JSON**, carrying `status`, `verdict`, `correct`,
+  `total_tests`, `duration_s`, `tl_used` and `tests[].{name,code,time,tl}`.
+- **The CLI's own wait is bounded and knows only one terminal state.** `cmd_testrun` loops
+  200 times at 3s (~10 minutes) testing `[[ "$st" == done ]]`, then gives up and tells the
+  user to check later. It handles no failure status. So `MojRunner`'s poll needs its own
+  bound — a judge that never reaches `done` must not hang the run — and **whether the
+  server can report a terminal failure state is still an open probe question**.
+
 Two facts shape the design:
 
 - **`moj testrun` accepts a directory containing `.moj-id`** in place of an id
