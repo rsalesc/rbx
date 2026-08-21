@@ -1,8 +1,9 @@
 import collections
+import dataclasses
 import json
 import pathlib
 import shutil
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import typer
 
@@ -83,6 +84,70 @@ _AMALGAMATABLE_SUFFIXES = {'.c', '.cc', '.cpp', '.cxx'}
 LIMITS_PROFILE = 'moj'
 
 
+@dataclasses.dataclass(frozen=True)
+class ProfilePinned:
+    """Pin the limits to the `moj` limits profile. The default.
+
+    What `rbx package moj` emits: `TLOVERRIDE[default]` plus a `TLOVERRIDE[<lang>]`
+    for every language whose estimated limit differs from it. Requires the profile
+    `rbx time -p moj` writes.
+    """
+
+
+@dataclasses.dataclass(frozen=True)
+class JudgeCalibrated:
+    """Let MOJ measure them. `rbx package moj --calibrate`.
+
+    No `TLOVERRIDE` at all: the judge's own calibration decides, scaled by
+    `TLMOD[calibrafactor]` = rbx's `acToTimeLimit`.
+    """
+
+
+@dataclasses.dataclass(frozen=True)
+class UniformPinned:
+    """Pin every language to one number. What a remote timing run uploads.
+
+    This is deliberately *not* `ProfilePinned` with different numbers. The cap a
+    timing run measures under is a **single** value -- the inference timeout in phase
+    1, `timeLimitToTle x TL` in phase 2 -- and emitting the profile's per-language
+    `TLOVERRIDE` entries beside it would measure some languages under a *tighter* cap
+    than rbx asked for, silently truncating the very timings the estimate rests on.
+    So one `TLOVERRIDE[default]` and nothing else; see
+    `docs/plans/2026-08-20-moj-remote-runner-design.md`.
+    """
+
+    limit_ms: int
+
+
+# How a package settles its time limits. The packager refuses to guess between these,
+# which is why it is a mode object rather than a defaulted number: each one carries a
+# different precondition (an estimated profile / `timing.multipliers` / nothing at all).
+TimingMode = Union[ProfilePinned, JudgeCalibrated, UniformPinned]
+
+# The mode `rbx package moj` uses. A frozen dataclass with no fields carries no state,
+# so one shared instance is as good as many -- and a default argument may not be a
+# call (ruff B008).
+DEFAULT_TIMING_MODE = ProfilePinned()
+
+
+@dataclasses.dataclass(frozen=True)
+class ProbePackage:
+    """A throwaway package uploaded to measure timings, never judged by students.
+
+    Kept separate from `TimingMode` because "what limits" and "what is in the package
+    / who may submit" are genuinely orthogonal: a probe package is defined by shipping
+    only the model solution (`moj testrun` sends the timed source in the request body,
+    so the rest never have to be there) and by whitelisting every language rbx may
+    testrun rather than the languages it ships.
+    """
+
+    # The MOJ ids `.moj-meta.json` allows submissions in. The API rejects a submission
+    # outside this list -- a testrun included -- so it must cover every language rbx
+    # may time, including the slow and wrong solutions, which are never ACCEPTED by
+    # construction and so would never make the usual accepted-solutions whitelist.
+    submission_languages: List[str]
+
+
 def _resolved_multipliers() -> Optional[TimingMultipliers]:
     """The problem's timing multipliers, or None when it estimates with a formula."""
     strategy = timing_config.resolve_strategy(
@@ -145,14 +210,19 @@ def _require_limits_profile() -> None:
     raise typer.Exit(1)
 
 
-def check_timing_setup(calibrate: bool) -> None:
+def check_timing_setup(timing_mode: TimingMode) -> None:
     """Reject a packaging run whose time limits cannot be decided, before building.
 
     Called from the CLI, so a setter who has not run `rbx time` hears about it
     before a full build rather than after one. The same failures are checked again
     while `conf` is written, which is what covers every other caller.
+
+    `UniformPinned` has nothing to check: it carries its own number, and consults
+    neither the `moj` profile nor `timing.multipliers`.
     """
-    if not calibrate:
+    if isinstance(timing_mode, UniformPinned):
+        return
+    if isinstance(timing_mode, ProfilePinned):
         _require_limits_profile()
         return
 
@@ -175,7 +245,7 @@ class MojPackager(BasePackager):
       running every `sols/good` solution and scaling by `TLMOD[calibrafactor]`, so
       `conf` carries the only limit knobs: by default rbx pins them there with
       `TLOVERRIDE` from the `moj` limits profile, and `--calibrate` leaves them to
-      the judge. See
+      the judge. A remote timing run takes the third mode, `UniformPinned`. See
       `rbx.box.packaging.moj.timing`.
     - **A single-file checker.** MOJ's bridge compiles `scripts/checker.cpp` with only
       `testlib.h` reachable, so the checker is amalgamated rather than shipped with
@@ -186,15 +256,20 @@ class MojPackager(BasePackager):
         self,
         testcase_entries: List[GenerationTestcaseEntry],
         main_language: Optional[str] = None,
-        calibrate: bool = False,
+        timing_mode: TimingMode = DEFAULT_TIMING_MODE,
+        probe: Optional[ProbePackage] = None,
     ):
         super().__init__(testcase_entries)
         # A MOJ package holds ONE statement, so the language is chosen here and
         # used for both the body and `display_title` -- see `_get_main_statement`.
         self.main_language = main_language
-        # Whether the judge measures the time limits instead of rbx pinning them;
-        # see `_time_limit_lines`.
-        self.calibrate = calibrate
+        # How the time limits are settled: pinned from the profile, measured by the
+        # judge, or pinned uniformly. See `_time_limit_lines`.
+        self.timing_mode = timing_mode
+        # Set only when this package exists to *measure* timings rather than to be
+        # judged: it then ships only the model solution and whitelists the languages
+        # rbx may testrun. See `ProbePackage`.
+        self.probe = probe
 
     @classmethod
     def name(cls) -> str:
@@ -281,9 +356,28 @@ class MojPackager(BasePackager):
         the whitelist from the emitted script dirs instead would key it off the
         setter's env, which says nothing about who may submit what.
 
+        A probe package overrides all of that. Its whitelist is *authored* -- every
+        language rbx may testrun -- rather than derived, because it ships only the
+        model solution and the API refuses a submission outside the whitelist, a
+        testrun included. Narrowing to the shipped languages would refuse every
+        testrun of a solution in another language, the slow and wrong ones included,
+        and the submission surface it protects does not exist on a private throwaway
+        problem nobody else submits to.
+
         Sorted for a deterministic file, and normalized the way the server would.
         """
         from rbx.box.code import find_language
+
+        if self.probe is not None:
+            # `_report_submission_languages` is skipped on purpose: it warns that the
+            # whitelist *narrowed* to the accepted solutions' languages, which is
+            # exactly what did not happen here, and nobody submits to a probe package.
+            return sorted(
+                {
+                    normalize_moj_language(language)
+                    for language in self.probe.submission_languages
+                }
+            )
 
         languages = set()
         for solution in package.get_solutions():
@@ -442,13 +536,24 @@ class MojPackager(BasePackager):
     def _time_limit_lines(self) -> List[str]:
         """The `conf` block that decides the time limits.
 
-        Two modes, and the packager refuses to guess between them: either the `moj`
-        limits profile pins them (the default), or `--calibrate` hands the decision
-        to the judge. Both preconditions are checked here rather than only in the
-        CLI, so no caller can emit a `conf` with limits nothing decided.
+        Three modes, and the packager refuses to guess between them: the `moj` limits
+        profile pins them (the default), `--calibrate` hands the decision to the
+        judge, or a timing run pins one uniform cap. Each precondition is checked
+        here rather than only in the CLI, so no caller can emit a `conf` with limits
+        nothing decided.
         """
-        if self.calibrate:
+        if isinstance(self.timing_mode, JudgeCalibrated):
             return moj_timing.calibrated_limit_lines(_ac_to_time_limit_or_die())
+        if isinstance(self.timing_mode, UniformPinned):
+            # Note `_require_limits_profile` deliberately does NOT fire here: that
+            # check is about the `moj` profile, and this package does not consult it.
+            # `inferenceTimeout` still feeds `CALIBRATIONTL`, since calibration runs
+            # on this package too and must not be tighter than what rbx waits for.
+            return moj_timing.fixed_limit_lines(
+                moj_timing.build_uniform_limits(self.timing_mode.limit_ms),
+                inference_timeout_ms=_inference_timeout_ms(),
+                explanation=moj_timing.UNIFORM_EXPLANATION,
+            )
         _require_limits_profile()
         return moj_timing.fixed_limit_lines(
             self._fixed_time_limits(), inference_timeout_ms=_inference_timeout_ms()
@@ -483,9 +588,17 @@ class MojPackager(BasePackager):
 
         The pinned limits are the profile's, so the profile's own table is the honest
         report -- exactly as `BocaPackager` does. Under `--calibrate` there is
-        nothing to show: the numbers are the judge's to measure.
+        nothing to show: the numbers are the judge's to measure. Under a uniform pin
+        the profile's table would be a lie, so the one cap is named instead -- it is
+        the number every timing this package produces is measured against.
         """
-        if self.calibrate:
+        if isinstance(self.timing_mode, JudgeCalibrated):
+            return
+        if isinstance(self.timing_mode, UniformPinned):
+            console.console.print(
+                'MOJ will run every language under a single time limit of '
+                f'[item]{self.timing_mode.limit_ms} ms[/item].'
+            )
             return
         profile = limits_info.get_display_limits_profile(LIMITS_PROFILE)
         if profile is None:
@@ -724,11 +837,28 @@ class MojPackager(BasePackager):
             raise typer.Exit(1)
         return solution.path.read_bytes()
 
+    def _solutions_to_ship(self) -> List[Solution]:
+        """The solutions this package carries.
+
+        Every declared one, normally -- MOJ verifies them during calibration. A probe
+        package carries only the model solution: `moj testrun` sends the source of the
+        solution being timed in the request body, so the timed solutions never have to
+        be in the package at all, and `calibreitor.sh` needs exactly one `sols/good`
+        to succeed. Shipping just that one keeps the single calibration a timing
+        session pays for as short as it can be.
+        """
+        if self.probe is None:
+            return package.get_solutions()
+        main_solution = package.get_main_solution()
+        # An empty list rather than an error: `_write_solutions` already reports a
+        # package with no accepted solution, and precisely.
+        return [main_solution] if main_solution is not None else []
+
     def _write_solutions(self, into_path: pathlib.Path) -> None:
         sols_path = into_path / 'sols'
         written: Dict[str, Dict[str, pathlib.Path]] = collections.defaultdict(dict)
 
-        for solution in package.get_solutions():
+        for solution in self._solutions_to_ship():
             tag = self._tag_for(solution)
             basename = solution.path.name
             if basename in written[tag]:

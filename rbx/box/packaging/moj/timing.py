@@ -87,17 +87,52 @@ def build_fixed_limits(
     return FixedTimeLimits(base_ms=base, per_language_ms=per_language)
 
 
+def build_uniform_limits(limit_ms: int) -> FixedTimeLimits:
+    """One cap for every language, with no per-language entry at all.
+
+    What a remote timing run pins: `timelimit_override` is a *single* number -- the
+    inference timeout, or `timeLimitToTle x TL` -- and any per-language entry beside
+    it would measure that language under a tighter cap than rbx asked for, truncating
+    the timings the estimate is built from. `fixed_limit_lines` and
+    `calibration_tl_seconds` then apply unchanged: with no per-language limits, the
+    base *is* the largest limit involved.
+    """
+    return FixedTimeLimits(base_ms=limit_ms, per_language_ms={})
+
+
+# Why the numbers below are what they are, when they come from `rbx time -p moj`.
+PROFILE_EXPLANATION = [
+    '# Time limits are PINNED here, not calibrated: they come from the `moj`',
+    '# limits profile `rbx time -p moj` estimated. MOJ applies TLOVERRIDE after',
+    '# everything else -- calibration and the TLMOD knobs alike -- both when it',
+    '# judges and everywhere it shows a limit, so these are the numbers that',
+    '# count. calibreitor.sh still has to run, since mojtools refuses to judge a',
+    '# package with no `tl` file, but what it measures no longer decides anything.',
+]
+
+# ... and when this package exists only for rbx to measure timings on the judge.
+UNIFORM_EXPLANATION = [
+    '# Time limits are PINNED here, not calibrated, and UNIFORM across languages:',
+    '# this package exists for rbx to measure solution timings on the judge, and the',
+    '# limit below is the single cap it is measuring under. There is deliberately no',
+    '# per-language entry -- one would measure that language under a tighter cap than',
+    '# rbx asked for, truncating the very timings the estimate rests on. MOJ applies',
+    '# TLOVERRIDE after everything else, so this is the limit every run here sees.',
+]
+
+
 def fixed_limit_lines(
-    limits: FixedTimeLimits, inference_timeout_ms: Optional[int] = None
+    limits: FixedTimeLimits,
+    inference_timeout_ms: Optional[int] = None,
+    explanation: Optional[List[str]] = None,
 ) -> List[str]:
-    """The `conf` block pinning the limits, as commented lines."""
+    """The `conf` block pinning the limits, as commented lines.
+
+    `explanation` says where the numbers came from; it defaults to the profile's
+    story, since that is what `rbx package moj` emits.
+    """
     lines = [
-        '# Time limits are PINNED here, not calibrated: they come from the `moj`',
-        '# limits profile `rbx time -p moj` estimated. MOJ applies TLOVERRIDE after',
-        '# everything else -- calibration and the TLMOD knobs alike -- both when it',
-        '# judges and everywhere it shows a limit, so these are the numbers that',
-        '# count. calibreitor.sh still has to run, since mojtools refuses to judge a',
-        '# package with no `tl` file, but what it measures no longer decides anything.',
+        *(explanation if explanation is not None else PROFILE_EXPLANATION),
         f'# Default time limit: {limits.base_ms} ms.',
         f'TLOVERRIDE[default]={fmt_seconds(limits.base_ms)}',
         '',

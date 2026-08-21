@@ -93,6 +93,18 @@ land where `rbx time` would have put the limit, but measured on the judge machin
 rather than the setter's. It needs `timing.multipliers` in `env.rbx.yml`: a problem
 estimating with a *formula* defines no such ratio, and packaging errors out saying so.
 
+**A third mode, `UniformPinned(limit_ms)`**, exists for the MOJ *runner* and is not
+reachable from the CLI. It pins `TLOVERRIDE[default]` to one number and emits **no**
+per-language entry, because `timelimit_override` is a single cap (the inference
+timeout, or `timeLimitToTle × TL`) and a per-language entry beside it would measure
+that language under a *tighter* cap than rbx asked for, truncating the timings the
+estimate rests on. It consults no limits profile -- `_require_limits_profile()`
+deliberately does not fire -- but still feeds `inferenceTimeout` into `CALIBRATIONTL`,
+since calibration runs on that package too. The three modes are `ProfilePinned` /
+`JudgeCalibrated` / `UniformPinned`; `_time_limit_lines`, `_report_time_limits` and
+`check_timing_setup` all dispatch on them, and `fixed_limit_lines` takes the
+`explanation` block that says which story the emitted numbers came from.
+
 `tl` itself is still never emitted -- the package remains unjudgeable until a judge
 calibrates it, since mojtools refuses to judge without that file. Pinning removes
 rbx's dependence on *what* calibration measures, not on it running.
@@ -297,6 +309,19 @@ so a setter who ships only a C++ solution gets a C++-only problem. Packaging the
 prints the enabled set and warns by name about every emitted language left out —
 "no **ACCEPTED** solution in those languages" — with the fix (add an accepted solution
 in that language). See `_report_submission_languages`.
+
+**A probe package inverts this.** `ProbePackage(submission_languages=[...])` is set
+when the package exists for rbx to *measure* timings on the judge rather than to be
+judged (the MOJ runner). It then ships **only the model solution** — `moj testrun`
+sends the timed source in the request body, so the rest never have to be there, and
+`calibreitor.sh` needs exactly one `sols/good` — and whitelists **every language rbx
+may testrun** instead of the shipped ones. That is not a nicety: the API rejects a
+submission outside the whitelist, a testrun included, so an accepted-solutions
+whitelist would collapse to the model solution's language and refuse every testrun in
+another one, the slow and wrong solutions included (never ACCEPTED by construction).
+The narrowing report is skipped with it — nothing narrowed, and nobody else submits to
+a throwaway `rbxt-` problem. The two axes are separate constructor arguments because
+"what limits" and "what is in the package / who may submit" are genuinely orthogonal.
 
 ## Running tests
 
