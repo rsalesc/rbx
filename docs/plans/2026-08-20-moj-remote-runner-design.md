@@ -22,7 +22,7 @@ Read from [`cd-moj/moj-cli`](https://github.com/cd-moj/moj-cli) (`moj`, build
 | `moj calibrate <id> [--hosts h1,h2 \| --all-judges \| --per-cpu]` | Queues calibration. Repeating does not duplicate (`already_queued` per host). |
 | `moj calibrate --judges` | The park: `{host, cpu, online}`. |
 | `moj calib <id> --json` | The whole calibration by extension: **per host**, per solution dir (`good/pass/slow/wrong`), per test `{name, code, time, tl}`. |
-| `moj check <id> --json` | `{validation, calib, tl}`; `tl.calibrated`, `tl.being_calibrated`, `tl.needs_recalibration`, `tl.tl_override`. |
+| `moj --json check <id>` | `{validation, calib, tl}`; `tl.calibrated`, `tl.being_calibrated`, `tl.needs_recalibration`, `tl.tl_override`. **`--json` is a global flag and goes before the subcommand**, not after. |
 | `moj upload <id> <dir>` | Tars the directory itself and uploads. |
 | `moj whoami` | The login. |
 
