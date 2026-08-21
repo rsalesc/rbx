@@ -1,0 +1,224 @@
+# Remote solution runners, and MOJ as the first one
+
+Issue: [#689](https://github.com/rsalesc/rbx/issues/689).
+
+`rbx time` decides a time limit from timings measured **where rbx runs**. The well-lit
+path is therefore to walk to the judge machine and run it there. This design keeps that
+path untouched and adds a second one: measure the timings **on the judge park itself**,
+through the judge's own CLI, and feed them into the estimation logic rbx already has.
+
+MOJ is the motivating case. The seam is deliberately general, because `rbx run` wants the
+same thing later.
+
+## What the MOJ CLI actually offers
+
+Read from [`cd-moj/moj-cli`](https://github.com/cd-moj/moj-cli) (`moj`, build
+`c2716d8-20260820`). More is available than the issue assumes:
+
+| Command | What it gives |
+|---|---|
+| `moj testrun <id\|dir> <file> [--no-wait]` | Runs **one standalone solution on the judge** -- same jail, same calibrated TL as a real submission -- outside history/placar. Returns `{run}`. Requires **edit** permission (the result exposes hidden tests). |
+| `moj testrun-status <run>` | `{status, verdict, correct, total_tests, duration_s, tl_used, tests: [{name, code, time, tl}]}` |
+| `moj calibrate <id> [--hosts h1,h2 \| --all-judges \| --per-cpu]` | Queues calibration. Repeating does not duplicate (`already_queued` per host). |
+| `moj calibrate --judges` | The park: `{host, cpu, online}`. |
+| `moj calib <id> --json` | The whole calibration by extension: **per host**, per solution dir (`good/pass/slow/wrong`), per test `{name, code, time, tl}`. |
+| `moj check <id> --json` | `{validation, calib, tl}`; `tl.calibrated`, `tl.being_calibrated`, `tl.needs_recalibration`, `tl.tl_override`. |
+| `moj upload <id> <dir>` | Tars the directory itself and uploads. |
+| `moj whoami` | The login. |
+
+Two facts shape the design:
+
+- **`moj testrun` accepts a directory containing `.moj-id`** in place of an id
+  (`cmd_testrun` reads `"$ref/.moj-id"`). So binding an rbx package to a remote problem
+  through that file is the CLI's own convention, not an invention.
+- **`TLOVERRIDE` in `conf` beats the calibrated TL**, per language, and `moj check`
+  surfaces it as `⚙ TL OVERRIDE (vence o calibrado)`. That is a far cleaner lever than
+  the slope-zero `TLMOD[calibrafactor]` pinning
+  ([`packaging/moj/timing.py`](../../rbx/box/packaging/moj/timing.py)) uses today, which
+  exists only because the packager has no other way to express a fixed limit.
+
+## The seam: `SolutionRunner`
+
+Today [`solutions.py`](../../rbx/box/solutions.py) splits cleanly already:
+`run_solutions` calls `_get_report_skeleton` (compile + testcase layout) and then
+`_produce_solution_items`, which calls `_run_solution` once per (solution, group) and gets
+back `List[Deferred[Evaluation]]` -- one deferred per testcase.
+
+The backend seam goes at exactly that grain, **per solution**, because that is MOJ's grain:
+one testrun judges a solution against every test at once.
+
+```python
+@dataclasses.dataclass(frozen=True)
+class RunnerCapabilities:
+    measures_memory: bool = True       # TestcaseLog.memory
+    captures_artifacts: bool = True    # .out / .err / .log beside the .eval
+    checker_messages: bool = True      # CheckerResult.message
+    supports_nruns: bool = True
+    supports_abort: bool = True        # mid-solution fail-fast
+    supports_interactive: bool = True
+
+
+class SolutionRunner(Protocol):
+    name: str
+    caps: RunnerCapabilities
+
+    async def prepare(self, skeleton: SolutionReportSkeleton, ctx: RunContext) -> None: ...
+    def run_solution(self, solution, entries, groups, ctx: RunContext) -> List[Deferred[Evaluation]]: ...
+    async def finalize(self) -> None: ...
+```
+
+`RunContext` carries what `_run_solution` takes today: checker and interactor digests,
+`verification`, `timelimit_override`, `nruns`, `capture_pipes`, the `_AbortGate`,
+`abort_on`, and the progress handle.
+
+`LocalRunner.run_solution` **is** today's `_run_solution`, moved verbatim -- the local path
+must not change behavior at all. `_produce_solution_items` keeps the group iteration, the
+gate construction and the `EvaluationItem` assembly, and delegates only the body.
+`run_solutions` gains a `runner=` parameter and calls `prepare` / `finalize` around the loop.
+
+### The deferreds do not change
+
+This is a requirement of the issue and it falls out naturally. `MojRunner.run_solution`
+starts the remote work **in the background immediately** and hands back deferreds that all
+await the same job:
+
+```python
+def run_solution(self, solution, entries, groups, ctx):
+    job = asyncio.create_task(self._submit_and_poll(solution))   # queued on the judge now
+    return [Deferred(lambda e=e, i=i: self._slice(job, e, i)) for i, e in enumerate(entries)]
+```
+
+Consumption order is unchanged, so the report streams exactly as it does locally; but every
+solution is already sitting in the judge queue while the first one is still being printed.
+This is why the estimation loop uses `testrun` per solution rather than reading one
+`moj calib --json`: calibration would be a single barrier, testrun gives incremental progress.
+
+### Degrading when the backend knows less
+
+A remote runner cannot report everything a sandbox can. `RunnerCapabilities` makes the gap
+explicit so the consumers can be audited once rather than discovered by crash:
+
+- **memory** -- `TestcaseLog.memory` is already `Optional`, and
+  `_get_evals_memory_in_bytes` already returns `Optional[int]`. MLE detection and the
+  limits columns need auditing.
+- **artifacts** -- no `.out` / `.err`. `_record_skipped_evaluation` already establishes the
+  precedent: write the `.eval` only, and let the log viewer render "(does not exist)".
+  Never write an empty file that claims the run produced no output.
+- **checker message** -- MOJ judges with the packaged checker and returns a code, not a
+  message. `CheckerResult.message` says it was judged remotely.
+- **`nruns > 1`** -- each testrun is one run. Either N submissions, or refuse with a clear
+  message. Refusing is the default; judge time is a shared resource.
+- **`abort_on`** -- a testrun has already run every test by the time rbx sees it, so the
+  abort saves nothing and is ignored. Nothing may assume `SKIPPED` evaluations appear.
+
+### Selecting a runner
+
+An explicit `--runner` flag, with an optional per-profile default in `env.rbx.yml`:
+
+```console
+$ rbx time -p moj --runner moj
+```
+
+```yaml
+# env.rbx.yml
+runners:
+  moj:
+    type: moj
+    concurrency: 2
+profiles:
+  moj: {runner: moj}
+```
+
+The flag rather than the profile name, because a limits profile is just the
+`limits/<name>.yml` file `rbx time` *writes*; making its name select a backend would couple
+an output to a transport, and would leave no way to estimate MOJ limits on a local machine.
+The same flag is what `rbx run --runner moj` will use later.
+
+## The MOJ runner
+
+### `prepare()`
+
+1. `moj whoami` -> the login. Not logged in is a hard error naming `moj login`; the CLI's
+   session is reused, rbx never handles credentials.
+2. Read-or-create `.moj-id` at the **rbx package root**, git-tracked, holding
+   `{"id": "<login>#rbxt-<problem-id>"}`. Committing it is what makes two setters on the
+   same problem reach the same remote problem instead of each orphaning one on the server.
+3. Build a MOJ package with `MojPackager`, carrying **only the model solution** in
+   `sols/good/`, and `TLOVERRIDE` set from `ctx.timelimit_override`.
+4. `moj upload <id> <dir>`.
+5. `moj calibrate <id>`, then poll `moj --json check <id>` until
+   `.tl.calibrated && not .tl.being_calibrated`. Skipped entirely when the problem is
+   already calibrated and not stale.
+
+**The uploaded package never has to contain the solutions being timed.** `moj testrun`
+takes the source in the request body, and calibration only needs one `good/` solution to
+succeed at all. So a whole session is one upload and one calibration however many solutions
+get measured -- which is also why the package can stay minimal.
+
+### `run_solution()`
+
+1. Amalgamate the solution to a single file. MOJ compiles a submission from one file, and
+   the packager already does this for the solutions it ships.
+2. `moj --json testrun <dir> <file> --no-wait` -> `{run}`.
+3. Poll `moj --json testrun-status <run>` until `status == "done"`.
+4. Map each `{name, code, time, tl}` onto an `Evaluation`. Tests are paired **by name**
+   through [`packaging/moj/naming.py`](../../rbx/box/packaging/moj/naming.py), the same
+   module that named them into the package -- never by position, so a naming change can
+   never silently misattribute a timing.
+5. Cap the in-flight testruns (`concurrency`, default 2). The judge park is shared.
+
+## The timing flow
+
+Phase 1, estimation:
+
+- `timing._run_for_inference` already computes an `_InferenceCap` and passes
+  `timelimit_override=cap.timeout`. On the MOJ runner that becomes `TLOVERRIDE`, so the cap
+  is enforced by the judge exactly as the sandbox enforces it locally.
+- The lower-bound and upper-bound solutions are testrun; their timings feed
+  `estimate_time_limit` and the existing picker unchanged.
+
+Phase 2, validation:
+
+- Re-upload with **`TLOVERRIDE = timeLimitToTle x decided TL`**, not the decided TL itself.
+  A solution that is supposed to be too slow must be given just enough margin to *prove*
+  it: killed at exactly the limit, it only shows it was over; killed at the TLE cap, it
+  shows it was comfortably over, which is what the multiplier means. Correct solutions are
+  unaffected -- they finish far below either.
+- Testrun the remaining solutions (the ones `rbx time` already runs) at that cap, and judge
+  every measured time against the decided TL.
+
+Changing `conf` moves the package checksum, so phase 2's upload very likely forces a second
+calibration wait. Whether a `TLOVERRIDE`-only change really does -- given that `TLOVERRIDE`
+overrides the calibrated TL anyway -- is a probe item below, and the answer decides whether
+phase 2 costs a wait or is nearly free.
+
+## Known limitation: the judge is not selectable
+
+`moj calibrate` targets judges (`--hosts`, `--per-cpu`, `--all-judges`, and `--judges`
+lists host + CPU + online). **`moj testrun` does not**: `cmd_testrun` posts only
+`{id, filename, code_b64}` to `/problems/test-run` and the server picks the machine. On a
+heterogeneous park that is timing noise rbx cannot control, and a time limit must be safe on
+the *slowest* judge.
+
+`moj calib --json` does report per-host timings, for every solution dir. So the escape hatch
+exists: one `moj calibrate --per-cpu` with the full solution set gives cross-machine data.
+This design does not use it, because it is a single barrier and loses the incremental
+progress that motivated testrun in the first place. It is the natural follow-up once the
+runner works, and is called out here so the limitation is not rediscovered later.
+
+## Incremental delivery
+
+| # | Task | What ships |
+|---|---|---|
+| 0 | **Probe** a throwaway `rbxt-` problem on the live MOJ: does `testrun` require a prior calibration; the `code` vocabulary; does the response name the host; `TLOVERRIDE` syntax; does a `TLOVERRIDE`-only `conf` change force recalibration | notes + recorded JSON fixtures |
+| 1 | Extract `SolutionRunner` / `RunContext` / `LocalRunner`; `run_solutions(runner=)` | pure refactor, no behavior change |
+| 2 | `RunnerCapabilities`; audit every consumer of memory, artifacts and checker messages for `None`-tolerance | degradation is safe |
+| 3 | `.moj-id` handling and a `moj` CLI wrapper (`whoami`, `upload`, `calibrate`, `check`, `testrun`, `testrun-status`) over `--json` | testable against the recorded fixtures |
+| 4 | `MojPackager`: `TLOVERRIDE` emission and a calibration-only package mode | `rbx package moj` flag |
+| 5 | `MojRunner.prepare` -- upload, calibrate, poll, already-calibrated fast path | `rbx time -p moj --runner moj` reaches a calibrated remote problem |
+| 6 | `MojRunner.run_solution` -- testrun fan-out, verdict mapping, background task, concurrency cap | phase 1 end to end |
+| 7 | Wire into `timing._run_for_inference`; phase 2 upload at `timeLimitToTle x TL` and the remaining solutions | the full flow |
+| 8 | Cache testrun results by (package checksum, solution digest, `TLOVERRIDE`) | re-runs cost no judge time |
+
+Task 0 gates 4 and 6; tasks 1 and 2 are independent of every MOJ-specific one and can land
+first on their own merits.
