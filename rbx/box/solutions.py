@@ -754,6 +754,50 @@ def _gated_evaluation(
     return Deferred(run_fn)
 
 
+def _check_capabilities(
+    runner: 'SolutionRunner',
+    *,
+    nruns: int,
+    sanitized: bool,
+) -> None:
+    """Refuse up front what the backend cannot do, naming it.
+
+    Refusing beats silently downgrading: a caller who asked for three runs and
+    got one would read a single noisy measurement as a stable one, and would have
+    no way to tell. The same goes for a sanitizer that was never applied or an
+    interactor that was never driven -- each would produce a plausible-looking
+    report that answers a different question than the one asked.
+
+    Called before `prepare`, so nothing is compiled, uploaded or submitted on a
+    run that cannot mean what it says.
+    """
+    from rbx.box.runners.base import RunnerCapabilityError
+
+    caps = runner.caps
+
+    if nruns > 1 and not caps.supports_nruns:
+        raise RunnerCapabilityError(
+            f'Runner [item]{runner.name}[/item] runs each testcase exactly once, '
+            f'but this run asked for {nruns} runs per testcase. Drop the repeated '
+            f'runs, or use the local runner to measure with them.'
+        )
+
+    if sanitized and not caps.supports_sanitizers:
+        raise RunnerCapabilityError(
+            f'Runner [item]{runner.name}[/item] cannot run solutions under a '
+            f'sanitizer. Drop the sanitizer, or use the local runner to run '
+            f'sanitized.'
+        )
+
+    pkg = package.find_problem_package_or_die()
+    if pkg.type == TaskType.COMMUNICATION and not caps.supports_interactive:
+        raise RunnerCapabilityError(
+            f'Runner [item]{runner.name}[/item] cannot drive an interactor, but '
+            f'this problem is of type [item]communication[/item]. '
+            f'Use the local runner to run this problem.'
+        )
+
+
 def _produce_solution_items(
     runner: 'SolutionRunner',
     ctx: 'RunContext',
@@ -765,9 +809,18 @@ def _produce_solution_items(
     for solution in skeleton.solutions:
         # One gate per solution: a solution that dooms its own run must not
         # decide anything about the solutions that follow it.
+        #
+        # A backend declaring `supports_abort=False` is left ungated even when
+        # the run asked to abort. That is a correctness rule, not a missing
+        # optimization: such a backend runs the whole submission at once, so by
+        # the time rbx sees anything every testcase already has a real verdict.
+        # Gating would replace those verdicts with SKIPPED -- discarding results
+        # the judge genuinely produced and making the report claim work did not
+        # happen. Aborting exists to save work; there is none left to save here,
+        # and real verdicts always beat skip markers.
         gate = (
             _AbortGate(skeleton.groups, package.get_scoring())
-            if ctx.abort_on is not None
+            if ctx.abort_on is not None and runner.caps.supports_abort
             else None
         )
         # The whole testset in one call, flattened in `skeleton.groups` order --
@@ -835,6 +888,10 @@ async def run_solutions(
 
     if runner is None:
         runner = LocalRunner()
+
+    # Before anything is compiled or dispatched: a run that cannot mean what it
+    # says should cost nothing and fail by name.
+    _check_capabilities(runner, nruns=nruns, sanitized=sanitized)
 
     skeleton = await _get_report_skeleton(
         progress=progress,

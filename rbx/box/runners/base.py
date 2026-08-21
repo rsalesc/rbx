@@ -13,7 +13,8 @@ for them, `run_solutions` wraps the deferreds a backend hands back with the gate
 logic, so a backend never reimplements it and every backend gets it identically.
 When it does not -- the common case -- the backend's own deferreds are passed
 through untouched, which is what keeps a plain run byte-identical to one that had
-no seam at all.
+no seam at all. A backend declaring `supports_abort=False` is passed through too:
+see `supports_abort` below for why that is a correctness rule, not an optimization.
 """
 
 import dataclasses
@@ -22,6 +23,7 @@ from typing import TYPE_CHECKING, List, Optional, Protocol
 
 from rbx.box.deferred import Deferred
 from rbx.box.environment import VerificationLevel
+from rbx.box.exception import RbxException
 from rbx.grading.steps import Evaluation
 from rbx.utils import StatusProgress
 
@@ -32,6 +34,20 @@ if TYPE_CHECKING:
         SolutionReportSkeleton,
         SolutionSkeleton,
     )
+
+
+class RunnerCapabilityError(RbxException):
+    """The run asked a backend for something it declared it cannot do.
+
+    Raised up front, before anything is prepared or dispatched, so the answer is
+    an error naming the backend rather than a crash halfway through a run or --
+    worse -- a quietly downgraded run that reads as a normal one.
+    """
+
+    def __init__(self, message: str):
+        super().__init__()
+        self.message = message
+        self.msg.append(message)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -50,9 +66,14 @@ class RunnerCapabilities:
     reports_checker_messages: bool = True
     # Can run a testcase several times and keep the best measurement.
     supports_nruns: bool = True
-    # Can still save the work of a skipped testcase. A backend that has already
-    # handed the whole submission to a judge cannot -- `abort_on` will still
-    # report the skip, but nothing is spared by it.
+    # Can still save the work of a skipped testcase, which requires that the
+    # testcase has not run yet. A batch backend has already handed the whole
+    # submission to a judge and holds every verdict by the time rbx looks, so
+    # `False` here is not merely "cannot save the work": gating such a backend
+    # would overwrite verdicts the judge really produced with SKIPPED, throwing
+    # away real information to mark work that was already done as not done.
+    # `run_solutions` therefore leaves a `False` backend ungated even when the
+    # run passed `abort_on`.
     supports_abort: bool = True
     # Can drive an interactor against the solution, for COMMUNICATION problems.
     supports_interactive: bool = True

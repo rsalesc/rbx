@@ -97,10 +97,15 @@ Two things stay with the orchestrator rather than the backend:
 - **Abort/skip policy.** `_gated_evaluation()` wraps each returned deferred when a run asks
   for `abort_on`, so every backend gets `_AbortGate` semantics for free instead of
   re-implementing them. A run without `abort_on` gets the backend's deferreds
-  *unwrapped* -- a deliberate guarantee, pinned by a test.
+  *unwrapped* -- a deliberate guarantee, pinned by a test. So does a backend declaring
+  `supports_abort=False`: it has already run the whole submission, so gating it would
+  overwrite verdicts the judge really produced with `SKIPPED`.
 - **`RunnerCapabilities`.** What a backend can report (memory, artifacts, checker
   messages, repeated runs). Declared rather than sniffed, so a consumer never reads a
-  `None` as zero and calls an unmeasured run instantaneous.
+  `None` as zero and calls an unmeasured run instantaneous. `_check_capabilities()` runs
+  before `prepare()` and raises `RunnerCapabilityError` when the run asks for repeated
+  runs, a sanitizer, or an interactor the backend does not support -- refusing by name
+  beats silently running something weaker under the same report.
 
 Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 
