@@ -31,6 +31,30 @@ export function artifactUri(realPath: string, label: string): vscode.Uri {
   });
 }
 
+/**
+ * The first of `paths` that is on disk, or nothing.
+ *
+ * Candidates rather than one path because artifacts have more than one spelling
+ * -- a batch run writes `<stem>.err`, a communication task writes
+ * `<stem>.sol.err` -- and nothing in the evaluation says which kind of run
+ * produced them. Lives here rather than beside its callers because both the
+ * command handlers and the testcase panes ask the same question, and two copies
+ * would be two chances to disagree about what "missing" means.
+ */
+export async function firstExisting(
+  paths: readonly string[],
+): Promise<string | undefined> {
+  for (const candidate of paths) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return undefined;
+}
+
 function realPathOf(uri: vscode.Uri): string {
   return decodeURIComponent(uri.query);
 }

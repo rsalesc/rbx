@@ -13,6 +13,7 @@ function testcase(stem: string): TestcaseRun {
     answerPath: '',
     outputPath: '',
     stderrPaths: [],
+    logPath: '',
     interactionPath: '',
   };
 }

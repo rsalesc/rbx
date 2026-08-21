@@ -49,6 +49,15 @@ export interface TestcaseRun {
    * produced it -- so both are offered and the opener takes whichever exists.
    */
   readonly stderrPaths: readonly string[];
+  /**
+   * The run log -- what rbx recorded about executing this testcase.
+   *
+   * The third channel of the testcase panes, alongside the output diff and
+   * stderr, mirroring `rbx ui`'s `3`. A single path rather than candidates like
+   * `stderrPaths`: the log is written by the grading step itself, so its name
+   * does not depend on the task type.
+   */
+  readonly logPath: string;
   readonly interactionPath: string;
 }
 
@@ -134,6 +143,7 @@ async function loadTestcaseRun(
       runArtifactPath(pkg, solutionIndex, group, stem, Ext.Stderr),
       runArtifactPath(pkg, solutionIndex, group, `${stem}.sol`, Ext.Stderr),
     ],
+    logPath: runArtifactPath(pkg, solutionIndex, group, stem, Ext.Log),
     interactionPath: runArtifactPath(pkg, solutionIndex, group, stem, Ext.Interaction),
   };
 }

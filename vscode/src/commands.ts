@@ -7,35 +7,25 @@
  * source is the one thing here rbx did not generate: it opens as itself, on
  * the `file:` scheme, because editing it is the whole point of reaching it.
  */
-import * as fs from 'fs/promises';
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { ActiveProblem } from './activeProblem';
-import { artifactUri } from './artifactFs';
+import { artifactUri, firstExisting } from './artifactFs';
 import { solutionSourcePath } from './rbx/layout';
 import { RunNode, TestcaseNode } from './rbx/nodes';
+import { Channel, LABELS, labelPrefix as displayPrefix } from './rbx/panes';
 import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
+import { TestcasePanes } from './testcasePanes';
 
 /** `sols/wa.cpp/main/1-gen-000` -- the display prefix shared by a testcase's tabs. */
 function labelPrefix(node: TestcaseNode): string {
-  return `${node.run.solution.path}/${node.group.name}/${node.testcase.stem}`;
+  return displayPrefix(node.run.solution.path, node.group.name, node.testcase.stem);
 }
 
 function isTestcase(node: RunNode | undefined): node is TestcaseNode {
   return node?.kind === 'testcase';
-}
-
-async function firstExisting(paths: readonly string[]): Promise<string | undefined> {
-  for (const candidate of paths) {
-    try {
-      await fs.access(candidate);
-      return candidate;
-    } catch {
-      // Try the next candidate.
-    }
-  }
-  return undefined;
 }
 
 async function openArtifact(
@@ -52,6 +42,41 @@ async function openArtifact(
   const uri = artifactUri(realPath, `${labelPrefix(node)}/${fileName}`);
   const document = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(document, { preview: true });
+}
+
+/**
+ * Open a first-party file -- one rbx did not generate -- at `line`.
+ *
+ * On the `file:` scheme rather than through `rbx:`, and that is the whole
+ * distinction this helper marks: a solution, a generator script and a manual
+ * testcase are all things the setter wrote, and the point of reaching one is to
+ * edit it. Generated artifacts stay read-only.
+ *
+ * `declared` is the path as rbx recorded it, which is what a missing-file
+ * message has to quote: the absolute path resolved against the package root
+ * would name a location the setter never typed.
+ */
+async function openSource(
+  realPath: string,
+  declared: string,
+  line: number,
+): Promise<void> {
+  if ((await firstExisting([realPath])) === undefined) {
+    // The skeleton names files `problem.rbx.yml` declared, so a missing one
+    // means the package changed since the run, not that the row is bad.
+    vscode.window.showInformationMessage(
+      `No file at ${declared}. The package may have changed since this run.`,
+    );
+    return;
+  }
+  const document = await vscode.workspace.openTextDocument(vscode.Uri.file(realPath));
+  const position = new vscode.Position(line, 0);
+  // `preview: true` to match every other row in the view: arrowing down a list
+  // of solutions reuses one tab instead of littering the tab bar.
+  await vscode.window.showTextDocument(document, {
+    preview: true,
+    selection: new vscode.Range(position, position),
+  });
 }
 
 export function registerCommands(
@@ -119,24 +144,7 @@ export function registerCommands(
     if (target === undefined) {
       return;
     }
-    if ((await firstExisting([target.path])) === undefined) {
-      // The skeleton names a solution `problem.rbx.yml` declares, so a missing
-      // file means the package changed since the run, not that the row is bad.
-      vscode.window.showInformationMessage(
-        `No file at ${target.declared}. The package may have changed since this run.`,
-      );
-      return;
-    }
-    // The real file, not the `rbx:` scheme: this is the user's own source and
-    // the point of reaching it is to edit it.
-    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(target.path));
-    const position = new vscode.Position(target.line, 0);
-    // `preview: true` to match every other row in the view: arrowing down a
-    // list of solutions reuses one tab instead of littering the tab bar.
-    await vscode.window.showTextDocument(document, {
-      preview: true,
-      selection: new vscode.Range(position, position),
-    });
+    await openSource(target.path, target.declared, target.line);
   });
 
   register('rbx.openInput', async (node) => {
@@ -146,7 +154,7 @@ export function registerCommands(
     await openArtifact(
       node,
       [node.testcase.inputPath],
-      'input.in',
+      LABELS.input,
       'No input on disk for this testcase. Run `rbx build` first.',
     );
   });
@@ -158,7 +166,7 @@ export function registerCommands(
     await openArtifact(
       node,
       [node.testcase.answerPath],
-      'answer.out',
+      LABELS.answer,
       'No expected answer on disk for this testcase.',
     );
   });
@@ -170,7 +178,7 @@ export function registerCommands(
     await openArtifact(
       node,
       [node.testcase.outputPath],
-      'output.out',
+      LABELS.output,
       'This solution produced no output for this testcase.',
     );
   });
@@ -182,7 +190,7 @@ export function registerCommands(
     await openArtifact(
       node,
       node.testcase.stderrPaths,
-      'stderr.err',
+      LABELS.stderr,
       'This solution wrote nothing to stderr for this testcase.',
     );
   });
@@ -206,7 +214,7 @@ export function registerCommands(
       await openArtifact(
         node,
         [available],
-        available === output ? 'output.out' : 'answer.out',
+        available === output ? LABELS.output : LABELS.answer,
         '',
       );
       return;
@@ -214,8 +222,8 @@ export function registerCommands(
     const prefix = labelPrefix(node);
     await vscode.commands.executeCommand(
       'vscode.diff',
-      artifactUri(output, `${prefix}/output.out`),
-      artifactUri(answer, `${prefix}/answer.out`),
+      artifactUri(output, `${prefix}/${LABELS.output}`),
+      artifactUri(answer, `${prefix}/${LABELS.answer}`),
       `${node.run.solution.path} · ${node.group.name}/${node.testcase.stem}`,
     );
   });
@@ -238,6 +246,67 @@ export function registerCommands(
     const uri = artifactUri(realPath, `${finding.entry.path}/compile.log`);
     const document = await vscode.workspace.openTextDocument(uri);
     await vscode.window.showTextDocument(document, { preview: true });
+  });
+
+  // The panes outlive any one command, because the channel they are on is
+  // sticky across testcases -- so the state lives in one object the four
+  // commands below share, rather than in each of them.
+  const panes = new TestcasePanes();
+
+  register('rbx.openTestcase', async (node) => {
+    if (!isTestcase(node)) {
+      return;
+    }
+    await panes.open(node);
+  });
+
+  // One registration per channel rather than a single command taking an
+  // argument: these are palette entries, and "rbx: Show Stderr" is something a
+  // user can find by typing what they want, while a command that asks which
+  // channel in a second step is not.
+  const channels: readonly (readonly [string, Channel])[] = [
+    ['rbx.showOutput', 'out'],
+    ['rbx.showStderr', 'err'],
+    ['rbx.showLog', 'log'],
+  ];
+  for (const [id, channel] of channels) {
+    // A node is passed when the card's button was clicked, and absent from the
+    // palette -- where the panes act on whatever they are already showing.
+    register(id, async (node) => {
+      await panes.setChannel(channel, isTestcase(node) ? node : undefined);
+    });
+  }
+
+  register('rbx.openGeneratorScript', async (node) => {
+    if (!isTestcase(node)) {
+      return;
+    }
+    const entry = node.testcase.entry;
+    if (entry.generatorScript === undefined) {
+      return;
+    }
+    // Relative to the package, the way rbx records every other path in the
+    // skeleton; `generatorScript` is a script in the package, not an artifact.
+    await openSource(
+      path.resolve(node.pkg.root, entry.generatorScript),
+      entry.generatorScript,
+      // rbx counts a script's lines from 1, the editor from 0.
+      Math.max(0, (entry.generatorScriptLine ?? 1) - 1),
+    );
+  });
+
+  register('rbx.openCopiedFrom', async (node) => {
+    if (!isTestcase(node)) {
+      return;
+    }
+    const copiedFrom = node.testcase.entry.copiedFrom;
+    if (copiedFrom === undefined) {
+      return;
+    }
+    // The manual testcase the setter wrote, so it opens as itself on `file:`
+    // rather than through the read-only `rbx:` scheme: rbx did not generate it
+    // and fixing a bad manual test means editing it.
+    await openSource(path.resolve(node.pkg.root, copiedFrom), copiedFrom, 0);
   });
 
   register('rbx.copyPath', async (node) => {

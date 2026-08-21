@@ -219,6 +219,13 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     <div id="header"></div>
     <div id="filter-host"></div>
     <div id="tree" role="tree" tabindex="-1"></div>
+    <!-- The testcase card. Below the tree and above the findings panel, so the
+         two things that describe *something else* -- the selected testcase, and
+         the compile phase -- stack at the foot of the view in the order they
+         are consulted. It carries only what the selected row cannot: the
+         checker's own sentence, and where the test came from. Empty, and
+         hidden, for any selection that is not a testcase. -->
+    <div id="card"></div>
     <!-- The findings panel is a flex sibling of the tree rather than a second
          view in the container: only a webview can give the header a badge
          coloured by severity, which is the whole point of it. It stays empty,

@@ -15,6 +15,7 @@ import { EMPTY_MODEL, type Row, type RunViewModel } from '../rbx/viewModel';
 import { rowClick } from './gesture';
 import {
   UiState,
+  renderCard,
   renderFilter,
   renderFindings,
   renderHeader,
@@ -83,6 +84,7 @@ const header = document.getElementById('header') as HTMLElement;
 const selectorHost = document.getElementById('selector-host') as HTMLElement;
 const filterHost = document.getElementById('filter-host') as HTMLElement;
 const tree = document.getElementById('tree') as HTMLElement;
+const card = document.getElementById('card') as HTMLElement;
 const findings = document.getElementById('findings') as HTMLElement;
 
 function uiState(): UiState {
@@ -149,12 +151,20 @@ function renderSelectorHost(): void {
   }
 }
 
-/** Re-render the tree and the findings panel, keeping scroll where it was. */
+/** Re-render the tree, the card and the findings panel, keeping scroll where it was. */
 function render(): void {
   const scrollTop = tree.scrollTop;
   header.innerHTML = renderHeader(model, uiState());
   tree.innerHTML = renderTree(model, uiState());
   tree.scrollTop = scrollTop;
+  // Redrawn with the tree rather than on its own message: the card describes
+  // the selection, and the selection changes in the same breath as the rows do.
+  const cardHtml = renderCard(model, uiState());
+  card.innerHTML = cardHtml;
+  // Empty means "the selection is not a testcase", and an empty flex item would
+  // still take its border and padding with it -- the same rule the findings
+  // panel follows for a clean run.
+  card.classList.toggle('has-card', cardHtml !== '');
   findings.innerHTML = renderFindings(model, uiState());
   // The panel is `display: none` until it has something in it, so a clean run
   // does not leave an empty flex item taking the bottom border with it.
@@ -420,6 +430,21 @@ document.addEventListener('keydown', (event) => {
     renderAll();
     save();
     event.preventDefault();
+    return;
+  }
+  // The channel switch, mirroring `rbx ui`'s 1/2/3. Handled here rather than
+  // contributed as a keybinding because a webview does not reliably forward
+  // unhandled keys to the workbench, and a shortcut that works only sometimes
+  // is worse than one that lives where the view can see it.
+  //
+  // `alt` and not the bare digits `rbx ui` uses: this view has a filter box,
+  // and a bare `2` has to be able to reach it.
+  if (event.altKey && ['1', '2', '3'].includes(event.key)) {
+    const channel = (['out', 'err', 'log'] as const)[Number(event.key) - 1];
+    if (selected !== undefined) {
+      invokeOn(CHANNEL_COMMANDS[channel], selected);
+      event.preventDefault();
+    }
   }
 });
 
@@ -447,10 +472,39 @@ selectorHost.addEventListener('change', (event) => {
   }
 });
 
-/** Ask the host to open one of a finding's two files. */
-function openFinding(commandId: string, nodeId: string): void {
+/** Ask the host to run a command against a row, by id. */
+function invokeOn(commandId: string, nodeId: string): void {
   vscode.postMessage({ type: 'invoke', commandId, nodeId });
 }
+
+/** The command each channel button and each `alt` key stands for. */
+const CHANNEL_COMMANDS: Record<string, string> = {
+  out: 'rbx.showOutput',
+  err: 'rbx.showStderr',
+  log: 'rbx.showLog',
+};
+
+/**
+ * Everything the card responds to, on the container rather than its contents:
+ * the card is replaced wholesale on every selection, so a listener bound inside
+ * it would be thrown away with the first move of the highlight.
+ *
+ * The card always describes the selected row, so `selected` is the id every one
+ * of these commands acts on -- the buttons carry an action and no id of their
+ * own, which is what stops a stale card from naming a row that has moved on.
+ */
+card.addEventListener('click', (event) => {
+  const button = (event.target as HTMLElement).closest(
+    '.card-channel, .card-origin',
+  ) as HTMLElement | null;
+  const action = button?.dataset.action;
+  if (action === undefined || selected === undefined) {
+    return;
+  }
+  // A channel button names a channel; an origin already carries the command it
+  // opens with, decided in the view model where "is this a real file" is known.
+  invokeOn(CHANNEL_COMMANDS[action] ?? action, selected);
+});
 
 function toggleFindings(open?: boolean): void {
   findingsOpen = open ?? !findingsOpen;
@@ -473,7 +527,7 @@ findings.addEventListener('click', (event) => {
   if (warning?.dataset.id !== undefined) {
     // The warning knows its own line; the host reads it off the node this id
     // resolves to, so nothing about a position has to survive postMessage.
-    openFinding('rbx.openSolution', warning.dataset.id);
+    invokeOn('rbx.openSolution', warning.dataset.id);
     return;
   }
   const row = target.closest('.finding-row') as HTMLElement | null;
@@ -483,11 +537,11 @@ findings.addEventListener('click', (event) => {
   }
   const action = (target.closest('.finding-action') as HTMLElement | null)?.dataset.action;
   if (action === 'source') {
-    openFinding('rbx.openSolution', id);
+    invokeOn('rbx.openSolution', id);
     return;
   }
   if (action === 'log') {
-    openFinding('rbx.openCompileLog', id);
+    invokeOn('rbx.openCompileLog', id);
     return;
   }
   // A row with warnings under it opens them; a row that failed to compile has
@@ -499,7 +553,7 @@ findings.addEventListener('click', (event) => {
     toggle(id);
     return;
   }
-  openFinding('rbx.openCompileLog', id);
+  invokeOn('rbx.openCompileLog', id);
 });
 
 findings.addEventListener('keydown', (event) => {
