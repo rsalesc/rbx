@@ -7,7 +7,18 @@ import shutil
 import typing
 from collections.abc import AsyncIterator
 from enum import Enum
-from typing import Callable, Collection, Dict, Iterable, List, Optional, Set, Tuple
+from typing import (
+    Callable,
+    Collection,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import rich
 import rich.live
@@ -96,6 +107,28 @@ from rbx.grading.steps import (
 from rbx.utils import StatusProgress
 
 StructuredEvaluation = Dict[str, Dict[str, List[Optional[Deferred[Evaluation]]]]]
+
+# The enforced time limit for a run: one limit for every language, or one per
+# language. The per-language form exists because a time-limit estimate assigns a
+# different limit to each language group (see `rbx/box/timing.py`).
+TimelimitOverride = Union[int, Mapping[str, int]]
+
+
+def resolve_timelimit_override(
+    override: Optional[TimelimitOverride],
+    lang: Optional[str],
+) -> Optional[int]:
+    """The limit this language runs under, or None to keep the profile's own.
+
+    A mapping that does not mention the language -- or a language that could not
+    be identified at all -- resolves to None rather than to some other language's
+    limit.
+    """
+    if override is None or isinstance(override, int):
+        return override
+    if lang is None:
+        return None
+    return override.get(lang)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -570,13 +603,17 @@ def _run_solution(
     interactor_digest: Optional[str] = None,
     progress: Optional[StatusProgress] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
-    timelimit_override: Optional[int] = None,
+    timelimit_override: Optional[TimelimitOverride] = None,
     nruns: int = 0,
     capture_pipes: bool = False,
     gate: Optional['_AbortGate'] = None,
     abort_on: Optional[AbortPredicate] = None,
 ) -> List[Deferred[Evaluation]]:
     groups_by_name = {group.name: group for group in groups}
+    # Resolved once per solution: its language cannot change between testcases.
+    solution_timelimit = resolve_timelimit_override(
+        timelimit_override, find_language_name(solution)
+    )
 
     res: List[Deferred[Evaluation]] = []
     for i, entry in enumerate(entries):
@@ -604,7 +641,7 @@ def _run_solution(
                 interactor_digest=interactor_digest,
                 testcase_index=i,
                 verification=verification,
-                timelimit_override=timelimit_override,
+                timelimit_override=solution_timelimit,
                 nruns=nruns,
                 capture_pipes=capture_pipes,
             )
@@ -706,7 +743,7 @@ async def _get_compiled_solutions_for_skeleton(
 async def _get_report_skeleton(
     tracked_solutions: Optional[Iterable[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
-    timelimit_override: Optional[int] = None,
+    timelimit_override: Optional[TimelimitOverride] = None,
     progress: Optional[StatusProgress] = None,
     sanitized: bool = False,
 ) -> SolutionReportSkeleton:
@@ -726,7 +763,9 @@ async def _get_report_skeleton(
 
     langs = set(find_language_name(solution) for solution in solutions)
     limits = {
-        lang: get_limits_for_language(lang, verification, timelimit_override)
+        lang: get_limits_for_language(
+            lang, verification, resolve_timelimit_override(timelimit_override, lang)
+        )
         for lang in langs
         if lang is not None
     }
@@ -798,7 +837,7 @@ async def _produce_solution_items(
     progress: Optional[StatusProgress] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
-    timelimit_override: Optional[int] = None,
+    timelimit_override: Optional[TimelimitOverride] = None,
     nruns: int = 0,
     abort_on: Optional[AbortPredicate] = None,
 ) -> List[EvaluationItem]:
@@ -874,7 +913,7 @@ async def run_solutions(
     tracked_solutions: Optional[Iterable[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
-    timelimit_override: Optional[int] = None,
+    timelimit_override: Optional[TimelimitOverride] = None,
     sanitized: bool = False,
     nruns: int = 0,
     abort_on: Optional[AbortPredicate] = None,

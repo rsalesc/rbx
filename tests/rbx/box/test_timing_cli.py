@@ -49,12 +49,12 @@ async def _build_ok(*args, **kwargs):
     return True
 
 
-def _invoke_time(runner: CliRunner, result):
+def _invoke_time(runner: CliRunner, result, extra_args=None):
     with (
         mock.patch('rbx.box.builder.build', _build_ok),
         mock.patch('rbx.box.timing.compute_time_limits', _mock_compute(result)),
     ):
-        return runner.invoke(cli.app, ['time', '--auto'])
+        return runner.invoke(cli.app, ['time', '--auto', *(extra_args or [])])
 
 
 def test_time_exits_nonzero_when_no_limit_was_estimated(
@@ -92,3 +92,43 @@ def test_time_exits_nonzero_when_nothing_bounds_the_limit_from_below(
     result = _invoke_time(runner, timing.MissingLowerBoundError('nope'))
 
     assert result.exit_code != 0
+
+
+def test_skip_slow_reaches_the_estimation(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    seen = {}
+
+    async def compute_time_limits(*args, **kwargs):
+        seen.update(kwargs)
+        return timing.TimingProfile(timeLimit=1000)
+
+    with (
+        mock.patch('rbx.box.builder.build', _build_ok),
+        mock.patch('rbx.box.timing.compute_time_limits', compute_time_limits),
+    ):
+        result = runner.invoke(cli.app, ['time', '--auto', '--skip-slow'])
+
+    assert result.exit_code == 0, result.output
+    assert seen['skip_slow'] is True
+
+
+def test_the_slow_check_runs_unless_it_is_skipped(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    seen = {}
+
+    async def compute_time_limits(*args, **kwargs):
+        seen.update(kwargs)
+        return timing.TimingProfile(timeLimit=1000)
+
+    with (
+        mock.patch('rbx.box.builder.build', _build_ok),
+        mock.patch('rbx.box.timing.compute_time_limits', compute_time_limits),
+    ):
+        result = runner.invoke(cli.app, ['time', '--auto'])
+
+    assert result.exit_code == 0, result.output
+    assert seen['skip_slow'] is False

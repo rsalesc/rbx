@@ -259,8 +259,11 @@ class LimitsTableRow(BaseModel):
     source: str
     defaulted: bool = False
     is_leftover: bool = False
-    # Slow solutions of this group that bound nothing from above.
-    dropped_upper: List[str] = []
+    # Slow solutions of this group confirmed to be too slow for its limit.
+    confirmed_upper: List[str] = []
+    # Slow solutions of this group that finished within its limit times
+    # `timeLimitToTle`, so they do not respect the upper bound.
+    violating_upper: List[str] = []
 
 
 def _bounds_note(report: TimingGroupReport) -> str:
@@ -312,17 +315,24 @@ def _base_row(profile: LimitsProfile) -> LimitsTableRow:
     """
     source = 'base'
     solutions = None
-    dropped: List[str] = []
+    confirmed: List[str] = []
+    violating: List[str] = []
     if profile.baseEstimate is not None:
         source = _report_source(profile.baseEstimate)
         solutions = profile.baseEstimate.solutionCount
-        dropped = list(profile.baseEstimate.droppedUpper)
+        validation = profile.baseEstimate.upperValidation
+        if validation is not None:
+            confirmed = list(validation.confirmed)
+            violating = [
+                bound.solution for bound in validation.violating if bound.solution
+            ]
     return LimitsTableRow(
         languages='(base)',
         solutions=solutions,
         time_limit_ms=profile.timeLimit or 0,
         source=source,
-        dropped_upper=dropped,
+        confirmed_upper=confirmed,
+        violating_upper=violating,
     )
 
 
@@ -342,7 +352,20 @@ def build_limits_table_rows(profile: LimitsProfile) -> List[LimitsTableRow]:
                     source=source,
                     defaulted=report.origin == TimingGroupOrigin.DEFAULTED,
                     is_leftover=report.isLeftover,
-                    dropped_upper=list(report.droppedUpper),
+                    confirmed_upper=(
+                        list(report.upperValidation.confirmed)
+                        if report.upperValidation is not None
+                        else []
+                    ),
+                    violating_upper=(
+                        [
+                            bound.solution
+                            for bound in report.upperValidation.violating
+                            if bound.solution
+                        ]
+                        if report.upperValidation is not None
+                        else []
+                    ),
                 )
             )
         # Leftover group is shown first; stable sort keeps the rest in order.
@@ -421,16 +444,24 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
             '[warning]⚠ DEFAULTED: no accepted solutions and no whenEmpty rule; '
             'fell back to the base time limit.[/warning]'
         )
-    # Terse on purpose: the estimation run already warned about each dropped
+    # Terse on purpose: the validation run already reported each offending
     # solution by name, with what to do about it. This only says the table's
-    # upper bounds are missing some evidence, and where to find which.
-    dropped = {solution for row in rows for solution in row.dropped_upper}
-    if dropped:
-        plural = 's' if len(dropped) > 1 else ''
+    # limits were checked, and where to find against what.
+    violating = {solution for row in rows for solution in row.violating_upper}
+    if violating:
+        plural = 's' if len(violating) > 1 else ''
         caption_lines.append(
-            f'[warning]⚠ {len(dropped)} slow solution{plural} hit the inference '
-            f'timeout and bound{"" if plural else "s"} nothing from above; named '
-            f'under droppedUpper in the limits profile.[/warning]'
+            f'[error]⚠ {len(violating)} solution{plural} expected to be too slow '
+            f'finished within the estimated limit, so the upper bound is not '
+            f'respected; named under upperValidation in the limits profile.[/error]'
+        )
+    confirmed = {solution for row in rows for solution in row.confirmed_upper}
+    if confirmed:
+        plural = 's' if len(confirmed) > 1 else ''
+        caption_lines.append(
+            f'[success]✓ {len(confirmed)} solution{plural} expected to be too slow '
+            f'{"were" if plural else "was"} confirmed too slow for the estimated '
+            f'limit.[/success]'
         )
     caption = '\n'.join(caption_lines) if caption_lines else None
     table = rich.table.Table(

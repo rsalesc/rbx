@@ -598,6 +598,12 @@ async def time(
         help='Capture the time report (run report + limits table) and copy it '
         'to the clipboard. Pass a format: --share png or --share text.',
     ),
+    skip_slow: bool = typer.Option(
+        False,
+        '--skip-slow',
+        help='Skip checking the estimated limit against the solutions expected to '
+        'be too slow. The limit is written with its upper bound unchecked.',
+    ),
 ):
     if share is not None and share not in ('png', 'text'):
         console.console.print(
@@ -698,7 +704,14 @@ async def time(
         raise typer.Exit(1)
 
     estimated = await timing.compute_time_limits(
-        check, detailed, runs, formula=formula, profile=profile, auto=auto, share=share
+        check,
+        detailed,
+        runs,
+        formula=formula,
+        profile=profile,
+        auto=auto,
+        share=share,
+        skip_slow=skip_slow,
     )
     if estimated is None:
         # Every failure of the estimation -- an unsatisfiable range, a solution

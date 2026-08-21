@@ -410,12 +410,14 @@ class TestComputeTimeLimits:
     @mock.patch('rbx.box.timing.get_inference_solutions')
     @mock.patch('rbx.box.timing.run_solutions')
     @mock.patch('rbx.box.timing.print_run_report')
-    @mock.patch('rbx.box.timing.estimate_time_limit')
+    @mock.patch('rbx.box.timing.build_estimation_context')
+    @mock.patch('rbx.box.timing._estimate_and_validate')
     @mock.patch('rbx.box.timing.consume_and_key_evaluation_items', return_value={})
     async def test_compute_time_limits_success(
         self,
         mock_consume_evaluations,
-        mock_estimate_time_limit,
+        mock_estimate_and_validate,
+        mock_build_context,
         mock_print_run_report,
         mock_run_solutions,
         mock_get_inference_solutions,
@@ -439,9 +441,11 @@ class TestComputeTimeLimits:
         # Mock print_run_report
         mock_print_run_report.return_value = True
 
-        # Mock estimate_time_limit
+        # Mock the estimation itself: this test is about what
+        # `compute_time_limits` does with the profile it gets back.
         mock_profile = timing.TimingProfile(timeLimit=1000)
-        mock_estimate_time_limit.return_value = mock_profile
+        mock_build_context.return_value = mock.Mock()
+        mock_estimate_and_validate.return_value = mock_profile
 
         result = await timing.compute_time_limits(
             check=True, detailed=False, runs=0, profile='local'
@@ -527,12 +531,14 @@ class TestTimingIntegration:
     @mock.patch('rbx.box.timing.get_inference_solutions')
     @mock.patch('rbx.box.timing.run_solutions')
     @mock.patch('rbx.box.timing.print_run_report')
-    @mock.patch('rbx.box.timing.estimate_time_limit')
+    @mock.patch('rbx.box.timing.build_estimation_context')
+    @mock.patch('rbx.box.timing._estimate_and_validate')
     @mock.patch('rbx.box.timing.consume_and_key_evaluation_items', return_value={})
     async def test_timing_with_real_problem(
         self,
         mock_consume_evaluations,
-        mock_estimate_time_limit,
+        mock_estimate_and_validate,
+        mock_build_context,
         mock_print_run_report,
         mock_run_solutions,
         mock_get_inference_solutions,
@@ -562,7 +568,8 @@ class TestTimingIntegration:
 
         # Mock a successful timing profile
         mock_profile = timing.TimingProfile(timeLimit=1000)
-        mock_estimate_time_limit.return_value = mock_profile
+        mock_build_context.return_value = mock.Mock()
+        mock_estimate_and_validate.return_value = mock_profile
 
         mock_limits_path = pkg_from_testdata / '.limits' / 'test.yml'
         mock_limits_path.parent.mkdir(parents=True, exist_ok=True)
