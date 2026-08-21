@@ -17,7 +17,13 @@ const CONTEST_MANIFEST = 'contest.rbx.yml';
 const VARIANT_PREFIX = 'contest.';
 const VARIANT_SUFFIX = '.rbx.yml';
 
-/** The nearest ancestor of `from` holding a contest.rbx.yml, or undefined. */
+/**
+ * The nearest ancestor of `from` holding a contest.rbx.yml, or undefined.
+ *
+ * Deliberately unbounded by the workspace folder: opening `contest/A` directly
+ * is common, and that puts the contest file above the workspace root -- exactly
+ * the case that would lose its letters if the walk stopped there.
+ */
 async function findContestRoot(from: string): Promise<string | undefined> {
   let walker = from;
   for (;;) {
