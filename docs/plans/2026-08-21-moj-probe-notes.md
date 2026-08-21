@@ -11,9 +11,23 @@ its own reference solution for `AC`, and three deliberately broken one-file prog
 
 ---
 
-## 0. `moj testrun` does not work on macOS at all
+## 0. `moj testrun` did not work on macOS at all — FIXED UPSTREAM, 2026-08-21
 
-**This blocks the whole feature for any setter on a Mac, including the author of rbx.**
+**Resolved the same day.** The fix is merged and released: build **`b6b0c21-20260821`**
+replaces the broken encode with the portable helper —
+
+```sh
+_b64enc "$sol" > "$b64f"          # -w0/arquivo-posicional são GNU: no BSD as DUAS pontas falham
+```
+
+— and `moj update` picks it up. Verified here afterwards, **without any shim**:
+`moj testrun rsalesc#delete wa.cpp --no-wait` → `enfileirado no juiz: run 383fd4cc…`.
+So the MOJ runner is exercisable end-to-end on macOS from this build onward. The rest of
+this section is kept as the record of what was wrong and how it was found.
+
+---
+
+**This blocked the whole feature for any setter on a Mac, including the author of rbx.**
 
 `cmd_testrun` encodes the submission with
 
@@ -34,15 +48,14 @@ The fix is to redirect rather than pass the file — and `moj` already ships a p
 for exactly this, `_b64enc` in `lib/core.sh` (`base64 -w0 < "$1" || base64 < "$1" | tr -d '\n'`),
 which `cmd_testrun` simply does not use.
 
-**Filed upstream as [`cd-moj/moj-cli#1`](https://github.com/cd-moj/moj-cli/pull/1)**
-(2026-08-21). Until it merges, `rbx time --runner moj` cannot work on macOS by shelling out
-to the CLI, and rbx cannot fix it from its side because the encoding happens inside `moj`.
-Note `moj update` re-fetches the server's build and **undoes any local patch**.
+Filed upstream as [`cd-moj/moj-cli#1`](https://github.com/cd-moj/moj-cli/pull/1) and merged
+the same day; see the banner above. Note `moj update` re-fetches the server's build, so it
+both delivers this fix and **undoes any local patch** applied while waiting for it.
 
-The probe below was obtained by putting a small `base64` shim ahead of the real binary on
-`PATH`. That is a debugging aid, not a shipping strategy: rbx must not ship a shim for
-another tool's bug, so the MOJ runner stays unexercisable end-to-end on macOS until the PR
-lands.
+The probe below was taken *before* the fix, by putting a small `base64` shim ahead of the
+real binary on `PATH` — a debugging aid, never a shipping strategy, since rbx must not ship
+a workaround for another tool's bug. The findings are unaffected: the shim only changed how
+the source got encoded, not what the judge did with it.
 
 ---
 
