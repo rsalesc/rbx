@@ -133,6 +133,17 @@ def run_solution(self, solution, entries, ctx):
 
 Slice by MOJ **test name**, never by position -- see `run_solution()` below.
 
+Two mechanics this sketch glosses over, both found while reviewing the branch:
+
+- **`Deferred` will not memoize the shared job for you.** `Deferred.__call__`
+  ([`deferred.py`](../../rbx/box/deferred.py)) memoizes each deferred's *own* result with a
+  bare `if self.cache is None` and no lock. N deferreds over one submission need `MojRunner`
+  to hold the job itself (an `asyncio.Task`, awaited by all of them) -- which the sketch does,
+  but nothing in `Deferred` enforces it.
+- **`MojPackager.package()` writes a `.zip` into `build_path` and returns its path**, while
+  `moj upload` wants a *directory*. The runner uploads the directory and should not leave the
+  stray archive behind.
+
 Consumption order is unchanged, so the report streams exactly as it does locally; but every
 solution is already sitting in the judge queue while the first one is still being printed.
 This is why the estimation loop uses `testrun` per solution rather than reading one
@@ -198,9 +209,11 @@ The same flag is what `rbx run --runner moj` will use later.
    `sols/good/`, a **uniform** `TLOVERRIDE` taken from `ctx.timelimit_override`, and the
    full submission-language whitelist (see below).
 4. `moj upload <id> <dir>`.
-5. `moj calibrate <id>`, then poll `moj --json check <id>` until
-   `.tl.calibrated && not .tl.being_calibrated`. Skipped entirely when the problem is
-   already calibrated and not stale.
+5. `moj calibrate <id>`, then poll `moj --json check <id>` until it is ready -- which is
+   `calibrated and not being_calibrated and not needs_recalibration`, the third clause
+   included because an upload that moved the checksum leaves a *stale* calibration that
+   still reports `calibrated: true`. `MojCheck.is_ready` is that predicate. Skipped
+   entirely when the problem is already ready.
 
 **The uploaded package never has to contain the solutions being timed.** `moj testrun`
 takes the source in the request body, and calibration only needs one `good/` solution to
@@ -245,7 +258,9 @@ right one.
 
 1. Amalgamate the solution to a single file. MOJ compiles a submission from one file, and
    the packager already does this for the solutions it ships.
-2. `moj --json testrun <dir> <file> --no-wait` -> `{run}`.
+2. `moj testrun <dir> <file> --no-wait`, and parse the run id out of the prose it prints.
+   **No `--json`** -- see "Confirmed from the CLI source": `--no-wait` returns before the
+   JSON branch, so the flag buys nothing and the id has to be read from the text.
 3. Poll `moj --json testrun-status <run>` until `status == "done"`.
 4. Map each `{name, code, time, tl}` onto an `Evaluation`. Tests are paired **by name**
    through [`packaging/moj/naming.py`](../../rbx/box/packaging/moj/naming.py), the same
@@ -262,6 +277,27 @@ Phase 1, estimation:
   is enforced by the judge exactly as the sandbox enforces it locally.
 - The lower-bound and upper-bound solutions are testrun; their timings feed
   `estimate_time_limit` and the existing picker unchanged.
+
+### What to pin when there is no cap
+
+`timing.py` passes `timelimit_override=-1` -- the "no override" sentinel -- whenever
+`_InferenceCap` is `None`, which is every problem with no `timeLimitToTle` multiplier and
+every problem with no upper-bound solution. That is not an edge case, and **MOJ always
+enforces a time limit**, so "unlimited" is not expressible in a probe package the way it is
+in the local sandbox. `UniformPinned` rejects `<= 0` rather than emitting `TLOVERRIDE=-0.001`,
+so the runner has to decide. It decides like this:
+
+1. A cap exists -> pin `cap.timeout`.
+2. No cap, but the environment configures `timing.multipliers` -> pin its `inferenceTimeout`
+   (`schema.py:858`, `gt=0`, default 10s). Its own description is "the time limit enforced on
+   solutions while estimating", which is exactly the question being asked; the "only used
+   when `timeLimitToTle` is set" clause is about the *upper bound*, not about how long rbx is
+   willing to wait.
+3. No multipliers at all -- a problem estimating with a **formula** -- **refuse**, naming
+   `timing.multipliers.inferenceTimeout` in `env.rbx.yml` as the thing to set.
+
+Refusing in case 3 rather than inventing a number is the same call `rbx package moj` already
+makes when `--calibrate` needs an `acToTimeLimit` a formula does not define.
 
 Phase 2, validation:
 
