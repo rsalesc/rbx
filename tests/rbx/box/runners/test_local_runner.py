@@ -70,7 +70,10 @@ class RecordingRunner:
                 return Evaluation(
                     result=CheckerResult(outcome=Outcome.ACCEPTED),
                     testcase=steps.TestcaseIO(index=entry.group_entry.index),
-                    log=None,
+                    # A real log, even though these deferreds are never awaited in
+                    # most tests: `log` is not Optional, and a `None` here only
+                    # survives by that accident.
+                    log=steps.TestcaseLog(exitcode=0, exitstatus='ok'),
                 )
 
             return Deferred(run_fn)

@@ -7,7 +7,6 @@ import pytest
 from rbx import utils
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.packaging.moj.packager import (
-    JudgeCalibrated,
     MojPackager,
     ProbePackage,
     ProfilePinned,
@@ -86,7 +85,6 @@ def run_packager(
     tmp_path: pathlib.Path,
     entries: List[GenerationTestcaseEntry],
     main_language: Optional[str] = None,
-    calibrate: bool = False,
     pin_limits: bool = True,
     timing_mode: Optional[TimingMode] = None,
     probe: Optional[ProbePackage] = None,
@@ -97,9 +95,9 @@ def run_packager(
     if pin_limits and not (testing_pkg.root / '.limits' / 'moj.yml').is_file():
         with_limits_profile(testing_pkg)
     if timing_mode is None:
-        # The two modes `rbx package moj` itself offers; `--calibrate` is the flag.
-        # A test about the third one passes `timing_mode=UniformPinned(...)`.
-        timing_mode = JudgeCalibrated() if calibrate else ProfilePinned()
+        # What `rbx package moj` does without `--calibrate`. Every other mode is
+        # passed explicitly, so this helper has exactly one way to say each thing.
+        timing_mode = ProfilePinned()
     into_path = tmp_path / 'package'
     build_path = tmp_path / 'build'
     build_path.mkdir(parents=True, exist_ok=True)

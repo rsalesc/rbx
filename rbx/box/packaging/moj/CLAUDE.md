@@ -196,8 +196,9 @@ back to `ls *.class` — locale-dependent once javac emits nested `Main$X.class`
 packager then converts each block TeX → Markdown with pandoc and writes
 `docs/enunciado.md` plus `docs/notes/<sample>.md`.
 
-**`statement_types()` is deliberately not overridden**, so the default
-`[StatementType.PDF]` applies — as for `PolygonPackager`, the other
+**`statement_types()` is overridden only to return nothing for a probe package**
+(see [The probe package](#the-probe-package) below); for every package a setter
+builds, the default `[StatementType.PDF]` applies — as for `PolygonPackager`, the other
 block-consuming packager. That hook names the *output* a statement is built into,
 and statements v2 emits only pdf/tex/md (`build_statements._emit_output`);
 returning the *source* type `rbxTeX` fails the build outright with "statements v2
@@ -330,6 +331,53 @@ another one, the slow and wrong solutions included (never ACCEPTED by constructi
 The narrowing report is skipped with it — nothing narrowed, and nobody else submits to
 a throwaway `rbxt-` problem. The two axes are separate constructor arguments because
 "what limits" and "what is in the package / who may submit" are genuinely orthogonal.
+
+## The probe package
+
+`MojPackager(probe=ProbePackage(submission_languages=(...)), timing_mode=UniformPinned(ms))`
+builds a **throwaway package uploaded to measure timings**, never judged by students —
+what the MOJ runner in [`rbx/box/runners/moj/`](../../runners/moj/) uploads to a private
+`rbxt-` problem. Four differences from a package a setter builds, each argued where the
+knob lives:
+
+| | Probe | Why |
+|---|---|---|
+| `sols/` | model solution only | [`moj testrun`](#solutions) sends the timed source in the request body; calibration needs one `sols/good` |
+| `languages` | every language rbx may testrun | [the API rejects a submission outside it](#moj-metajson), a testrun included |
+| `STOPWHEN_*` | never emitted | [halting early returns a prefix of the tests](#stopwhen_) |
+| `docs/` | always `DUMMY_STATEMENT` | see below |
+| `conf` | one uniform `TLOVERRIDE[default]` | [a per-language entry would measure under a tighter cap](#time-limits-pinned-or-calibrated-on-demand) |
+
+The two axes are separate constructor arguments — "what limits" and "what is in the
+package" are different questions — but of their product only one cell is legal, and
+`__init__` rejects the rest: a probe must pin a uniform limit.
+
+**Why the statement is always the dummy.** The real path reads `blocks.sub.yml` and the
+externalized TikZ PDFs out of the v2 overlay, which only the forced-externalize
+statement build writes. A runner calling `package()` directly would therefore hit
+`StatementExportError` on any problem declaring an rbxTeX statement, and its only
+escapes would be running pdflatex locally for a document nobody reads, or going through
+`run_packager` — which re-runs the full local build *and every solution locally*, the
+exact work the remote runner exists to avoid. `statement_types()` and
+`statement_export_params()` return nothing for a probe for the same reason. Nothing on
+MOJ ever renders a probe's statement, and a `MojGateError` over one would make
+`rbx time --runner moj` refuse a timing run for a document that is never read.
+
+**Pairing timings back.** `MojPackager.testcase_names()` is public precisely so the
+runner never re-derives a name: it returns each built entry with the file name it takes
+in the package, and `_write_tests` consumes that same list. The index is a **1-based
+running counter over the built entries of each group**, not `entry.group_entry.index`
+(0-based, over the declared ones), so a reimplementation yields well-formed names for
+the *wrong* tests — silent timing misattribution, the one failure by-name pairing
+exists to prevent.
+
+**What a probe path can still raise.** `MojPackager` reports setter mistakes with
+`typer.Exit`, which a programmatic caller sees as a control-flow exception. Suppressing
+the statement build removes most of them; what a probe can still reach is the checker
+amalgamation (`_amalgamate_checker`, and a non-C++ checker), a package with no
+`samples` group, no accepted solution, and — for a runner amalgamating a solution to
+upload — `solution_content()`. Task 5 must catch `typer.Exit` around `package()`
+regardless.
 
 ## Running tests
 

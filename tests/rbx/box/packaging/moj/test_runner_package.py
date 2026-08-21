@@ -21,19 +21,23 @@ import pytest
 from rbx.box.packaging.moj import timing
 from rbx.box.packaging.moj.packager import (
     JudgeCalibrated,
+    MojPackager,
     ProbePackage,
     ProfilePinned,
     UniformPinned,
     check_timing_setup,
 )
+from rbx.box.statements.schema import StatementType
 from tests.rbx.box.packaging.moj.conftest import (
     CHECKER,
+    PT_BLOCKS,
     SLOW_SOL,
     WRONG_SOL,
     build_entries,
     minimal_package,
     run_packager,
     with_limits_profile,
+    with_statements,
 )
 
 
@@ -371,6 +375,157 @@ def test_a_real_package_still_derives_the_whitelist_from_accepted_solutions(
 
     meta = json.loads((into_path / '.moj-meta.json').read_text())
     assert meta['languages'] == ['cpp', 'py']
+
+
+# -- a probe must be buildable without a statement build ---------------------
+
+
+def test_a_probe_package_carries_no_statement_at_all(
+    testing_pkg, tmp_path, monkeypatch
+):
+    # The whole point: a probe must be buildable by a runner calling `package()`
+    # directly. The real statement path reads `blocks.sub.yml` out of the v2 overlay,
+    # which only the forced-externalize build writes -- so on a problem that declares
+    # an rbxTeX statement it raises, and the runner's only escapes would be running
+    # pdflatex locally for a document nobody reads, or going through `run_packager`
+    # and paying for the full local verification run it exists to avoid.
+    _package_with_every_solution_kind(testing_pkg)
+    with_statements(testing_pkg, monkeypatch, PT_BLOCKS)
+
+    into_path = run_packager(
+        testing_pkg,
+        tmp_path,
+        build_entries(tmp_path, ['samples']),
+        timing_mode=UniformPinned(limit_ms=2000),
+        probe=ProbePackage(submission_languages=('cpp',)),
+    )
+
+    # The dummy body, with MOJ's two hard-required headings and nothing from the
+    # declared statement.
+    text = (into_path / 'docs' / 'enunciado.md').read_text()
+    assert 'ainda não disponível' in text
+    assert 'Some os inteiros' not in text
+    assert not (into_path / 'docs' / 'assets').exists()
+
+
+def test_a_real_package_still_builds_its_statement(testing_pkg, tmp_path, monkeypatch):
+    minimal_package(testing_pkg)
+    with_statements(testing_pkg, monkeypatch, PT_BLOCKS)
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+
+    text = (into_path / 'docs' / 'enunciado.md').read_text()
+    assert 'ainda não disponível' not in text
+
+
+def test_a_probe_package_asks_for_no_statement_build(testing_pkg, tmp_path):
+    # `run_packager` builds one statement per `statement_types()` entry and passes
+    # `statement_export_params()` into that build. A probe consumes no blocks and
+    # ships no statement, so it asks for neither -- nothing should ever run pdflatex
+    # on behalf of a package whose statement is a fixed placeholder.
+    minimal_package(testing_pkg)
+    testing_pkg.save()
+
+    probe_packager = MojPackager(
+        testcase_entries=[],
+        timing_mode=UniformPinned(limit_ms=2000),
+        probe=ProbePackage(submission_languages=('cpp',)),
+    )
+    assert probe_packager.statement_types() == []
+    assert probe_packager.statement_export_params() == []
+
+    # Unchanged for a package a setter builds; `test_statement_types.py` pins this too.
+    real_packager = MojPackager(testcase_entries=[])
+    assert real_packager.statement_types() == [StatementType.PDF]
+    assert len(real_packager.statement_export_params()) == 2
+
+
+# -- pairing timings back onto testcases -------------------------------------
+
+
+def test_testcase_names_are_what_the_package_contains(testing_pkg, tmp_path):
+    # The runner pairs a testrun's per-test results onto rbx testcases BY NAME, so
+    # the public mapping and the emitted files must be the same thing. They are: both
+    # come from `testcase_names()`. If they could drift, a timing would be attributed
+    # to the wrong test, silently -- the one failure by-name pairing exists to prevent.
+    minimal_package(testing_pkg)
+    testing_pkg.add_testgroup_with_manual_testcases('samples', [])
+    testing_pkg.add_testgroup_with_manual_testcases('easy', [])
+    testing_pkg.save()
+
+    entries = build_entries(tmp_path, ['samples', 'easy'])
+    packager = MojPackager(testcase_entries=entries)
+    into_path = run_packager(testing_pkg, tmp_path, entries)
+
+    names = [name for _, name in packager.testcase_names()]
+    assert sorted(names) == sorted(
+        path.name for path in (into_path / 'tests' / 'input').iterdir()
+    )
+
+
+def test_testcase_names_count_from_one_per_group(testing_pkg, tmp_path):
+    # The trap a caller reimplementing this would fall into: `index` is a 1-based
+    # running counter over the BUILT entries of each group, while
+    # `entry.group_entry.index` is 0-based. An off-by-one here still produces
+    # well-formed names -- for the wrong tests.
+    minimal_package(testing_pkg)
+    testing_pkg.add_testgroup_with_manual_testcases('samples', [])
+    testing_pkg.add_testgroup_with_manual_testcases('easy', [])
+    testing_pkg.save()
+
+    entries = build_entries(tmp_path, ['samples', 'easy'])
+    named = MojPackager(testcase_entries=entries).testcase_names()
+
+    assert [name for _, name in named] == [
+        'sample001',
+        'sample002',
+        't01_easy_001',
+        't01_easy_002',
+    ]
+    # The entries paired with them are the ones whose own indices start at 0.
+    assert [entry.group_entry.index for entry, _ in named] == [0, 1, 0, 1]
+
+
+# -- the two axes have exactly one legal pairing ------------------------------
+
+
+def test_a_probe_package_must_pin_a_uniform_limit():
+    # Constructible-but-illegal is the failure to avoid: a profile-pinned probe would
+    # emit per-language TLOVERRIDE entries into the very package whose timings must
+    # all be measured under one cap.
+    for mode in [ProfilePinned(), JudgeCalibrated()]:
+        with pytest.raises(ValueError, match='uniform time limit'):
+            MojPackager(
+                testcase_entries=[],
+                timing_mode=mode,
+                probe=ProbePackage(submission_languages=('cpp',)),
+            )
+
+
+def test_warns_about_whitelisting_a_language_with_no_scripts(
+    testing_pkg, tmp_path, capsys
+):
+    # On the real path this cannot happen -- an accepted solution's language always
+    # has a scripts/ dir. An authored whitelist loses that: MOJ accepts the submission
+    # and runs it under its own scripts, which rbx never validated, so any timing
+    # measured through them is not comparable to the rest.
+    _package_with_every_solution_kind(testing_pkg)
+
+    run_packager(
+        testing_pkg,
+        tmp_path,
+        build_entries(tmp_path, ['samples']),
+        timing_mode=UniformPinned(limit_ms=2000),
+        probe=ProbePackage(submission_languages=('cpp', 'rust')),
+    )
+
+    out = ' '.join(capsys.readouterr().out.split())
+    assert 'rust' in out
+    assert 'ships no scripts/' in out
+    # The languages that DO have scripts are not named as a problem.
+    assert 'cpp but ships no' not in out
 
 
 # -- the two modes that must not have moved ----------------------------------

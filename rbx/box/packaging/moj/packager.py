@@ -43,6 +43,7 @@ from rbx.box.statements.schema import (
     ConversionStep,
     ConversionType,
     Statement,
+    StatementType,
     TexToPDF,
     rbxToTeX,
 )
@@ -306,6 +307,21 @@ class MojPackager(BasePackager):
         # rbx may testrun. See `ProbePackage`.
         self.probe = probe
 
+        # The two axes are separate arguments because they are separate questions --
+        # but of their product only one cell is legal. A probe pinned from the profile
+        # would emit per-language `TLOVERRIDE` entries, measuring some languages under
+        # a tighter cap than rbx asked for, which is the exact truncation
+        # `UniformPinned` exists to prevent; a calibrated one would be measured under
+        # whatever the judge decided, which rbx never sees. Neither is a package worth
+        # uploading, so neither is constructible.
+        if probe is not None and not isinstance(timing_mode, UniformPinned):
+            raise ValueError(
+                'A probe package must pin one uniform time limit: it exists to '
+                'measure timings under a cap rbx chose, and both `ProfilePinned` '
+                'and `JudgeCalibrated` would measure them under some other one. '
+                f'Got `{type(timing_mode).__name__}`.'
+            )
+
     @classmethod
     def name(cls) -> str:
         return 'moj'
@@ -317,9 +333,10 @@ class MojPackager(BasePackager):
         # Interactive problems are not supported yet; it deserves its own design.
         return [TaskType.BATCH]
 
-    # NOTE: `statement_types()` is deliberately NOT overridden, so the default
-    # `[StatementType.PDF]` applies -- exactly as for `PolygonPackager`, the other
-    # block-consuming packager. `statement_types` names the *output* a statement is
+    # NOTE: `statement_types()` is overridden below ONLY to return nothing for a
+    # probe package, which carries no statement at all. Every package a setter builds
+    # keeps the default `[StatementType.PDF]` -- exactly as for `PolygonPackager`, the
+    # other block-consuming packager. `statement_types` names the *output* a statement is
     # built into, and v2 can only emit pdf/tex/md (`build_statements._emit_output`);
     # `rbxTeX` is a *source* type and returning it fails the build outright. What
     # declares "I consume blocks, not a PDF" is `statement_export_params` below --
@@ -328,6 +345,16 @@ class MojPackager(BasePackager):
     # or Markdown output would skip that call entirely and leave no macros.json and
     # no externalized TikZ.
 
+    def statement_types(self) -> List[StatementType]:
+        # A probe package carries no statement (see `_write_statement`), so there is
+        # nothing to build. This is what lets a runner call `package()` without
+        # `run_packager` having built statements first -- and, if a probe ever does
+        # go through `run_packager`, what stops it paying for a pdflatex run whose
+        # output nobody will ever read.
+        if self.probe is not None:
+            return []
+        return super().statement_types()
+
     def statement_export_params(self) -> List[ConversionStep]:
         # Declaring these is what makes `run_packager` build every statement with
         # TikZ externalized (so each figure becomes a PDF the bundle can place) and
@@ -335,6 +362,11 @@ class MojPackager(BasePackager):
         # markdown converter expects). Without them the overlay carries no
         # blocks.sub.yml/macros.json and there is nothing to read. Mirrors
         # `PolygonPackager.statement_export_params`.
+        #
+        # Same decision as `statement_types` above: a probe consumes no blocks, so it
+        # asks for none of the artifacts producing them.
+        if self.probe is not None:
+            return []
         return [
             rbxToTeX(type=ConversionType.rbxToTex, externalize=True),
             TexToPDF(type=ConversionType.TexToPDF, externalize=True, demacro=True),
@@ -407,12 +439,14 @@ class MojPackager(BasePackager):
             # `_report_submission_languages` is skipped on purpose: it warns that the
             # whitelist *narrowed* to the accepted solutions' languages, which is
             # exactly what did not happen here, and nobody submits to a probe package.
-            return sorted(
+            allowed = sorted(
                 {
                     normalize_moj_language(language)
                     for language in self.probe.submission_languages
                 }
             )
+            self._warn_about_unscripted_languages(allowed)
+            return allowed
 
         languages = set()
         for solution in package.get_solutions():
@@ -433,6 +467,39 @@ class MojPackager(BasePackager):
         allowed = sorted(languages)
         self._report_submission_languages(allowed)
         return allowed
+
+    def _warn_about_unscripted_languages(self, allowed: List[str]) -> None:
+        """Warn about a probe whitelisting a language the package ships no scripts for.
+
+        On the real path this cannot happen: the whitelist is derived from the
+        accepted solutions, and a solution's language necessarily has a
+        `scripts/<lang>/` dir. An authored whitelist loses that for free, and the
+        failure is quiet in a bad way -- MOJ accepts the submission (it is on the
+        whitelist) and then runs it under its own `lang/<lang>` scripts, which rbx
+        never validated, with no signal on this side at all.
+
+        A warning rather than a refusal, deliberately: MOJ's own scripts may well work,
+        and refusing would block a whole timing run over a language that might be fine.
+        A timing measured through scripts rbx did not emit is the thing to be
+        suspicious of, and now it says so.
+        """
+        emitted = set(get_emitted_moj_languages())
+        # Compared under normalization on both sides: `get_emitted_moj_languages`
+        # can yield the legacy `py3` spelling, which the whitelist has folded to `py`.
+        normalized_emitted = {normalize_moj_language(language) for language in emitted}
+        unscripted = sorted(
+            language for language in allowed if language not in normalized_emitted
+        )
+        if not unscripted:
+            return
+        console.console.print(
+            f'[warning]This package whitelists [item]'
+            f'{"[/item], [item]".join(unscripted)}[/item] but ships no '
+            '[item]scripts/[/item] for them.[/warning]\n'
+            '[warning]MOJ will accept those submissions and run them with its own '
+            'compile/run scripts, which rbx has not validated -- any timing measured '
+            'through them is not comparable to the rest.[/warning]'
+        )
 
     def _report_submission_languages(self, allowed: List[str]) -> None:
         """Say out loud which languages students may submit in, and which were left
@@ -508,11 +575,22 @@ class MojPackager(BasePackager):
         `rbx.box.packaging.moj.statement`. A package that declares no statement
         falls back to `DUMMY_STATEMENT`: MOJ hard-requires the two headings, and
         a statement-less package must still package.
+
+        **A probe package always takes that fallback**, and this is what makes it
+        buildable at all outside `run_packager`. The real path reads `blocks.sub.yml`
+        and the externalized TikZ PDFs out of the v2 overlay, which only the forced
+        externalize statement build writes -- so a direct `package()` call would raise
+        `StatementExportError` on any problem that declares an rbxTeX statement. A
+        runner's only escapes would be to run pdflatex locally for a document nobody
+        reads, or to go through `run_packager` and pay for the full local verification
+        run it exists to avoid. Nothing on MOJ ever renders a probe's statement, and a
+        `MojGateError` over one would make `rbx time --runner moj` refuse a timing run
+        for a document that is never read.
         """
         docs_path = into_path / 'docs'
         docs_path.mkdir(parents=True, exist_ok=True)
 
-        main_statement = self._get_main_statement()
+        main_statement = None if self.probe is not None else self._get_main_statement()
         if main_statement is None:
             (docs_path / 'enunciado.md').write_text(DUMMY_STATEMENT)
             return
@@ -671,7 +749,6 @@ class MojPackager(BasePackager):
         runner's `supports_abort=False` honest: a testrun has run every test by the
         time rbx sees it only if nothing told it to stop early.
         """
-        pkg = package.find_problem_package_or_die()
         if self.probe is not None:
             return [
                 '# STOPWHEN_* is deliberately unset: this package exists for rbx to',
@@ -680,6 +757,7 @@ class MojPackager(BasePackager):
                 '# a prefix of the tests and silently lose the rest of the timings.',
                 '',
             ]
+        pkg = package.find_problem_package_or_die()
         if pkg.scoring != ScoreType.BINARY:
             return [
                 '# STOPWHEN_* is deliberately unset: this problem scores by groups, and',
@@ -702,6 +780,42 @@ class MojPackager(BasePackager):
         pkg = package.find_problem_package_or_die()
         return {group.name: index for index, group in enumerate(pkg.testcases)}
 
+    def testcase_names(self) -> List[Tuple[GenerationTestcaseEntry, str]]:
+        """Every built testcase paired with the file name it takes in the package.
+
+        **Public on purpose.** The MOJ runner pairs a testrun's per-test results back
+        onto rbx testcases *by name*, which is what stops a timing being attributed to
+        the wrong test -- and a caller cannot reproduce these names from the entries
+        alone. `index` here is a **1-based running counter over the built entries of
+        each group**, not `entry.group_entry.index`, which is 0-based and counts the
+        *declared* ones; and `group_index` is the group's position in
+        `problem.rbx.yml`. Reimplementing that yields an off-by-one that still
+        produces well-formed names -- for the wrong tests, silently.
+
+        `_write_tests` consumes this exact list, so what the runner pairs on and what
+        the package contains cannot drift apart. In emission order, which is also the
+        order MOJ's lexicographic judging loop reports.
+        """
+        indices = self._group_indices()
+        counters: Dict[str, int] = collections.defaultdict(int)
+        named: List[Tuple[GenerationTestcaseEntry, str]] = []
+
+        for entry in self.get_built_testcase_entries():
+            group_name = entry.group_entry.group
+            counters[group_name] += 1
+            named.append(
+                (
+                    entry,
+                    naming.testcase_name(
+                        group_name,
+                        group_index=indices.get(group_name, 0),
+                        index=counters[group_name],
+                        is_sample=entry.is_sample(),
+                    ),
+                )
+            )
+        return named
+
     def _write_tests(self, into_path: pathlib.Path) -> List[str]:
         """Write `tests/input` and `tests/output`; return the group names that got
         at least one test, in encounter order."""
@@ -710,25 +824,14 @@ class MojPackager(BasePackager):
         inputs_path.mkdir(parents=True, exist_ok=True)
         outputs_path.mkdir(parents=True, exist_ok=True)
 
-        indices = self._group_indices()
-        counters: Dict[str, int] = collections.defaultdict(int)
         seen_groups: List[str] = []
         has_sample = False
 
-        for entry in self.get_built_testcase_entries():
+        for entry, name in self.testcase_names():
             group_name = entry.group_entry.group
-            if group_name not in counters:
+            if group_name not in seen_groups:
                 seen_groups.append(group_name)
-            counters[group_name] += 1
-
-            is_sample = entry.is_sample()
-            has_sample = has_sample or is_sample
-            name = naming.testcase_name(
-                group_name,
-                group_index=indices.get(group_name, 0),
-                index=counters[group_name],
-                is_sample=is_sample,
-            )
+            has_sample = has_sample or entry.is_sample()
 
             testcase = entry.metadata.copied_to
             shutil.copyfile(testcase.inputPath, inputs_path / name)
@@ -869,7 +972,7 @@ class MojPackager(BasePackager):
             return 'upcoming'
         return 'wrong'
 
-    def _solution_content(self, solution: Solution) -> bytes:
+    def solution_content(self, solution: Solution) -> bytes:
         """The bytes to ship for a solution.
 
         A solution is compiled from a single file inside MOJ's jail, so a C/C++
@@ -934,7 +1037,7 @@ class MojPackager(BasePackager):
 
             dest_path = sols_path / tag / basename
             dest_path.parent.mkdir(parents=True, exist_ok=True)
-            dest_path.write_bytes(self._solution_content(solution))
+            dest_path.write_bytes(self.solution_content(solution))
 
         if not written['good']:
             console.console.print(

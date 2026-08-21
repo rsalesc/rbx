@@ -733,8 +733,10 @@ def _gated_evaluation(
 
     async def run_fn() -> Evaluation:
         if gate.is_skipped(group_name):
-            # The backend never ran, so nothing has created this directory --
-            # the skipped `.eval` still has to land somewhere.
+            # The skipped `.eval` still has to land somewhere, and this is the one
+            # path where nothing else guarantees the directory: `LocalRunner` mkdirs
+            # it eagerly, but a batch backend that never ran this testcase has no
+            # reason to have created it.
             output_dir.mkdir(parents=True, exist_ok=True)
             return _record_skipped_evaluation(
                 entry.metadata.copied_to, entry.group_entry.index, output_dir

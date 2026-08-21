@@ -110,6 +110,15 @@ Two things stay with the orchestrator rather than the backend:
   `nruns=0` is every caller's default and means "whatever `repeats.reps` says", which is
   the likelier way a run ends up repeated.
 
+**Two `moj` trees, different jobs.** `runners/moj/` is the *client*: a typed wrapper
+over the judge's `moj` CLI (`problem_id.py`, `cli.py`) that a `MojRunner` drives to
+upload, calibrate and testrun. `packaging/moj/` is the *packager* that produces what it
+uploads. They meet at one object: `MojPackager(probe=ProbePackage(...))`, the
+throwaway package a timing run measures on -- model solution only, one uniform
+`TLOVERRIDE`, every testrunnable language whitelisted, no statement build and no
+`STOPWHEN_*`. Pair timings back onto testcases with `MojPackager.testcase_names()`,
+never by position and never by re-deriving the names.
+
 Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 
 ### Deferred Execution (`deferred.py`)
