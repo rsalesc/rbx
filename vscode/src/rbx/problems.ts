@@ -114,12 +114,25 @@ export function problemChoices(
   const groups = new Set(contested.map((entry) => entry.group));
   const grouped = groups.size + (loose.length > 0 ? 1 : 0) > 1;
 
-  return [...contested, ...loose].map((entry) => ({
-    root: entry.root,
-    label: entry.label,
-    color: entry.color,
-    // `group` is absent on every loose entry, so this both narrows the union
-    // and leaves the loose run headingless.
-    group: grouped && 'group' in entry ? path.basename(entry.group) : undefined,
-  }));
+  // Mapped per array rather than over the concatenation: only a contested
+  // entry has a contest to head, and two maps say so outright. Narrowing the
+  // union back apart with `'group' in entry` would not even work -- since TS
+  // 4.9 that widens the loose half to `Record<'group', unknown>` on the true
+  // branch instead of dropping it.
+  return [
+    ...contested.map((entry) => ({
+      root: entry.root,
+      label: entry.label,
+      color: entry.color,
+      group: grouped ? path.basename(entry.group) : undefined,
+    })),
+    ...loose.map((entry) => ({
+      root: entry.root,
+      label: entry.label,
+      color: entry.color,
+      // Never headed, however many groups there are: a heading over the
+      // packages no contest claimed would have no name to carry.
+      group: undefined,
+    })),
+  ];
 }
