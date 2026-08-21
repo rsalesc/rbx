@@ -5,6 +5,7 @@ from rbx.box.environment import LanguageGroupFallback
 from rbx.box.timing_group_picker import (
     GroupAssignment,
     GroupPickerState,
+    legend_lines,
     prompt_group_assignment,
 )
 
@@ -598,3 +599,52 @@ async def test_prompt_seeds_relatives_into_state():
             output=DummyOutput(),
         )
     assert result.relatives['g2'].multiplier == 2.0
+
+
+async def test_f_accepts_the_current_assignment_despite_a_violation():
+    with create_pipe_input() as inp:
+        inp.send_text('1')  # cpp -> group 1
+        inp.send_text('f')  # keep these limits anyway
+        result = await prompt_group_assignment(
+            ['cpp', 'java'],
+            {'cpp': 0, 'java': 0},
+            allow_force=True,
+            input=inp,
+            output=DummyOutput(),
+        )
+    assert result is not None
+    assert result.force
+    # It accepts what is on screen, so the assignment survives the override.
+    assert result.numbers == {'cpp': 1, 'java': 0}
+
+
+async def test_f_does_nothing_when_there_is_nothing_to_override():
+    # Without a violation the key is inert, so the picker is still open and the
+    # following enter is what confirms it.
+    with create_pipe_input() as inp:
+        inp.send_text('f')
+        inp.send_text('\r')
+        result = await prompt_group_assignment(
+            ['cpp', 'java'], {'cpp': 0, 'java': 0}, input=inp, output=DummyOutput()
+        )
+    assert result is not None
+    assert not result.force
+
+
+async def test_confirming_normally_never_forces():
+    with create_pipe_input() as inp:
+        inp.send_text('\r')
+        result = await prompt_group_assignment(
+            ['cpp', 'java'],
+            {'cpp': 0, 'java': 0},
+            allow_force=True,
+            input=inp,
+            output=DummyOutput(),
+        )
+    assert result is not None
+    assert not result.force
+
+
+def test_the_legend_offers_the_override_only_when_it_applies():
+    assert 'anyway' not in ' '.join(legend_lines(False))
+    assert 'anyway' in ' '.join(legend_lines(True))

@@ -26,6 +26,18 @@ LEGEND_LINES = [
     ' · r derive limit from a group · R reset to env · enter confirm · q cancel',
 ]
 
+
+def legend_lines(allow_force: bool = False) -> List[str]:
+    """The legend to draw. The override is offered only when there is a violated
+    upper bound to override -- otherwise the key does nothing, and advertising it
+    would promise an action the picker will not take."""
+    if not allow_force:
+        return list(LEGEND_LINES)
+    lines = list(LEGEND_LINES)
+    lines[-1] += ' · f keep these limits anyway'
+    return lines
+
+
 # Number of extra lines the inline relative editor draws under the cursor row.
 EDITOR_HEIGHT = 3
 
@@ -325,11 +337,12 @@ async def prompt_group_assignment(
     from prompt_toolkit.styles import Style
 
     state = GroupPickerState(languages, default_number, relatives=relatives)
+    legend = legend_lines(allow_force)
 
     def _header_fragments():
         fragments = []
-        last = len(LEGEND_LINES) - 1
-        for i, line in enumerate(LEGEND_LINES):
+        last = len(legend) - 1
+        for i, line in enumerate(legend):
             if i == 0:
                 style = 'class:header'
             elif i == last:
@@ -400,6 +413,19 @@ async def prompt_group_assignment(
     def _(event):
         event.app.exit(result=None)
 
+    # Offered only when the caller has a violated upper bound to override: with
+    # nothing to override the key is inert rather than a second confirm.
+    @kb.add('f', filter=not_editing & Condition(lambda: allow_force))
+    def _(event):
+        state.done = True
+        event.app.exit(
+            result=GroupAssignment(
+                numbers=state.assignment(),
+                relatives=state.prune_relatives(),
+                force=True,
+            )
+        )
+
     # Edit-mode bindings: active only while the inline relative editor is open.
     @kb.add('tab', filter=editing)
     def _(event):
@@ -439,7 +465,7 @@ async def prompt_group_assignment(
         return len(state.languages) + (state.editor_height() if state.editing else 0)
 
     windows = [
-        Window(content=header, height=len(LEGEND_LINES), always_hide_cursor=True),
+        Window(content=header, height=len(legend), always_hide_cursor=True),
         Window(content=body, height=_body_height, always_hide_cursor=True),
     ]
     if preview is not None:
