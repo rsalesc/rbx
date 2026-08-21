@@ -253,9 +253,12 @@ class MojRunner:
         wrong is silently measuring against the wrong package: rbx has no way to
         ask the server what package a problem actually holds -- the CLI exposes no
         package checksum -- so the second clause is a *local* record of what this
-        machine did. A co-setter uploading a different probe from another machine,
-        or a `moj upload` by hand, leaves that record intact and `is_ready` true,
-        and the fast path would then skip an upload it should have done. The
+        machine did. The same login uploading a different probe from a second
+        machine, or a `moj upload` by hand, leaves that record intact and
+        `is_ready` true, and the fast path would then skip an upload it should
+        have done. (A *co-setter* is not one of those cases: `ensure_moj_id`
+        rewrites the org to whoever is logged in, so they reach `bob#rbxt-<slug>`
+        -- a different problem, under a different record key.) The
         record is deliberately kept in the disposable problem cache so the failure
         leans the other way whenever it can: losing it re-uploads needlessly,
         which costs judge time and nothing else.
@@ -300,7 +303,11 @@ class MojRunner:
                 ctx.progress.update(
                     f'Waiting for MOJ to calibrate [item]{moj_id}[/item] ({waited}s)...'
                 )
-            await asyncio.sleep(CALIBRATION_POLL_INTERVAL_SECONDS)
+            # Not after the last check: there is nothing left to wait for, and
+            # sleeping there would delay the give-up message by a whole interval
+            # for no reason.
+            if attempt + 1 < CALIBRATION_POLL_ATTEMPTS:
+                await asyncio.sleep(CALIBRATION_POLL_INTERVAL_SECONDS)
 
         minutes = int(
             CALIBRATION_POLL_ATTEMPTS * CALIBRATION_POLL_INTERVAL_SECONDS / 60
@@ -377,6 +384,12 @@ def _testrun_languages(ctx: RunContext) -> Tuple[str, ...]:
     languages: List[str] = []
     unmapped: List[Tuple[pathlib.Path, str]] = []
     for solution in ctx.skeleton.solutions:
+        # `find_language` reports an unknown language by printing and raising
+        # `typer.Exit`, which is not wrapped here on purpose: by the time
+        # `prepare` runs, `_get_report_skeleton` has already resolved and
+        # *compiled* every one of these solutions, so a language that does not
+        # resolve cannot reach this loop. Wrapping it would add a branch nothing
+        # can take and a message claiming the MOJ runner found the problem.
         rbx_language = find_language(solution).name
         moj_language = get_moj_language_from_rbx_language(rbx_language)
         if moj_language is None:
@@ -385,14 +398,32 @@ def _testrun_languages(ctx: RunContext) -> Tuple[str, ...]:
         if moj_language not in languages:
             languages.append(moj_language)
 
+    if unmapped:
+        # Refused, not skipped, and the difference matters. Dropping the solution
+        # from the whitelist does not drop it from the run: rbx would still
+        # testrun it, and the API -- which enforces the whitelist -- would reject
+        # the submission, so the failure surfaces as a server-side message about
+        # a language, in task 6, rather than here where the setter can act on it.
+        # Even if the run did skip it, that is not a mere downgrade: a skipped
+        # lower-bound solution means the time limit is estimated from incomplete
+        # data with nothing saying so. Refusing names the solution to exclude.
+        listed = '\n'.join(f'  `{path}` (`{language}`)' for path, language in unmapped)
+        raise MojRunnerError(
+            f'These solutions are written in languages MOJ has no counterpart '
+            f'for, so the judge could not run them:\n{listed}\n'
+            f"MOJ rejects a submission in a language outside the problem's "
+            f'whitelist, a testrun included, so rbx will not measure this run '
+            f'rather than silently leave those solutions out of the estimate.\n'
+            f'Give the language a `moj` id in the `extensions.moj` block of '
+            f'`env.rbx.yml`, or exclude those solutions from this run.'
+        )
+
     if not languages:
         # `ProbePackage` would refuse this too, but with a message about the
         # whitelist rather than about the solutions that produced it.
-        listed = ', '.join(f'`{path}` (`{language}`)' for path, language in unmapped)
         raise MojRunnerError(
-            'None of the solutions this run would measure is written in a '
-            'language MOJ accepts, so there is nothing the judge could run.'
-            + (f'\nSolutions: {listed}.' if listed else '')
+            'This run measures no solutions at all, so there is no language to '
+            'let the judge accept a submission in.'
         )
     return tuple(languages)
 

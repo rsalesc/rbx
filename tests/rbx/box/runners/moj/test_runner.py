@@ -19,12 +19,17 @@ from typing import Dict, List, Optional, Tuple
 import pytest
 
 from rbx.box import environment
-from rbx.box.environment import TimingConfig, VerificationLevel
+from rbx.box.environment import (
+    EnvironmentLanguage,
+    ExecutionConfig,
+    TimingConfig,
+    VerificationLevel,
+)
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.runners.base import RunContext
 from rbx.box.runners.moj import cli
 from rbx.box.runners.moj import runner as runner_module
-from rbx.box.runners.moj.cli import MojCheck
+from rbx.box.runners.moj.cli import MojCheck, MojCliError
 from rbx.box.runners.moj.problem_id import moj_id_path
 from rbx.box.runners.moj.runner import MojRunner, MojRunnerError
 from rbx.box.schema import ExpectedOutcome
@@ -51,6 +56,9 @@ class FakeMoj:
         self.snapshots = snapshots
         self.login = login
         self.ready_from_check = ready_from_check
+        # Set to make `moj calibrate` blow up, which is how a session dies
+        # *between* a completed upload and a finished calibration.
+        self.calibrate_fails = False
         self.uploads: List[Tuple[str, pathlib.Path]] = []
         self.calibrations: List[str] = []
         self.checks: List[str] = []
@@ -73,6 +81,8 @@ class FakeMoj:
         self.uploads.append((problem_id, dest))
 
     async def calibrate(self, problem_id: str) -> None:
+        if self.calibrate_fails:
+            raise MojCliError(f'`moj calibrate {problem_id}` failed.')
         self.calibrations.append(problem_id)
 
     async def check(self, problem_id: str) -> MojCheck:
@@ -324,6 +334,82 @@ async def test_the_whitelist_covers_a_language_with_no_accepted_solution(
     ]
 
 
+async def test_a_solution_moj_cannot_run_is_refused_rather_than_left_out(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """A language with no MOJ counterpart stops the run, loudly and here.
+
+    Leaving it out of the whitelist does not leave it out of the *run*: rbx would
+    still testrun it and the API would reject the submission, so the failure
+    would surface in task 6 as a server-side message about a language. And a
+    solution that goes unmeasured is not a mere downgrade -- if it is a
+    lower-bound solution, the time limit gets estimated from incomplete data with
+    nothing saying so.
+    """
+    minimal_package(testing_pkg)
+    env = environment.get_environment()
+    # A language rbx knows and MOJ does not. Added to the environment rather than
+    # faked at the mapping, so what the test exercises is the real
+    # rbx-language -> MOJ-id lookup.
+    nim = EnvironmentLanguage(
+        name='nim',
+        extension='nim',
+        execution=ExecutionConfig(command='{executable}'),
+    )
+    monkeypatch.setattr(
+        environment,
+        'get_environment',
+        lambda *args, **kwargs: env.model_copy(
+            update={'languages': [*env.languages, nim]}
+        ),
+    )
+    testing_pkg.add_solution('sol.nim', outcome=ExpectedOutcome.WRONG_ANSWER)
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    with pytest.raises(MojRunnerError) as exc:
+        await MojRunner().prepare(
+            _context(
+                tmp_path,
+                solutions=[
+                    ('sol.cpp', ExpectedOutcome.ACCEPTED),
+                    ('sol.nim', ExpectedOutcome.WRONG_ANSWER),
+                ],
+            )
+        )
+
+    # Names the solution and its language: the two things the setter needs to
+    # either exclude it or map the language.
+    assert 'sol.nim' in str(exc.value)
+    assert 'nim' in str(exc.value)
+    assert fake.uploads == []
+
+
+# -- what a probe path can still raise -----------------------------------------
+
+
+async def test_a_package_the_setter_broke_is_not_a_cli_exit(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """`MojPackager` reports setter mistakes with `typer.Exit`.
+
+    That is a CLI control-flow exception, and `prepare` is a library call reached
+    from inside `run_solutions`: letting it through would unwind the run as if a
+    command had ended, with an exit code nothing here chose and no error anyone
+    can catch by type. A non-C++ checker is one of the sites a probe still
+    reaches (`packaging/moj/CLAUDE.md`, "What a probe path can still raise") --
+    the statement build, which is most of the others, is suppressed for a probe.
+    """
+    minimal_package(testing_pkg)
+    testing_pkg.set_checker('check.py')
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    with pytest.raises(MojRunnerError) as exc:
+        await MojRunner().prepare(_context(tmp_path))
+
+    assert 'probe package' in str(exc.value)
+    assert fake.uploads == []
+
+
 # -- the bounded wait ----------------------------------------------------------
 
 
@@ -425,6 +511,38 @@ async def test_a_run_that_never_finished_calibrating_is_not_skipped_next_time(
     await MojRunner().prepare(_context(tmp_path))
 
     assert len(fake.uploads) == 2
+
+
+async def test_an_upload_that_never_reached_calibration_is_not_trusted_later(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """The record is cleared *before* an upload, not merely written after one.
+
+    A session that dies between the upload landing and the calibration finishing
+    leaves the server holding a package rbx has no record of. If the run before
+    it had left a record, and the setter then goes back to the earlier cap, the
+    fingerprint matches that stale record -- and `moj check` may well still say
+    ready, since it describes whatever the judge last calibrated. The fast path
+    would then skip an upload and measure every solution against a package that
+    is not the one it built.
+    """
+    minimal_package(testing_pkg)
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    await MojRunner().prepare(_context(tmp_path, timelimit_override=2500))
+
+    # A different cap, so the fast path does not fire: this one really uploads,
+    # and then dies before the calibration is queued.
+    fake.calibrate_fails = True
+    with pytest.raises(MojCliError):
+        await MojRunner().prepare(_context(tmp_path, timelimit_override=4000))
+
+    # Back to the first cap, whose package the first run did upload and calibrate.
+    fake.calibrate_fails = False
+    await MojRunner().prepare(_context(tmp_path, timelimit_override=2500))
+
+    assert len(fake.uploads) == 3
+    assert _conf(fake.uploaded)['TLOVERRIDE[default]'] == '2.500'
 
 
 # -- what task 6 still owes ----------------------------------------------------
