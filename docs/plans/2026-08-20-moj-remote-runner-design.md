@@ -328,6 +328,22 @@ This design does not use it, because it is a single barrier and loses the increm
 progress that motivated testrun in the first place. It is the natural follow-up once the
 runner works, and is called out here so the limitation is not rediscovered later.
 
+**In practice the park is homogeneous, which softens this a lot.** Observed 2026-08-21 via
+`moj calibrate --judges`:
+
+```
+judge      Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz  online
+judge-sp1  Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz  online
+```
+
+Two judges, **the same CPU model**, both online (`moj status`: 2/2, 56 CPUs). So whichever
+machine the server picks for a testrun, the timings are comparable, and the cross-host spread
+this section warns about is currently near zero. Note what that does *not* mean: identical
+CPU models still differ under load, thermal state and memory configuration, so this makes the
+limitation tolerable rather than absent — and a park that gains a third, different machine
+would silently reintroduce it. `--per-cpu` would today target exactly one judge, which is why
+the cross-machine follow-up buys little right now.
+
 ## Incremental delivery
 
 | # | Task | What ships |
