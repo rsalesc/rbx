@@ -214,9 +214,9 @@ export interface Row {
    * The whole of what the label is a shortening of, for the row's tooltip.
    *
    * Only solution rows carry one, and only because `rbx.solutionLabel` lets the
-   * label stop short of the path: a user reading `main.cpp` under two packages
-   * still has somewhere to find out which `sols/` it came from. Absent when the
-   * label is already the whole truth.
+   * label stop short of the path: a user reading `main.cpp` still has somewhere
+   * to find out which `sols/` it came from. Absent when the label is already
+   * the whole truth.
    */
   readonly labelTitle?: string;
   readonly labelHue?: Hue;
@@ -259,6 +259,15 @@ export interface RunViewModel {
   readonly warned: number;
   readonly empty: boolean;
 }
+
+/**
+ * The model of a view with no problem behind it at all.
+ *
+ * Distinct from `buildViewModel` of a package with no run: there is no package,
+ * so there is no layout to invent one for. Shared by both halves so the client's
+ * starting state and the host's answer for an empty workspace cannot drift.
+ */
+export const EMPTY_MODEL: RunViewModel = { rows: [], mismatches: 0, warned: 0, empty: true };
 
 function chip(outcome: string | undefined, under?: WarningVerdict): VerdictChip {
   const { icon, color } = outcomeIcon(outcome);

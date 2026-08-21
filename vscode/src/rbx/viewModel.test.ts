@@ -543,6 +543,16 @@ test('a package with no run on disk produces an empty model', () => {
   assert.strictEqual(model.mismatches, 0);
 });
 
+test('a run that covered no solution is empty too', () => {
+  // A different thing from no run at all, and the one the view actually meets
+  // while a run is starting: `skeleton.yml` is written before the first
+  // solution resolves, so the report is readable and lists nothing.
+  const model = buildViewModel(view([]));
+  assert.deepStrictEqual(model.rows, []);
+  assert.strictEqual(model.empty, true);
+  assert.strictEqual(model.mismatches, 0);
+});
+
 test('a lone solution opens by default; one of several does not', () => {
   const solo = buildViewModel(view([MAIN]));
   const soloRow = rowById(solo.rows, '/w/a::0');

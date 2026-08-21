@@ -3,15 +3,14 @@
  *
  * Split out of the old tree provider so that nothing about *drawing* the view
  * lives next to what feeds it: this half talks to the workspace and the disk,
- * the webview half turns what it loads into rows. The two meet at
- * `PackageRunView`, which carries no editor API.
+ * the webview half turns what it loads into rows. The two meet at `PackageRun`,
+ * which carries no editor API.
  */
 import * as vscode from 'vscode';
 
-import { discoverPackages, packageLabel } from './discovery';
+import { discoverPackages } from './discovery';
 import { log } from './log';
 import { PackageLayout } from './rbx/layout';
-import { PackageRunView } from './rbx/nodes';
 import { ArtifactStore, PackageRun } from './rbx/store';
 
 export class RunDataProvider {
@@ -90,29 +89,13 @@ export class RunDataProvider {
     return store;
   }
 
+  /**
+   * Whatever run is on disk for one package, or undefined if none is readable.
+   *
+   * A package with no readable run is not an error: one that has never been run
+   * still has to be selectable, and `flattenNodes` renders it as nothing.
+   */
   report(pkg: PackageLayout): Promise<PackageRun | undefined> {
     return this.storeFor(pkg).load();
-  }
-
-  /**
-   * Every discovered package paired with whatever run is on disk for it.
-   *
-   * Packages with no readable run are kept rather than filtered: a package the
-   * user can select must still be listed when it has never been run, and
-   * `flattenNodes` renders it as nothing.
-   */
-  async loadAll(): Promise<PackageRunView[]> {
-    await this.ensureDiscovered();
-    const views: PackageRunView[] = [];
-    for (const pkg of this.packages) {
-      const run = await this.report(pkg);
-      if (run === undefined) {
-        log(`No readable run for ${pkg.root} -- run \`rbx run\` in that directory.`);
-      } else {
-        log(`${pkg.root}: ${run.solutions.length} solution(s) in the last run.`);
-      }
-      views.push({ pkg, run, label: packageLabel(pkg) });
-    }
-    return views;
   }
 }

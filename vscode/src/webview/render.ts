@@ -13,6 +13,7 @@
  * events, focus, persistence -- precisely because that part cannot be tested,
  * which is why nothing that decides anything is allowed to live there.
  */
+import type { ProblemChoice } from '../rbx/problems';
 import type {
   GroupMismatch,
   HistogramSlice,
@@ -665,6 +666,58 @@ export function renderFilter(state: UiState): string {
   return (
     '<div class="filter">' +
     `<input id="filter" type="search" placeholder="Filter" value="${escapeAttr(state.filter)}">` +
+    '</div>'
+  );
+}
+
+/**
+ * The problem dropdown.
+ *
+ * Hidden for a single problem: a select with one option is a control that
+ * cannot do anything, and a one-problem workspace should look exactly as it did
+ * before the selector existed.
+ *
+ * The colour dot is a `style` attribute, which the CSP permits on styles only
+ * (see the note in runView.ts) -- and the value is a colour a contest author
+ * wrote, so it goes through `escapeAttr` like everything else.
+ */
+export function renderSelector(problems: readonly ProblemChoice[], selected?: string): string {
+  if (problems.length <= 1) {
+    return '';
+  }
+  const option = (problem: ProblemChoice): string =>
+    `<option value="${escapeAttr(problem.root)}"${problem.root === selected ? ' selected' : ''}>` +
+    escapeHtml(problem.label) +
+    '</option>';
+
+  // One pass, opening a group when it changes and closing the one before it.
+  // Safe only because `problemChoices` sorts by group: a grouped and an
+  // ungrouped run cannot interleave, so a group is never reopened. The tail of
+  // ungrouped options -- the packages no contest claimed, which `problemChoices`
+  // puts last -- closes the final group on the way past and needs no close at
+  // the end, which is why the trailing close is conditional on `openGroup`.
+  let body = '';
+  let openGroup: string | undefined;
+  for (const problem of problems) {
+    if (problem.group !== openGroup) {
+      body += openGroup === undefined ? '' : '</optgroup>';
+      openGroup = problem.group;
+      body += openGroup === undefined ? '' : `<optgroup label="${escapeAttr(openGroup)}">`;
+    }
+    body += option(problem);
+  }
+  body += openGroup === undefined ? '' : '</optgroup>';
+
+  const dot = problems.find((problem) => problem.root === selected)?.color;
+  return (
+    '<div class="selector">' +
+    (dot === undefined
+      ? ''
+      : `<span class="selector-dot" style="background:${escapeAttr(dot)}"></span>`) +
+    // Named outright rather than by a visible `<label>`: the sidebar has no
+    // room for one, and a screen reader announcing an unnamed combo box leaves
+    // the user to guess what the option list is a list of.
+    `<select id="problem" aria-label="Problem">${body}</select>` +
     '</div>'
   );
 }

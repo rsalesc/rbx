@@ -9,6 +9,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 
+import { ActiveProblem } from './activeProblem';
 import { ArtifactFileSystemProvider, SCHEME } from './artifactFs';
 import { registerCommands } from './commands';
 import { DeclaredIndex } from './declared';
@@ -42,7 +43,11 @@ export function activate(context: vscode.ExtensionContext): void {
   initLog(context);
   log('rbx extension activated.');
   const data = new RunDataProvider();
-  const view = new RunViewProvider(data, context.extensionUri);
+  // `workspaceState`, not `globalState`: the problem being worked on is a fact
+  // about this contest checkout, and remembering it across unrelated windows
+  // would land each of them on a root the other opened.
+  const active = new ActiveProblem(data, context.workspaceState);
+  const view = new RunViewProvider(data, active, context.extensionUri);
   const declared = new DeclaredIndex(data);
   context.subscriptions.push(declared);
   registerDecorations(context, declared);
@@ -113,8 +118,14 @@ export function activate(context: vscode.ExtensionContext): void {
   // from, which is why the index is re-read on all three events and the run
   // view on only two.
   const manifests = vscode.workspace.createFileSystemWatcher(`**/${PROBLEM_MANIFEST}`);
+  // The choices are rebuilt after every rediscovery, not just at startup: a
+  // package appearing or disappearing changes what the dropdown can offer, and
+  // may take the selected problem with it.
   const rediscover = () => {
-    void data.refresh().then(() => declared.refresh());
+    void data
+      .refresh()
+      .then(() => active.refresh())
+      .then(() => declared.refresh());
   };
   manifests.onDidCreate(rediscover);
   manifests.onDidDelete(rediscover);

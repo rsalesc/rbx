@@ -10,9 +10,17 @@
  * It talks to the extension host only through `acquireVsCodeApi`; importing the
  * `vscode` module is impossible in a webview and would not work if it were.
  */
-import type { Row, RunViewModel } from '../rbx/viewModel';
+import type { ProblemChoice } from '../rbx/problems';
+import { EMPTY_MODEL, type Row, type RunViewModel } from '../rbx/viewModel';
 import { rowClick } from './gesture';
-import { UiState, renderFilter, renderHeader, renderTree, visibleRows } from './render';
+import {
+  UiState,
+  renderFilter,
+  renderHeader,
+  renderSelector,
+  renderTree,
+  visibleRows,
+} from './render';
 
 interface VsCodeApi {
   postMessage(message: unknown): void;
@@ -40,11 +48,19 @@ declare function acquireVsCodeApi(): VsCodeApi;
 
 const vscode = acquireVsCodeApi();
 
-const EMPTY_MODEL: RunViewModel = { rows: [], mismatches: 0, warned: 0, empty: true };
-
 const persisted = vscode.getState();
 
 let model: RunViewModel = EMPTY_MODEL;
+/**
+ * The dropdown's contents, and the host's answer for what is showing.
+ *
+ * Deliberately *not* in `PersistedState`: the host owns the selection and
+ * re-posts it with every model, so a second copy here could only ever drift
+ * from it -- and would win on reload, showing a problem the host is not
+ * loading.
+ */
+let problems: readonly ProblemChoice[] = [];
+let selectedProblem: string | undefined;
 let expanded = new Set<string>(persisted?.expanded ?? []);
 const touched = new Set<string>(persisted?.touched ?? []);
 let selected: string | undefined = persisted?.selected;
@@ -52,6 +68,7 @@ let filter = persisted?.filter ?? '';
 let pendingScrollTop: number | undefined = persisted?.scrollTop ?? 0;
 
 const header = document.getElementById('header') as HTMLElement;
+const selectorHost = document.getElementById('selector-host') as HTMLElement;
 const filterHost = document.getElementById('filter-host') as HTMLElement;
 const tree = document.getElementById('tree') as HTMLElement;
 
@@ -84,6 +101,39 @@ function filterInput(): HTMLInputElement | null {
   return document.getElementById('filter') as HTMLInputElement | null;
 }
 
+function problemSelect(): HTMLSelectElement | null {
+  return document.getElementById('problem') as HTMLSelectElement | null;
+}
+
+/** What `selectorHost` currently holds, so an unchanged dropdown is left alone. */
+let selectorHtml = '';
+
+/**
+ * Redraw the dropdown, but only when it would actually differ.
+ *
+ * A `<select>` is the one control in the view that cannot survive being
+ * rebuilt: replacing the element drops the focus and, on some platforms, snaps
+ * the open list shut. The host re-posts the whole model on every file-watcher
+ * tick of a run, so without this guard a run would fight anyone trying to use
+ * the dropdown. During a run the problems and the selection are exactly what
+ * does *not* change, so comparing the markup skips almost every tick.
+ *
+ * The rebuild that does happen -- a package appearing, or the selection moving
+ * -- still puts the focus back, the way `renderAll` does for the filter box.
+ */
+function renderSelectorHost(): void {
+  const next = renderSelector(problems, selectedProblem);
+  if (next === selectorHtml) {
+    return;
+  }
+  const focused = document.activeElement === problemSelect();
+  selectorHtml = next;
+  selectorHost.innerHTML = next;
+  if (focused) {
+    problemSelect()?.focus();
+  }
+}
+
 /** Re-render the tree, keeping scroll where it was. */
 function render(): void {
   const scrollTop = tree.scrollTop;
@@ -105,6 +155,7 @@ function renderAll(): void {
   // holding it -- which would drop a keyboard or screen-reader user out to
   // `<body>` on every tick of a run.
   const inTree = tree.contains(document.activeElement);
+  renderSelectorHost();
   filterHost.innerHTML = renderFilter(uiState());
   render();
   if (inFilter) {
@@ -339,9 +390,28 @@ header.addEventListener('click', (event) => {
   }
 });
 
+// Delegated to the host element rather than bound to the `<select>`, because
+// `renderSelectorHost` replaces that element whenever the list changes and a
+// listener on it would go with it.
+selectorHost.addEventListener('change', (event) => {
+  const target = event.target as HTMLSelectElement;
+  if (target.id === 'problem') {
+    // Nothing is re-rendered here: the host is the one that decides what is
+    // showing, and it answers with a fresh `state` message.
+    vscode.postMessage({ type: 'select', root: target.value });
+  }
+});
+
 window.addEventListener('message', (event: MessageEvent) => {
-  const message = event.data as { type?: string; model?: RunViewModel };
+  const message = event.data as {
+    type?: string;
+    model?: RunViewModel;
+    problems?: readonly ProblemChoice[];
+    selected?: string;
+  };
   if (message.type === 'state' && message.model !== undefined) {
+    problems = message.problems ?? [];
+    selectedProblem = message.selected;
     setModel(message.model);
   }
 });

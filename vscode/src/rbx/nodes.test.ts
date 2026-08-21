@@ -55,6 +55,21 @@ test('emits no package row', () => {
   assert.deepStrictEqual([...kinds], ['solution', 'group', 'testcase']);
 });
 
+test('two packages laid out alike never share a row id', () => {
+  // Why the root still leads every id although no row draws it: the host
+  // resolves a context-menu command through a map of ids, and the client keeps
+  // a selection across a switch of problem. Two packages laid out identically
+  // -- which is what a contest's problems are -- must not collide there.
+  const ids = (root: string): string[] => flattenNodes({ pkg: { root }, run: ONE.run }).map(nodeId);
+  const here = ids('/w/a');
+  const there = ids('/w/b');
+  assert.strictEqual(here.length, there.length);
+  assert.strictEqual(
+    here.some((id) => there.includes(id)),
+    false,
+  );
+});
+
 test('yields nothing for a package with no run', () => {
   assert.deepStrictEqual(flattenNodes({ pkg: PKG, run: undefined }), []);
 });

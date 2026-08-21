@@ -11,6 +11,7 @@ import {
   matchesFilter,
   renderFilter,
   renderHeader,
+  renderSelector,
   renderTree,
   visibleRows,
 } from './render';
@@ -504,6 +505,89 @@ test('the filter box escapes a quote rather than closing its own attribute', () 
   const html = renderFilter(state({ filter: 'say "hi" & <b>' }));
   assert.ok(html.includes('value="say &quot;hi&quot; &amp; &lt;b&gt;"'), html);
   assert.ok(!html.includes('<b>'), html);
+});
+
+test('renders one option per problem, marking the selected one', () => {
+  const html = renderSelector(
+    [
+      { root: '/c/A', label: 'A' },
+      { root: '/c/B', label: 'B' },
+    ],
+    '/c/B',
+  );
+  assert.match(html, /<option value="\/c\/A"[^>]*>A<\/option>/);
+  assert.match(html, /<option value="\/c\/B" selected[^>]*>B<\/option>/);
+});
+
+test('renders nothing for a single problem', () => {
+  // A select with one option is a control that cannot do anything, and the
+  // one-problem workspace has to look exactly as it did before the selector.
+  assert.strictEqual(renderSelector([{ root: '/only', label: 'only' }], '/only'), '');
+});
+
+test('groups options when the problems carry groups', () => {
+  const html = renderSelector(
+    [
+      { root: '/x/A', label: 'A', group: 'x' },
+      { root: '/y/A', label: 'A', group: 'y' },
+    ],
+    '/x/A',
+  );
+  assert.match(html, /<optgroup label="x">/);
+  assert.match(html, /<optgroup label="y">/);
+  assert.strictEqual(html.match(/<\/optgroup>/g)?.length, 2);
+});
+
+test('closes the last group before the problems no contest claimed', () => {
+  // The order `problemChoices` yields: every contested problem first, the loose
+  // ones last. The loose options must land outside the group, and the group
+  // must still be closed -- which is the one sequence a single-pass
+  // open-on-change loop can get wrong.
+  const html = renderSelector(
+    [
+      { root: '/x/A', label: 'A', group: 'x' },
+      { root: '/x/B', label: 'B', group: 'x' },
+      { root: '/loose', label: 'loose' },
+    ],
+    '/x/A',
+  );
+  assert.strictEqual(html.match(/<optgroup label="x">/g)?.length, 1);
+  assert.strictEqual(html.match(/<\/optgroup>/g)?.length, 1);
+  assert.match(html, /<\/optgroup><option value="\/loose">loose<\/option>/);
+});
+
+test('escapes a label and a root', () => {
+  const html = renderSelector(
+    [
+      { root: '/a"b', label: '<script>' },
+      { root: '/c', label: 'c' },
+    ],
+    '/c',
+  );
+  assert.strictEqual(html.includes('<script>'), false);
+  assert.strictEqual(html.includes('"/a"b"'), false);
+});
+
+test('the dot takes the colour of the selected problem, escaped', () => {
+  const html = renderSelector(
+    [
+      { root: '/c/A', label: 'A', color: 'red' },
+      { root: '/c/B', label: 'B', color: 'blue"' },
+    ],
+    '/c/B',
+  );
+  assert.match(html, /class="selector-dot" style="background:blue&quot;"/);
+});
+
+test('a selected problem with no colour renders no dot', () => {
+  const html = renderSelector(
+    [
+      { root: '/c/A', label: 'A' },
+      { root: '/c/B', label: 'B' },
+    ],
+    '/c/A',
+  );
+  assert.strictEqual(html.includes('selector-dot'), false);
 });
 
 // Every verdict short name in outcome.ts, plus the pending and unknown ones.

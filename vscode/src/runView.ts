@@ -15,17 +15,22 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 
+import { ActiveProblem } from './activeProblem';
 import { packageLayout } from './rbx/layout';
 import { PackageRunView, RunNode, flattenNodes, nodeId } from './rbx/nodes';
 import { asSolutionLabelStyle } from './rbx/solutionLabel';
-import { buildViewModel } from './rbx/viewModel';
+import { EMPTY_MODEL, buildViewModel } from './rbx/viewModel';
 import { RunDataProvider } from './runData';
 
-/** What main.ts posts back: a load announcement, or a row's primary command. */
+/**
+ * What main.ts posts back: a load announcement, a row's primary command, or the
+ * problem the dropdown was just set to.
+ */
 interface ClientMessage {
   readonly type?: string;
   readonly commandId?: string;
   readonly nodeId?: string;
+  readonly root?: string;
 }
 
 /** A CSP nonce. Fresh per resolve, from a real random source. */
@@ -48,6 +53,7 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
 
   constructor(
     private readonly data: RunDataProvider,
+    private readonly active: ActiveProblem,
     private readonly extensionUri: vscode.Uri,
   ) {}
 
@@ -62,6 +68,12 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     view.webview.onDidReceiveMessage((message: ClientMessage) => {
       if (message.type === 'ready') {
         void this.post();
+        return;
+      }
+      if (message.type === 'select' && message.root !== undefined) {
+        // No `post` here: `ActiveProblem` fires its change event, which is
+        // already subscribed below. Posting as well would draw the view twice.
+        this.active.select(message.root);
         return;
       }
       if (message.type === 'invoke' && message.commandId !== undefined) {
@@ -80,6 +92,9 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     // paying to keep a hidden view alive would buy nothing back.
     const subscriptions = [
       this.data.onDidChange(() => void this.post()),
+      // Both, and they are different events: `data` changes what the selected
+      // problem's run says, `active` changes which problem that is.
+      this.active.onDidChange(() => void this.post()),
       // `rbx.solutionLabel` changes nothing on disk, so no reload will bring the
       // new labels in on its own -- the view has to rebuild the model itself.
       vscode.workspace.onDidChangeConfiguration((event) => {
@@ -100,25 +115,41 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Load everything and hand the client a whole new model.
+   * Load the selected problem's run and hand the client a whole new model.
+   *
+   * One problem, not every discovered one: only the selected package is read
+   * from disk, so a contest of thirty problems costs one package's artifacts
+   * per tick rather than thirty.
    *
    * The id map is rebuilt in the same pass, from the same `PackageRunView`, so
    * an id the client can see always resolves to the node it was built from.
+   *
+   * The dropdown's contents ride along with the model rather than on a message
+   * of their own: they are answers to the same question -- what is the view
+   * showing -- and posting them separately would let the client draw a
+   * selection the model does not match.
    */
   private async post(): Promise<void> {
-    const packages = await this.data.loadAll();
-    // Placeholder: the view now renders one package, but nothing chooses which
-    // yet -- the selector lands in a later step and replaces this with the
-    // user's choice. Until then the first package discovered stands in, and an
-    // empty workspace gets a view with no run, which draws as the empty state.
-    const selected: PackageRunView = packages[0] ?? { pkg: packageLayout(''), run: undefined };
-    this.nodes = new Map(flattenNodes(selected).map((node) => [nodeId(node), node]));
+    const selected = this.active.selected();
+    // Undefined and not an empty layout: no package was discovered, so there is
+    // nothing to load and the client draws its empty state.
+    const pkg = selected === undefined ? undefined : packageLayout(selected);
+    const view: PackageRunView | undefined =
+      pkg === undefined ? undefined : { pkg, run: await this.data.report(pkg) };
+    this.nodes = new Map(
+      (view === undefined ? [] : flattenNodes(view)).map((node) => [nodeId(node), node]),
+    );
     // Read per post rather than cached: the setting is window-scoped and the
     // configuration API is the only place its current value lives.
     const style = asSolutionLabelStyle(
       vscode.workspace.getConfiguration('rbx').get('solutionLabel'),
     );
-    await this.view?.webview.postMessage({ type: 'state', model: buildViewModel(selected, style) });
+    await this.view?.webview.postMessage({
+      type: 'state',
+      model: view === undefined ? EMPTY_MODEL : buildViewModel(view, style),
+      problems: this.active.problems(),
+      selected,
+    });
   }
 
   private html(webview: vscode.Webview): string {
@@ -158,6 +189,7 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     <title>rbx Run</title>
   </head>
   <body>
+    <div id="selector-host"></div>
     <div id="header"></div>
     <div id="filter-host"></div>
     <div id="tree" role="tree" tabindex="-1"></div>
