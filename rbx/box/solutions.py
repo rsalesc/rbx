@@ -35,6 +35,7 @@ from rbx.box import (
     limits_info,
     package,
     remote,
+    retries,
     run_report,
     setter_config,
     visualizers,
@@ -775,12 +776,32 @@ def _check_capabilities(
 
     caps = runner.caps
 
-    if nruns > 1 and not caps.supports_nruns:
-        raise RunnerCapabilityError(
-            f'Runner [item]{runner.name}[/item] runs each testcase exactly once, '
-            f'but this run asked for {nruns} runs per testcase. Drop the repeated '
-            f'runs, or use the local runner to measure with them.'
-        )
+    if not caps.supports_nruns:
+        # The *resolved* count, not the raw parameter: `nruns=0` means "whatever
+        # the setter configured", which is both the default for every caller and
+        # a value that can be greater than one. Trusting the parameter would let
+        # the commonest route -- `repeats.reps` set once in `setter_config.yml`
+        # for stable timings -- past the guard, and hand back a single
+        # measurement under the name of the average that was asked for.
+        reps = retries.get_retrier_config(nruns).reps
+        if reps > 1:
+            # Which of the two causes it was decides which file the setter has to
+            # open; naming the wrong one sends them to edit something irrelevant.
+            asked_by = (
+                f'this run asked for {reps} runs per testcase'
+                if nruns > 0
+                else f'`repeats.reps` in your `setter_config.yml` is {reps}'
+            )
+            fix = (
+                'Drop the repeated runs'
+                if nruns > 0
+                else 'Set `repeats.reps` back to 1'
+            )
+            raise RunnerCapabilityError(
+                f'Runner [item]{runner.name}[/item] runs each testcase exactly '
+                f'once, but {asked_by}. {fix}, or use the local runner to measure '
+                f'with them.'
+            )
 
     if sanitized and not caps.supports_sanitizers:
         raise RunnerCapabilityError(

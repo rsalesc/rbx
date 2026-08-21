@@ -105,7 +105,10 @@ Two things stay with the orchestrator rather than the backend:
   `None` as zero and calls an unmeasured run instantaneous. `_check_capabilities()` runs
   before `prepare()` and raises `RunnerCapabilityError` when the run asks for repeated
   runs, a sanitizer, or an interactor the backend does not support -- refusing by name
-  beats silently running something weaker under the same report.
+  beats silently running something weaker under the same report. Repeats are checked on
+  the count `retries.get_retrier_config(nruns)` *resolves* to, not on the raw `nruns`:
+  `nruns=0` is every caller's default and means "whatever `repeats.reps` says", which is
+  the likelier way a run ends up repeated.
 
 Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 

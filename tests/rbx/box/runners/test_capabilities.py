@@ -14,6 +14,7 @@ from typing import List, Optional
 
 import pytest
 
+from rbx.box import setter_config
 from rbx.box.deferred import Deferred
 from rbx.box.environment import VerificationLevel
 from rbx.box.generation_schema import GenerationTestcaseEntry
@@ -31,6 +32,15 @@ from rbx.grading import steps
 from rbx.grading.steps import CheckerResult, Evaluation, Outcome
 
 pytestmark = pytest.mark.shared_cache
+
+
+async def _build_testset() -> None:
+    """Generate inputs and outputs for whatever package the test is in."""
+    await generate_testcases()
+    entries = [
+        entry.group_entry for entry in await extract_generation_testcases_from_groups()
+    ]
+    await generate_outputs_for_testcases(entries)
 
 
 def _unmeasured_evaluation(
@@ -178,7 +188,43 @@ async def test_repeated_runs_are_refused_by_a_backend_that_runs_once(
 
     assert 'limited' in exc.value.message
     assert '3' in exc.value.message
+    # The two causes need different fixes, so the message must name this one:
+    # the run asked, the config did not.
+    assert 'this run asked' in exc.value.message
+    assert 'repeats.reps' not in exc.value.message
     # Refused before anything was set up, let alone dispatched.
+    assert runner.prepared == 0
+    assert runner.calls == 0
+
+
+@pytest.mark.test_pkg('problems/abort-groups')
+async def test_configured_repeats_are_refused_by_a_backend_that_runs_once(
+    pkg_from_testdata: pathlib.Path,
+    monkeypatch,
+):
+    """`nruns=0` resolves to the setter's configured repeats, and must be caught.
+
+    This is the route most runs take: `nruns=0` is the default for every caller,
+    so a setter who configured repeats once for stable timings would otherwise get
+    a single measurement and read it as the average they asked for. Refusing on the
+    raw parameter alone would let exactly that through.
+    """
+    cfg = setter_config.get_setter_config()
+    monkeypatch.setattr(cfg.repeats, 'reps', 3)
+    runner = LimitedRunner(caps=RunnerCapabilities(supports_nruns=False))
+
+    with pytest.raises(RunnerCapabilityError) as exc:
+        await run_solutions(
+            verification=VerificationLevel.FULL,
+            tracked_solutions=['sol.cpp'],
+            runner=runner,
+        )
+
+    assert 'limited' in exc.value.message
+    assert '3' in exc.value.message
+    # Points at the config, which is the file the setter actually has to edit.
+    assert 'repeats.reps' in exc.value.message
+    assert 'this run asked' not in exc.value.message
     assert runner.prepared == 0
     assert runner.calls == 0
 
@@ -192,17 +238,36 @@ async def test_a_single_run_is_fine_for_a_backend_that_runs_once(
     Without this, a guard written as `nruns > 0` would reject every ordinary run
     on such a backend and the refusal tests above would still pass.
     """
-    await generate_testcases()
-    entries = [
-        entry.group_entry for entry in await extract_generation_testcases_from_groups()
-    ]
-    await generate_outputs_for_testcases(entries)
+    await _build_testset()
     runner = LimitedRunner(caps=RunnerCapabilities(supports_nruns=False))
 
     await run_solutions(
         verification=VerificationLevel.FULL,
         tracked_solutions=['sol.cpp'],
         nruns=1,
+        runner=runner,
+    )
+
+    assert runner.calls == 1
+
+
+@pytest.mark.test_pkg('problems/abort-groups')
+async def test_the_configured_default_of_one_run_is_fine(
+    pkg_from_testdata: pathlib.Path,
+):
+    """`nruns=0` resolving to `reps=1` is an ordinary run, not a repeated one.
+
+    The counterpart of the configured-repeats refusal: a guard written as
+    `reps >= 1`, or one that treated the unresolved `nruns=0` as unknown and
+    refused defensively, would break every ordinary run on such a backend.
+    """
+    await _build_testset()
+    assert setter_config.get_setter_config().repeats.reps == 1
+    runner = LimitedRunner(caps=RunnerCapabilities(supports_nruns=False))
+
+    await run_solutions(
+        verification=VerificationLevel.FULL,
+        tracked_solutions=['sol.cpp'],
         runner=runner,
     )
 
@@ -258,11 +323,7 @@ async def test_a_batch_backend_keeps_its_verdicts_even_when_the_run_aborts(
     makes the report claim work did not happen. Identity is the check -- comparing
     verdicts would pass against a gate that simply never tripped.
     """
-    await generate_testcases()
-    entries = [
-        entry.group_entry for entry in await extract_generation_testcases_from_groups()
-    ]
-    await generate_outputs_for_testcases(entries)
+    await _build_testset()
 
     returned: List[Deferred[Evaluation]] = []
 
