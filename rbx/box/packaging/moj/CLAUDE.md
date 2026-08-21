@@ -133,6 +133,34 @@ there, so the saving buys nothing. This is also what makes the runner's
 `supports_abort=False` (“a testrun has already run every test by the time rbx sees
 it”) honest rather than merely usually-true.
 
+### `ALLOWPARALLELTEST`
+
+**MOJ runs the testset in parallel by default.** `build-and-test.sh` sets
+`NPROC=$(nproc)` and only drops to a single job when `ALLOWPARALLELTEST` is exactly `n`:
+
+```sh
+NPROC=$(nproc)
+[[ "$ALLOWPARALLELTEST" == "n" ]] && NPROC=1 && LOG " - Parallel Test not allowed in this problem"
+[[ -n "$MAXPARALLELTESTS" ]] && NPROC=$MAXPARALLELTESTS && ...
+```
+
+The park reports **56 CPUs**, so a package that says nothing is judged with dozens of
+tests competing for the machine. That is fine for judging — and it is why the `tests`
+array of a testrun comes back unordered — but it is fatal to *measuring*: every time
+reported is inflated by whatever contention it happened to meet.
+
+**A probe package therefore emits `ALLOWPARALLELTEST=n`**, and mojtools already agrees
+this is the right call when measuring: `calibreitor.sh:125` exports the same value
+before running the accepted solutions. Calibration measures, so it serialises; the probe
+measures, so it does too.
+
+A package a setter builds is left at MOJ's default: there, parallelism is a
+judging-speed feature and the limits are pinned through `TLOVERRIDE`, so what the judge
+measures decides nothing.
+
+Note `MAXPARALLELTESTS` is applied *after* this knob and would override it. The packager
+emits it nowhere, and a probe must never grow one.
+
 ### `ULIMITS[-f]` is fixed, and deliberately not `outputLimit`
 
 `conf` emits `ULIMITS[-f]=102400` (100 MiB in KB), a constant — **not** the problem's
@@ -368,6 +396,7 @@ knob lives:
 | `sols/` | model solution only | [`moj testrun`](#solutions) sends the timed source in the request body; calibration needs one `sols/good` |
 | `languages` | every language rbx may testrun | [the API rejects a submission outside it](#moj-metajson), a testrun included |
 | `STOPWHEN_*` | never emitted | [halting early returns a prefix of the tests](#stopwhen_) |
+| `ALLOWPARALLELTEST` | `n` | [a timing measured against 55 competing tests is not a timing](#allowparalleltest) |
 | `docs/` | always `DUMMY_STATEMENT` | see below |
 | `conf` | one uniform `TLOVERRIDE[default]` | [a per-language entry would measure under a tighter cap](#time-limits-pinned-or-calibrated-on-demand) |
 

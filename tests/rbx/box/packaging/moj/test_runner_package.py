@@ -286,6 +286,50 @@ def test_a_binary_probe_package_never_halts_early(testing_pkg, tmp_path):
         assert key not in conf
 
 
+def test_a_probe_package_runs_its_tests_one_at_a_time(testing_pkg, tmp_path):
+    """A timing measured against 55 competing tests is not a timing.
+
+    `build-and-test.sh` sets `NPROC=$(nproc)` and only drops to one job when
+    `ALLOWPARALLELTEST` is exactly `n` (lines 434-436); the MOJ park reports 56 CPUs.
+    mojtools agrees this matters when measuring -- `calibreitor.sh:125` exports the
+    same value before running the accepted solutions.
+    """
+    _package_with_every_solution_kind(testing_pkg)
+
+    conf = (
+        run_packager(
+            testing_pkg,
+            tmp_path,
+            build_entries(tmp_path, ['samples']),
+            timing_mode=UniformPinned(limit_ms=2000),
+            probe=ProbePackage(submission_languages=('cpp',)),
+        )
+        / 'conf'
+    ).read_text()
+
+    assert 'ALLOWPARALLELTEST=n' in conf
+    # Applied *after* ALLOWPARALLELTEST by build-and-test.sh, so it would override it.
+    assert 'MAXPARALLELTESTS' not in conf
+
+
+def test_a_package_that_is_not_a_probe_keeps_mojs_parallel_default(
+    testing_pkg, tmp_path
+):
+    """Serialising is the probe's alone.
+
+    On a package students submit to, parallelism is a judging-speed feature and the
+    limits are pinned through `TLOVERRIDE`, so what the judge measures decides nothing.
+    """
+    _package_with_every_solution_kind(testing_pkg)
+
+    conf = (
+        run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
+        / 'conf'
+    ).read_text()
+
+    assert 'ALLOWPARALLELTEST' not in conf
+
+
 def test_a_binary_package_that_is_not_a_probe_still_halts_early(testing_pkg, tmp_path):
     # The suppression is the probe's alone; the judge-time saving still applies to a
     # package students actually submit to.

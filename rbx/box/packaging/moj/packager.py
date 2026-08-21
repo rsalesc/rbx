@@ -666,6 +666,7 @@ class MojPackager(BasePackager):
         ]
         lines.extend(self._time_limit_lines())
         lines.extend(self._stopwhen_lines())
+        lines.extend(self._parallelism_lines())
         (into_path / 'conf').write_text('\n'.join(lines))
 
     # -- time limits ----------------------------------------------------------
@@ -795,6 +796,40 @@ class MojPackager(BasePackager):
             'STOPWHEN_WA=y',
             'STOPWHEN_TLE=y',
             'STOPWHEN_RE=y',
+            '',
+        ]
+
+    def _parallelism_lines(self) -> List[str]:
+        """The `ALLOWPARALLELTEST` block. Serial for a probe, MOJ's default otherwise.
+
+        `build-and-test.sh` runs the testset **in parallel by default** -- it sets
+        `NPROC=$(nproc)` and only drops to one job when `ALLOWPARALLELTEST` is exactly
+        `n` (lines 434-436). The MOJ park reports 56 CPUs, so a package that says
+        nothing is measured with dozens of tests competing for the machine, and every
+        time it reports is inflated by however much contention it happened to meet.
+        (It is also why the `tests` array comes back unordered.)
+
+        A probe package exists *only* to measure, so it must not be judged that way --
+        and mojtools already agrees: `calibreitor.sh:125` exports `ALLOWPARALLELTEST=n`
+        before running the accepted solutions, for exactly this reason. Calibration
+        measures, so it serialises; the probe measures, so it serialises too.
+
+        Left at MOJ's default for a package a setter builds: there, parallelism is a
+        judging-speed feature and the limits are pinned through `TLOVERRIDE`, so what
+        the judge measures decides nothing.
+
+        Note `MAXPARALLELTESTS` is applied *after* this knob (line 437) and would
+        override it. The packager emits it nowhere, and a probe must never grow one.
+        """
+        if self.probe is None:
+            return []
+        return [
+            '# Run the testset one test at a time. build-and-test.sh otherwise uses',
+            '# NPROC=$(nproc) -- 56 on the MOJ park -- and a timing measured against',
+            '# dozens of competing tests is inflated by whatever contention it met.',
+            '# calibreitor.sh exports this same value before it measures; a probe',
+            '# package exists only to measure, so it does the same.',
+            'ALLOWPARALLELTEST=n',
             '',
         ]
 
