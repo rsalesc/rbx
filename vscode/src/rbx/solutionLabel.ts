@@ -8,8 +8,6 @@
  * whole of that decision, kept free of `vscode` so it stays testable under
  * plain `node --test` like the rest of `rbx/`.
  */
-import * as path from 'path';
-
 export type SolutionLabelStyle = 'full' | 'trimmed' | 'basename';
 
 export const DEFAULT_SOLUTION_LABEL_STYLE: SolutionLabelStyle = 'trimmed';
@@ -70,13 +68,18 @@ export function solutionLabels(
   const prefix = style === 'trimmed' ? commonDirPrefix(paths) : '';
   const labels = new Map<string, string>();
   for (const solutionPath of paths) {
-    const normalized = segments(solutionPath).join('/');
+    const parts = segments(solutionPath);
+    const normalized = parts.join('/');
     const label = ((): string => {
       switch (style) {
         case 'full':
           return normalized;
         case 'basename':
-          return path.posix.basename(normalized);
+          // The last segment, not `path.posix.basename`: this module is reached
+          // by the webview bundle, which is built for the browser and cannot
+          // resolve a node builtin. `segments` has already dropped the empty
+          // pieces, so there is no trailing-slash case for basename to handle.
+          return parts[parts.length - 1] ?? '';
         case 'trimmed':
           // The prefix always stops short of the basename, so the slice is
           // never empty; the fallback is for a path that somehow did not start
