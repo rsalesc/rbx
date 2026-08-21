@@ -293,14 +293,14 @@
         "rbx.testcaseLayout": {
           "type": "string",
           "enum": [
-            "beside",
-            "below"
+            "below",
+            "beside"
           ],
-          "default": "beside",
+          "default": "below",
           "markdownDescription": "How the two testcase panes are arranged the **first** time they are opened. Only a seed: once the panes exist the extension reuses whichever editor groups they are in, so an arrangement you set yourself is kept.",
           "enumDescriptions": [
-            "The input in its own column, the output diff beside it.",
-            "The input above, the output diff below -- the way `rbx ui` stacks them."
+            "The input above, the output diff below -- the way `rbx ui` stacks them. The diff gets the full editor width, so it keeps its side-by-side view.",
+            "The input in its own column, the output diff beside it. Roomier for a long testcase, but a narrow diff renders inline unless you also set `diffEditor.useInlineViewWhenSpaceIsLimited` to `false`."
           ]
         }
       }

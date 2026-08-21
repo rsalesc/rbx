@@ -136,9 +136,18 @@ So it is a **fallback, not a policy**:
    *joined* — the input into the active group, the channel beside it — not
    rearranged.
 
-`rbx.testcaseLayout` (`beside` | `below`) seeds step 3 only. `beside` gives the
-input its own column; `below` stacks them the way `rbx ui` does. After the first
+`rbx.testcaseLayout` (`below` | `beside`) seeds step 3 only. `below` stacks them
+the way `rbx ui` does; `beside` gives the input its own column. After the first
 drag neither value matters again, which is the point.
+
+**`below` is the default, and the diff is the reason.** VS Code ships
+`diffEditor.useInlineViewWhenSpaceIsLimited` on, so it silently drops a narrow
+diff to an inline view; `beside` hands the channel pane a fraction of an editor
+area that has already lost width to the sidebar, and on a laptop that renders
+the output against the answer inline with nothing on screen saying why. Stacked,
+the diff spans the full width and side-by-side holds at any size. `beside` was
+the first choice, on the grounds that testcases are tall rather than wide —
+which is true of the *input*, and the input is not the pane that breaks.
 
 The trigger is deliberately **explicit**. Following the highlight, as `rbx ui`
 does, would seize the editor area the moment the sidebar was touched. The card
@@ -164,6 +173,17 @@ gives `alt+1/2/3` an exact correspondence with `rbx ui`'s `1/2/3`.
 The cost is that the answer cannot be opened alone. The diff editor's own
 inline/side-by-side toggle covers reading it, and `rbx.openAnswer` stays in the
 context menu.
+
+### How the diff renders is not ours
+
+Deliberately no `rbx.*` setting for side-by-side versus inline. The diff editor
+already carries the whole question — `diffEditor.renderSideBySide` as a setting,
+the More Actions menu as a live switch, and `toggle.diff.renderSideBySide` as a
+bindable command — and a mirror here could not win anyway: the diff editor reads
+`diffEditor.*`, not ours, and `vscode.diff` takes a `TextDocumentShowOptions`
+carrying column, preview and focus but nothing about rendering. The only thing
+this design owes the subject is a **default layout that does not provoke the
+responsive behaviour**, which is D3's `below`.
 
 There is no `in` button: the input lives permanently in group A, and a button
 pointing it at group B would put the same file on screen twice.

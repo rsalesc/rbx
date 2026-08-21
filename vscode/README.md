@@ -166,10 +166,12 @@ and reading a wrong answer without it is reading half the story. So a testcase
 opens **two editor panes**, the way `rbx ui`'s run explorer shows them:
 
 ```
-+- input.in -----+  +- output.out <-> answer.out ----+
-| 5 3            |  | 12            | 14             |
-| 1 2 3 4 5      |  |               |                |
-+----------------+  +--------------------------------+
++- input.in ------------------------------+
+| 5 3                                     |
+| 1 2 3 4 5                               |
++- output.out <-> answer.out -------------+
+| 12                  | 14                |
++-----------------------------------------+
 ```
 
 Real editors and not a webview, because testcases are large: a `TextDocument`
@@ -194,7 +196,7 @@ is per group -- so arrowing down the list swaps the documents in place and never
 piles up tabs.
 
 The first time a testcase is opened, the extension lays out two groups:
-`rbx.testcaseLayout` picks `beside` (default) or `below`. **That is a seed and
+`rbx.testcaseLayout` picks `below` (default) or `beside`. **That is a seed and
 nothing more.** Afterwards it finds its own panes -- every artifact travels on
 the `rbx:` scheme, so a tab carrying one is recognisably ours -- and reuses
 whichever groups they are sitting in, without touching the layout again.
@@ -202,6 +204,33 @@ whichever groups they are sitting in, without touching the layout again.
 Even the seed holds back when you have already split the editor yourself: with
 more than one group open it joins them instead, putting the input in the active
 group and the channel beside it, rather than collapsing your arrangement to two.
+
+`below` is the default because of the **diff**, not the input. VS Code ships
+`diffEditor.useInlineViewWhenSpaceIsLimited` turned on, which quietly drops a
+narrow diff to an inline view -- and `beside` hands the channel pane a fraction
+of an editor area that has already lost width to the sidebar. On a laptop that
+renders the output against the answer inline, with nothing on screen saying why.
+Stacked, the diff spans the full width and side-by-side holds at any window
+size. `beside` is roomier for a long testcase; pair it with
+`"diffEditor.useInlineViewWhenSpaceIsLimited": false` if you want side-by-side
+kept regardless.
+
+#### The diff is VS Code's own
+
+Nothing about how the diff *renders* is the extension's, deliberately -- the
+diff editor already has all of it, and a second knob here would only fight the
+built-in one:
+
+| Want | Use |
+|---|---|
+| side-by-side or inline, as a setting | `diffEditor.renderSideBySide` |
+| switch it live | the diff editor's **More Actions** (`...`) menu |
+| a key for it | bind `toggle.diff.renderSideBySide` |
+| ignore whitespace | `diffEditor.ignoreTrimWhitespace`, or `toggle.diff.ignoreTrimWhitespace` |
+
+`vscode.diff` takes a `TextDocumentShowOptions` -- which column, preview,
+focus -- and nothing about rendering, so these are window-wide preferences
+rather than something a testcase pane could set for itself even if it wanted to.
 
 That distinction is the whole design. Laying out editor groups is global and
 destructive: it rearranges the entire editor area, the solution source you were

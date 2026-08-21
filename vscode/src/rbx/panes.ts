@@ -160,13 +160,22 @@ export function isDiff(artifact: Artifact | DiffArtifact): artifact is DiffArtif
  * is never consulted again, so a user who drags them keeps the arrangement for
  * good. `beside` gives the input its own column; `below` stacks them the way
  * `rbx ui` does.
+ *
+ * `below` is the default, and the reason is the diff rather than the input.
+ * `diffEditor.useInlineViewWhenSpaceIsLimited` is on by default, so VS Code
+ * quietly drops a narrow diff to an inline view -- and `beside` hands the
+ * channel pane a fraction of an editor area that has already lost width to the
+ * sidebar. On a laptop that renders the output against the answer inline, with
+ * nothing on screen saying why. Stacked, the diff spans the full width and
+ * side-by-side survives at any window size. What it costs is vertical room,
+ * which a long testcase would rather have -- hence the setting.
  */
 export type TestcaseLayout = 'beside' | 'below';
 
-export const DEFAULT_TESTCASE_LAYOUT: TestcaseLayout = 'beside';
+export const DEFAULT_TESTCASE_LAYOUT: TestcaseLayout = 'below';
 
 export function asTestcaseLayout(value: unknown): TestcaseLayout {
-  return value === 'below' ? 'below' : DEFAULT_TESTCASE_LAYOUT;
+  return value === 'beside' ? 'beside' : DEFAULT_TESTCASE_LAYOUT;
 }
 
 /**

@@ -95,13 +95,17 @@ test('every artifact a pane opens is recognised as that pane', () => {
   assert.deepStrictEqual(kinds, ['input', 'channel', 'channel', 'channel', 'channel']);
 });
 
-test('the layout setting picks a built-in layout command, and defaults to beside', () => {
+test('the layout setting picks a built-in layout command, and defaults to below', () => {
   assert.strictEqual(asTestcaseLayout('below'), 'below');
   assert.strictEqual(asTestcaseLayout('beside'), 'beside');
   // Anything else is the default: the setting is window-scoped and a user can
   // type into it, and a layout command that does not exist would throw.
-  assert.strictEqual(asTestcaseLayout(undefined), 'beside');
-  assert.strictEqual(asTestcaseLayout('sideways'), 'beside');
+  //
+  // `below` and not `beside`, so the diff spans the full editor width: VS Code
+  // drops a narrow diff to an inline view on its own, and a channel pane given
+  // half of an already-narrowed editor area is narrow.
+  assert.strictEqual(asTestcaseLayout(undefined), 'below');
+  assert.strictEqual(asTestcaseLayout('sideways'), 'below');
 
   assert.strictEqual(
     layoutCommand('beside'),
