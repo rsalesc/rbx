@@ -32,10 +32,13 @@ Two facts shape the design:
   (`cmd_testrun` reads `"$ref/.moj-id"`). So binding an rbx package to a remote problem
   through that file is the CLI's own convention, not an invention.
 - **`TLOVERRIDE` in `conf` beats the calibrated TL**, per language, and `moj check`
-  surfaces it as `⚙ TL OVERRIDE (vence o calibrado)`. That is a far cleaner lever than
-  the slope-zero `TLMOD[calibrafactor]` pinning
-  ([`packaging/moj/timing.py`](../../rbx/box/packaging/moj/timing.py)) uses today, which
-  exists only because the packager has no other way to express a fixed limit.
+  surfaces it as `⚙ TL OVERRIDE (vence o calibrado)`. **rbx already speaks it**:
+  [#685](https://github.com/rsalesc/rbx/pull/685) replaced the old slope-zero
+  `TLMOD[calibrafactor]` pinning with `TLOVERRIDE[default]`, per-language entries and a
+  `CALIBRATIONTL` floor
+  ([`packaging/moj/timing.py`](../../rbx/box/packaging/moj/timing.py)). The runner
+  therefore needs no new emission machinery -- only a way to ask for a limit that is not
+  the `moj` profile's.
 
 ## The seam: `SolutionRunner`
 
@@ -144,7 +147,8 @@ The same flag is what `rbx run --runner moj` will use later.
    `{"id": "<login>#rbxt-<problem-id>"}`. Committing it is what makes two setters on the
    same problem reach the same remote problem instead of each orphaning one on the server.
 3. Build a MOJ package with `MojPackager`, carrying **only the model solution** in
-   `sols/good/`, and `TLOVERRIDE` set from `ctx.timelimit_override`.
+   `sols/good/`, a **uniform** `TLOVERRIDE` taken from `ctx.timelimit_override`, and the
+   full submission-language whitelist (see below).
 4. `moj upload <id> <dir>`.
 5. `moj calibrate <id>`, then poll `moj --json check <id>` until
    `.tl.calibrated && not .tl.being_calibrated`. Skipped entirely when the problem is
@@ -154,6 +158,40 @@ The same flag is what `rbx run --runner moj` will use later.
 takes the source in the request body, and calibration only needs one `good/` solution to
 succeed at all. So a whole session is one upload and one calibration however many solutions
 get measured -- which is also why the package can stay minimal.
+
+#### A third timing mode, not a new one
+
+`_time_limit_lines` today refuses to guess between two modes: the `moj` limits profile
+pins the limits, or `--calibrate` hands them to the judge. The runner needs a third --
+*pin every language to one explicit number* -- so the boolean `calibrate` flag becomes a
+small mode object (`ProfilePinned` / `JudgeCalibrated` / `UniformPinned(limit_ms)`).
+`UniformPinned` builds `FixedTimeLimits(base_ms=limit_ms, per_language_ms={})` and reuses
+`fixed_limit_lines` unchanged; `calibration_tl_seconds` then raises `CALIBRATIONTL` to
+match on its own.
+
+The limit must be **uniform across languages**, which is why this is not just
+`_fixed_time_limits` with a different profile. `ctx.timelimit_override` is a single cap --
+the inference timeout, or `timeLimitToTle x TL` -- and emitting the profile's per-language
+`TLOVERRIDE` entries alongside it would silently measure some languages under a *tighter*
+cap than rbx asked for, quietly truncating exactly the timings the estimate rests on.
+
+#### The language whitelist is load-bearing here
+
+`.moj-meta.json`'s `languages` is the whitelist of submission languages, and **the API
+rejects a submission outside it** -- a testrun included. The packager derives it from the
+languages with an **ACCEPTED solution**, which is right for a real problem and wrong here:
+a calibration-only package ships one accepted solution, so the whitelist would collapse to
+that one language and every testrun of a solution in another language would be refused --
+including, in phase 2, the slow and wrong solutions, which are never accepted by
+construction.
+
+So the runner package emits the whitelist from the languages of **every solution rbx may
+testrun**, not from the shipped ones. The narrowing that protects a real problem's
+submission surface buys nothing on a private, throwaway `rbxt-` problem.
+
+Relatedly, MOJ picks the language from the **file extension** of the uploaded source
+(`moj testrun` sends `filename: basename(sol)`), so the amalgamated file must carry the
+right one.
 
 ### `run_solution()`
 
@@ -210,11 +248,11 @@ runner works, and is called out here so the limitation is not rediscovered later
 
 | # | Task | What ships |
 |---|---|---|
-| 0 | **Probe** a throwaway `rbxt-` problem on the live MOJ: does `testrun` require a prior calibration; the `code` vocabulary; does the response name the host; `TLOVERRIDE` syntax; does a `TLOVERRIDE`-only `conf` change force recalibration | notes + recorded JSON fixtures |
+| 0 | **Probe** a throwaway `rbxt-` problem on the live MOJ: does `testrun` require a prior calibration (and a prior `moj validate`); the `code` vocabulary; does the response name the host; is a submission outside `languages` really refused; does a `TLOVERRIDE`-only `conf` change force recalibration | notes + recorded JSON fixtures |
 | 1 | Extract `SolutionRunner` / `RunContext` / `LocalRunner`; `run_solutions(runner=)` | pure refactor, no behavior change |
 | 2 | `RunnerCapabilities`; audit every consumer of memory, artifacts and checker messages for `None`-tolerance | degradation is safe |
 | 3 | `.moj-id` handling and a `moj` CLI wrapper (`whoami`, `upload`, `calibrate`, `check`, `testrun`, `testrun-status`) over `--json` | testable against the recorded fixtures |
-| 4 | `MojPackager`: `TLOVERRIDE` emission and a calibration-only package mode | `rbx package moj` flag |
+| 4 | `MojPackager`: a `UniformPinned` timing mode, a calibration-only solution set, and the widened language whitelist | the package the runner uploads |
 | 5 | `MojRunner.prepare` -- upload, calibrate, poll, already-calibrated fast path | `rbx time -p moj --runner moj` reaches a calibrated remote problem |
 | 6 | `MojRunner.run_solution` -- testrun fan-out, verdict mapping, background task, concurrency cap | phase 1 end to end |
 | 7 | Wire into `timing._run_for_inference`; phase 2 upload at `timeLimitToTle x TL` and the remaining solutions | the full flow |
