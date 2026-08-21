@@ -74,34 +74,50 @@ back `List[Deferred[Evaluation]]` -- one deferred per testcase.
 The backend seam goes at exactly that grain, **per solution**, because that is MOJ's grain:
 one testrun judges a solution against every test at once.
 
+**As built** (Tasks 1-2; this replaces the sketch this section originally carried, which
+differed in three ways worth knowing about -- see below):
+
 ```python
 @dataclasses.dataclass(frozen=True)
 class RunnerCapabilities:
-    measures_memory: bool = True       # TestcaseLog.memory
-    captures_artifacts: bool = True    # .out / .err / .log beside the .eval
-    checker_messages: bool = True      # CheckerResult.message
+    measures_memory: bool = True             # TestcaseLog.memory
+    captures_artifacts: bool = True          # .out / .err / .log beside the .eval
+    reports_checker_messages: bool = True    # CheckerResult.message
     supports_nruns: bool = True
-    supports_abort: bool = True        # mid-solution fail-fast
+    supports_abort: bool = True              # can SAVE the work of a skipped testcase
     supports_interactive: bool = True
+    supports_sanitizers: bool = True
 
 
 class SolutionRunner(Protocol):
     name: str
     caps: RunnerCapabilities
 
-    async def prepare(self, skeleton: SolutionReportSkeleton, ctx: RunContext) -> None: ...
-    def run_solution(self, solution, entries, groups, ctx: RunContext) -> List[Deferred[Evaluation]]: ...
-    async def finalize(self) -> None: ...
+    async def prepare(self, ctx: RunContext) -> None: ...
+    def run_solution(self, solution, entries, ctx: RunContext) -> List[Deferred[Evaluation]]: ...
 ```
 
-`RunContext` carries what `_run_solution` takes today: checker and interactor digests,
-`verification`, `timelimit_override`, `nruns`, `capture_pipes`, the `_AbortGate`,
-`abort_on`, and the progress handle.
+`RunContext` carries the skeleton, the checker and interactor digests, `verification`,
+`timelimit_override`, `nruns`, `abort_on`, and the progress handle.
 
-`LocalRunner.run_solution` **is** today's `_run_solution`, moved verbatim -- the local path
-must not change behavior at all. `_produce_solution_items` keeps the group iteration, the
-gate construction and the `EvaluationItem` assembly, and delegates only the body.
-`run_solutions` gains a `runner=` parameter and calls `prepare` / `finalize` around the loop.
+Three corrections the implementation forced, each of which would have broken `MojRunner`:
+
+1. **`run_solution` is called once per SOLUTION, with the whole testset flattened in group
+   order.** The first cut kept `_produce_solution_items`' group loop and called the runner
+   inside it -- which is per *group*, and would have fired one `moj testrun` per group per
+   solution while the docstring above claimed otherwise.
+2. **There is no `finalize`.** It fired inside a `finally` around item production, which
+   only *builds* thunks -- so it ran before a single deferred resolved, and would have torn
+   a remote session down before the first result was fetched. Nothing needs it: the remote
+   problem is persistent by design (`.moj-id` is committed and reused), so a half-calibrated
+   problem is the next run's starting point, not garbage. A correctly-timed teardown hook
+   can be added when something actually needs one.
+3. **The abort/skip gate is not the backend's job.** `_gated_evaluation` in `solutions.py`
+   wraps each returned deferred *when the run asks for `abort_on` and the backend declares
+   `supports_abort`*; a run without `abort_on` gets the backend's deferreds unwrapped, which
+   is a deliberate guarantee pinned by a test. Otherwise every backend would re-implement
+   `_AbortGate` correctly or silently lose the abort -- and a batch backend would have a
+   real judge verdict overwritten with `SKIPPED`.
 
 ### The deferreds do not change
 
@@ -110,10 +126,12 @@ starts the remote work **in the background immediately** and hands back deferred
 await the same job:
 
 ```python
-def run_solution(self, solution, entries, groups, ctx):
+def run_solution(self, solution, entries, ctx):
     job = asyncio.create_task(self._submit_and_poll(solution))   # queued on the judge now
-    return [Deferred(lambda e=e, i=i: self._slice(job, e, i)) for i, e in enumerate(entries)]
+    return [Deferred(lambda e=e: self._slice(job, e)) for e in entries]
 ```
+
+Slice by MOJ **test name**, never by position -- see `run_solution()` below.
 
 Consumption order is unchanged, so the report streams exactly as it does locally; but every
 solution is already sitting in the judge queue while the first one is still being printed.
