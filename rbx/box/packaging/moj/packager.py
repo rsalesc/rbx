@@ -800,7 +800,10 @@ class MojPackager(BasePackager):
         ]
 
     def _parallelism_lines(self) -> List[str]:
-        """The `ALLOWPARALLELTEST` block. Serial for a probe, MOJ's default otherwise.
+        """What a probe changes so the judge *measures* rather than judges.
+
+        Two knobs, one argument: `ALLOWPARALLELTEST` and `TLERERUN`. Both are
+        MOJ defaults tuned for judging throughput, and both corrupt a measurement.
 
         `build-and-test.sh` runs the testset **in parallel by default** -- it sets
         `NPROC=$(nproc)` and only drops to one job when `ALLOWPARALLELTEST` is exactly
@@ -830,6 +833,16 @@ class MojPackager(BasePackager):
             '# calibreitor.sh exports this same value before it measures; a probe',
             '# package exists only to measure, so it does the same.',
             'ALLOWPARALLELTEST=n',
+            '',
+            '# And do not re-run a test that hit the limit. TLERERUN defaults to y and',
+            '# exists to absorb a false TLE caused by parallel tests -- its own log line',
+            '# says so -- which is a problem the line above already removed. Left on, it',
+            '# would replace the measured time with a second one taken under different',
+            '# conditions, spend the judge twice on the slowest solutions, and do it',
+            '# only until some test stays TLE (build-and-test.sh latches TLERERUN=n from',
+            '# then on), so which tests got a second chance would depend on the order',
+            '# they finished in.',
+            'TLERERUN=n',
             '',
         ]
 

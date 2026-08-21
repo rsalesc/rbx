@@ -161,6 +161,25 @@ measures decides nothing.
 Note `MAXPARALLELTESTS` is applied *after* this knob and would override it. The packager
 emits it nowhere, and a probe must never grow one.
 
+**`TLERERUN` goes with it, and for the same reason.** It defaults to `y`, and
+`build-and-test.sh` re-runs any test that hit the limit and takes the **rerun's** verdict
+and time. Its own log line says what it is for:
+
+```
+LOG " - Rerun: because got TLE while running parallel tests"
+```
+
+It exists to absorb a false TLE caused by the contention `ALLOWPARALLELTEST=n` has just
+removed. Left on for a probe it does three unhelpful things: replaces a measured time with
+a second one taken under different conditions, spends the judge twice on the slowest
+solutions (the ones that were already the most expensive), and does so **only until some
+test stays TLE** — the script latches `TLERERUN=n` from that point on — so which tests got
+a second chance depends on the order they happened to finish in. A probe therefore emits
+`TLERERUN=n`.
+
+A package a setter builds keeps the default: there a false TLE is a wrong verdict for a
+student, and a second chance is exactly right.
+
 ### `ULIMITS[-f]` is fixed, and deliberately not `outputLimit`
 
 `conf` emits `ULIMITS[-f]=102400` (100 MiB in KB), a constant — **not** the problem's
@@ -397,6 +416,7 @@ knob lives:
 | `languages` | every language rbx may testrun | [the API rejects a submission outside it](#moj-metajson), a testrun included |
 | `STOPWHEN_*` | never emitted | [halting early returns a prefix of the tests](#stopwhen_) |
 | `ALLOWPARALLELTEST` | `n` | [a timing measured against 55 competing tests is not a timing](#allowparalleltest) |
+| `TLERERUN` | `n` | [the rerun's time replaces the measured one](#allowparalleltest) |
 | `docs/` | always `DUMMY_STATEMENT` | see below |
 | `conf` | one uniform `TLOVERRIDE[default]` | [a per-language entry would measure under a tighter cap](#time-limits-pinned-or-calibrated-on-demand) |
 

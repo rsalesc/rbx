@@ -15,6 +15,7 @@ Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 """
 
 import json
+from typing import List
 
 import pytest
 
@@ -286,6 +287,21 @@ def test_a_binary_probe_package_never_halts_early(testing_pkg, tmp_path):
         assert key not in conf
 
 
+def _directives(conf: str) -> List[str]:
+    """The lines `conf` actually sets, with comments and blanks dropped.
+
+    Asserting `'X=n' in conf` is not enough: these comment blocks quote the very
+    settings they explain, so a substring check happily matches the prose and
+    passes against a `conf` that sets the opposite. Found by mutation -- flipping
+    `TLERERUN=n` to `=y` left every test green.
+    """
+    return [
+        line.strip()
+        for line in conf.splitlines()
+        if line.strip() and not line.lstrip().startswith('#')
+    ]
+
+
 def test_a_probe_package_runs_its_tests_one_at_a_time(testing_pkg, tmp_path):
     """A timing measured against 55 competing tests is not a timing.
 
@@ -307,9 +323,36 @@ def test_a_probe_package_runs_its_tests_one_at_a_time(testing_pkg, tmp_path):
         / 'conf'
     ).read_text()
 
-    assert 'ALLOWPARALLELTEST=n' in conf
+    directives = _directives(conf)
+    assert 'ALLOWPARALLELTEST=n' in directives
     # Applied *after* ALLOWPARALLELTEST by build-and-test.sh, so it would override it.
-    assert 'MAXPARALLELTESTS' not in conf
+    assert not [line for line in directives if line.startswith('MAXPARALLELTESTS')]
+
+
+def test_a_probe_package_never_reruns_a_test_that_hit_the_limit(testing_pkg, tmp_path):
+    """`TLERERUN` defaults to `y` and would replace a measured time with a second one.
+
+    build-and-test.sh re-runs a TLE test and takes the *rerun's* verdict, and its own
+    log line says why: "because got TLE while running parallel tests" -- it absorbs a
+    false TLE caused by the contention `ALLOWPARALLELTEST=n` already removed. Left on
+    for a probe it would measure the slowest solutions twice, and only until some test
+    stayed TLE (the script latches `TLERERUN=n` from then on), so which tests got a
+    second chance would depend on the order they happened to finish in.
+    """
+    _package_with_every_solution_kind(testing_pkg)
+
+    conf = (
+        run_packager(
+            testing_pkg,
+            tmp_path,
+            build_entries(tmp_path, ['samples']),
+            timing_mode=UniformPinned(limit_ms=2000),
+            probe=ProbePackage(submission_languages=('cpp',)),
+        )
+        / 'conf'
+    ).read_text()
+
+    assert 'TLERERUN=n' in _directives(conf)
 
 
 def test_a_package_that_is_not_a_probe_keeps_mojs_parallel_default(
@@ -327,7 +370,11 @@ def test_a_package_that_is_not_a_probe_keeps_mojs_parallel_default(
         / 'conf'
     ).read_text()
 
-    assert 'ALLOWPARALLELTEST' not in conf
+    directives = _directives(conf)
+    assert not [line for line in directives if line.startswith('ALLOWPARALLELTEST')]
+    # Same scope: rerunning a TLE is throughput tuning for a judge, and only a
+    # measurement is harmed by taking the second time instead of the first.
+    assert not [line for line in directives if line.startswith('TLERERUN')]
 
 
 def test_a_binary_package_that_is_not_a_probe_still_halts_early(testing_pkg, tmp_path):
