@@ -125,6 +125,14 @@ Worth knowing: the early break only fires from inside the `JOBSCOUNT > NPROC-1` 
 of the loop, so with fewer tests than cores nothing stops early. It is a best-effort
 speed optimization, not a guarantee.
 
+**A probe package gets none of them either**, whatever its scoring — the same argument
+from the other side. A probe exists to collect a timing per test, and the solutions it
+times include the slow and wrong ones, which fail by construction; the first failure
+would return a prefix of the tests and lose the rest of the timings. Nothing is judged
+there, so the saving buys nothing. This is also what makes the runner's
+`supports_abort=False` (“a testrun has already run every test by the time rbx sees
+it”) honest rather than merely usually-true.
+
 ## Test naming (`naming.py`)
 
 Samples are `sample001…`; everything else is `t<NN>_<group>_<NNN>` with `NN` the

@@ -16,6 +16,8 @@ Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 
 import json
 
+import pytest
+
 from rbx.box.packaging.moj import timing
 from rbx.box.packaging.moj.packager import (
     JudgeCalibrated,
@@ -136,6 +138,65 @@ def test_uniform_limit_raises_the_calibration_limit(testing_pkg, tmp_path):
     assert _conf_value(conf, 'CALIBRATIONTL') == '15'
 
 
+def test_uniform_limit_rejects_a_non_positive_cap():
+    # The runner derives this from `ctx.timelimit_override`, the kind of value that
+    # arrives unset. MOJ greps TLOVERRIDE rather than evaluating it, so `0.000` or
+    # `-1.500` would upload, calibrate, and TLE every run with nothing to show for it.
+    for bad in [0, -1500]:
+        with pytest.raises(ValueError, match='positive'):
+            UniformPinned(limit_ms=bad)
+
+
+# -- where the emitted numbers say they came from ----------------------------
+#
+# `conf`'s comments are the only place a human debugging a timing run learns which
+# of the three modes produced the limits below them. Nothing else can catch these
+# going wrong: they are comments, so every mode still emits a valid package.
+
+
+def test_a_probe_conf_does_not_claim_the_limits_came_from_the_profile(
+    testing_pkg, tmp_path
+):
+    minimal_package(testing_pkg)
+    testing_pkg.save()
+
+    conf = (
+        run_packager(
+            testing_pkg,
+            tmp_path,
+            build_entries(tmp_path, ['samples']),
+            timing_mode=UniformPinned(limit_ms=2000),
+            probe=ProbePackage(submission_languages=('cpp',)),
+        )
+        / 'conf'
+    ).read_text()
+
+    assert 'UNIFORM across languages' in conf
+    # The profile's story, on a package that consulted no profile, would be a lie.
+    assert 'limits profile' not in conf
+    assert 'rbx time -p moj' not in conf
+
+
+def test_a_profile_pinned_conf_says_the_limits_came_from_the_profile(
+    testing_pkg, tmp_path
+):
+    minimal_package(testing_pkg)
+    testing_pkg.save()
+
+    conf = (
+        run_packager(
+            testing_pkg,
+            tmp_path,
+            build_entries(tmp_path, ['samples']),
+            timing_mode=ProfilePinned(),
+        )
+        / 'conf'
+    ).read_text()
+
+    assert 'limits profile `rbx time -p moj` estimated' in conf
+    assert 'UNIFORM across languages' not in conf
+
+
 # -- the shipped solutions ---------------------------------------------------
 
 
@@ -167,7 +228,7 @@ def test_probe_package_ships_only_the_model_solution(testing_pkg, tmp_path):
         tmp_path,
         build_entries(tmp_path, ['samples']),
         timing_mode=UniformPinned(limit_ms=2000),
-        probe=ProbePackage(submission_languages=['cpp']),
+        probe=ProbePackage(submission_languages=('cpp',)),
     )
 
     assert [path.name for path in (into_path / 'sols' / 'good').iterdir()] == [
@@ -194,7 +255,57 @@ def test_a_real_package_still_ships_every_solution(testing_pkg, tmp_path):
         assert list((into_path / 'sols' / tag).iterdir())
 
 
+# -- halting early would truncate the timings --------------------------------
+
+
+def test_a_binary_probe_package_never_halts_early(testing_pkg, tmp_path):
+    # A BINARY problem normally gets STOPWHEN_WA/TLE/RE=y, and build-and-test.sh
+    # checks them *before* the RUNALL guard. But a probe exists to collect a timing
+    # per test, and the solutions it times include the slow and wrong ones, which
+    # fail by construction: the first failure would break out of the loop and rbx
+    # would get back a prefix of the tests. It is also what makes the runner's
+    # `supports_abort=False` -- "a testrun has already run every test" -- true.
+    _package_with_every_solution_kind(testing_pkg)
+
+    conf = (
+        run_packager(
+            testing_pkg,
+            tmp_path,
+            build_entries(tmp_path, ['samples']),
+            timing_mode=UniformPinned(limit_ms=2000),
+            probe=ProbePackage(submission_languages=('cpp',)),
+        )
+        / 'conf'
+    ).read_text()
+
+    for key in ['STOPWHEN_WA=y', 'STOPWHEN_TLE=y', 'STOPWHEN_RE=y']:
+        assert key not in conf
+
+
+def test_a_binary_package_that_is_not_a_probe_still_halts_early(testing_pkg, tmp_path):
+    # The suppression is the probe's alone; the judge-time saving still applies to a
+    # package students actually submit to.
+    _package_with_every_solution_kind(testing_pkg)
+
+    conf = (
+        run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
+        / 'conf'
+    ).read_text()
+
+    for key in ['STOPWHEN_WA=y', 'STOPWHEN_TLE=y', 'STOPWHEN_RE=y']:
+        assert key in conf
+
+
 # -- the submission whitelist ------------------------------------------------
+
+
+def test_a_probe_package_must_whitelist_something():
+    # Empty would "work" -- `_write_moj_meta` omits an empty `languages`, and the
+    # server then preserves whatever the problem already had. That is luck in the
+    # permissive direction: it means the caller enumerated no testrunnable language
+    # and the package silently inherits an earlier run's whitelist.
+    with pytest.raises(ValueError, match='at least one submission language'):
+        ProbePackage(submission_languages=())
 
 
 def test_probe_package_whitelists_languages_it_ships_no_solution_for(
@@ -213,7 +324,7 @@ def test_probe_package_whitelists_languages_it_ships_no_solution_for(
         tmp_path,
         build_entries(tmp_path, ['samples']),
         timing_mode=UniformPinned(limit_ms=2000),
-        probe=ProbePackage(submission_languages=['cpp', 'java', 'py3']),
+        probe=ProbePackage(submission_languages=('cpp', 'java', 'py3')),
     )
 
     meta = json.loads((into_path / '.moj-meta.json').read_text())
@@ -241,7 +352,7 @@ def test_probe_package_does_not_warn_about_a_narrowed_whitelist(
         tmp_path,
         build_entries(tmp_path, ['samples']),
         timing_mode=UniformPinned(limit_ms=2000),
-        probe=ProbePackage(submission_languages=['cpp', 'java', 'py']),
+        probe=ProbePackage(submission_languages=('cpp', 'java', 'py')),
     )
 
     out = ' '.join(capsys.readouterr().out.split())

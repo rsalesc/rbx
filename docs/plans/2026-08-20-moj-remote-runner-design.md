@@ -137,6 +137,12 @@ explicit so the consumers can be audited once rather than discovered by crash:
   message. Refusing is the default; judge time is a shared resource.
 - **`abort_on`** -- a testrun has already run every test by the time rbx sees it, so the
   abort saves nothing and is ignored. Nothing may assume `SKIPPED` evaluations appear.
+  That sentence is only true because the probe package **suppresses `STOPWHEN_*`**
+  (`_stopwhen_lines`): a BINARY problem would otherwise ship `STOPWHEN_WA/TLE/RE=y`,
+  and `build-and-test.sh` checks those before the `RUNALL` guard -- so the first
+  failure of a slow or wrong solution, which fails by construction, would break out of
+  the loop and return a *prefix* of the tests. Nothing is judged on a probe, so the
+  judge-time saving buys nothing to weigh against the lost timings.
 
 ### Selecting a runner
 

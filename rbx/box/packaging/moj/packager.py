@@ -3,7 +3,8 @@ import dataclasses
 import json
 import pathlib
 import shutil
-from typing import Dict, List, Optional, Union
+import typing
+from typing import Dict, List, Optional, Tuple, Union
 
 import typer
 
@@ -118,6 +119,18 @@ class UniformPinned:
 
     limit_ms: int
 
+    def __post_init__(self) -> None:
+        # The runner derives this from `ctx.timelimit_override`, exactly the kind of
+        # value that arrives unset. `fmt_seconds` would happily emit `-1.500` or
+        # `0.000`, and MOJ reads TLOVERRIDE with grep rather than evaluating it, so
+        # the package would upload, calibrate, and TLE every single run -- with the
+        # bad number visible only to whoever reads `conf`.
+        if self.limit_ms <= 0:
+            raise ValueError(
+                f'A MOJ time limit must be a positive number of milliseconds, got '
+                f'`{self.limit_ms}`.'
+            )
+
 
 # How a package settles its time limits. The packager refuses to guess between these,
 # which is why it is a mode object rather than a defaulted number: each one carries a
@@ -145,7 +158,22 @@ class ProbePackage:
     # outside this list -- a testrun included -- so it must cover every language rbx
     # may time, including the slow and wrong solutions, which are never ACCEPTED by
     # construction and so would never make the usual accepted-solutions whitelist.
-    submission_languages: List[str]
+    # A tuple rather than a list, so `frozen=True` is not a lie: this really is
+    # immutable and hashable, which a package cache key will want.
+    submission_languages: Tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        # Empty would *work*, in the permissive direction: `_write_moj_meta` omits an
+        # empty `languages` and the server then preserves whatever the problem already
+        # had. That is luck, not intent -- an empty list means the caller could not
+        # enumerate a single testrunnable language, and the resulting package would
+        # silently inherit some earlier run's whitelist.
+        if not self.submission_languages:
+            raise ValueError(
+                'A probe package must whitelist at least one submission language: '
+                'the MOJ API rejects a submission outside `.moj-meta.json`, a '
+                'testrun included.'
+            )
 
 
 def _resolved_multipliers() -> Optional[TimingMultipliers]:
@@ -219,20 +247,27 @@ def check_timing_setup(timing_mode: TimingMode) -> None:
 
     `UniformPinned` has nothing to check: it carries its own number, and consults
     neither the `moj` profile nor `timing.multipliers`.
+
+    Every mode is named explicitly, with no fall-through: this and
+    `_time_limit_lines` are the two places that decide what a mode *means*, and a
+    fourth mode silently inheriting a different default in each would be exactly the
+    guessing the union exists to prevent.
     """
     if isinstance(timing_mode, UniformPinned):
         return
     if isinstance(timing_mode, ProfilePinned):
         _require_limits_profile()
         return
-
-    _ac_to_time_limit_or_die()
-    if limits_info.get_saved_limits_profile(LIMITS_PROFILE) is not None:
-        console.console.print(
-            f'[warning]A [item]{LIMITS_PROFILE}[/item] limits profile exists, but '
-            '[item]--calibrate[/item] hands the time limits to MOJ, so its estimated '
-            'limits are not pinned into the package.[/warning]'
-        )
+    if isinstance(timing_mode, JudgeCalibrated):
+        _ac_to_time_limit_or_die()
+        if limits_info.get_saved_limits_profile(LIMITS_PROFILE) is not None:
+            console.console.print(
+                f'[warning]A [item]{LIMITS_PROFILE}[/item] limits profile exists, but '
+                '[item]--calibrate[/item] hands the time limits to MOJ, so its '
+                'estimated limits are not pinned into the package.[/warning]'
+            )
+        return
+    typing.assert_never(timing_mode)
 
 
 class MojPackager(BasePackager):
@@ -540,7 +575,8 @@ class MojPackager(BasePackager):
         profile pins them (the default), `--calibrate` hands the decision to the
         judge, or a timing run pins one uniform cap. Each precondition is checked
         here rather than only in the CLI, so no caller can emit a `conf` with limits
-        nothing decided.
+        nothing decided. Every mode is named explicitly and none falls through, for
+        the reason `check_timing_setup` gives.
         """
         if isinstance(self.timing_mode, JudgeCalibrated):
             return moj_timing.calibrated_limit_lines(_ac_to_time_limit_or_die())
@@ -554,10 +590,12 @@ class MojPackager(BasePackager):
                 inference_timeout_ms=_inference_timeout_ms(),
                 explanation=moj_timing.UNIFORM_EXPLANATION,
             )
-        _require_limits_profile()
-        return moj_timing.fixed_limit_lines(
-            self._fixed_time_limits(), inference_timeout_ms=_inference_timeout_ms()
-        )
+        if isinstance(self.timing_mode, ProfilePinned):
+            _require_limits_profile()
+            return moj_timing.fixed_limit_lines(
+                self._fixed_time_limits(), inference_timeout_ms=_inference_timeout_ms()
+            )
+        typing.assert_never(self.timing_mode)
 
     def _fixed_time_limits(self) -> moj_timing.FixedTimeLimits:
         """The limits of the `moj` profile, as a default plus per-language limits.
@@ -600,12 +638,15 @@ class MojPackager(BasePackager):
                 f'[item]{self.timing_mode.limit_ms} ms[/item].'
             )
             return
-        profile = limits_info.get_display_limits_profile(LIMITS_PROFILE)
-        if profile is None:
+        if isinstance(self.timing_mode, ProfilePinned):
+            profile = limits_info.get_display_limits_profile(LIMITS_PROFILE)
+            if profile is None:
+                return
+            limits_info.render_limits_table(
+                profile, title='MOJ time limits (per language group)'
+            )
             return
-        limits_info.render_limits_table(
-            profile, title='MOJ time limits (per language group)'
-        )
+        typing.assert_never(self.timing_mode)
 
     def _stopwhen_lines(self) -> List[str]:
         """The `STOPWHEN_*` block, which halts a run at the first failing test.
@@ -619,8 +660,26 @@ class MojPackager(BasePackager):
         for every test. `score-summary.sh` then sees a group with no executed tests
         and scores it `null` -- counted as failed. A solution that legitimately failed
         group 1 but would have passed group 2 would silently lose group 2's points.
+
+        **Nor** for a probe package, which is the same correctness argument reached
+        from the other side. A probe exists for rbx to collect a timing per test, and
+        the solutions it times include the slow and wrong ones -- which fail by
+        construction. On a BINARY problem the first WA/TLE/RE would break out of the
+        test loop and rbx would get back a *prefix* of the tests, silently losing the
+        timings the package exists to produce. Nothing is judged here, so the speed
+        optimization buys nothing to weigh against that. This is also what makes the
+        runner's `supports_abort=False` honest: a testrun has run every test by the
+        time rbx sees it only if nothing told it to stop early.
         """
         pkg = package.find_problem_package_or_die()
+        if self.probe is not None:
+            return [
+                '# STOPWHEN_* is deliberately unset: this package exists for rbx to',
+                '# measure a timing per test, and the solutions it times include ones',
+                '# that fail by construction. Halting at the first failure would return',
+                '# a prefix of the tests and silently lose the rest of the timings.',
+                '',
+            ]
         if pkg.scoring != ScoreType.BINARY:
             return [
                 '# STOPWHEN_* is deliberately unset: this problem scores by groups, and',
