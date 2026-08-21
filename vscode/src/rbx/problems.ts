@@ -42,20 +42,6 @@ function compare(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-/**
- * The contest a root belongs to, as a grouping key.
- *
- * Derived from the root's own path rather than tracked through the index: a
- * problem's contest root is the only ancestor that named it, and for grouping
- * purposes its parent directory separates two contests exactly as well. A
- * contest that nests its problems (`path: problems/beta`) groups under that
- * subdirectory instead of the contest root, which only changes the heading
- * text and stays one group as long as the contest nests consistently.
- */
-function groupKeyOf(root: string): string {
-  return path.dirname(root);
-}
-
 export function problemChoices(
   roots: readonly string[],
   identities: ReadonlyMap<string, ProblemIdentity>,
@@ -72,7 +58,10 @@ export function problemChoices(
         root,
         label: identity.shortName,
         color: identity.color,
-        group: groupKeyOf(root),
+        // The contest that named the problem, not the problem's parent: a
+        // contest may nest its problems, and the intermediate directory is
+        // neither the contest's name nor unique across contests.
+        group: identity.contestRoot,
         order: identity.order,
       });
     }

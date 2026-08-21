@@ -2,7 +2,12 @@ import * as assert from 'assert';
 import { test } from 'node:test';
 import { parse as parseYaml } from 'yaml';
 
-import { ParsedContest, parseContest, problemIdentities } from './contest';
+import {
+  ParsedContest,
+  isContestVariantFile,
+  parseContest,
+  problemIdentities,
+} from './contest';
 
 function contest(yaml: string): ParsedContest {
   return parseContest(parseYaml(yaml));
@@ -65,6 +70,75 @@ test('numbers order by surviving position, not by input index', () => {
   );
 });
 
+test('matches package roots to declared problems', () => {
+  const identities = problemIdentities(
+    '/c',
+    parseContest({
+      problems: [{ short_name: 'A' }, { short_name: 'B', path: 'problems/beta' }],
+    }),
+  );
+  assert.deepStrictEqual(identities.get('/c/A'), {
+    shortName: 'A',
+    color: undefined,
+    order: 0,
+    contestRoot: '/c',
+  });
+  assert.deepStrictEqual(identities.get('/c/problems/beta'), {
+    shortName: 'B',
+    color: undefined,
+    order: 1,
+    // The contest that named it, even though it sits two levels down.
+    contestRoot: '/c',
+  });
+});
+
+test('normalizes a declared path before matching', () => {
+  // Contest files are hand-written: `./A/` and `A` name the same directory.
+  const identities = problemIdentities(
+    '/c',
+    parseContest({ problems: [{ short_name: 'A', path: './A/' }] }),
+  );
+  assert.strictEqual(identities.get('/c/A')?.shortName, 'A');
+});
+
+test('keeps the first of two problems naming the same directory', () => {
+  // Duplicating a problem block is how a setter adds one, and the file is read
+  // mid-keystroke -- before rbx has had any chance to reject the duplicate.
+  const identities = problemIdentities(
+    '/c',
+    parseContest({
+      problems: [{ short_name: 'A' }, { short_name: 'B', path: './A' }],
+    }),
+  );
+  assert.strictEqual(identities.size, 1);
+  assert.strictEqual(identities.get('/c/A')?.shortName, 'A');
+});
+
+test('declares nothing for a dispatcher', () => {
+  assert.strictEqual(problemIdentities('/c', parseContest({ use_variants: true })).size, 0);
+});
+
+test('accepts exactly the variant filenames rbx would load', () => {
+  // Variants merge first-wins in filename order, so a name rbx rejects does not
+  // merely add noise -- `contest.div1.bak.rbx.yml` sorts before
+  // `contest.div1.rbx.yml` and would hand the backup's letters to the contest.
+  const accepted = [
+    'contest.div1.rbx.yml',
+    'contest.A.rbx.yml',
+    'contest.a_b-c9.rbx.yml',
+  ];
+  const rejected = [
+    'contest.rbx.yml', // The canonical, not a variant.
+    'contest..rbx.yml', // Empty id; `.` sorts before every real sibling.
+    'contest.div1.bak.rbx.yml', // A hand-made backup: `.` is not in the id set.
+    'contest.9x.rbx.yml', // Leading digit.
+    'contest.rbx.yml.bak', // Wrong suffix.
+    'problem.rbx.yml',
+  ];
+  assert.deepStrictEqual(accepted.filter(isContestVariantFile), accepted);
+  assert.deepStrictEqual(rejected.filter(isContestVariantFile), []);
+});
+
 /**
  * The shapes below come from YAML rather than object literals because they are
  * the ones only a real, hand-edited file produces: a key with nothing after it
@@ -93,49 +167,4 @@ problems:
     parsed.problems.map((p) => p.shortName),
     ['B'],
   );
-});
-
-test('matches package roots to declared problems', () => {
-  const identities = problemIdentities(
-    '/c',
-    parseContest({
-      problems: [{ short_name: 'A' }, { short_name: 'B', path: 'problems/beta' }],
-    }),
-  );
-  assert.deepStrictEqual(identities.get('/c/A'), {
-    shortName: 'A',
-    color: undefined,
-    order: 0,
-  });
-  assert.deepStrictEqual(identities.get('/c/problems/beta'), {
-    shortName: 'B',
-    color: undefined,
-    order: 1,
-  });
-});
-
-test('normalizes a declared path before matching', () => {
-  // Contest files are hand-written: `./A/` and `A` name the same directory.
-  const identities = problemIdentities(
-    '/c',
-    parseContest({ problems: [{ short_name: 'A', path: './A/' }] }),
-  );
-  assert.strictEqual(identities.get('/c/A')?.shortName, 'A');
-});
-
-test('keeps the first of two problems naming the same directory', () => {
-  // Duplicating a problem block is how a setter adds one, and the file is read
-  // mid-keystroke -- before rbx has had any chance to reject the duplicate.
-  const identities = problemIdentities(
-    '/c',
-    parseContest({
-      problems: [{ short_name: 'A' }, { short_name: 'B', path: './A' }],
-    }),
-  );
-  assert.strictEqual(identities.size, 1);
-  assert.strictEqual(identities.get('/c/A')?.shortName, 'A');
-});
-
-test('declares nothing for a dispatcher', () => {
-  assert.strictEqual(problemIdentities('/c', parseContest({ use_variants: true })).size, 0);
 });

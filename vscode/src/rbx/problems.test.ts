@@ -3,10 +3,11 @@ import { test } from 'node:test';
 
 import { problemChoices } from './problems';
 
-const identity = (shortName: string, order: number, color?: string) => ({
+const identity = (shortName: string, order: number, color?: string, contestRoot = '/c') => ({
   shortName,
   order,
   color,
+  contestRoot,
 });
 
 test('orders contest problems by their declared order, not by path', () => {
@@ -58,13 +59,31 @@ test('groups by contest only when there is more than one group', () => {
   const two = problemChoices(
     ['/x/A', '/y/A'],
     new Map([
-      ['/x/A', identity('A', 0)],
-      ['/y/A', identity('A', 0)],
+      ['/x/A', identity('A', 0, undefined, '/x')],
+      ['/y/A', identity('A', 0, undefined, '/y')],
     ]),
     () => '',
   );
   assert.deepStrictEqual(
     two.map((c) => c.group),
+    ['x', 'y'],
+  );
+});
+
+test('heads a nested problem with its contest, not its parent directory', () => {
+  // `path: problems/beta` puts the package two levels down. Grouping by the
+  // parent would head this "problems" -- a name no contest has, and one every
+  // contest that nests would share.
+  const choices = problemChoices(
+    ['/x/problems/beta', '/y/A'],
+    new Map([
+      ['/x/problems/beta', identity('A', 0, undefined, '/x')],
+      ['/y/A', identity('A', 0, undefined, '/y')],
+    ]),
+    () => '',
+  );
+  assert.deepStrictEqual(
+    choices.map((c) => c.group),
     ['x', 'y'],
   );
 });

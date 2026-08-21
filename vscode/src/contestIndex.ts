@@ -9,13 +9,14 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-import { ProblemIdentity, parseContest, problemIdentities } from './rbx/contest';
+import {
+  CONTEST_MANIFEST,
+  ProblemIdentity,
+  isContestVariantFile,
+  parseContest,
+  problemIdentities,
+} from './rbx/contest';
 import { readYamlFile } from './rbx/store';
-
-const CONTEST_MANIFEST = 'contest.rbx.yml';
-/** Sibling variant files: `contest.<id>.rbx.yml`. */
-const VARIANT_PREFIX = 'contest.';
-const VARIANT_SUFFIX = '.rbx.yml';
 
 /**
  * The nearest ancestor of `from` holding a contest.rbx.yml, or undefined.
@@ -28,8 +29,12 @@ async function findContestRoot(from: string): Promise<string | undefined> {
   let walker = from;
   for (;;) {
     try {
-      await fs.access(path.join(walker, CONTEST_MANIFEST));
-      return walker;
+      // `isFile`, not mere existence: rbx checks `is_file()` too
+      // (contest_package.py:111), and a *directory* named contest.rbx.yml
+      // would otherwise stop the walk and shadow the real contest above it.
+      if ((await fs.stat(path.join(walker, CONTEST_MANIFEST))).isFile()) {
+        return walker;
+      }
     } catch {
       // Not here; keep walking.
     }
@@ -59,11 +64,7 @@ async function contestFiles(root: string): Promise<string[]> {
     return files;
   }
   for (const entry of entries.sort()) {
-    if (
-      entry.startsWith(VARIANT_PREFIX) &&
-      entry.endsWith(VARIANT_SUFFIX) &&
-      entry !== CONTEST_MANIFEST
-    ) {
+    if (isContestVariantFile(entry)) {
       files.push(path.join(root, entry));
     }
   }
@@ -83,7 +84,8 @@ export async function indexContests(
     }
     scanned.add(contestRoot);
     for (const file of await contestFiles(contestRoot)) {
-      const identities = problemIdentities(contestRoot, parseContest(await readYamlFile(file)));
+      const contest = parseContest(await readYamlFile(file));
+      const identities = problemIdentities(contestRoot, contest);
       for (const [key, identity] of identities) {
         // First file to name a root wins; canonical is read first.
         if (!index.has(key)) {

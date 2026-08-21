@@ -9,6 +9,32 @@ import * as path from 'path';
 
 import { Wire, asArray, asRecord, asString } from './wire';
 
+export const CONTEST_MANIFEST = 'contest.rbx.yml';
+/** Sibling variant files: `contest.<id>.rbx.yml` (rbx's `VARIANT_GLOB`). */
+const VARIANT_PREFIX = 'contest.';
+const VARIANT_SUFFIX = '.rbx.yml';
+/** rbx's `VARIANT_ID_PATTERN` (rbx/box/contest/contest_state.py:6). */
+const VARIANT_ID = /^[A-Za-z][A-Za-z0-9_-]*$/;
+
+/**
+ * Whether `name` is a contest variant file rbx would actually load.
+ *
+ * The id between the fixed affixes is checked, not just the affixes: rbx skips
+ * a non-matching sibling with a warning (contest_package.py:38-46), and reading
+ * one here would be worse than merely redundant. Variants merge first-wins in
+ * filename order, so a hand-made `contest.div1.bak.rbx.yml` sorts *before*
+ * `contest.div1.rbx.yml` and its stale letters would win.
+ */
+export function isContestVariantFile(name: string): boolean {
+  return (
+    name.startsWith(VARIANT_PREFIX) &&
+    name.endsWith(VARIANT_SUFFIX) &&
+    // The affixes overlap on the canonical name itself, whose id is empty.
+    name !== CONTEST_MANIFEST &&
+    VARIANT_ID.test(name.slice(VARIANT_PREFIX.length, -VARIANT_SUFFIX.length))
+  );
+}
+
 /** One problem as its contest declares it. */
 export interface ContestProblem {
   readonly shortName: string;
@@ -80,6 +106,15 @@ export interface ProblemIdentity {
   readonly shortName: string;
   readonly color?: string;
   readonly order: number;
+  /**
+   * The contest root that named this problem, for grouping.
+   *
+   * Carried rather than re-derived from the package root: a contest is free to
+   * nest its problems (`path: problems/beta`), so the root's parent directory
+   * is not the contest, and two contests that both nest under `problems/`
+   * would otherwise be indistinguishable in a heading.
+   */
+  readonly contestRoot: string;
 }
 
 /**
@@ -104,6 +139,7 @@ export function problemIdentities(
         shortName: problem.shortName,
         color: problem.color,
         order: problem.order,
+        contestRoot,
       });
     }
   }
