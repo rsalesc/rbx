@@ -129,6 +129,7 @@ rbx run <SOLUTIONS> [OPTIONS]
 | `--sanitized`, `-s` | BOOLEAN | Whether to compile the solutions with sanitizers enabled. | `False` |
 | `--choice`, `--choose`, `-c` | BOOLEAN | Whether to pick solutions interactively. | `False` |
 | `--share` | TEXT | Capture the run report and copy it to the clipboard. Pass a format: --share png or --share text. | - |
+| `--fail-fast`, `--ff` | BOOLEAN | Whether to stop running a solution as soon as it gets a non-accepted verdict. Only meant for quick experimentation, as the remaining tests are reported as failed. | `False` |
 
 
 ---
@@ -168,7 +169,9 @@ rbx time [OPTIONS]
 | `--runs`, `-r` | INTEGER | Number of runs to perform for each solution. Zero means the config default. | `0` |
 | `--profile`, `-p` | TEXT | Profile to use for time limit estimation. | `local` |
 | `--integrate`, `-i` | BOOLEAN | Integrate the given limits profile into the package. | `False` |
+| `--runner` | TEXT | Where to run the solutions being timed (local, moj). | `local` |
 | `--share` | TEXT | Capture the time report (run report + limits table) and copy it to the clipboard. Pass a format: --share png or --share text. | - |
+| `--skip-slow` | BOOLEAN | Skip checking the estimated limit against the solutions expected to be too slow. The limit is written with its upper bound unchecked. | `False` |
 
 
 ---
@@ -890,23 +893,8 @@ rbx package moj [OPTIONS]
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
 | `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
-| `--for-boca` | BOOLEAN | Build a package for BOCA instead of MOJ. | `False` |
-
-
----
-
-### moj-next
-
-Build a package for MOJ (new format).
-
-**Usage:**
-```bash
-rbx package moj-next [OPTIONS]
-```
-
-| Name | Type | Description | Default |
-| :--- | :--- | :--- | :--- |
-| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
+| `--language`, `-l` | TEXT | If set, will build the statement in the given language. Leave unset if you want to use the language of the topmost statement. | - |
+| `--calibrate` | BOOLEAN | If set, let MOJ calibrate the time limits on the judge machine instead of pinning the ones estimated by `rbx time -p moj`. | `False` |
 
 
 ---
