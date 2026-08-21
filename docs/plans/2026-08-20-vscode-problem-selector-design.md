@@ -41,7 +41,7 @@ whichever problem is currently running.
 | D2 | The host posts `{problems, selected, run}` — a light list plus **one** package's run | Only the selected package's artifacts are parsed and serialized. A ten-problem contest stops paying for nine of them on every event |
 | D3 | The package row is **removed**, not kept as a section header for the selected problem | With one package on screen the row is a permanent parent of everything, one indent level deep, naming what the dropdown already names |
 | D4 | Contest identity resolves by walking up to the nearest `contest.rbx.yml` | Mirrors `find_contest_root` (`rbx/box/contest/contest_package.py:103`). Nothing new on the wire; the file is already there |
-| D5 | Auto-switch is unconditional: newest skeleton wins | `rbx/box/solutions.py:719` — "A new skeleton is what marks a new run". It is written at run *start*, so this makes the view follow the running problem rather than jump to finished ones |
+| D5 | Auto-switch is unconditional: newest skeleton wins | `rbx/box/solutions.py:746` — "A new skeleton is what marks a new run". It is written at run *start*, so this makes the view follow the running problem rather than jump to finished ones |
 | D6 | `rbx.packageSearchDepth` is **removed** | Contributed in `package.json` with a default of 3 and never read anywhere in `src/`; discovery globs at unbounded depth. It has never done anything |
 
 ### Why not a seen/unseen marker
@@ -97,7 +97,7 @@ name.
   single-package case.
 - The `mismatches`/`empty` cross-package leak, fixed by construction.
 - The `rbx.packageSearchDepth` setting (D6), and `IGNORED_DIRS`
-  (`layout.ts:114`) — exported, unused, and already drifted from the real
+  (`layout.ts:119`) — exported, unused, and already drifted from the real
   exclusion glob in `discovery.ts:12`, which does not exclude `out`/`dist`.
   One list, used by discovery.
 
