@@ -13,15 +13,19 @@ finish.
 """
 
 import asyncio
+import gc
 import pathlib
+import re
 from typing import Dict, List, Optional, Tuple
 
 import pytest
 
+from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.runners.moj import cli
 from rbx.box.runners.moj import runner as runner_module
 from rbx.box.runners.moj.runner import MojRunner, MojRunnerError
-from rbx.box.schema import ExpectedOutcome
+from rbx.box.schema import ExpectedOutcome, Testcase
+from rbx.box.testcase_schema import TestcaseEntry
 from rbx.grading.steps import Outcome
 from tests.rbx.box.packaging.moj.conftest import build_entries, minimal_package
 from tests.rbx.box.runners.moj.test_runner import FakeMoj, _context
@@ -35,6 +39,61 @@ pytestmark = pytest.mark.shared_cache
 # and what the judge therefore reports back.
 SAMPLE_NAMES = ('sample001', 'sample002')
 MAIN_NAMES = ('t00_main_001', 't00_main_002')
+BETA_NAMES = ('t00_beta_001', 't00_beta_002')
+
+
+def subgrouped_entries(tmp_path: pathlib.Path) -> List[GenerationTestcaseEntry]:
+    """Two samples, plus one `beta` group split into the subgroups `one` and `two`.
+
+    Built by hand rather than through `build_entries`, and shaped to match
+    `testcase_extractors._explore_subgroup` exactly, because the shape *is* the
+    test: `group_entry` is `(top-level group, per-subgroup index)` and that index
+    **restarts at 0 for each subgroup**, so `beta/one`'s first testcase and
+    `beta/two`'s first testcase are both `beta/0`. Only `subgroup_entry` carries
+    the full path that tells them apart.
+
+    Every fixture in this file used to go through `build_entries`, which produces
+    no subgroups at all -- which is precisely how a key that collides on every
+    subgrouped problem got all the way through review.
+    """
+    entries = build_entries(tmp_path, ['samples'])
+    group_dir = tmp_path / 'built' / 'beta'
+    group_dir.mkdir(parents=True, exist_ok=True)
+
+    for subgroup_index, subgroup in enumerate(['one', 'two'], start=1):
+        # `_copied_to`'s naming: `<subgroup index>-<subgroup name>-<index>`.
+        stem = f'{subgroup_index}-{subgroup}-000'
+        input_path = group_dir / f'{stem}.in'
+        output_path = group_dir / f'{stem}.out'
+        input_path.write_text(f'beta {subgroup}\n')
+        output_path.write_text('42\n')
+        entries.append(
+            GenerationTestcaseEntry(
+                # The colliding half.
+                group_entry=TestcaseEntry(group='beta', index=0),
+                # The half that does not collide.
+                subgroup_entry=TestcaseEntry(group=f'beta/{subgroup}', index=0),
+                metadata=GenerationMetadata(
+                    copied_to=Testcase(inputPath=input_path, outputPath=output_path)
+                ),
+            )
+        )
+    return entries
+
+
+# Rich highlights numbers and parentheses in bold, so what lands on stdout carries
+# escape codes the message does not. Assertions read the plain text.
+_ANSI = re.compile(r'\x1b\[[0-9;]*m')
+
+
+class RecordingProgress:
+    """Just enough `StatusProgress` to see what the runner says, and when."""
+
+    def __init__(self):
+        self.updates: List[str] = []
+
+    def update(self, text: str) -> None:
+        self.updates.append(text)
 
 
 class FakeJudge(FakeMoj):
@@ -115,6 +174,8 @@ async def _prepared(
     monkeypatch,
     groups: Optional[List[str]] = None,
     solutions=None,
+    entries: Optional[List[GenerationTestcaseEntry]] = None,
+    progress: Optional[RecordingProgress] = None,
 ):
     """A runner that has already uploaded and calibrated, and its fake judge."""
     minimal_package(testing_pkg)
@@ -127,9 +188,12 @@ async def _prepared(
     fake = FakeJudge(tmp_path / 'snapshots').install(monkeypatch)
     ctx = _context(
         tmp_path,
-        entries=build_entries(tmp_path, groups or ['samples', 'main']),
+        entries=entries
+        if entries is not None
+        else build_entries(tmp_path, groups or ['samples', 'main']),
         solutions=solutions,
     )
+    ctx.progress = progress
     runner = MojRunner()
     await runner.prepare(ctx)
     return runner, fake, ctx
@@ -177,6 +241,59 @@ async def test_results_are_paired_by_name_even_when_the_judge_shuffles_them(
         Outcome.RUNTIME_ERROR,
         Outcome.TIME_LIMIT_EXCEEDED,
     ]
+
+
+async def test_a_subgrouped_problem_prepares_at_all(testing_pkg, tmp_path, monkeypatch):
+    """Two subgroups of one group both start at index 0. Keying on `group_entry`
+    made them collide, and the duplicate guard then refused from inside
+    `prepare()` -- so `rbx time --runner moj` was dead on arrival for every
+    problem using subgroups, before a single byte was uploaded, with a message
+    telling the setter it was an rbx bug and nothing to do about it.
+
+    Reaching an upload at all is the assertion.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, entries=subgrouped_entries(tmp_path)
+    )
+
+    assert len(fake.uploads) == 1
+    assert runner is not None
+
+
+async def test_subgroups_of_one_group_are_paired_apart(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """And the two colliding entries get *their own* results, not each other's.
+
+    `beta/one/0` and `beta/two/0` are both `beta/0` at the `group_entry` level, so
+    a key that cannot tell them apart would either refuse (the bug as it was) or,
+    if the duplicate guard were removed, hand both testcases one timing. The judge
+    reports them out of order here, as it really does.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, entries=subgrouped_entries(tmp_path)
+    )
+    fake.results['sol.cpp'] = [
+        _test(BETA_NAMES[1], 'TLE', 4.0),
+        _test(SAMPLE_NAMES[0], 'AC', 1.0),
+        _test(BETA_NAMES[0], 'WA', 3.0),
+        _test(SAMPLE_NAMES[1], 'AC', 2.0),
+    ]
+
+    evals = await _run(runner, ctx)
+
+    # Entry order is samples[0], samples[1], beta/one[0], beta/two[0].
+    assert [e.log.time for e in evals] == [1.0, 2.0, 3.0, 4.0]
+    assert [e.result.outcome for e in evals] == [
+        Outcome.ACCEPTED,
+        Outcome.ACCEPTED,
+        Outcome.WRONG_ANSWER,
+        Outcome.TIME_LIMIT_EXCEEDED,
+    ]
+    # Two distinct `.eval` artifacts, not one written twice: both entries report
+    # `beta/0`, so the on-disk path has to come from the built input file.
+    paths = {e.log.eval_absolute_path for e in evals}
+    assert len(paths) == 4
 
 
 async def test_every_observed_code_maps_to_the_matching_outcome(
@@ -333,6 +450,78 @@ async def test_memory_and_artifacts_degrade_to_unmeasured_rather_than_zero(
     assert 'MOJ' in evals[0].result.message
 
 
+async def test_the_missing_testcase_warning_is_said_once_per_testrun(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    """Once per solution, and from the consumer's own thread of control.
+
+    It used to be printed by the background polling task, which owns nothing: the
+    reporter has the console at that moment and is printing another solution's
+    results. Emitting it where the report awaits the result puts it in the run's
+    own output, in order -- and the `warned` flag is what keeps N deferreds over
+    one testrun from saying it N times.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.results['sol.cpp'] = [_test(SAMPLE_NAMES[0], 'AC', 0.1)]
+
+    deferreds = runner.run_solution(
+        ctx.skeleton.solutions[0], ctx.skeleton.entries, ctx
+    )
+    # Nothing said while it is merely in flight.
+    for _ in range(10):
+        await asyncio.sleep(0)
+    assert 'reported no result' not in capsys.readouterr().out
+
+    for deferred in deferreds:
+        await deferred()
+
+    out = _ANSI.sub('', capsys.readouterr().out)
+    assert out.count('reported no result') == 1
+    assert '1 of 2 testcases of sol.cpp' in out
+
+
+async def test_the_background_polling_never_writes_the_status_line(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """Up to `MAX_INFLIGHT_TESTRUNS` tasks poll at once, on their own schedule.
+
+    They share the `StatusProgress` the reporter is driving, so a poll writing to
+    it makes the status line flip between two solutions -- and keep flipping after
+    the reporter has moved on to printing the first one's results. Nothing the
+    runner says may come from a task the consumer is not waiting on.
+    """
+    progress = RecordingProgress()
+    runner, fake, ctx = await _prepared(
+        testing_pkg,
+        tmp_path,
+        monkeypatch,
+        groups=['samples'],
+        solutions=[
+            ('sol.cpp', ExpectedOutcome.ACCEPTED),
+            ('other.cpp', ExpectedOutcome.WRONG_ANSWER),
+        ],
+        progress=progress,
+    )
+    for filename in ('sol.cpp', 'other.cpp'):
+        fake.results[filename] = [
+            _test(SAMPLE_NAMES[0], 'AC', 0.1),
+            _test(SAMPLE_NAMES[1], 'AC', 0.2),
+        ]
+    fake.polls_until_done = 5
+
+    first = runner.run_solution(ctx.skeleton.solutions[0], ctx.skeleton.entries, ctx)
+    runner.run_solution(ctx.skeleton.solutions[1], ctx.skeleton.entries, ctx)
+
+    await _gather(first)
+
+    # While the report was waiting on `sol.cpp`, `other.cpp` was being polled
+    # throughout -- and never got a word in.
+    assert progress.updates
+    assert not any('other.cpp' in update for update in progress.updates)
+
+
 # -- the bounded wait ----------------------------------------------------------
 
 
@@ -487,6 +676,95 @@ async def test_no_more_than_two_testruns_are_in_flight_at_once(
     # And the third one really did run once a slot came free.
     assert len(fake.submissions) == 3
     assert fake.max_inflight == runner_module.MAX_INFLIGHT_TESTRUNS
+
+
+async def test_a_solution_nobody_waits_for_does_not_haunt_the_run_later(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """Every solution is dispatched up front; the report stops at the first failure.
+
+    So solutions 2..N can end up with a task nobody ever awaits. A failed task
+    whose exception was never retrieved prints its traceback out of the garbage
+    collector, long after, attached to nothing the setter did -- and retrieving it
+    must not swallow it either, or the deferred that *does* get awaited would
+    silently succeed.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg,
+        tmp_path,
+        monkeypatch,
+        groups=['samples'],
+        solutions=[
+            ('sol.cpp', ExpectedOutcome.ACCEPTED),
+            ('other.cpp', ExpectedOutcome.WRONG_ANSWER),
+        ],
+    )
+    fake.results['sol.cpp'] = [
+        _test(SAMPLE_NAMES[0], 'AC', 0.1),
+        _test(SAMPLE_NAMES[1], 'AC', 0.2),
+    ]
+    # The abandoned one fails, which is the case that leaves a trace.
+    fake.results['other.cpp'] = [_test(SAMPLE_NAMES[0], 'MLE', 0.1)]
+
+    first = runner.run_solution(ctx.skeleton.solutions[0], ctx.skeleton.entries, ctx)
+    abandoned = runner.run_solution(
+        ctx.skeleton.solutions[1], ctx.skeleton.entries, ctx
+    )
+
+    # Only the first solution's results are ever consumed.
+    await _gather(first)
+    for _ in range(20):
+        await asyncio.sleep(0)
+
+    job = runner._jobs[1]  # noqa: SLF001
+    assert job.done()
+    # Retrieved, so nothing surfaces later...
+    assert isinstance(job.exception(), MojRunnerError)
+    # ...and still raised for anyone who does come asking.
+    with pytest.raises(MojRunnerError):
+        await abandoned[0]()
+
+
+async def test_an_abandoned_failure_is_not_reported_out_of_the_garbage_collector(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """The other half: nothing surfaces once the task is collected.
+
+    asyncio reports an unretrieved task exception from `Task.__del__`, through the
+    loop's exception handler -- so the way to see the difference is to drop every
+    reference and collect. With the failure retrieved, the handler is never
+    reached; without, the setter gets a traceback at an unrelated moment.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg,
+        tmp_path,
+        monkeypatch,
+        groups=['samples'],
+        solutions=[('sol.cpp', ExpectedOutcome.ACCEPTED)],
+    )
+    fake.results['sol.cpp'] = [_test(SAMPLE_NAMES[0], 'MLE', 0.1)]
+
+    loop = asyncio.get_running_loop()
+    reported: List[dict] = []
+    previous = loop.get_exception_handler()
+    loop.set_exception_handler(lambda _loop, context: reported.append(context))
+    try:
+        deferreds = runner.run_solution(
+            ctx.skeleton.solutions[0], ctx.skeleton.entries, ctx
+        )
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert runner._jobs[0].done()  # noqa: SLF001
+
+        # Nobody ever awaited a deferred; now let go of everything.
+        del deferreds
+        runner._jobs.clear()  # noqa: SLF001
+        gc.collect()
+        await asyncio.sleep(0)
+
+        assert reported == []
+    finally:
+        loop.set_exception_handler(previous)
 
 
 async def test_the_submitted_file_keeps_the_solutions_extension(

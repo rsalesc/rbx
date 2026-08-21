@@ -137,7 +137,12 @@ memoizes each deferred's *own* result and nothing else, so the task is held by t
 Results are paired to entries **by MOJ test name**, out of the mapping `prepare` captured
 off the packager that built the uploaded package: the live probe
 (`docs/plans/2026-08-21-moj-probe-notes.md`) found the `tests` array is *not ordered*, so
-pairing by position would misattribute essentially every timing. `MAX_INFLIGHT_TESTRUNS`
+pairing by position would misattribute essentially every timing. That mapping is keyed on
+**`subgroup_entry`**, never `group_entry`: `group_entry.index` restarts at 0 per subgroup
+while its `group` is the top-level one, so `beta/one/0` and `beta/two/0` collide.
+Everything the runner says to the setter is said from `_evaluation_from_job`, on the
+consumer's own thread of control -- the polling tasks are silent, because the reporter owns
+the console and the `StatusProgress` while they run. `MAX_INFLIGHT_TESTRUNS`
 caps how much of the shared judge park a session occupies; the poll is bounded, like
 `prepare`'s. `_OUTCOME_BY_MOJ_CODE` maps only the four codes the probe actually saw
 (`AC`/`WA`/`RE`/`TLE`) and **refuses an unrecognised one by name** rather than guessing --
