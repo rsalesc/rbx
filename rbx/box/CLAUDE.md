@@ -175,9 +175,11 @@ pairing by position would misattribute essentially every timing. That mapping is
 while its `group` is the top-level one, so `beta/one/0` and `beta/two/0` collide.
 Everything the runner says to the setter is said from `_evaluation_from_job`, on the
 consumer's own thread of control -- the polling tasks are silent, because the reporter owns
-the console and the `StatusProgress` while they run. `MAX_INFLIGHT_TESTRUNS`
-caps how much of the shared judge park a session occupies; the poll is bounded, like
-`prepare`'s. `_OUTCOME_BY_MOJ_CODE` maps only the four codes the probe actually saw
+the console and the `StatusProgress` while they run. `MAX_INFLIGHT_TESTRUNS` is **1**: MOJ allows one account only a few queued testruns
+(three, observed) and answers 429 past that, `moj testrun` cannot pick a judge so two in
+flight may share a machine and inflate each other, and the park is shared with everyone
+else. A 429 is waited out rather than failed -- it cannot be cleared, since `moj` has no
+way to cancel a testrun. The poll is bounded, like `prepare`'s. `_OUTCOME_BY_MOJ_CODE` maps only the four codes the probe actually saw
 (`AC`/`WA`/`RE`/`TLE`) and **refuses an unrecognised one by name** rather than guessing --
 a wrong verdict silently corrupts the time limit being estimated. A testcase MOJ did not
 report on becomes `SKIPPED` with no timing (never a zero), and only the `.eval` is written,

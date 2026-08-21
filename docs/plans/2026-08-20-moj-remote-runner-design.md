@@ -266,7 +266,11 @@ right one.
    through [`packaging/moj/naming.py`](../../rbx/box/packaging/moj/naming.py), the same
    module that named them into the package -- never by position, so a naming change can
    never silently misattribute a timing.
-5. Cap the in-flight testruns (`concurrency`, default 2). The judge park is shared.
+5. Dispatch **one testrun at a time**. MOJ caps queued testruns per *account* and answers
+   429 past it (waited out, since nothing can cancel a testrun); `moj testrun` cannot pick
+   a judge, so two in flight may share one and inflate each other; and the park is shared.
+   Dispatch stays eager, so the next testrun leaves the moment the previous finishes rather
+   than when the report gets to it.
 
 ## The timing flow
 

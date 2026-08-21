@@ -744,15 +744,18 @@ async def test_the_whole_testset_is_one_submission(testing_pkg, tmp_path, monkey
     assert len(fake.submissions) == 1
 
 
-async def test_run_solution_queues_every_solution_before_the_first_is_awaited(
+async def test_the_first_testrun_starts_before_any_deferred_is_awaited(
     testing_pkg, tmp_path, monkeypatch
 ):
-    """The reason the submission is a background task.
+    """Why the submission is a background task rather than a lazy coroutine.
 
     `_produce_solution_items` builds every solution's deferreds synchronously,
-    before a single one resolves. If `run_solution` submitted lazily, the second
-    solution would only reach the judge once the first had been judged in full --
-    which is the serialization the whole remote-runner design exists to avoid.
+    before a single one resolves. If `run_solution` submitted lazily, nothing would
+    reach the judge until the report began consuming, and the judge would sit idle
+    through the build and the report's own setup.
+
+    With `MAX_INFLIGHT_TESTRUNS = 1` the second solution deliberately waits its
+    turn -- see the next test for what still has to be true of it.
     """
     runner, fake, ctx = await _prepared(
         testing_pkg,
@@ -778,14 +781,12 @@ async def test_run_solution_queues_every_solution_before_the_first_is_awaited(
     assert fake.submissions == []
     assert [deferred.peek() for deferred in first] == [None, None]
 
-    # Let the background tasks run. Both reach the judge; neither deferred has
-    # been touched.
     for _ in range(10):
         await asyncio.sleep(0)
-    assert [filename for _, _, filename, _ in fake.submissions] == [
-        'sol.cpp',
-        'other.cpp',
-    ]
+
+    # The first is on the judge with nothing awaited; the second holds behind the
+    # cap rather than adding to the account's queue.
+    assert [filename for _, _, filename, _ in fake.submissions] == ['sol.cpp']
     assert [deferred.peek() for deferred in second] == [None, None]
 
     fake.hold.set()
@@ -793,14 +794,57 @@ async def test_run_solution_queues_every_solution_before_the_first_is_awaited(
     assert len(await _gather(second)) == 2
 
 
-async def test_no_more_than_two_testruns_are_in_flight_at_once(
+async def test_the_next_testrun_starts_without_the_report_consuming_the_previous(
     testing_pkg, tmp_path, monkeypatch
 ):
-    """The judge park is shared -- two judges, everyone else's submissions too.
+    """What the cap does *not* cost.
 
-    A timing session that dispatched every solution at once would be a denial of
-    service on the park it is measuring, and would measure a park it had itself
-    made slow.
+    Serialising testruns would be much worse if the next one only left once the
+    report had rendered the last: every gap would carry the report's own work. The
+    queue is the runner's, so the moment one testrun finishes the next is
+    dispatched, whether or not anybody has looked at the result yet.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg,
+        tmp_path,
+        monkeypatch,
+        groups=['samples'],
+        solutions=[
+            ('sol.cpp', ExpectedOutcome.ACCEPTED),
+            ('other.cpp', ExpectedOutcome.WRONG_ANSWER),
+        ],
+    )
+    for filename in ('sol.cpp', 'other.cpp'):
+        fake.results[filename] = [
+            _test(SAMPLE_NAMES[0], 'AC', 0.1),
+            _test(SAMPLE_NAMES[1], 'AC', 0.2),
+        ]
+
+    first = runner.run_solution(ctx.skeleton.solutions[0], ctx.skeleton.entries, ctx)
+    runner.run_solution(ctx.skeleton.solutions[1], ctx.skeleton.entries, ctx)
+
+    for _ in range(30):
+        await asyncio.sleep(0)
+
+    # Both have been to the judge, and `first`'s deferreds were never awaited, so
+    # the second did not wait on the report.
+    assert [filename for _, _, filename, _ in fake.submissions] == [
+        'sol.cpp',
+        'other.cpp',
+    ]
+    assert [deferred.peek() for deferred in first] == [None, None]
+
+
+async def test_no_more_testruns_are_in_flight_than_the_cap_allows(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """Asserted against the cap itself, so it survives the cap changing.
+
+    The park is shared -- two judges, and everyone else's submissions -- so a
+    session that dispatched every solution at once would be a denial of service on
+    the park it is measuring, and would measure a park it had itself made slow.
+    MOJ enforces its own limit too, refusing with 429 past a few queued per
+    account.
     """
     runner, fake, ctx = await _prepared(
         testing_pkg,

@@ -77,20 +77,39 @@ CALIBRATION_POLL_ATTEMPTS = 400
 TESTRUN_POLL_INTERVAL_SECONDS = 3.0
 TESTRUN_POLL_ATTEMPTS = 200
 
-# How many testruns rbx keeps in flight at once.
+# How many testruns rbx keeps in flight at once. **One**, for three reasons that
+# all point the same way.
 #
-# The judge park is **shared** -- two judges, both `Intel Xeon E5-2680 v4`, and
-# every other setter's submissions queue behind whatever rbx dispatches. Two is
-# one per judge: enough to keep the park busy while `rbx time` prints the first
-# solution's report, and small enough that a timing session does not become a
-# denial of service on everyone else. It also bounds how much of the run is lost
-# when a session is interrupted.
+# 1. **The account quota.** MOJ allows one login only a few queued testruns -- three,
+#    observed -- and answers 429 beyond that. The quota counts testruns rbx has
+#    *dispatched*, not ones it is still waiting on, and an interrupted `rbx time`
+#    leaves its runs going on the judge (rbx stops waiting; MOJ does not stop
+#    running). Dispatching one at a time leaves room for the previous session's
+#    stragglers instead of racing them for the last slot.
+# 2. **Measurement.** `moj testrun` has no host selection -- it posts only
+#    `{id, filename, code_b64}` and the server picks -- and every testrun of the
+#    2026-08-21 probe came back `host: judge-sp1`. Two in flight are therefore not
+#    reliably one per judge; they may share a machine and inflate each other's
+#    times, which is the contention `ALLOWPARALLELTEST=n` removes *inside* a run.
+#    Serialising a run's tests and then racing two runs would be half a fix.
+# 3. **A shared park.** Every other setter's submissions queue behind whatever rbx
+#    dispatches, and this bounds how much of a run is lost when a session stops.
 #
-# A constant rather than a setting, deliberately, until there is a reason to make
-# it one. The design sketches `runners.moj.concurrency` in `env.rbx.yml`, which is
-# runner *selection* -- task 7 -- and a knob nobody can reach yet is a knob whose
-# every value is untested.
-MAX_INFLIGHT_TESTRUNS = 2
+# The cost is real: a session now takes as long as the sum of its solutions. That is
+# the trade -- `rbx time` is not on anyone's critical path, a re-run is free from the
+# testrun cache, and a number that is quietly wrong is worth less than one that took
+# twice as long to be right.
+#
+# `run_solution` still dispatches in the *background* rather than lazily, which is
+# what this cap does not change: the first testrun is on the judge while the report
+# is still starting, and each next one begins the moment its predecessor finishes
+# rather than after the report has finished rendering the one before.
+#
+# A constant rather than a setting, deliberately. The design sketches
+# `runners.moj.concurrency` in `env.rbx.yml`, but raising it trades measurement
+# accuracy and a shared queue for wall clock, which is not a trade a timing run
+# should offer.
+MAX_INFLIGHT_TESTRUNS = 1
 
 # How long to wait out a full testrun queue before giving up, and how often to
 # retry. ~10 minutes, matching the CLI's own patience for a single testrun

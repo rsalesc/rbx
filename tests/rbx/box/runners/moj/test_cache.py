@@ -430,13 +430,14 @@ async def test_a_hit_does_not_queue_behind_the_testruns_in_flight(
 ):
     """The cache is consulted before the concurrency slot, not inside it.
 
-    A hit costs one file read and no judge time at all, so making it wait for one
-    of the two slots that bound how much of the shared park rbx occupies would
-    serialize free work behind expensive work -- a run whose solutions all hit
-    would take as long as whatever was already queued.
+    A hit costs one file read and no judge time at all, so making it wait for the
+    slot that bounds how much of the shared park rbx occupies would serialize free
+    work behind expensive work -- a run whose solutions all hit would take as long
+    as whatever was already queued. That matters more, not less, now the cap is
+    one: the hit would otherwise wait out every miss ahead of it.
 
-    `sol.cpp` is deliberately last, so that both slots are taken by the two
-    solutions the judge is still chewing on by the time its turn comes.
+    `sol.cpp` is deliberately last, so the slot is taken by a solution the judge is
+    still chewing on by the time its turn comes.
     """
     solutions = [
         ('other.cpp', ExpectedOutcome.WRONG_ANSWER),
@@ -456,7 +457,7 @@ async def test_a_hit_does_not_queue_behind_the_testruns_in_flight(
 
     runner = MojRunner()
     await runner.prepare(ctx)
-    # The judge answers nobody until this is set, so both slots stay occupied.
+    # The judge answers nobody until this is set, so the slot stays occupied.
     fake.hold = asyncio.Event()
     batches = [
         runner.run_solution(solution, ctx.skeleton.entries, ctx)
@@ -470,7 +471,12 @@ async def test_a_hit_does_not_queue_behind_the_testruns_in_flight(
     ]
 
     assert len(cached) == 2
-    assert _submitted(fake)[3:] == ['other.cpp', 'third.cpp']
+    # The hit resolved while a real testrun was still in flight and unanswered --
+    # that is the whole claim -- and never went back to the judge itself.
+    submitted_this_run = _submitted(fake)[3:]
+    assert submitted_this_run, 'a miss should have been dispatched'
+    assert 'sol.cpp' not in submitted_this_run
+    assert set(submitted_this_run) <= {'other.cpp', 'third.cpp'}
 
     fake.hold.set()
     await runner.close()
