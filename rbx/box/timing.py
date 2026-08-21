@@ -22,6 +22,7 @@ from rbx.box import (
     timing_config,
     timing_group_picker,
     timing_groups,
+    timing_validation,
 )
 from rbx.box.code import find_language_name
 from rbx.box.environment import VerificationLevel
@@ -378,6 +379,7 @@ def build_timing_profile(
     all_languages: List[str],
     slow_timing_per_solution_per_language: Optional[Dict[str, Dict[str, int]]] = None,
     confirmed_upper_per_language: Optional[Dict[str, List[str]]] = None,
+    skipped_upper_per_language: Optional[Dict[str, List[str]]] = None,
     repartition: Optional[Dict[str, int]] = None,
     relatives: Optional[Dict[str, environment.LanguageGroupFallback]] = None,
     force: bool = False,
@@ -394,6 +396,7 @@ def build_timing_profile(
 
     slow_per_language = slow_timing_per_solution_per_language or {}
     confirmed_per_language = confirmed_upper_per_language or {}
+    skipped_per_language = skipped_upper_per_language or {}
 
     if repartition is not None:
         groups = timing_groups.partition_from_assignment(repartition, relatives)
@@ -405,30 +408,37 @@ def build_timing_profile(
     all_values: List[timing_groups.Measurement] = []
     all_slow_values: List[timing_groups.Measurement] = []
     all_confirmed: List[str] = []
+    all_skipped: List[str] = []
     for idx, group in enumerate(groups):
         values = _pooled(timing_per_solution_per_language, group.languages)
         slow_values = _pooled(slow_per_language, group.languages)
-        dropped = [
+        confirmed = [
             path
             for lang in group.languages
             for path in (confirmed_per_language.get(lang) or [])
         ]
-        if not values and not slow_values and not dropped:
+        skipped = [
+            path
+            for lang in group.languages
+            for path in (skipped_per_language.get(lang) or [])
+        ]
+        if not values and not slow_values and not confirmed and not skipped:
             continue
         measured[idx] = timing_groups.GroupMeasurements(
             lower=_lower_timings(values),
-            upper=_upper_timings(slow_values, dropped),
+            upper=_upper_timings(slow_values, confirmed, skipped),
         )
         all_values.extend(values)
         all_slow_values.extend(slow_values)
-        all_confirmed.extend(dropped)
+        all_confirmed.extend(confirmed)
+        all_skipped.extend(skipped)
 
     if not all_values:
         raise MissingLowerBoundError(_NO_LOWER_BOUND_MESSAGE)
 
     base = timing_groups.GroupMeasurements(
         lower=_lower_timings(all_values),
-        upper=_upper_timings(all_slow_values, all_confirmed),
+        upper=_upper_timings(all_slow_values, all_confirmed, all_skipped),
     )
     result = timing_groups.resolve_groups(groups, measured, base, eval_fn, derive_fn)
     return TimingProfile(
@@ -483,6 +493,7 @@ def build_preview_renderer(
     all_languages: List[str],
     slow_timing_per_solution_per_language: Optional[Dict[str, Dict[str, int]]] = None,
     confirmed_upper_per_language: Optional[Dict[str, List[str]]] = None,
+    skipped_upper_per_language: Optional[Dict[str, List[str]]] = None,
     width: Optional[int] = None,
 ) -> Callable[..., ANSI]:
     """Return a memoized callback mapping a picker assignment (and optional
@@ -502,6 +513,7 @@ def build_preview_renderer(
                 all_languages=all_languages,
                 slow_timing_per_solution_per_language=slow_timing_per_solution_per_language,
                 confirmed_upper_per_language=confirmed_upper_per_language,
+                skipped_upper_per_language=skipped_upper_per_language,
                 repartition=assignment,
                 relatives=relatives,
             )
@@ -538,6 +550,8 @@ async def _prompt_repartition(
     strategy: timing_config.TimingStrategy,
     slow_timing_per_solution_per_language: Optional[Dict[str, Dict[str, int]]] = None,
     confirmed_upper_per_language: Optional[Dict[str, List[str]]] = None,
+    skipped_upper_per_language: Optional[Dict[str, List[str]]] = None,
+    allow_force: bool = False,
 ) -> Optional[timing_group_picker.GroupAssignment]:
     preview = build_preview_renderer(
         timing_per_solution_per_language=timing_per_solution_per_language,
@@ -546,6 +560,7 @@ async def _prompt_repartition(
         all_languages=all_languages,
         slow_timing_per_solution_per_language=slow_timing_per_solution_per_language,
         confirmed_upper_per_language=confirmed_upper_per_language,
+        skipped_upper_per_language=skipped_upper_per_language,
         width=console.console.size.width,
     )
     langs_with_solutions = {
@@ -556,6 +571,7 @@ async def _prompt_repartition(
         default_assignment(all_languages, env_groups),
         relatives=default_relatives(env_groups, langs_with_solutions),
         preview=preview,
+        allow_force=allow_force,
     )
 
 
@@ -677,13 +693,169 @@ def _flatten(per_language: Dict[str, Dict[str, int]]) -> List[int]:
     ]
 
 
-async def estimate_time_limit(
+@dataclasses.dataclass(frozen=True)
+class _SlowEvidence:
+    """What is known about the slow solutions, pooled by language.
+
+    Three disjoint buckets, because they mean three different things to the
+    estimate: a measured solution bounds the limit from above, a confirmed one
+    respects whatever bound it was checked against, and a skipped one was never
+    asked.
+    """
+
+    measured: Dict[str, Dict[str, int]]
+    confirmed: Dict[str, List[str]]
+    skipped: Dict[str, List[str]]
+
+    @property
+    def languages(self) -> List[str]:
+        return list(OrderedSet([*self.measured, *self.confirmed, *self.skipped]))
+
+
+@dataclasses.dataclass(frozen=True)
+class _Picked:
+    """How the setter answered the grouping question.
+
+    ``assignment`` is None when nothing was asked -- ``--auto``, or a problem
+    with a single language -- and the environment's own partition stands.
+    """
+
+    assignment: Optional[timing_group_picker.GroupAssignment]
+    force: bool = False
+
+    @property
+    def numbers(self) -> Optional[Dict[str, int]]:
+        return self.assignment.numbers if self.assignment is not None else None
+
+    @property
+    def relatives(self) -> Optional[Dict[str, environment.LanguageGroupFallback]]:
+        return self.assignment.relatives if self.assignment is not None else None
+
+
+@dataclasses.dataclass
+class _EstimationContext:
+    """Phase 1's measurements, ready to be estimated from repeatedly.
+
+    The picker may be re-entered once the validation phase has something to say,
+    so everything that does not change between iterations is computed once. What
+    does change is the evidence about the slow solutions, which is read out of
+    the knowledge passed in at each call.
+    """
+
+    console: rich.console.Console
+    strategy: timing_config.TimingStrategy
+    env_groups: List[environment.LanguageGroup]
+    all_languages: List[str]
+    lower_timings: Dict[str, Dict[str, int]]
+    upper_solutions: List[Solution]
+
+    @property
+    def can_prompt(self) -> bool:
+        """Whether there is a grouping decision for the setter to make."""
+        return len(self.all_languages) > 1
+
+    def slow_evidence(self, knowledge: timing_validation.SlowKnowledge):
+        measured: Dict[str, Dict[str, int]] = {}
+        confirmed: Dict[str, List[str]] = {}
+        skipped: Dict[str, List[str]] = {}
+        for solution in self.upper_solutions:
+            lang = find_language_name(solution)
+            path = str(solution.path)
+            time = knowledge.measured_time(path)
+            if time is not None:
+                measured.setdefault(lang, {})[path] = time
+            elif knowledge.is_confirmed(path):
+                confirmed.setdefault(lang, []).append(path)
+            else:
+                skipped.setdefault(lang, []).append(path)
+        return _SlowEvidence(measured=measured, confirmed=confirmed, skipped=skipped)
+
+    async def prompt(
+        self,
+        auto: bool,
+        knowledge: timing_validation.SlowKnowledge,
+        allow_force: bool = False,
+    ) -> Optional[_Picked]:
+        """Ask how to group the languages, or answer for the setter when there
+        is nothing to ask. ``None`` when the setter cancelled."""
+        if auto or not self.can_prompt:
+            # Nothing was picked, so the environment's own partition stands.
+            return _Picked(assignment=None)
+        evidence = self.slow_evidence(knowledge)
+        assignment = await _prompt_repartition(
+            self.all_languages,
+            self.env_groups,
+            self.lower_timings,
+            self.strategy,
+            slow_timing_per_solution_per_language=evidence.measured,
+            confirmed_upper_per_language=evidence.confirmed,
+            skipped_upper_per_language=evidence.skipped,
+            allow_force=allow_force,
+        )
+        if assignment is None:
+            return None
+        return _Picked(assignment=assignment, force=assignment.force)
+
+    def build(
+        self,
+        picked: _Picked,
+        knowledge: timing_validation.SlowKnowledge,
+        force: bool = False,
+        announce: bool = True,
+    ) -> Optional[TimingProfile]:
+        """The profile this grouping produces, or ``None`` when no limit fits."""
+        evidence = self.slow_evidence(knowledge)
+        if announce:
+            self.console.print()
+            self.console.rule('[status]Time estimation[/status]', style='status')
+            self.console.print(_describe_strategy(self.strategy))
+
+        try:
+            profile = build_timing_profile(
+                timing_per_solution_per_language=self.lower_timings,
+                strategy=self.strategy,
+                env_groups=self.env_groups,
+                all_languages=self.all_languages,
+                slow_timing_per_solution_per_language=evidence.measured,
+                confirmed_upper_per_language=evidence.confirmed,
+                skipped_upper_per_language=evidence.skipped,
+                repartition=picked.numbers,
+                relatives=picked.relatives,
+                force=force or picked.force,
+            )
+        except timing_groups.GroupValidationError as e:
+            self.console.print(f'[error]Invalid language groups: {e}[/error]')
+            return None
+
+        defaulted = [
+            lang
+            for report in (profile.groups or [])
+            if report.origin == schema.TimingGroupOrigin.DEFAULTED
+            for lang in report.languages
+        ]
+        if defaulted:
+            self.console.print(
+                '[warning]⚠ The following languages have no solution and no whenEmpty '
+                f'rule, so they fall back to the base time limit of {profile.timeLimit} '
+                f'ms: {", ".join(defaulted)}.[/warning]'
+            )
+        return profile
+
+
+async def build_estimation_context(
     console: rich.console.Console,
     result: RunSolutionResult,
     strategy: Optional[timing_config.TimingStrategy] = None,
-    auto: bool = False,
-    confirmed_upper_per_language: Optional[Dict[str, List[str]]] = None,
-) -> Optional[TimingProfile]:
+    upper_solutions: Optional[List[Solution]] = None,
+    knowledge: Optional[timing_validation.SlowKnowledge] = None,
+) -> Optional[_EstimationContext]:
+    """Measure what the estimation run produced and report it.
+
+    ``upper_solutions`` names the solutions expected to be too slow, which the
+    estimation run does not include; it defaults to any the result happens to
+    carry. Measurements the result holds for them seed ``knowledge``, so a caller
+    that already ran them does not run them again.
+    """
     if not result.skeleton.solutions:
         console.print('[error]No solutions to estimate time limit from.[/error]')
         return None
@@ -692,126 +864,105 @@ async def estimate_time_limit(
         result.items, result.skeleton
     )
 
-    # The run may carry both roles; each bounds a different side of the limit.
     lower_solutions = [
         solution
         for solution in result.skeleton.solutions
         if inference_role_of(solution) == InferenceRole.LOWER
-    ]
-    upper_solutions = [
-        solution
-        for solution in result.skeleton.solutions
-        if inference_role_of(solution) == InferenceRole.UPPER
     ]
     if not lower_solutions:
         # Knowable from `problem.rbx.yml` alone and fixable only there, so fail
         # before the setter navigates a picker in which no grouping can succeed.
         raise MissingLowerBoundError(_NO_LOWER_BOUND_MESSAGE)
 
-    confirmed_upper_per_language = confirmed_upper_per_language or {}
-    dropped_paths = {
-        path for paths in confirmed_upper_per_language.values() for path in paths
-    }
+    if upper_solutions is None:
+        upper_solutions = [
+            solution
+            for solution in result.skeleton.solutions
+            if inference_role_of(solution) == InferenceRole.UPPER
+        ]
 
-    timing_per_solution_per_language = await _timings_per_language(
+    lower_timings = await _timings_per_language(
         console, structured_evaluations, lower_solutions
     )
-    slow_timing_per_solution_per_language = await _timings_per_language(
-        console, structured_evaluations, upper_solutions, skip=dropped_paths
+
+    # Anything the result already measured for a slow solution is knowledge, so
+    # the validation phase does not ask a question it can already answer.
+    seeded = await _timings_per_language(
+        console,
+        structured_evaluations,
+        [
+            solution
+            for solution in upper_solutions
+            if str(solution.path) in structured_evaluations
+        ],
     )
+    if knowledge is not None:
+        for per_solution in seeded.values():
+            for path, time in per_solution.items():
+                knowledge.record_time(path, time)
 
     console.rule('[status]Time report[/status]', style='status')
 
     # Only the lower-bound measurements: the limit is computed from them, so
-    # pooling the slow ones in here would headline a number -- typically a slow
-    # solution sitting at the cap -- that no limit on screen derives from.
-    lower_timings = _flatten(timing_per_solution_per_language)
-    slow_timings = _flatten(slow_timing_per_solution_per_language)
-    if not lower_timings:
+    # pooling the slow ones in here would headline a number that no limit on
+    # screen derives from.
+    lower_flat = _flatten(lower_timings)
+    if not lower_flat:
         console.print('[error]No timings collected from solutions.[/error]')
         return None
 
-    fastest_time = min(lower_timings)
-    slowest_time = max(lower_timings)
-    console.print(f'Fastest solution: {fastest_time} ms')
-    console.print(f'Slowest solution: {slowest_time} ms')
-    if slow_timings:
-        console.print(
-            f'Fastest solution expected to be too slow: {min(slow_timings)} ms'
-        )
+    console.print(f'Fastest solution: {min(lower_flat)} ms')
+    console.print(f'Slowest solution: {max(lower_flat)} ms')
+    slow_flat = _flatten(seeded)
+    if slow_flat:
+        console.print(f'Fastest solution expected to be too slow: {min(slow_flat)} ms')
 
     env = environment.get_environment()
     if strategy is None:
         strategy = timing_config.resolve_strategy(
             env.timing, package.find_problem_package_or_die().timing
         )
-    env_groups = env.timing.groups
 
     all_languages = relevant_languages_for_estimation(
         env_languages=[lang.name for lang in env.languages],
-        # A language may show up on the slow side only (or only as a drop); it
-        # still needs a group, or its cap would be pooled nowhere.
+        # A language may show up on the slow side only; it still needs a group,
+        # or its solutions would be pooled nowhere.
         timing_languages=list(
             OrderedSet(
                 [
-                    *timing_per_solution_per_language,
-                    *slow_timing_per_solution_per_language,
-                    *confirmed_upper_per_language,
+                    *lower_timings,
+                    *(find_language_name(solution) for solution in upper_solutions),
                 ]
             )
         ),
     )
 
-    repartition = None
-    relatives = None
-    if not auto and len(all_languages) > 1:
-        picked = await _prompt_repartition(
-            all_languages,
-            env_groups,
-            timing_per_solution_per_language,
-            strategy,
-            slow_timing_per_solution_per_language=slow_timing_per_solution_per_language,
-            confirmed_upper_per_language=confirmed_upper_per_language,
-        )
-        if picked is None:
-            console.print('[error]Time limit estimation cancelled.[/error]')
-            return None
-        repartition = picked.numbers
-        relatives = picked.relatives
+    return _EstimationContext(
+        console=console,
+        strategy=strategy,
+        env_groups=env.timing.groups,
+        all_languages=all_languages,
+        lower_timings=lower_timings,
+        upper_solutions=upper_solutions,
+    )
 
-    console.print()
-    console.rule('[status]Time estimation[/status]', style='status')
-    console.print(_describe_strategy(strategy))
 
-    try:
-        profile = build_timing_profile(
-            timing_per_solution_per_language=timing_per_solution_per_language,
-            strategy=strategy,
-            env_groups=env_groups,
-            all_languages=all_languages,
-            slow_timing_per_solution_per_language=slow_timing_per_solution_per_language,
-            confirmed_upper_per_language=confirmed_upper_per_language,
-            repartition=repartition,
-            relatives=relatives,
-        )
-    except timing_groups.GroupValidationError as e:
-        console.print(f'[error]Invalid language groups: {e}[/error]')
+async def estimate_time_limit(
+    console: rich.console.Console,
+    result: RunSolutionResult,
+    strategy: Optional[timing_config.TimingStrategy] = None,
+    auto: bool = False,
+) -> Optional[TimingProfile]:
+    """One estimate from one run, with no validation phase behind it."""
+    knowledge = timing_validation.SlowKnowledge()
+    ctx = await build_estimation_context(console, result, strategy, knowledge=knowledge)
+    if ctx is None:
         return None
-
-    defaulted = [
-        lang
-        for report in (profile.groups or [])
-        if report.origin == schema.TimingGroupOrigin.DEFAULTED
-        for lang in report.languages
-    ]
-    if defaulted:
-        console.print(
-            '[warning]⚠ The following languages have no solution and no whenEmpty '
-            f'rule, so they fall back to the base time limit of {profile.timeLimit} '
-            f'ms: {", ".join(defaulted)}.[/warning]'
-        )
-
-    return profile
+    picked = await ctx.prompt(auto=auto, knowledge=knowledge)
+    if picked is None:
+        console.print('[error]Time limit estimation cancelled.[/error]')
+        return None
+    return ctx.build(picked, knowledge=knowledge)
 
 
 @dataclasses.dataclass

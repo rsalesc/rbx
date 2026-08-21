@@ -10,6 +10,9 @@ from rbx.box.environment import LanguageGroupFallback
 class GroupAssignment(BaseModel):
     numbers: Dict[str, int]
     relatives: Dict[str, LanguageGroupFallback] = {}
+    # Set when the setter chose to keep these limits despite a violated upper
+    # bound, rather than regrouping to satisfy it.
+    force: bool = False
 
 
 LEGEND_LINES = [
@@ -305,6 +308,7 @@ async def prompt_group_assignment(
     input=None,
     output=None,
     preview: Optional[Callable[..., AnyFormattedText]] = None,
+    allow_force: bool = False,
 ) -> Optional[GroupAssignment]:
     """Interactive single-screen group picker. Returns a ``GroupAssignment``
     whose ``numbers`` maps {language: group_number} (N>=1 shared group, 0
