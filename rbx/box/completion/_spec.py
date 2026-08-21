@@ -325,6 +325,14 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Where to run the solutions being timed (local, moj).',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--runner'],
+                    'takes_value': True,
+                    'value': {'completer': 'runner', 'kind': 'completer'},
+                },
+                {
                     'help': 'Capture the time report (run report + limits table) and copy '
                     'it to the clipboard. Pass a format: --share png or --share '
                     'text.',
@@ -2981,6 +2989,7 @@ COMPLETERS = {
     'outcome': 'rbx.box.completion.completers:complete_outcome',
     'problem': 'rbx.box.completion.completers:complete_problem',
     'profile': 'rbx.box.completion.completers:complete_profile',
+    'runner': 'rbx.box.completion.completers:complete_runner',
     'solutions': 'rbx.box.completion.completers:complete_solutions',
     'testgroup': 'rbx.box.completion.completers:complete_testgroup',
     'verification_level': 'rbx.box.completion.completers:complete_verification_level',

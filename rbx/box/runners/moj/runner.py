@@ -158,14 +158,11 @@ def _retrieve_exception(task: 'asyncio.Task') -> None:
     does await it still gets the exception raised normally, because retrieving
     does not consume it.
 
-    **What this does not fix**, stated so task 7 can find it: a task still
-    *pending* when the run ends keeps polling MOJ until the loop is torn down, and
-    then asyncio logs `Task was destroyed but it is pending!`. Cancelling those
-    needs a teardown hook on `SolutionRunner`, which the design deliberately
-    removed (the old `finalize` ran before any deferred resolved, so it tore down
-    a remote session before the first result was fetched). There is nowhere to
-    hang cancellation today; `self._jobs` is kept so that whoever adds one has the
-    list waiting for them.
+    **This is only about a task that finished.** A task still *pending* when the
+    run ends is `close`'s business: it cancels everything left in `self._jobs`,
+    from a `finally` around the *consumption* of the deferreds rather than from
+    inside `run_solutions` -- which is the timing the removed `finalize` hook got
+    wrong.
     """
     if not task.cancelled():
         task.exception()
@@ -354,6 +351,56 @@ class MojRunner:
             )
             for entry, name in zip(entries, names)
         ]
+
+    def close(self) -> None:
+        """Stop waiting on every testrun nobody is going to read. Idempotent.
+
+        `run_solution` queues **every** solution up front -- that is the point of
+        the seam -- while the report consumes them one at a time and stops at the
+        first failure. So a run that ends early (a solution whose job raised, a
+        report that blew up, Ctrl-C) leaves the later solutions' tasks polling MOJ
+        for results nothing will ever ask for, and asyncio reports them at
+        interpreter exit as `Task was destroyed but it is pending!` -- a message
+        about rbx internals, arriving after the error the setter actually cares
+        about. This is the hook `_retrieve_exception` said was missing.
+
+        **Only the runner-side wait is cancelled. The judge keeps running.** A
+        cancelled poll does not un-submit anything: MOJ has the submission and
+        will finish it on its own schedule. That costs the setter nothing and
+        needs no cleanup -- a `testrun` runs **outside history and placar**, so it
+        leaves no submission on the problem, no entry in anyone's standings, and
+        nothing to delete. It occupies a judge slot until it finishes, which is
+        the honest cost of interrupting, and `MAX_INFLIGHT_TESTRUNS` is what
+        bounds it.
+
+        Called after the deferreds are consumed, never inside `run_solutions` --
+        see `SolutionRunner.close` for why that timing is the whole difference
+        between this and the `finalize` hook the seam deliberately does not have.
+        """
+        # Read and cleared first, so a second `close` (or one racing the report's
+        # own teardown) has nothing left to cancel and says nothing twice.
+        jobs, self._jobs = self._jobs, []
+        pending = [job for job in jobs if not job.done()]
+        for job in pending:
+            # `cancel` on an already-finished task is a no-op returning False, so
+            # filtering above is about what to *say*, not about safety.
+            job.cancel()
+
+        if not pending:
+            return
+
+        # Said out loud, because the alternative is a setter who interrupted a
+        # timing run wondering whether they left something broken on a shared
+        # judge, with no way to find out. One line, after the fact, on the
+        # consumer's own thread of control -- `close` is only ever called from
+        # there.
+        console.console.print(
+            f'[warning]Stopped waiting for {len(pending)} MOJ testrun(s) that '
+            f'were still in flight.[/warning]\n'
+            f'[warning]They keep running on the judge until they finish, but a '
+            f'testrun is outside history and placar, so there is nothing to clean '
+            f'up.[/warning]'
+        )
 
     # -- run_solution, in pieces ----------------------------------------------
 

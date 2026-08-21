@@ -71,6 +71,18 @@ class LocalRunner:
 
         return res
 
+    def close(self) -> None:
+        """Nothing to drop: this backend never has work outstanding.
+
+        Every testcase runs *inside* the deferred the consumer awaits, on the
+        consumer's own thread of control -- so when the consumer stops, the
+        sandbox work stops with it, and a testcase whose deferred was never
+        awaited was never dispatched at all. There is no background task, no
+        remote job and no session, which is precisely what a backend that
+        dispatches ahead of the consumer (`MojRunner`) does have.
+        """
+        return None
+
 
 # There is no type checker in this build, so the Protocol is only load-bearing if
 # something checks it at run time. An annotated assignment would not have: Python

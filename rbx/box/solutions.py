@@ -329,9 +329,33 @@ class SolutionReportSkeleton(BaseModel):
 class RunSolutionResult:
     skeleton: SolutionReportSkeleton
     items: List[EvaluationItem]
+    # The backend that produced `items`, so whoever consumes them can tell it
+    # when it is done. Optional because a result can be built without a run at
+    # all -- the reporting tests do exactly that -- and a result with no backend
+    # has nothing to close.
+    runner: Optional['SolutionRunner'] = None
 
     def empty_structured_evaluation(self) -> StructuredEvaluation:
         return self.skeleton.empty_structured_evaluation()
+
+    def close(self) -> None:
+        """Tell the backend nothing more will be asked of it. Idempotent.
+
+        Call it from a `finally` around the *consumption* of `items`, which is
+        the only moment at which this can be correct: a backend may dispatch work
+        ahead of the consumer, so anything still outstanding when consumption
+        ends is work whose result nobody will ever read. `SolutionRunner.close`
+        explains at length why this is not the `finalize` hook the seam started
+        with -- that one fired while every job was still in flight.
+
+        Every consumer of a `RunSolutionResult` should do this, including the
+        ones that only ever run locally: `LocalRunner.close` is a no-op, so the
+        cost is nothing and the alternative is a call site that silently breaks
+        the day someone points it at a remote backend.
+        """
+        if self.runner is None:
+            return
+        self.runner.close()
 
 
 class FailedSolutionIssue(issue_stack.Issue):
@@ -960,7 +984,7 @@ async def run_solutions(
     await runner.prepare(ctx)
     items = _produce_solution_items(runner=runner, ctx=ctx)
 
-    return RunSolutionResult(skeleton=skeleton, items=items)
+    return RunSolutionResult(skeleton=skeleton, items=items, runner=runner)
 
 
 async def _generate_testcase_interactively(

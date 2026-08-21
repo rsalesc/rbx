@@ -110,6 +110,32 @@ Two things stay with the orchestrator rather than the backend:
   `nruns=0` is every caller's default and means "whatever `repeats.reps` says", which is
   the likelier way a run ends up repeated.
 
+**Choosing one.** `rbx time --runner <name>` (`runners/registry.py`), defaulting to
+`local`; an unknown name is refused naming the known ones. A *flag*, deliberately not the
+limits profile: a profile is the `limits/<name>.yml` file `rbx time` writes, so binding a
+transport to its name would couple an output to a transport and leave no way to estimate
+MOJ limits from a machine with no judge access. The registry imports each backend lazily
+(naming one must not cost the imports it talks to) and builds a fresh instance per call
+(a runner holds a whole run's state). Shell completion carries its own copy of the names
+in `completion/completers.py`, pinned to the registry by a test, because that module has
+to stay off the heavy imports. The `env.rbx.yml` `runners:`/`profiles:` block the design
+sketches is **not** built: no backend has a reachable knob yet, and the flag is the whole
+surface until something needs more.
+
+**Tearing one down.** `RunSolutionResult.close()` forwards to
+`SolutionRunner.close()`, and every consumer of a run calls it from a `finally` around
+the *consumption* of the deferreds -- `builder.verify`, `cli.run` and
+`timing._run_for_inference`. It is **not** the `finalize` hook the seam started with and
+must not become it: `finalize` fired inside `run_solutions`, which only builds the
+deferreds, so it ran before a single result had been fetched. What `close` drops is work
+nobody will now ask for -- a backend that dispatched every solution up front still has
+jobs in flight when the report stops at the first failure, or when the setter hits
+Ctrl-C. It is synchronous and does not wait: cancelling is all rbx can do, since a
+cancelled `moj testrun` goes on running on the judge (outside history and placar, so
+nothing needs cleaning up -- `MojRunner.close` says so, once). `LocalRunner.close` is a
+no-op, because its work happens inside the deferred the consumer awaits. Awaiting a
+deferred after `close` is not supported.
+
 **Two `moj` trees, different jobs.** `runners/moj/` is the *client*: a typed wrapper
 over the judge's `moj` CLI (`problem_id.py`, `cli.py`) that a `MojRunner` drives to
 upload, calibrate and testrun. `packaging/moj/` is the *packager* that produces what it

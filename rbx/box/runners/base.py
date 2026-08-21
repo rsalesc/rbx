@@ -115,3 +115,36 @@ class SolutionRunner(Protocol):
         `entries` is the solution's whole testset, flattened in group order.
         """
         ...
+
+    def close(self) -> None:
+        """Drop any work this runner still has outstanding. Idempotent.
+
+        **This is not the `finalize` hook the seam started with, and the
+        difference is the whole point.** `finalize` fired inside `run_solutions`,
+        which only *builds* the deferreds -- so it ran before a single one had
+        resolved and would have torn a remote session down before the first
+        result was fetched. `close` is called by the code that **consumed** the
+        deferreds, from a `finally` around that consumption, so by the time it
+        runs every result the caller wanted has already been taken.
+
+        What is left when it runs is therefore work nobody is going to ask for:
+        a backend that dispatched every solution up front (which is exactly why
+        the seam is per solution) still has jobs in flight when the consumer
+        stops early -- because a solution failed, because the setter pressed
+        Ctrl-C, because the report raised. Those jobs keep polling a remote judge
+        for results that will never be read, and asyncio complains about them at
+        interpreter exit. `close` is where they are cancelled.
+
+        **Synchronous, and it does not wait.** Cancellation is what rbx has to
+        offer; waiting is not. `asyncio.Task.cancel` takes effect on its own, and
+        a remote job goes on running on the judge whether rbx watches it or not,
+        so there is nothing an `await` here could confirm -- it would only delay
+        the error the setter is already looking at. Being sync also means the
+        three consumers can call it from a `finally` without turning it into a
+        second `await` that could itself be interrupted.
+
+        Awaiting a deferred **after** `close` is not supported: on a backend that
+        cancelled its jobs, that deferred raises `CancelledError`. Consumers call
+        `close` once, last.
+        """
+        ...

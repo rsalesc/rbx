@@ -2,7 +2,7 @@ import dataclasses
 import functools
 import math
 from fractions import Fraction
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
 
 import rich
 import rich.console
@@ -37,6 +37,12 @@ from rbx.box.solutions import (
     run_solutions,
 )
 from rbx.grading.steps import Outcome
+
+if TYPE_CHECKING:
+    # Only for the annotation. `runners.base` reaches back into `solutions`,
+    # which this module imports at run time, so naming the type is all this
+    # needs -- the backend itself is resolved by the CLI and handed down.
+    from rbx.box.runners.base import SolutionRunner
 
 
 class MissingLowerBoundError(RbxException):
@@ -1026,6 +1032,7 @@ async def _run_for_inference(
     detailed: bool,
     runs: int,
     formula: Optional[str],
+    runner: Optional['SolutionRunner'] = None,
 ) -> Optional[_InferenceRun]:
     """Run the solutions the time limit is inferred from, report them, and say
     what their verdicts mean. ``None`` when the estimate must not proceed."""
@@ -1064,6 +1071,10 @@ async def _run_for_inference(
         )
         result = await run_solutions(
             progress=s,
+            # `None` means the local sandbox, which is what `run_solutions`
+            # itself falls back to -- so passing it through is not a special
+            # case, it is the absence of one.
+            runner=runner,
             tracked_solutions=tracked_solutions,
             check=check,
             # ALL_SOLUTIONS keeps `isDoubleTL` off (only FULL turns it on):
@@ -1083,38 +1094,51 @@ async def _run_for_inference(
             ),
         )
 
-    console.console.print()
-    console.console.rule(
-        '[status]Run report (for time estimation)[/status]', style='status'
-    )
-    ok = await print_run_report(
-        result,
-        console.console,
-        _INFERENCE_VERIFICATION,
-        detailed=detailed,
-        skip_printing_limits=True,
-        # An upper-bound solution is *supposed* to hit the cap, so only the
-        # solutions that bound the limit from below decide whether the run
-        # succeeded.
-        gating_solutions={str(solution.path) for solution in lower_solutions},
-    )
-
-    dropped_upper: List[Solution] = []
-    if cap is not None:
-        diagnosis = await _diagnose_inference_run(result)
-        if not _report_inference_diagnosis(diagnosis, cap):
-            return None
-        dropped_upper = diagnosis.dropped_upper
-
-    if not ok:
-        console.console.print(
-            '[error]Failed to run ACCEPTED solutions, so cannot estimate a reliable time limit.[/error]'
+    try:
+        console.console.print()
+        console.console.rule(
+            '[status]Run report (for time estimation)[/status]', style='status'
         )
-        return None
+        ok = await print_run_report(
+            result,
+            console.console,
+            _INFERENCE_VERIFICATION,
+            detailed=detailed,
+            skip_printing_limits=True,
+            # An upper-bound solution is *supposed* to hit the cap, so only the
+            # solutions that bound the limit from below decide whether the run
+            # succeeded.
+            gating_solutions={str(solution.path) for solution in lower_solutions},
+        )
 
-    return _InferenceRun(
-        result=result, strategy=strategy, cap=cap, dropped_upper=dropped_upper
-    )
+        dropped_upper: List[Solution] = []
+        if cap is not None:
+            diagnosis = await _diagnose_inference_run(result)
+            if not _report_inference_diagnosis(diagnosis, cap):
+                return None
+            dropped_upper = diagnosis.dropped_upper
+
+        if not ok:
+            console.console.print(
+                '[error]Failed to run ACCEPTED solutions, so cannot estimate a reliable time limit.[/error]'
+            )
+            return None
+
+        return _InferenceRun(
+            result=result, strategy=strategy, cap=cap, dropped_upper=dropped_upper
+        )
+    finally:
+        # The report above is what *consumes* this run: it awaits every
+        # deferred, in order, and only then does anything else read one. So by
+        # here the backend has nothing left that anybody wants -- and whatever
+        # it does still have in flight belongs to a run that ended early, which
+        # is precisely the case the `finally` is here for.
+        #
+        # Closing here rather than at the end of `compute_time_limits` is safe
+        # for the same reason: `Deferred` memoizes, so the estimation and the
+        # `--share` re-report downstream read cached evaluations and never ask
+        # the backend for anything again.
+        result.close()
 
 
 async def compute_time_limits(
@@ -1125,6 +1149,7 @@ async def compute_time_limits(
     formula: Optional[str] = None,
     auto: bool = False,
     share: Optional[str] = None,
+    runner: Optional['SolutionRunner'] = None,
 ):
     if package.get_main_solution() is None:
         # An error, not a warning: with no accepted solution nothing bounds the
@@ -1135,7 +1160,7 @@ async def compute_time_limits(
         return None
 
     run = await _run_for_inference(
-        check=check, detailed=detailed, runs=runs, formula=formula
+        check=check, detailed=detailed, runs=runs, formula=formula, runner=runner
     )
     if run is None:
         return None

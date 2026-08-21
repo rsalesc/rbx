@@ -150,8 +150,17 @@ async def verify(
 
     console.console.print()
     console.console.rule('[status]Run report[/status]', style='status')
-    return await print_run_report(
-        solution_result,
-        console.console,
-        VerificationLevel(verification),
-    )
+    try:
+        return await print_run_report(
+            solution_result,
+            console.console,
+            VerificationLevel(verification),
+        )
+    finally:
+        # After the report, because the report is what *consumes* the deferreds:
+        # closing before it would tear down work whose results are still about to
+        # be read. In the `finally` because the interesting case is the report
+        # ending early -- a failure, or Ctrl-C -- which is exactly when a backend
+        # that dispatched ahead still has jobs nobody will ever ask about.
+        # A no-op on the local sandbox, which is all this call site uses today.
+        solution_result.close()
