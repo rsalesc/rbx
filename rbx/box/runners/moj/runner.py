@@ -31,10 +31,11 @@ from rbx.box.deferred import Deferred
 from rbx.box.exception import RbxException
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.moj.moj_language_utils import get_moj_language_from_rbx_language
-from rbx.box.packaging.moj.packager import MojPackager, ProbePackage, UniformPinned
+from rbx.box.packaging.moj.packager import MojPackager, ProbePackage, ProbePinned
 from rbx.box.runners.base import RunContext, RunnerCapabilities, SolutionRunner
 from rbx.box.runners.moj import cli
 from rbx.box.runners.moj.problem_id import ensure_moj_id, is_rbxt_id, moj_id_path
+from rbx.box.schema import CodeItem
 from rbx.grading.steps import (
     CheckerResult,
     Evaluation,
@@ -328,6 +329,17 @@ class MojRunner:
         # (which is exactly why a probe package suppresses `STOPWHEN_*`), so
         # aborting saves nothing -- and gating would overwrite real judge
         # verdicts with SKIPPED.
+        #
+        # One visible consequence, in `rbx time`'s validation phase. That phase
+        # aborts a slow solution at its first timeout, so locally the testcases
+        # after it are SKIPPED and contribute nothing. Here they all really ran,
+        # so a solution that both times out *and* answers some later test wrongly
+        # comes back with a WA beside the TLE, and `_record_validation_run` reads
+        # a non-slow bad verdict as "broke for another reason" rather than as
+        # confirmation. That is more information, not less -- the WA is real, and
+        # the local abort merely hid it -- but it does mean a slow solution that
+        # is also wrong is reported here and passes locally. The fix is the same
+        # one the message names: fix the solution, or `inference: false` it.
         supports_abort=False,
         # `MojPackager.task_types()` is `[BATCH]`: MOJ's interactive support uses
         # its own arbiter protocol, not a testlib interactor.
@@ -383,7 +395,7 @@ class MojRunner:
         moj_id = self._problem_id(login)
         self._moj_id = moj_id
 
-        cap_ms = _uniform_cap_ms(ctx)
+        pin = _probe_pin(ctx)
 
         # The package is built on every run, even when the upload is about to be
         # skipped: it is cheap (copying built tests, amalgamating the checker) and
@@ -402,7 +414,7 @@ class MojRunner:
 
             if ctx.progress:
                 ctx.progress.update('Building the MOJ probe package...')
-            self._build_probe(ctx, package_path, build_path, cap_ms)
+            self._build_probe(ctx, package_path, build_path, pin)
 
             fingerprint = _directory_fingerprint(package_path)
             self._fingerprint = fingerprint
@@ -498,9 +510,10 @@ class MojRunner:
 
         **Ends this batch, not this runner.** `_moj_id`, `_packager` and
         `_names_by_entry` are deliberately left alone: the remote problem is
-        persistent by design, and a second batch on the same object (phase 2
-        re-uploading at `timeLimitToTle x TL`) is meant to reuse them and skip
-        straight past the upload it already did.
+        persistent by design, and a second batch on the same object (the
+        validation phase, re-preparing at `ceil(TL_lang x timeLimitToTle)`) is
+        meant to reuse the binding rather than resolve it again. It does still
+        re-upload: the limits moved, and the limits live in the package.
 
         **Only the runner-side wait is cancelled. The judge keeps running.** A
         cancelled poll does not un-submit anything: MOJ has the submission and
@@ -832,10 +845,11 @@ class MojRunner:
         **The cap needs no term of its own.** It is emitted as `TLOVERRIDE` into
         the package's `conf`, which `_directory_fingerprint` hashes along with
         every other file; `test_a_changed_package_is_uploaded_again_even_though_
-        the_problem_is_ready` is what pins that. So phase 2, which re-uploads at
-        `timeLimitToTle x TL`, gets a different fingerprint and therefore a
-        different key for every solution -- exactly right, since those are
-        different measurements.
+        the_problem_is_ready` is what pins that. So the validation phase, which
+        re-uploads at `ceil(TL_lang x timeLimitToTle)`, gets a different
+        fingerprint and therefore a different key for every solution -- exactly
+        right, since those are different measurements. A picker round trip that
+        lands back on limits already probed hits the cache instead.
 
         **What this cannot see** is the judge park itself. rbx has no way to ask
         MOJ which package a problem currently holds (the CLI exposes no package
@@ -980,12 +994,12 @@ class MojRunner:
         ctx: RunContext,
         package_path: pathlib.Path,
         build_path: pathlib.Path,
-        cap_ms: int,
+        pin: ProbePinned,
     ) -> None:
         """Build the probe package into `package_path`."""
         packager = MojPackager(
             testcase_entries=ctx.skeleton.entries,
-            timing_mode=UniformPinned(limit_ms=cap_ms),
+            timing_mode=pin,
             probe=ProbePackage(submission_languages=_testrun_languages(ctx)),
         )
         # Kept for `run_solution`, which needs two things from this exact object:
@@ -1103,90 +1117,121 @@ class MojRunner:
         )
 
 
-def _uniform_cap_ms(ctx: RunContext) -> int:
-    """The single cap every timing this run produces is measured under.
+def _probe_pin(ctx: RunContext) -> ProbePinned:
+    """The limits every timing this run produces is measured under.
 
-    MOJ **always** enforces a time limit, so "no cap" is not expressible in a
-    package the way it is in the local sandbox, and `UniformPinned` refuses a
+    MOJ **always** enforces a time limit, so "no limit" is not expressible in a
+    package the way it is in the local sandbox, and `ProbePinned` refuses a
     non-positive number rather than emitting a `TLOVERRIDE` that TLEs every run.
-    So the three cases are settled here (see the design doc, "What to pin when
-    there is no cap"):
+    `rbx time` asks for a different shape in each of its two phases, and both are
+    honoured literally:
 
-    1. The run carries a cap -- `timing._run_for_inference`'s `_InferenceCap`, or
-       `timeLimitToTle x TL` in phase 2. Pin it.
-    2. No cap, but the problem estimates with multipliers. Pin
-       `inferenceTimeout`: its own description is "the time limit enforced on
-       solutions while estimating", which is exactly the question. (Its "only
-       used when `timeLimitToTle` is set" clause is about the upper *bound*, not
-       about how long rbx is willing to wait for a solution.)
-    3. No multipliers at all -- the problem estimates with a formula. Refuse,
-       rather than invent a number every measurement would then be silently
-       truncated by. The same call `rbx package moj --calibrate` already makes
-       when it needs an `acToTimeLimit` a formula does not define.
+    - **Estimation** passes one `int`, the `inferenceTimeout` every accepted
+      solution is capped at. Pinned as `TLOVERRIDE[default]`, with no per-language
+      entry: one cap for the whole run is exactly what was asked for.
+    - **Validation** passes a mapping, `ceil(TL x timeLimitToTle)` per language
+      group -- the bound each slow solution has to clear. Pinned per language, so
+      the judge enforces the same limit the local sandbox would have. The default
+      is the loosest of them, which is what an unnamed language falls back to; no
+      solution this run measures is in one, since the mapping covers every
+      language being run.
+
+    Anything else -- no override at all, which no `rbx time` path produces but any
+    other caller of `run_solutions` may -- falls back to the estimation cap the
+    problem configures. `inferenceTimeout` is resolved for **both** estimation
+    modes since #695, formula included, so there is nothing left to refuse: its
+    own description is "the cap enforced on every solution run while estimating",
+    which is exactly the question being asked.
     """
-    # `> 0` rather than `is not None`: `timing.py` passes **-1**, the "no
-    # override" sentinel, whenever there is no cap -- which is every problem with
-    # no `timeLimitToTle` and every problem with no upper-bound solution. A
-    # `None` check would take a -1 for a cap and pin `TLOVERRIDE[default]=-0.001`.
-    if ctx.timelimit_override is not None and ctx.timelimit_override > 0:
-        return ctx.timelimit_override
+    override = ctx.timelimit_override
+    if isinstance(override, int):
+        # `> 0` rather than truthiness: -1 is the "no override" sentinel elsewhere
+        # in rbx, and pinning it would emit `TLOVERRIDE[default]=-0.001`.
+        if override > 0:
+            return ProbePinned(default_ms=override)
+    elif override is not None:
+        per_language = {
+            language: limit_ms
+            for language, limit_ms in override.items()
+            if limit_ms > 0
+        }
+        if per_language:
+            return ProbePinned(
+                # The loosest, not the tightest. Only a language the run did not
+                # name falls back to it, and being generous there cannot truncate
+                # a measurement -- being stingy could.
+                default_ms=max(per_language.values()),
+                per_rbx_language_ms=tuple(sorted(per_language.items())),
+            )
 
     strategy = timing_config.resolve_strategy(
         environment.get_environment().timing,
         package.find_problem_package_or_die().timing,
     )
-    if strategy.uses_multipliers:
-        return strategy.multipliers_or_die().inferenceTimeout
-
-    raise MojRunnerError(
-        'The MOJ runner needs one time limit to measure every solution under, '
-        'but this problem estimates its time limit with a formula, which defines '
-        'no such cap -- and MOJ always enforces a limit, so there is nothing to '
-        'fall back on.\n'
-        'Set `timing.multipliers.inferenceTimeout` in `env.rbx.yml` (the cap rbx '
-        'enforces on solutions while estimating), or measure this problem on a '
-        'local runner instead.'
-    )
+    return ProbePinned(default_ms=strategy.inferenceTimeout)
 
 
 def _testrun_languages(ctx: RunContext) -> Tuple[str, ...]:
     """The MOJ ids to whitelist for submission, in `.moj-meta.json`.
 
-    Every language rbx **may testrun** -- one per solution this run measures --
-    and emphatically *not* just the accepted ones. The API rejects a submission
-    outside the whitelist, a testrun included, so a whitelist derived from the
-    accepted solutions (which is the right rule for a real problem, and what
-    `MojPackager` does off the probe path) would refuse every testrun of a slow
-    or wrong solution: those are never ACCEPTED by construction. Nothing is
-    protected by narrowing it here -- a private `rbxt-` problem has no submission
-    surface to protect.
+    Every language rbx **may testrun**, and emphatically *not* just the accepted
+    ones. The API rejects a submission outside the whitelist, a testrun included,
+    so a whitelist derived from the accepted solutions (which is the right rule
+    for a real problem, and what `MojPackager` does off the probe path) would
+    refuse every testrun of a slow or wrong solution: those are never ACCEPTED by
+    construction. Nothing is protected by narrowing it here -- a private `rbxt-`
+    problem has no submission surface to protect.
+
+    So it is the whole package's solutions, not this batch's. That matters since
+    `rbx time` split into two phases: the estimation phase tracks only the
+    accepted solutions and the validation phase only the ones expected to be too
+    slow, so a whitelist built from `ctx.skeleton.solutions` would be a different
+    -- and, in phase 2, a *disjoint* -- list each time. Two costs, both real: the
+    package would fingerprint differently in each phase even when the limits did
+    not move, spending an upload and a calibration on nothing; and a package that
+    fingerprinted *equal* would leave phase 2 submitting slow solutions against
+    phase 1's accepted-only whitelist, which the API refuses.
+
+    A language rbx cannot map is refused only when this batch actually runs a
+    solution in it. The rest of the package is a superset offered for free, and
+    failing a run over a solution it never touches would be refusing work that
+    was never asked for.
     """
     languages: List[str] = []
     unmapped: List[Tuple[pathlib.Path, str]] = []
-    for solution in ctx.skeleton.solutions:
+
+    def add(solution: CodeItem, *, tracked: bool) -> None:
         # `find_language` reports an unknown language by printing and raising
         # `typer.Exit`, which is not wrapped here on purpose: by the time
         # `prepare` runs, `_get_report_skeleton` has already resolved and
-        # *compiled* every one of these solutions, so a language that does not
-        # resolve cannot reach this loop. Wrapping it would add a branch nothing
-        # can take and a message claiming the MOJ runner found the problem.
+        # *compiled* every tracked solution, so a language that does not resolve
+        # cannot reach this loop for one.
         rbx_language = find_language(solution).name
         moj_language = get_moj_language_from_rbx_language(rbx_language)
         if moj_language is None:
-            unmapped.append((solution.path, rbx_language))
-            continue
+            if tracked:
+                unmapped.append((solution.path, rbx_language))
+            return
         if moj_language not in languages:
             languages.append(moj_language)
+
+    tracked_paths = {solution.path for solution in ctx.skeleton.solutions}
+    for solution in ctx.skeleton.solutions:
+        add(solution, tracked=True)
+    for solution in package.get_solutions():
+        if solution.path in tracked_paths:
+            continue
+        add(solution, tracked=False)
 
     if unmapped:
         # Refused, not skipped, and the difference matters. Dropping the solution
         # from the whitelist does not drop it from the run: rbx would still
         # testrun it, and the API -- which enforces the whitelist -- would reject
         # the submission, so the failure surfaces as a server-side message about
-        # a language, in task 6, rather than here where the setter can act on it.
-        # Even if the run did skip it, that is not a mere downgrade: a skipped
-        # lower-bound solution means the time limit is estimated from incomplete
-        # data with nothing saying so. Refusing names the solution to exclude.
+        # a language rather than here where the setter can act on it. Even if the
+        # run did skip it, that is not a mere downgrade: a skipped lower-bound
+        # solution means the time limit is estimated from incomplete data with
+        # nothing saying so. Refusing names the solution to exclude.
         listed = '\n'.join(f'  `{path}` (`{language}`)' for path, language in unmapped)
         raise MojRunnerError(
             f'These solutions are written in languages MOJ has no counterpart '
@@ -1326,7 +1371,7 @@ def _evaluation_for(
             # reports. A TLE carries its *real* time rather than the limit
             # (2.81s against a 0.614s `tl`, in the probe), so it is stored as
             # reported and not clamped: how far over the cap a solution ran is
-            # exactly what phase 2 wants.
+            # exactly what the validation phase wants.
             time=test.time,
             wall_time=None,
             memory=None,
@@ -1494,7 +1539,7 @@ def _store_cached_testrun(key: str, run: str, status: cli.TestrunStatus) -> None
 
     A non-`Accepted` run **is** cached, on purpose. A WA, an RE or a TLE is a
     legitimate, reproducible measurement of a solution that is *supposed* to fail
-    -- phase 2 exists to measure exactly those -- and the timings it produced are
+    -- the validation phase exists to measure exactly those -- and the timings it produced are
     as real as an accepted solution's. Only "rbx could not read this" is refused,
     never "the judge did not like the solution".
 

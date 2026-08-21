@@ -206,7 +206,7 @@ The same flag is what `rbx run --runner moj` will use later.
    `{"id": "<login>#rbxt-<problem-id>"}`. Committing it is what makes two setters on the
    same problem reach the same remote problem instead of each orphaning one on the server.
 3. Build a MOJ package with `MojPackager`, carrying **only the model solution** in
-   `sols/good/`, a **uniform** `TLOVERRIDE` taken from `ctx.timelimit_override`, and the
+   `sols/good/`, the `TLOVERRIDE` block `ctx.timelimit_override` asks for, and the
    full submission-language whitelist (see below).
 4. `moj upload <id> <dir>`.
 5. `moj calibrate <id>`, then poll `moj --json check <id>` until it is ready -- which is
@@ -224,17 +224,42 @@ get measured -- which is also why the package can stay minimal.
 
 `_time_limit_lines` today refuses to guess between two modes: the `moj` limits profile
 pins the limits, or `--calibrate` hands them to the judge. The runner needs a third --
-*pin every language to one explicit number* -- so the boolean `calibrate` flag becomes a
-small mode object (`ProfilePinned` / `JudgeCalibrated` / `UniformPinned(limit_ms)`).
-`UniformPinned` builds `FixedTimeLimits(base_ms=limit_ms, per_language_ms={})` and reuses
-`fixed_limit_lines` unchanged; `calibration_tl_seconds` then raises `CALIBRATIONTL` to
-match on its own.
+*pin exactly what this run asked to measure under* -- so the boolean `calibrate` flag
+becomes a small mode object (`ProfilePinned` / `JudgeCalibrated` /
+`ProbePinned(default_ms, per_rbx_language_ms)`). `ProbePinned` builds a `FixedTimeLimits`
+and reuses `fixed_limit_lines` unchanged; `calibration_tl_seconds` then raises
+`CALIBRATIONTL` to match on its own.
 
-The limit must be **uniform across languages**, which is why this is not just
-`_fixed_time_limits` with a different profile. `ctx.timelimit_override` is a single cap --
-the inference timeout, or `timeLimitToTle x TL` -- and emitting the profile's per-language
-`TLOVERRIDE` entries alongside it would silently measure some languages under a *tighter*
-cap than rbx asked for, quietly truncating exactly the timings the estimate rests on.
+**Why a mapping and not one number.** This started as `UniformPinned(limit_ms)`, because
+`ctx.timelimit_override` was a single cap. Splitting `rbx time` into two phases (#696)
+changed the question rather than the answer:
+
+- **Estimation** still asks for one number -- `inferenceTimeout`, the cap every accepted
+  solution runs under -- so `ProbePinned` carries `default_ms` and nothing else, and the
+  emitted `conf` has a single `TLOVERRIDE[default]`.
+- **Validation** asks for `ceil(TL_lang x timeLimitToTle)`, **per language group**. That
+  is the bound each slow solution has to clear, and it differs by language by
+  construction, since the estimate assigns a different limit to each group.
+
+So the honest thing is to emit what was asked for: one `TLOVERRIDE[<lang>]` per language
+the run named, and `TLOVERRIDE[default]` for the rest. What must still never happen is the
+thing `UniformPinned` was defensive about -- emitting the *`moj` profile's* per-language
+entries alongside a cap this run chose, which would measure some languages under a limit
+nobody asked for. `ProbePinned` cannot do that: it consults no profile, only
+`ctx.timelimit_override`.
+
+The default, when the run names several languages, is the **loosest** of them rather than
+the tightest. Only a language the run did *not* name falls back to it -- and no solution
+being measured is in one, since the mapping covers every language being run -- so being
+generous there cannot truncate a measurement, while being stingy could.
+
+**A rejected alternative: pin the loosest limit for everybody and compare locally.** A TLE
+reports its real time unclamped (see the probe notes), so rbx could run every language at
+`max(limits)` and decide the verdict itself. It is worse on both counts that matter. A
+slow solution that *finishes* under the loose cap comes back WA or RE rather than TLE, and
+`_record_validation_run` reads a non-slow bad verdict as "broke for another reason", so a
+solution that is genuinely too slow would be reported as broken. And it costs judge time
+on exactly the most expensive solutions, for nothing.
 
 #### The language whitelist is load-bearing here
 
@@ -243,11 +268,18 @@ rejects a submission outside it** -- a testrun included. The packager derives it
 languages with an **ACCEPTED solution**, which is right for a real problem and wrong here:
 a calibration-only package ships one accepted solution, so the whitelist would collapse to
 that one language and every testrun of a solution in another language would be refused --
-including, in phase 2, the slow and wrong solutions, which are never accepted by
-construction.
+including, in the validation phase, the slow and wrong solutions, which are never accepted
+by construction.
 
-So the runner package emits the whitelist from the languages of **every solution rbx may
-testrun**, not from the shipped ones. The narrowing that protects a real problem's
+So the runner package emits the whitelist from the languages of **every solution in the
+package**, not from the shipped ones -- and, deliberately, not from the ones *this batch*
+tracks either. The two phases track disjoint solution sets: estimation tracks only the
+accepted ones and validation only the ones expected to be too slow. A whitelist built per
+batch would therefore differ between the phases even when the limits did not move, paying
+an upload and a calibration for nothing; and where it happened to fingerprint equal, the
+validation phase would be submitting slow solutions against the estimation phase's
+accepted-only whitelist, which the API refuses. A language rbx cannot map to a MOJ id is
+refused only when this batch actually runs a solution in it. The narrowing that protects a real problem's
 submission surface buys nothing on a private, throwaway `rbxt-` problem.
 
 Relatedly, MOJ picks the language from the **file extension** of the uploaded source
@@ -274,65 +306,79 @@ right one.
 
 ## The timing flow
 
-Phase 1, estimation:
+`rbx time` runs in two phases (#696, #693), and the split is what decides how many times a
+probe package is uploaded. The phases are not an rbx-time detail the runner can ignore:
+they differ in *which* solutions run and in *what limit* they run under, and both reach
+the runner as a plain `run_solutions` call with a different `timelimit_override`.
 
-- `timing._run_for_inference` already computes an `_InferenceCap` and passes
-  `timelimit_override=cap.timeout`. On the MOJ runner that becomes `TLOVERRIDE`, so the cap
-  is enforced by the judge exactly as the sandbox enforces it locally.
-- The lower-bound and upper-bound solutions are testrun; their timings feed
-  `estimate_time_limit` and the existing picker unchanged.
+### Phase 1, estimation
 
-### What to pin when there is no cap
+- `timing._run_for_inference` runs **only the accepted solutions**, capped at
+  `strategy.inferenceTimeout`, and passes that as `timelimit_override`. On the MOJ runner
+  it becomes one `TLOVERRIDE[default]`, so the judge enforces the cap exactly as the
+  sandbox does locally.
+- Their timings feed `build_estimation_context` and the existing picker, unchanged.
+- The solutions expected to be too slow are **not** run here. That is #696's central
+  point: nothing bounds how long they take, so the only limit that could terminate them is
+  a cap set for somebody else, and a measurement taken under it answers no question. On a
+  shared judge park that also happens to be the expensive half of the run, so the MOJ
+  runner gets the saving for free.
 
-`timing.py` passes `timelimit_override=-1` -- the "no override" sentinel -- whenever
-`_InferenceCap` is `None`, which is every problem with no `timeLimitToTle` multiplier and
-every problem with no upper-bound solution. That is not an edge case, and **MOJ always
-enforces a time limit**, so "unlimited" is not expressible in a probe package the way it is
-in the local sandbox. `UniformPinned` rejects `<= 0` rather than emitting `TLOVERRIDE=-0.001`,
-so the runner has to decide. It decides like this:
+There is always a cap. `inferenceTimeout` is a property of the estimation rather than of
+the multipliers and is resolved for both estimation modes (#695), so the formula-mode
+refusal this design once specified is gone: the runner falls back to the configured
+`inferenceTimeout` when a caller passes no override at all, and has nothing left to refuse.
+The `-1` "no override" sentinel is still handled -- no `rbx time` phase passes it any more,
+but any other caller of `run_solutions` may, and pinning it would emit
+`TLOVERRIDE[default]=-0.001` and TLE every measurement.
 
-1. A cap exists -> pin `cap.timeout`.
-2. No cap, but the environment configures `timing.multipliers` -> pin its `inferenceTimeout`
-   (`schema.py:858`, `gt=0`, default 10s). Its own description is "the time limit enforced on
-   solutions while estimating", which is exactly the question being asked; the "only used
-   when `timeLimitToTle` is set" clause is about the *upper bound*, not about how long rbx is
-   willing to wait.
-3. No multipliers at all -- a problem estimating with a **formula** -- **refuse**, naming
-   `timing.multipliers.inferenceTimeout` in `env.rbx.yml` as the thing to set.
+### Phase 2, validation
 
-Refusing in case 3 rather than inventing a number is the same call `rbx package moj` already
-makes when `--calibrate` needs an `acToTimeLimit` a formula does not define.
+- Runs **only the solutions expected to be too slow**, each at
+  `ceil(TL_lang x timeLimitToTle)` -- `timing_validation.probe_limit` -- and aborts each at
+  its first timeout.
+- The limit is `timeLimitToTle x TL`, not the decided TL itself. A solution that is
+  supposed to be too slow must be given just enough margin to *prove* it: killed at exactly
+  the limit it only shows it was over; killed at the TLE bound it shows it was comfortably
+  over, which is what the multiplier means.
+- It is **per language**, because the estimate assigns a different limit to each language
+  group. The probe pins one `TLOVERRIDE[<lang>]` each; see "A third timing mode" above for
+  why the alternative -- one loose cap plus local arithmetic -- was rejected.
+- A solution killed there is *confirmed* too slow; one that finishes *violates* the bound
+  and hands over the real time. A violation re-opens the picker, so phase 2 may run
+  **several times** in one command, at a different set of limits each time.
+  `timing_validation.SlowKnowledge` is what keeps that cheap: a solution already killed at
+  some limit is also killed at any lower one, and a measured one is answered by
+  arithmetic, so only the solutions whose bound went up run again.
 
-Phase 2, validation:
+### Why the package is uploaded twice
 
-- Re-upload with **`TLOVERRIDE = timeLimitToTle x decided TL`**, not the decided TL itself.
-  A solution that is supposed to be too slow must be given just enough margin to *prove*
-  it: killed at exactly the limit, it only shows it was over; killed at the TLE cap, it
-  shows it was comfortably over, which is what the multiplier means. Correct solutions are
-  unaffected -- they finish far below either.
-- Testrun the remaining solutions (the ones `rbx time` already runs) at that cap, and judge
-  every measured time against the decided TL.
+This is the cost #696 makes unavoidable, and it is worth stating plainly rather than
+rediscovering: **the two phases measure under different limits, and MOJ's limit lives in
+the package**. `TLOVERRIDE` is emitted into `conf`, `conf` is inside
+`_directory_fingerprint`, so a phase-2 `prepare` cannot hit the fast path. It re-uploads,
+and -- since the checksum moved -- very likely re-calibrates. Each extra picker round trip
+that changes a limit costs another one.
 
 **Reaffirmed 2026-08-21, after the probe found that a TLE reports its time unclamped.**
-That finding makes a one-upload alternative sound — keep `TLOVERRIDE = inferenceTimeout`
-for the whole session and recompute phase-2 verdicts locally, since the real times come
-back regardless. It was weighed and **rejected**, for a reason that outranks the upload
-cost: a slow solution runs *to the cap on every test*, by definition. Letting it run to a
-10s `inferenceTimeout` instead of dying at `timeLimitToTle x TL` multiplies the judge time
-of exactly the solutions that are already the most expensive, across the whole testset, on
-a shared two-judge park. One extra upload — and at worst one extra calibration — is cheaper
-than that, and it buys the judge's own verdict at the real cap as well.
+That finding makes a one-upload alternative sound -- keep `TLOVERRIDE = inferenceTimeout`
+for the whole session and recompute the phase-2 verdicts locally, since the real times come
+back regardless. It was weighed and **rejected**, now for two reasons rather than one:
 
-The consequence to design around: the cap lives in the emitted `conf`, so it is inside
-`_directory_fingerprint`, so phase 2 **always** misses the fast path and re-uploads. That
-is by construction, not a bug. Whether it also forces a recalibration is still the open
-probe question above; the wiring must therefore surface progress during a wait that may
-run into minutes rather than looking hung.
+- A slow solution runs *to the cap on every test*, by definition. Letting it run to a 10s
+  `inferenceTimeout` instead of dying at `timeLimitToTle x TL` multiplies the judge time of
+  exactly the solutions that are already the most expensive, across the whole testset, on a
+  shared two-judge park.
+- `_record_validation_run` reads the judge's *verdict*, not only its timing. A slow
+  solution that finishes under a loose cap comes back WA or RE rather than TLE, and a
+  non-slow bad verdict is read as "broke for another reason" -- so a solution that is
+  genuinely too slow would be reported as broken. Measuring at the real bound is what makes
+  the judge's own verdict answer the question being asked.
 
-Changing `conf` moves the package checksum, so phase 2's upload very likely forces a second
-calibration wait. Whether a `TLOVERRIDE`-only change really does -- given that `TLOVERRIDE`
-overrides the calibrated TL anyway -- is a probe item below, and the answer decides whether
-phase 2 costs a wait or is nearly free.
+So the wiring must surface progress during a wait that may run into minutes rather than
+looking hung, and the testrun cache must survive across phases -- which it does: its key is
+the package fingerprint plus the submitted bytes, so a phase-2 re-run at limits already
+probed costs no judge time even though the package moved.
 
 ## Known limitation: the judge is not selectable
 
@@ -372,16 +418,16 @@ the cross-machine follow-up buys little right now.
 | 1 | Extract `SolutionRunner` / `RunContext` / `LocalRunner`; `run_solutions(runner=)` | pure refactor, no behavior change |
 | 2 | `RunnerCapabilities`; audit every consumer of memory, artifacts and checker messages for `None`-tolerance | degradation is safe |
 | 3 | `.moj-id` handling and a `moj` CLI wrapper (`whoami`, `upload`, `calibrate`, `check`, `testrun`, `testrun-status`) over `--json` | testable against the recorded fixtures |
-| 4 | `MojPackager`: a `UniformPinned` timing mode, a calibration-only solution set, and the widened language whitelist | the package the runner uploads |
+| 4 | `MojPackager`: a `ProbePinned` timing mode, a calibration-only solution set, and the widened language whitelist | the package the runner uploads |
 | 5 | `MojRunner.prepare` -- upload, calibrate, poll, already-calibrated fast path | `rbx time -p moj --runner moj` reaches a calibrated remote problem |
 | 6 | `MojRunner.run_solution` -- testrun fan-out, verdict mapping, background task, concurrency cap | phase 1 end to end |
-| 7 | Wire into `timing._run_for_inference`; phase 2 upload at `timeLimitToTle x TL` and the remaining solutions | the full flow |
+| 7 | Wire into `timing._run_for_inference` and `timing._validate_upper_bound`; the validation phase's re-upload at `timeLimitToTle x TL` | the full flow, both phases |
 | 8 | Cache testrun results by (package checksum, solution digest, `TLOVERRIDE`) | re-runs cost no judge time |
 
 **Task 8, as built.** The three terms the table names turned out to be two: `TLOVERRIDE`
 is emitted into the package's `conf`, so it is already inside `_directory_fingerprint` --
-which is also why phase 2 misses on every solution, exactly as "the consequence to design
-around" above says it must. So the key is (package fingerprint, remote problem id, the
+which is also why the validation phase misses on every solution whose limit moved, exactly
+as "Why the package is uploaded twice" above says it must. So the key is (package fingerprint, remote problem id, the
 **amalgamated bytes** submitted, the submitted file name, a cache version). Not the source
 path and not its mtime: amalgamation inlines headers, so the same path can be two
 programs.

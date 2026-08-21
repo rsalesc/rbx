@@ -87,6 +87,9 @@ async def _validate(
     validation = _Validation()
     result = mock.Mock()
     result.skeleton.solutions = list(upper)
+    # The validation run ends its batch in a `finally`, exactly as the estimation
+    # run does: the picker may re-open right after, and this loop can run again.
+    result.close = mock.AsyncMock()
     with (
         mock.patch(
             'rbx.box.timing.run_solutions', return_value=result

@@ -89,6 +89,8 @@ rbx time --strategy=estimate_custom
 | `--detailed` | `-d` | `false` | Print a detailed table view of per-testcase results. |
 | `--check` | | `true` | Build outputs and run checker during estimation. |
 | `--validate` | | `true` | Validate inputs and outputs during estimation. |
+| `--skip-slow` | | `false` | Stop after the estimate, leaving the upper bound unchecked (see [Checking the upper bound](#checking-the-upper-bound)). |
+| `--runner` | | `local` | Where to run the solutions being timed (see [Measuring on the judge itself](#measuring-on-the-judge-itself)). |
 
 ### Multiple runs
 
@@ -228,6 +230,52 @@ $ rbx time --skip-slow
 ```
 
 Without `timeLimitToTle` there is no upper bound to check, so this phase does not run at all.
+
+## Measuring on the judge itself
+
+`rbx time` measures where {{rbx}} runs, so the well-lit path is to run it *on* the judge
+machine. `--runner` is the other way: measure the solutions **on the judge park**, through
+the judge's own CLI, and feed the timings into the same estimation you would get locally.
+
+MOJ is the first backend:
+
+```console
+$ rbx time -p moj --runner moj
+```
+
+You must be logged in to the [`moj` CLI](https://github.com/cd-moj/moj-cli) — {{rbx}}
+reuses its session and never handles your credentials. {{rbx}} uploads a **throwaway
+timing problem** of its own, named `<your-login>#rbxt-<problem-id>` and recorded in a
+committed `.moj-id`, so two setters on the same problem reach the same one. It never
+touches a problem it did not create: a package already bound to a real MOJ problem is
+refused by name rather than overwritten.
+
+### What the judge cannot tell you
+
+A judge reports less than a local sandbox does, and {{rbx}} says so up front rather than
+quietly reporting less:
+
+- **No memory usage**, no `.out`/`.err` artifacts, and a verdict code rather than the
+  checker's own message.
+- `--runs` greater than one, a sanitizer, and interactive (`communication`) problems are
+  **refused by name** before anything is uploaded — each would produce a report answering a
+  different question than the one you asked.
+
+### The two phases, and the two uploads
+
+MOJ enforces the time limit from inside the package, so the limit {{rbx}} is measuring
+under has to be *in* what it uploads. The two phases measure under different limits:
+
+1. **Estimating** runs the accepted solutions under the [estimation
+   cap](#the-estimation-cap), one limit for every language.
+2. **Checking the upper bound** runs the solutions expected to be too slow at
+   `timeLimitToTle × <the limit for its language>`, which differs per language group.
+
+So the package is uploaded twice, and the second upload usually costs a calibration wait
+too. Each round trip through the language-group picker that *changes* a limit costs
+another one. Finished runs are cached, so re-running `rbx time`, or regrouping back onto
+limits already probed, costs no judge time at all — and `--skip-slow` stops after the
+estimate, which is the one-upload path.
 
 ## Time limit formulas
 

@@ -127,37 +127,59 @@ class JudgeCalibrated:
 
 
 @dataclasses.dataclass(frozen=True)
-class UniformPinned:
-    """Pin every language to one number. What a remote timing run uploads.
+class ProbePinned:
+    """Pin the limits a timing run measures under. What a probe package uploads.
 
-    This is deliberately *not* `ProfilePinned` with different numbers. The cap a
-    timing run measures under is a **single** value -- the inference timeout in phase
-    1, `timeLimitToTle x TL` in phase 2 -- and emitting the profile's per-language
-    `TLOVERRIDE` entries beside it would measure some languages under a *tighter* cap
-    than rbx asked for, silently truncating the very timings the estimate rests on.
-    So one `TLOVERRIDE[default]` and nothing else; see
-    `docs/plans/2026-08-20-moj-remote-runner-design.md`.
+    Deliberately *not* `ProfilePinned`, even though both end up emitting
+    `TLOVERRIDE`: the numbers here are the ones **this run asked for**, not the
+    ones the `moj` limits profile holds. `rbx time` measures in two phases and
+    asks for a different shape in each (`timing.py`):
+
+    - **Estimation** caps every accepted solution at one `inferenceTimeout`, so
+      `default_ms` alone says it and there is no per-language entry at all.
+    - **Validation** checks each solution expected to be too slow against
+      `ceil(TL x timeLimitToTle)` for **its own language group**, so the limits
+      genuinely differ per language and the probe has to be able to say so.
+
+    Which is why this carries a mapping rather than the single number it did
+    before the phases were split: a probe that could only pin one cap would have
+    had to pick one of the validation limits and measure the other languages
+    under a bound nobody asked for.
+
+    `per_rbx_language_ms` is keyed by **rbx** language name -- what
+    `solutions.TimelimitOverride` is keyed by -- and translated to MOJ ids by
+    `MojPackager._probe_time_limits`, which is where the id spellings are already
+    known. Pairs rather than a dict, so `frozen=True` is not a lie.
     """
 
-    limit_ms: int
+    default_ms: int
+    per_rbx_language_ms: Tuple[Tuple[str, int], ...] = ()
 
     def __post_init__(self) -> None:
-        # The runner derives this from `ctx.timelimit_override`, exactly the kind of
-        # value that arrives unset. `fmt_seconds` would happily emit `-1.500` or
+        # The runner derives these from `ctx.timelimit_override`, exactly the kind
+        # of value that arrives unset. `fmt_seconds` would happily emit `-1.500` or
         # `0.000`, and MOJ reads TLOVERRIDE with grep rather than evaluating it, so
         # the package would upload, calibrate, and TLE every single run -- with the
         # bad number visible only to whoever reads `conf`.
-        if self.limit_ms <= 0:
+        for limit_ms in (self.default_ms, *(ms for _, ms in self.per_rbx_language_ms)):
+            if limit_ms <= 0:
+                raise ValueError(
+                    f'A MOJ time limit must be a positive number of milliseconds, '
+                    f'got `{limit_ms}`.'
+                )
+        languages = [language for language, _ in self.per_rbx_language_ms]
+        if len(set(languages)) != len(languages):
+            # Silently keeping one of them would pin a language to a limit the
+            # caller did not choose, and nothing downstream could tell.
             raise ValueError(
-                f'A MOJ time limit must be a positive number of milliseconds, got '
-                f'`{self.limit_ms}`.'
+                f'A probe package pins each language at most once, got `{languages}`.'
             )
 
 
 # How a package settles its time limits. The packager refuses to guess between these,
 # which is why it is a mode object rather than a defaulted number: each one carries a
 # different precondition (an estimated profile / `timing.multipliers` / nothing at all).
-TimingMode = Union[ProfilePinned, JudgeCalibrated, UniformPinned]
+TimingMode = Union[ProfilePinned, JudgeCalibrated, ProbePinned]
 
 # The mode `rbx package moj` uses. A frozen dataclass with no fields carries no state,
 # so one shared instance is as good as many -- and a default argument may not be a
@@ -269,7 +291,7 @@ def check_timing_setup(timing_mode: TimingMode) -> None:
     before a full build rather than after one. The same failures are checked again
     while `conf` is written, which is what covers every other caller.
 
-    `UniformPinned` has nothing to check: it carries its own number, and consults
+    `ProbePinned` has nothing to check: it carries its own numbers, and consults
     neither the `moj` profile nor `timing.multipliers`.
 
     Every mode is named explicitly, with no fall-through: this and
@@ -277,7 +299,7 @@ def check_timing_setup(timing_mode: TimingMode) -> None:
     fourth mode silently inheriting a different default in each would be exactly the
     guessing the union exists to prevent.
     """
-    if isinstance(timing_mode, UniformPinned):
+    if isinstance(timing_mode, ProbePinned):
         return
     if isinstance(timing_mode, ProfilePinned):
         _require_limits_profile()
@@ -304,7 +326,7 @@ class MojPackager(BasePackager):
       running every `sols/good` solution and scaling by `TLMOD[calibrafactor]`, so
       `conf` carries the only limit knobs: by default rbx pins them there with
       `TLOVERRIDE` from the `moj` limits profile, and `--calibrate` leaves them to
-      the judge. A remote timing run takes the third mode, `UniformPinned`. See
+      the judge. A remote timing run takes the third mode, `ProbePinned`. See
       `rbx.box.packaging.moj.timing`.
     - **A single-file checker.** MOJ's bridge compiles `scripts/checker.cpp` with only
       `testlib.h` reachable, so the checker is amalgamated rather than shipped with
@@ -323,7 +345,7 @@ class MojPackager(BasePackager):
         # used for both the body and `display_title` -- see `_get_main_statement`.
         self.main_language = main_language
         # How the time limits are settled: pinned from the profile, measured by the
-        # judge, or pinned uniformly. See `_time_limit_lines`.
+        # judge, or pinned to what a timing run asked for. See `_time_limit_lines`.
         self.timing_mode = timing_mode
         # Set only when this package exists to *measure* timings rather than to be
         # judged: it then ships only the model solution and whitelists the languages
@@ -332,17 +354,16 @@ class MojPackager(BasePackager):
 
         # The two axes are separate arguments because they are separate questions --
         # but of their product only one cell is legal. A probe pinned from the profile
-        # would emit per-language `TLOVERRIDE` entries, measuring some languages under
-        # a tighter cap than rbx asked for, which is the exact truncation
-        # `UniformPinned` exists to prevent; a calibrated one would be measured under
-        # whatever the judge decided, which rbx never sees. Neither is a package worth
-        # uploading, so neither is constructible.
-        if probe is not None and not isinstance(timing_mode, UniformPinned):
+        # would be measured under the limits of the *previous* estimate -- the very
+        # thing this run exists to replace -- and a calibrated one under whatever the
+        # judge decided, which rbx never sees. Neither is a package worth uploading,
+        # so neither is constructible.
+        if probe is not None and not isinstance(timing_mode, ProbePinned):
             raise ValueError(
-                'A probe package must pin one uniform time limit: it exists to '
-                'measure timings under a cap rbx chose, and both `ProfilePinned` '
-                'and `JudgeCalibrated` would measure them under some other one. '
-                f'Got `{type(timing_mode).__name__}`.'
+                'A probe package must pin the limits the timing run asked for: it '
+                'exists to measure solutions under limits rbx chose, and both '
+                '`ProfilePinned` and `JudgeCalibrated` would measure them under '
+                f'some other ones. Got `{type(timing_mode).__name__}`.'
             )
 
     @classmethod
@@ -685,15 +706,15 @@ class MojPackager(BasePackager):
         """
         if isinstance(self.timing_mode, JudgeCalibrated):
             return moj_timing.calibrated_limit_lines(_ac_to_time_limit_or_die())
-        if isinstance(self.timing_mode, UniformPinned):
+        if isinstance(self.timing_mode, ProbePinned):
             # Note `_require_limits_profile` deliberately does NOT fire here: that
             # check is about the `moj` profile, and this package does not consult it.
             # `inferenceTimeout` still feeds `CALIBRATIONTL`, since calibration runs
             # on this package too and must not be tighter than what rbx waits for.
             return moj_timing.fixed_limit_lines(
-                moj_timing.build_uniform_limits(self.timing_mode.limit_ms),
+                self._probe_time_limits(),
                 inference_timeout_ms=_inference_timeout_ms(),
-                explanation=moj_timing.UNIFORM_EXPLANATION,
+                explanation=moj_timing.PROBE_EXPLANATION,
             )
         if isinstance(self.timing_mode, ProfilePinned):
             _require_limits_profile()
@@ -726,21 +747,74 @@ class MojPackager(BasePackager):
         assert base_limits.time is not None
         return moj_timing.build_fixed_limits(limits_by_language, base_limits.time)
 
+    def _probe_time_limits(self) -> moj_timing.FixedTimeLimits:
+        """The limits a timing run asked for, as a default plus per-language limits.
+
+        Translated here rather than in the runner because this is where the MOJ id
+        spellings are already known. `ProbePinned` is keyed by rbx language name;
+        `TLOVERRIDE` is keyed by whatever id the submission's file extension yields,
+        which is the *emitted* spelling -- so each language is pinned under that and
+        under its normalized alias, exactly as `_fixed_time_limits` does.
+
+        A language the run named but this package emits no scripts for silently
+        contributes nothing: `TLOVERRIDE[<lang>]` for a language MOJ cannot run is
+        an entry nothing ever reads. It cannot hide a real limit either, since
+        `MojRunner` refuses up front to testrun a solution whose language has no MOJ
+        counterpart.
+        """
+        mode = self.timing_mode
+        assert isinstance(mode, ProbePinned)
+        per_rbx_language = dict(mode.per_rbx_language_ms)
+
+        limits_by_language: Dict[str, int] = {}
+        for moj_language in get_emitted_moj_languages():
+            rbx_language = get_rbx_language_from_moj_language(moj_language)
+            if rbx_language is None or rbx_language not in per_rbx_language:
+                continue
+            limit_ms = per_rbx_language[rbx_language]
+            limits_by_language[moj_language] = limit_ms
+            limits_by_language.setdefault(
+                normalize_moj_language(moj_language), limit_ms
+            )
+
+        # `build_fixed_limits` is deliberately NOT reused: it derives the default
+        # from the tightest limit involved, which is right when every language has
+        # one. Here the default is the limit for the languages the run did *not*
+        # name, and the run chose it.
+        return moj_timing.FixedTimeLimits(
+            base_ms=mode.default_ms,
+            per_language_ms={
+                language: limit_ms
+                for language, limit_ms in limits_by_language.items()
+                if limit_ms != mode.default_ms
+            },
+        )
+
     def _report_time_limits(self) -> None:
         """Show what the package will be judged with.
 
         The pinned limits are the profile's, so the profile's own table is the honest
         report -- exactly as `BocaPackager` does. Under `--calibrate` there is
-        nothing to show: the numbers are the judge's to measure. Under a uniform pin
-        the profile's table would be a lie, so the one cap is named instead -- it is
-        the number every timing this package produces is measured against.
+        nothing to show: the numbers are the judge's to measure. Under a probe pin
+        the profile's table would be a lie, so the limits this run asked for are
+        named instead -- they are what every timing it produces is measured against.
         """
         if isinstance(self.timing_mode, JudgeCalibrated):
             return
-        if isinstance(self.timing_mode, UniformPinned):
+        if isinstance(self.timing_mode, ProbePinned):
+            if not self.timing_mode.per_rbx_language_ms:
+                console.console.print(
+                    'MOJ will run every language under a single time limit of '
+                    f'[item]{self.timing_mode.default_ms} ms[/item].'
+                )
+                return
+            per_language = ', '.join(
+                f'[item]{language}[/item] at [item]{limit_ms} ms[/item]'
+                for language, limit_ms in sorted(self.timing_mode.per_rbx_language_ms)
+            )
             console.console.print(
-                'MOJ will run every language under a single time limit of '
-                f'[item]{self.timing_mode.limit_ms} ms[/item].'
+                f'MOJ will run {per_language}, and every other language under '
+                f'[item]{self.timing_mode.default_ms} ms[/item].'
             )
             return
         if isinstance(self.timing_mode, ProfilePinned):

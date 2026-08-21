@@ -14,7 +14,7 @@ The upload fake **snapshots the directory it was handed**, because half of what
 import json
 import pathlib
 import shutil
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import pytest
 
@@ -109,13 +109,14 @@ def _instant_polls(monkeypatch: pytest.MonkeyPatch) -> None:
 def _context(
     tmp_path: pathlib.Path,
     solutions: Optional[List[Tuple[str, ExpectedOutcome]]] = None,
-    timelimit_override: Optional[int] = -1,
+    timelimit_override: Optional[Union[int, Dict[str, int]]] = -1,
     entries: Optional[List[GenerationTestcaseEntry]] = None,
 ) -> RunContext:
     """A `RunContext` carrying what `prepare` reads: the entries and the solutions.
 
-    `timelimit_override` defaults to **-1**, not to `None`: that is the "no
-    override" sentinel `timing.py` really passes whenever the run has no cap.
+    `timelimit_override` takes the two shapes `rbx time` really passes -- an
+    `int` while estimating, a per-language mapping while validating -- and
+    defaults to **-1**, rbx's "no override" sentinel, which is neither.
     """
     if solutions is None:
         solutions = [('sol.cpp', ExpectedOutcome.ACCEPTED)]
@@ -212,13 +213,13 @@ async def test_a_binding_rbx_created_is_uploaded_to(testing_pkg, tmp_path, monke
     assert fake.calibrations and fake.calibrations[0].startswith('alice#rbxt-')
 
 
-# -- what cap the probe pins ---------------------------------------------------
+# -- what limits the probe pins ------------------------------------------------
 
 
-async def test_the_cap_comes_from_the_runs_time_limit_override(
+async def test_the_estimation_phase_pins_one_cap_for_every_language(
     testing_pkg, tmp_path, monkeypatch
 ):
-    """Phase 1 passes `_InferenceCap.timeout`; phase 2 `timeLimitToTle x TL`.
+    """Phase 1 passes a single `inferenceTimeout` for the accepted solutions.
 
     Whatever the run is measuring under is what the judge has to enforce, or the
     timings feeding the estimate were taken under a different limit than rbx
@@ -231,20 +232,44 @@ async def test_the_cap_comes_from_the_runs_time_limit_override(
 
     conf = _conf(fake.uploaded)
     assert conf['TLOVERRIDE[default]'] == '2.500'
-    # Uniform means uniform: a per-language entry beside it would measure that
+    # One cap means one cap: a per-language entry beside it would measure that
     # language under a tighter cap than rbx asked for.
     assert [key for key in conf if key.startswith('TLOVERRIDE[')] == [
         'TLOVERRIDE[default]'
     ]
 
 
+async def test_the_validation_phase_pins_the_limit_each_language_must_clear(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """Phase 2 passes one limit per language group, so the probe pins one each.
+
+    `ceil(TL_lang x timeLimitToTle)` is the bound the slow solutions of that
+    language have to survive, and it differs by group. Pinning any one of them
+    for everybody would check the other languages against a bound nobody asked
+    for -- and phase 2 reads the judge's own verdict at that bound.
+    """
+    minimal_package(testing_pkg)
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    await MojRunner().prepare(
+        _context(tmp_path, timelimit_override={'cpp': 150, 'java': 900})
+    )
+
+    conf = _conf(fake.uploaded)
+    assert conf['TLOVERRIDE[cpp]'] == '0.150'
+    # The loosest of them is the default: only a language the run did NOT name
+    # falls back to it, and being generous there cannot truncate a measurement.
+    assert conf['TLOVERRIDE[default]'] == '0.900'
+
+
 async def test_the_no_override_sentinel_falls_back_to_the_inference_timeout(
     testing_pkg, tmp_path, monkeypatch
 ):
-    """`timing.py` passes **-1**, not `None`, when the run has no cap.
+    """-1 is rbx's "no override" sentinel, and it is not a cap.
 
-    That is not an edge case -- it is every problem with no `timeLimitToTle` and
-    every problem with no upper-bound solution. Reading -1 as a cap would pin
+    No `rbx time` phase passes it any more -- both pin something real -- but any
+    other caller of `run_solutions` may, and reading it as a cap would pin
     `TLOVERRIDE[default]=-0.001` and TLE every single measurement.
     """
     minimal_package(testing_pkg)
@@ -252,8 +277,8 @@ async def test_the_no_override_sentinel_falls_back_to_the_inference_timeout(
 
     await MojRunner().prepare(_context(tmp_path, timelimit_override=-1))
 
-    # The environment's `timing.multipliers.inferenceTimeout`, 10s by default:
-    # the limit rbx itself enforces on a solution while estimating.
+    # The estimation cap the problem configures, 10s by default: the limit rbx
+    # itself enforces on a solution while estimating.
     assert _conf(fake.uploaded)['TLOVERRIDE[default]'] == '10.000'
 
 
@@ -269,13 +294,16 @@ async def test_an_absent_override_also_falls_back_rather_than_crashing(
     assert _conf(fake.uploaded)['TLOVERRIDE[default]'] == '10.000'
 
 
-async def test_a_formula_problem_is_refused_by_name(testing_pkg, tmp_path, monkeypatch):
-    """No cap and no multipliers: refuse rather than invent a number.
+async def test_a_formula_problem_falls_back_like_any_other(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """A formula defines no multipliers, but it does have an estimation cap.
 
-    MOJ always enforces a limit, so there is no "unlimited" to fall back on, and
-    a guessed cap would silently truncate the very timings the estimate rests on.
-    The same call `rbx package moj --calibrate` makes when a formula defines no
-    `acToTimeLimit`.
+    `inferenceTimeout` is a property of the estimation rather than of the
+    multipliers and is resolved in both modes, so there is nothing left for the
+    runner to refuse here -- which is what this pins. MOJ always enforces a
+    limit, so a mode with genuinely nothing to fall back on would have to be
+    refused rather than guessed at.
     """
     minimal_package(testing_pkg)
     env = environment.get_environment()
@@ -288,13 +316,9 @@ async def test_a_formula_problem_is_refused_by_name(testing_pkg, tmp_path, monke
     )
     fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
 
-    with pytest.raises(MojRunnerError) as exc:
-        await MojRunner().prepare(_context(tmp_path, timelimit_override=-1))
+    await MojRunner().prepare(_context(tmp_path, timelimit_override=-1))
 
-    # Names the setting to add and the file to add it to; nothing was uploaded.
-    assert 'timing.multipliers.inferenceTimeout' in str(exc.value)
-    assert 'env.rbx.yml' in str(exc.value)
-    assert fake.uploads == []
+    assert _conf(fake.uploaded)['TLOVERRIDE[default]'] == '10.000'
 
 
 # -- the submission whitelist --------------------------------------------------
@@ -382,6 +406,68 @@ async def test_a_solution_moj_cannot_run_is_refused_rather_than_left_out(
     assert 'sol.nim' in str(exc.value)
     assert 'nim' in str(exc.value)
     assert fake.uploads == []
+
+
+async def test_the_whitelist_covers_the_package_not_just_this_batch(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """The two `rbx time` phases track disjoint solution sets.
+
+    Estimation tracks only the accepted solutions; validation only the ones
+    expected to be too slow. A whitelist built from the *batch* would therefore
+    be a different -- and, in the validation phase, a disjoint -- list each time.
+    Two costs, both real: the package would fingerprint differently in each phase
+    even when the limits did not move, spending an upload and a calibration on
+    nothing; and a package that fingerprinted equal would leave the validation
+    phase submitting slow solutions against the estimation phase's
+    accepted-only whitelist, which the API refuses.
+    """
+    minimal_package(testing_pkg)
+    testing_pkg.add_solution('slow.py', outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    # The estimation phase: only the accepted solution is tracked.
+    await MojRunner().prepare(
+        _context(tmp_path, solutions=[('sol.cpp', ExpectedOutcome.ACCEPTED)])
+    )
+
+    meta = json.loads((fake.uploaded / '.moj-meta.json').read_text())
+    # `slow.py` is not in this batch, and is whitelisted anyway.
+    assert meta['languages'] == ['cpp', 'py']
+
+
+async def test_a_language_only_an_untracked_solution_uses_is_skipped(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """Refusing is for a solution this batch actually runs.
+
+    The rest of the package is a superset offered for free -- widening the
+    whitelist costs nothing on a private `rbxt-` problem -- so failing the run
+    over a solution it never touches would be refusing work nobody asked for.
+    """
+    minimal_package(testing_pkg)
+    env = environment.get_environment()
+    nim = EnvironmentLanguage(
+        name='nim',
+        extension='nim',
+        execution=ExecutionConfig(command='{executable}'),
+    )
+    monkeypatch.setattr(
+        environment,
+        'get_environment',
+        lambda *args, **kwargs: env.model_copy(
+            update={'languages': [*env.languages, nim]}
+        ),
+    )
+    testing_pkg.add_solution('sol.nim', outcome=ExpectedOutcome.WRONG_ANSWER)
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    await MojRunner().prepare(
+        _context(tmp_path, solutions=[('sol.cpp', ExpectedOutcome.ACCEPTED)])
+    )
+
+    meta = json.loads((fake.uploaded / '.moj-meta.json').read_text())
+    assert meta['languages'] == ['cpp']
 
 
 # -- what a probe path can still raise -----------------------------------------

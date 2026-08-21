@@ -19,13 +19,12 @@ from typing import List
 
 import pytest
 
-from rbx.box.packaging.moj import timing
 from rbx.box.packaging.moj.packager import (
     JudgeCalibrated,
     MojPackager,
     ProbePackage,
+    ProbePinned,
     ProfilePinned,
-    UniformPinned,
     check_timing_setup,
 )
 from rbx.box.statements.schema import StatementType
@@ -57,21 +56,15 @@ def _overrides(conf: str) -> list:
     return [key for key in _keys(conf) if key.startswith('TLOVERRIDE[')]
 
 
-# -- the uniform timing mode -------------------------------------------------
+# -- the probe timing mode ---------------------------------------------------
 
 
-def test_uniform_limits_carry_no_per_language_entries():
-    limits = timing.build_uniform_limits(2500)
-    assert limits.base_ms == 2500
-    # The point of the mode: one cap, and nothing that could tighten it per language.
-    assert limits.per_language_ms == {}
-
-
-def test_uniform_limit_pins_every_language_to_one_number(testing_pkg, tmp_path):
+def test_probe_limit_pins_every_language_to_one_number(testing_pkg, tmp_path):
     minimal_package(testing_pkg)
-    # A profile with per-language limits exists and is deliberately ignored: emitting
-    # its entries alongside the uniform cap would measure java under 3s while rbx
-    # asked for 2.5s, truncating the very timings the estimate rests on.
+    # A profile with per-language limits exists and is deliberately ignored: the
+    # estimation phase caps every accepted solution at one `inferenceTimeout`, and
+    # emitting the profile's entries beside it would measure java under 3s while
+    # rbx asked for 2.5s, truncating the very timings the estimate rests on.
     with_limits_profile(testing_pkg, time_limit=1000, per_language={'java': 3000})
     testing_pkg.save()
 
@@ -80,7 +73,7 @@ def test_uniform_limit_pins_every_language_to_one_number(testing_pkg, tmp_path):
             testing_pkg,
             tmp_path,
             build_entries(tmp_path, ['samples']),
-            timing_mode=UniformPinned(limit_ms=2500),
+            timing_mode=ProbePinned(default_ms=2500),
         )
         / 'conf'
     ).read_text()
@@ -91,7 +84,7 @@ def test_uniform_limit_pins_every_language_to_one_number(testing_pkg, tmp_path):
     assert 'TLMOD[calibrafactor]' not in _keys(conf)
 
 
-def test_uniform_limit_needs_no_limits_profile(testing_pkg, tmp_path):
+def test_probe_limit_needs_no_limits_profile(testing_pkg, tmp_path):
     # `_require_limits_profile` is about the `moj` profile, which a probe package
     # never consults -- the cap comes from the timing run itself.
     minimal_package(testing_pkg)
@@ -103,7 +96,7 @@ def test_uniform_limit_needs_no_limits_profile(testing_pkg, tmp_path):
             testing_pkg,
             tmp_path,
             build_entries(tmp_path, ['samples']),
-            timing_mode=UniformPinned(limit_ms=1500),
+            timing_mode=ProbePinned(default_ms=1500),
             pin_limits=False,
         )
         / 'conf'
@@ -112,7 +105,7 @@ def test_uniform_limit_needs_no_limits_profile(testing_pkg, tmp_path):
     assert _conf_value(conf, 'TLOVERRIDE[default]') == '1.500'
 
 
-def test_uniform_limit_passes_the_pre_build_timing_check(testing_pkg, tmp_path):
+def test_probe_limit_passes_the_pre_build_timing_check(testing_pkg, tmp_path):
     # The check the CLI runs before paying for a full build. It guards the two modes
     # that depend on something the setter has to have done -- an estimated profile,
     # or `timing.multipliers` -- and a uniform pin depends on neither: it carries its
@@ -121,10 +114,10 @@ def test_uniform_limit_passes_the_pre_build_timing_check(testing_pkg, tmp_path):
     (testing_pkg.root / '.limits' / 'moj.yml').unlink()
     testing_pkg.save()
 
-    check_timing_setup(UniformPinned(limit_ms=1500))
+    check_timing_setup(ProbePinned(default_ms=1500))
 
 
-def test_uniform_limit_raises_the_calibration_limit(testing_pkg, tmp_path):
+def test_probe_limit_raises_the_calibration_limit(testing_pkg, tmp_path):
     # calibreitor.sh still runs, under its 5s dummy limit; a solution rbx is willing
     # to wait 15s for would time out during calibration and abort it.
     minimal_package(testing_pkg)
@@ -135,7 +128,7 @@ def test_uniform_limit_raises_the_calibration_limit(testing_pkg, tmp_path):
             testing_pkg,
             tmp_path,
             build_entries(tmp_path, ['samples']),
-            timing_mode=UniformPinned(limit_ms=15000),
+            timing_mode=ProbePinned(default_ms=15000),
         )
         / 'conf'
     ).read_text()
@@ -143,13 +136,72 @@ def test_uniform_limit_raises_the_calibration_limit(testing_pkg, tmp_path):
     assert _conf_value(conf, 'CALIBRATIONTL') == '15'
 
 
-def test_uniform_limit_rejects_a_non_positive_cap():
+def test_probe_limit_rejects_a_non_positive_cap():
     # The runner derives this from `ctx.timelimit_override`, the kind of value that
     # arrives unset. MOJ greps TLOVERRIDE rather than evaluating it, so `0.000` or
     # `-1.500` would upload, calibrate, and TLE every run with nothing to show for it.
     for bad in [0, -1500]:
         with pytest.raises(ValueError, match='positive'):
-            UniformPinned(limit_ms=bad)
+            ProbePinned(default_ms=bad)
+        with pytest.raises(ValueError, match='positive'):
+            ProbePinned(default_ms=1500, per_rbx_language_ms=(('cpp', bad),))
+
+
+def test_probe_limit_rejects_a_language_pinned_twice():
+    # Keeping one of them would pin a language to a limit the caller did not choose,
+    # and the emitted `conf` would look perfectly ordinary.
+    with pytest.raises(ValueError, match='at most once'):
+        ProbePinned(default_ms=1500, per_rbx_language_ms=(('cpp', 200), ('cpp', 300)))
+
+
+def test_probe_limit_pins_each_language_the_run_named(testing_pkg, tmp_path):
+    # The validation phase checks each slow solution against the bound ITS OWN
+    # language group has to clear, so the limits genuinely differ per language and
+    # the probe has to say so -- pinning one of them for everybody would check the
+    # other languages against a bound nobody asked for.
+    minimal_package(testing_pkg)
+    testing_pkg.save()
+
+    conf = (
+        run_packager(
+            testing_pkg,
+            tmp_path,
+            build_entries(tmp_path, ['samples']),
+            timing_mode=ProbePinned(
+                default_ms=3000, per_rbx_language_ms=(('cpp', 150), ('java', 3000))
+            ),
+        )
+        / 'conf'
+    ).read_text()
+
+    assert _conf_value(conf, 'TLOVERRIDE[default]') == '3.000'
+    assert _conf_value(conf, 'TLOVERRIDE[cpp]') == '0.150'
+    # java asked for exactly the default, so it needs no entry of its own -- the
+    # same rule `build_fixed_limits` applies to the profile's limits.
+    assert 'TLOVERRIDE[java]' not in _keys(conf)
+
+
+def test_probe_limit_ignores_a_language_the_package_cannot_run(testing_pkg, tmp_path):
+    # `TLOVERRIDE[<lang>]` for a language MOJ has no scripts for is an entry nothing
+    # reads. It cannot hide a real limit: `MojRunner` refuses up front to testrun a
+    # solution whose language has no MOJ counterpart.
+    minimal_package(testing_pkg)
+    testing_pkg.save()
+
+    conf = (
+        run_packager(
+            testing_pkg,
+            tmp_path,
+            build_entries(tmp_path, ['samples']),
+            timing_mode=ProbePinned(
+                default_ms=2000, per_rbx_language_ms=(('brainfuck', 150),)
+            ),
+        )
+        / 'conf'
+    ).read_text()
+
+    assert _overrides(conf) == ['TLOVERRIDE[default]']
+    assert _conf_value(conf, 'TLOVERRIDE[default]') == '2.000'
 
 
 # -- where the emitted numbers say they came from ----------------------------
@@ -170,13 +222,13 @@ def test_a_probe_conf_does_not_claim_the_limits_came_from_the_profile(
             testing_pkg,
             tmp_path,
             build_entries(tmp_path, ['samples']),
-            timing_mode=UniformPinned(limit_ms=2000),
+            timing_mode=ProbePinned(default_ms=2000),
             probe=ProbePackage(submission_languages=('cpp',)),
         )
         / 'conf'
     ).read_text()
 
-    assert 'UNIFORM across languages' in conf
+    assert 'exists for rbx to' in conf
     # The profile's story, on a package that consulted no profile, would be a lie.
     assert 'limits profile' not in conf
     assert 'rbx time -p moj' not in conf
@@ -199,7 +251,7 @@ def test_a_profile_pinned_conf_says_the_limits_came_from_the_profile(
     ).read_text()
 
     assert 'limits profile `rbx time -p moj` estimated' in conf
-    assert 'UNIFORM across languages' not in conf
+    assert 'exists for rbx to' not in conf
 
 
 # -- the shipped solutions ---------------------------------------------------
@@ -232,7 +284,7 @@ def test_probe_package_ships_only_the_model_solution(testing_pkg, tmp_path):
         testing_pkg,
         tmp_path,
         build_entries(tmp_path, ['samples']),
-        timing_mode=UniformPinned(limit_ms=2000),
+        timing_mode=ProbePinned(default_ms=2000),
         probe=ProbePackage(submission_languages=('cpp',)),
     )
 
@@ -277,7 +329,7 @@ def test_a_binary_probe_package_never_halts_early(testing_pkg, tmp_path):
             testing_pkg,
             tmp_path,
             build_entries(tmp_path, ['samples']),
-            timing_mode=UniformPinned(limit_ms=2000),
+            timing_mode=ProbePinned(default_ms=2000),
             probe=ProbePackage(submission_languages=('cpp',)),
         )
         / 'conf'
@@ -317,7 +369,7 @@ def test_a_probe_package_runs_its_tests_one_at_a_time(testing_pkg, tmp_path):
             testing_pkg,
             tmp_path,
             build_entries(tmp_path, ['samples']),
-            timing_mode=UniformPinned(limit_ms=2000),
+            timing_mode=ProbePinned(default_ms=2000),
             probe=ProbePackage(submission_languages=('cpp',)),
         )
         / 'conf'
@@ -346,7 +398,7 @@ def test_a_probe_package_never_reruns_a_test_that_hit_the_limit(testing_pkg, tmp
             testing_pkg,
             tmp_path,
             build_entries(tmp_path, ['samples']),
-            timing_mode=UniformPinned(limit_ms=2000),
+            timing_mode=ProbePinned(default_ms=2000),
             probe=ProbePackage(submission_languages=('cpp',)),
         )
         / 'conf'
@@ -418,7 +470,7 @@ def test_probe_package_whitelists_languages_it_ships_no_solution_for(
         testing_pkg,
         tmp_path,
         build_entries(tmp_path, ['samples']),
-        timing_mode=UniformPinned(limit_ms=2000),
+        timing_mode=ProbePinned(default_ms=2000),
         probe=ProbePackage(submission_languages=('cpp', 'java', 'py3')),
     )
 
@@ -446,7 +498,7 @@ def test_probe_package_does_not_warn_about_a_narrowed_whitelist(
         testing_pkg,
         tmp_path,
         build_entries(tmp_path, ['samples']),
-        timing_mode=UniformPinned(limit_ms=2000),
+        timing_mode=ProbePinned(default_ms=2000),
         probe=ProbePackage(submission_languages=('cpp', 'java', 'py')),
     )
 
@@ -487,7 +539,7 @@ def test_a_probe_package_carries_no_statement_at_all(
         testing_pkg,
         tmp_path,
         build_entries(tmp_path, ['samples']),
-        timing_mode=UniformPinned(limit_ms=2000),
+        timing_mode=ProbePinned(default_ms=2000),
         probe=ProbePackage(submission_languages=('cpp',)),
     )
 
@@ -521,7 +573,7 @@ def test_a_probe_package_asks_for_no_statement_build(testing_pkg, tmp_path):
 
     probe_packager = MojPackager(
         testcase_entries=[],
-        timing_mode=UniformPinned(limit_ms=2000),
+        timing_mode=ProbePinned(default_ms=2000),
         probe=ProbePackage(submission_languages=('cpp',)),
     )
     assert probe_packager.statement_types() == []
@@ -582,12 +634,12 @@ def test_testcase_names_count_from_one_per_group(testing_pkg, tmp_path):
 # -- the two axes have exactly one legal pairing ------------------------------
 
 
-def test_a_probe_package_must_pin_a_uniform_limit():
+def test_a_probe_package_must_pin_the_limits_the_run_asked_for():
     # Constructible-but-illegal is the failure to avoid: a profile-pinned probe would
-    # emit per-language TLOVERRIDE entries into the very package whose timings must
-    # all be measured under one cap.
+    # measure under the limits of the PREVIOUS estimate -- the very thing this run
+    # exists to replace -- and a calibrated one under whatever the judge decided.
     for mode in [ProfilePinned(), JudgeCalibrated()]:
-        with pytest.raises(ValueError, match='uniform time limit'):
+        with pytest.raises(ValueError, match='limits the timing run asked for'):
             MojPackager(
                 testcase_entries=[],
                 timing_mode=mode,
@@ -608,7 +660,7 @@ def test_warns_about_whitelisting_a_language_with_no_scripts(
         testing_pkg,
         tmp_path,
         build_entries(tmp_path, ['samples']),
-        timing_mode=UniformPinned(limit_ms=2000),
+        timing_mode=ProbePinned(default_ms=2000),
         probe=ProbePackage(submission_languages=('cpp', 'rust')),
     )
 

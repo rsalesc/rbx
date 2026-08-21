@@ -26,6 +26,13 @@ class LocalRunner:
     ) -> List[Deferred[Evaluation]]:
         compiled_digest = ctx.skeleton.get_solution_compiled_digest(solution)
         runs_dir = solution.runs_dir
+        # Resolved once per solution: its language cannot change between
+        # testcases. A per-language override that does not mention this
+        # solution's language resolves to None -- the profile's own limit --
+        # rather than to some other language's.
+        solution_timelimit = solutions.resolve_timelimit_override(
+            ctx.timelimit_override, solutions.find_language_name(solution)
+        )
 
         res: List[Deferred[Evaluation]] = []
         for entry in entries:
@@ -62,7 +69,7 @@ class LocalRunner:
                     interactor_digest=ctx.interactor_digest,
                     testcase_index=index,
                     verification=ctx.verification,
-                    timelimit_override=ctx.timelimit_override,
+                    timelimit_override=solution_timelimit,
                     nruns=ctx.nruns,
                     capture_pipes=ctx.skeleton.capture_pipes,
                 )

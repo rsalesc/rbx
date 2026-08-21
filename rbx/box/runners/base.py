@@ -33,6 +33,7 @@ if TYPE_CHECKING:
         AbortPredicate,
         SolutionReportSkeleton,
         SolutionSkeleton,
+        TimelimitOverride,
     )
 
 
@@ -89,7 +90,13 @@ class RunContext:
     checker_digest: Optional[str]
     interactor_digest: Optional[str]
     verification: VerificationLevel
-    timelimit_override: Optional[int]
+    # One limit for every language, or one per language. The per-language form is
+    # what `rbx time`'s validation phase passes: each language group gets its own
+    # estimated limit, so the bound each slow solution has to clear differs by
+    # language. `solutions.resolve_timelimit_override` turns it into the limit for
+    # one solution; a backend that can only enforce a single number for the whole
+    # run has to reconcile the two itself, and say so when it cannot.
+    timelimit_override: Optional['TimelimitOverride']
     nruns: int
     progress: Optional[StatusProgress]
     abort_on: Optional['AbortPredicate']
@@ -120,11 +127,12 @@ class SolutionRunner(Protocol):
         """Drop the work this batch left outstanding. Idempotent.
 
         **This ends a batch, not the object.** A closed runner may be prepared
-        and run again -- which is exactly what phase 2 of `rbx time` will do,
-        re-uploading at `timeLimitToTle x TL` and measuring the same solutions
-        against it -- so `close` drops what is *in flight* and deliberately
-        leaves everything `prepare` settled alone. On `MojRunner` that state is
-        what lets a second batch skip the upload and the calibration entirely.
+        and run again -- which is exactly what `rbx time`'s validation phase
+        does, re-preparing at `ceil(TL_lang x timeLimitToTle)` and checking the
+        solutions expected to be too slow against it, once per round the picker
+        re-opens -- so `close` drops what is *in flight* and deliberately leaves
+        everything `prepare` settled alone. On `MojRunner` that state is what
+        lets a second batch reuse the remote problem it already bound.
 
         **This is not the `finalize` hook the seam started with, and the
         difference is the whole point.** `finalize` fired inside `run_solutions`,

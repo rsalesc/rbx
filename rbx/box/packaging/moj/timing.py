@@ -87,19 +87,6 @@ def build_fixed_limits(
     return FixedTimeLimits(base_ms=base, per_language_ms=per_language)
 
 
-def build_uniform_limits(limit_ms: int) -> FixedTimeLimits:
-    """One cap for every language, with no per-language entry at all.
-
-    What a remote timing run pins: `timelimit_override` is a *single* number -- the
-    inference timeout, or `timeLimitToTle x TL` -- and any per-language entry beside
-    it would measure that language under a tighter cap than rbx asked for, truncating
-    the timings the estimate is built from. `fixed_limit_lines` and
-    `calibration_tl_seconds` then apply unchanged: with no per-language limits, the
-    base *is* the largest limit involved.
-    """
-    return FixedTimeLimits(base_ms=limit_ms, per_language_ms={})
-
-
 # Why the numbers below are what they are, when they come from `rbx time -p moj`.
 PROFILE_EXPLANATION = [
     '# Time limits are PINNED here, not calibrated: they come from the `moj`',
@@ -111,13 +98,14 @@ PROFILE_EXPLANATION = [
 ]
 
 # ... and when this package exists only for rbx to measure timings on the judge.
-UNIFORM_EXPLANATION = [
-    '# Time limits are PINNED here, not calibrated, and UNIFORM across languages:',
-    '# this package exists for rbx to measure solution timings on the judge, and the',
-    '# limit below is the single cap it is measuring under. There is deliberately no',
-    '# per-language entry -- one would measure that language under a tighter cap than',
-    '# rbx asked for, truncating the very timings the estimate rests on. MOJ applies',
-    '# TLOVERRIDE after everything else, so this is the limit every run here sees.',
+PROBE_EXPLANATION = [
+    '# Time limits are PINNED here, not calibrated: this package exists for rbx to',
+    '# measure solution timings on the judge, and the limits below are what it is',
+    '# measuring under. `rbx time` runs in two phases and pins a different shape in',
+    '# each: one cap for every language while it estimates from the accepted',
+    '# solutions, and one limit per language group while it checks the solutions',
+    '# expected to be too slow against the limit it estimated. MOJ applies',
+    '# TLOVERRIDE after everything else, so these are the limits every run here sees.',
 ]
 
 

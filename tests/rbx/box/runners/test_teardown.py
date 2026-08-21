@@ -20,7 +20,7 @@ from unittest import mock
 import pytest
 from typer.testing import CliRunner
 
-from rbx.box import builder, cli, timing
+from rbx.box import builder, cli, timing, timing_validation
 from rbx.box.deferred import Deferred
 from rbx.box.environment import (
     TimingConfig,
@@ -246,18 +246,28 @@ async def _estimate(
         path=pkg.path('ac.cpp'), language='cpp', outcome=ExpectedOutcome.ACCEPTED
     )
     result.skeleton.solutions = [solution]
+    # The estimation phase always diagnoses its run now, and the diagnosis keys
+    # the evaluations off the skeleton. Nothing ran, so there is nothing to key.
+    result.skeleton.empty_structured_evaluation.return_value = {}
 
     async def run_solutions_stub(**kwargs):
         return result
+
+    async def estimate_and_validate_stub(*args, **kwargs):
+        return timing.TimingProfile(timeLimit=1000)
 
     with (
         mock.patch('rbx.box.package.get_main_solution', return_value=mock.Mock()),
         mock.patch('rbx.box.timing.get_inference_solutions', return_value=[solution]),
         mock.patch('rbx.box.timing.run_solutions', run_solutions_stub),
         mock.patch('rbx.box.timing.print_run_report', report or _ok),
+        # Both phases past the estimation run are stubbed out together: what is
+        # under test is that the run gets closed, not what is estimated from it
+        # or what the validation phase then does with the estimate.
+        mock.patch('rbx.box.timing.build_estimation_context', return_value=mock.Mock()),
         mock.patch(
-            'rbx.box.timing.estimate_time_limit',
-            return_value=timing.TimingProfile(timeLimit=1000),
+            'rbx.box.timing._estimate_and_validate',  # noqa: SLF001
+            estimate_and_validate_stub,
         ),
         mock.patch('rbx.box.environment.get_environment') as mock_env,
     ):
@@ -306,6 +316,17 @@ async def test_the_estimation_run_closes_its_backend_when_the_run_is_rejected(
     assert _closes(result) == 1
 
 
+async def _estimated_profile(*args, **kwargs):
+    """Everything past the estimation run, stubbed to a settled profile.
+
+    `rbx time` runs in two phases and this file is about neither of them: what is
+    under test is that the backend the setter chose reaches the run and is closed
+    after it. Stubbing the pair together keeps that from depending on what the
+    picker or the upper-bound check would have done.
+    """
+    return timing.TimingProfile(timeLimit=1000)
+
+
 # -- what the estimation run hands the backend ---------------------------------
 
 
@@ -329,15 +350,17 @@ async def test_the_chosen_backend_reaches_the_run(
         outcome=ExpectedOutcome.ACCEPTED,
     )
     result.skeleton.solutions = [solution]
+    result.skeleton.empty_structured_evaluation.return_value = {}
 
     with (
         mock.patch('rbx.box.package.get_main_solution', return_value=mock.Mock()),
         mock.patch('rbx.box.timing.get_inference_solutions', return_value=[solution]),
         mock.patch('rbx.box.timing.run_solutions', run_solutions_stub),
         mock.patch('rbx.box.timing.print_run_report', _ok),
+        mock.patch('rbx.box.timing.build_estimation_context', return_value=mock.Mock()),
         mock.patch(
-            'rbx.box.timing.estimate_time_limit',
-            return_value=timing.TimingProfile(timeLimit=1000),
+            'rbx.box.timing._estimate_and_validate',  # noqa: SLF001
+            _estimated_profile,
         ),
         mock.patch('rbx.box.environment.get_environment') as mock_env,
     ):
@@ -369,15 +392,17 @@ async def test_no_backend_asked_for_means_the_run_picks_its_own(
         outcome=ExpectedOutcome.ACCEPTED,
     )
     result.skeleton.solutions = [solution]
+    result.skeleton.empty_structured_evaluation.return_value = {}
 
     with (
         mock.patch('rbx.box.package.get_main_solution', return_value=mock.Mock()),
         mock.patch('rbx.box.timing.get_inference_solutions', return_value=[solution]),
         mock.patch('rbx.box.timing.run_solutions', run_solutions_stub),
         mock.patch('rbx.box.timing.print_run_report', _ok),
+        mock.patch('rbx.box.timing.build_estimation_context', return_value=mock.Mock()),
         mock.patch(
-            'rbx.box.timing.estimate_time_limit',
-            return_value=timing.TimingProfile(timeLimit=1000),
+            'rbx.box.timing._estimate_and_validate',  # noqa: SLF001
+            _estimated_profile,
         ),
         mock.patch('rbx.box.environment.get_environment') as mock_env,
     ):
@@ -387,3 +412,60 @@ async def test_no_backend_asked_for_means_the_run_picks_its_own(
         await timing.compute_time_limits(check=True, detailed=False, auto=True)
 
     assert calls['runner'] is None
+
+
+# -- what the validation phase hands the backend -------------------------------
+
+
+async def test_the_validation_phase_runs_on_the_same_backend(
+    testing_pkg: testing_package.TestingPackage,
+):
+    """Phase 2 checks the estimate against the solutions expected to be too slow.
+
+    It must do that on the backend the estimate was measured on: a limit derived
+    from timings taken on a judge, then checked in the local sandbox, is not
+    checked at all -- the two machines disagree by exactly the factor `rbx time`
+    exists to measure.
+    """
+    result = _recording_result()
+    chosen = ClosingRunner()
+    calls: Dict[str, Any] = {}
+
+    async def run_solutions_stub(**kwargs):
+        calls.update(kwargs)
+        return result
+
+    slow = Solution(
+        path=testing_pkg.path('slow.cpp'),
+        language='cpp',
+        outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+    )
+    result.skeleton.solutions = [slow]
+    result.skeleton.empty_structured_evaluation.return_value = {}
+
+    profile = timing.TimingProfile(
+        timeLimit=100,
+        multipliers=TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
+    )
+
+    with (
+        mock.patch('rbx.box.timing.run_solutions', run_solutions_stub),
+        mock.patch('rbx.box.timing.print_run_report', _ok),
+        mock.patch('rbx.box.timing.find_language_name', return_value='cpp'),
+    ):
+        await timing._validate_upper_bound(  # noqa: SLF001
+            profile,
+            [slow],
+            timing_validation.SlowKnowledge(),
+            check=True,
+            detailed=False,
+            runs=0,
+            runner=chosen,
+        )
+
+    assert calls['runner'] is chosen
+    # `ceil(100 * 1.5)`: the bound this solution has to clear, per language.
+    assert calls['timelimit_override'] == {'cpp': 150}
+    # And the batch ends here too, not at the end of the command: the picker may
+    # re-open right after, and this loop can run several times.
+    assert _closes(result) == 1

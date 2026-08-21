@@ -147,20 +147,52 @@ its memo, which is what lets `timing` close before the group picker opens.
 over the judge's `moj` CLI (`problem_id.py`, `cli.py`) that a `MojRunner` drives to
 upload, calibrate and testrun. `packaging/moj/` is the *packager* that produces what it
 uploads. They meet at one object: `MojPackager(probe=ProbePackage(...))`, the
-throwaway package a timing run measures on -- model solution only, one uniform
-`TLOVERRIDE`, every testrunnable language whitelisted, no statement build and no
-`STOPWHEN_*`. Pair timings back onto testcases with `MojPackager.testcase_names()`,
+throwaway package a timing run measures on -- model solution only, the `TLOVERRIDE`
+block the run asked for, every testrunnable language whitelisted, no statement build
+and no `STOPWHEN_*`. Pair timings back onto testcases with `MojPackager.testcase_names()`,
 never by position and never by re-deriving the names.
 
 `MojRunner` (`runners/moj/runner.py`) is that client's `SolutionRunner`. `prepare()`
 is the whole of it today: read the login, refuse any `.moj-id` binding that is not an
-`rbxt-` one (uploading over a real problem destroys it), resolve the **one** cap the
-probe pins (`ctx.timelimit_override` when positive -- it is `-1`, not `None`, when
-there is none -- else `timing.multipliers.inferenceTimeout`, else refuse), build the
-probe, upload the *directory*, calibrate, and poll `moj check` under a bound. It skips
-all of that when the judge reports ready **and** the package it just built fingerprints
-equal to the one this machine last uploaded and saw calibrated; the fingerprint is a
-local record in the problem cache, so it cannot see an upload from another machine.
+`rbxt-` one (uploading over a real problem destroys it), resolve the limits the probe
+pins (`_probe_pin`), build the probe, upload the *directory*, calibrate, and poll `moj
+check` under a bound. It skips all of that when the judge reports ready **and** the
+package it just built fingerprints equal to the one this machine last uploaded and saw
+calibrated; the fingerprint is a local record in the problem cache, so it cannot see an
+upload from another machine.
+
+**`_probe_pin` honours whichever `rbx time` phase is calling.** The estimation phase
+passes one `int` -- `inferenceTimeout`, the cap every accepted solution runs under -- and
+gets a single `TLOVERRIDE[default]`. The validation phase passes a **mapping**,
+`ceil(TL_lang × timeLimitToTle)` per language group, and gets one `TLOVERRIDE[<lang>]`
+each, with the loosest as the default (only an unnamed language falls back to it, and no
+solution being measured is in one). Anything else -- `-1`, rbx's "no override" sentinel,
+or `None`, neither of which any `rbx time` phase passes any more -- falls back to the
+configured `inferenceTimeout`; there is nothing left to refuse, since that is resolved for
+formula and multiplier modes alike. **The whitelist is the whole package's solutions**,
+not the batch's: the two phases track disjoint sets (accepted, then slow), so a per-batch
+whitelist would move the fingerprint between phases for nothing, and where it did not move
+the validation phase would submit slow solutions against an accepted-only whitelist the
+API refuses.
+
+**Both phases run on the same runner object, and each ends its own batch.**
+`timing._run_for_inference` and `timing._validate_upper_bound` each `await result.close()`
+from a `finally`, and `close` ends a batch rather than the runner, so the second
+`run_solutions` reuses the remote problem. It does **not** reuse the upload: the limits
+moved, `TLOVERRIDE` lives in `conf`, and `conf` is inside `_directory_fingerprint` -- so
+the validation phase re-uploads and very likely re-calibrates, once per picker round trip
+that changes a limit. That is the cost the two-phase split makes unavoidable; the design
+doc argues why measuring at the real bound is worth it (the judge's *verdict*, not only
+its timing, is what phase 2 reads). The testrun cache is what keeps a re-run at limits
+already probed free.
+
+`supports_abort=False` has one visible consequence in the validation phase. That phase
+aborts a slow solution at its first timeout, so locally the testcases after it are
+`SKIPPED` and say nothing. On MOJ they all really ran, so a solution that both times out
+*and* answers a later test wrongly comes back with a WA beside the TLE, and
+`_record_validation_run` reads a non-slow bad verdict as "broke for another reason" rather
+than as confirmation. More information, not less -- the WA is real and the local abort
+merely hid it -- but a slow-and-wrong solution is reported here and passes locally.
 
 `run_solution` submits the solution with `moj testrun` on a **background task** and
 returns one `Deferred` per entry over that one shared job -- it must not block, because
@@ -196,7 +228,7 @@ whatever testcases *this* run asked about. Nothing that raises out of that deriv
 ever written: a run-level failure (the `Compilation Error` shape) and an unrecognised
 verdict code are things the setter is about to fix, and a cached one would make the fix
 look like it did nothing. A **bad verdict is cached** -- a WA or a TLE is a real,
-reproducible measurement, and phase 2 exists to take exactly those. The cache lives beside
+reproducible measurement, and the validation phase exists to take exactly those. The cache lives beside
 the upload record in the disposable problem cache, is consulted *before* the concurrency
 slot (a hit costs no judge time and must not queue behind one that does), and is announced
 once per testrun from `_evaluation_from_job`, naming the directory to delete. There is no

@@ -93,17 +93,25 @@ land where `rbx time` would have put the limit, but measured on the judge machin
 rather than the setter's. It needs `timing.multipliers` in `env.rbx.yml`: a problem
 estimating with a *formula* defines no such ratio, and packaging errors out saying so.
 
-**A third mode, `UniformPinned(limit_ms)`**, exists for the MOJ *runner* and is not
-reachable from the CLI. It pins `TLOVERRIDE[default]` to one number and emits **no**
-per-language entry, because `timelimit_override` is a single cap (the inference
-timeout, or `timeLimitToTle × TL`) and a per-language entry beside it would measure
-that language under a *tighter* cap than rbx asked for, truncating the timings the
-estimate rests on. It consults no limits profile -- `_require_limits_profile()`
-deliberately does not fire -- but still feeds `inferenceTimeout` into `CALIBRATIONTL`,
-since calibration runs on that package too. The three modes are `ProfilePinned` /
-`JudgeCalibrated` / `UniformPinned`; `_time_limit_lines`, `_report_time_limits` and
-`check_timing_setup` all dispatch on them, and `fixed_limit_lines` takes the
-`explanation` block that says which story the emitted numbers came from.
+**A third mode, `ProbePinned(default_ms, per_rbx_language_ms)`**, exists for the MOJ
+*runner* and is not reachable from the CLI. It pins exactly what the timing run asked
+to measure under, and `rbx time` asks for a different shape in each of its two phases:
+one `inferenceTimeout` cap for every language while it estimates from the accepted
+solutions (so `TLOVERRIDE[default]` alone), and `ceil(TL_lang × timeLimitToTle)` **per
+language group** while it checks the solutions expected to be too slow (so one
+`TLOVERRIDE[<lang>]` each). `per_rbx_language_ms` is keyed by rbx language name and
+translated to MOJ ids by `_probe_time_limits`, which pins each language under the
+emitted spelling *and* its normalized alias, exactly as `_fixed_time_limits` does; the
+default is the loosest limit, since only a language the run did not name falls back to
+it. What must never happen -- and cannot, since this mode consults no profile -- is
+emitting the *`moj` profile's* per-language entries beside a limit this run chose,
+which would measure some language under a limit nobody asked for.
+`_require_limits_profile()` deliberately does not fire, but `inferenceTimeout` still
+feeds `CALIBRATIONTL`, since calibration runs on that package too. The three modes are
+`ProfilePinned` / `JudgeCalibrated` / `ProbePinned`; `_time_limit_lines`,
+`_report_time_limits` and `check_timing_setup` all dispatch on them, and
+`fixed_limit_lines` takes the `explanation` block that says which story the emitted
+numbers came from.
 
 `tl` itself is still never emitted -- the package remains unjudgeable until a judge
 calibrates it, since mojtools refuses to judge without that file. Pinning removes
@@ -404,7 +412,7 @@ a throwaway `rbxt-` problem. The two axes are separate constructor arguments bec
 
 ## The probe package
 
-`MojPackager(probe=ProbePackage(submission_languages=(...)), timing_mode=UniformPinned(ms))`
+`MojPackager(probe=ProbePackage(submission_languages=(...)), timing_mode=ProbePinned(...))`
 builds a **throwaway package uploaded to measure timings**, never judged by students —
 what the MOJ runner in [`rbx/box/runners/moj/`](../../runners/moj/) uploads to a private
 `rbxt-` problem. Four differences from a package a setter builds, each argued where the
@@ -413,16 +421,16 @@ knob lives:
 | | Probe | Why |
 |---|---|---|
 | `sols/` | model solution only | [`moj testrun`](#solutions) sends the timed source in the request body; calibration needs one `sols/good` |
-| `languages` | every language rbx may testrun | [the API rejects a submission outside it](#moj-metajson), a testrun included |
+| `languages` | every language rbx may testrun, across **both** `rbx time` phases | [the API rejects a submission outside it](#moj-metajson), a testrun included |
 | `STOPWHEN_*` | never emitted | [halting early returns a prefix of the tests](#stopwhen_) |
 | `ALLOWPARALLELTEST` | `n` | [a timing measured against 55 competing tests is not a timing](#allowparalleltest) |
 | `TLERERUN` | `n` | [the rerun's time replaces the measured one](#allowparalleltest) |
 | `docs/` | always `DUMMY_STATEMENT` | see below |
-| `conf` | one uniform `TLOVERRIDE[default]` | [a per-language entry would measure under a tighter cap](#time-limits-pinned-or-calibrated-on-demand) |
+| `conf` | the `TLOVERRIDE` block this run asked for | [the profile's limits are the ones this run exists to replace](#time-limits-pinned-or-calibrated-on-demand) |
 
 The two axes are separate constructor arguments — "what limits" and "what is in the
 package" are different questions — but of their product only one cell is legal, and
-`__init__` rejects the rest: a probe must pin a uniform limit.
+`__init__` rejects the rest: a probe must pin the limits the timing run asked for.
 
 **Why the statement is always the dummy.** The real path reads `blocks.sub.yml` and the
 externalized TikZ PDFs out of the v2 overlay, which only the forced-externalize
