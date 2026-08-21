@@ -309,6 +309,22 @@ Phase 2, validation:
 - Testrun the remaining solutions (the ones `rbx time` already runs) at that cap, and judge
   every measured time against the decided TL.
 
+**Reaffirmed 2026-08-21, after the probe found that a TLE reports its time unclamped.**
+That finding makes a one-upload alternative sound — keep `TLOVERRIDE = inferenceTimeout`
+for the whole session and recompute phase-2 verdicts locally, since the real times come
+back regardless. It was weighed and **rejected**, for a reason that outranks the upload
+cost: a slow solution runs *to the cap on every test*, by definition. Letting it run to a
+10s `inferenceTimeout` instead of dying at `timeLimitToTle x TL` multiplies the judge time
+of exactly the solutions that are already the most expensive, across the whole testset, on
+a shared two-judge park. One extra upload — and at worst one extra calibration — is cheaper
+than that, and it buys the judge's own verdict at the real cap as well.
+
+The consequence to design around: the cap lives in the emitted `conf`, so it is inside
+`_directory_fingerprint`, so phase 2 **always** misses the fast path and re-uploads. That
+is by construction, not a bug. Whether it also forces a recalibration is still the open
+probe question above; the wiring must therefore surface progress during a wait that may
+run into minutes rather than looking hung.
+
 Changing `conf` moves the package checksum, so phase 2's upload very likely forces a second
 calibration wait. Whether a `TLOVERRIDE`-only change really does -- given that `TLOVERRIDE`
 overrides the calibrated TL anyway -- is a probe item below, and the answer decides whether
