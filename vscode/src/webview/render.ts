@@ -15,6 +15,7 @@
  */
 import type { ProblemChoice } from '../rbx/problems';
 import type {
+  CardOrigin,
   FindingRow,
   FindingWarning,
   GroupMismatch,
@@ -818,6 +819,75 @@ function findingRowHtml(row: FindingRow, expanded: boolean): string {
     (expandable && expanded
       ? `<div class="finding-warnings">${row.warnings.map(warningLine).join('')}</div>`
       : '')
+  );
+}
+
+/**
+ * The three channels the second pane can hold, as buttons.
+ *
+ * `out` is the diff -- the output beside what it should have been -- which is
+ * what `rbx ui`'s output box is in two-sided mode. There is deliberately no
+ * `in` button: the input lives permanently in the first pane, and a button
+ * pointing it at the second would put the same file on screen twice.
+ *
+ * None of them is ever disabled. Whether a testcase *has* stderr is a fact
+ * about the disk, which this view does not read, and dimming would reflow the
+ * button row while arrowing down a group -- a moving target on the one control
+ * that should stay put. A button with nothing behind it says so, in words, when
+ * it is pressed.
+ */
+function cardChannels(): string {
+  const button = (action: string, label: string, title: string): string =>
+    `<button class="card-channel" data-action="${action}" title="${escapeAttr(title)}">${escapeHtml(label)}</button>`;
+  return (
+    '<div class="card-channels">' +
+    button('out', 'out', 'Show the output against the expected answer') +
+    button('err', 'err', 'Show what this solution wrote to stderr') +
+    button('log', 'log', 'Show the run log for this testcase') +
+    '</div>'
+  );
+}
+
+function originLine(origin: CardOrigin): string {
+  const text = escapeHtml(origin.text);
+  const title = escapeAttr(origin.title);
+  // A `button` only when there is somewhere to go. An origin rendered as a
+  // button that does nothing on click would promise a destination the view
+  // cannot reach -- a generator *call* names a generator, not a file.
+  return origin.open === undefined
+    ? `<div class="card-origin" title="${title}">${text}</div>`
+    : `<button class="card-origin card-link" data-action="${origin.open}" title="${title}">${text}</button>`;
+}
+
+/**
+ * The card under the tree: what the selected testcase's row cannot say.
+ *
+ * Absent whenever the selection is not a testcase, on the same rule the
+ * findings panel follows -- the card being on screen is itself a statement
+ * about what is selected, and one that lingered over a solution row would be
+ * describing something else.
+ *
+ * The verdict, the time and the memory are not here. They are on the row a few
+ * pixels above, and repeating them would spend the card on the half of the
+ * story that was never missing.
+ */
+export function renderCard(model: RunViewModel, state: UiState): string {
+  const row = model.rows.find((candidate) => candidate.id === state.selected);
+  const card = row?.card;
+  if (card === undefined) {
+    return '';
+  }
+  // The checker's own sentence, wrapped. This is the fact the extension has
+  // been parsing out of every `.eval` and rendering nowhere.
+  const checker =
+    card.checker === undefined
+      ? ''
+      : `<div class="card-checker">${escapeHtml(card.checker)}</div>`;
+  return (
+    `<div class="card-title">${escapeHtml(card.title)}</div>` +
+    checker +
+    card.origins.map(originLine).join('') +
+    cardChannels()
   );
 }
 

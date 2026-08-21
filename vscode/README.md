@@ -148,7 +148,7 @@ expands.
 | Row | Opens |
 |---|---|
 | solution | its source file, for editing -- `sols/wa.cpp` is a file you wrote |
-| testcase | the diff against the expected answer if it failed, the input otherwise |
+| testcase | **two panes** -- the input, and the output diffed against the expected answer |
 | group | nothing; it is a heading over testcases, with no file behind it |
 
 A solution row both expands and opens, so the two gestures are kept apart: a
@@ -157,6 +157,98 @@ single click expands it, as a click on any parent row does, and opening it takes
 **expanded**, whichever way it started -- the second click is not a second
 toggle, because a gesture that opens a file should not also shut the row it was
 opened from.
+
+### What a testcase opens
+
+A testcase used to open one tab: the diff if it failed, the input otherwise. One
+artifact at a time is the wrong number -- the input is what produced the output,
+and reading a wrong answer without it is reading half the story. So a testcase
+opens **two editor panes**, the way `rbx ui`'s run explorer shows them:
+
+```
++- input.in -----+  +- output.out <-> answer.out ----+
+| 5 3            |  | 12            | 14             |
+| 1 2 3 4 5      |  |               |                |
++----------------+  +--------------------------------+
+```
+
+Real editors and not a webview, because testcases are large: a `TextDocument`
+streams a multi-megabyte input, highlights it, and gives you find and
+go-to-line, none of which a webview gets without rebuilding it.
+
+**The second pane is a channel**, and it switches -- `alt+1` output, `alt+2`
+stderr, `alt+3` the run log, mirroring `rbx ui`'s `1`/`2`/`3`, and reachable
+from the buttons on the card below. `out` is the *diff*, output beside what it
+should have been, which is what `rbx ui`'s output box is in two-sided mode; a
+hard TLE with no output falls back to whichever half exists. The channel is
+**sticky**: reading stderr and arrowing down a group keeps reading stderr,
+because comparing one channel across several tests is the thing a switch is for.
+
+There is deliberately no `in` button. The input already lives in the first pane,
+and a button pointing it at the second would put the same file on screen twice.
+
+#### The layout is yours
+
+Both panes are `preview` tabs in **separate editor groups**, and a preview tab
+is per group -- so arrowing down the list swaps the documents in place and never
+piles up tabs.
+
+The first time a testcase is opened, the extension lays out two groups:
+`rbx.testcaseLayout` picks `beside` (default) or `below`. **That is a seed and
+nothing more.** Afterwards it finds its own panes -- every artifact travels on
+the `rbx:` scheme, so a tab carrying one is recognisably ours -- and reuses
+whichever groups they are sitting in, without touching the layout again.
+
+Even the seed holds back when you have already split the editor yourself: with
+more than one group open it joins them instead, putting the input in the active
+group and the channel beside it, rather than collapsing your arrangement to two.
+
+That distinction is the whole design. Laying out editor groups is global and
+destructive: it rearranges the entire editor area, the solution source you were
+editing included. Doing it on every <kbd>Enter</kbd> would undo your own
+arrangement every time you picked a different testcase. Drag the panes where you
+want them and they stay there.
+
+### The testcase card
+
+Under the tree, a card describes the **selected** testcase -- and carries only
+what its row cannot.
+
+```
++- 1-gen-002 ---------------+
+| wrong answer, expected    |
+| 14, found 12              |
+| gen_random 5 3 --seed=7   |
+| [out] [err] [log]         |
++---------------------------+
+```
+
+Not the verdict, not the time, not the memory: the row has all three, eight
+pixels above. What the card adds is the two facts the extension has been reading
+out of every run and showing nowhere.
+
+- **The checker's own message**, wrapped and whole. It is the answer to *why*
+  a solution answered wrongly, and it is free-form output from the package's own
+  checker -- as long as that checker felt like being, which is exactly why it
+  could never fit a 22px row. Absent on a hard TLE, where the checker never saw
+  the output; that absence is informative and is not filled with a placeholder.
+- **Where the test came from** -- copied-from, the generator call, the generator
+  script, in the order rbx's own metadata prints them. The script and the
+  copied-from **open** where they point, since rbx records a script entry as a
+  real `path:line`. A generator *call* is text: it names a generator declared in
+  `problem.rbx.yml` rather than a file, and a button that went nowhere would
+  promise a destination the view does not have.
+
+The card fills on **selection**, not on open, so a whole failing group can be
+scanned for checker messages without opening a single editor. It is absent
+entirely whenever the selection is not a testcase -- the same rule the findings
+panel follows.
+
+None of the three channel buttons is ever disabled. Whether a testcase has
+stderr is a fact about the disk, and the view reads a run's metadata rather than
+statting artifacts on every watcher tick; a button with nothing behind it says
+so, in words, when pressed. The upside is that the button row is the one control
+in the card that never moves as the highlight travels down a group.
 
 ### Compilation findings
 
@@ -395,7 +487,9 @@ still proposed and cannot ship in a published extension.
 Milestone 1 of the [v1 design](../docs/plans/2026-08-11-vscode-extension-design.md):
 package discovery, the run view, read-only artifact editors, and diff. The view
 itself is a webview, per
-[its own design](../docs/plans/2026-08-19-vscode-run-webview-design.md).
+[its own design](../docs/plans/2026-08-19-vscode-run-webview-design.md), and what
+a testcase opens onto is
+[a design of its own](../docs/plans/2026-08-21-vscode-testcase-detail-design.md).
 
 The build tree (browsing generated testcases without a run) needs rbx to persist
 its entry list first, and is not here yet. A lower-density report in an editor

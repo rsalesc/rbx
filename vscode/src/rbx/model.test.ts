@@ -105,3 +105,47 @@ test('a malformed warning is dropped without taking its record with it', () => {
 test('a compilation field of the wrong shape reads as absent', () => {
   assert.deepStrictEqual(parseSkeleton({ ...MINIMAL, compilation: 'nope' })?.compilation, []);
 });
+
+test('a testcase entry carries where it came from', () => {
+  const skeleton = parseSkeleton({
+    ...MINIMAL,
+    entries: [
+      {
+        group_entry: { group: 'main', index: 0 },
+        metadata: {
+          copied_to: { inputPath: '/w/a/.rbx/tests/main/1-gen-000.in' },
+          generator_call: { name: 'gen_random', args: '5 3 --seed=7' },
+          // A `GeneratorScriptEntry` is a real path and line, which is what
+          // makes this the one piece of provenance the card can open.
+          generator_script: { path: 'gens/script.txt', line: 12 },
+        },
+      },
+    ],
+  });
+  const entry = skeleton?.entries[0];
+  assert.strictEqual(entry?.generatorName, 'gen_random');
+  assert.strictEqual(entry?.generatorArgs, '5 3 --seed=7');
+  assert.strictEqual(entry?.generatorScript, 'gens/script.txt');
+  assert.strictEqual(entry?.generatorScriptLine, 12);
+});
+
+test('a testcase entry written by an rbx that records no script reads clean', () => {
+  // The tolerance every one of these tests is about: a copied testcase has no
+  // generator at all, and must not throw on the way in.
+  const skeleton = parseSkeleton({
+    ...MINIMAL,
+    entries: [
+      {
+        group_entry: { group: 'samples', index: 0 },
+        metadata: {
+          copied_to: { inputPath: '/w/a/.rbx/tests/samples/000.in' },
+          copied_from: { inputPath: 'tests/manual/01.in' },
+        },
+      },
+    ],
+  });
+  const entry = skeleton?.entries[0];
+  assert.strictEqual(entry?.copiedFrom, 'tests/manual/01.in');
+  assert.strictEqual(entry?.generatorScript, undefined);
+  assert.strictEqual(entry?.generatorScriptLine, undefined);
+});

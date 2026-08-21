@@ -21,10 +21,20 @@ export interface TestcaseEntry {
   /** Absolute path recorded at generation time; may not exist on this host. */
   readonly inputPath?: string;
   readonly outputPath?: string;
-  /** Provenance, for the build tree (M2) and for tooltips today. */
+  /** Provenance, shown on the testcase card -- see `viewModel.TestcaseCard`. */
   readonly generatorName?: string;
   readonly generatorArgs?: string;
   readonly copiedFrom?: string;
+  /**
+   * The generator script line this testcase was generated from.
+   *
+   * `GenerationInput.generator_script` is a `GeneratorScriptEntry`, which is a
+   * real `path` and `line` rather than a name -- so unlike `generatorName`,
+   * which names a generator declared in `problem.rbx.yml` and would have to be
+   * resolved through the manifest, this one can be opened directly.
+   */
+  readonly generatorScript?: string;
+  readonly generatorScriptLine?: number;
 }
 
 export interface SolutionEntry {
@@ -143,6 +153,8 @@ function parseTestcaseEntry(raw: Wire): TestcaseEntry | undefined {
     generatorName: asString(field(raw, 'metadata', 'generator_call', 'name')),
     generatorArgs: asString(field(raw, 'metadata', 'generator_call', 'args')),
     copiedFrom: asString(field(raw, 'metadata', 'copied_from', 'inputPath')),
+    generatorScript: asString(field(raw, 'metadata', 'generator_script', 'path')),
+    generatorScriptLine: asNumber(field(raw, 'metadata', 'generator_script', 'line')),
   };
 }
 

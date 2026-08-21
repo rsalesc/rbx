@@ -816,3 +816,124 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/*
+ * The testcase card.
+ *
+ * A flex item between the tree and the findings panel, hidden entirely unless
+ * the selection is a testcase -- the same rule the panel above it follows, and
+ * for the same reason: a card that lingered over a solution row would be
+ * describing something else.
+ *
+ * Nothing here repeats the row. The verdict, the time and the memory are eight
+ * pixels above; what the card carries is the checker's own sentence and where
+ * the test came from, which are the two facts a 22px row cannot hold.
+ */
+#card {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px 6px;
+  border-top: 1px solid var(--vscode-panel-border, transparent);
+}
+
+#card.has-card {
+  display: flex;
+  /* Never at the tree's expense past a third of the view: the tree is what the
+     user came for, and a checker that returned an essay should scroll inside
+     the card rather than push the rows off screen. */
+  flex: 0 0 auto;
+  max-height: 30vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Which row the card is describing, in the sidebar's own section-header
+   treatment -- so it reads as a section about the selection rather than as one
+   more row of the tree. */
+.card-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The checker's message, and the only thing in the view allowed to wrap. That
+   is the whole point of the card: the message is free-form and as long as the
+   package's checker felt like being, which is exactly why it could never live
+   on the row. */
+.card-checker {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  /* Body text, not dimmed: this is the answer to "why did this fail", which is
+     the most valuable sentence on screen when it is there at all. */
+  color: var(--vscode-foreground);
+}
+
+/* Provenance. Dimmed and monospaced -- it is a generator call or a path, and
+   both are things the setter typed rather than prose. */
+.card-origin {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.9em;
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* The button reset. A `.card-link` is a button so it can be reached by Tab;
+     it has no business looking like one. */
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.card-link {
+  cursor: pointer;
+}
+
+.card-link:hover {
+  color: var(--vscode-textLink-activeForeground);
+  text-decoration: underline;
+}
+
+.card-link:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+/* The three channels the second editor pane can hold. Never disabled -- see
+   `cardChannels` -- so the row of buttons is the one thing in the card that
+   does not move as the highlight travels down a group. */
+.card-channels {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.card-channel {
+  flex: 0 0 auto;
+  min-width: 34px;
+  padding: 1px 6px;
+  font-family: var(--vscode-font-family);
+  font-size: 11px;
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  background: var(--vscode-button-secondaryBackground, transparent);
+  border: 1px solid var(--vscode-contrastBorder, transparent);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.card-channel:hover {
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
+}
+
+.card-channel:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}

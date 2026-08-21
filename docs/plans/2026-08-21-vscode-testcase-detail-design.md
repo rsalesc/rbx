@@ -81,10 +81,14 @@ on the half of the story that was never missing.
   checker never saw the output — that absence is informative and is not papered
   over with a placeholder. `_get_checker_msg_last_line` is what `rbx ui` shows;
   the card shows the whole message, having the room for it.
-- **Provenance** — the generator call, or `copied from <path>`, and the
-  generator script when there is one. Clickable, opening the generator source:
-  "this test is wrong, where did it come from" is one question, and its second
-  half should not require the Explorer.
+- **Provenance** — copied-from, the generator call, and the generator script,
+  in the order `get_generation_metadata_markup` prints them. Two of the three
+  are **clickable**: rbx records a script entry as a real `path:line` and a
+  copied-from as a path, so both open where they point. A generator *call* is
+  text, because it names a generator declared in `problem.rbx.yml` rather than a
+  file, and resolving it would mean threading the manifest into the run view for
+  one line — while a button that did nothing would promise a destination the
+  view cannot reach.
 - **The channel buttons** — `out`, `err`, `log`. See D4.
 
 Because the card fills on **selection** rather than on open, a whole failing
@@ -102,15 +106,18 @@ than adjacency.
 `Enter` or a double click on a testcase opens two groups: the **input** in one,
 the **channel** in the other, defaulting to `diff(output ↔ answer)`.
 
-The mechanism for the arrangement is `vscode.setEditorLayout`, which takes a
-nested `EditorGroupLayout` — `{orientation, groups}`, groups nesting for
-orthogonal splits, `size` fractions summing to 1 per row. "Input left, channel
-right" is one call.
+The arrangement could go through `vscode.setEditorLayout`, which takes a nested
+`EditorGroupLayout` — `{orientation, groups}`, groups nesting for orthogonal
+splits, `size` fractions summing to 1 per row. It does not: the built-in
+`workbench.action.editorLayoutTwoColumns` and `...TwoRows` produce exactly the
+two shapes wanted, say in their names which is which, and are the same commands
+the Layout menu runs, while `orientation` has two values that are easy to get
+backwards and impossible to unit-test.
 
-The trap is that `setEditorLayout` is **global and destructive**: it rearranges
-the entire editor area, including the solution source being edited. Calling it
-on every `Enter` would undo the user's own arrangement every time they picked a
-different testcase.
+The trap either way is that laying out is **global and destructive**: it
+rearranges the entire editor area, including the solution source being edited.
+Doing it on every `Enter` would undo the user's own arrangement every time they
+picked a different testcase.
 
 So it is a **fallback, not a policy**:
 
@@ -121,7 +128,13 @@ So it is a **fallback, not a policy**:
 2. **Found** — swap the documents into those groups. No layout call. Wherever
    the panes were dragged, they stay, for that testcase and every one after.
 3. **Not found** — first open of the session, or the user closed them — lay out
-   the grid once, as a starting suggestion.
+   the grid once, as a starting suggestion, **and only if the editor area has
+   no arrangement of its own yet** (one group or none). Laying out is global:
+   offering a two-pane suggestion to an empty editor is helpful, while
+   collapsing somebody's three-group workspace to two is the exact thing this
+   decision exists to avoid. An editor area that is already arranged is
+   *joined* — the input into the active group, the channel beside it — not
+   rearranged.
 
 `rbx.testcaseLayout` (`beside` | `below`) seeds step 3 only. `beside` gives the
 input its own column; `below` stacks them the way `rbx ui` does. After the first
@@ -159,9 +172,16 @@ Switching happens three ways, all through the same commands: `alt+1/2/3` while
 the view has focus, the card's buttons, and the command palette.
 
 **The channel is sticky across testcases.** Reading stderr and arrowing down
-keeps stderr, exactly as the switcher does. A button for an artifact that does
-not exist — no stderr, no output after a hard TLE — is **dimmed rather than
-absent**, so the button row does not reflow while arrowing through a group.
+keeps stderr, exactly as the switcher does.
+
+No button is ever **disabled**. Dimming was the plan, on the grounds that the
+button row must not reflow while arrowing through a group — but whether a
+testcase *has* stderr is a fact about the disk, and the view reads a run's
+metadata rather than statting three artifacts per testcase on every watcher
+tick. So nothing is dimmed: a button with nothing behind it says so, in words,
+when it is pressed — the same informational message `rbx.openStderr` has always
+shown. That keeps the button row the one thing in the card that never moves, and
+says more than a dimmed button would.
 
 A hard TLE has no output to diff. `rbx.diffOutput` already falls back to showing
 whichever half exists, and that behaviour carries over unchanged.
@@ -171,12 +191,21 @@ whichever half exists, and that behaviour carries over unchanged.
 - `TestcaseRun` (`src/rbx/store.ts`) gains a **`logPath`**. `Ext.Log` already
   exists in `src/rbx/layout.ts` and every other artifact path is already
   resolved there; the log is the one channel with no field behind it.
+- `TestcaseEntry` (`src/rbx/model.ts`) gains **`generatorScript`** and
+  **`generatorScriptLine`**, parsed from `metadata.generator_script`. It is the
+  only provenance the card can open, and nothing was reading it.
 - The webview gains the card, its selection plumbing, and the three buttons.
   `Evaluation.message` and `TestcaseEntry.{generatorName,generatorArgs,copiedFrom}`
   are already parsed, so no new reading.
 - `rbx.openTestcase` replaces `rbx.diffOutput` as the leaf gesture, with the
   tab-group lookup, the seeded layout, and the sticky channel behind it.
 - Settings: `rbx.testcaseLayout` (`beside` | `below`).
+- `alt+1/2/3` is handled **inside the webview's own keydown listener** rather
+  than contributed as a keybinding: a webview does not reliably forward
+  unhandled keys to the workbench, and a shortcut that works only sometimes is
+  worse than one that lives where the view can see it. `alt` and not the bare
+  digits `rbx ui` uses, because this view has a filter box and a bare `2` has to
+  be able to reach it.
 
 ## What is out of scope
 
