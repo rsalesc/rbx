@@ -432,6 +432,10 @@ class TestComputeTimeLimits:
         # Mock run_solutions
         mock_result = mock.Mock()
         mock_result.skeleton.solutions = [mock_solution]
+        # `close` is a coroutine: the consumer awaits it in a `finally`, because a
+        # backend that dispatched ahead has to be awaited out of its polls rather
+        # than merely told to stop. A plain mock attribute would not be awaitable.
+        mock_result.close = mock.AsyncMock()
         mock_run_solutions.return_value = mock_result
 
         # Mock print_run_report
@@ -470,6 +474,8 @@ class TestComputeTimeLimits:
         mock_get_inference_solutions.side_effect = only_lower_bound([mock_solution])
 
         mock_result = mock.Mock()
+        # See above: `close` is awaited in `_run_for_inference`'s `finally`.
+        mock_result.close = mock.AsyncMock()
         mock_run_solutions.return_value = mock_result
 
         # Mock print_run_report to return False (failure)
@@ -549,6 +555,8 @@ class TestTimingIntegration:
         mock_result = mock.Mock()
         mock_result.skeleton.solutions = [mock_solution]
         mock_result.items = []
+        # See above: `close` is awaited in `_run_for_inference`'s `finally`.
+        mock_result.close = mock.AsyncMock()
         mock_run_solutions.return_value = mock_result
 
         mock_print_run_report.return_value = True

@@ -338,15 +338,17 @@ class RunSolutionResult:
     def empty_structured_evaluation(self) -> StructuredEvaluation:
         return self.skeleton.empty_structured_evaluation()
 
-    def close(self) -> None:
-        """Tell the backend nothing more will be asked of it. Idempotent.
+    async def close(self) -> None:
+        """Tell the backend this batch is over. Idempotent.
 
-        Call it from a `finally` around the *consumption* of `items`, which is
+        `await` it from a `finally` around the *consumption* of `items`, which is
         the only moment at which this can be correct: a backend may dispatch work
         ahead of the consumer, so anything still outstanding when consumption
         ends is work whose result nobody will ever read. `SolutionRunner.close`
         explains at length why this is not the `finalize` hook the seam started
-        with -- that one fired while every job was still in flight.
+        with -- that one fired while every job was still in flight -- and why it
+        ends the *batch* rather than the runner, which a second `run_solutions`
+        on the same object is free to reuse.
 
         Every consumer of a `RunSolutionResult` should do this, including the
         ones that only ever run locally: `LocalRunner.close` is a no-op, so the
@@ -355,7 +357,7 @@ class RunSolutionResult:
         """
         if self.runner is None:
             return
-        self.runner.close()
+        await self.runner.close()
 
 
 class FailedSolutionIssue(issue_stack.Issue):

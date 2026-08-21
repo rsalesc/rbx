@@ -163,4 +163,4 @@ async def verify(
         # ending early -- a failure, or Ctrl-C -- which is exactly when a backend
         # that dispatched ahead still has jobs nobody will ever ask about.
         # A no-op on the local sandbox, which is all this call site uses today.
-        solution_result.close()
+        await solution_result.close()

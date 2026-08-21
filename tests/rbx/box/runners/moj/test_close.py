@@ -60,24 +60,59 @@ async def _dispatch_two_and_hold(testing_pkg, tmp_path, monkeypatch):
     # Let both reach the judge and settle into their poll.
     for _ in range(20):
         await asyncio.sleep(0)
-    return runner, fake, batches
+    return runner, fake, ctx, batches
 
 
 async def test_closing_cancels_the_testruns_still_in_flight(
     testing_pkg, tmp_path, monkeypatch
 ):
     """The gap this closes: without it those tasks poll on, and asyncio reports
-    them as `Task was destroyed but it is pending!` at interpreter exit."""
-    runner, fake, _ = await _dispatch_two_and_hold(testing_pkg, tmp_path, monkeypatch)
+    them as `Task was destroyed but it is pending!` at interpreter exit.
+
+    **Nothing pumps the loop here, on purpose.** `cancel()` only schedules the
+    `CancelledError`; what makes it *have happened* by the time `close` returns
+    is `close` awaiting the tasks itself. No production call site pumps the loop
+    -- `syncer` stops it as soon as the consumer returns or raises -- so a test
+    that pumped would pass against a `close` that merely asks and leaves the real
+    command printing `Task was destroyed but it is pending!`.
+    """
+    runner, fake, _, _ = await _dispatch_two_and_hold(
+        testing_pkg, tmp_path, monkeypatch
+    )
     jobs: List[asyncio.Task] = list(runner._jobs)  # noqa: SLF001
     assert jobs and not any(job.done() for job in jobs)
 
-    runner.close()
-    # Cancellation lands on the next turn of the loop, not on the call.
-    for _ in range(10):
-        await asyncio.sleep(0)
+    await runner.close()
 
     assert all(job.cancelled() for job in jobs)
+
+
+async def test_a_second_batch_can_run_on_a_closed_runner(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """`close` ends a batch, not the runner.
+
+    Phase 2 re-uploads at `timeLimitToTle x TL` and measures the same solutions
+    again on the same object, so what `prepare` settled -- the remote problem, the
+    packager, the testcase names -- has to survive being closed. Only the jobs go.
+    """
+    runner, fake, ctx, _ = await _dispatch_two_and_hold(
+        testing_pkg, tmp_path, monkeypatch
+    )
+    await runner.close()
+    submissions_before = len(fake.submissions)
+
+    fake.hold = None
+    again = runner.run_solution(ctx.skeleton.solutions[0], ctx.skeleton.entries, ctx)
+    evals = [await deferred() for deferred in again]
+
+    assert len(evals) == len(ctx.skeleton.entries)
+    assert len(fake.submissions) == submissions_before + 1
+    # And the closed batch is *gone*, not merely finished with: the runner tracks
+    # only the batch it is running. A session that kept every batch's tasks would
+    # grow its list for as long as it lives, and phase 2 is a second batch on this
+    # very object.
+    assert len(runner._jobs) == 1  # noqa: SLF001
 
 
 async def test_closing_says_what_it_left_running_on_the_judge(
@@ -85,9 +120,9 @@ async def test_closing_says_what_it_left_running_on_the_judge(
 ):
     """An interrupted setter otherwise has no way to know whether they left
     something broken on a park they share with everyone else."""
-    runner, _, _ = await _dispatch_two_and_hold(testing_pkg, tmp_path, monkeypatch)
+    runner, _, _, _ = await _dispatch_two_and_hold(testing_pkg, tmp_path, monkeypatch)
 
-    runner.close()
+    await runner.close()
 
     printed = _flat(capsys.readouterr().out)
     assert 'Stopped waiting for 2 MOJ testrun(s)' in printed
@@ -101,7 +136,7 @@ async def test_closing_a_finished_run_says_nothing(
 ):
     """The ordinary path: every consumer closes, so a run that completed normally
     must not end with a warning about work that is not outstanding."""
-    runner, fake, batches = await _dispatch_two_and_hold(
+    runner, fake, _, batches = await _dispatch_two_and_hold(
         testing_pkg, tmp_path, monkeypatch
     )
     fake.hold.set()
@@ -110,7 +145,7 @@ async def test_closing_a_finished_run_says_nothing(
             await deferred()
     capsys.readouterr()
 
-    runner.close()
+    await runner.close()
 
     assert _flat(capsys.readouterr().out) == ''
 
@@ -120,32 +155,31 @@ async def test_closing_twice_cancels_and_complains_once(
 ):
     """`close` is idempotent: a consumer may close in a `finally` that another
     `finally` runs after."""
-    runner, _, _ = await _dispatch_two_and_hold(testing_pkg, tmp_path, monkeypatch)
+    runner, _, _, _ = await _dispatch_two_and_hold(testing_pkg, tmp_path, monkeypatch)
 
-    runner.close()
+    await runner.close()
     capsys.readouterr()
-    runner.close()
+    await runner.close()
 
     assert _flat(capsys.readouterr().out) == ''
 
 
-async def test_a_cancelled_testrun_is_not_resubmitted_or_undone(
-    testing_pkg, tmp_path, monkeypatch
-):
-    """rbx cancels its own *wait*, and nothing else.
+async def test_closing_says_nothing_to_the_judge(testing_pkg, tmp_path, monkeypatch):
+    """A guard, not a verification: there is no un-submit call to remove.
 
-    MOJ already has the submission and finishes it on its own schedule; there is
-    no un-submit, and none is needed -- a testrun runs outside history and placar.
-    Anything here that tried to talk to the judge on the way out would be talking
-    from a `finally`, while the setter is looking at an error.
+    Kept because the tempting next step is to "cancel remotely" on the way out,
+    and this is where that would be caught. It would be the wrong step twice
+    over: MOJ has the submission and finishes it regardless, and `close` runs
+    from a `finally`, very possibly while the setter is already looking at an
+    error -- so a network call there would delay it, and could fail into it.
     """
-    runner, fake, _ = await _dispatch_two_and_hold(testing_pkg, tmp_path, monkeypatch)
+    runner, fake, _, _ = await _dispatch_two_and_hold(
+        testing_pkg, tmp_path, monkeypatch
+    )
     submitted = list(fake.submissions)
     polls = len(fake.status_calls)
 
-    runner.close()
-    for _ in range(20):
-        await asyncio.sleep(0)
+    await runner.close()
 
     assert fake.submissions == submitted
     assert len(fake.status_calls) == polls

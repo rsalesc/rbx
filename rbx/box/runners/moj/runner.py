@@ -352,7 +352,7 @@ class MojRunner:
             for entry, name in zip(entries, names)
         ]
 
-    def close(self) -> None:
+    async def close(self) -> None:
         """Stop waiting on every testrun nobody is going to read. Idempotent.
 
         `run_solution` queues **every** solution up front -- that is the point of
@@ -363,6 +363,20 @@ class MojRunner:
         interpreter exit as `Task was destroyed but it is pending!` -- a message
         about rbx internals, arriving after the error the setter actually cares
         about. This is the hook `_retrieve_exception` said was missing.
+
+        **The drain is not optional.** `cancel()` schedules a `CancelledError`;
+        a task suspended in `cli.testrun_status` is suspended inside
+        `process.communicate()`, which takes several turns of the loop to unwind
+        -- and `syncer` stops the loop as soon as the consumer returns or raises,
+        which is the very path this is called on. Awaiting the tasks here is what
+        makes "cancelled" true by the time `close` returns instead of hoping
+        something later pumps the loop.
+
+        **Ends this batch, not this runner.** `_moj_id`, `_packager` and
+        `_names_by_entry` are deliberately left alone: the remote problem is
+        persistent by design, and a second batch on the same object (phase 2
+        re-uploading at `timeLimitToTle x TL`) is meant to reuse them and skip
+        straight past the upload it already did.
 
         **Only the runner-side wait is cancelled. The judge keeps running.** A
         cancelled poll does not un-submit anything: MOJ has the submission and
@@ -388,6 +402,14 @@ class MojRunner:
 
         if not pending:
             return
+
+        # `return_exceptions=True` because this is running in a `finally`, very
+        # possibly while another exception is on its way to the setter: a job
+        # that failed instead of cancelling, or a cleanup that raised on the way
+        # out, must not replace the error they are actually looking at. Awaiting
+        # every job (not only the pending ones) would be the same set anyway --
+        # the finished ones were already retrieved by `_retrieve_exception`.
+        await asyncio.gather(*pending, return_exceptions=True)
 
         # Said out loud, because the alternative is a setter who interrupted a
         # timing run wondering whether they left something broken on a shared

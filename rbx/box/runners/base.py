@@ -116,8 +116,15 @@ class SolutionRunner(Protocol):
         """
         ...
 
-    def close(self) -> None:
-        """Drop any work this runner still has outstanding. Idempotent.
+    async def close(self) -> None:
+        """Drop the work this batch left outstanding. Idempotent.
+
+        **This ends a batch, not the object.** A closed runner may be prepared
+        and run again -- which is exactly what phase 2 of `rbx time` will do,
+        re-uploading at `timeLimitToTle x TL` and measuring the same solutions
+        against it -- so `close` drops what is *in flight* and deliberately
+        leaves everything `prepare` settled alone. On `MojRunner` that state is
+        what lets a second batch skip the upload and the calibration entirely.
 
         **This is not the `finalize` hook the seam started with, and the
         difference is the whole point.** `finalize` fired inside `run_solutions`,
@@ -135,16 +142,20 @@ class SolutionRunner(Protocol):
         for results that will never be read, and asyncio complains about them at
         interpreter exit. `close` is where they are cancelled.
 
-        **Synchronous, and it does not wait.** Cancellation is what rbx has to
-        offer; waiting is not. `asyncio.Task.cancel` takes effect on its own, and
-        a remote job goes on running on the judge whether rbx watches it or not,
-        so there is nothing an `await` here could confirm -- it would only delay
-        the error the setter is already looking at. Being sync also means the
-        three consumers can call it from a `finally` without turning it into a
-        second `await` that could itself be interrupted.
+        **Async, because cancelling is not the same as having cancelled.**
+        `Task.cancel` only *schedules* the `CancelledError`; a task suspended in
+        a subprocess call (`cli.testrun_status` awaits
+        `process.communicate()`) needs more than one turn of the loop to unwind,
+        and `syncer` runs the command with `run_until_complete` on a loop that
+        stops as soon as the consumer returns or raises -- which is precisely
+        the path `close` exists for. Reproduced on this project's Python: the
+        sync version leaves `Task was destroyed but it is pending!` on stderr
+        and the subprocess transport unclosed. So `close` awaits its own
+        cancellations rather than hoping something else pumps the loop.
 
-        Awaiting a deferred **after** `close` is not supported: on a backend that
-        cancelled its jobs, that deferred raises `CancelledError`. Consumers call
-        `close` once, last.
+        Awaiting an **unresolved** deferred after `close` is not supported: on a
+        backend that cancelled its jobs, that deferred raises `CancelledError`.
+        A deferred already resolved keeps answering from its memo, which is what
+        lets a consumer close and go on rendering what it has.
         """
         ...

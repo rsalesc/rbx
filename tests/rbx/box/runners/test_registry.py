@@ -51,9 +51,14 @@ def test_an_unknown_name_is_refused_naming_the_known_ones():
     )
 
 
-def test_the_completion_table_offers_exactly_the_runners_that_exist():
-    """Shell completion carries its own copy of the names, to stay off the heavy
-    imports the backends pull in. This is what keeps the copy honest."""
+def test_the_completer_offers_exactly_the_runners_that_exist():
+    """Shell completion reads the same table the registry does -- `runners.names`
+    is a leaf module precisely so it can, without paying for `rich` on every TAB.
+    This is what catches a completer that grew its own copy."""
     from rbx.box.completion import completers
+    from rbx.box.completion.registry import CompletionContext
 
-    assert completers._RUNNER_TABLE == registry.RUNNERS  # noqa: SLF001
+    ctx = CompletionContext(args=[], command=(), option_values={}, package_root=None)
+    offered = [(item.value, item.help) for item in completers.complete_runner(ctx, '')]
+
+    assert offered == list(registry.RUNNERS)

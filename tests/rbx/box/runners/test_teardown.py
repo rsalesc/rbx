@@ -78,7 +78,7 @@ class ClosingRunner:
 
         return [make(entry) for entry in entries]
 
-    def close(self) -> None:
+    async def close(self) -> None:
         self.closed += 1
 
 
@@ -100,23 +100,23 @@ async def test_a_run_carries_the_backend_that_produced_it(
     )
 
     assert result.runner is runner
-    result.close()
+    await result.close()
     assert runner.closed == 1
 
 
-def test_a_result_built_without_a_run_has_nothing_to_close():
+async def test_a_result_built_without_a_run_has_nothing_to_close():
     """Reports are also built from results nothing produced (the timing tests do
     exactly that), and closing one must not go looking for a backend."""
-    RunSolutionResult(skeleton=mock.Mock(), items=[]).close()
+    await RunSolutionResult(skeleton=mock.Mock(), items=[]).close()
 
 
-def test_the_local_backend_takes_a_close_and_does_nothing():
+async def test_the_local_backend_takes_a_close_and_does_nothing():
     """Every consumer closes, including the ones that only ever run locally, so
     the no-op has to really be one -- twice over, since `close` is idempotent."""
     local = LocalRunner()
 
-    assert local.close() is None
-    assert local.close() is None
+    assert await local.close() is None
+    assert await local.close() is None
 
 
 # -- every consumer closes, and closes on the way out too -----------------------

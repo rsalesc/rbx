@@ -82,6 +82,14 @@ class RecordingRunner:
         self.returned.extend(res)
         return res
 
+    async def close(self) -> None:
+        """Nothing to drop; present so the runtime `SolutionRunner` check passes.
+
+        A result now carries the backend that produced it, and the protocol is
+        `runtime_checkable`, so a fake missing `close` stops being a valid runner.
+        """
+        return None
+
 
 @pytest.mark.test_pkg('problems/abort-groups')
 async def test_the_backend_is_called_once_per_solution(

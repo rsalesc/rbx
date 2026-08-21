@@ -116,25 +116,32 @@ limits profile: a profile is the `limits/<name>.yml` file `rbx time` writes, so 
 transport to its name would couple an output to a transport and leave no way to estimate
 MOJ limits from a machine with no judge access. The registry imports each backend lazily
 (naming one must not cost the imports it talks to) and builds a fresh instance per call
-(a runner holds a whole run's state). Shell completion carries its own copy of the names
-in `completion/completers.py`, pinned to the registry by a test, because that module has
-to stay off the heavy imports. The `env.rbx.yml` `runners:`/`profiles:` block the design
+(a runner holds a whole run's state). The names themselves live in `runners/names.py`, a
+leaf module with no imports, so shell completion can read the same table without pulling
+`rich` in behind `RbxException` (~36ms on every TAB). The `env.rbx.yml` `runners:`/`profiles:` block the design
 sketches is **not** built: no backend has a reachable knob yet, and the flag is the whole
 surface until something needs more.
 
-**Tearing one down.** `RunSolutionResult.close()` forwards to
-`SolutionRunner.close()`, and every consumer of a run calls it from a `finally` around
+**Tearing one down.** `await RunSolutionResult.close()` forwards to
+`SolutionRunner.close()`, and every consumer of a run awaits it from a `finally` around
 the *consumption* of the deferreds -- `builder.verify`, `cli.run` and
 `timing._run_for_inference`. It is **not** the `finalize` hook the seam started with and
 must not become it: `finalize` fired inside `run_solutions`, which only builds the
 deferreds, so it ran before a single result had been fetched. What `close` drops is work
 nobody will now ask for -- a backend that dispatched every solution up front still has
 jobs in flight when the report stops at the first failure, or when the setter hits
-Ctrl-C. It is synchronous and does not wait: cancelling is all rbx can do, since a
-cancelled `moj testrun` goes on running on the judge (outside history and placar, so
-nothing needs cleaning up -- `MojRunner.close` says so, once). `LocalRunner.close` is a
-no-op, because its work happens inside the deferred the consumer awaits. Awaiting a
-deferred after `close` is not supported.
+Ctrl-C. It **ends a batch, not the runner**: `prepare` state survives on purpose, so a
+second `run_solutions` on the same object (phase 2, re-uploading at `timeLimitToTle x
+TL`) reuses the remote problem and hits the fingerprint fast path. It is `async` and
+drains: `cancel()` only schedules the `CancelledError`, a job suspended in
+`process.communicate()` needs several turns to unwind, and `syncer` stops the loop the
+moment the consumer returns -- so `MojRunner.close` awaits `gather(...,
+return_exceptions=True)` rather than hoping something pumps it. Cancelling is all rbx
+does: a cancelled `moj testrun` goes on running on the judge (outside history and placar,
+so nothing needs cleaning up -- `MojRunner.close` says so, once). `LocalRunner.close` is
+a no-op, because its work happens inside the deferred the consumer awaits. Awaiting an
+*unresolved* deferred after `close` is not supported; a resolved one keeps answering from
+its memo, which is what lets `timing` close before the group picker opens.
 
 **Two `moj` trees, different jobs.** `runners/moj/` is the *client*: a typed wrapper
 over the judge's `moj` CLI (`problem_id.py`, `cli.py`) that a `MojRunner` drives to

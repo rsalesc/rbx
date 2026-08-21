@@ -19,32 +19,24 @@ packager, the MOJ CLI wrapper and the environment, and a run on the local sandbo
 -- which is every run today -- has no business paying for that.
 """
 
-from typing import TYPE_CHECKING, Callable, Dict, Tuple
+from typing import TYPE_CHECKING, Callable, Dict
 
 from rbx.box.exception import RbxException
+from rbx.box.runners.names import DEFAULT_RUNNER, RUNNERS, runner_names
 
 if TYPE_CHECKING:
     from rbx.box.runners.base import SolutionRunner
 
-
-# What `--runner` defaults to, and what every caller that passes nothing gets.
-# `run_solutions` itself falls back to `LocalRunner` when handed no runner at
-# all, so this name and that fallback have to keep saying the same thing.
-DEFAULT_RUNNER = 'local'
-
-
-# (name, one-line description). The description is what shell completion offers
-# beside the name, so it has to read as an answer to "where does this run?".
-#
-# A table rather than a bare list of names because both users of this module want
-# both halves: the CLI names the valid ones when it refuses an unknown one, and
-# the completer shows them. Kept here, next to `_FACTORIES`, so a backend added
-# without a description is a visible omission rather than a silently nameless
-# entry.
-RUNNERS: Tuple[Tuple[str, str], ...] = (
-    ('local', 'Run the solutions in the sandbox on this machine.'),
-    ('moj', 'Run the solutions on the MOJ judge park, through the `moj` CLI.'),
-)
+# Re-exported so the names and the factories read as one module from the outside;
+# they live in `names.py` only because shell completion cannot afford this
+# module's imports. See that module.
+__all__ = [
+    'DEFAULT_RUNNER',
+    'RUNNERS',
+    'UnknownRunnerError',
+    'get_runner',
+    'runner_names',
+]
 
 
 class UnknownRunnerError(RbxException):
@@ -59,10 +51,6 @@ class UnknownRunnerError(RbxException):
         super().__init__()
         self.message = message
         self.msg.append(message)
-
-
-def runner_names() -> Tuple[str, ...]:
-    return tuple(name for name, _ in RUNNERS)
 
 
 def _local() -> 'SolutionRunner':

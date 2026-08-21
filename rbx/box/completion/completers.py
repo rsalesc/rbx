@@ -153,22 +153,15 @@ def complete_verification_level(
     return [CompletionItem(v, help=h) for v, h in _VERIFICATION_TABLE]
 
 
-# (name, description). Kept in sync with `runners.registry.RUNNERS` by
-# `tests/rbx/box/runners/test_registry.py`.
-#
-# Duplicated rather than imported, like `_VERIFICATION_TABLE` above: this module
-# is on the completion fast path and must stay light, while `registry` names
-# backends whose modules pull in the packager and the judge CLI. A copy that a
-# test pins beats an import that makes every TAB pay for them.
-_RUNNER_TABLE = (
-    ('local', 'Run the solutions in the sandbox on this machine.'),
-    ('moj', 'Run the solutions on the MOJ judge park, through the `moj` CLI.'),
-)
-
-
 @register_completer('runner')
 def complete_runner(ctx: CompletionContext, incomplete: str) -> List[CompletionItem]:
-    return [CompletionItem(v, help=h) for v, h in _RUNNER_TABLE]
+    # `runners.names` is a leaf module with no imports of its own, which is why
+    # the table can be read rather than copied here. `runners.registry` could
+    # not: it names `RbxException`, which pulls `rich` in behind it and would
+    # put ~36ms on every TAB press.
+    from rbx.box.runners.names import RUNNERS
+
+    return [CompletionItem(v, help=h) for v, h in RUNNERS]
 
 
 @register_completer('profile')

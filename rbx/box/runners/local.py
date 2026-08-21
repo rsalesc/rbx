@@ -71,7 +71,7 @@ class LocalRunner:
 
         return res
 
-    def close(self) -> None:
+    async def close(self) -> None:
         """Nothing to drop: this backend never has work outstanding.
 
         Every testcase runs *inside* the deferred the consumer awaits, on the

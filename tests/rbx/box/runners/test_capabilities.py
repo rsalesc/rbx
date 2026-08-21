@@ -156,6 +156,14 @@ class LimitedRunner:
 
         return [make(entry) for entry in entries]
 
+    async def close(self) -> None:
+        """Nothing to drop; present so the runtime `SolutionRunner` check passes.
+
+        A result now carries the backend that produced it, and the protocol is
+        `runtime_checkable`, so a fake missing `close` stops being a valid runner.
+        """
+        return None
+
 
 @pytest.mark.test_pkg('problems/abort-groups')
 async def test_repeated_runs_are_refused_by_a_backend_that_runs_once(

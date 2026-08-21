@@ -1134,11 +1134,18 @@ async def _run_for_inference(
         # it does still have in flight belongs to a run that ended early, which
         # is precisely the case the `finally` is here for.
         #
-        # Closing here rather than at the end of `compute_time_limits` is safe
-        # for the same reason: `Deferred` memoizes, so the estimation and the
-        # `--share` re-report downstream read cached evaluations and never ask
-        # the backend for anything again.
-        result.close()
+        # Closing here rather than at the end of `compute_time_limits` rests on
+        # `Deferred`'s memoization, which is load-bearing and not incidental: the
+        # estimation, the diagnosis and the `--share` re-report downstream all
+        # re-key the *same* deferred objects (`consume_and_key_evaluation_items`
+        # does not rebuild them), so every later read comes out of the memo and
+        # never asks the backend for anything again.
+        #
+        # And it is the better place on its own merits: `estimate_time_limit`
+        # can open the group picker and sit there while the setter reads it.
+        # Closing first means rbx is not polling a shared judge park for results
+        # it already has while nobody is looking at the screen.
+        await result.close()
 
 
 async def compute_time_limits(

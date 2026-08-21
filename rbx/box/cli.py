@@ -526,7 +526,7 @@ async def run(
         # case that matters is the one that leaves early: a failing report, or a
         # Ctrl-C, on a backend that had already dispatched every solution.
         # `LocalRunner.close` is a no-op, so this costs a local run nothing.
-        solution_result.close()
+        await solution_result.close()
 
 
 @app.command(
@@ -605,7 +605,13 @@ async def time(
     runner: str = typer.Option(
         runners_registry.DEFAULT_RUNNER,
         '--runner',
-        help='Where to run the solutions being timed (local, moj).',
+        # Built from the table, never spelled out: this string is baked into
+        # the committed completion spec, so a hard-coded list would be a second
+        # copy of the runner names with nothing pinning it to the first.
+        help=(
+            f'Where to run the solutions being timed '
+            f'({", ".join(runners_registry.runner_names())}).'
+        ),
         autocompletion=annotations._adapt('runner'),  # noqa: SLF001
     ),
     share: Optional[str] = typer.Option(

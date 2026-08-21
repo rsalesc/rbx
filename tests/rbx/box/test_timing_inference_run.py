@@ -109,6 +109,11 @@ async def _compute(
 
     solution_result = mock.Mock()
     solution_result.skeleton.solutions = [*lower, *upper]
+    # `_run_for_inference` closes the run in a `finally`, and `close` is a
+    # coroutine (a backend that dispatched ahead has to be *awaited* out of its
+    # polls, not merely told to stop). A bare `Mock` attribute would hand `await`
+    # a `Mock`.
+    solution_result.close = mock.AsyncMock()
 
     with (
         mock.patch('rbx.box.package.get_main_solution', return_value=mock.Mock()),
