@@ -9,7 +9,7 @@ stops a run.
 import json
 import pathlib
 
-from rbx.box.runners.moj.problem_id import ensure_moj_id, moj_id_path
+from rbx.box.runners.moj.problem_id import ensure_moj_id, is_rbxt_id, moj_id_path
 
 
 def test_the_id_lives_at_the_package_root(tmp_path: pathlib.Path):
@@ -110,3 +110,28 @@ def test_two_packages_do_not_share_a_slug(tmp_path: pathlib.Path):
     assert ensure_moj_id('alice', tmp_path / 'a') != ensure_moj_id(
         'alice', tmp_path / 'b'
     )
+
+
+# -- Which ids a *writing* caller is allowed to touch. -------------------------
+
+
+def test_an_id_rbx_generated_is_one_of_ours(tmp_path: pathlib.Path):
+    assert is_rbxt_id(ensure_moj_id('alice', tmp_path))
+
+
+def test_a_real_problem_is_not_one_of_ours(tmp_path: pathlib.Path):
+    """This is the guard between an rbx timing package and someone's real work.
+
+    `cli.upload` overwrites whatever id it is given, and `ensure_moj_id` hands back
+    a foreign binding untouched, so a writing caller that skips this check would
+    destroy a published problem with no `rbxt-` marker left to explain how.
+    """
+    (tmp_path / '.moj-id').write_text(json.dumps({'id': 'alice#somaditos'}))
+
+    assert not is_rbxt_id(ensure_moj_id('bob', tmp_path))
+
+
+def test_an_id_that_merely_mentions_rbxt_is_not_one_of_ours():
+    """The marker is a prefix of the slug, not a substring of the id."""
+    assert not is_rbxt_id('alice#nao-rbxt-deadbeef')
+    assert not is_rbxt_id('rbxt-deadbeef')

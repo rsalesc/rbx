@@ -1,19 +1,23 @@
 """The typed wrapper over the `moj` CLI.
 
-Every test here drives canned CLI output through a fake `_run_moj`: the point of
-the wrapper is to turn the CLI's two very different output styles -- real JSON for
-some subcommands, human prose for others -- into models, and none of that needs a
-judge. The two tests that do exercise the subprocess layer use a throwaway shell
-script, never the network.
+Two kinds of test live here, and the split is deliberate.
 
-Several of these tests exist to *pin* a CLI behaviour rather than to cover our
-own logic: that `whoami` prints prose, that `testrun --no-wait` prints prose. If
-the CLI ever gains `--json` for those, the pinning test is what tells us, instead
-of a wrong login or a wrong run id doing so silently much later.
+The **prose** tests -- `whoami`, and `testrun --no-wait` -- run a real subprocess:
+a stub shell script standing in for `moj`, installed by pointing `MOJ_BINARY` at
+it. Their whole value is "this is what the CLI really prints and this is the argv
+it really receives", and a fake that hands back a `str` can honour neither the
+argv nor a non-zero exit. The stub records its own argv, so those assertions come
+from a process that was actually spawned.
+
+The **JSON** tests drive canned output through a fake `_run_moj`, because there is
+nothing about a subprocess left to get wrong once the bytes are in hand.
+
+Nothing here touches the network.
 """
 
 import json
 import pathlib
+import re
 import textwrap
 from typing import Any, Callable, List, Sequence, Union
 
@@ -23,6 +27,56 @@ from rbx.box.runners.moj import cli
 from rbx.box.runners.moj.cli import MojCliError, MojNotInstalledError
 
 Canned = Union[str, Callable[[Sequence[str]], str]]
+
+# What `moj testrun --no-wait` really prints. Confirmed from the CLI source.
+_QUEUED = (
+    'enfileirado no juiz: run 4711  (sol.cpp contra alice#rbxt-deadbeef)\n'
+    'acompanhe com: moj --json testrun-status 4711\n'
+)
+
+# What `moj whoami` really prints. Confirmed from the CLI source.
+_WHOAMI = 'login: alice  nome: Alice A\npode criar problemas: sim\n'
+
+
+# -- The stub binary, for everything whose value is the real CLI contract. ------
+
+
+def _stub_moj(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path, body: str
+) -> pathlib.Path:
+    """Install a shell script as `moj`, and have it record the argv it is given."""
+    log = tmp_path / 'argv'
+    path = tmp_path / 'moj'
+    path.write_text(
+        '#!/bin/sh\n'
+        f'for a in "$@"; do printf \'%s\\n\' "$a" >> \'{log}\'; done\n'
+        f"printf -- '--\\n' >> '{log}'\n" + textwrap.dedent(body)
+    )
+    path.chmod(0o755)
+    monkeypatch.setattr(cli, 'MOJ_BINARY', str(path))
+    return path
+
+
+def _stub_calls(tmp_path: pathlib.Path) -> List[List[str]]:
+    """The argv of every invocation of the stub, in order.
+
+    `--` separates invocations; no argument rbx passes is ever literally `--`.
+    """
+    log = tmp_path / 'argv'
+    if not log.is_file():
+        return []
+    calls: List[List[str]] = []
+    current: List[str] = []
+    for line in log.read_text().splitlines():
+        if line == '--':
+            calls.append(current)
+            current = []
+        else:
+            current.append(line)
+    return calls
+
+
+# -- The fake, for the JSON subcommands. ---------------------------------------
 
 
 def _fake_moj(monkeypatch: pytest.MonkeyPatch, canned: Canned) -> List[List[str]]:
@@ -39,122 +93,171 @@ def _fake_moj(monkeypatch: pytest.MonkeyPatch, canned: Canned) -> List[List[str]
     return calls
 
 
-def _fake_moj_raising(monkeypatch: pytest.MonkeyPatch, exc: Exception) -> None:
-    async def fake_run_moj(args: Sequence[str]) -> str:
-        raise exc
-
-    monkeypatch.setattr(cli, '_run_moj', fake_run_moj)
-
-
-def _stub_binary(tmp_path: pathlib.Path, script: str) -> pathlib.Path:
-    path = tmp_path / 'moj'
-    path.write_text('#!/bin/sh\n' + textwrap.dedent(script))
-    path.chmod(0o755)
-    return path
-
-
 # -- whoami: prose, not JSON. --------------------------------------------------
 
 
 async def test_whoami_parses_the_login_out_of_the_human_output(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ):
-    calls = _fake_moj(
+    """`moj whoami` returns before the `--json` branch and always prints prose.
+
+    So it is not asked for JSON either: the flag would suggest the output is
+    machine-readable when the only thing we can do with it is parse a sentence.
+    """
+    _stub_moj(monkeypatch, tmp_path, f"cat <<'EOF'\n{_WHOAMI}EOF\n")
+
+    assert await cli.whoami() == 'alice'
+    assert _stub_calls(tmp_path) == [['whoami']]
+
+
+async def test_whoami_ignores_a_banner_line_that_also_says_login(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """A version banner carrying `ultimo login: <date>` must not become the login.
+
+    This is why the pattern is anchored to the start of a line rather than to a
+    word boundary: the unanchored form returns the date, which is a wrong login
+    that looks entirely plausible.
+    """
+    _stub_moj(
         monkeypatch,
-        'login: alice  nome: Alice A\npode criar problemas: sim\n',
+        tmp_path,
+        f"cat <<'EOF'\nmoj 2.1 -- ultimo login: 2026-08-01\n{_WHOAMI}EOF\n",
     )
 
     assert await cli.whoami() == 'alice'
-    assert calls == [['whoami']]
 
 
-async def test_whoami_is_not_asked_for_json(monkeypatch: pytest.MonkeyPatch):
-    """`moj whoami` does not honour `--json`; it returns before that branch.
+async def test_whoami_does_not_read_the_following_line_as_a_login(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """An empty `login:` must fail, not swallow the next line's first word."""
+    _stub_moj(monkeypatch, tmp_path, "cat <<'EOF'\nlogin:\n  nome: Alice A\nEOF\n")
 
-    Asking for it anyway would suggest the output is machine-readable when the
-    only thing we can do with it is parse prose.
-    """
-    calls = _fake_moj(monkeypatch, 'login: alice  nome: Alice A\n')
+    with pytest.raises(MojCliError) as exc_info:
+        await cli.whoami()
 
-    await cli.whoami()
-
-    assert '--json' not in calls[0]
+    assert '`moj login`' in str(exc_info.value)
 
 
 async def test_whoami_without_a_session_tells_the_setter_to_log_in(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ):
-    _fake_moj_raising(monkeypatch, MojCliError('`moj whoami` failed: sem sessao'))
+    """`need_login` calls `die`: a message on stderr and a non-zero exit."""
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        'echo "moj: faca \'moj login\' primeiro." >&2\nexit 1\n',
+    )
 
     with pytest.raises(MojCliError) as exc_info:
         await cli.whoami()
 
-    assert '`moj login`' in str(exc_info.value)
+    message = str(exc_info.value)
+    assert '`moj login`' in message
+    assert 'primeiro' in message
 
 
 async def test_whoami_that_prints_something_unrecognizable_does_not_invent_a_login(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ):
     """Guessing here would upload the package under the wrong org."""
-    _fake_moj(monkeypatch, 'nao autenticado\n')
+    _stub_moj(monkeypatch, tmp_path, "echo 'nao autenticado'\n")
 
     with pytest.raises(MojCliError) as exc_info:
         await cli.whoami()
 
     assert '`moj login`' in str(exc_info.value)
-
-
-async def test_a_missing_binary_survives_whoami_as_a_missing_binary(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """ "Not installed" must not be reported as "not logged in"."""
-    _fake_moj_raising(monkeypatch, MojNotInstalledError('no `moj` on the `PATH`'))
-
-    with pytest.raises(MojNotInstalledError):
-        await cli.whoami()
 
 
 # -- testrun: a run id parsed out of prose. ------------------------------------
 
-_QUEUED = (
-    'enfileirado no juiz: run 4711  (sol.cpp contra alice#rbxt-deadbeef)\n'
-    'acompanhe com: moj --json testrun-status 4711\n'
-)
-
 
 async def test_testrun_extracts_the_run_id_from_the_queued_message(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ):
-    _fake_moj(monkeypatch, _QUEUED)
+    _stub_moj(monkeypatch, tmp_path, f"cat <<'EOF'\n{_QUEUED}EOF\n")
 
     assert await cli.testrun('alice#rbxt-deadbeef', pathlib.Path('sol.cpp')) == '4711'
 
 
-async def test_testrun_does_not_wait_for_the_judge(monkeypatch: pytest.MonkeyPatch):
+async def test_testrun_does_not_wait_for_the_judge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
     """Blocking is minutes per solution, and it serializes the whole run."""
-    calls = _fake_moj(monkeypatch, _QUEUED)
+    _stub_moj(monkeypatch, tmp_path, f"cat <<'EOF'\n{_QUEUED}EOF\n")
 
     await cli.testrun('alice#rbxt-deadbeef', pathlib.Path('sol.cpp'))
 
-    assert calls == [['testrun', 'alice#rbxt-deadbeef', 'sol.cpp', '--no-wait']]
+    assert _stub_calls(tmp_path) == [
+        ['testrun', 'alice#rbxt-deadbeef', 'sol.cpp', '--no-wait']
+    ]
 
 
 async def test_testrun_accepts_a_directory_holding_a_moj_id(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ):
     """The CLI resolves a directory through its own `.moj-id`."""
-    calls = _fake_moj(monkeypatch, _QUEUED)
+    package = tmp_path / 'package'
+    package.mkdir()
+    _stub_moj(monkeypatch, tmp_path, f"cat <<'EOF'\n{_QUEUED}EOF\n")
 
-    await cli.testrun(tmp_path, tmp_path / 'sol.cpp')
+    await cli.testrun(package, package / 'sol.cpp')
 
-    assert calls[0][1] == str(tmp_path)
+    assert _stub_calls(tmp_path)[0][1] == str(package)
+
+
+async def test_the_run_id_never_swallows_the_punctuation_around_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """The id goes straight back out as `moj testrun-status <run>`.
+
+    A trailing `.` or `(` picked up from the prose would turn an immediate,
+    readable failure into a remote 404 much later.
+    """
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        "cat <<'EOF'\nenfileirado no juiz: run 4711.\nEOF\n",
+    )
+
+    assert await cli.testrun('alice#rbxt-deadbeef', pathlib.Path('sol.cpp')) == '4711'
+
+
+async def test_the_run_id_never_swallows_an_adjacent_parenthesis(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        "cat <<'EOF'\nenfileirado no juiz: run 4711(sol.cpp)\nEOF\n",
+    )
+
+    assert await cli.testrun('alice#rbxt-deadbeef', pathlib.Path('sol.cpp')) == '4711'
+
+
+async def test_an_unexpected_run_id_is_refused_rather_than_truncated(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """If ids stop being numeric, refusing is the safe half of being wrong.
+
+    Truncating `4711abc` to `4711` would poll a run that is not the one queued.
+    """
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        "cat <<'EOF'\nenfileirado no juiz: run 4711abc\nEOF\n",
+    )
+
+    with pytest.raises(MojCliError):
+        await cli.testrun('alice#rbxt-deadbeef', pathlib.Path('sol.cpp'))
 
 
 async def test_testrun_that_prints_no_run_id_fails_loudly(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ):
     """A silent None here would poll forever on a run that was never queued."""
-    _fake_moj(monkeypatch, 'algo deu errado no envio\n')
+    _stub_moj(monkeypatch, tmp_path, "echo 'algo deu errado no envio'\n")
 
     with pytest.raises(MojCliError) as exc_info:
         await cli.testrun('alice#rbxt-deadbeef', pathlib.Path('sol.cpp'))
@@ -214,6 +317,35 @@ async def test_a_done_testrun_exposes_its_tests_by_name(
     assert status.by_name['sample001'].time == 0.11
 
 
+async def test_two_tests_sharing_a_name_are_an_error_not_a_last_one_wins(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Name pairing is what prevents misattributing a timing.
+
+    Dropping one of two same-named tests would misattribute one just as silently
+    as pairing by position would.
+    """
+    _fake_moj(
+        monkeypatch,
+        json.dumps(
+            {
+                'status': 'done',
+                'tests': [
+                    {'name': 'sample001', 'code': 'AC', 'time': 0.11},
+                    {'name': 'sample001', 'code': 'TLE', 'time': 2.0},
+                ],
+            }
+        ),
+    )
+
+    status = await cli.testrun_status('4711')
+
+    with pytest.raises(MojCliError) as exc_info:
+        assert status.by_name
+
+    assert '`sample001`' in str(exc_info.value)
+
+
 async def test_a_test_without_a_measurement_reads_as_unmeasured(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -257,6 +389,11 @@ def _check_payload(**tl: Any) -> str:
     return json.dumps({'validation': {}, 'calib': {}, 'tl': tl})
 
 
+async def _checked(monkeypatch: pytest.MonkeyPatch, **tl: Any) -> cli.MojCheck:
+    _fake_moj(monkeypatch, _check_payload(**tl))
+    return await cli.check('alice#rbxt-deadbeef')
+
+
 async def test_check_asks_for_json_before_the_subcommand(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -269,14 +406,11 @@ async def test_check_asks_for_json_before_the_subcommand(
 
 
 async def test_a_calibrated_problem_is_ready(monkeypatch: pytest.MonkeyPatch):
-    _fake_moj(
-        monkeypatch,
-        _check_payload(
-            calibrated=True, being_calibrated=False, needs_recalibration=False
-        ),
+    check = await _checked(
+        monkeypatch, calibrated=True, being_calibrated=False, needs_recalibration=False
     )
 
-    assert (await cli.check('alice#rbxt-deadbeef')).is_ready
+    assert check.is_ready
 
 
 async def test_a_calibration_still_in_flight_is_not_ready(
@@ -327,11 +461,6 @@ async def test_a_check_without_a_tl_block_is_not_ready(
     assert not (await cli.check('alice#rbxt-deadbeef')).is_ready
 
 
-async def _checked(monkeypatch: pytest.MonkeyPatch, **tl: Any):
-    _fake_moj(monkeypatch, _check_payload(**tl))
-    return await cli.check('alice#rbxt-deadbeef')
-
-
 # -- upload and calibrate: fire and forget. ------------------------------------
 
 
@@ -360,7 +489,11 @@ async def test_calibrate_queues_the_problem(monkeypatch: pytest.MonkeyPatch):
 async def test_a_missing_moj_binary_says_so_instead_of_tracing_back(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ):
-    """A setter without the CLI is the common case, not an internal error."""
+    """A setter without the CLI is the common case, not an internal error.
+
+    And "not installed" must not be reported as "not logged in", which is why it
+    has its own class.
+    """
     monkeypatch.setattr(cli, 'MOJ_BINARY', str(tmp_path / 'nowhere' / 'moj'))
 
     with pytest.raises(MojNotInstalledError) as exc_info:
@@ -375,52 +508,60 @@ async def test_a_missing_moj_binary_says_so_instead_of_tracing_back(
 async def test_a_failing_command_names_the_command_and_shows_its_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ):
-    monkeypatch.setattr(
-        cli,
-        'MOJ_BINARY',
-        str(
-            _stub_binary(
-                tmp_path,
-                """
-                echo 'problema nao encontrado' >&2
-                exit 3
-                """,
-            )
-        ),
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        """
+        echo 'problema nao encontrado' >&2
+        exit 3
+        """,
     )
 
     with pytest.raises(MojCliError) as exc_info:
         await cli.check('alice#rbxt-deadbeef')
 
     message = str(exc_info.value)
-    assert '--json check alice#rbxt-deadbeef' in message
+    assert "--json check 'alice#rbxt-deadbeef'" in message
     assert 'problema nao encontrado' in message
     assert '3' in message
 
 
-async def test_errors_are_plain_text_not_rich_markup(
+async def test_no_error_message_carries_rich_markup(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ):
-    """`main.py` bare-prints `str(e)`, so markup would reach the setter literally."""
-    monkeypatch.setattr(cli, 'MOJ_BINARY', str(tmp_path / 'nowhere' / 'moj'))
+    """`main.py` bare-prints `str(e)`, so markup would reach the setter literally.
 
-    with pytest.raises(MojCliError) as exc_info:
-        await cli.whoami()
+    Every path below interpolates CLI output into a message, which is where a
+    stray `[...]` would come from.
+    """
+    markup = re.compile(r'\[/?[a-z]')
+    cases = [
+        ('whoami with no login', "echo 'nao autenticado'\n", cli.whoami),
+        (
+            'testrun with no run id',
+            "echo 'algo deu errado'\n",
+            lambda: cli.testrun('alice#rbxt-deadbeef', pathlib.Path('sol.cpp')),
+        ),
+        (
+            'testrun-status that is not json',
+            "echo 'nao e json'\n",
+            lambda: cli.testrun_status('4711'),
+        ),
+        (
+            'a non-zero exit',
+            "echo 'problema nao encontrado' >&2\nexit 3\n",
+            lambda: cli.check('alice#rbxt-deadbeef'),
+        ),
+    ]
 
-    assert '[item]' not in str(exc_info.value)
-    assert '[/' not in str(exc_info.value)
-
-
-async def test_output_of_a_successful_command_is_returned_verbatim(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
-):
-    monkeypatch.setattr(
-        cli,
-        'MOJ_BINARY',
-        str(_stub_binary(tmp_path, "echo 'login: alice  nome: Alice A'\n")),
-    )
-
-    assert await cli.whoami() == 'alice'
+    for index, (label, body, call) in enumerate(cases):
+        directory = tmp_path / str(index)
+        directory.mkdir()
+        with monkeypatch.context() as context:
+            _stub_moj(context, directory, body)
+            with pytest.raises(MojCliError) as exc_info:
+                await call()
+        assert markup.search(str(exc_info.value)) is None, label
 
 
 async def test_malformed_json_is_reported_as_such(

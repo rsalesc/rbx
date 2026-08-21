@@ -11,6 +11,7 @@ instead of each orphaning one on the server.
 """
 
 import json
+import os
 import pathlib
 import re
 import secrets
@@ -35,6 +36,18 @@ def moj_id_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
     return root / MOJ_ID_NAME
 
 
+def is_rbxt_id(moj_id: str) -> bool:
+    """Whether this id names a throwaway problem rbx created for its own use.
+
+    **A caller that writes must branch on this.** `ensure_moj_id` can hand back an
+    id rbx did not create -- see its docstring -- and `cli.upload` overwrites
+    whatever id it is given. Uploading an rbx timing package over a setter's real,
+    published problem destroys their work, silently and with no `rbxt-` marker
+    anywhere to warn a reader afterwards.
+    """
+    return _RBXT_ID.match(moj_id) is not None
+
+
 def ensure_moj_id(login: str, root: pathlib.Path = pathlib.Path()) -> str:
     """The remote problem id for this package, creating the binding if needed.
 
@@ -42,6 +55,13 @@ def ensure_moj_id(login: str, root: pathlib.Path = pathlib.Path()) -> str:
     logged in, and a setter cannot write under someone else's org; keeping the
     committed one would make a co-setter's run fail on a problem they have no
     permission for, rather than reach their own copy of it.
+
+    **The returned id is not necessarily one of ours.** `.moj-id` is written by
+    `moj upload` too, so a package may already be bound to a real, published
+    problem; that binding is returned untouched rather than hijacked. A caller
+    that only *reads* the problem may use the id as it comes, but a caller that
+    **writes** -- `upload`, `calibrate` -- must first ask `is_rbxt_id`, or it will
+    overwrite a real problem with an rbx timing package.
     """
     path = moj_id_path(root)
     payload = _read_payload(path)
@@ -56,6 +76,8 @@ def ensure_moj_id(login: str, root: pathlib.Path = pathlib.Path()) -> str:
             # may legitimately be bound to a real, published problem; reclaiming
             # that under the current login would point the run at a problem that
             # does not exist, and would destroy a binding rbx never created.
+            # Returning it is therefore right, and is also the hazard `is_rbxt_id`
+            # exists for: what comes back here must not be uploaded over.
             return current
         slug = match.group('slug')
     else:
@@ -106,5 +128,14 @@ def _write_payload(path: pathlib.Path, payload: Dict[str, Any]) -> None:
 
     The CLI stores `title`, `public` and `collections` here too, and only the id
     is ours to decide.
+
+    Written through a temporary file and an atomic rename, so that an interrupted
+    write leaves the previous binding intact rather than the half-written file
+    `_read_payload` exists to tolerate. Tolerating one is still right -- the file
+    is shared with the CLI and with whatever a setter does to it by hand -- but rbx
+    should not be a way to produce one.
     """
-    path.write_text(json.dumps(payload, indent=2) + '\n')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f'{path.name}.tmp')
+    tmp.write_text(json.dumps(payload, indent=2) + '\n')
+    os.replace(tmp, path)
