@@ -96,20 +96,71 @@ test('sorts uncontested packages by path', () => {
   );
 });
 
-test('breaks a collision between two variants by short name', () => {
+test('breaks a collision between two variants by short name, not by root', () => {
   // `order` is counted per contest file, so two problems merged out of
   // `contest.div1.rbx.yml` and `contest.div2.rbx.yml` can both claim 1.
   // Discovery order must not be what decides which one shows first.
+  //
+  // The directories are named against the letters on purpose: sorting by root
+  // would answer `C, B` here, so only the short name can produce `B, C`.
   const choices = problemChoices(
-    ['/c/C', '/c/B'],
+    ['/c/1', '/c/2'],
     new Map([
-      ['/c/C', identity('C', 1)],
-      ['/c/B', identity('B', 1)],
+      ['/c/1', identity('C', 1)],
+      ['/c/2', identity('B', 1)],
     ]),
     () => '',
   );
   assert.deepStrictEqual(
     choices.map((c) => c.label),
     ['B', 'C'],
+  );
+});
+
+test('breaks a full collision by root', () => {
+  // Two variants may go further and give one letter to two directories. The
+  // root is the last thing left that tells them apart.
+  const choices = problemChoices(
+    ['/c/second', '/c/first'],
+    new Map([
+      ['/c/second', identity('B', 1)],
+      ['/c/first', identity('B', 1)],
+    ]),
+    () => '',
+  );
+  assert.deepStrictEqual(
+    choices.map((c) => c.root),
+    ['/c/first', '/c/second'],
+  );
+});
+
+test('heads the contest once an uncontested package shares the list', () => {
+  // The loose packages are a group of their own: a contest butting straight up
+  // against a run of bare folder names is exactly when a heading earns itself.
+  const choices = problemChoices(
+    ['/loose', '/c/A'],
+    new Map([['/c/A', identity('A', 0)]]),
+    (root) => root,
+  );
+  assert.deepStrictEqual(
+    choices.map((c) => c.group),
+    ['c', undefined],
+  );
+});
+
+test('heads contests by the name the heading shows, not by their full path', () => {
+  // `/z/alpha` and `/a/beta` head as `alpha` and `beta`; ordering by the full
+  // root would print them the other way round.
+  const choices = problemChoices(
+    ['/z/alpha/A', '/a/beta/A'],
+    new Map([
+      ['/z/alpha/A', identity('A', 0, undefined, '/z/alpha')],
+      ['/a/beta/A', identity('A', 0, undefined, '/a/beta')],
+    ]),
+    () => '',
+  );
+  assert.deepStrictEqual(
+    choices.map((c) => c.group),
+    ['alpha', 'beta'],
   );
 });
