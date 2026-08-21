@@ -19,12 +19,12 @@ from rbx.box.deferred import Deferred
 from rbx.box.environment import VerificationLevel
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.generators import generate_outputs_for_testcases, generate_testcases
-from rbx.box.run_report import _max_of
 from rbx.box.runners.base import RunContext, RunnerCapabilities, RunnerCapabilityError
 from rbx.box.solutions import (
     SolutionSkeleton,
     get_evals_formatted_memory,
     get_evals_formatted_time,
+    get_worst_outcome,
     run_solutions,
 )
 from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
@@ -95,40 +95,24 @@ def test_one_measured_testcase_among_unmeasured_ones_sets_the_maximum():
     assert get_evals_formatted_memory(evals) == '4 MiB'
 
 
-def test_the_published_report_leaves_an_unmeasured_maximum_empty():
-    """`run_report`'s maxTime/maxMemory are `None`, not 0, when nothing measured.
+def test_a_judge_reported_mle_survives_having_no_memory_reading():
+    """An MLE verdict is believed even when nothing measured the memory.
 
-    The report is a published contract read by clients that format it themselves,
-    so a `0` there would be rendered as a real '0 ms' with nothing marking it as
-    absent.
+    MLE is decided from the sandbox exit status (`checkers.py`), never by
+    comparing a measured number against a limit -- which is what makes a backend
+    that cannot measure memory safe. The verdict and the (absent) measurement are
+    independent, so the missing one must not soften the verdict.
+
+    The published-report side of this contract is pinned in `run_report_test.py`.
     """
-    evals = [_unmeasured_evaluation(), _unmeasured_evaluation()]
-
-    assert _max_of(eval.log.time for eval in evals) is None
-    assert _max_of(eval.log.memory for eval in evals) is None
-
-    evals.append(_unmeasured_evaluation(time=0.5, memory=1024))
-    assert _max_of(eval.log.time for eval in evals) == 0.5
-    assert _max_of(eval.log.memory for eval in evals) == 1024
-
-
-def test_a_backend_that_cannot_measure_memory_never_reports_a_false_mle():
-    """MLE is read off the verdict, never inferred from a memory number.
-
-    That is what makes an unmeasurable backend safe: with no memory reading there
-    is nothing to compare against a limit, so nothing can manufacture an MLE --
-    and a judge that really says MLE is still believed.
-    """
-    unmeasured = _unmeasured_evaluation()
-    assert unmeasured.result.outcome == Outcome.ACCEPTED
-
     reported_mle = Evaluation(
         result=CheckerResult(outcome=Outcome.MEMORY_LIMIT_EXCEEDED),
         testcase=steps.TestcaseIO(index=0),
         log=steps.TestcaseLog(exitcode=0, exitstatus='ok'),
     )
-    assert reported_mle.result.outcome == Outcome.MEMORY_LIMIT_EXCEEDED
+
     assert get_evals_formatted_memory([reported_mle]) == '-'
+    assert get_worst_outcome([reported_mle]) == Outcome.MEMORY_LIMIT_EXCEEDED
 
 
 # -- The asking side: a run a backend cannot honour is refused. ----------------
@@ -136,10 +120,12 @@ def test_a_backend_that_cannot_measure_memory_never_reports_a_false_mle():
 
 @dataclasses.dataclass
 class LimitedRunner:
-    """A backend that declares reduced capabilities and runs nothing.
+    """A backend that declares reduced capabilities and records what it was asked.
 
-    Modelled on `RecordingRunner` in `test_local_runner.py`, but it exists to be
-    *refused*: every test here asserts `run_solution` was never reached.
+    Modelled on `RecordingRunner` in `test_local_runner.py`. It executes nothing:
+    `run_solution` hands back deferreds over canned verdicts. `prepared` and
+    `calls` are what the tests read -- the refusal tests assert the run never
+    reached either, and the tests either side of a refusal assert it reached both.
     """
 
     caps: RunnerCapabilities
@@ -186,12 +172,16 @@ async def test_repeated_runs_are_refused_by_a_backend_that_runs_once(
             runner=runner,
         )
 
-    assert 'limited' in exc.value.message
-    assert '3' in exc.value.message
-    # The two causes need different fixes, so the message must name this one:
-    # the run asked, the config did not.
-    assert 'this run asked' in exc.value.message
-    assert 'repeats.reps' not in exc.value.message
+    # The whole message, because every part of it is load-bearing: it names the
+    # runner, the count, and -- crucially -- the flag the setter has to drop.
+    # `str(exc)` is what a setter actually sees: `main.py` prints it with a bare
+    # builtin `print`, not through the rich console, so any rich markup here would
+    # reach them as literal `[item]` tags.
+    assert str(exc.value) == (
+        'Runner `limited` runs each testcase exactly once, but `--runs 3` asked '
+        'for 3 runs per testcase. Drop `--runs`/`-r`, or run this on a backend '
+        'that can repeat.'
+    )
     # Refused before anything was set up, let alone dispatched.
     assert runner.prepared == 0
     assert runner.calls == 0
@@ -220,11 +210,14 @@ async def test_configured_repeats_are_refused_by_a_backend_that_runs_once(
             runner=runner,
         )
 
-    assert 'limited' in exc.value.message
-    assert '3' in exc.value.message
-    # Points at the config, which is the file the setter actually has to edit.
-    assert 'repeats.reps' in exc.value.message
-    assert 'this run asked' not in exc.value.message
+    # Points at the config, which is the file the setter actually has to edit --
+    # and says nothing about a flag they did not pass.
+    assert str(exc.value) == (
+        'Runner `limited` runs each testcase exactly once, but `repeats.reps` in '
+        'your `setter_config.yml` is 3. Set it back to 1, or run this on a '
+        'backend that can repeat.'
+    )
+    assert '--runs' not in str(exc.value)
     assert runner.prepared == 0
     assert runner.calls == 0
 
@@ -248,6 +241,10 @@ async def test_a_single_run_is_fine_for_a_backend_that_runs_once(
         runner=runner,
     )
 
+    # `prepared` is asserted here and nowhere else on a passing path: without it,
+    # the refusal tests' `prepared == 0` would also hold for a runner whose
+    # `prepare` was never wired up at all.
+    assert runner.prepared == 1
     assert runner.calls == 1
 
 
@@ -271,6 +268,7 @@ async def test_the_configured_default_of_one_run_is_fine(
         runner=runner,
     )
 
+    assert runner.prepared == 1
     assert runner.calls == 1
 
 
@@ -289,6 +287,8 @@ async def test_a_sanitized_run_is_refused_by_a_backend_without_sanitizers(
         )
 
     assert 'limited' in exc.value.message
+    # Printed with a bare `print`, so markup would show up as literal tags.
+    assert '[item]' not in str(exc.value)
     assert runner.prepared == 0
     assert runner.calls == 0
 
@@ -307,6 +307,8 @@ async def test_a_communication_problem_is_refused_by_a_non_interactive_backend(
         )
 
     assert 'limited' in exc.value.message
+    # Printed with a bare `print`, so markup would show up as literal tags.
+    assert '[item]' not in str(exc.value)
     assert runner.prepared == 0
     assert runner.calls == 0
 
@@ -329,7 +331,12 @@ async def test_a_batch_backend_keeps_its_verdicts_even_when_the_run_aborts(
 
     @dataclasses.dataclass
     class BatchRunner(LimitedRunner):
-        def run_solution(self, solution, entries, ctx):
+        def run_solution(
+            self,
+            solution: SolutionSkeleton,
+            entries: List[GenerationTestcaseEntry],
+            ctx: RunContext,
+        ) -> List[Deferred[Evaluation]]:
             res = LimitedRunner.run_solution(self, solution, entries, ctx)
             returned.extend(res)
             return res

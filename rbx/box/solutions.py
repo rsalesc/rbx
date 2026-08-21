@@ -772,9 +772,21 @@ def _check_capabilities(
     Called before `prepare`, so nothing is compiled, uploaded or submitted on a
     run that cannot mean what it says.
     """
+    # Locally imported for the same reason as everywhere else in this module:
+    # `runners.base` reaches back here for the skeleton types, so an eager import
+    # would close the cycle.
     from rbx.box.runners.base import RunnerCapabilityError
 
     caps = runner.caps
+
+    # These messages are printed with a bare `print(str(e))` (`main.py`), not
+    # through the rich console, so rich markup would reach the setter as literal
+    # `[item]` tags. Backticks, like `TimingStrategyError` and `MojNamingError`.
+    #
+    # TODO(runner-selection): each message ends with "run this on a backend
+    # that ...", deliberately vague, because there is no way for a setter to pick
+    # one yet -- the backend is chosen in code. Name the `--runner` flag here once
+    # it exists; until then, naming it would be advice they cannot act on.
 
     if not caps.supports_nruns:
         # The *resolved* count, not the raw parameter: `nruns=0` means "whatever
@@ -786,36 +798,36 @@ def _check_capabilities(
         reps = retries.get_retrier_config(nruns).reps
         if reps > 1:
             # Which of the two causes it was decides which file the setter has to
-            # open; naming the wrong one sends them to edit something irrelevant.
-            asked_by = (
-                f'this run asked for {reps} runs per testcase'
-                if nruns > 0
-                else f'`repeats.reps` in your `setter_config.yml` is {reps}'
-            )
-            fix = (
-                'Drop the repeated runs'
-                if nruns > 0
-                else 'Set `repeats.reps` back to 1'
-            )
+            # open; naming the wrong one sends them to edit something irrelevant,
+            # so each cause gets its whole sentence rather than a shared template.
+            explicitly_requested = nruns > 0
+            if explicitly_requested:
+                cause = (
+                    f'`--runs {reps}` asked for {reps} runs per testcase. '
+                    f'Drop `--runs`/`-r`'
+                )
+            else:
+                cause = (
+                    f'`repeats.reps` in your `setter_config.yml` is {reps}. '
+                    f'Set it back to 1'
+                )
             raise RunnerCapabilityError(
-                f'Runner [item]{runner.name}[/item] runs each testcase exactly '
-                f'once, but {asked_by}. {fix}, or use the local runner to measure '
-                f'with them.'
+                f'Runner `{runner.name}` runs each testcase exactly once, but '
+                f'{cause}, or run this on a backend that can repeat.'
             )
 
     if sanitized and not caps.supports_sanitizers:
         raise RunnerCapabilityError(
-            f'Runner [item]{runner.name}[/item] cannot run solutions under a '
-            f'sanitizer. Drop the sanitizer, or use the local runner to run '
-            f'sanitized.'
+            f'Runner `{runner.name}` cannot run solutions under a sanitizer. '
+            f'Drop the sanitizer, or run this on a backend that supports one.'
         )
 
     pkg = package.find_problem_package_or_die()
     if pkg.type == TaskType.COMMUNICATION and not caps.supports_interactive:
         raise RunnerCapabilityError(
-            f'Runner [item]{runner.name}[/item] cannot drive an interactor, but '
-            f'this problem is of type [item]communication[/item]. '
-            f'Use the local runner to run this problem.'
+            f'Runner `{runner.name}` cannot drive an interactor, but this problem '
+            f'is of type `communication`. Run this on a backend that can drive '
+            f'one.'
         )
 
 
@@ -839,6 +851,14 @@ def _produce_solution_items(
         # the judge genuinely produced and making the report claim work did not
         # happen. Aborting exists to save work; there is none left to save here,
         # and real verdicts always beat skip markers.
+        #
+        # Note this ignores `abort_on` rather than refusing the run by name, which
+        # is the opposite of what `_check_capabilities` does for repeats, a
+        # sanitizer or an interactor. The asymmetry is deliberate: dropping those
+        # changes what the report *means*, so a run that quietly dropped them
+        # would answer a different question than the one asked. Dropping the abort
+        # loses nothing -- the caller gets every verdict it would have got, and
+        # more -- so there is nothing to warn about.
         gate = (
             _AbortGate(skeleton.groups, package.get_scoring())
             if ctx.abort_on is not None and runner.caps.supports_abort

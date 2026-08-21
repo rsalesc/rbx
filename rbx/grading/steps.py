@@ -279,6 +279,10 @@ class RunLog(BaseModel):
     def get_summary(self) -> str:
         if self.exitcode == 0:
             return 'OK'
+        # The one place an unmeasured value is coalesced to zero rather than
+        # reported as unmeasured. Safe only because this string is diagnostic:
+        # it is printed beside a failure, and never becomes a verdict or a field
+        # of the run report, where a zero would read as a real measurement.
         time = self.time or 0.0
         memory = self.memory or 0
         summary = (
