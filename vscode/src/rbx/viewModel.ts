@@ -769,6 +769,11 @@ function solutionRow(node: SolutionNode, depth: number, label: string, parentId?
     detail: solutionDetail(run, mismatch, warnings),
     search: haystack(run.solution.path, verdict, mismatch, declared, warnings),
     section: 'rbx.solution',
+    // The row names a file, so the most obvious gesture in the view -- arrow
+    // down to `sols/wa.cpp` and press Enter -- opens it. A solution row also
+    // expands, so a single click still only expands; opening is Enter and the
+    // double click (see webview/gesture.ts).
+    primaryCommand: 'rbx.openSolution',
   };
 }
 

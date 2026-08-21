@@ -11,6 +11,7 @@
  * `vscode` module is impossible in a webview and would not work if it were.
  */
 import type { Row, RunViewModel } from '../rbx/viewModel';
+import { rowClick } from './gesture';
 import {
   UiState,
   renderFilter,
@@ -194,12 +195,6 @@ function invoke(row: Row | undefined): void {
 }
 
 /**
- * Open what the model says opens by default, without undoing the user.
- *
- * Only ids the user has never touched are seeded, so a solution they collapsed
- * stays collapsed across every refresh of the run.
- */
-/**
  * Open the panel on a run that failed to compile something, once.
  *
  * Only on a *new* run -- a changed signature -- and only ever to open: a
@@ -218,6 +213,12 @@ function seedFindings(next: RunViewModel): void {
   }
 }
 
+/**
+ * Open what the model says opens by default, without undoing the user.
+ *
+ * Only ids the user has never touched are seeded, so a solution they collapsed
+ * stays collapsed across every refresh of the run.
+ */
 function seedExpansion(next: RunViewModel): void {
   const ids = new Set([
     ...next.rows.map((row) => row.id),
@@ -294,28 +295,18 @@ tree.addEventListener('click', (event) => {
     return;
   }
   const row = rowById(id);
-  // `detail` is the click count, so the second click of a double click selects
-  // without acting twice -- which would otherwise expand a node and instantly
-  // collapse it again, or open the same testcase twice.
-  const acts = event.detail <= 1;
-  // A click anywhere on a parent row expands it, not just one on the 16px
-  // twisty. The twisty is a target you have to aim at, and every other row in
-  // the view responds to being clicked anywhere along it.
-  if (acts && row?.expandable === true) {
+  const action = rowClick(row, event.detail);
+  if (action.expansion === 'none') {
+    select(id);
+  } else {
     // Assigned rather than passed through `select`, which renders: `toggle`
     // renders too, and doing both would draw the view twice per click.
     selected = id;
-    toggle(id);
-    return;
+    toggle(id, action.expansion === 'expand' ? true : undefined);
   }
-  select(id);
-  if (!acts) {
-    return;
+  if (action.invoke) {
+    invoke(row);
   }
-  // A leaf opens on a single click, as it did when this view was a `TreeView`
-  // and the row carried `TreeItem.command` -- VS Code fires that on the first
-  // click, and every tree in the product opens a testcase the same way.
-  invoke(row);
 });
 
 tree.addEventListener('keydown', (event) => {
@@ -425,7 +416,7 @@ findings.addEventListener('click', (event) => {
   if (warning?.dataset.id !== undefined) {
     // The warning knows its own line; the host reads it off the node this id
     // resolves to, so nothing about a position has to survive postMessage.
-    openFinding('rbx.openSolutionSource', warning.dataset.id);
+    openFinding('rbx.openSolution', warning.dataset.id);
     return;
   }
   const row = target.closest('.finding-row') as HTMLElement | null;
@@ -435,7 +426,7 @@ findings.addEventListener('click', (event) => {
   }
   const action = (target.closest('.finding-action') as HTMLElement | null)?.dataset.action;
   if (action === 'source') {
-    openFinding('rbx.openSolutionSource', id);
+    openFinding('rbx.openSolution', id);
     return;
   }
   if (action === 'log') {

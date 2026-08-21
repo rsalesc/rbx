@@ -51,19 +51,30 @@ TL[<lang>] = <TLMOD[calibrafactor]> * <worst measured time> + 0.02
 ```
 
 into `tl`, with `TL[default]` the smallest of those; `build-and-test.sh` then adds
-`TLMOD[<lang>.sum]` before judging. Both knobs are spliced into `bc` expressions as
-**text**, which is what makes a fixed limit expressible at all -- see
-[`timing.py`](timing.py), which owns every expression here.
+`TLMOD[<lang>.sum]` before judging. **`TLOVERRIDE` outranks all of it**:
+
+```
+TLOVERRIDE[<lang>] // TLOVERRIDE[default] // calibrated[<lang>]
+```
+
+is the limit MOJ judges with -- applied *after* the `TLMOD` arithmetic -- and the
+same value it shows everywhere (training, contest, the TL sheet, `/problems/tl`).
+It is read by **grep**, never evaluated, so the value is a literal number of
+seconds. See [`timing.py`](timing.py), which owns every line emitted here.
 
 **Default (`rbx package moj`): the limits are pinned from the `moj` limits profile.**
 `rbx time -p moj` estimates them; the packager emits
-`TLMOD[calibrafactor]=<base - 0.02>+0`, so the expression becomes
-`<base - 0.02> + 0 * worst + 0.02` -- a line with slope zero. Every language, and
-`TL[default]` with them, lands on the same base whatever the judge measured. Each
-language above that base then gets `TLMOD[<lang>.sum]=<its limit - base>`. The base is
-the **tightest** limit involved (the profile's own base included, since a language the
-package ships no scripts for falls back to `TL[default]`), so no increment is ever
-negative.
+`TLOVERRIDE[default]=<base>` plus a `TLOVERRIDE[<lang>]=<its limit>` for every
+language whose limit differs from that default. The default is the **tightest**
+limit involved (the profile's own base included), since a language the package
+ships no scripts for falls back to it.
+
+Calibration still runs and its measurements still land in `tl` -- harmlessly, since
+the override wins regardless. (Changing an override changes the `tl-checksum` and so
+triggers a recalibration; that is equally harmless.) rbx does **not** pin anything
+through `TLMOD` any more: the pre-`TLOVERRIDE` trick -- a zero-slope
+`TLMOD[calibrafactor]=<base - 0.02>+0` `bc` expression plus `TLMOD[<lang>.sum]`
+increments -- is gone, and `calibrafactor` is now emitted only under `--calibrate`.
 
 `CALIBRATIONTL` is raised alongside them: it is the dummy limit calibration enforces
 while it runs the solutions, and its 5s default can be tighter than what this problem
@@ -270,8 +281,8 @@ So the packager writes the content fields it can know and omits the rest:
 languages, and the API rejects anything outside it. MOJ measures a time limit per
 language from the accepted solutions, and mojtools' guide is explicit: put a good
 solution in every language you want to enable. (With pinned limits a language without
-an accepted solution would still be *judgeable* -- it falls back to `TL[default]`,
-which is the same pinned base -- but it is one nothing has ever been shown to solve,
+an accepted solution would still be *judgeable* -- it falls back to
+`TLOVERRIDE[default]` -- but it is one nothing has ever been shown to solve,
 so the whitelist deliberately stays keyed to the accepted solutions.) Deriving the list from the emitted
 `scripts/<lang>/` dirs instead would key it off the setter's `env.rbx.yml`, which says
 nothing about who may submit what — and would silently *narrow* the default (absent =

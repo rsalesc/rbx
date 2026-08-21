@@ -224,8 +224,10 @@ against a newer rbx ignores the field. Neither combination errors.
 ## D5. Two commands, one context section
 
 - `rbx.openCompileLog` — `artifactUri(logPath, logLabel)`, then `vscode.open`.
-- `rbx.openSolutionSource` — opens the `.cpp`, optionally at a line, which is
-  what a warning line uses.
+- `rbx.openSolution` — opens the `.cpp`, optionally at a line, which is what a
+  warning line uses. Shared with the solution rows in the tree (#684 added it
+  there first): reaching a solution's source is one thing to ask for, however
+  the reader got to the row.
 
 Both take a finding id and resolve it through the same id map `runView.ts`
 already keeps, so the client keeps sending ids and nothing about a finding has

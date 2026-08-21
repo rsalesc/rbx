@@ -173,8 +173,9 @@ class MojPackager(BasePackager):
 
     - **Time limits go through `conf`, never `tl`.** MOJ measures the limit by
       running every `sols/good` solution and scaling by `TLMOD[calibrafactor]`, so
-      `conf` carries the only limit knobs: by default rbx pins them there from the
-      `moj` limits profile, and `--calibrate` leaves them to the judge. See
+      `conf` carries the only limit knobs: by default rbx pins them there with
+      `TLOVERRIDE` from the `moj` limits profile, and `--calibrate` leaves them to
+      the judge. See
       `rbx.box.packaging.moj.timing`.
     - **A single-file checker.** MOJ's bridge compiles `scripts/checker.cpp` with only
       `testlib.h` reachable, so the checker is amalgamated rather than shipped with
@@ -454,12 +455,11 @@ class MojPackager(BasePackager):
         )
 
     def _fixed_time_limits(self) -> moj_timing.FixedTimeLimits:
-        """The limits of the `moj` profile, as a base plus per-language increments.
+        """The limits of the `moj` profile, as a default plus per-language limits.
 
-        Keyed by MOJ language id, since that is what mojtools keys `TLMOD` by -- and
-        under the legacy spelling too when a package emits one, because
-        `build-and-test.sh` looks the entry up under whatever id the submission's
-        file extension yields.
+        Keyed by MOJ language id, since that is what mojtools keys `TLOVERRIDE` by
+        -- and under the legacy spelling too when a package emits one, because MOJ
+        looks the entry up under whatever id the submission's file extension yields.
         """
         limits_by_language: Dict[str, int] = {}
         for moj_language in get_emitted_moj_languages():

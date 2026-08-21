@@ -97,15 +97,6 @@ export function compilationLogPath(pkg: PackageLayout, relative: string): string
  * path in a warning, and joining one onto the root would produce a path that
  * exists nowhere.
  */
-export function packageFilePath(pkg: PackageLayout, relative: string): string {
-  return path.isAbsolute(relative) ? relative : path.join(pkg.root, relative);
-}
-
-/** A solution's source, from the package-relative path rbx records. */
-export function solutionSourcePath(pkg: PackageLayout, solutionPath: string): string {
-  return packageFilePath(pkg, solutionPath);
-}
-
 export function testsDir(pkg: PackageLayout): string {
   return path.join(pkg.root, BUILD_DIR, 'tests');
 }
@@ -150,3 +141,33 @@ export const IGNORED_DIRS: ReadonlySet<string> = new Set([
   'node_modules',
   '.git',
 ]);
+
+/**
+ * Absolute path to a solution's source file.
+ *
+ * `SolutionEntry.path` is relative to the package root and written with the
+ * separator of the host that ran rbx, so a package generated on Windows and
+ * read on macOS arrives with backslashes -- `path.join` would keep them and
+ * produce one long, nonexistent basename. Splitting on both separators first
+ * is what makes the join mean the same thing on either host.
+ */
+export function solutionSourcePath(pkg: PackageLayout, solutionPath: string): string {
+  return packageFilePath(pkg, solutionPath);
+}
+
+/**
+ * Absolute path to any file rbx named relative to the package root.
+ *
+ * The general form of `solutionSourcePath`, which it now delegates to: a
+ * compiler warning names a file too, and it is not always the solution being
+ * compiled. The separator rule above applies to both, and an absolute path is
+ * passed through untouched -- a compiler is free to print one, and joining it
+ * onto the root would produce a path that exists nowhere.
+ */
+export function packageFilePath(pkg: PackageLayout, relative: string): string {
+  if (path.isAbsolute(relative)) {
+    return relative;
+  }
+  const segments = relative.split(/[\\/]+/).filter((segment) => segment !== '');
+  return path.join(pkg.root, ...segments);
+}

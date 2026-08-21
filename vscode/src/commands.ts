@@ -1,14 +1,17 @@
 /**
  * Commands that open artifacts.
  *
- * Everything opens through the read-only `rbx:` scheme (see artifactFs.ts), so
- * a generated file can never be edited by accident and each tab gets a title
- * that says which solution and testcase it belongs to.
+ * Every *generated* file opens through the read-only `rbx:` scheme (see
+ * artifactFs.ts), so it can never be edited by accident and each tab gets a
+ * title that says which solution and testcase it belongs to. A solution's
+ * source is the one thing here rbx did not generate: it opens as itself, on
+ * the `file:` scheme, because editing it is the whole point of reaching it.
  */
 import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
 
 import { artifactUri } from './artifactFs';
+import { solutionSourcePath } from './rbx/layout';
 import { RunNode, TestcaseNode } from './rbx/nodes';
 import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
@@ -78,6 +81,56 @@ export function registerCommands(
   };
 
   register('rbx.refresh', () => data.refresh());
+
+  register('rbx.openSolution', async (node) => {
+    // Three row kinds reach the same file, and the only thing that differs is
+    // where in it to land: a solution row and a finding row open at the top,
+    // and a warning line under a finding opens at the line the compiler named.
+    // One command rather than two, because "open this solution's source" is one
+    // thing to ask for however the reader got to the row.
+    const target = ((): { path: string; declared: string; line: number } | undefined => {
+      switch (node?.kind) {
+        case 'solution':
+          return {
+            path: solutionSourcePath(node.pkg, node.run.solution.path),
+            declared: node.run.solution.path,
+            line: 0,
+          };
+        case 'finding':
+          return { path: node.finding.sourcePath, declared: node.finding.entry.path, line: 0 };
+        case 'findingWarning':
+          return {
+            path: node.finding.sourcePath,
+            declared: node.finding.entry.path,
+            // Compilers count lines from 1 and VS Code counts from 0.
+            line: Math.max(0, node.warning.line - 1),
+          };
+        default:
+          return undefined;
+      }
+    })();
+    if (target === undefined) {
+      return;
+    }
+    if ((await firstExisting([target.path])) === undefined) {
+      // The skeleton names a solution `problem.rbx.yml` declares, so a missing
+      // file means the package changed since the run, not that the row is bad.
+      vscode.window.showInformationMessage(
+        `No file at ${target.declared}. The package may have changed since this run.`,
+      );
+      return;
+    }
+    // The real file, not the `rbx:` scheme: this is the user's own source and
+    // the point of reaching it is to edit it.
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(target.path));
+    const position = new vscode.Position(target.line, 0);
+    // `preview: true` to match every other row in the view: arrowing down a
+    // list of solutions reuses one tab instead of littering the tab bar.
+    await vscode.window.showTextDocument(document, {
+      preview: true,
+      selection: new vscode.Range(position, position),
+    });
+  });
 
   register('rbx.openInput', async (node) => {
     if (!isTestcase(node)) {
@@ -178,30 +231,6 @@ export function registerCommands(
     const uri = artifactUri(realPath, `${finding.entry.path}/compile.log`);
     const document = await vscode.workspace.openTextDocument(uri);
     await vscode.window.showTextDocument(document, { preview: true });
-  });
-
-  register('rbx.openSolutionSource', async (node) => {
-    if (node?.kind !== 'finding' && node?.kind !== 'findingWarning') {
-      return;
-    }
-    const realPath = await firstExisting([node.finding.sourcePath]);
-    if (realPath === undefined) {
-      vscode.window.showInformationMessage(
-        `${node.finding.entry.path} is not on disk in this workspace.`,
-      );
-      return;
-    }
-    // The real file, not the `rbx:` scheme: this is the user's own source and
-    // the point of opening it is to fix it.
-    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(realPath));
-    // Line numbers are 1-based in a compiler's output and 0-based here. A
-    // finding row carries no line of its own, so it opens at the top.
-    const line = node.kind === 'findingWarning' ? Math.max(0, node.warning.line - 1) : 0;
-    const position = new vscode.Position(line, 0);
-    await vscode.window.showTextDocument(document, {
-      preview: true,
-      selection: new vscode.Range(position, position),
-    });
   });
 
   register('rbx.copyPath', async (node) => {
