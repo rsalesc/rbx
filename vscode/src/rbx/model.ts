@@ -42,6 +42,14 @@ export interface GroupEntry {
 
 /** One warning the compiler emitted, as rbx parsed it. */
 export interface CompilationWarning {
+  /**
+   * The file the compiler named, package-relative.
+   *
+   * Not assumed to be the solution's own path: rbx keeps any first-party file
+   * that warned, and a diagnostic has to land on the file the compiler was
+   * talking about rather than on the file that was being compiled.
+   */
+  readonly file: string;
   readonly line: number;
   readonly flag?: string;
   readonly msg: string;
@@ -177,12 +185,13 @@ export function parseSkeleton(raw: Wire): Skeleton | undefined {
 }
 
 function parseWarning(raw: Wire): CompilationWarning | undefined {
+  const file = asString(field(raw, 'file'));
   const line = asNumber(field(raw, 'line'));
   const msg = asString(field(raw, 'msg'));
-  if (line === undefined || msg === undefined) {
+  if (file === undefined || line === undefined || msg === undefined) {
     return undefined;
   }
-  return { line, flag: asString(field(raw, 'flag')), msg };
+  return { file, line, flag: asString(field(raw, 'flag')), msg };
 }
 
 /**

@@ -34,7 +34,12 @@ test('a compilation record is read whole', () => {
       expectedOutcome: 'ACCEPTED',
       status: 'WARNINGS',
       log: 'compilation/0.log',
-      warnings: [{ line: 41, flag: '-Wsign-compare', msg: 'comparison' }],
+      // `file` is kept, not dropped in favour of `path`: a diagnostic has to
+      // land on the file the compiler named, which is not always the file that
+      // was being compiled.
+      warnings: [
+        { file: 'sols/main.cpp', line: 41, flag: '-Wsign-compare', msg: 'comparison' },
+      ],
       reason: undefined,
     },
   ]);
@@ -82,12 +87,18 @@ test('a malformed warning is dropped without taking its record with it', () => {
         path: 'sols/a.cpp',
         status: 'WARNINGS',
         log: 'compilation/0.log',
-        warnings: [{ line: 'not a number', msg: 'x' }, { line: 7, msg: 'kept' }, 'garbage'],
+        warnings: [
+          { file: 'sols/a.cpp', line: 'not a number', msg: 'x' },
+          // No `file`, so there is nowhere to put a diagnostic: dropped too.
+          { line: 5, msg: 'homeless' },
+          { file: 'sols/a.cpp', line: 7, msg: 'kept' },
+          'garbage',
+        ],
       },
     ],
   });
   assert.deepStrictEqual(skeleton?.compilation[0].warnings, [
-    { line: 7, flag: undefined, msg: 'kept' },
+    { file: 'sols/a.cpp', line: 7, flag: undefined, msg: 'kept' },
   ]);
 });
 

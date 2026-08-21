@@ -232,6 +232,42 @@ already keeps, so the client keeps sending ids and nothing about a finding has
 to survive `postMessage` beyond one. Rows carry `webviewSection: 'rbx.finding'`
 for the context menu.
 
+## D6. The same findings, again, in the Problems panel
+
+The panel answers "which solutions have something wrong". Problems answers
+"where", and it is where a setter already looks for that: an entry there works
+whether or not the file is open, draws in the editor's own gutter when it is,
+and is reachable with `F8` without the sidebar being visible at all. The two are
+the same facts on two surfaces, and neither is redundant — the panel is a list
+of *solutions* beside the run they belong to, and Problems is a list of
+*locations* beside the file being edited.
+
+`rbx/diagnostics.ts` decides what each entry says and stays pure like the rest
+of that directory; `diagnostics.ts` owns the `DiagnosticCollection`, converts,
+and rebuilds the whole collection off the same `onDidChange` the run view uses —
+so the two surfaces cannot describe different runs. `rbx.compilationDiagnostics`
+turns it off, like every other surface here.
+
+Three decisions in it:
+
+- A warning lands on **the file the compiler named**, not on the solution being
+  compiled. rbx keeps any first-party file that warned, so the two can differ,
+  and the extension was dropping the record's `file` field entirely — it now
+  parses and resolves it.
+- A failure lands at **line 1**, and says so honestly. rbx parses locations out
+  of warnings only, and a guessed line is worse than a file-level entry: it
+  underlines code that is not the mistake. Its message carries the fact nothing
+  else states — the solution was left out of the run — and its `code` cell
+  becomes a **link to the compiler output**, `code.target` being the only field
+  of a diagnostic that can hold a URI. A warning spends the same cell on its
+  flag, as every linter in the product does.
+- The range is the **whole line**. rbx records the line and not the column, and
+  a column invented here would underline the wrong characters.
+
+Parsing error locations in rbx was the alternative, and would let a failure land
+on its real line. It was declined for now: it widens the wire for the case where
+the full log is one click away, and the log is the complete account either way.
+
 ## Testing
 
 Python:

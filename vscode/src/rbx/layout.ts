@@ -90,9 +90,20 @@ export function compilationLogPath(pkg: PackageLayout, relative: string): string
   return path.join(runsDir(pkg), relative);
 }
 
+/**
+ * A path rbx recorded relative to the package root, resolved on this host.
+ *
+ * Absolute inputs are passed through: a compiler is free to print an absolute
+ * path in a warning, and joining one onto the root would produce a path that
+ * exists nowhere.
+ */
+export function packageFilePath(pkg: PackageLayout, relative: string): string {
+  return path.isAbsolute(relative) ? relative : path.join(pkg.root, relative);
+}
+
 /** A solution's source, from the package-relative path rbx records. */
 export function solutionSourcePath(pkg: PackageLayout, solutionPath: string): string {
-  return path.join(pkg.root, solutionPath);
+  return packageFilePath(pkg, solutionPath);
 }
 
 export function testsDir(pkg: PackageLayout): string {

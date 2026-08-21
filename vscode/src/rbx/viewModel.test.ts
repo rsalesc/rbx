@@ -959,7 +959,7 @@ test('the badge counts rows and reddens as soon as one failed to compile', () =>
       [MAIN],
       [
         finding('sols/warned.cpp', {
-          warnings: [{ line: 4, flag: '-Wsign-compare', msg: 'comparison' }],
+          warnings: [{ file: 'sols/x.cpp', line: 4, flag: '-Wsign-compare', msg: 'comparison' }],
         }),
         finding('sols/broken.cpp', { status: 'FAILED' }),
       ],
@@ -975,7 +975,7 @@ test('a warnings-only run stays yellow and does not ask to be opened', () => {
   const model = buildViewModel([
     view(
       [MAIN],
-      [finding('sols/warned.cpp', { warnings: [{ line: 4, msg: 'comparison' }] })],
+      [finding('sols/warned.cpp', { warnings: [{ file: 'sols/x.cpp', line: 4, msg: 'comparison' }] })],
     ),
   ]);
   assert.strictEqual(model.findings?.hue, 'yellow');
@@ -987,12 +987,12 @@ test('the summary counts warnings, singular when there is one', () => {
     view(
       [MAIN],
       [
-        finding('sols/one.cpp', { warnings: [{ line: 4, msg: 'a' }] }),
+        finding('sols/one.cpp', { warnings: [{ file: 'sols/x.cpp', line: 4, msg: 'a' }] }),
         finding('sols/three.cpp', {
           warnings: [
-            { line: 4, msg: 'a' },
-            { line: 5, msg: 'b' },
-            { line: 6, msg: 'c' },
+            { file: 'sols/x.cpp', line: 4, msg: 'a' },
+            { file: 'sols/x.cpp', line: 5, msg: 'b' },
+            { file: 'sols/x.cpp', line: 6, msg: 'c' },
           ],
         }),
       ],
@@ -1034,8 +1034,8 @@ test('a warning carries its position and flag, and its message only as a title',
       [
         finding('sols/warned.cpp', {
           warnings: [
-            { line: 41, flag: '-Wsign-compare', msg: 'comparison of integer expressions' },
-            { line: 88, msg: 'unflagged something' },
+            { file: 'sols/x.cpp', line: 41, flag: '-Wsign-compare', msg: 'comparison of integer expressions' },
+            { file: 'sols/x.cpp', line: 88, msg: 'unflagged something' },
           ],
         }),
       ],

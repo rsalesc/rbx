@@ -209,7 +209,12 @@
           "default": true,
           "markdownDescription": "Show what `problem.rbx.yml` declares a solution to do in the language status area, which stays visible while you scroll."
         },
-        "rbx.packageSearchDepth": {
+        "rbx.compilationDiagnostics": {
+        "type": "boolean",
+        "default": true,
+        "markdownDescription": "Report what the last `rbx run` compiled in the Problems panel: a warning on each line the compiler warned about, and an error on any solution that failed to compile."
+      },
+      "rbx.packageSearchDepth": {
           "type": "number",
           "default": 3,
           "markdownDescription": "How deep to search workspace folders for `problem.rbx.yml` files."

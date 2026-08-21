@@ -156,6 +156,40 @@ same console block, but one comes from running a solution rather than compiling
 it and the other is not compiler output at all; a panel called Compilation
 Findings that carried them would be lying about what it contains.
 
+#### And in the Problems panel
+
+The same findings are also published as diagnostics, so they reach you without
+the sidebar being open at all:
+
+```
+PROBLEMS (3)
+▾ sols/warns.cpp
+  ⚠ 22  declaration of 'total' shadows a global declaration   rbx(-Wshadow)
+  ⚠ 25  unused variable 'leftover'                            rbx(-Wunused-variable)
+▾ sols/broken.cpp
+  ⊗  1  This solution failed to compile, and was left out of the run.  rbx(compiler output)
+```
+
+The panel and the Problems list are the same facts on two surfaces, and which
+one you want depends on what you are doing: the panel is a list of *solutions*
+and sits beside the run it belongs to, while Problems is a list of *locations*
+and belongs to the file you are editing. A warning there also draws in the
+editor's own gutter and is reachable with `F8`.
+
+- A **warning** lands on the line the compiler named, in the file **the compiler
+  named** — which is not always the solution being compiled — and spends the
+  `code` cell on its flag, the way every linter in the product does.
+- A **failure** lands at the top of the solution, because rbx parses locations
+  out of warnings only and a guessed line would underline the wrong code. Its
+  message says the part that is otherwise invisible — the solution was left out
+  of the run — and its `code` cell is a **link to the compiler output** instead
+  of a flag, since a diagnostic's code is the one field that can carry a URI.
+- The range is the whole line: rbx records which line a warning is on and not
+  which column, and inventing a column would underline the wrong characters.
+- Entries are cleared and rebuilt from the same `onDidChange` that feeds the run
+  view, so the two surfaces can never describe different runs. Set
+  `rbx.compilationDiagnostics` to `false` to turn them off.
+
 ### Naming solutions
 
 Nearly every package keeps its solutions under one directory, so the path rbx
