@@ -80,6 +80,37 @@ class MojNotInstalledError(MojCliError):
     """
 
 
+class MojQueueFullError(MojCliError):
+    """MOJ refused because this account already has too many testruns queued.
+
+    The server caps how many a single login may have waiting at once -- three, as
+    observed on 2026-08-21 -- and answers HTTP 429:
+
+        moj: Você já tem 3 teste(s) na fila — aguarde terminarem (429)
+
+    Its own class because it is the one failure here that is **transient and
+    expected** rather than a mistake, and because there is no other way out of it.
+    `moj` exposes exactly three testrun operations -- submit, status, report -- and
+    nothing that cancels one, so a caller cannot clear the queue; it can only wait.
+
+    Note the quota is per **account**, not per run. rbx caps its own in-flight
+    testruns, but an interrupted `rbx time` leaves its dispatched runs going on the
+    judge (rbx stops waiting; MOJ does not stop running), and a second session or a
+    hand-run `moj testrun` holds slots too. So hitting this does not mean rbx
+    dispatched too many.
+    """
+
+
+# `_api_fail` in the CLI ends a failed call's message with the HTTP status in
+# parentheses -- `die "$msg${code:+ ($code)}"` -- so the code is a structural part
+# of the output rather than something to be read out of the prose. Matching the
+# Portuguese message instead would break on a translation or a reworded server.
+_HTTP_STATUS_RE = re.compile(r'\((\d{3})\)\s*$', re.MULTILINE)
+
+# HTTP 429: too many testruns already queued for this login.
+_QUEUE_FULL_STATUS = '429'
+
+
 class TestrunTest(BaseModel):
     """One test of one testrun.
 
@@ -323,7 +354,13 @@ async def _run_moj(args: Sequence[str]) -> str:
             f'Command `{MOJ_BINARY} {shlex.join(args)}` failed with exit code '
             f'{process.returncode}.'
         )
-        raise MojCliError(f'{message}\n{detail}' if detail else message)
+        full = f'{message}\n{detail}' if detail else message
+        status = _HTTP_STATUS_RE.search(detail)
+        if status is not None and status.group(1) == _QUEUE_FULL_STATUS:
+            # Raised as its own type so a caller can wait it out. Everything else
+            # here is a mistake to report; this one is a queue to sit behind.
+            raise MojQueueFullError(full)
+        raise MojCliError(full)
 
     return out
 

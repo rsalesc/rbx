@@ -721,7 +721,7 @@ async def test_a_testrun_that_finishes_late_is_still_waited_for(
     evals = await _run(runner, ctx)
 
     assert len(fake.status_calls) == 3
-    assert [e.result.outcome for e in evals] == [Outcome.ACCEPTED, Outcome.ACCEPTED]
+    assert [e.result.outcome for e in evals] == [Outcome.ACCEPTED] * len(evals)
 
 
 # -- how the work is dispatched ------------------------------------------------
@@ -1080,3 +1080,70 @@ async def test_one_slow_solution_does_not_let_the_queue_behind_it_jump_ahead(
     assert [name for (_run, _ref, name, _content) in fake.submissions] == [
         solution.path.name for solution in ctx.skeleton.solutions
     ]
+
+
+async def test_a_full_queue_is_waited_out_rather_than_failing_the_run(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """MOJ caps queued testruns per account; waiting is the only recovery.
+
+    The quota is not something rbx can avoid by dispatching less -- an interrupted
+    run leaves its testruns going on the judge, and a second session holds slots
+    too -- and `moj` exposes nothing that cancels one. So a 429 must be sat out,
+    not reported as a failed solution.
+    """
+    runner, fake, ctx = await _prepared(testing_pkg, tmp_path, monkeypatch)
+    fake.results['sol.cpp'] = [
+        _test(name, 'AC', 0.1) for name in (*SAMPLE_NAMES, *MAIN_NAMES)
+    ]
+
+    monkeypatch.setattr(runner_module, 'QUEUE_FULL_INTERVAL_SECONDS', 0)
+    original = fake.testrun
+    refusals = {'left': 3}
+
+    async def refuse_then_accept(ref, solution):
+        if refusals['left'] > 0:
+            refusals['left'] -= 1
+            raise cli.MojQueueFullError('moj: ... na fila ... (429)')
+        return await original(ref, solution)
+
+    fake.testrun = refuse_then_accept
+    monkeypatch.setattr(cli, 'testrun', fake.testrun)
+
+    evals = await _run(runner, ctx)
+
+    assert refusals['left'] == 0
+    assert evals
+    assert all(e.result.outcome == Outcome.ACCEPTED for e in evals)
+
+
+async def test_a_queue_that_never_drains_says_it_cannot_be_cancelled(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """Bounded, like every other wait here, and actionable when it gives up.
+
+    Nothing rbx can do clears the queue, so the message has to send the setter to
+    `moj status` rather than suggesting a retry that would fail the same way.
+    """
+    runner, fake, ctx = await _prepared(testing_pkg, tmp_path, monkeypatch)
+    fake.results['sol.cpp'] = [_test(name, 'AC', 0.1) for name in SAMPLE_NAMES]
+
+    monkeypatch.setattr(runner_module, 'QUEUE_FULL_INTERVAL_SECONDS', 0)
+    monkeypatch.setattr(runner_module, 'QUEUE_FULL_ATTEMPTS', 3)
+
+    attempts = {'n': 0}
+
+    async def always_refuse(ref, solution):
+        attempts['n'] += 1
+        raise cli.MojQueueFullError('moj: ... na fila ... (429)')
+
+    monkeypatch.setattr(cli, 'testrun', always_refuse)
+
+    with pytest.raises(runner_module.MojRunnerError) as exc_info:
+        await _run(runner, ctx)
+
+    assert attempts['n'] == 3, 'the wait must be bounded'
+    message = str(exc_info.value)
+    assert 'cannot be cancelled' in message
+    assert 'moj status' in message
+    assert '[item]' not in message

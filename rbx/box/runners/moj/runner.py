@@ -92,6 +92,17 @@ TESTRUN_POLL_ATTEMPTS = 200
 # every value is untested.
 MAX_INFLIGHT_TESTRUNS = 2
 
+# How long to wait out a full testrun queue before giving up, and how often to
+# retry. ~10 minutes, matching the CLI's own patience for a single testrun
+# (200 x 3s): the queue drains when the runs holding it finish, so the unit that
+# matters is how long one testrun takes, not how long a session does.
+#
+# Longer than that and the honest answer is that something is stuck and the setter
+# should look, since nothing rbx can do will clear it -- MOJ exposes no way to
+# cancel a testrun.
+QUEUE_FULL_INTERVAL_SECONDS = 15.0
+QUEUE_FULL_ATTEMPTS = 40
+
 # MOJ's per-test `code`, as it lands in `TestrunTest.code`, mapped onto rbx's
 # `Outcome`. Adding a code is one line here and nothing else.
 #
@@ -725,7 +736,53 @@ class MojRunner:
             # The problem *id*, not the package directory the CLI would also
             # accept: rbx builds its package into a temp dir that is long gone by
             # now, and the id is what `prepare` decided to write to.
-            return await cli.testrun(self._moj_id, source)
+            return await self._submit_when_the_queue_has_room(solution, source)
+
+    async def _submit_when_the_queue_has_room(
+        self, solution: 'SolutionSkeleton', source: pathlib.Path
+    ) -> str:
+        """`cli.testrun`, waiting out a full queue rather than failing the run.
+
+        MOJ caps how many testruns one **account** may have waiting and answers
+        429. That is not something rbx can avoid by dispatching less: an
+        interrupted `rbx time` leaves its runs going on the judge (rbx stops
+        waiting, MOJ does not stop running), and a second session or a hand-run
+        `moj testrun` holds slots too. Nor can it be cleared -- the CLI has submit,
+        status and report for a testrun and nothing that cancels one -- so waiting
+        is the only recovery there is.
+
+        Bounded, like every other wait here: a queue held by something that never
+        finishes must fail with a message rather than hang `rbx time` forever. The
+        slot is deliberately still held while waiting, so a full queue does not
+        turn into every solution retrying at once.
+        """
+        assert self._moj_id is not None
+        for attempt in range(QUEUE_FULL_ATTEMPTS):
+            try:
+                return await cli.testrun(self._moj_id, source)
+            except cli.MojQueueFullError:
+                if attempt == 0:
+                    # Once, on the consumer's own thread of control: a run that
+                    # goes quiet for minutes looks hung, and the reason is not
+                    # something the setter could guess.
+                    console.console.print(
+                        f"[status]MOJ already has this account's testrun queue "
+                        f'full, so [item]{solution.path}[/item] is waiting for a '
+                        f'slot. Testruns from an interrupted run keep going on the '
+                        f'judge until they finish.[/status]'
+                    )
+                if attempt + 1 < QUEUE_FULL_ATTEMPTS:
+                    await asyncio.sleep(QUEUE_FULL_INTERVAL_SECONDS)
+        waited = QUEUE_FULL_ATTEMPTS * QUEUE_FULL_INTERVAL_SECONDS / 60
+        raise MojRunnerError(
+            f'MOJ kept refusing to queue `{solution.path}`: this account already '
+            f'has as many testruns waiting as it is allowed, and none of them '
+            f'finished in {waited:.0f} minutes.\n'
+            f'Testruns cannot be cancelled -- `moj` can submit, poll and fetch a '
+            f'report, and nothing else -- so they have to run their course. Check '
+            f'what is queued with `moj status`, and note that an interrupted '
+            f'`rbx time --runner moj` leaves its testruns running on the judge.'
+        )
 
     def _cache_key(self, solution: 'SolutionSkeleton', content: bytes) -> str:
         """What makes a cached testrun *the same measurement* as a fresh one.

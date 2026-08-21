@@ -751,3 +751,61 @@ async def test_malformed_json_is_reported_as_such(
         await cli.testrun_status('4711')
 
     assert 'nao e json' in str(exc_info.value)
+
+
+async def test_a_full_testrun_queue_is_its_own_retryable_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """MOJ caps queued testruns per account and answers 429.
+
+    Its own type because it is the one failure here a caller can do something
+    about -- wait -- and because nothing can clear it: `moj` has no command that
+    cancels a testrun.
+    """
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        """
+        echo 'moj: Você já tem 3 teste(s) na fila — aguarde terminarem (429)' >&2
+        exit 1
+        """,
+    )
+
+    with pytest.raises(cli.MojQueueFullError):
+        await cli.testrun('alice#rbxt-deadbeef', tmp_path / 'sol.cpp')
+
+
+async def test_the_queue_is_recognised_by_the_status_not_the_wording(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """`_api_fail` appends `(<code>)`; the Portuguese prose is not the signal.
+
+    A translated or reworded server message must still be recognised, and an
+    unrelated failure that merely mentions a queue must not be.
+    """
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        """
+        echo 'moj: too many pending submissions (429)' >&2
+        exit 1
+        """,
+    )
+    with pytest.raises(cli.MojQueueFullError):
+        await cli.testrun('alice#rbxt-deadbeef', tmp_path / 'sol.cpp')
+
+
+async def test_another_failure_that_mentions_a_queue_is_not_a_full_queue(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        """
+        echo 'moj: problema nao encontrado na fila (404)' >&2
+        exit 1
+        """,
+    )
+    with pytest.raises(cli.MojCliError) as exc_info:
+        await cli.testrun('alice#rbxt-deadbeef', tmp_path / 'sol.cpp')
+    assert not isinstance(exc_info.value, cli.MojQueueFullError)
