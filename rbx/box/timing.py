@@ -2,7 +2,7 @@ import dataclasses
 import functools
 import math
 from fractions import Fraction
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import rich
 import rich.console
@@ -1136,6 +1136,231 @@ async def _run_for_inference(
         return None
 
     return _InferenceRun(result=result, strategy=strategy, timeout=timeout)
+
+
+def violates_upper_bound(time: int, time_limit: int, time_limit_to_tle: float) -> bool:
+    """Whether a slow solution taking ``time`` is too fast for ``time_limit``.
+
+    The same comparison `compute_bounds` makes, in the same exact arithmetic:
+    the limit may be at most ``time / timeLimitToTle``, so the solution must take
+    at least ``time_limit * timeLimitToTle``.
+    """
+    return time < time_limit * _exact(time_limit_to_tle)
+
+
+def can_validate_upper_bound(
+    profile: TimingProfile, upper_solutions: List[Solution]
+) -> bool:
+    """Whether this estimate has an upper bound to check, and something to check
+    it against. Without ``timeLimitToTle`` the limit is not bounded from above at
+    all, so the slow solutions are not run."""
+    multipliers = profile.multipliers
+    return (
+        multipliers is not None
+        and multipliers.timeLimitToTle is not None
+        and bool(upper_solutions)
+    )
+
+
+@dataclasses.dataclass
+class _ValidationOutcome:
+    """What checking an estimate against its slow solutions found."""
+
+    # Confirmed too slow: still running when the limit they had to clear elapsed.
+    confirmed: List[Solution] = dataclasses.field(default_factory=list)
+    # Fast enough to break the upper bound, with the time they actually took.
+    violating: List[Tuple[Solution, int]] = dataclasses.field(default_factory=list)
+    # Broke for a reason other than running out of time, so they are evidence of
+    # nothing either way.
+    failed: List[Tuple[Solution, Outcome]] = dataclasses.field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.violating and not self.failed
+
+
+def _probe_limits(
+    profile: TimingProfile,
+    upper_solutions: List[Solution],
+) -> Dict[str, int]:
+    """The limit each language's slow solutions have to survive."""
+    multipliers = profile.multipliers
+    assert multipliers is not None and multipliers.timeLimitToTle is not None
+    limits: Dict[str, int] = {}
+    for solution in upper_solutions:
+        lang = find_language_name(solution)
+        time_limit = profile.timeLimitPerLanguage.get(lang, profile.timeLimit)
+        limits[lang] = timing_validation.probe_limit(
+            time_limit, multipliers.timeLimitToTle
+        )
+    return limits
+
+
+async def _record_validation_run(
+    result: RunSolutionResult,
+    solutions_run: List[Solution],
+    limits: Dict[str, int],
+    knowledge: timing_validation.SlowKnowledge,
+) -> List[Tuple[Solution, Outcome]]:
+    """Fold what the run said into ``knowledge``; return the solutions that broke
+    for a reason other than running out of time."""
+    structured_evaluations = consume_and_key_evaluation_items(
+        result.items, result.skeleton
+    )
+    failed: List[Tuple[Solution, Outcome]] = []
+    for solution in solutions_run:
+        path = str(solution.path)
+        outcomes: List[Outcome] = []
+        timings: List[int] = []
+        for evals in structured_evaluations.get(path, {}).values():
+            for ev in evals:
+                if ev is None:
+                    continue
+                evaluation = await ev()
+                outcome = evaluation.result.outcome
+                # A skipped testcase is the CONSEQUENCE of an earlier verdict,
+                # never evidence of its own: counting it would read the abort
+                # that follows a timeout as a solution breaking outright.
+                if outcome == Outcome.SKIPPED:
+                    continue
+                outcomes.append(outcome)
+                if evaluation.log.time is not None:
+                    timings.append(int(evaluation.log.time * 1000))
+
+        broken = [
+            outcome
+            for outcome in outcomes
+            if outcome != Outcome.ACCEPTED and not outcome.is_slow()
+        ]
+        if broken:
+            failed.append((solution, broken[0]))
+        elif any(outcome.is_slow() for outcome in outcomes):
+            knowledge.record_timeout(path, limits[find_language_name(solution)])
+        elif timings:
+            # Its time is the slowest testcase, as everywhere else: that is the
+            # one the limit has to accommodate.
+            knowledge.record_time(path, max(timings))
+    return failed
+
+
+def _classify_slow_solutions(
+    profile: TimingProfile,
+    upper_solutions: List[Solution],
+    knowledge: timing_validation.SlowKnowledge,
+    failed: List[Tuple[Solution, Outcome]],
+) -> _ValidationOutcome:
+    """What is now known about every slow solution, not only the ones that just
+    ran: an earlier iteration may already have settled some of them."""
+    multipliers = profile.multipliers
+    assert multipliers is not None and multipliers.timeLimitToTle is not None
+    broken = {str(solution.path) for solution, _ in failed}
+    outcome = _ValidationOutcome(failed=list(failed))
+    for solution in upper_solutions:
+        path = str(solution.path)
+        if path in broken:
+            continue
+        time = knowledge.measured_time(path)
+        if time is None:
+            if knowledge.is_confirmed(path):
+                outcome.confirmed.append(solution)
+            continue
+        lang = find_language_name(solution)
+        time_limit = profile.timeLimitPerLanguage.get(lang, profile.timeLimit)
+        if violates_upper_bound(time, time_limit, multipliers.timeLimitToTle):
+            outcome.violating.append((solution, time))
+        else:
+            outcome.confirmed.append(solution)
+    return outcome
+
+
+async def _validate_upper_bound(
+    profile: TimingProfile,
+    upper_solutions: List[Solution],
+    knowledge: timing_validation.SlowKnowledge,
+    check: bool,
+    detailed: bool,
+    runs: int,
+) -> _ValidationOutcome:
+    """Run each slow solution at the limit this estimate demands of it, and say
+    whether it is genuinely too slow.
+
+    Only the solutions whose answer is not already known are run: ``knowledge``
+    carries what earlier iterations established, and a lower limit never needs
+    re-asking.
+    """
+    if not upper_solutions:
+        return _ValidationOutcome()
+
+    limits = _probe_limits(profile, upper_solutions)
+    to_run = [
+        solution
+        for solution in upper_solutions
+        if knowledge.needs_run(str(solution.path), limits[find_language_name(solution)])
+    ]
+    if not to_run:
+        return _classify_slow_solutions(profile, upper_solutions, knowledge, [])
+
+    tracked_solutions = OrderedSet(str(solution.path) for solution in to_run)
+    languages = {find_language_name(solution) for solution in to_run}
+    with utils.StatusProgress('Checking solutions expected to be too slow...') as s:
+        result = await run_solutions(
+            progress=s,
+            tracked_solutions=tracked_solutions,
+            check=check,
+            # ALL_SOLUTIONS keeps `isDoubleTL` off (only FULL turns it on):
+            # doubling here would double the very limit being probed at.
+            verification=_INFERENCE_VERIFICATION,
+            timelimit_override={
+                lang: limit for lang, limit in limits.items() if lang in languages
+            },
+            nruns=runs,
+            # One timeout settles the question, so the remaining testcases only
+            # cost wall clock.
+            abort_on=lambda ctx: ctx.evaluation.result.outcome.is_slow(),
+        )
+
+    console.console.print()
+    console.console.rule(
+        '[status]Run report (upper-bound validation)[/status]', style='status'
+    )
+    await print_run_report(
+        result,
+        console.console,
+        _INFERENCE_VERIFICATION,
+        detailed=detailed,
+        skip_printing_limits=True,
+        gating_solutions=set(tracked_solutions),
+    )
+
+    failed = await _record_validation_run(result, to_run, limits, knowledge)
+    return _classify_slow_solutions(profile, upper_solutions, knowledge, failed)
+
+
+def _report_validation_outcome(
+    outcome: _ValidationOutcome,
+    profile: TimingProfile,
+) -> None:
+    """Say what the check found, naming the solution and the bound it broke."""
+    multipliers = profile.multipliers
+    assert multipliers is not None and multipliers.timeLimitToTle is not None
+    for solution in outcome.confirmed:
+        console.console.print(
+            f'[success]✓ {solution.href()} is too slow for the estimated time '
+            f'limit, as expected.[/success]'
+        )
+    for solution, outcome_value in outcome.failed:
+        console.console.print(_failed_upper_message(solution, outcome_value))
+    for solution, time in outcome.violating:
+        lang = find_language_name(solution)
+        time_limit = profile.timeLimitPerLanguage.get(lang, profile.timeLimit)
+        required = timing_validation.probe_limit(time_limit, multipliers.timeLimitToTle)
+        console.console.print(
+            f'[error]✗ {solution.href()} runs in {time} ms, but the estimated '
+            f'limit of {time_limit} ms requires every solution expected to be too '
+            f'slow to take at least {required} ms (timeLimitToTle '
+            f'{multipliers.timeLimitToTle}). Speed up the accepted solutions, slow '
+            f'this one down, or relax the ratios.[/error]'
+        )
 
 
 async def compute_time_limits(
