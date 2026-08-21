@@ -310,3 +310,52 @@ def test_compute_bounds_distinguishes_a_grid_miss_from_an_empty_range():
     empty = compute_bounds(multipliers, _measurements(slowest=610, fastest_slow=550))
     assert not empty.fits
     assert not empty.quantization_is_binding
+
+
+def test_a_forced_estimate_keeps_the_limit_that_violates_the_upper_bound():
+    # Accepting a violated upper bound is a decision the setter makes, so the
+    # limit survives -- but the bound it violates is still reported, not
+    # swallowed, so the profile records what was overridden.
+    multipliers = TimingMultipliers(
+        acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100
+    )
+    measured = _measurements(
+        slowest=500,
+        slowest_solution='sols/ac.cpp',
+        fastest_slow=1100,
+        fastest_slow_solution='sols/slow.cpp',
+    )
+    # acToTimeLimit puts the limit at 1000 ms; timeLimitToTle caps it at 733 ms.
+    with pytest.raises(TimingRangeError):
+        make_multipliers_eval(multipliers)(measured)
+
+    forced = make_multipliers_eval(multipliers, force=True)(measured)
+    assert forced.time_limit == 1000
+    assert forced.upper_bound is not None
+    assert forced.upper_bound.value == 733
+    assert forced.upper_bound.solution == 'sols/slow.cpp'
+
+
+def test_a_forced_derive_keeps_a_relative_limit_that_violates_the_bound():
+    multipliers = TimingMultipliers(
+        acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100
+    )
+    measured = _measurements(fastest_slow=1100, fastest_slow_solution='sols/slow.cpp')
+    with pytest.raises(TimingRangeError):
+        make_multipliers_derive(multipliers)(1000, measured)
+
+    forced = make_multipliers_derive(multipliers, force=True)(1000, measured)
+    assert forced.time_limit == 1000
+    assert forced.upper_bound is not None
+    assert forced.upper_bound.value == 733
+
+
+def test_forcing_changes_nothing_when_the_bound_is_respected():
+    multipliers = TimingMultipliers(
+        acToTimeLimit=2.0, timeLimitToTle=1.5, timeResolution=100
+    )
+    measured = _measurements(slowest=500, fastest_slow=3000)
+    assert (
+        make_multipliers_eval(multipliers, force=True)(measured).time_limit
+        == make_multipliers_eval(multipliers)(measured).time_limit
+    )

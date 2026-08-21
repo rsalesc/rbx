@@ -255,6 +255,26 @@ function collectStatements(collector: Collector, list: Wire): void {
 }
 
 /**
+ * What the package calls itself, or `undefined` if it does not say.
+ *
+ * The selector pairs this with the contest letter, because a letter alone does
+ * not say which problem it is. The *declared* name rather than the directory:
+ * rbx defaults a problem's path to its short name, so a contest laid out the
+ * default way has every package sitting in a directory called `A`, `B`, `C`,
+ * and a basename would render the useless `A - A`.
+ */
+export function parseProblemName(raw: Wire): string | undefined {
+  const root = asRecord(raw);
+  if (root === undefined) {
+    return undefined;
+  }
+  const name = asString(root.name);
+  // An empty `name:` is a name the setter has not written yet, not a name that
+  // happens to be blank -- the manifest is usually half-typed when we read it.
+  return name === '' ? undefined : name;
+}
+
+/**
  * Every asset `problem.rbx.yml` declares, in no particular order.
  *
  * Returns an empty list rather than throwing for anything it cannot read,

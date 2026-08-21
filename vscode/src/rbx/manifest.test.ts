@@ -2,7 +2,12 @@ import * as assert from 'assert';
 import { test } from 'node:test';
 import { parse as parseYaml } from 'yaml';
 
-import { DeclaredAsset, normalizeExpectation, parseManifest } from './manifest';
+import {
+  DeclaredAsset,
+  normalizeExpectation,
+  parseManifest,
+  parseProblemName,
+} from './manifest';
 
 function assets(yaml: string): DeclaredAsset[] {
   return parseManifest(parseYaml(yaml));
@@ -234,6 +239,21 @@ test('an open bound is filled the way rbx fills it', () => {
     scoreOf(assets('solutions:\n  - path: s.cpp\n    score: [null, 80]\n'), 's.cpp'),
     [0, 80],
   );
+});
+
+test('reads the name a package declares', () => {
+  assert.strictEqual(parseProblemName(parseYaml('name: sum-of-pairs\n')), 'sum-of-pairs');
+});
+
+test('a package that declares no usable name has none', () => {
+  // Each of these is a manifest mid-edit rather than one whose name is
+  // genuinely blank, and the selector must fall back to the bare letter.
+  for (const yaml of ['timeLimit: 1000\n', 'name:\n', "name: ''\n", 'name: [a, b]\n']) {
+    assert.strictEqual(parseProblemName(parseYaml(yaml)), undefined);
+  }
+  for (const raw of [undefined, null, 'a string', 42, []]) {
+    assert.strictEqual(parseProblemName(raw), undefined);
+  }
 });
 
 test('a score that is not a number or a pair is read as none at all', () => {

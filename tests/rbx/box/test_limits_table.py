@@ -5,6 +5,7 @@ from rbx.box.schema import (
     TimingBound,
     TimingGroupOrigin,
     TimingGroupReport,
+    TimingGroupUpperValidation,
 )
 
 
@@ -579,7 +580,7 @@ def test_a_derived_lower_bound_is_not_restated():
     assert 'sols/tle.py' in source
 
 
-def test_caption_notes_the_dropped_slow_solutions():
+def test_caption_notes_the_solutions_that_violate_the_upper_bound():
     from rbx.box.limits_info import build_limits_table
 
     profile = LimitsProfile(
@@ -592,18 +593,45 @@ def test_caption_notes_the_dropped_slow_solutions():
                 solutionCount=1,
                 fastest=630,
                 slowest=630,
-                droppedUpper=['sols/hopeless.cpp'],
+                upperValidation=TimingGroupUpperValidation(
+                    violating=[TimingBound(value=1400, solution='sols/nearly.cpp')],
+                ),
             ),
         ],
     )
     caption = build_limits_table(profile).caption or ''
-    # Terse: the run already warned about each dropped solution by name.
-    assert 'droppedUpper' in caption
+    # Terse: the validation run already reported each offender by name.
+    assert 'upperValidation' in caption
+    assert 'sols/nearly.cpp' not in caption
+    assert '[error]' in caption
+
+
+def test_caption_notes_the_confirmed_slow_solutions():
+    from rbx.box.limits_info import build_limits_table
+
+    profile = LimitsProfile(
+        timeLimit=1300,
+        groups=[
+            TimingGroupReport(
+                languages=['cpp'],
+                timeLimit=1300,
+                origin=TimingGroupOrigin.ESTIMATED,
+                solutionCount=1,
+                fastest=630,
+                slowest=630,
+                upperValidation=TimingGroupUpperValidation(
+                    confirmed=['sols/hopeless.cpp'],
+                ),
+            ),
+        ],
+    )
+    caption = build_limits_table(profile).caption or ''
+    assert '1 solution' in caption
     assert 'sols/hopeless.cpp' not in caption
-    assert '[warning]' in caption
+    assert '[success]' in caption
 
 
-def test_no_dropped_caption_without_dropped_solutions():
+def test_no_upper_validation_caption_without_slow_solutions():
     from rbx.box.limits_info import build_limits_table
 
     profile = LimitsProfile(
@@ -619,4 +647,6 @@ def test_no_dropped_caption_without_dropped_solutions():
             ),
         ],
     )
-    assert 'droppedUpper' not in (build_limits_table(profile).caption or '')
+    caption = build_limits_table(profile).caption or ''
+    assert 'upperValidation' not in caption
+    assert 'too slow' not in caption

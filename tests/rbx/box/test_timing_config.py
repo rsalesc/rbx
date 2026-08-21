@@ -1,6 +1,11 @@
 import pytest
+from pydantic import ValidationError
 
-from rbx.box.environment import DEFAULT_TIMING_FORMULA, TimingConfig
+from rbx.box.environment import (
+    DEFAULT_INFERENCE_TIMEOUT,
+    DEFAULT_TIMING_FORMULA,
+    TimingConfig,
+)
 from rbx.box.exception import RbxException
 from rbx.box.schema import (
     PackageTiming,
@@ -10,6 +15,7 @@ from rbx.box.schema import (
 from rbx.box.timing_config import (
     TimingStrategy,
     TimingStrategyError,
+    resolve_inference_timeout,
     resolve_multipliers,
     resolve_strategy,
 )
@@ -131,3 +137,79 @@ def test_strategy_requires_exactly_one_mode():
             formula='slowest * 2',
             multipliers=TimingMultipliers(acToTimeLimit=2.0),
         )
+
+
+def test_inference_timeout_defaults_when_nothing_declares_one():
+    assert resolve_inference_timeout(TimingConfig(), None) == DEFAULT_INFERENCE_TIMEOUT
+
+
+def test_environment_inference_timeout_applies_in_formula_mode():
+    env = TimingConfig(formula='slowest * 2', inferenceTimeout=30000)
+    assert resolve_inference_timeout(env, None) == 30000
+    assert resolve_strategy(env, None) == TimingStrategy(
+        formula='slowest * 2', inferenceTimeout=30000
+    )
+
+
+def test_the_deprecated_spelling_still_configures_the_cap():
+    env = TimingConfig(
+        multipliers=TimingMultipliers(acToTimeLimit=2.0, inferenceTimeout=25000)
+    )
+    assert resolve_inference_timeout(env, None) == 25000
+    assert resolve_strategy(env, None).inferenceTimeout == 25000
+
+
+def test_the_problem_overrides_the_environment_cap():
+    env = TimingConfig(formula='slowest * 2', inferenceTimeout=30000)
+    pkg = PackageTiming(inferenceTimeout=45000)
+    assert resolve_inference_timeout(env, pkg) == 45000
+
+
+def test_the_problem_overrides_the_cap_of_a_multipliers_environment():
+    env = TimingConfig(
+        multipliers=TimingMultipliers(acToTimeLimit=2.0, inferenceTimeout=25000)
+    )
+    pkg = PackageTiming(inferenceTimeout=45000)
+    assert resolve_strategy(env, pkg).inferenceTimeout == 45000
+
+
+def test_the_deprecated_problem_spelling_still_overrides_the_environment():
+    env = TimingConfig(
+        multipliers=TimingMultipliers(acToTimeLimit=2.0), inferenceTimeout=25000
+    )
+    pkg = PackageTiming(multipliers=TimingMultipliersOverride(inferenceTimeout=45000))
+    assert resolve_inference_timeout(env, pkg) == 45000
+
+
+def test_the_timing_level_spelling_wins_over_the_deprecated_one():
+    # They cannot be declared together in one file, but a problem raising the cap
+    # the new way must not be undercut by an environment still on the old one.
+    env = TimingConfig(
+        multipliers=TimingMultipliers(acToTimeLimit=2.0, inferenceTimeout=25000)
+    )
+    pkg = PackageTiming(inferenceTimeout=1000)
+    assert resolve_inference_timeout(env, pkg) == 1000
+
+
+def test_declaring_the_cap_twice_in_the_environment_is_an_error():
+    with pytest.raises(ValidationError, match='keep only timing.inferenceTimeout'):
+        TimingConfig(
+            inferenceTimeout=1000,
+            multipliers=TimingMultipliers(acToTimeLimit=2.0, inferenceTimeout=2000),
+        )
+
+
+def test_declaring_the_cap_twice_in_the_problem_is_an_error():
+    with pytest.raises(ValidationError, match='keep only timing.inferenceTimeout'):
+        PackageTiming(
+            inferenceTimeout=1000,
+            multipliers=TimingMultipliersOverride(inferenceTimeout=2000),
+        )
+
+
+def test_a_formula_environment_accepts_a_problem_cap():
+    # The whole point of pulling the field up: raising the cap no longer drags in
+    # a multipliers block the environment does not have.
+    env = TimingConfig(formula='slowest * 2')
+    strategy = resolve_strategy(env, PackageTiming(inferenceTimeout=45000))
+    assert strategy == TimingStrategy(formula='slowest * 2', inferenceTimeout=45000)

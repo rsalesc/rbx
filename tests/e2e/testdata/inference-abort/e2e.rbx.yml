@@ -1,32 +1,31 @@
-# One accepted solution and one hopeless one, under a 500 ms `inferenceTimeout`
-# the hopeless solution cannot possibly meet. It is dropped from the upper
-# bound the moment it hits the cap, so the testcases after that are pure wasted
-# wall clock -- the run stops instead, and the estimate is the same one the
-# accepted solution alone bounds.
+# One accepted solution and one hopeless one. The hopeless solution is not
+# measured at all: once the limit is estimated it is run at the bound that limit
+# demands of it, and the first testcase it fails to finish settles the question
+# -- so the testcases after that are pure wasted wall clock, and the run stops
+# instead.
 scenarios:
-  - name: abort-at-inference-timeout
+  - name: abort-at-upper-bound-check
     description: >
-      `rbx time --auto` stops running a solution once it hits the inference
-      timeout. The first testcase is measured and killed at the cap; every
-      later one resolves to a skipped evaluation without entering the sandbox,
-      and the written limit still comes from the accepted solution.
+      `rbx time --auto` stops running a solution expected to be too slow once it
+      runs out of time at the limit it is checked against. The first testcase is
+      killed at that limit; every later one resolves to a skipped evaluation
+      without entering the sandbox, and the profile records it as confirmed.
     steps:
       - cmd: time --auto
         expect:
           stdout_contains:
-            - 'inference timeout of 500 ms'
-            - 'bounds nothing from above'
+            - 'Run report (upper-bound validation)'
+            - 'is too slow for the estimated time limit, as expected'
           files_exist:
             - '.limits/local.yml'
           file_contains:
             # A multiple of 100ms (timeResolution), bounded from below by the
-            # accepted solution, with the hopeless one dropped from the bound.
-            .limits/local.yml: '/(?ms)^timeLimit: [0-9]*00$.*solution: sols/main\.cpp$.*droppedUpper:.*hopeless\.cpp/'
-            # `.rbx/runs/1` is the second declared solution, sols/hopeless.cpp.
-            # It is killed at the cap on the first testcase...
-            .rbx/runs/1/main/1-gen-000.eval: 'outcome: time-limit-exceeded'
+            # accepted solution, with the hopeless one confirmed rather than
+            # measured -- so it bounds nothing and no upperBound is recorded.
+            .limits/local.yml: '/(?ms)^timeLimit: [0-9]*00$.*solution: sols/main\.cpp$.*confirmed:\s*\n\s*- sols/hopeless\.cpp/'
+            # `.rbx/runs/0` is the only solution of the validation run,
+            # sols/hopeless.cpp. It is killed on the first testcase...
+            .rbx/runs/0/main/1-gen-000.eval: 'outcome: time-limit-exceeded'
             # ...and never runs again: the rest are skipped, not measured.
-            .rbx/runs/1/main/1-gen-001.eval: 'outcome: skipped'
-            .rbx/runs/1/main/1-gen-002.eval: 'outcome: skipped'
-            # The accepted solution is untouched by the other one's abort.
-            .rbx/runs/0/main/1-gen-002.eval: 'outcome: accepted'
+            .rbx/runs/0/main/1-gen-001.eval: 'outcome: skipped'
+            .rbx/runs/0/main/1-gen-002.eval: 'outcome: skipped'

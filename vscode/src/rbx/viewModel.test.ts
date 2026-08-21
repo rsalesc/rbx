@@ -4,7 +4,14 @@ import { test } from 'node:test';
 import type { PackageLayout } from './layout';
 import type { PackageRunView } from './nodes';
 import type { GroupReport, SolutionReport } from './report';
-import type { GroupRun, PackageRun, SolutionRun, TestcaseRun } from './store';
+import type { CompilationEntry } from './model';
+import type {
+  CompilationFinding,
+  GroupRun,
+  PackageRun,
+  SolutionRun,
+  TestcaseRun,
+} from './store';
 import { Row, buildViewModel } from './viewModel';
 
 // The fixtures below transcribe rbx's `outcome-per-group` e2e package: a main
@@ -13,7 +20,6 @@ import { Row, buildViewModel } from './viewModel';
 // naive encoding folds into one red row.
 
 const PKG: PackageLayout = { root: '/w/a' };
-const OTHER: PackageLayout = { root: '/w/b' };
 
 function testcase(stem: string, outcome?: string, over: Partial<TestcaseRun> = {}): TestcaseRun {
   return {
@@ -24,6 +30,7 @@ function testcase(stem: string, outcome?: string, over: Partial<TestcaseRun> = {
     answerPath: '',
     outputPath: '',
     stderrPaths: [],
+    logPath: '',
     interactionPath: '',
     ...over,
   };
@@ -79,12 +86,40 @@ function solution(
   return { solution: { path, index, expectedOutcome }, groups, report };
 }
 
-function run(solutions: readonly SolutionRun[]): PackageRun {
-  return { skeleton: { solutions: [], entries: [], groups: [] }, solutions };
+function run(
+  solutions: readonly SolutionRun[],
+  findings: readonly CompilationFinding[] = [],
+): PackageRun {
+  return {
+    skeleton: { solutions: [], entries: [], groups: [], compilation: [] },
+    solutions,
+    findings,
+  };
 }
 
-function view(solutions: readonly SolutionRun[]): PackageRunView {
-  return { pkg: PKG, run: run(solutions) };
+function view(
+  solutions: readonly SolutionRun[],
+  findings: readonly CompilationFinding[] = [],
+): PackageRunView {
+  return { pkg: PKG, run: run(solutions, findings) };
+}
+
+function finding(
+  path: string,
+  over: Partial<CompilationEntry> = {},
+): CompilationFinding {
+  return {
+    entry: {
+      path,
+      expectedOutcome: 'ACCEPTED',
+      status: 'WARNINGS',
+      log: 'compilation/0.log',
+      warnings: [],
+      ...over,
+    },
+    logPath: `/w/a/.rbx/runs/${over.log ?? 'compilation/0.log'}`,
+    sourcePath: `/w/a/${path}`,
+  };
 }
 
 function rowById(rows: readonly Row[], id: string): Row {
@@ -160,7 +195,7 @@ const MISLABELED = solution(
 );
 
 test('a solution that met its ACCEPTED declaration reads green all the way through', () => {
-  const { rows } = buildViewModel([view([MAIN])]);
+  const { rows } = buildViewModel(view([MAIN]));
   const row = rowById(rows, '/w/a::0');
   assert.strictEqual(row.kind, 'solution');
   assert.strictEqual(row.gutter, 'met');
@@ -175,7 +210,7 @@ test('a solution that met its ACCEPTED declaration reads green all the way throu
 });
 
 test('a solution that failed exactly as declared is not a mismatch', () => {
-  const { rows } = buildViewModel([view([MAIN, PARTIAL])]);
+  const { rows } = buildViewModel(view([MAIN, PARTIAL]));
   const row = rowById(rows, '/w/a::1');
   assert.strictEqual(row.gutter, 'met');
   // The whole point of the change: partial.cpp is *declared* INCORRECT and it
@@ -189,7 +224,7 @@ test('a solution that failed exactly as declared is not a mismatch', () => {
 });
 
 test('a solution caught only per-group blames the per-group layer, not the pooled one', () => {
-  const { rows } = buildViewModel([view([MAIN, PARTIAL, MISLABELED])]);
+  const { rows } = buildViewModel(view([MAIN, PARTIAL, MISLABELED]));
   const row = rowById(rows, '/w/a::2');
   assert.strictEqual(row.gutter, 'missed');
   assert.strictEqual(row.mismatch, true);
@@ -233,7 +268,7 @@ test('a solution caught by its pooled declaration blames that one, and no group'
       pooledMatchesExpectation: false,
     }),
   );
-  const { rows } = buildViewModel([view([optimistic])]);
+  const { rows } = buildViewModel(view([optimistic]));
   assert.deepStrictEqual(rowById(rows, '/w/a::0').detail?.mismatch, {
     pooled: { declared: 'AC', declaredHue: 'green', observed: 'WA', observedHue: 'red' },
     // Not named as held: it is the layer that failed.
@@ -259,7 +294,7 @@ test('a report from an rbx with no pooled flag still blames the right layer', ()
       matchesExpectation: false,
     }),
   );
-  const { rows } = buildViewModel([view([stale])]);
+  const { rows } = buildViewModel(view([stale]));
   assert.strictEqual(rowById(rows, '/w/a::0').detail?.mismatch?.pooled?.declared, 'AC');
 });
 
@@ -281,7 +316,7 @@ test('a solution that only missed its score range says so, and accuses no verdic
       expectedScore: [40, 60],
     }),
   );
-  const { rows } = buildViewModel([view([scored])]);
+  const { rows } = buildViewModel(view([scored]));
   const mismatch = rowById(rows, '/w/a::0').detail?.mismatch;
   assert.strictEqual(mismatch?.pooled, undefined);
   assert.deepStrictEqual(mismatch?.score, {
@@ -307,12 +342,12 @@ test('an open-ended score range is not given a ceiling rbx never declared', () =
       expectedScore: [40, 1e9],
     }),
   );
-  const { rows } = buildViewModel([view([scored])]);
+  const { rows } = buildViewModel(view([scored]));
   assert.strictEqual(rowById(rows, '/w/a::0').detail?.mismatch?.score?.expected, '40..');
 });
 
 test('only the solution that missed its declaration is counted', () => {
-  const model = buildViewModel([view([MAIN, PARTIAL, MISLABELED])]);
+  const model = buildViewModel(view([MAIN, PARTIAL, MISLABELED]));
   assert.strictEqual(model.mismatches, 1);
   assert.strictEqual(model.empty, false);
 });
@@ -320,7 +355,7 @@ test('only the solution that missed its declaration is counted', () => {
 test('an undeclared or ANY expectation leaves the gutter alone', () => {
   const undeclared = solution(0, 'sols/x.cpp', undefined, [], solutionReport({ index: 0 }));
   const any = solution(1, 'sols/y.cpp', 'ANY', [], solutionReport({ index: 1 }));
-  const { rows } = buildViewModel([view([undeclared, any])]);
+  const { rows } = buildViewModel(view([undeclared, any]));
   assert.strictEqual(rowById(rows, '/w/a::0').gutter, 'none');
   assert.strictEqual(rowById(rows, '/w/a::0').labelHue, undefined);
   assert.strictEqual(rowById(rows, '/w/a::0').labelBold, false);
@@ -331,7 +366,7 @@ test('a solution still running has no gutter and never spells a verdict in its m
   const pending = solution(0, 'sols/main.cpp', 'ACCEPTED', [
     group('main', [testcase('000', 'accepted'), testcase('001')]),
   ]);
-  const { rows } = buildViewModel([view([pending])]);
+  const { rows } = buildViewModel(view([pending]));
   const row = rowById(rows, '/w/a::0');
   assert.strictEqual(row.gutter, 'none');
   assert.strictEqual(row.mismatch, false);
@@ -347,7 +382,7 @@ test('a solution still running has no gutter and never spells a verdict in its m
 });
 
 test('a solution with no testcases at all reads as pending', () => {
-  const { rows } = buildViewModel([view([solution(0, 'sols/main.cpp', 'ACCEPTED', [])])]);
+  const { rows } = buildViewModel(view([solution(0, 'sols/main.cpp', 'ACCEPTED', [])]));
   assert.deepStrictEqual(
     rowById(rows, '/w/a::0').meta.map((span) => span.text),
     ['pending'],
@@ -362,7 +397,7 @@ test('a finished solution shows score, time and memory but never its verdict', (
     [group('main', [testcase('000', 'accepted')], groupReport())],
     solutionReport({ score: 70, maxScore: 100, maxTime: 0.12, maxMemory: 2048 }),
   );
-  const { rows } = buildViewModel([view([finished])]);
+  const { rows } = buildViewModel(view([finished]));
   const row = rowById(rows, '/w/a::0');
   // Roles included, and in this order: the stylesheet hides a *suffix* of this
   // line as the sidebar narrows, so the order is the priority and the score
@@ -387,7 +422,7 @@ test('the score is hued like the console hues it: full green, zero red', () => {
       [],
       solutionReport({ score, maxScore: 100 }),
     );
-    const { rows } = buildViewModel([view([run])]);
+    const { rows } = buildViewModel(view([run]));
     const row = rowById(rows, '/w/a::0');
     // The meta line and the card must agree: they are the same score twice,
     // and a row whose `[0/100]` is red above a card whose `[0/100]` is not
@@ -420,7 +455,7 @@ test('only a group with its own outcomePerGroup declaration gets a gutter', () =
     ],
     solutionReport({ expectedOutcome: 'INCORRECT', outcome: 'wrong-answer' }),
   );
-  const { rows } = buildViewModel([view([declared])]);
+  const { rows } = buildViewModel(view([declared]));
   const small = rowById(rows, '/w/a::0::small');
   const big = rowById(rows, '/w/a::0::big');
   assert.strictEqual(small.gutter, 'none');
@@ -443,7 +478,7 @@ test('only a group with its own outcomePerGroup declaration gets a gutter', () =
   assert.strictEqual(small.expectation, undefined);
   assert.strictEqual(small.labelHue, undefined);
   // Group mismatches are not solution mismatches.
-  assert.strictEqual(buildViewModel([view([declared])]).mismatches, 0);
+  assert.strictEqual(buildViewModel(view([declared])).mismatches, 0);
 });
 
 test('a group inherits nothing from a solution declaring ANY, and neither does the row', () => {
@@ -454,7 +489,7 @@ test('a group inherits nothing from a solution declaring ANY, and neither does t
     [group('small', [testcase('000', 'accepted')], groupReport({ name: 'small' }))],
     solutionReport({ expectedOutcome: 'ANY' }),
   );
-  const { rows } = buildViewModel([view([any])]);
+  const { rows } = buildViewModel(view([any]));
   // ANY is how a setter declares nothing, so it earns no chip -- the same rule
   // the gutter already applied.
   assert.strictEqual(rowById(rows, '/w/a::0').expectation, undefined);
@@ -471,7 +506,7 @@ test('the histogram is ordered by count, ties by outcome name', () => {
       testcase('004'),
     ]),
   ], solutionReport({ outcome: 'wrong-answer', matchesExpectation: false }));
-  const { rows } = buildViewModel([view([many])]);
+  const { rows } = buildViewModel(view([many]));
   assert.deepStrictEqual(rowById(rows, '/w/a::0').detail?.histogram, [
     { short: 'WA', hue: 'red', count: 2 },
     { short: 'AC', hue: 'green', count: 1 },
@@ -479,22 +514,28 @@ test('the histogram is ordered by count, ties by outcome name', () => {
   ]);
 });
 
-test('a testcase opens the diff when it failed and the input otherwise', () => {
+test('every testcase opens the panes, whatever it did', () => {
   const mixed = solution(0, 'sols/main.cpp', 'ACCEPTED', [
     group('main', [testcase('000', 'accepted'), testcase('001', 'wrong-answer'), testcase('002')]),
   ]);
-  const { rows } = buildViewModel([view([mixed])]);
-  assert.strictEqual(rowById(rows, '/w/a::0::main::000').primaryCommand, 'rbx.openInput');
-  assert.strictEqual(rowById(rows, '/w/a::0::main::001').primaryCommand, 'rbx.diffOutput');
-  // No evaluation yet: there is nothing to diff against.
-  assert.strictEqual(rowById(rows, '/w/a::0::main::002').primaryCommand, 'rbx.openInput');
+  const { rows } = buildViewModel(view([mixed]));
+  // One gesture, not three. Which channel the second pane lands on is the
+  // opener's sticky state -- a row that picked a command by outcome would reset
+  // it every time the selection moved, which is exactly what makes the switch
+  // useless for comparing one channel across several tests.
+  for (const stem of ['000', '001', '002']) {
+    assert.strictEqual(
+      rowById(rows, `/w/a::0::main::${stem}`).primaryCommand,
+      'rbx.openTestcase',
+    );
+  }
 });
 
 test('a solution opens its source, and a group opens nothing', () => {
   const one = solution(0, 'sols/main.cpp', 'ACCEPTED', [
     group('main', [testcase('000', 'accepted')]),
   ]);
-  const { rows } = buildViewModel([view([one])]);
+  const { rows } = buildViewModel(view([one]));
   assert.strictEqual(rowById(rows, '/w/a::0').primaryCommand, 'rbx.openSolution');
   // A group is a heading over testcases; there is no file behind it to open.
   assert.strictEqual(rowById(rows, '/w/a::0::main').primaryCommand, undefined);
@@ -508,7 +549,7 @@ test('a testcase shows time and memory, and not the checker message', () => {
       }),
     ]),
   ]);
-  const { rows } = buildViewModel([view([one])]);
+  const { rows } = buildViewModel(view([one]));
   const row = rowById(rows, '/w/a::0::main::000');
   // The whole array, so a checker's free-form line cannot creep back into a
   // 22px row and push the timings out of it.
@@ -522,7 +563,7 @@ test('a testcase shows time and memory, and not the checker message', () => {
 });
 
 test('the search haystack carries the verdict, and mismatch only when missed', () => {
-  const { rows } = buildViewModel([view([MAIN, PARTIAL, MISLABELED])]);
+  const { rows } = buildViewModel(view([MAIN, PARTIAL, MISLABELED]));
   // `ac` once, not twice: on a healthy solution the declaration and the verdict
   // are the same word.
   assert.strictEqual(rowById(rows, '/w/a::0').search, 'sols/main.cpp ac');
@@ -538,59 +579,50 @@ test('the search haystack carries the verdict, and mismatch only when missed', (
 });
 
 test('a package with no run on disk produces an empty model', () => {
-  const model = buildViewModel([{ pkg: PKG, run: undefined }]);
+  const model = buildViewModel({ pkg: PKG, run: undefined });
+  assert.deepStrictEqual(model.rows, []);
+  assert.strictEqual(model.empty, true);
+  assert.strictEqual(model.mismatches, 0);
+});
+
+test('a run that covered no solution is empty too', () => {
+  // A different thing from no run at all, and the one the view actually meets
+  // while a run is starting: `skeleton.yml` is written before the first
+  // solution resolves, so the report is readable and lists nothing.
+  const model = buildViewModel(view([]));
   assert.deepStrictEqual(model.rows, []);
   assert.strictEqual(model.empty, true);
   assert.strictEqual(model.mismatches, 0);
 });
 
 test('a lone solution opens by default; one of several does not', () => {
-  const solo = buildViewModel([view([MAIN])]);
+  const solo = buildViewModel(view([MAIN]));
   const soloRow = rowById(solo.rows, '/w/a::0');
   assert.strictEqual(soloRow.expandable, true);
   assert.strictEqual(soloRow.defaultExpanded, true);
 
-  const many = buildViewModel([view([MAIN, PARTIAL])]);
+  const many = buildViewModel(view([MAIN, PARTIAL]));
   assert.strictEqual(rowById(many.rows, '/w/a::0').defaultExpanded, false);
   assert.strictEqual(rowById(many.rows, '/w/a::0::main').defaultExpanded, true);
   assert.strictEqual(rowById(many.rows, '/w/a::0::main::000').expandable, false);
 });
 
-test('depth and parentId follow the level the walk actually emitted', () => {
-  const single = buildViewModel([view([MAIN])]);
+test('a solution starts at depth 0, and every child names the row above it', () => {
+  // Depth 0 for the solution is the whole of what dropping the package level
+  // bought: the selector says which package this is, so nothing indents under
+  // it and there is no offset to derive from the walk.
+  const { rows } = buildViewModel(view([MAIN, PARTIAL]));
   assert.deepStrictEqual(
-    single.rows.map((row) => [row.id, row.depth, row.parentId]),
+    rows.map((row) => [row.id, row.kind, row.depth, row.parentId]),
     [
-      ['/w/a::0', 0, undefined],
-      ['/w/a::0::main', 1, '/w/a::0'],
-      ['/w/a::0::main::000', 2, '/w/a::0::main'],
+      ['/w/a::0', 'solution', 0, undefined],
+      ['/w/a::0::main', 'group', 1, '/w/a::0'],
+      ['/w/a::0::main::000', 'testcase', 2, '/w/a::0::main'],
+      ['/w/a::1', 'solution', 0, undefined],
+      ['/w/a::1::big', 'group', 1, '/w/a::1'],
+      ['/w/a::1::big::001', 'testcase', 2, '/w/a::1::big'],
     ],
   );
-
-  const two = buildViewModel([view([MAIN]), { pkg: OTHER, run: run([MAIN]) }]);
-  assert.deepStrictEqual(
-    two.rows.map((row) => [row.id, row.kind, row.depth, row.parentId]),
-    [
-      ['/w/a', 'package', 0, undefined],
-      ['/w/a::0', 'solution', 1, '/w/a'],
-      ['/w/a::0::main', 'group', 2, '/w/a::0'],
-      ['/w/a::0::main::000', 'testcase', 3, '/w/a::0::main'],
-      ['/w/b', 'package', 0, undefined],
-      ['/w/b::0', 'solution', 1, '/w/b'],
-      ['/w/b::0::main', 'group', 2, '/w/b::0'],
-      ['/w/b::0::main::000', 'testcase', 3, '/w/b::0::main'],
-    ],
-  );
-});
-
-test('a package row is labelled by its directory and carries no verdict', () => {
-  const { rows } = buildViewModel([view([MAIN]), { pkg: OTHER, run: run([MAIN]) }]);
-  const row = rowById(rows, '/w/a');
-  assert.strictEqual(row.label, 'a');
-  assert.strictEqual(row.verdict, undefined);
-  assert.strictEqual(row.gutter, 'none');
-  assert.strictEqual(row.section, 'rbx.package');
-  assert.strictEqual(row.defaultExpanded, true);
 });
 
 // `rbx.solutionLabel`. The styles themselves are pinned in solutionLabel.test.ts;
@@ -607,7 +639,7 @@ const NESTED = solution(3, 'sols/slow/tle.cpp', 'INCORRECT', [], solutionReport(
 test('the label style picks how much of a solution path a row shows', () => {
   const solutions = [MAIN, PARTIAL, NESTED];
   const labelsOf = (style: Parameters<typeof buildViewModel>[1]): string[] =>
-    buildViewModel([view(solutions)], style)
+    buildViewModel(view(solutions), style)
       .rows.filter((row) => row.kind === 'solution')
       .map((row) => row.label);
 
@@ -622,31 +654,29 @@ test('the label style picks how much of a solution path a row shows', () => {
   assert.deepStrictEqual(labelsOf(undefined), labelsOf('trimmed'));
 });
 
-test('each package trims by the prefix its own solutions share', () => {
-  const elsewhere = solution(0, 'other/dir/x.cpp', 'ACCEPTED', [], solutionReport({
+test('trimming is computed over this package alone', () => {
+  const elsewhere = solution(1, 'other/dir/x.cpp', 'ACCEPTED', [], solutionReport({
     path: 'other/dir/x.cpp',
+    index: 1,
   }));
-  const { rows } = buildViewModel(
-    [view([MAIN, PARTIAL]), { pkg: OTHER, run: run([elsewhere]) }],
-    'trimmed',
-  );
-  // `/w/b`'s lone solution lives nowhere near `sols/`, and that costs `/w/a`
-  // nothing: a shared prefix computed across both packages would be empty.
-  assert.strictEqual(rowById(rows, '/w/a::0').label, 'main.cpp');
-  assert.strictEqual(rowById(rows, '/w/a::1').label, 'partial.cpp');
-  assert.strictEqual(rowById(rows, '/w/b::0').label, 'x.cpp');
+  // A sibling package keeping its solutions somewhere unusual can no longer
+  // reach this model at all -- only the selected package's solutions decide
+  // what the prefix is, and here they share nothing, so nothing is dropped.
+  const { rows } = buildViewModel(view([MAIN, elsewhere]), 'trimmed');
+  assert.strictEqual(rowById(rows, '/w/a::0').label, 'sols/main.cpp');
+  assert.strictEqual(rowById(rows, '/w/a::1').label, 'other/dir/x.cpp');
 });
 
 test('a shortened label keeps the whole path for the tooltip', () => {
-  const { rows } = buildViewModel([view([MAIN, PARTIAL])], 'basename');
+  const { rows } = buildViewModel(view([MAIN, PARTIAL]), 'basename');
   assert.strictEqual(rowById(rows, '/w/a::0').labelTitle, 'sols/main.cpp');
   // Nothing was dropped, so there is nothing for a tooltip to add.
-  const full = buildViewModel([view([MAIN, PARTIAL])], 'full');
+  const full = buildViewModel(view([MAIN, PARTIAL]), 'full');
   assert.strictEqual(rowById(full.rows, '/w/a::0').labelTitle, undefined);
 });
 
 test('the filter matches the full path whatever the label shows', () => {
-  const { rows } = buildViewModel([view([MAIN, PARTIAL])], 'basename');
+  const { rows } = buildViewModel(view([MAIN, PARTIAL]), 'basename');
   assert.strictEqual(rowById(rows, '/w/a::0').search, 'sols/main.cpp ac');
   assert.strictEqual(rowById(rows, '/w/a::1').search, 'sols/partial.cpp wa incorrect');
 });
@@ -686,7 +716,7 @@ const BORDERLINE_SLOW = solution(
 );
 
 test('a solution that only fit in double TL is warned about while still matching', () => {
-  const { rows } = buildViewModel([view([BORDERLINE_SLOW])]);
+  const { rows } = buildViewModel(view([BORDERLINE_SLOW]));
   const row = rowById(rows, '/w/a::0');
 
   // The gutter says warned, not missed: the declaration held, and `mismatch`
@@ -701,13 +731,13 @@ test('a solution that only fit in double TL is warned about while still matching
 });
 
 test('a solution warning names the groups it came from', () => {
-  const { rows } = buildViewModel([view([BORDERLINE_SLOW])]);
+  const { rows } = buildViewModel(view([BORDERLINE_SLOW]));
   const row = rowById(rows, '/w/a::0');
   assert.deepStrictEqual(row.warnings[0].groups, ['big']);
 });
 
 test('a group carries its own warning, with no attribution to repeat', () => {
-  const { rows } = buildViewModel([view([BORDERLINE_SLOW])]);
+  const { rows } = buildViewModel(view([BORDERLINE_SLOW]));
   assert.deepStrictEqual(rowById(rows, '/w/a::0::small').warnings, []);
   const big = rowById(rows, '/w/a::0::big');
   assert.strictEqual(big.gutter, 'warned');
@@ -740,7 +770,7 @@ test('the two double-TL facts stay independent rather than merging', () => {
       ],
     }),
   );
-  const row = rowById(buildViewModel([view([both])]).rows, '/w/a::0');
+  const row = rowById(buildViewModel(view([both])).rows, '/w/a::0');
 
   assert.deepStrictEqual(
     row.warnings.map((warning) => warning.kind),
@@ -756,26 +786,26 @@ test('the two double-TL facts stay independent rather than merging', () => {
 });
 
 test('a warned solution is counted apart from a mismatched one', () => {
-  const { mismatches, warned } = buildViewModel([view([MAIN, BORDERLINE_SLOW])]);
+  const { mismatches, warned } = buildViewModel(view([MAIN, BORDERLINE_SLOW]));
   // A run where every declaration held still has something to report.
   assert.strictEqual(mismatches, 0);
   assert.strictEqual(warned, 1);
 });
 
 test('a testcase is never warned: the fact is decided a layer above it', () => {
-  const { rows } = buildViewModel([view([BORDERLINE_SLOW])]);
+  const { rows } = buildViewModel(view([BORDERLINE_SLOW]));
   assert.deepStrictEqual(rowById(rows, '/w/a::0::big::001').warnings, []);
 });
 
 test('a warned row is reachable by filtering for it', () => {
-  const { rows } = buildViewModel([view([BORDERLINE_SLOW])]);
+  const { rows } = buildViewModel(view([BORDERLINE_SLOW]));
   const search = rowById(rows, '/w/a::0').search;
   assert.ok(search.includes('warning'));
   assert.ok(search.includes('double-tl'));
 });
 
 test('a solution rbx did not warn about carries no warnings', () => {
-  const { rows, warned } = buildViewModel([view([MAIN])]);
+  const { rows, warned } = buildViewModel(view([MAIN]));
   assert.deepStrictEqual(rowById(rows, '/w/a::0').warnings, []);
   assert.strictEqual(rowById(rows, '/w/a::0').gutter, 'met');
   assert.strictEqual(warned, 0);
@@ -796,7 +826,7 @@ test('a solution that both missed and warned draws the miss', () => {
       runUnderDoubleTl: true,
     }),
   );
-  const { rows, mismatches, warned } = buildViewModel([view([both])]);
+  const { rows, mismatches, warned } = buildViewModel(view([both]));
   const row = rowById(rows, '/w/a::0');
 
   assert.strictEqual(row.gutter, 'missed');
@@ -836,7 +866,7 @@ const HIDDEN_WA = solution(
 );
 
 test('a testcase shows the verdict a soft TLE hid, beside the one it got', () => {
-  const { rows } = buildViewModel([view([HIDDEN_WA])]);
+  const { rows } = buildViewModel(view([HIDDEN_WA]));
   const leaf = rowById(rows, '/w/a::0::big::001');
 
   assert.strictEqual(leaf.verdict?.short, 'TLE');
@@ -847,7 +877,7 @@ test('a testcase shows the verdict a soft TLE hid, beside the one it got', () =>
 });
 
 test('a testcase with no hidden verdict shows only what it got', () => {
-  const { rows } = buildViewModel([view([HIDDEN_WA])]);
+  const { rows } = buildViewModel(view([HIDDEN_WA]));
   assert.strictEqual(rowById(rows, '/w/a::0::big::000').verdict?.under, undefined);
 });
 
@@ -872,7 +902,7 @@ test('a hidden verdict rbx did not flag is not shown', () => {
     ],
     solutionReport({ expectedOutcome: 'INCORRECT', outcome: 'time-limit-exceeded' }),
   );
-  const { rows } = buildViewModel([view([quiet])]);
+  const { rows } = buildViewModel(view([quiet]));
   assert.strictEqual(rowById(rows, '/w/a::0::big::000').verdict?.under, undefined);
 });
 
@@ -886,12 +916,12 @@ test('a hidden verdict is not shown before its group has a report', () => {
       }),
     ]),
   ]);
-  const { rows } = buildViewModel([view([pending])]);
+  const { rows } = buildViewModel(view([pending]));
   assert.strictEqual(rowById(rows, '/w/a::0::big::000').verdict?.under, undefined);
 });
 
 test('the hidden verdict joins the row it is on in the filter', () => {
-  const { rows } = buildViewModel([view([HIDDEN_WA])]);
+  const { rows } = buildViewModel(view([HIDDEN_WA]));
   // Typing `wa` has to find the testcases where a soft TLE hid one; they are
   // exactly the rows a WA filter would otherwise miss.
   assert.ok(rowById(rows, '/w/a::0::big::001').search.includes('wa'));
@@ -900,7 +930,254 @@ test('the hidden verdict joins the row it is on in the filter', () => {
 test('only leaves carry a hidden verdict', () => {
   // It is a fact about one run of one testcase. A group or a solution that
   // aggregated them would be inventing a verdict nothing produced.
-  const { rows } = buildViewModel([view([HIDDEN_WA])]);
+  const { rows } = buildViewModel(view([HIDDEN_WA]));
   assert.strictEqual(rowById(rows, '/w/a::0').verdict?.under, undefined);
   assert.strictEqual(rowById(rows, '/w/a::0::big').verdict?.under, undefined);
+});
+
+// --- Compilation findings ----------------------------------------------------
+
+test('a run that compiled cleanly has no findings at all', () => {
+  // Absent, not empty: the panel's presence in the view is itself the signal,
+  // so a package with nothing to report must not carry a header saying so.
+  assert.strictEqual(buildViewModel(view([MAIN])).findings, undefined);
+});
+
+test('a solution that failed to compile is reported though it is in no row', () => {
+  // The whole point. rbx filters it out of the skeleton's `solutions` before
+  // the run starts, so `rows` cannot know it exists.
+  const model = buildViewModel(
+    view([MAIN], [finding('sols/broken.cpp', { status: 'FAILED', log: 'compilation/0.log' })]),
+  );
+  assert.ok(!model.rows.some((row) => row.label.includes('broken')));
+  const findings = model.findings;
+  assert.ok(findings !== undefined);
+  assert.strictEqual(findings.rows.length, 1);
+  assert.strictEqual(findings.rows[0].severity, 'error');
+  assert.strictEqual(findings.rows[0].summary, 'CE');
+});
+
+test('the badge counts rows and reddens as soon as one failed to compile', () => {
+  const model = buildViewModel(
+    view(
+      [MAIN],
+      [
+        finding('sols/warned.cpp', {
+          warnings: [{ file: 'sols/x.cpp', line: 4, flag: '-Wsign-compare', msg: 'comparison' }],
+        }),
+        finding('sols/broken.cpp', { status: 'FAILED' }),
+      ],
+    ),
+  );
+  // Rows, not warnings: the badge has to agree with what opening it shows.
+  assert.strictEqual(model.findings?.badge, 2);
+  assert.strictEqual(model.findings?.hue, 'red');
+  assert.strictEqual(model.findings?.errors, true);
+});
+
+test('a warnings-only run stays yellow and does not ask to be opened', () => {
+  const model = buildViewModel(
+    view(
+      [MAIN],
+      [finding('sols/warned.cpp', { warnings: [{ file: 'sols/x.cpp', line: 4, msg: 'comparison' }] })],
+    ),
+  );
+  assert.strictEqual(model.findings?.hue, 'yellow');
+  assert.strictEqual(model.findings?.errors, false);
+});
+
+test('the summary counts warnings, singular when there is one', () => {
+  const model = buildViewModel(
+    view(
+      [MAIN],
+      [
+        finding('sols/one.cpp', { warnings: [{ file: 'sols/x.cpp', line: 4, msg: 'a' }] }),
+        finding('sols/three.cpp', {
+          warnings: [
+            { file: 'sols/x.cpp', line: 4, msg: 'a' },
+            { file: 'sols/x.cpp', line: 5, msg: 'b' },
+            { file: 'sols/x.cpp', line: 6, msg: 'c' },
+          ],
+        }),
+      ],
+    ),
+  );
+  assert.deepStrictEqual(
+    model.findings?.rows.map((row) => row.summary),
+    ['1 warn', '3 warns'],
+  );
+});
+
+test('a finding row is hued by what its solution declared, not by severity', () => {
+  // The label is the identity channel here as it is in the tree, so a row in
+  // the panel and the same row above it are recognisably the same solution.
+  // Severity has the gutter and the wash to itself.
+  const model = buildViewModel(
+    view(
+      [MAIN],
+      [finding('sols/wa.cpp', { status: 'FAILED', expectedOutcome: 'WRONG_ANSWER' })],
+    ),
+  );
+  assert.strictEqual(model.findings?.rows[0].labelHue, 'red');
+  assert.strictEqual(model.findings?.rows[0].labelBold, false);
+  assert.strictEqual(model.findings?.rows[0].severity, 'error');
+});
+
+test('a finding label is trimmed against the solutions it sits with', () => {
+  // Labelled on its own, a solution absent from `solutions` would be trimmed
+  // against a different prefix from every row above it.
+  const model = buildViewModel(view([MAIN], [finding('sols/broken.cpp')]), 'trimmed');
+  assert.strictEqual(model.findings?.rows[0].label, 'broken.cpp');
+  assert.strictEqual(model.findings?.rows[0].labelTitle, 'sols/broken.cpp');
+});
+
+test('a warning carries its position and flag, and its message only as a title', () => {
+  const model = buildViewModel(
+    view(
+      [MAIN],
+      [
+        finding('sols/warned.cpp', {
+          warnings: [
+            { file: 'sols/x.cpp', line: 41, flag: '-Wsign-compare', msg: 'comparison of integer expressions' },
+            { file: 'sols/x.cpp', line: 88, msg: 'unflagged something' },
+          ],
+        }),
+      ],
+    ),
+  );
+  const warnings = model.findings?.rows[0].warnings ?? [];
+  assert.deepStrictEqual(
+    warnings.map((warning) => [warning.line, warning.flag]),
+    [
+      [41, '-Wsign-compare'],
+      [88, ''],
+    ],
+  );
+  assert.strictEqual(warnings[0].title, 'comparison of integer expressions');
+});
+
+test('the signature changes when a warning becomes an error', () => {
+  // What the client compares to decide the panel should open again. Identity
+  // alone would let the same file turn from warned to broken unannounced.
+  const warned = buildViewModel(view([MAIN], [finding('sols/x.cpp')]));
+  const failed = buildViewModel(view([MAIN], [finding('sols/x.cpp', { status: 'FAILED' })]));
+  assert.notStrictEqual(warned.findings?.signature, failed.findings?.signature);
+});
+
+test('the signature is stable across re-posts of the same run', () => {
+  const first = buildViewModel(view([MAIN], [finding('sols/x.cpp')]));
+  const second = buildViewModel(view([MAIN], [finding('sols/x.cpp')]));
+  assert.strictEqual(first.findings?.signature, second.findings?.signature);
+});
+
+test('a run where nothing compiled is empty and still reports', () => {
+  // The view is empty *and* has everything to say -- the case that used to show
+  // a bare "no run found".
+  const model = buildViewModel(view([], [finding('sols/broken.cpp', { status: 'FAILED' })]));
+  assert.strictEqual(model.empty, true);
+  assert.strictEqual(model.findings?.rows.length, 1);
+});
+
+// The card, built here so the renderer is handed facts rather than decisions.
+// Both of these were parsed out of every run already and shown nowhere: the
+// checker's message and where the testcase came from.
+
+test('a testcase carries the checker message its row cannot hold', () => {
+  const failing = solution(0, 'sols/wa.cpp', 'WRONG_ANSWER', [
+    group('main', [
+      testcase('000', 'wrong-answer', {
+        evaluation: {
+          outcome: 'wrong-answer',
+          message: 'wrong answer, expected 14, found 12',
+        },
+      }),
+    ]),
+  ]);
+  const { rows } = buildViewModel(view([failing]));
+  const row = rowById(rows, '/w/a::0::main::000');
+  assert.strictEqual(row.card?.title, 'main/000');
+  assert.strictEqual(row.card?.checker, 'wrong answer, expected 14, found 12');
+  // And still not on the row itself, which is 22px tall and already spending
+  // its width on the timings.
+  assert.ok(!row.meta.some((span) => span.text.includes('wrong answer')));
+});
+
+test('a checker that never ran leaves the card without a message', () => {
+  // A hard TLE never reached the checker, and neither has a testcase whose
+  // evaluation has not landed yet. Both read as "nothing to say" rather than as
+  // an empty message.
+  const slow = solution(0, 'sols/tle.cpp', 'TIME_LIMIT_EXCEEDED', [
+    group('main', [
+      testcase('000', 'time-limit-exceeded'),
+      testcase('001', 'wrong-answer', { evaluation: { outcome: 'wrong-answer', message: '' } }),
+      testcase('002'),
+    ]),
+  ]);
+  const { rows } = buildViewModel(view([slow]));
+  for (const stem of ['000', '001', '002']) {
+    assert.strictEqual(rowById(rows, `/w/a::0::main::${stem}`).card?.checker, undefined);
+  }
+});
+
+test('provenance names the generator call, and opens only what is a real file', () => {
+  const generated = solution(0, 'sols/main.cpp', 'ACCEPTED', [
+    group('main', [
+      testcase('000', 'accepted', {
+        entry: {
+          group: 'main',
+          index: 0,
+          generatorName: 'gen_random',
+          generatorArgs: '5 3 --seed=7',
+          generatorScript: 'gens/script.txt',
+          generatorScriptLine: 12,
+        },
+      }),
+    ]),
+  ]);
+  const { rows } = buildViewModel(view([generated]));
+  assert.deepStrictEqual(rowById(rows, '/w/a::0::main::000').card?.origins, [
+    {
+      // The arguments come with the name: every test in a group is usually the
+      // same generator at different sizes, and the arguments are what tell them
+      // apart. A generator *name* is not a path, so there is nothing to open.
+      text: 'gen_random 5 3 --seed=7',
+      title: 'Generated by gen_random 5 3 --seed=7',
+    },
+    {
+      // rbx records a script entry as a real `path:line`, so this one opens.
+      text: 'gens/script.txt:12',
+      open: 'rbx.openGeneratorScript',
+      title: 'Generated from gens/script.txt:12',
+    },
+  ]);
+});
+
+test('a copied testcase says where it was copied from, and opens it', () => {
+  const copied = solution(0, 'sols/main.cpp', 'ACCEPTED', [
+    group('samples', [
+      testcase('000', 'accepted', {
+        entry: { group: 'samples', index: 0, copiedFrom: 'tests/manual/01.in' },
+      }),
+    ]),
+  ]);
+  const { rows } = buildViewModel(view([copied]));
+  assert.deepStrictEqual(rowById(rows, '/w/a::0::samples::000').card?.origins, [
+    {
+      text: 'tests/manual/01.in',
+      open: 'rbx.openCopiedFrom',
+      title: 'Copied from tests/manual/01.in',
+    },
+  ]);
+});
+
+test('only testcases carry a card', () => {
+  // The card describes one testcase. A solution row has its own detail card,
+  // and a group row is a heading with no artifacts behind it at all.
+  const one = solution(0, 'sols/main.cpp', 'ACCEPTED', [
+    group('main', [testcase('000', 'accepted')]),
+  ]);
+  const { rows } = buildViewModel(view([one]));
+  assert.strictEqual(rowById(rows, '/w/a::0').card, undefined);
+  assert.strictEqual(rowById(rows, '/w/a::0::main').card, undefined);
+  assert.notStrictEqual(rowById(rows, '/w/a::0::main::000').card, undefined);
 });

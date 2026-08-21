@@ -32,7 +32,12 @@ def _formula(formula: str) -> TimingStrategy:
 
 
 def _multipliers(**kwargs) -> TimingStrategy:
-    return TimingStrategy(multipliers=TimingMultipliers(**kwargs))
+    # `inferenceTimeout` belongs to the strategy, not to the ratios.
+    inference_timeout = kwargs.pop('inferenceTimeout', None)
+    strategy_kwargs = (
+        {} if inference_timeout is None else {'inferenceTimeout': inference_timeout}
+    )
+    return TimingStrategy(multipliers=TimingMultipliers(**kwargs), **strategy_kwargs)
 
 
 def _measured_groups(profile_kwargs) -> Dict[int, GroupMeasurements]:
@@ -264,27 +269,27 @@ def test_slowest_and_fastest_slow_solutions_are_recorded():
     assert 'sols/hopeless.cpp' not in message
 
 
-def test_dropped_upper_solutions_do_not_bound_the_limit():
+def test_confirmed_slow_solutions_do_not_bound_the_limit():
     profile = build_timing_profile(
         timing_per_solution_per_language={'cpp': {'sols/ac.cpp': 400}},
         strategy=_multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
         slow_timing_per_solution_per_language={'cpp': {'sols/tle.cpp': 6000}},
-        dropped_upper_per_language={'cpp': ['sols/hopeless.cpp']},
+        confirmed_upper_per_language={'cpp': ['sols/hopeless.cpp']},
         env_groups=[],
         all_languages=['cpp'],
     )
     assert profile.timeLimit == 800
 
 
-def test_a_group_whose_slow_solutions_were_all_dropped_keeps_the_dropped_list():
-    # The group bounds nothing from above, but the drop still has to be
+def test_a_group_whose_slow_solutions_were_all_confirmed_keeps_them_listed():
+    # The group bounds nothing from above, but the outcome still has to be
     # attributable to it -- reconstructing that later from the per-language map
     # would duplicate the pooling this layer exists to do.
     profile_kwargs = dict(
         timing_per_solution_per_language={'cpp': {'sols/ac.cpp': 400}},
         strategy=_multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
         slow_timing_per_solution_per_language={},
-        dropped_upper_per_language={'cpp': ['sols/hopeless.cpp']},
+        confirmed_upper_per_language={'cpp': ['sols/hopeless.cpp']},
         env_groups=[],
         all_languages=['cpp'],
     )
@@ -293,17 +298,17 @@ def test_a_group_whose_slow_solutions_were_all_dropped_keeps_the_dropped_list():
     upper = _measured_groups(profile_kwargs)[0].upper
     assert upper is not None
     assert upper.fastest_slow is None
-    assert upper.dropped_upper == ['sols/hopeless.cpp']
+    assert upper.confirmed_upper == ['sols/hopeless.cpp']
 
 
-def test_a_language_with_only_dropped_slow_solutions_still_forms_a_group():
-    # python has no measurement at all, only a dropped slow solution: its group
-    # must not be skipped, or the drop would be lost.
+def test_a_language_with_only_confirmed_slow_solutions_still_forms_a_group():
+    # python has no measurement at all, only a confirmed slow solution: its group
+    # must not be skipped, or the outcome would be lost.
     measured = _measured_groups(
         dict(
             timing_per_solution_per_language={'cpp': {'sols/ac.cpp': 400}},
             strategy=_multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
-            dropped_upper_per_language={'python': ['sols/hopeless.py']},
+            confirmed_upper_per_language={'python': ['sols/hopeless.py']},
             env_groups=[],
             all_languages=['cpp', 'python'],
             repartition={'cpp': 1, 'python': 2},
@@ -311,7 +316,7 @@ def test_a_language_with_only_dropped_slow_solutions_still_forms_a_group():
     )
     python_upper = measured[1].upper
     assert python_upper is not None
-    assert python_upper.dropped_upper == ['sols/hopeless.py']
+    assert python_upper.confirmed_upper == ['sols/hopeless.py']
 
 
 def test_the_upper_bound_pools_every_language_of_a_single_group():
@@ -347,7 +352,7 @@ def test_formula_mode_ignores_slow_measurements():
     with_slow = build_timing_profile(
         **kwargs,
         slow_timing_per_solution_per_language={'cpp': {'sols/tle.cpp': 500}},
-        dropped_upper_per_language={'cpp': ['sols/hopeless.cpp']},
+        confirmed_upper_per_language={'cpp': ['sols/hopeless.cpp']},
     )
     assert with_slow == plain
     assert with_slow.timeLimit == 800
@@ -383,7 +388,10 @@ def test_no_lower_bound_measurements_raise_a_setter_facing_error():
 
 
 def test_strategy_is_described_as_a_formula_or_as_ratios():
-    assert _describe_strategy(_formula('slowest * 2')) == 'Using formula: slowest * 2'
+    formula_described = _describe_strategy(_formula('slowest * 2'))
+    assert 'Using formula: slowest * 2' in formula_described
+    # The cap applies to a formula estimate too, so it is spelled out there.
+    assert 'capped at 10000 ms (inferenceTimeout)' in formula_described
     described = _describe_strategy(
         _multipliers(
             acToTimeLimit=2.0,
@@ -395,7 +403,7 @@ def test_strategy_is_described_as_a_formula_or_as_ratios():
     # Every number in effect is spelled out as the relation it imposes, with the
     # YAML key it comes from in parentheses.
     assert '2.0x the slowest accepted solution (acToTimeLimit)' in described
-    assert '1/1.5 of the fastest solution expected to be too slow' in described
+    assert '1.5x the limit, checked afterwards (timeLimitToTle)' in described
     assert 'capped at 8000 ms (inferenceTimeout)' in described
     assert 'multiple of 100 ms (timeResolution)' in described
 
@@ -447,7 +455,7 @@ def test_the_profile_records_the_bounds_and_the_solutions_that_set_them():
         },
         strategy=_multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
         slow_timing_per_solution_per_language={'cpp': {'sols/tle.cpp': 6100}},
-        dropped_upper_per_language={'cpp': ['sols/hopeless.cpp']},
+        confirmed_upper_per_language={'cpp': ['sols/hopeless.cpp']},
         env_groups=[],
         all_languages=['cpp'],
     )
@@ -458,7 +466,8 @@ def test_the_profile_records_the_bounds_and_the_solutions_that_set_them():
     assert group.lowerBound == TimingBound(value=1260, solution='sols/slow_ac.cpp')
     # floor(6100 / 1.5) = 4066: the LARGEST limit the slow solution still allows.
     assert group.upperBound == TimingBound(value=4066, solution='sols/tle.cpp')
-    assert group.droppedUpper == ['sols/hopeless.cpp']
+    assert group.upperValidation is not None
+    assert group.upperValidation.confirmed == ['sols/hopeless.cpp']
 
 
 def test_a_group_with_no_upper_bound_records_only_its_drops():
@@ -467,14 +476,15 @@ def test_a_group_with_no_upper_bound_records_only_its_drops():
     profile = build_timing_profile(
         timing_per_solution_per_language={'cpp': {'sols/ac.cpp': 400}},
         strategy=_multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
-        dropped_upper_per_language={'cpp': ['sols/hopeless.cpp']},
+        confirmed_upper_per_language={'cpp': ['sols/hopeless.cpp']},
         env_groups=[],
         all_languages=['cpp'],
     )
     assert profile.groups is not None
     (group,) = profile.groups
     assert group.upperBound is None
-    assert group.droppedUpper == ['sols/hopeless.cpp']
+    assert group.upperValidation is not None
+    assert group.upperValidation.confirmed == ['sols/hopeless.cpp']
 
 
 def test_formula_mode_records_no_bounds():
@@ -488,7 +498,7 @@ def test_formula_mode_records_no_bounds():
     (group,) = profile.groups
     assert group.lowerBound is None
     assert group.upperBound is None
-    assert group.droppedUpper == []
+    assert group.upperValidation is None
 
 
 def test_the_recorded_bounds_are_computed_exactly_once_per_group():
@@ -539,7 +549,7 @@ def test_the_limits_profile_round_trips_the_multipliers_and_the_bounds():
         timing_per_solution_per_language={'cpp': {'sols/slow_ac.cpp': 630}},
         strategy=_multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
         slow_timing_per_solution_per_language={'cpp': {'sols/tle.cpp': 6100}},
-        dropped_upper_per_language={'cpp': ['sols/hopeless.cpp']},
+        confirmed_upper_per_language={'cpp': ['sols/hopeless.cpp']},
         env_groups=[],
         all_languages=['cpp'],
     )

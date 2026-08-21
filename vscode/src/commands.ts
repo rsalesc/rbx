@@ -7,34 +7,25 @@
  * source is the one thing here rbx did not generate: it opens as itself, on
  * the `file:` scheme, because editing it is the whole point of reaching it.
  */
-import * as fs from 'fs/promises';
+import * as path from 'path';
 import * as vscode from 'vscode';
 
-import { artifactUri } from './artifactFs';
+import { ActiveProblem } from './activeProblem';
+import { artifactUri, firstExisting } from './artifactFs';
 import { solutionSourcePath } from './rbx/layout';
 import { RunNode, TestcaseNode } from './rbx/nodes';
+import { Channel, LABELS, labelPrefix as displayPrefix } from './rbx/panes';
 import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
+import { TestcasePanes } from './testcasePanes';
 
 /** `sols/wa.cpp/main/1-gen-000` -- the display prefix shared by a testcase's tabs. */
 function labelPrefix(node: TestcaseNode): string {
-  return `${node.run.solution.path}/${node.group.name}/${node.testcase.stem}`;
+  return displayPrefix(node.run.solution.path, node.group.name, node.testcase.stem);
 }
 
 function isTestcase(node: RunNode | undefined): node is TestcaseNode {
   return node?.kind === 'testcase';
-}
-
-async function firstExisting(paths: readonly string[]): Promise<string | undefined> {
-  for (const candidate of paths) {
-    try {
-      await fs.access(candidate);
-      return candidate;
-    } catch {
-      // Try the next candidate.
-    }
-  }
-  return undefined;
 }
 
 async function openArtifact(
@@ -53,10 +44,46 @@ async function openArtifact(
   await vscode.window.showTextDocument(document, { preview: true });
 }
 
+/**
+ * Open a first-party file -- one rbx did not generate -- at `line`.
+ *
+ * On the `file:` scheme rather than through `rbx:`, and that is the whole
+ * distinction this helper marks: a solution, a generator script and a manual
+ * testcase are all things the setter wrote, and the point of reaching one is to
+ * edit it. Generated artifacts stay read-only.
+ *
+ * `declared` is the path as rbx recorded it, which is what a missing-file
+ * message has to quote: the absolute path resolved against the package root
+ * would name a location the setter never typed.
+ */
+async function openSource(
+  realPath: string,
+  declared: string,
+  line: number,
+): Promise<void> {
+  if ((await firstExisting([realPath])) === undefined) {
+    // The skeleton names files `problem.rbx.yml` declared, so a missing one
+    // means the package changed since the run, not that the row is bad.
+    vscode.window.showInformationMessage(
+      `No file at ${declared}. The package may have changed since this run.`,
+    );
+    return;
+  }
+  const document = await vscode.workspace.openTextDocument(vscode.Uri.file(realPath));
+  const position = new vscode.Position(line, 0);
+  // `preview: true` to match every other row in the view: arrowing down a list
+  // of solutions reuses one tab instead of littering the tab bar.
+  await vscode.window.showTextDocument(document, {
+    preview: true,
+    selection: new vscode.Range(position, position),
+  });
+}
+
 export function registerCommands(
   context: vscode.ExtensionContext,
   view: RunViewProvider,
   data: RunDataProvider,
+  active: ActiveProblem,
 ): void {
   /**
    * The seam where two invocation paths arrive in two shapes.
@@ -80,25 +107,44 @@ export function registerCommands(
     );
   };
 
-  register('rbx.refresh', () => data.refresh());
+  // The manual escape hatch, so it has to cover everything a watcher can miss
+  // -- the runs *and* the problem list. Rebuilding only the runs would re-post
+  // the stale choices, leaving the button unable to fix the one thing a user
+  // reaches for it to fix. `data` first: `active.refresh()` reads the roots it
+  // rediscovers.
+  register('rbx.refresh', () => data.refresh().then(() => active.refresh()));
 
   register('rbx.openSolution', async (node) => {
-    if (node?.kind !== 'solution') {
+    // Three row kinds reach the same file, and the only thing that differs is
+    // where in it to land: a solution row and a finding row open at the top,
+    // and a warning line under a finding opens at the line the compiler named.
+    // One command rather than two, because "open this solution's source" is one
+    // thing to ask for however the reader got to the row.
+    const target = ((): { path: string; declared: string; line: number } | undefined => {
+      switch (node?.kind) {
+        case 'solution':
+          return {
+            path: solutionSourcePath(node.pkg, node.run.solution.path),
+            declared: node.run.solution.path,
+            line: 0,
+          };
+        case 'finding':
+          return { path: node.finding.sourcePath, declared: node.finding.entry.path, line: 0 };
+        case 'findingWarning':
+          return {
+            path: node.finding.sourcePath,
+            declared: node.finding.entry.path,
+            // Compilers count lines from 1 and VS Code counts from 0.
+            line: Math.max(0, node.warning.line - 1),
+          };
+        default:
+          return undefined;
+      }
+    })();
+    if (target === undefined) {
       return;
     }
-    const source = solutionSourcePath(node.pkg, node.run.solution.path);
-    if ((await firstExisting([source])) === undefined) {
-      // The skeleton names a solution `problem.rbx.yml` declares, so a missing
-      // file means the package changed since the run, not that the row is bad.
-      vscode.window.showInformationMessage(
-        `No file at ${node.run.solution.path}. The package may have changed since this run.`,
-      );
-      return;
-    }
-    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(source));
-    // `preview: true` to match every other row in the view: arrowing down a
-    // list of solutions reuses one tab instead of littering the tab bar.
-    await vscode.window.showTextDocument(document, { preview: true });
+    await openSource(target.path, target.declared, target.line);
   });
 
   register('rbx.openInput', async (node) => {
@@ -108,7 +154,7 @@ export function registerCommands(
     await openArtifact(
       node,
       [node.testcase.inputPath],
-      'input.in',
+      LABELS.input,
       'No input on disk for this testcase. Run `rbx build` first.',
     );
   });
@@ -120,7 +166,7 @@ export function registerCommands(
     await openArtifact(
       node,
       [node.testcase.answerPath],
-      'answer.out',
+      LABELS.answer,
       'No expected answer on disk for this testcase.',
     );
   });
@@ -132,7 +178,7 @@ export function registerCommands(
     await openArtifact(
       node,
       [node.testcase.outputPath],
-      'output.out',
+      LABELS.output,
       'This solution produced no output for this testcase.',
     );
   });
@@ -144,7 +190,7 @@ export function registerCommands(
     await openArtifact(
       node,
       node.testcase.stderrPaths,
-      'stderr.err',
+      LABELS.stderr,
       'This solution wrote nothing to stderr for this testcase.',
     );
   });
@@ -168,7 +214,7 @@ export function registerCommands(
       await openArtifact(
         node,
         [available],
-        available === output ? 'output.out' : 'answer.out',
+        available === output ? LABELS.output : LABELS.answer,
         '',
       );
       return;
@@ -176,10 +222,91 @@ export function registerCommands(
     const prefix = labelPrefix(node);
     await vscode.commands.executeCommand(
       'vscode.diff',
-      artifactUri(output, `${prefix}/output.out`),
-      artifactUri(answer, `${prefix}/answer.out`),
+      artifactUri(output, `${prefix}/${LABELS.output}`),
+      artifactUri(answer, `${prefix}/${LABELS.answer}`),
       `${node.run.solution.path} · ${node.group.name}/${node.testcase.stem}`,
     );
+  });
+
+  register('rbx.openCompileLog', async (node) => {
+    if (node?.kind !== 'finding' && node?.kind !== 'findingWarning') {
+      return;
+    }
+    const finding = node.finding;
+    const realPath = await firstExisting([finding.logPath]);
+    if (realPath === undefined) {
+      vscode.window.showInformationMessage(
+        'The compiler output for this solution is no longer on disk. Run `rbx run` again.',
+      );
+      return;
+    }
+    // Through the `rbx:` scheme like every other artifact: read-only, streamed
+    // rather than held as a string -- a compile error can be a very long file --
+    // and titled after the solution it belongs to.
+    const uri = artifactUri(realPath, `${finding.entry.path}/compile.log`);
+    const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(document, { preview: true });
+  });
+
+  // The panes outlive any one command, because the channel they are on is
+  // sticky across testcases -- so the state lives in one object the four
+  // commands below share, rather than in each of them.
+  const panes = new TestcasePanes();
+
+  register('rbx.openTestcase', async (node) => {
+    if (!isTestcase(node)) {
+      return;
+    }
+    await panes.open(node);
+  });
+
+  // One registration per channel rather than a single command taking an
+  // argument: these are palette entries, and "rbx: Show Stderr" is something a
+  // user can find by typing what they want, while a command that asks which
+  // channel in a second step is not.
+  const channels: readonly (readonly [string, Channel])[] = [
+    ['rbx.showOutput', 'out'],
+    ['rbx.showStderr', 'err'],
+    ['rbx.showLog', 'log'],
+  ];
+  for (const [id, channel] of channels) {
+    // A node is passed when the card's button was clicked, and absent from the
+    // palette -- where the panes act on whatever they are already showing.
+    register(id, async (node) => {
+      await panes.setChannel(channel, isTestcase(node) ? node : undefined);
+    });
+  }
+
+  register('rbx.openGeneratorScript', async (node) => {
+    if (!isTestcase(node)) {
+      return;
+    }
+    const entry = node.testcase.entry;
+    if (entry.generatorScript === undefined) {
+      return;
+    }
+    // Relative to the package, the way rbx records every other path in the
+    // skeleton; `generatorScript` is a script in the package, not an artifact.
+    await openSource(
+      path.resolve(node.pkg.root, entry.generatorScript),
+      entry.generatorScript,
+      // rbx counts a script's lines from 1, the editor from 0.
+      Math.max(0, (entry.generatorScriptLine ?? 1) - 1),
+    );
+  });
+
+  register('rbx.openCopiedFrom', async (node) => {
+    if (!isTestcase(node)) {
+      return;
+    }
+    const copiedFrom = node.testcase.entry.copiedFrom;
+    if (copiedFrom === undefined) {
+      return;
+    }
+    // The manual testcase the setter wrote, so it opens as itself on `file:`
+    // rather than through the read-only `rbx:` scheme: rbx did not generate it
+    // and fixing a bad manual test means editing it.
+    await openSource(path.resolve(node.pkg.root, copiedFrom), copiedFrom, 0);
   });
 
   register('rbx.copyPath', async (node) => {
@@ -189,13 +316,47 @@ export function registerCommands(
     await vscode.env.clipboard.writeText(node.testcase.inputPath);
   });
 
-  register('rbx.revealInExplorer', async (node) => {
-    if (node?.kind !== 'package') {
-      return;
-    }
-    await vscode.commands.executeCommand(
-      'revealInExplorer',
-      vscode.Uri.file(node.pkg.root),
-    );
-  });
+  // Not registered through `register`: this one takes no row.
+  //
+  // It used to hang off the package row, and when that row went away its
+  // `webview/context` entry became unreachable -- no row emits
+  // `webviewSection == 'rbx.package'` any more. Rather than re-point it at a
+  // row that means something else, it is now a palette command over the *view*:
+  // the view shows one problem, so "reveal the package" has exactly one answer
+  // without a row to ask.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('rbx.revealInExplorer', async () => {
+      const root = active.selected();
+      if (root === undefined) {
+        vscode.window.showInformationMessage('No rbx problem found in this workspace.');
+        return;
+      }
+      await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(root));
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('rbx.selectProblem', async () => {
+      const problems = active.problems();
+      if (problems.length === 0) {
+        void vscode.window.showInformationMessage('No rbx problem found in this workspace.');
+        return;
+      }
+      // The palette twin of the dropdown, and the only way to switch problems
+      // when the dropdown is hidden -- `renderSelector` draws nothing for a
+      // single problem, and a keyboard user may never open the sidebar at all.
+      const picked = await vscode.window.showQuickPick(
+        problems.map((problem) => ({
+          label: problem.label,
+          description: problem.group,
+          detail: problem.root,
+          root: problem.root,
+        })),
+        { placeHolder: 'Show which problem in the Run view?' },
+      );
+      if (picked !== undefined) {
+        active.select(picked.root);
+      }
+    }),
+  );
 }

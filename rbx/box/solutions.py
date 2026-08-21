@@ -14,9 +14,11 @@ from typing import (
     Dict,
     Iterable,
     List,
+    Mapping,
     Optional,
     Set,
     Tuple,
+    Union,
 )
 
 import rich
@@ -32,6 +34,7 @@ from rbx import console, utils
 from rbx.box import (
     checkers,
     code,
+    compilation_findings,
     limits_info,
     package,
     remote,
@@ -111,6 +114,28 @@ if TYPE_CHECKING:
     from rbx.box.runners.base import RunContext, SolutionRunner
 
 StructuredEvaluation = Dict[str, Dict[str, List[Optional[Deferred[Evaluation]]]]]
+
+# The enforced time limit for a run: one limit for every language, or one per
+# language. The per-language form exists because a time-limit estimate assigns a
+# different limit to each language group (see `rbx/box/timing.py`).
+TimelimitOverride = Union[int, Mapping[str, int]]
+
+
+def resolve_timelimit_override(
+    override: Optional[TimelimitOverride],
+    lang: Optional[str],
+) -> Optional[int]:
+    """The limit this language runs under, or None to keep the profile's own.
+
+    A mapping that does not mention the language -- or a language that could not
+    be identified at all -- resolves to None rather than to some other language's
+    limit.
+    """
+    if override is None or isinstance(override, int):
+        return override
+    if lang is None:
+        return None
+    return override.get(lang)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -259,6 +284,11 @@ class SolutionReportSkeleton(BaseModel):
     groups: List[GroupSkeleton]
     limits: Dict[str, Limits]
     compiled_solutions: Dict[str, str]
+    # What the compile phase had to say, for the solutions it had anything to
+    # say about. A solution that failed to compile is absent from `solutions`
+    # and from `compiled_solutions` -- this is the only record that it exists.
+    # See `rbx.box.compilation_findings`.
+    compilation: List[compilation_findings.SolutionCompilation] = []
     verification: VerificationLevel
     capture_pipes: bool = False
     # When set (irun -e), the solution's stderr is interleaved with its output in
@@ -488,7 +518,15 @@ async def compile_solutions(
     sanitized: bool = False,
     fail_if_one: bool = True,
     skip_if_fail: bool = False,
+    failures: Optional[Dict[pathlib.Path, BaseException]] = None,
 ) -> Dict[pathlib.Path, str]:
+    """Compile solutions, returning the digest of each one that compiled.
+
+    ``failures`` is an optional out-parameter: when given, every solution that
+    was skipped because it did not compile is recorded in it, along with the
+    exception that says why. The return value stays what it was -- the
+    solutions that *did* compile -- because that is what every caller runs.
+    """
     compiled_solutions = {}
 
     if tracked_solutions is None:
@@ -524,6 +562,8 @@ async def compile_solutions(
                     key.status = live_tasks.CompilationStatus.FAILED
                     raise exception
                 key.exception = exception
+                if failures is not None:
+                    failures[key.solution.path] = exception
                 if exception.not_found_executable:
                     key.skip_reason = f"'{exception.not_found_executable}' not found"
                 issue_stack.add_issue(
@@ -622,38 +662,55 @@ async def _get_compiled_solutions_for_skeleton(
     progress: Optional[StatusProgress] = None,
     sanitized: bool = False,
     verification: VerificationLevel = VerificationLevel.NONE,
-) -> Tuple[List[Solution], Dict[str, str]]:
+) -> Tuple[
+    List[Solution], Dict[str, str], List[Solution], Dict[pathlib.Path, BaseException]
+]:
     solutions_to_compile = _get_solutions_for_skeleton(tracked_solutions, verification)
 
+    failures: Dict[pathlib.Path, BaseException] = {}
     compiled_solutions = await compile_solutions(
         tracked_solutions=[str(solution.path) for solution in solutions_to_compile],
         sanitized=sanitized,
         skip_if_fail=True,
+        failures=failures,
     )
 
-    # TODO: Handle solutions that failed to compile.
+    # A solution that did not compile never enters the run: it has no digest to
+    # run and no limits to run under. It is not forgotten, though -- it is
+    # reported through the skeleton's `compilation`, which is built from
+    # `solutions_to_compile` and so still knows it was declared.
     solutions = [
         solution
         for solution in solutions_to_compile
         if solution.path in compiled_solutions
     ]
 
-    return solutions, {
-        str(solution_path): digest
-        for solution_path, digest in compiled_solutions.items()
-    }
+    return (
+        solutions,
+        {
+            str(solution_path): digest
+            for solution_path, digest in compiled_solutions.items()
+        },
+        solutions_to_compile,
+        failures,
+    )
 
 
 async def _get_report_skeleton(
     tracked_solutions: Optional[Iterable[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
-    timelimit_override: Optional[int] = None,
+    timelimit_override: Optional[TimelimitOverride] = None,
     progress: Optional[StatusProgress] = None,
     sanitized: bool = False,
 ) -> SolutionReportSkeleton:
     pkg = package.find_problem_package_or_die()
 
-    solutions, compiled_solutions = await _get_compiled_solutions_for_skeleton(
+    (
+        solutions,
+        compiled_solutions,
+        solutions_to_compile,
+        compilation_failures,
+    ) = await _get_compiled_solutions_for_skeleton(
         tracked_solutions=tracked_solutions,
         verification=verification,
         progress=progress,
@@ -662,7 +719,9 @@ async def _get_report_skeleton(
 
     langs = set(find_language_name(solution) for solution in solutions)
     limits = {
-        lang: get_limits_for_language(lang, verification, timelimit_override)
+        lang: get_limits_for_language(
+            lang, verification, resolve_timelimit_override(timelimit_override, lang)
+        )
         for lang in langs
         if lang is not None
     }
@@ -693,6 +752,14 @@ async def _get_report_skeleton(
     shutil.rmtree(str(runs_dir), ignore_errors=True)
     runs_dir.mkdir(parents=True, exist_ok=True)
 
+    # After the wipe above, so the logs live for exactly as long as the run they
+    # describe -- like every other artifact under `.rbx/runs`.
+    compilation = compilation_findings.build_solution_compilations(
+        solutions_to_compile,
+        compilation_failures,
+        runs_dir,
+    )
+
     skeleton = SolutionReportSkeleton(
         solutions=[
             SolutionSkeleton(
@@ -706,6 +773,7 @@ async def _get_report_skeleton(
         limits=limits,
         entries=built_entries,
         compiled_solutions=compiled_solutions,
+        compilation=compilation,
         verification=verification,
         capture_pipes=should_capture_pipes(package.get_interactor_or_nil()),
     )
@@ -942,7 +1010,7 @@ async def run_solutions(
     tracked_solutions: Optional[Iterable[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
-    timelimit_override: Optional[int] = None,
+    timelimit_override: Optional[TimelimitOverride] = None,
     sanitized: bool = False,
     nruns: int = 0,
     abort_on: Optional[AbortPredicate] = None,
@@ -1196,7 +1264,7 @@ async def _get_interactive_skeleton(
     check: bool = True,
     merge_stderr: bool = False,
 ) -> SolutionReportSkeleton:
-    solutions, compiled_solutions = await _get_compiled_solutions_for_skeleton(
+    solutions, compiled_solutions, _, _ = await _get_compiled_solutions_for_skeleton(
         tracked_solutions,
         verification=verification,
         progress=progress,
@@ -1212,6 +1280,7 @@ async def _get_interactive_skeleton(
 
     # Ensure path is new.
     irun_dir = package.get_problem_iruns_dir()
+
     skeleton = SolutionReportSkeleton(
         solutions=[
             SolutionSkeleton(

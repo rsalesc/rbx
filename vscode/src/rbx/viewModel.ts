@@ -16,20 +16,20 @@
  * Pure by design, like nodes.ts: no `vscode` import, so `node --test` can hold
  * the whole thing to account.
  */
-import * as path from 'path';
-
 import { ExpectationDisplay, expectationDisplay } from './expectation';
 import { Hue, hueOfScore, hueOfThemeColor } from './hue';
+import { TestcaseEntry } from './model';
 import {
+  FindingNode,
   GroupNode,
-  PackageNode,
   PackageRunView,
   SolutionNode,
   TestcaseNode,
+  findingNodes,
   flattenNodes,
   nodeId,
 } from './nodes';
-import { isAccepted, outcomeIcon, shortName } from './outcome';
+import { outcomeIcon, shortName } from './outcome';
 import { GroupReport, SolutionReport } from './report';
 import { scoreRange } from './score';
 import {
@@ -37,7 +37,7 @@ import {
   SolutionLabelStyle,
   solutionLabels,
 } from './solutionLabel';
-import { SolutionRun, TestcaseRun } from './store';
+import { PackageRun, SolutionRun, TestcaseRun } from './store';
 import {
   Progress,
   formatMemory,
@@ -206,20 +206,64 @@ export interface SolutionDetail {
   readonly scoreHue?: Hue;
 }
 
+/**
+ * One line of provenance: where this testcase came from.
+ *
+ * `open` is set only for the two spellings that name a real file -- the
+ * generator *script*, which rbx records as a `path:line`, and a copied-from
+ * path. A generator call names a generator declared in `problem.rbx.yml` and
+ * would have to be resolved through the manifest to become a path, so it is
+ * text: the card says what produced the test without pretending it can jump
+ * there.
+ */
+export interface CardOrigin {
+  readonly text: string;
+  /** The command that opens it, when it names something openable. */
+  readonly open?: 'rbx.openGeneratorScript' | 'rbx.openCopiedFrom';
+  /** A hover naming what kind of provenance this is. */
+  readonly title: string;
+}
+
+/**
+ * What the card under the tree says about the selected testcase.
+ *
+ * Deliberately *not* the verdict, the time or the memory. The row already
+ * carries all three and the card sits a few pixels beneath it, so repeating
+ * them would put the same fact on screen twice within one glance and spend the
+ * card on the half of the story that was never missing.
+ *
+ * What is left is exactly the half that had nowhere to live: the checker's own
+ * sentence -- free-form, as long as the package's checker felt like being, and
+ * so unwelcome in a 22px row -- and where the test came from.
+ */
+export interface TestcaseCard {
+  /** `1/1-gen-002`, so the card says which row it is describing. */
+  readonly title: string;
+  /**
+   * The checker's message, whole.
+   *
+   * Absent whenever the checker never saw the output -- a hard TLE, a run still
+   * in flight -- and that absence is left to speak for itself rather than being
+   * filled with a placeholder.
+   */
+  readonly checker?: string;
+  readonly origins: readonly CardOrigin[];
+}
+
 export interface Row {
   readonly id: string;
   readonly parentId?: string;
   readonly depth: number;
-  readonly kind: 'package' | 'solution' | 'group' | 'testcase';
+  readonly kind: 'solution' | 'group' | 'testcase';
   readonly gutter: Gutter;
   readonly label: string;
   /**
    * The whole of what the label is a shortening of, for the row's tooltip.
    *
    * Only solution rows carry one, and only because `rbx.solutionLabel` lets the
-   * label stop short of the path: a user reading `main.cpp` under two packages
-   * still has somewhere to find out which `sols/` it came from. Absent when the
-   * label is already the whole truth.
+   * label stop short of the path: a user reading `main.cpp` still has somewhere
+   * to find out which `sols/` it came from. Absent when the label is already
+   * the whole truth.
    */
   readonly labelTitle?: string;
   readonly labelHue?: Hue;
@@ -248,11 +292,79 @@ export interface Row {
   readonly expandable: boolean;
   readonly defaultExpanded: boolean;
   readonly detail?: SolutionDetail;
+  /**
+   * What the card under the tree shows while this row is selected.
+   *
+   * Only testcase rows carry one. It rides on the row rather than arriving as a
+   * message of its own because the card describes *the selection*, and the
+   * selection is the client's fact: shipping the card with the model means the
+   * client can draw it the instant the highlight moves, with no round trip to
+   * the host and nothing to get out of step with the row above it.
+   */
+  readonly card?: TestcaseCard;
   /** Lowercased haystack for the filter box. */
   readonly search: string;
   /** The `webviewSection` a context menu keys on. */
   readonly section: string;
   readonly primaryCommand?: string;
+}
+
+/** One warning line under an expanded finding row. */
+export interface FindingWarning {
+  readonly id: string;
+  readonly line: number;
+  /** `-Wshadow`; empty for a warning the compiler attributed to no flag. */
+  readonly flag: string;
+  /** The whole message -- a hover title, never a line of the panel. */
+  readonly title: string;
+}
+
+/**
+ * One solution the compile phase had something to say about.
+ *
+ * A fifth channel, and the first that is not about the run at all. The gutter,
+ * the chip, the label hue and the warning mark all answer a question about
+ * *running* a solution; a solution that failed to compile never ran, and is not
+ * even in `rows` -- rbx filters it out of the skeleton's `solutions` before the
+ * run starts. It exists here or nowhere.
+ *
+ * Identity and severity stay separate, as they do upstairs: the label is hued
+ * by what the solution *declared*, so a row here is recognisably the same
+ * solution as the row above it, and how badly it compiled is carried by
+ * `severity` alone.
+ */
+export interface FindingRow {
+  readonly id: string;
+  readonly label: string;
+  readonly labelTitle?: string;
+  readonly labelHue?: Hue;
+  readonly labelBold: boolean;
+  readonly severity: 'error' | 'warning';
+  /** `CE`, or `3 warns`. */
+  readonly summary: string;
+  /** Why it failed, when rbx could say in one line. The row's hover title. */
+  readonly reason?: string;
+  readonly warnings: readonly FindingWarning[];
+  /** The `webviewSection` a context menu keys on. */
+  readonly section: string;
+}
+
+export interface Findings {
+  readonly rows: readonly FindingRow[];
+  /** Rows, not warnings: the badge must agree with what opening it shows. */
+  readonly badge: number;
+  readonly hue: 'red' | 'yellow';
+  /** Whether anything failed to compile -- what the panel auto-opens on. */
+  readonly errors: boolean;
+  /**
+   * What the client compares to decide the findings are a *new* run's.
+   *
+   * The webview cannot otherwise tell "the same findings, re-posted by a
+   * file-watcher tick" from "a fresh run": both arrive as a whole new model.
+   * Auto-opening on the former would reopen, on every tick, a panel the user
+   * had just closed.
+   */
+  readonly signature: string;
 }
 
 export interface RunViewModel {
@@ -261,19 +373,23 @@ export interface RunViewModel {
   /** Solutions that passed but carry at least one warning. */
   readonly warned: number;
   readonly empty: boolean;
+  /**
+   * What the compile phase reported, or nothing at all.
+   *
+   * Absent rather than empty when every solution compiled cleanly: the panel's
+   * presence is itself the signal, exactly as the header strip's is.
+   */
+  readonly findings?: Findings;
 }
 
 /**
- * What to call a package.
+ * The model of a view with no problem behind it at all.
  *
- * The host disambiguates two packages both named `prob` by asking
- * `vscode.workspace` which folder each sits in, and passes the answer down --
- * importing that here would drag the editor API into a module whose whole value
- * is being testable without it. The basename is right whenever it did not.
+ * Distinct from `buildViewModel` of a package with no run: there is no package,
+ * so there is no layout to invent one for. Shared by both halves so the client's
+ * starting state and the host's answer for an empty workspace cannot drift.
  */
-function packageName(node: PackageNode): string {
-  return node.label ?? path.basename(node.pkg.root);
-}
+export const EMPTY_MODEL: RunViewModel = { rows: [], mismatches: 0, warned: 0, empty: true };
 
 function chip(outcome: string | undefined, under?: WarningVerdict): VerdictChip {
   const { icon, color } = outcomeIcon(outcome);
@@ -652,26 +768,6 @@ function solutionDetail(
   };
 }
 
-function packageRow(node: PackageNode, depth: number, parentId?: string): Row {
-  const label = packageName(node);
-  return {
-    id: nodeId(node),
-    parentId,
-    depth,
-    kind: 'package',
-    gutter: 'none',
-    label,
-    labelBold: false,
-    meta: [],
-    warnings: [],
-    mismatch: false,
-    expandable: true,
-    defaultExpanded: true,
-    search: haystack(label, undefined, false),
-    section: 'rbx.package',
-  };
-}
-
 function solutionRow(node: SolutionNode, depth: number, label: string, parentId?: string): Row {
   const { run, solo } = node;
   const warnings = warningsOf(run.report, true);
@@ -745,6 +841,59 @@ function groupRow(node: GroupNode, depth: number, parentId?: string): Row {
   };
 }
 
+/**
+ * Where a testcase came from, in the order rbx's own metadata markup prints it.
+ *
+ * `get_generation_metadata_markup` (`rbx/box/testcase_extractors.py`) prints
+ * copied-from, then the generator call, then the generator script, and a test
+ * can genuinely have more than one of them -- a script line *is* a generator
+ * call. Following that order keeps the card and `rbx ui` saying the same thing
+ * in the same sequence.
+ */
+function cardOrigins(entry: TestcaseEntry): CardOrigin[] {
+  const origins: CardOrigin[] = [];
+  if (entry.copiedFrom !== undefined && entry.copiedFrom !== '') {
+    origins.push({
+      text: entry.copiedFrom,
+      open: 'rbx.openCopiedFrom',
+      title: `Copied from ${entry.copiedFrom}`,
+    });
+  }
+  if (entry.generatorName !== undefined && entry.generatorName !== '') {
+    // The call as rbx spells it, name and arguments together, because the
+    // arguments are the half that distinguishes this test from its neighbours:
+    // every test in a group is usually the same generator at different sizes.
+    const args = entry.generatorArgs ?? '';
+    const text = args === '' ? entry.generatorName : `${entry.generatorName} ${args}`;
+    origins.push({ text, title: `Generated by ${text}` });
+  }
+  if (entry.generatorScript !== undefined && entry.generatorScript !== '') {
+    const line = entry.generatorScriptLine;
+    const text =
+      line === undefined ? entry.generatorScript : `${entry.generatorScript}:${line}`;
+    origins.push({
+      text,
+      open: 'rbx.openGeneratorScript',
+      title: `Generated from ${text}`,
+    });
+  }
+  return origins;
+}
+
+function testcaseCard(node: TestcaseNode): TestcaseCard {
+  return {
+    title: `${node.group.name}/${node.testcase.stem}`,
+    // Empty is treated as absent: a checker that returns no message and one
+    // that was never run have nothing to say, and a blank line under the title
+    // would suggest the card was still loading.
+    checker:
+      node.testcase.evaluation?.message === ''
+        ? undefined
+        : node.testcase.evaluation?.message,
+    origins: cardOrigins(node.testcase.entry),
+  };
+}
+
 function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row {
   const { testcase } = node;
   const evaluation = testcase.evaluation;
@@ -759,10 +908,11 @@ function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row 
     gutter: 'none',
     label: testcase.stem,
     labelBold: false,
-    // The checker's message is deliberately left out. It is a free-form line
-    // written by the package's own checker, so it is as long as that checker
-    // felt like being, and in a sidebar it pushed the timings out of a row that
-    // is only 22px tall. It belongs somewhere that can wrap.
+    // The checker's message is deliberately left off the *row*. It is a
+    // free-form line written by the package's own checker, so it is as long as
+    // that checker felt like being, and in a sidebar it pushed the timings out
+    // of a row that is only 22px tall. It belongs somewhere that can wrap --
+    // which is `card`, below.
     meta: spans([
       span(formatTime(evaluation?.time), 'dim', 'time'),
       span(formatMemory(evaluation?.memory), 'dim', 'memory'),
@@ -775,72 +925,138 @@ function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row 
     mismatch: false,
     expandable: false,
     defaultExpanded: false,
+    card: testcaseCard(node),
     search: haystack(`${node.group.name}/${testcase.stem}`, verdict, false),
     section: 'rbx.testcase',
-    // Single click opens the most useful artifact: the diff for a failure, the
-    // input for anything else -- what the tree's `item.command` does today.
-    primaryCommand:
-      evaluation !== undefined && !isAccepted(evaluation.outcome)
-        ? 'rbx.diffOutput'
-        : 'rbx.openInput',
+    // Two panes, not one file. Which channel the second pane opens on is the
+    // opener's state rather than the row's -- it is sticky across testcases, so
+    // arrowing down a group while reading stderr keeps reading stderr -- and a
+    // row that named a channel here would reset it on every move.
+    primaryCommand: 'rbx.openTestcase',
   };
 }
 
-/** How deep each kind sits, given whether the walk emitted package rows. */
+/** How deep each kind sits, counting the solution as the top level. */
 const DEPTHS: Record<Row['kind'], number> = {
-  package: 0,
-  solution: 1,
-  group: 2,
-  testcase: 3,
+  solution: 0,
+  group: 1,
+  testcase: 2,
 };
 
 /**
- * Every package's solution labels, by package root and then by solution path.
+ * Every path the labels are computed over, for one package.
  *
- * Computed package by package, so the prefix `trimmed` drops is the one *that*
- * package's solutions share -- a contest workspace where one package keeps its
- * solutions somewhere unusual does not cost every other package its trimming.
+ * The findings' paths join the solutions': a solution that failed to compile is
+ * not in `solutions`, and labelling it on its own would trim it against a
+ * different prefix from every row above it.
  */
-function labelsByPackage(
-  packages: readonly PackageRunView[],
-  style: SolutionLabelStyle,
-): Map<string, Map<string, string>> {
-  const labels = new Map<string, Map<string, string>>();
-  for (const { pkg, run } of packages) {
-    if (run === undefined) {
-      continue;
-    }
-    const paths = run.solutions.map((solutionRun) => solutionRun.solution.path);
-    labels.set(pkg.root, solutionLabels(paths, style));
+function labelledPaths(run: PackageRun | undefined): string[] {
+  return [
+    ...(run?.solutions ?? []).map((solutionRun) => solutionRun.solution.path),
+    ...(run?.findings ?? []).map((finding) => finding.entry.path),
+  ];
+}
+
+/**
+ * `3 warns`, `1 warn`, `CE`.
+ *
+ * The count is of warnings, not of rows, because it is the only number on a
+ * finding row and it should say how much there is to read once opened.
+ */
+function findingSummary(node: FindingNode): string {
+  const entry = node.finding.entry;
+  if (entry.status === 'FAILED') {
+    // The same two letters `ExpectedOutcome.COMPILATION_ERROR` draws with, so a
+    // package that *declared* a compile error and one that suffered one read as
+    // the same event in the two places they appear.
+    return 'CE';
   }
-  return labels;
+  const count = entry.warnings.length;
+  return count === 1 ? '1 warn' : `${count} warns`;
+}
+
+function findingRow(node: FindingNode, label: string): FindingRow {
+  const entry = node.finding.entry;
+  const declared = declaredExpectation(entry.expectedOutcome);
+  return {
+    id: nodeId(node),
+    label,
+    labelTitle: label === entry.path ? undefined : entry.path,
+    labelHue: declared?.hue,
+    labelBold: declared?.bold ?? false,
+    severity: entry.status === 'FAILED' ? 'error' : 'warning',
+    summary: findingSummary(node),
+    reason: entry.reason,
+    warnings: entry.warnings.map((warning, index) => ({
+      id: `${nodeId(node)}::${index}`,
+      line: warning.line,
+      flag: warning.flag ?? '',
+      // The whole message is the hover title and never a line of the panel:
+      // the panel is a third of a narrow sidebar, and `comparison of integer
+      // expressions of different signedness` is most of a row on its own.
+      title: warning.msg,
+    })),
+    section: 'rbx.finding',
+  };
+}
+
+/**
+ * The panel's whole model, or `undefined` when there is nothing to report.
+ *
+ * `undefined` and not an empty list: the panel is absent from the view when the
+ * compile phase was clean, so a package whose solutions all compiled does not
+ * carry a header saying so.
+ */
+function buildFindings(
+  view: PackageRunView,
+  labels: ReadonlyMap<string, string>,
+): Findings | undefined {
+  const rows = findingNodes(view)
+    .filter((node): node is FindingNode => node.kind === 'finding')
+    .map((node) => {
+      const path = node.finding.entry.path;
+      return findingRow(node, labels.get(path) ?? path);
+    });
+  if (rows.length === 0) {
+    return undefined;
+  }
+  const errors = rows.some((row) => row.severity === 'error');
+  return {
+    rows,
+    badge: rows.length,
+    hue: errors ? 'red' : 'yellow',
+    errors,
+    // Severity is in the signature as well as identity: a solution whose
+    // warnings turn into an error between two runs is a new thing to be shown,
+    // even though the same file is named both times.
+    signature: rows.map((row) => `${row.id}:${row.severity}:${row.summary}`).join('|'),
+  };
 }
 
 export function buildViewModel(
-  packages: readonly PackageRunView[],
+  view: PackageRunView,
   style: SolutionLabelStyle = DEFAULT_SOLUTION_LABEL_STYLE,
 ): RunViewModel {
-  const nodes = flattenNodes(packages);
-  const labels = labelsByPackage(packages, style);
-  // `flattenNodes` drops the package level for a single package, so the offset
-  // has to come from the walk it actually performed rather than from the input.
-  const hasPackages = nodes.some((node) => node.kind === 'package');
-  const offset = hasPackages ? 0 : 1;
+  const nodes = flattenNodes(view);
+  // Over the selected package's paths alone, which is what the label styles
+  // have always meant: the prefix `trimmed` drops is the one *this* package's
+  // solutions share, so a sibling keeping its solutions somewhere unusual
+  // cannot cost this one its trimming. It no longer even can -- the sibling
+  // does not reach this function any more.
+  const labels = solutionLabels(labelledPaths(view.run), style);
   // The most recent row at each level, so a child can name its parent without
   // the walk having to carry a stack.
   const parents = new Map<number, string>();
 
   const rows: Row[] = [];
   for (const node of nodes) {
-    const depth = DEPTHS[node.kind] - offset;
+    const depth = DEPTHS[node.kind];
     const parentId = parents.get(depth - 1);
     const row = ((): Row => {
       switch (node.kind) {
-        case 'package':
-          return packageRow(node, depth, parentId);
         case 'solution': {
           const path = node.run.solution.path;
-          return solutionRow(node, depth, labels.get(node.pkg.root)?.get(path) ?? path, parentId);
+          return solutionRow(node, depth, labels.get(path) ?? path, parentId);
         }
         case 'group':
           return groupRow(node, depth, parentId);
@@ -863,6 +1079,9 @@ export function buildViewModel(
     warned: rows.filter(
       (row) => row.kind === 'solution' && row.gutter !== 'missed' && row.warnings.length > 0,
     ).length,
+    // `rows` is not consulted: a run whose every solution failed to compile has
+    // no solution rows at all, and it is precisely the run with most to say.
     empty: !rows.some((row) => row.kind === 'solution'),
+    findings: buildFindings(view, labels),
   };
 }

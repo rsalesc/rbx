@@ -83,21 +83,68 @@
       },
       {
         "command": "rbx.revealInExplorer",
-        "title": "Reveal Package in Explorer",
+        "title": "Reveal Problem in Explorer",
         "category": "rbx"
+      },
+      {
+        "command": "rbx.selectProblem",
+        "title": "Select Problem",
+        "category": "rbx",
+        "icon": "$(list-selection)"
       },
       {
         "command": "rbx.copyPath",
         "title": "Copy Path",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.openCompileLog",
+        "title": "Open Compiler Output",
+        "category": "rbx",
+        "icon": "$(output)"
+      },
+      {
+        "command": "rbx.openTestcase",
+        "title": "Open Testcase",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.showOutput",
+        "title": "Show Output vs Answer",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.showStderr",
+        "title": "Show Stderr",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.showLog",
+        "title": "Show Run Log",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.openGeneratorScript",
+        "title": "Open Generator Script",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.openCopiedFrom",
+        "title": "Open Copied-From Testcase",
         "category": "rbx"
       }
     ],
     "menus": {
       "view/title": [
         {
+          "command": "rbx.selectProblem",
+          "when": "view == rbx.run",
+          "group": "navigation@1"
+        },
+        {
           "command": "rbx.refresh",
           "when": "view == rbx.run",
-          "group": "navigation"
+          "group": "navigation@2"
         }
       ],
       "webview/context": [
@@ -137,9 +184,34 @@
           "group": "3_copy@1"
         },
         {
-          "command": "rbx.revealInExplorer",
-          "when": "webviewSection == 'rbx.package'",
-          "group": "3_copy@1"
+          "command": "rbx.openSolution",
+          "when": "webviewSection == 'rbx.finding'",
+          "group": "1_open@1"
+        },
+        {
+          "command": "rbx.openCompileLog",
+          "when": "webviewSection == 'rbx.finding'",
+          "group": "1_open@2"
+        },
+        {
+          "command": "rbx.openTestcase",
+          "when": "webviewSection == 'rbx.testcase'",
+          "group": "1_open@0"
+        },
+        {
+          "command": "rbx.showOutput",
+          "when": "webviewSection == 'rbx.testcase'",
+          "group": "2_compare@2"
+        },
+        {
+          "command": "rbx.showStderr",
+          "when": "webviewSection == 'rbx.testcase'",
+          "group": "2_compare@3"
+        },
+        {
+          "command": "rbx.showLog",
+          "when": "webviewSection == 'rbx.testcase'",
+          "group": "2_compare@4"
         }
       ]
     },
@@ -198,10 +270,10 @@
           "default": true,
           "markdownDescription": "Show what `problem.rbx.yml` declares a solution to do in the language status area, which stays visible while you scroll."
         },
-        "rbx.packageSearchDepth": {
-          "type": "number",
-          "default": 3,
-          "markdownDescription": "How deep to search workspace folders for `problem.rbx.yml` files."
+        "rbx.compilationDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Report what the last `rbx run` compiled in the Problems panel: a warning on each line the compiler warned about, and an error on any solution that failed to compile."
         },
         "rbx.solutionLabel": {
           "type": "string",
@@ -217,6 +289,19 @@
             "The path without the directory every solution in the package shares: `main.cpp`, and `slow/tle.cpp` for one nested deeper.",
             "The file name alone: `main.cpp`, and `tle.cpp` for `sols/slow/tle.cpp`."
           ]
+        },
+        "rbx.testcaseLayout": {
+          "type": "string",
+          "enum": [
+            "below",
+            "beside"
+          ],
+          "default": "below",
+          "markdownDescription": "How the two testcase panes are arranged the **first** time they are opened. Only a seed: once the panes exist the extension reuses whichever editor groups they are in, so an arrangement you set yourself is kept.",
+          "enumDescriptions": [
+            "The input above, the output diff below -- the way `rbx ui` stacks them. The diff gets the full editor width, so it keeps its side-by-side view.",
+            "The input in its own column, the output diff beside it. Roomier for a long testcase, but a narrow diff renders inline unless you also set `diffEditor.useInlineViewWhenSpaceIsLimited` to `false`."
+          ]
         }
       }
     }
@@ -226,7 +311,7 @@
     "watch": "node esbuild.mjs --watch",
     "package": "node esbuild.mjs --production",
     "typecheck": "tsc --noEmit",
-    "pretest": "node esbuild.test.mjs",
+    "pretest": "node esbuild.mjs && node esbuild.test.mjs",
     "test": "node --test \"out-test/**/*.test.js\"",
     "lint": "eslint src",
     "vscode:prepublish": "npm run package"

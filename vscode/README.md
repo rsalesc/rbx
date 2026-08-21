@@ -35,6 +35,33 @@ Every solution and every group carries its own summary: the verdict underneath
 it, the points it earned, and the **max** time and memory across its testcases
 -- the slowest test being the one the time limit is judged against.
 
+### One problem at a time
+
+The view shows **one package**, and a dropdown in its header picks which. The
+dropdown is hidden when the workspace holds a single package, so a one-problem
+workspace reads exactly as it did before. The header strip's mismatch and
+warning counts are that one problem's -- a count summed over a ten-problem
+contest named none of them and said nothing about the one on screen.
+
+Problems are named by the **contest letter** `contest.rbx.yml` gives them, in
+the order the contest declares them and with its declared colour as a dot,
+rather than by directory name in path order. The dot shows the **selected**
+problem's colour only, not one per entry: a native `<select>` cannot be relied
+on to colour its options, so an open dropdown is a plain list of letters. The nearest `contest.rbx.yml`
+above a package is the one that names it, a dispatcher's variants included. A
+package no contest claims keeps its directory name and sorts after the ones a
+contest does claim; with more than one contest open, the dropdown groups by
+contest.
+
+The view also **follows the problem that is running**. rbx writes a new
+skeleton when a run *begins*, so the selection moves to the problem now being
+run rather than to one that has already finished -- during `rbx contest each
+run` it walks the contest in step. Left alone, the selection is remembered per
+workspace, so reopening the window returns to the problem you were reading.
+
+For the keyboard, `rbx: Select Problem` offers the same list as a quick pick.
+`rbx: Reveal Problem in Explorer` reveals whichever problem is selected.
+
 ### Warnings on a run that passed
 
 A **yellow triangle in the gutter** -- where a met declaration draws a green tick
@@ -121,7 +148,7 @@ expands.
 | Row | Opens |
 |---|---|
 | solution | its source file, for editing -- `sols/wa.cpp` is a file you wrote |
-| testcase | the diff against the expected answer if it failed, the input otherwise |
+| testcase | **two panes** -- the input, and the output diffed against the expected answer |
 | group | nothing; it is a heading over testcases, with no file behind it |
 
 A solution row both expands and opens, so the two gestures are kept apart: a
@@ -130,6 +157,205 @@ single click expands it, as a click on any parent row does, and opening it takes
 **expanded**, whichever way it started -- the second click is not a second
 toggle, because a gesture that opens a file should not also shut the row it was
 opened from.
+
+### What a testcase opens
+
+A testcase used to open one tab: the diff if it failed, the input otherwise. One
+artifact at a time is the wrong number -- the input is what produced the output,
+and reading a wrong answer without it is reading half the story. So a testcase
+opens **two editor panes**, the way `rbx ui`'s run explorer shows them:
+
+```
++- input.in ------------------------------+
+| 5 3                                     |
+| 1 2 3 4 5                               |
++- output.out <-> answer.out -------------+
+| 12                  | 14                |
++-----------------------------------------+
+```
+
+Real editors and not a webview, because testcases are large: a `TextDocument`
+streams a multi-megabyte input, highlights it, and gives you find and
+go-to-line, none of which a webview gets without rebuilding it.
+
+**The second pane is a channel**, and it switches -- `alt+1` output, `alt+2`
+stderr, `alt+3` the run log, mirroring `rbx ui`'s `1`/`2`/`3`, and reachable
+from the buttons on the card below. `out` is the *diff*, output beside what it
+should have been, which is what `rbx ui`'s output box is in two-sided mode; a
+hard TLE with no output falls back to whichever half exists. The channel is
+**sticky**: reading stderr and arrowing down a group keeps reading stderr,
+because comparing one channel across several tests is the thing a switch is for.
+
+There is deliberately no `in` button. The input already lives in the first pane,
+and a button pointing it at the second would put the same file on screen twice.
+
+#### The layout is yours
+
+Both panes are `preview` tabs in **separate editor groups**, and a preview tab
+is per group -- so arrowing down the list swaps the documents in place and never
+piles up tabs.
+
+The first time a testcase is opened, the extension lays out two groups:
+`rbx.testcaseLayout` picks `below` (default) or `beside`. **That is a seed and
+nothing more.** Afterwards it finds its own panes -- every artifact travels on
+the `rbx:` scheme, so a tab carrying one is recognisably ours -- and reuses
+whichever groups they are sitting in, without touching the layout again.
+
+Even the seed holds back when you have already split the editor yourself: with
+more than one group open it joins them instead, putting the input in the active
+group and the channel beside it, rather than collapsing your arrangement to two.
+
+`below` is the default because of the **diff**, not the input. VS Code ships
+`diffEditor.useInlineViewWhenSpaceIsLimited` turned on, which quietly drops a
+narrow diff to an inline view -- and `beside` hands the channel pane a fraction
+of an editor area that has already lost width to the sidebar. On a laptop that
+renders the output against the answer inline, with nothing on screen saying why.
+Stacked, the diff spans the full width and side-by-side holds at any window
+size. `beside` is roomier for a long testcase; pair it with
+`"diffEditor.useInlineViewWhenSpaceIsLimited": false` if you want side-by-side
+kept regardless.
+
+#### The diff is VS Code's own
+
+Nothing about how the diff *renders* is the extension's, deliberately -- the
+diff editor already has all of it, and a second knob here would only fight the
+built-in one:
+
+| Want | Use |
+|---|---|
+| side-by-side or inline, as a setting | `diffEditor.renderSideBySide` |
+| switch it live | the diff editor's **More Actions** (`...`) menu |
+| a key for it | bind `toggle.diff.renderSideBySide` |
+| ignore whitespace | `diffEditor.ignoreTrimWhitespace`, or `toggle.diff.ignoreTrimWhitespace` |
+
+`vscode.diff` takes a `TextDocumentShowOptions` -- which column, preview,
+focus -- and nothing about rendering, so these are window-wide preferences
+rather than something a testcase pane could set for itself even if it wanted to.
+
+That distinction is the whole design. Laying out editor groups is global and
+destructive: it rearranges the entire editor area, the solution source you were
+editing included. Doing it on every <kbd>Enter</kbd> would undo your own
+arrangement every time you picked a different testcase. Drag the panes where you
+want them and they stay there.
+
+### The testcase card
+
+Under the tree, a card describes the **selected** testcase -- and carries only
+what its row cannot.
+
+```
++- 1-gen-002 ---------------+
+| wrong answer, expected    |
+| 14, found 12              |
+| gen_random 5 3 --seed=7   |
+| [out] [err] [log]         |
++---------------------------+
+```
+
+Not the verdict, not the time, not the memory: the row has all three, eight
+pixels above. What the card adds is the two facts the extension has been reading
+out of every run and showing nowhere.
+
+- **The checker's own message**, wrapped and whole. It is the answer to *why*
+  a solution answered wrongly, and it is free-form output from the package's own
+  checker -- as long as that checker felt like being, which is exactly why it
+  could never fit a 22px row. Absent on a hard TLE, where the checker never saw
+  the output; that absence is informative and is not filled with a placeholder.
+- **Where the test came from** -- copied-from, the generator call, the generator
+  script, in the order rbx's own metadata prints them. The script and the
+  copied-from **open** where they point, since rbx records a script entry as a
+  real `path:line`. A generator *call* is text: it names a generator declared in
+  `problem.rbx.yml` rather than a file, and a button that went nowhere would
+  promise a destination the view does not have.
+
+The card fills on **selection**, not on open, so a whole failing group can be
+scanned for checker messages without opening a single editor. It is absent
+entirely whenever the selection is not a testcase -- the same rule the findings
+panel follows.
+
+None of the three channel buttons is ever disabled. Whether a testcase has
+stderr is a fact about the disk, and the view reads a run's metadata rather than
+statting artifacts on every watcher tick; a button with nothing behind it says
+so, in words, when pressed. The upside is that the button row is the one control
+in the card that never moves as the highlight travels down a group.
+
+### Compilation findings
+
+Everything above is about *running* a solution. A solution that did not compile
+never ran, and until now it was not in the view at all: rbx filters it out of
+`skeleton.yml`'s `solutions` before the run starts, so the row simply went
+missing, with nothing anywhere saying which solution had gone or why. Compiler
+warnings were invisible in the plainer sense -- nothing on disk mentioned them,
+so the sidebar was silent while the terminal was not.
+
+A **Compilation Findings** panel sits under the tree, with one compact row per
+solution the compile phase had something to say about. It is absent entirely
+when there is nothing to say, the same way the header strip is: the panel being
+on screen is itself the news.
+
+- The **badge** on its header counts the rows, and is **red** the moment one
+  solution failed to compile, **yellow** while everything merely warned. A
+  coloured badge is the reason the panel lives inside this webview rather than
+  in a second view of the container: a `ViewBadge` is a plain count on the
+  activity-bar icon and cannot be coloured, and here the colour is the message.
+- A run with a **compile error opens the panel by itself**, once, when it
+  arrives. A warnings-only run never does -- the yellow badge is what carries
+  it, and a panel that opened for every warning would be a panel nobody leaves
+  open. Closing it sticks for the rest of that run, however many times the view
+  refreshes underneath.
+- Each row is ruled and washed in its severity, at the same two mixes the tree
+  uses for a miss and for a warning. The **name keeps its declaration's colour**,
+  exactly as it has in the tree above, so a row here and the same row up there
+  are recognisably the same solution.
+- The right of a row says `CE` or `3 warns`, and hovering it reveals two
+  buttons: **open the source**, and **open the compiler output** -- the stderr
+  verbatim, in a read-only `rbx:` tab.
+- A row with warnings **expands** into one line per warning: its line number and
+  its flag, nothing more -- `22 · -Wshadow`. The compiler's own sentence is the
+  hover title, not a line of the panel: a third of a narrow sidebar has no room
+  for `declaration of 'total' shadows a global declaration`. Clicking one goes
+  to that line in the source.
+- Clicking a row that failed to compile opens the compiler output, since there
+  is nothing to expand and that is the only place the answer is.
+
+Sanitizer and linter warnings are deliberately *not* here. Both live in rbx's
+same console block, but one comes from running a solution rather than compiling
+it and the other is not compiler output at all; a panel called Compilation
+Findings that carried them would be lying about what it contains.
+
+#### And in the Problems panel
+
+The same findings are also published as diagnostics, so they reach you without
+the sidebar being open at all:
+
+```
+PROBLEMS (3)
+▾ sols/warns.cpp
+  ⚠ 22  declaration of 'total' shadows a global declaration   rbx(-Wshadow)
+  ⚠ 25  unused variable 'leftover'                            rbx(-Wunused-variable)
+▾ sols/broken.cpp
+  ⊗  1  This solution failed to compile, and was left out of the run.  rbx(compiler output)
+```
+
+The panel and the Problems list are the same facts on two surfaces, and which
+one you want depends on what you are doing: the panel is a list of *solutions*
+and sits beside the run it belongs to, while Problems is a list of *locations*
+and belongs to the file you are editing. A warning there also draws in the
+editor's own gutter and is reachable with `F8`.
+
+- A **warning** lands on the line the compiler named, in the file **the compiler
+  named** — which is not always the solution being compiled — and spends the
+  `code` cell on its flag, the way every linter in the product does.
+- A **failure** lands at the top of the solution, because rbx parses locations
+  out of warnings only and a guessed line would underline the wrong code. Its
+  message says the part that is otherwise invisible — the solution was left out
+  of the run — and its `code` cell is a **link to the compiler output** instead
+  of a flag, since a diagnostic's code is the one field that can carry a URI.
+- The range is the whole line: rbx records which line a warning is on and not
+  which column, and inventing a column would underline the wrong characters.
+- Entries are cleared and rebuilt from the same `onDidChange` that feeds the run
+  view, so the two surfaces can never describe different runs. Set
+  `rbx.compilationDiagnostics` to `false` to turn them off.
 
 ### Naming solutions
 
@@ -290,7 +516,9 @@ still proposed and cannot ship in a published extension.
 Milestone 1 of the [v1 design](../docs/plans/2026-08-11-vscode-extension-design.md):
 package discovery, the run view, read-only artifact editors, and diff. The view
 itself is a webview, per
-[its own design](../docs/plans/2026-08-19-vscode-run-webview-design.md).
+[its own design](../docs/plans/2026-08-19-vscode-run-webview-design.md), and what
+a testcase opens onto is
+[a design of its own](../docs/plans/2026-08-21-vscode-testcase-detail-design.md).
 
 The build tree (browsing generated testcases without a run) needs rbx to persist
 its entry list first, and is not here yet. A lower-density report in an editor
@@ -336,7 +564,8 @@ Everything comes from files rbx already writes. The layout is a contract, and
 | Path | Contents |
 |---|---|
 | `<pkg>/problem.rbx.yml` | what the package *declares*: solutions and their expected outcomes, and every other file it names |
-| `<pkg>/.rbx/runs/skeleton.yml` | solutions, groups, testcase entries with provenance, and each solution's resolved limits |
+| `<pkg>/.rbx/runs/skeleton.yml` | solutions, groups, testcase entries with provenance, each solution's resolved limits, and what the compile phase reported |
+| `<pkg>/.rbx/runs/compilation/<i>.log` | one solution's compiler output, verbatim |
 | `<pkg>/.rbx/runs/report.yml` | **every aggregate**: verdicts, scores, max time/memory, per-group expectation results, double-TL warnings |
 | `<pkg>/.rbx/runs/<i>/<group>/<stem>.eval` | verdict, time, memory, checker message, the verdict a soft TLE hid |
 | `<pkg>/.rbx/runs/<i>/<group>/<stem>.out` | solution stdout |
@@ -358,6 +587,13 @@ Two things are easy to get wrong here:
   copy is the only one a reader here can use. Nothing renders it yet; it is
   written so that a time can one day be shown against the limit it was judged
   under.
+- `skeleton.yml`'s `compilation` lists **only** the solutions with something to
+  report, and a solution that failed to compile appears there and nowhere else
+  -- it is absent from `solutions` and from `compiled_solutions`, because it
+  never entered the run. The compiler output is *not* inlined: it is unbounded,
+  and the skeleton is parsed in full by every reader, so each record points at a
+  file beside it instead. A skeleton written by an older rbx has no field at
+  all, which reads as a clean compile and no panel.
 - A missing `report.yml` means *no solution has finished yet*, never *stale*:
   rbx deletes it when it writes a new skeleton. A `version` it does not
   recognise is ignored outright, because rendering a run without aggregates is

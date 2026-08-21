@@ -3,7 +3,12 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 from pydantic import BaseModel
 
 from rbx.box.environment import LanguageGroup, LanguageGroupFallback
-from rbx.box.schema import TimingBound, TimingGroupOrigin, TimingGroupReport
+from rbx.box.schema import (
+    TimingBound,
+    TimingGroupOrigin,
+    TimingGroupReport,
+    TimingGroupUpperValidation,
+)
 
 
 class ResolvedGroup(BaseModel):
@@ -115,14 +120,21 @@ class UpperTimings(BaseModel):
     checked against this bound.
     """
 
-    # Absent when every slow solution of the group was dropped: the group then
-    # bounds nothing from above, but still has to carry ``dropped_upper`` so the
-    # drop is reported against the group it happened in.
+    # Absent when no slow solution of the group was measured: every one of them
+    # was confirmed too slow (or none ran), so the group bounds nothing from
+    # above, but it still has to carry the outcome so it is reported against the
+    # group it belongs to.
     fastest_slow: Optional[int] = None
     fastest_slow_solution: Optional[str] = None
-    # Slow solutions that were measured but cannot bound the limit (e.g. they
-    # hit the inference timeout).
-    dropped_upper: List[str] = []
+    # Slow solutions confirmed too slow: they were still running when the limit
+    # they were probed at elapsed, so they respect the upper bound and there is
+    # no time to bound it with.
+    confirmed_upper: List[str] = []
+    # Slow solutions that finished under the limit they were probed at, so they
+    # violate the upper bound. Each carries the time it actually took.
+    violating_upper: List[Measurement] = []
+    # Slow solutions that were not run at all.
+    skipped_upper: List[str] = []
 
 
 class GroupMeasurements(BaseModel):
@@ -194,18 +206,28 @@ def _record_provenance(
     measured: GroupMeasurements,
 ) -> None:
     """Stamp onto a report what decided its limit: the bounds the estimator
-    computed and the slow solutions that were measured but bound nothing.
+    computed and what checking its slow solutions against that limit found.
     Presentation-only -- nothing here feeds limit resolution."""
     if result is None:
         return
     report.lowerBound = result.lower_bound
     report.upperBound = result.upper_bound
-    if measured.upper is not None and measured.upper.dropped_upper:
+    upper = measured.upper
+    if upper is not None and (
+        upper.confirmed_upper or upper.violating_upper or upper.skipped_upper
+    ):
         # Set only when there is something to record. The profile is serialized
-        # with `exclude_unset`, so assigning an empty list would make an
-        # estimated group emit `droppedUpper: []` while a derived one omits the
+        # with `exclude_unset`, so assigning an empty record would make an
+        # estimated group emit `upperValidation` while a derived one omits the
         # key -- a distinction that means nothing to whoever reads the file.
-        report.droppedUpper = list(measured.upper.dropped_upper)
+        report.upperValidation = TimingGroupUpperValidation(
+            confirmed=list(upper.confirmed_upper),
+            violating=[
+                TimingBound(value=time, solution=solution)
+                for time, solution in upper.violating_upper
+            ],
+            skipped=list(upper.skipped_upper),
+        )
 
 
 class GroupValidationError(ValueError):

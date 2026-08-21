@@ -5,7 +5,6 @@ The whole behavior of the inference run lives in the arguments handed to
 diagnostics derived from their verdicts, so that is what these tests assert on.
 """
 
-import dataclasses
 import pathlib
 import re
 from typing import Dict, List, Optional
@@ -14,10 +13,9 @@ from unittest import mock
 import pytest
 import rich.console
 
-from rbx.box import environment, limits_info, solutions, timing
+from rbx.box import limits_info, timing
 from rbx.box.deferred import Deferred
 from rbx.box.environment import TimingConfig, VerificationLevel
-from rbx.box.generators import generate_outputs_for_testcases, generate_testcases
 from rbx.box.schema import (
     ExpectedOutcome,
     Solution,
@@ -26,13 +24,11 @@ from rbx.box.schema import (
     TimingMultipliers,
 )
 from rbx.box.solutions import _gates_report  # noqa: SLF001
-from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.box.testing import testing_package
 from rbx.box.timing import (
     _diagnose_inference_run,  # noqa: SLF001
     _timings_per_language,  # noqa: SLF001
 )
-from rbx.grading import grading_context, steps
 from rbx.grading.steps import Outcome
 
 
@@ -79,6 +75,11 @@ class _Run:
         self.run_solutions = None
         self.print_run_report = None
         self.estimate = None
+        self.build_context = None
+
+    @property
+    def strategy(self):
+        return self.build_context.call_args.args[2]
 
     @property
     def tracked(self) -> List[str]:
@@ -131,7 +132,10 @@ async def _compute(
             return_value=structured or {},
         ),
         mock.patch(
-            'rbx.box.timing.estimate_time_limit',
+            'rbx.box.timing.build_estimation_context', return_value=mock.Mock()
+        ) as mock_context,
+        mock.patch(
+            'rbx.box.timing._estimate_and_validate',
             return_value=estimated or timing.TimingProfile(timeLimit=1000),
         ) as mock_estimate,
         mock.patch(
@@ -143,6 +147,7 @@ async def _compute(
         run.run_solutions = mock_run
         run.print_run_report = mock_report
         run.estimate = mock_estimate
+        run.build_context = mock_context
         result = await timing.compute_time_limits(
             check=True, detailed=False, formula=formula, auto=True
         )
@@ -170,17 +175,20 @@ def pkg(testing_pkg: testing_package.TestingPackage):
     return testing_pkg
 
 
-async def test_formula_mode_runs_only_lower_solutions_uncapped(pkg):
+async def test_formula_mode_runs_only_lower_solutions_under_the_cap(pkg):
     ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
     tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
     run, result = await _compute(
         pkg,
-        timing_config=TimingConfig(formula='slowest * 2'),
+        timing_config=TimingConfig(formula='slowest * 2', inferenceTimeout=7000),
         lower=[ac],
         upper=[tle],
     )
     assert run.tracked == [str(ac.path)]
-    assert run.timelimit_override == -1
+    # A formula estimate has no upper bound to run the slow solutions for, but
+    # the cap is a property of the estimation, not of the ratios: it still
+    # bounds how long the accepted solutions may run.
+    assert run.timelimit_override == 7000
     assert result is not None
 
 
@@ -196,14 +204,18 @@ async def test_multipliers_without_tle_ratio_runs_only_lower_solutions(pkg):
         upper=[tle],
     )
     assert run.tracked == [str(ac.path)]
-    assert run.timelimit_override == -1
+    assert run.timelimit_override == 7000
     # Nothing about the run differs from the formula path: every solution that
-    # ran still gates the report, and nothing was dropped.
+    # ran still gates the report.
     assert run.print_run_report.call_args.kwargs['gating_solutions'] == set(run.tracked)
-    assert run.estimate.call_args.kwargs['dropped_upper_per_language'] == {}
 
 
-async def test_multipliers_with_tle_ratio_runs_both_capped(pkg):
+async def test_the_estimation_run_leaves_the_slow_solutions_alone(pkg):
+    # Even with an upper bound to respect, the slow solutions do not run here:
+    # nothing bounds how long they take, so the only limit that could stop them
+    # is the cap -- which is set for the accepted solutions and says nothing
+    # about the limit they are meant to bound. They are checked afterwards,
+    # against the limit this run estimates.
     ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
     tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
     run, _ = await _compute(
@@ -215,22 +227,16 @@ async def test_multipliers_with_tle_ratio_runs_both_capped(pkg):
         ),
         lower=[ac],
         upper=[tle],
-        structured=_structured(
-            {
-                ac: [_evaluation(400, Outcome.ACCEPTED)],
-                tle: [_evaluation(6000, Outcome.ACCEPTED)],
-            }
-        ),
+        structured=_structured({ac: [_evaluation(400, Outcome.ACCEPTED)]}),
     )
-    assert run.tracked == [str(ac.path), str(tle.path)]
+    assert run.tracked == [str(ac.path)]
     assert run.timelimit_override == 7000
 
 
-async def test_multipliers_with_tle_ratio_but_no_slow_solutions_stay_uncapped(pkg):
+async def test_multipliers_with_tle_ratio_but_no_slow_solutions_still_cap(pkg):
     # The path most existing packages take once the default preset ships
-    # timeLimitToTle: nothing bounds the limit from above, so the cap would buy
-    # nothing and only add a way for a legitimately slow accepted solution to
-    # fail the estimate.
+    # timeLimitToTle: nothing bounds the limit from above, so there is nothing
+    # to drop -- but the accepted solutions still run under the cap.
     ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
     run, result = await _compute(
         pkg,
@@ -243,10 +249,8 @@ async def test_multipliers_with_tle_ratio_but_no_slow_solutions_stay_uncapped(pk
         upper=[],
     )
     assert run.tracked == [str(ac.path)]
-    assert run.timelimit_override == -1
-    # And with no cap there is nothing to diagnose.
+    assert run.timelimit_override == 7000
     assert result is not None
-    assert run.estimate.call_args.kwargs['dropped_upper_per_language'] == {}
 
 
 async def test_custom_formula_forces_formula_mode_over_multipliers(pkg):
@@ -255,15 +259,18 @@ async def test_custom_formula_forces_formula_mode_over_multipliers(pkg):
     run, _ = await _compute(
         pkg,
         timing_config=TimingConfig(
-            multipliers=TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5)
+            inferenceTimeout=6000,
+            multipliers=TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
         ),
         lower=[ac],
         upper=[tle],
         formula='slowest * 3',
     )
     assert run.tracked == [str(ac.path)]
-    assert run.timelimit_override == -1
-    assert run.estimate.call_args.args[2].formula == 'slowest * 3'
+    # The custom formula overrides how the limit is derived, not the cap the
+    # solutions are measured under -- that still comes from the configuration.
+    assert run.timelimit_override == 6000
+    assert run.strategy.formula == 'slowest * 3'
 
 
 async def test_the_estimation_run_never_doubles_the_time_limit(pkg):
@@ -290,100 +297,6 @@ async def test_only_lower_solutions_gate_the_run_report(pkg):
         ),
     )
     assert run.print_run_report.call_args.kwargs['gating_solutions'] == {str(ac.path)}
-
-
-async def test_an_upper_solution_at_the_cap_is_dropped_with_a_warning(pkg, capsys):
-    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
-    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
-    run, result = await _compute(
-        pkg,
-        timing_config=TimingConfig(
-            multipliers=TimingMultipliers(
-                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=7000
-            )
-        ),
-        lower=[ac],
-        upper=[tle],
-        structured=_structured(
-            {
-                ac: [_evaluation(400, Outcome.ACCEPTED)],
-                tle: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)],
-            }
-        ),
-    )
-    assert result is not None
-    assert run.estimate.call_args.kwargs['dropped_upper_per_language'] == {
-        'cpp': [str(tle.path)]
-    }
-    printed = _printed(capsys)
-    # A warning, not an error: the estimate goes on without this solution.
-    assert '⚠' in printed
-    assert '✗' not in printed
-    assert 'tle.cpp' in printed
-    assert 'does not bound the time limit from above' in printed
-
-
-async def test_an_upper_solution_crashing_as_declared_is_an_error_without_blame(
-    pkg, capsys
-):
-    # `tle-or-rte` declares the crash, so the message must not accuse the setter
-    # of a bug -- but a solution that stopped early still measures nothing, so
-    # it stays an error the setter has to resolve deliberately.
-    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
-    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TLE_OR_RTE)
-    run, result = await _compute(
-        pkg,
-        timing_config=TimingConfig(
-            multipliers=TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5)
-        ),
-        lower=[ac],
-        upper=[tle],
-        structured=_structured(
-            {
-                ac: [_evaluation(400, Outcome.ACCEPTED)],
-                tle: [_evaluation(120, Outcome.RUNTIME_ERROR)],
-            }
-        ),
-    )
-    assert result is None
-    run.estimate.assert_not_called()
-    printed = _printed(capsys)
-    assert '✗' in printed
-    assert 'tle.cpp' in printed
-    assert 'which is what its expectation declares' in printed
-    assert 'inference: false' in printed
-    # Nothing here says the solution is broken or asks for it to be fixed.
-    assert 'instead of running out of time' not in printed
-    assert 'Fix the solution' not in printed
-
-
-async def test_an_upper_solution_failing_for_an_undeclared_reason_is_an_error(
-    pkg, capsys
-):
-    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
-    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
-    run, result = await _compute(
-        pkg,
-        timing_config=TimingConfig(
-            multipliers=TimingMultipliers(acToTimeLimit=2.0, timeLimitToTle=1.5)
-        ),
-        lower=[ac],
-        upper=[tle],
-        structured=_structured(
-            {
-                ac: [_evaluation(400, Outcome.ACCEPTED)],
-                tle: [_evaluation(120, Outcome.WRONG_ANSWER)],
-            }
-        ),
-        run_report_ok=False,
-    )
-    assert result is None
-    run.estimate.assert_not_called()
-    printed = _printed(capsys)
-    assert '✗' in printed
-    assert 'tle.cpp' in printed
-    assert 'instead of running out of time' in printed
-    assert 'inference: false' in printed
 
 
 async def test_a_lower_solution_at_the_cap_is_an_error(pkg, capsys):
@@ -414,6 +327,26 @@ async def test_a_lower_solution_at_the_cap_is_an_error(pkg, capsys):
     assert '✗' in printed
     assert 'ac.cpp' in printed
     assert 'cannot bound the time limit from below' in printed
+
+
+async def test_a_lower_solution_at_the_cap_is_an_error_in_formula_mode_too(pkg, capsys):
+    # Nothing bounds a formula estimate from above, but a truncated measurement
+    # is just as worthless there: the formula reads the measured times.
+    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
+    run, result = await _compute(
+        pkg,
+        timing_config=TimingConfig(formula='slowest * 2', inferenceTimeout=7000),
+        lower=[ac],
+        upper=[],
+        structured=_structured({ac: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)]}),
+        run_report_ok=False,
+    )
+    assert result is None
+    run.estimate.assert_not_called()
+    printed = _printed(capsys)
+    assert 'ac.cpp' in printed
+    assert 'cannot bound the time limit from below' in printed
+    assert '7000 ms' in printed
 
 
 async def test_a_lower_solution_failing_for_a_non_timing_reason_uses_the_plain_gate(
@@ -447,210 +380,6 @@ async def test_a_lower_solution_failing_for_a_non_timing_reason_uses_the_plain_g
     assert 'Failed to run ACCEPTED solutions' in printed
 
 
-async def test_a_cap_bounded_estimate_warns_that_the_upper_bound_is_untrustworthy(
-    pkg, capsys
-):
-    # inferenceTimeout 7000 / timeLimitToTle 1.5 = 4666 ms; the resolved limit of
-    # 5000 ms is above it, so the cap -- not the slow solutions -- bounded it.
-    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
-    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
-    _, result = await _compute(
-        pkg,
-        timing_config=TimingConfig(
-            multipliers=TimingMultipliers(
-                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=7000
-            )
-        ),
-        lower=[ac],
-        upper=[tle],
-        structured=_structured(
-            {
-                ac: [_evaluation(2500, Outcome.ACCEPTED)],
-                tle: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)],
-            }
-        ),
-        estimated=timing.TimingProfile(
-            timeLimit=5000, groups=[_group(5000, dropped=[tle])]
-        ),
-    )
-    assert result is not None
-    printed = _printed(capsys)
-    assert '⚠' in printed
-    assert 'upper bound' in printed
-    # The drop warning has scrolled past by now, so the solution is named again.
-    assert printed.count('tle.cpp') >= 2
-
-
-@pytest.mark.parametrize(
-    ('limit', 'warns'),
-    [
-        # floor(7000 / 1.5) = 4666 is exactly what the cap still justifies.
-        (4666, False),
-        (4667, True),
-    ],
-)
-async def test_the_cap_bounded_warning_fires_just_above_the_bound(
-    pkg, capsys, limit, warns
-):
-    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
-    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
-    await _compute(
-        pkg,
-        timing_config=TimingConfig(
-            multipliers=TimingMultipliers(
-                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=7000
-            )
-        ),
-        lower=[ac],
-        upper=[tle],
-        structured=_structured(
-            {
-                ac: [_evaluation(2333, Outcome.ACCEPTED)],
-                tle: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)],
-            }
-        ),
-        estimated=timing.TimingProfile(
-            timeLimit=limit, groups=[_group(limit, dropped=[tle])]
-        ),
-    )
-    assert ('upper bound' in _printed(capsys)) is warns
-
-
-async def test_a_per_language_limit_can_trip_the_cap_bounded_warning(pkg, capsys):
-    # The base limit is under the bound but one language's is not, and that is
-    # the limit a solution would actually run under.
-    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
-    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
-    tle_py = Solution(
-        path=pkg.path('tle.py'),
-        language='py',
-        outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
-    )
-    await _compute(
-        pkg,
-        timing_config=TimingConfig(
-            multipliers=TimingMultipliers(
-                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=7000
-            )
-        ),
-        lower=[ac],
-        upper=[tle, tle_py],
-        structured=_structured(
-            {
-                ac: [_evaluation(2000, Outcome.ACCEPTED)],
-                tle: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)],
-                tle_py: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)],
-            }
-        ),
-        estimated=timing.TimingProfile(
-            timeLimit=4000,
-            timeLimitPerLanguage={'py': 9000},
-            groups=[
-                _group(4000, dropped=[tle]),
-                _group(9000, languages=['py'], dropped=[tle_py]),
-            ],
-        ),
-    )
-    printed = _printed(capsys)
-    assert 'upper bound' in printed
-    # The py group is the untrustworthy one; the cpp group sits under the bound.
-    assert 'tle.py' in printed
-
-
-async def test_the_pooled_base_limit_is_checked_too(pkg, capsys):
-    # No single group is both above the bound and short of evidence, but the
-    # base limit -- the one DEFAULTED languages and the packagers run under --
-    # pools every drop, so it is checked in its own right.
-    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
-    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
-    await _compute(
-        pkg,
-        timing_config=TimingConfig(
-            multipliers=TimingMultipliers(
-                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=7000
-            )
-        ),
-        lower=[ac],
-        upper=[tle],
-        structured=_structured(
-            {
-                ac: [_evaluation(3000, Outcome.ACCEPTED)],
-                tle: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)],
-            }
-        ),
-        estimated=timing.TimingProfile(
-            timeLimit=6000,
-            groups=[_group(1000, dropped=[tle]), _group(6000, languages=['java'])],
-            baseEstimate=TimingGroupReport(
-                languages=[],
-                timeLimit=6000,
-                origin=TimingGroupOrigin.ESTIMATED,
-                droppedUpper=[str(tle.path)],
-            ),
-        ),
-    )
-    assert 'upper bound' in _printed(capsys)
-
-
-async def test_a_drop_does_not_taint_another_groups_limit(pkg, capsys):
-    # The cpp group had the drop and its limit is under what the cap justifies;
-    # the python group is above it but nothing of its own was dropped. Blaming
-    # the cap for python's limit would send the setter after a solution that
-    # bounds a different group entirely.
-    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
-    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
-    await _compute(
-        pkg,
-        timing_config=TimingConfig(
-            multipliers=TimingMultipliers(
-                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=7000
-            )
-        ),
-        lower=[ac],
-        upper=[tle],
-        structured=_structured(
-            {
-                ac: [_evaluation(2000, Outcome.ACCEPTED)],
-                tle: [_evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED)],
-            }
-        ),
-        estimated=timing.TimingProfile(
-            timeLimit=4000,
-            timeLimitPerLanguage={'py': 9000},
-            groups=[
-                _group(4000, dropped=[tle]),
-                _group(9000, languages=['py']),
-            ],
-        ),
-    )
-    assert 'upper bound' not in _printed(capsys)
-
-
-async def test_nothing_dropped_means_no_cap_bounded_warning(pkg, capsys):
-    # A high limit alone is not suspicious; only a drop makes the cap the
-    # suspect.
-    ac = _solution(pkg, 'ac.cpp', ExpectedOutcome.ACCEPTED)
-    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
-    await _compute(
-        pkg,
-        timing_config=TimingConfig(
-            multipliers=TimingMultipliers(
-                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=7000
-            )
-        ),
-        lower=[ac],
-        upper=[tle],
-        structured=_structured(
-            {
-                ac: [_evaluation(2500, Outcome.ACCEPTED)],
-                tle: [_evaluation(6900, Outcome.ACCEPTED)],
-            }
-        ),
-        estimated=timing.TimingProfile(timeLimit=5000, groups=[_group(5000)]),
-    )
-    assert 'upper bound' not in _printed(capsys)
-
-
 async def test_a_package_with_no_lower_bound_solution_fails_before_running(pkg):
     tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
     with pytest.raises(timing.MissingLowerBoundError):
@@ -673,41 +402,6 @@ async def _diagnose(structured: Dict) -> timing._InferenceDiagnosis:  # noqa: SL
         return_value=_structured(structured),
     ):
         return await _diagnose_inference_run(result)
-
-
-async def test_skipped_evaluations_do_not_fail_an_upper_bound_solution(pkg):
-    # A solution stopped at the cap has every later testcase skipped. SKIPPED is
-    # both non-accepted and non-slow, so without a guard it reads as a solution
-    # that broke for a non-timing reason -- a fatal error -- when it is only the
-    # consequence of the timeout that was already diagnosed.
-    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
-    diagnosis = await _diagnose(
-        {
-            tle: [
-                _evaluation(400, Outcome.ACCEPTED),
-                _evaluation(7000, Outcome.TIME_LIMIT_EXCEEDED),
-                _evaluation(None, Outcome.SKIPPED),
-                _evaluation(None, Outcome.SKIPPED),
-            ]
-        }
-    )
-    assert diagnosis.failed_upper == []
-    assert diagnosis.dropped_upper == [tle]
-
-
-async def test_a_real_failure_is_still_diagnosed_next_to_skipped_evaluations(pkg):
-    # Ignoring skipped evaluations must not swallow the verdict that caused them.
-    tle = _solution(pkg, 'tle.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
-    diagnosis = await _diagnose(
-        {
-            tle: [
-                _evaluation(120, Outcome.WRONG_ANSWER),
-                _evaluation(None, Outcome.SKIPPED),
-            ]
-        }
-    )
-    assert diagnosis.failed_upper == [(tle, Outcome.WRONG_ANSWER)]
-    assert diagnosis.dropped_upper == []
 
 
 async def test_skipped_evaluations_do_not_truncate_a_lower_bound_solution(pkg):
@@ -757,114 +451,6 @@ async def test_skipped_evaluations_contribute_no_timing(pkg, capsys):
             rich.console.Console(), structured, [ac]
         )
     assert per_language == {'cpp': {str(ac.path): 400}}
-
-
-@dataclasses.dataclass(frozen=True)
-class _RealRun:
-    """What one real estimation run produced, and how much it actually ran."""
-
-    estimate: Optional[timing.TimingProfile]
-    slow_runs: int  # testcases dispatched for `slow.cpp`
-    executions: int  # sandbox executions, cached ones excluded
-
-
-async def _time_a_real_package(*, abort: bool, profile: str) -> _RealRun:
-    """One real ``compute_time_limits`` over the package in the cwd, under a
-    500 ms inference timeout. With ``abort`` off, the abort predicate is dropped
-    on its way to the runner, reproducing the pre-abort behavior exactly.
-
-    The estimation run itself is executed under ``CACHE_COMPILATION``, so no run
-    is served from the grading cache: two arms of the same test would otherwise
-    share one dependency cache (it is keyed by content, not by directory, and
-    the fixtures share it session-wide), and the second arm would replay the
-    first arm's measurements instead of producing its own. Compilation stays
-    cached -- it is not what is being compared."""
-    await generate_testcases()
-    entries = [
-        entry.group_entry for entry in await extract_generation_testcases_from_groups()
-    ]
-    await generate_outputs_for_testcases(entries)
-
-    env = environment.get_environment()
-    capped = env.timing.model_copy(
-        update={
-            'multipliers': TimingMultipliers(
-                acToTimeLimit=2.0, timeLimitToTle=1.5, inferenceTimeout=500
-            ),
-            'formula': None,
-        }
-    )
-
-    real_run_solutions = timing.run_solutions
-
-    async def without_abort(*args, **kwargs):
-        kwargs['abort_on'] = None
-        return await real_run_solutions(*args, **kwargs)
-
-    real_run_on_testcase = solutions.run_solution_on_testcase
-
-    real_steps_run = steps.run
-    executions = 0
-
-    async def counting_run(*args, **kwargs):
-        nonlocal executions
-        executions += 1
-        return await real_steps_run(*args, **kwargs)
-
-    with (
-        mock.patch.object(env, 'timing', capped),
-        mock.patch.object(steps, 'run', counting_run),
-        mock.patch.object(
-            solutions, 'run_solution_on_testcase', wraps=real_run_on_testcase
-        ) as spy,
-        grading_context.cache_level(grading_context.CacheLevel.CACHE_COMPILATION),
-    ):
-        if abort:
-            estimated = await timing.compute_time_limits(
-                check=False, detailed=False, auto=True, profile=profile
-            )
-        else:
-            with mock.patch('rbx.box.timing.run_solutions', without_abort):
-                estimated = await timing.compute_time_limits(
-                    check=False, detailed=False, auto=True, profile=profile
-                )
-
-    slow_runs = sum(
-        1 for call in spy.call_args_list if call.args[0].path.name == 'slow.cpp'
-    )
-    return _RealRun(estimate=estimated, slow_runs=slow_runs, executions=executions)
-
-
-@pytest.mark.test_pkg('problems/inference-abort')
-async def test_a_solution_that_hits_the_inference_timeout_stops_running(
-    pkg_from_testdata: pathlib.Path,
-):
-    # `inference-abort` has three testcases and one hopeless solution that burns
-    # far more than the 500 ms cap on each of them. Its measurement is dropped
-    # from the upper bound either way, so the runs after the first one only cost
-    # wall clock.
-    aborted = await _time_a_real_package(abort=True, profile='aborted')
-    full = await _time_a_real_package(abort=False, profile='full')
-
-    assert full.slow_runs == 3
-    assert aborted.slow_runs == 1
-
-    # Both arms measured what they report. The no-abort arm runs strictly more
-    # of them, so if it were replaying the first arm's cached evaluations --
-    # which would make the comparison below vacuous -- it would execute fewer,
-    # not more.
-    assert full.executions > aborted.executions
-
-    # The property the whole feature rests on: stopping early is a pure speedup.
-    # Compared on the limits, not on the whole profile: now that each arm
-    # measures for itself, the millisecond of jitter between two real runs of
-    # the same solution shows up verbatim in the profile's bookkeeping
-    # (`fastest`, `slowest`, `lowerBound`), and that is not what "aborting does
-    # not change the estimate" means. What must not move is what rbx writes.
-    assert aborted.estimate is not None
-    assert full.estimate is not None
-    assert aborted.estimate.timeLimit == full.estimate.timeLimit
-    assert aborted.estimate.timeLimitPerLanguage == full.estimate.timeLimitPerLanguage
 
 
 def test_the_report_gate_ignores_solutions_outside_gating_solutions():

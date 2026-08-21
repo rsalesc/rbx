@@ -855,13 +855,12 @@ fastest solution expected to be too slow. When omitted, solutions expected to be
 slow are not run and the time limit is not bounded from above.""",
     )
 
-    inferenceTimeout: int = Field(
-        default=10000,
+    inferenceTimeout: Optional[int] = Field(
+        default=None,
         gt=0,
-        description="""Time limit (in milliseconds) enforced on solutions while
-estimating. Only used when `timeLimitToTle` is set. A solution expected to be too
-slow that hits it is dropped from the upper bound; an accepted one that hits it is
-an error.""",
+        description="""Deprecated: use `timing.inferenceTimeout`, which applies to
+every estimation strategy instead of only to multiplier-based ones. Kept for
+backwards compatibility; setting both is an error.""",
     )
 
     timeResolution: int = Field(
@@ -894,9 +893,9 @@ the estimated time limit from above.""",
     inferenceTimeout: Optional[int] = Field(
         default=None,
         gt=0,
-        description="""Overrides the environment `inferenceTimeout`: the time limit
-(in milliseconds) enforced on solutions while estimating. Raise it for a problem whose
-solutions are slower than the environment expects.""",
+        description="""Deprecated: use `timing.inferenceTimeout`, which applies to
+every estimation strategy instead of only to multiplier-based ones. Kept for
+backwards compatibility; setting both is an error.""",
     )
 
     timeResolution: Optional[int] = Field(
@@ -910,11 +909,33 @@ solutions are slower than the environment expects.""",
 class PackageTiming(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
+    inferenceTimeout: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="""Overrides the environment `inferenceTimeout`: the time limit
+(in milliseconds) enforced on every solution run while the time limit is estimated,
+whatever the estimation strategy is. Raise it for a problem whose solutions are
+slower than the environment expects.""",
+    )
+
     multipliers: Optional[TimingMultipliersOverride] = Field(
         default=None,
         description="""Per-problem overrides of the environment's timing
 multipliers. Only the declared fields are overridden.""",
     )
+
+    @model_validator(mode='after')
+    def _validate_single_inference_timeout(self):
+        if (
+            self.inferenceTimeout is not None
+            and self.multipliers is not None
+            and self.multipliers.inferenceTimeout is not None
+        ):
+            raise ValueError(
+                'timing.inferenceTimeout and timing.multipliers.inferenceTimeout '
+                'are the same setting; keep only timing.inferenceTimeout.'
+            )
+        return self
 
 
 class TimingGroupOrigin(str, enum.Enum):
@@ -936,6 +957,33 @@ the largest time limit it allows."""
         default=None,
         description="""The solution that set this bound, when it came from a measured
 solution of the group. Absent when the bound was derived from another group's limit.""",
+    )
+
+
+class TimingGroupUpperValidation(BaseModel):
+    """What checking a group's slow solutions against its time limit found."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    confirmed: List[str] = Field(
+        default=[],
+        description="""Solutions of this group expected to be too slow that were
+confirmed to be so: they were still running once the estimated time limit times
+`timeLimitToTle` had elapsed. Presentation-only.""",
+    )
+
+    violating: List[TimingBound] = Field(
+        default=[],
+        description="""Solutions of this group expected to be too slow that finished
+within the estimated time limit times `timeLimitToTle`, so they do not respect the
+upper bound. `value` is the time the solution actually took. Presentation-only.""",
+    )
+
+    skipped: List[str] = Field(
+        default=[],
+        description="""Solutions of this group expected to be too slow that were not
+run, either because `timeLimitToTle` is unset or because the validation phase was
+skipped. Presentation-only.""",
     )
 
 
@@ -966,11 +1014,19 @@ was estimated from multipliers and some slow solution of the group bounded it.
 Presentation-only.""",
     )
 
+    upperValidation: Optional[TimingGroupUpperValidation] = Field(
+        default=None,
+        description="""What checking this group's slow solutions against its estimated
+time limit found. Absent when the group has no slow solutions. Presentation-only.""",
+    )
+
     droppedUpper: List[str] = Field(
         default=[],
-        description="""Solutions of this group that were expected to be too slow but
-were still running at `inferenceTimeout`, so they bound nothing from above.
-Presentation-only.""",
+        deprecated=True,
+        exclude=True,
+        description="""Deprecated: replaced by `upperValidation`. Accepted so that a
+limits profile written before the estimation was split into two phases still parses;
+never written.""",
     )
 
 

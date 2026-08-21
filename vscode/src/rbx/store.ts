@@ -12,12 +12,15 @@ import { parse as parseYaml } from 'yaml';
 import {
   Ext,
   PackageLayout,
+  compilationLogPath,
   reportPath,
   runArtifactPath,
   skeletonPath,
+  solutionSourcePath,
   testArtifactPath,
 } from './layout';
 import {
+  CompilationEntry,
   Evaluation,
   Skeleton,
   SolutionEntry,
@@ -46,6 +49,15 @@ export interface TestcaseRun {
    * produced it -- so both are offered and the opener takes whichever exists.
    */
   readonly stderrPaths: readonly string[];
+  /**
+   * The run log -- what rbx recorded about executing this testcase.
+   *
+   * The third channel of the testcase panes, alongside the output diff and
+   * stderr, mirroring `rbx ui`'s `3`. A single path rather than candidates like
+   * `stderrPaths`: the log is written by the grading step itself, so its name
+   * does not depend on the task type.
+   */
+  readonly logPath: string;
   readonly interactionPath: string;
 }
 
@@ -66,9 +78,25 @@ export interface SolutionRun {
   readonly report?: SolutionReport;
 }
 
+/**
+ * One solution's compilation record, with its files resolved on this host.
+ *
+ * Kept apart from `SolutionRun` because the two do not line up: a solution that
+ * failed to compile has a finding and no run at all, and a solution that merely
+ * warned has both.
+ */
+export interface CompilationFinding {
+  readonly entry: CompilationEntry;
+  /** Absolute path to the stored compiler output. */
+  readonly logPath: string;
+  /** Absolute path to the solution's source. */
+  readonly sourcePath: string;
+}
+
 export interface PackageRun {
   readonly skeleton: Skeleton;
   readonly solutions: readonly SolutionRun[];
+  readonly findings: readonly CompilationFinding[];
 }
 
 /**
@@ -115,6 +143,7 @@ async function loadTestcaseRun(
       runArtifactPath(pkg, solutionIndex, group, stem, Ext.Stderr),
       runArtifactPath(pkg, solutionIndex, group, `${stem}.sol`, Ext.Stderr),
     ],
+    logPath: runArtifactPath(pkg, solutionIndex, group, stem, Ext.Log),
     interactionPath: runArtifactPath(pkg, solutionIndex, group, stem, Ext.Interaction),
   };
 }
@@ -180,6 +209,13 @@ export class ArtifactStore {
         loadSolutionRun(this.pkg, skeleton, solution, reports.get(solution.index)),
       ),
     );
-    return { skeleton, solutions };
+    const findings = skeleton.compilation.map(
+      (entry): CompilationFinding => ({
+        entry,
+        logPath: compilationLogPath(this.pkg, entry.log),
+        sourcePath: solutionSourcePath(this.pkg, entry.path),
+      }),
+    );
+    return { skeleton, solutions, findings };
   }
 }

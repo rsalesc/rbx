@@ -3,14 +3,17 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import type { Row, RunViewModel } from '../rbx/viewModel';
+import type { FindingRow, Findings, Row, RunViewModel } from '../rbx/viewModel';
 import {
   UiState,
   escapeAttr,
   escapeHtml,
   matchesFilter,
+  renderCard,
   renderFilter,
+  renderFindings,
   renderHeader,
+  renderSelector,
   renderTree,
   visibleRows,
 } from './render';
@@ -48,7 +51,7 @@ function model(rows: readonly Row[]): RunViewModel {
 }
 
 function state(over: Partial<UiState> = {}): UiState {
-  return { expanded: new Set<string>(), filter: '', ...over };
+  return { expanded: new Set<string>(), filter: '', findingsOpen: false, ...over };
 }
 
 const MAIN = row({
@@ -465,9 +468,11 @@ test('the detail card omits maxima it does not have', () => {
 
 test('the empty model renders the welcome copy that viewsWelcome used to hold', () => {
   const html = renderTree(model([]), state());
-  assert.ok(html.includes('No rbx run found in this workspace.'), html);
+  // One problem's, not the workspace's: nine of ten problems having run says
+  // nothing about the one on screen.
+  assert.ok(html.includes('No rbx run found for this problem.'), html);
   assert.ok(
-    html.includes('Run <code>rbx run</code> in the terminal and the results will show up here.'),
+    html.includes('Run <code>rbx run</code> in its directory and the results will show up here.'),
     html,
   );
   assert.ok(!html.includes('class="row'), html);
@@ -504,6 +509,89 @@ test('the filter box escapes a quote rather than closing its own attribute', () 
   const html = renderFilter(state({ filter: 'say "hi" & <b>' }));
   assert.ok(html.includes('value="say &quot;hi&quot; &amp; &lt;b&gt;"'), html);
   assert.ok(!html.includes('<b>'), html);
+});
+
+test('renders one option per problem, marking the selected one', () => {
+  const html = renderSelector(
+    [
+      { root: '/c/A', label: 'A' },
+      { root: '/c/B', label: 'B' },
+    ],
+    '/c/B',
+  );
+  assert.match(html, /<option value="\/c\/A"[^>]*>A<\/option>/);
+  assert.match(html, /<option value="\/c\/B" selected[^>]*>B<\/option>/);
+});
+
+test('renders nothing for a single problem', () => {
+  // A select with one option is a control that cannot do anything, and the
+  // one-problem workspace has to look exactly as it did before the selector.
+  assert.strictEqual(renderSelector([{ root: '/only', label: 'only' }], '/only'), '');
+});
+
+test('groups options when the problems carry groups', () => {
+  const html = renderSelector(
+    [
+      { root: '/x/A', label: 'A', group: 'x' },
+      { root: '/y/A', label: 'A', group: 'y' },
+    ],
+    '/x/A',
+  );
+  assert.match(html, /<optgroup label="x">/);
+  assert.match(html, /<optgroup label="y">/);
+  assert.strictEqual(html.match(/<\/optgroup>/g)?.length, 2);
+});
+
+test('closes the last group before the problems no contest claimed', () => {
+  // The order `problemChoices` yields: every contested problem first, the loose
+  // ones last. The loose options must land outside the group, and the group
+  // must still be closed -- which is the one sequence a single-pass
+  // open-on-change loop can get wrong.
+  const html = renderSelector(
+    [
+      { root: '/x/A', label: 'A', group: 'x' },
+      { root: '/x/B', label: 'B', group: 'x' },
+      { root: '/loose', label: 'loose' },
+    ],
+    '/x/A',
+  );
+  assert.strictEqual(html.match(/<optgroup label="x">/g)?.length, 1);
+  assert.strictEqual(html.match(/<\/optgroup>/g)?.length, 1);
+  assert.match(html, /<\/optgroup><option value="\/loose">loose<\/option>/);
+});
+
+test('escapes a label and a root', () => {
+  const html = renderSelector(
+    [
+      { root: '/a"b', label: '<script>' },
+      { root: '/c', label: 'c' },
+    ],
+    '/c',
+  );
+  assert.strictEqual(html.includes('<script>'), false);
+  assert.strictEqual(html.includes('"/a"b"'), false);
+});
+
+test('the dot takes the colour of the selected problem, escaped', () => {
+  const html = renderSelector(
+    [
+      { root: '/c/A', label: 'A', color: 'red' },
+      { root: '/c/B', label: 'B', color: 'blue"' },
+    ],
+    '/c/B',
+  );
+  assert.match(html, /class="selector-dot" style="background:blue&quot;"/);
+});
+
+test('a selected problem with no colour renders no dot', () => {
+  const html = renderSelector(
+    [
+      { root: '/c/A', label: 'A' },
+      { root: '/c/B', label: 'B' },
+    ],
+    '/c/A',
+  );
+  assert.strictEqual(html.includes('selector-dot'), false);
 });
 
 // Every verdict short name in outcome.ts, plus the pending and unknown ones.
@@ -770,4 +858,253 @@ test('a run that warned but matched everywhere still gets a header strip', () =>
 
 test('a clean run with nothing warned still gets no header strip', () => {
   assert.strictEqual(renderHeader(model([MAIN]), state()), '');
+});
+
+// --- The Compilation Findings panel ------------------------------------------
+
+function findingRow(over: Partial<FindingRow> & Pick<FindingRow, 'id'>): FindingRow {
+  return {
+    label: over.id,
+    labelBold: false,
+    severity: 'warning',
+    summary: '1 warn',
+    warnings: [],
+    section: 'rbx.finding',
+    ...over,
+  };
+}
+
+function withFindings(rows: readonly FindingRow[]): RunViewModel {
+  const errors = rows.some((row) => row.severity === 'error');
+  const findings: Findings = {
+    rows,
+    badge: rows.length,
+    hue: errors ? 'red' : 'yellow',
+    errors,
+    signature: rows.map((row) => row.id).join('|'),
+  };
+  return { ...model([MAIN]), findings };
+}
+
+const WARNED_FINDING = findingRow({
+  id: 'f0',
+  label: 'main.cpp',
+  labelTitle: 'sols/main.cpp',
+  labelHue: 'green',
+  labelBold: true,
+  summary: '2 warns',
+  warnings: [
+    { id: 'f0::0', line: 41, flag: '-Wsign-compare', title: 'comparison of integers' },
+    { id: 'f0::1', line: 88, flag: '', title: 'something unflagged' },
+  ],
+});
+
+const BROKEN_FINDING = findingRow({
+  id: 'f1',
+  label: 'broken.cpp',
+  severity: 'error',
+  summary: 'CE',
+  labelHue: 'red',
+  reason: "'g++' was not found",
+});
+
+test('a run with nothing to report draws no panel at all', () => {
+  // Its presence is the signal, so a clean package must not carry a header
+  // telling it there is nothing to see.
+  assert.strictEqual(renderFindings(model([MAIN]), state()), '');
+});
+
+test('the header survives collapsing, and the badge with it', () => {
+  // A warnings-only run never opens the panel by itself, so the badge is the
+  // only thing that can carry the news.
+  const html = renderFindings(withFindings([WARNED_FINDING]), state());
+  assert.ok(html.includes('Compilation Findings'));
+  assert.ok(html.includes('findings-badge hue-yellow'));
+  assert.ok(html.includes('aria-expanded="false"'));
+  // Collapsed means collapsed: no rows are drawn behind the header.
+  assert.ok(!html.includes('finding-row'));
+});
+
+test('the badge reddens when something failed to compile', () => {
+  const html = renderFindings(
+    withFindings([WARNED_FINDING, BROKEN_FINDING]),
+    state({ findingsOpen: true }),
+  );
+  assert.ok(html.includes('findings-badge hue-red'));
+  assert.ok(html.includes('>2<'));
+});
+
+test('severity is carried by the row, and the label keeps the declaration', () => {
+  const html = renderFindings(withFindings([BROKEN_FINDING]), state({ findingsOpen: true }));
+  assert.ok(html.includes('severity-error'));
+  // The label hue is the declaration, exactly as it is in the tree above: the
+  // panel says how badly it compiled in the gutter and the wash, not in the name.
+  assert.ok(html.includes('class="label hue-red"'));
+  assert.ok(html.includes('CE'));
+});
+
+test('a failure names its reason in the row title', () => {
+  const html = renderFindings(withFindings([BROKEN_FINDING]), state({ findingsOpen: true }));
+  assert.ok(html.includes(escapeAttr("'g++' was not found")));
+});
+
+test('a row with no warnings offers nothing to expand', () => {
+  const html = renderFindings(withFindings([BROKEN_FINDING]), state({ findingsOpen: true }));
+  assert.ok(!html.includes('finding-twisty codicon'));
+});
+
+test('an expanded row lists where each warning is and what kind it is', () => {
+  const html = renderFindings(
+    withFindings([WARNED_FINDING]),
+    state({ findingsOpen: true, expanded: new Set(['f0']) }),
+  );
+  assert.ok(html.includes('-Wsign-compare'));
+  assert.ok(html.includes('>41<'));
+  // The message is a hover title and never a line of the panel: the panel is a
+  // third of a narrow sidebar.
+  assert.ok(html.includes('title="comparison of integers"'));
+  assert.ok(!html.includes('>comparison of integers<'));
+});
+
+test('a collapsed row lists no warnings', () => {
+  const html = renderFindings(withFindings([WARNED_FINDING]), state({ findingsOpen: true }));
+  assert.ok(html.includes('finding-row'));
+  assert.ok(!html.includes('finding-warning'));
+});
+
+test('every row offers both destinations', () => {
+  // The source is where you fix it; the log is what the compiler actually said.
+  const html = renderFindings(withFindings([WARNED_FINDING]), state({ findingsOpen: true }));
+  assert.ok(html.includes('data-action="source"'));
+  assert.ok(html.includes('data-action="log"'));
+});
+
+test('a finding row carries the context payload its menu keys on', () => {
+  const html = renderFindings(withFindings([WARNED_FINDING]), state({ findingsOpen: true }));
+  assert.ok(html.includes('rbx.finding'));
+  assert.ok(html.includes('rbxNodeId'));
+});
+
+test('a path with a quote in it cannot break out of the row', () => {
+  // `data-vscode-context` is delimited with a single quote so its JSON can keep
+  // its own double ones, and a solution path is a name the package author
+  // chose -- an apostrophe in one would otherwise close the attribute early.
+  const nasty = findingRow({
+    id: "f'2",
+    label: `it's "bad".cpp`,
+    labelTitle: `sols/it's "bad".cpp`,
+    summary: 'CE',
+    severity: 'error',
+  });
+  const html = renderFindings(withFindings([nasty]), state({ findingsOpen: true }));
+  assert.ok(html.includes(`data-id="${escapeAttr("f'2")}"`));
+  assert.ok(!html.includes(`data-id="f'2"`));
+  assert.ok(html.includes(escapeAttr(`sols/it's "bad".cpp`)));
+});
+
+test('an empty run that failed to compile is not told there is no run', () => {
+  // There *is* a run; the reason it looks like nothing happened is in the panel.
+  const html = renderTree({ ...model([]), findings: withFindings([BROKEN_FINDING]).findings }, state());
+  assert.ok(html.includes('No solution made it into this run'));
+  assert.ok(!html.includes('No rbx run found'));
+});
+
+test('an empty workspace still gets the welcome text', () => {
+  assert.ok(renderTree(model([]), state()).includes('No rbx run found'));
+});
+
+// The card: the two facts the extension has been parsing out of every run and
+// rendering nowhere. It follows the *selection*, so it can be read while
+// scanning a failing group without opening a single editor.
+
+const CARD_CASE = row({
+  id: 'sol0::main::1-gen-002',
+  parentId: 'sol0::main',
+  depth: 2,
+  kind: 'testcase',
+  label: '1-gen-002',
+  section: 'rbx.testcase',
+  verdict: { icon: 'error', hue: 'red', short: 'WA' },
+  card: {
+    title: 'main/1-gen-002',
+    checker: 'wrong answer, expected 14, found 12',
+    origins: [
+      { text: 'gen_random 5 3 --seed=7', title: 'Generated by gen_random 5 3 --seed=7' },
+      {
+        text: 'gens/script.txt:12',
+        open: 'rbx.openGeneratorScript',
+        title: 'Generated from gens/script.txt:12',
+      },
+    ],
+  },
+});
+
+test('the card shows the selected testcase, and nothing when the selection is not one', () => {
+  const view = model([MAIN, MAIN_GROUP, CARD_CASE]);
+  const html = renderCard(view, state({ selected: CARD_CASE.id }));
+  assert.ok(html.includes('main/1-gen-002'));
+  assert.ok(html.includes('wrong answer, expected 14, found 12'));
+  // A solution row has no card, and the card must not linger over it describing
+  // a testcase that is no longer selected.
+  assert.strictEqual(renderCard(view, state({ selected: MAIN.id })), '');
+  assert.strictEqual(renderCard(view, state()), '');
+});
+
+test('the card never repeats the verdict, the time or the memory', () => {
+  // They are on the row a few pixels above. Repeating them would put the same
+  // fact on screen twice within one glance and spend the card on the half of
+  // the story that was never missing.
+  const withMeta = {
+    ...CARD_CASE,
+    meta: [
+      { text: '1306 ms', hue: 'dim' as const, role: 'time' as const },
+      { text: '10 MiB', hue: 'dim' as const, role: 'memory' as const },
+    ],
+  };
+  const html = renderCard(model([withMeta]), state({ selected: CARD_CASE.id }));
+  assert.ok(!html.includes('1306 ms'));
+  assert.ok(!html.includes('10 MiB'));
+  assert.ok(!html.includes('WA'));
+});
+
+test('an origin is a button only when it names something openable', () => {
+  const html = renderCard(model([CARD_CASE]), state({ selected: CARD_CASE.id }));
+  // The generator script is a real `path:line` rbx recorded, so it opens.
+  assert.ok(html.includes('data-action="rbx.openGeneratorScript"'));
+  // The generator *call* names a generator declared in problem.rbx.yml, not a
+  // file, so it is text: a button that did nothing would promise a destination.
+  assert.ok(html.includes('<div class="card-origin"'));
+  assert.ok(!html.includes('data-action="gen_random'));
+});
+
+test('a checker that said nothing leaves no empty line behind', () => {
+  const card = CARD_CASE.card;
+  assert.ok(card !== undefined);
+  const quiet = { ...CARD_CASE, card: { ...card, checker: undefined } };
+  const html = renderCard(model([quiet]), state({ selected: CARD_CASE.id }));
+  // A hard TLE never reached the checker. The absence is informative and is
+  // left to speak for itself rather than filled with a placeholder.
+  assert.ok(!html.includes('card-checker'));
+  assert.ok(html.includes('main/1-gen-002'));
+});
+
+test('the card offers three channels and never an input button', () => {
+  const html = renderCard(model([CARD_CASE]), state({ selected: CARD_CASE.id }));
+  for (const channel of ['out', 'err', 'log']) {
+    assert.ok(html.includes(`data-action="${channel}"`), channel);
+  }
+  // The input lives permanently in the first pane; a button pointing it at the
+  // second would put the same file on screen twice.
+  assert.ok(!html.includes('data-action="in"'));
+});
+
+test('the card escapes what a checker wrote', () => {
+  // A checker message is free-form output from the package's own binary, so it
+  // reaches the view as untrusted text like every path does.
+  const card = CARD_CASE.card;
+  assert.ok(card !== undefined);
+  const nasty = { ...CARD_CASE, card: { ...card, checker: 'expected <b>7</b> & got "9"' } };
+  const html = renderCard(model([nasty]), state({ selected: CARD_CASE.id }));
+  assert.ok(html.includes('&lt;b&gt;7&lt;/b&gt; &amp; got'));
+  assert.ok(!html.includes('<b>7</b>'));
 });

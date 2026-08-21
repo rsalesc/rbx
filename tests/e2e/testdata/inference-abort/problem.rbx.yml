@@ -5,11 +5,9 @@ timeLimit: 300
 memoryLimit: 256
 
 timing:
-  multipliers:
-    # Small enough to keep the scenario quick: the hopeless solution is killed
-    # at the cap on the very first testcase, and the ones after it are skipped
-    # instead of costing another cap each.
-    inferenceTimeout: 500
+  # Only the accepted solution runs under this; the hopeless one is checked
+  # against the estimated limit instead, which is what keeps the scenario quick.
+  inferenceTimeout: 500
 
 generators:
   - name: gen

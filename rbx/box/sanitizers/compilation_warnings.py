@@ -56,10 +56,20 @@ class CompilationWarningSummarizer:
     """Turns the compiler logs that produced warnings into a short, single-line
     summary to show next to the ``WARNINGS`` status in the compilation live view.
 
-    The base implementation returns ``None`` (no extra line). Compiler-specific
-    subclasses register themselves in ``_SUMMARIZERS`` via :func:`register`,
-    keyed by a predicate over the compiler executable string.
+    The base implementation parses nothing and summarizes nothing.
+    Compiler-specific subclasses register themselves in ``_SUMMARIZERS`` via
+    :func:`register`, keyed by a predicate over the compiler executable string.
     """
+
+    def parse(self, logs: List[PreprocessLog]) -> List[_ParsedWarning]:
+        """The individual warnings in ``logs``, deduplicated, in log order.
+
+        Split out of :meth:`summarize` because the same records feed two
+        consumers now: the one-line live-view summary, and the per-warning
+        records published on the skeleton for the VS Code run view
+        (``rbx.box.compilation_findings``).
+        """
+        return []
 
     def summarize(self, logs: List[PreprocessLog]) -> Optional[str]:
         return None
@@ -94,7 +104,7 @@ def get_compilation_warning_summarizer_for(
 class CppCompilationWarningSummarizer(CompilationWarningSummarizer):
     _UNFLAGGED = '<unflagged>'
 
-    def summarize(self, logs: List[PreprocessLog]) -> Optional[str]:
+    def parse(self, logs: List[PreprocessLog]) -> List[_ParsedWarning]:
         seen = set()
         parsed: List[_ParsedWarning] = []
         for log in logs:
@@ -104,6 +114,10 @@ class CppCompilationWarningSummarizer(CompilationWarningSummarizer):
                     continue
                 seen.add(key)
                 parsed.append(w)
+        return parsed
+
+    def summarize(self, logs: List[PreprocessLog]) -> Optional[str]:
+        parsed = self.parse(logs)
 
         if not parsed:
             return None

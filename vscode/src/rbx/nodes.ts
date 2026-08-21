@@ -7,16 +7,20 @@
  * it consumes carries no editor API with it.
  */
 import { PackageLayout } from './layout';
-import { GroupRun, PackageRun, SolutionRun, TestcaseRun } from './store';
+import { CompilationWarning } from './model';
+import { CompilationFinding, GroupRun, PackageRun, SolutionRun, TestcaseRun } from './store';
 
-export type RunNode = PackageNode | SolutionNode | GroupNode | TestcaseNode;
+/**
+ * The nodes the tree walk produces.
+ *
+ * Split out of `RunNode` so `flattenNodes` can promise it yields *only* these:
+ * the compilation findings are a second surface with its own list, and folding
+ * them into the walk would put them in the tree the walk describes.
+ */
+export type TreeNode = SolutionNode | GroupNode | TestcaseNode;
 
-export interface PackageNode {
-  readonly kind: 'package';
-  readonly pkg: PackageLayout;
-  /** The host's disambiguated label, when it supplied one. */
-  readonly label?: string;
-}
+/** Everything a command can be invoked on, tree or panel. */
+export type RunNode = TreeNode | FindingNode | FindingWarningNode;
 
 export interface SolutionNode {
   readonly kind: 'solution';
@@ -46,11 +50,39 @@ export interface TestcaseNode {
   readonly testcase: TestcaseRun;
 }
 
-/** The stable row id. Identical to the `TreeItem.id`s the tree used. */
+/** One solution's row in the Compilation Findings panel. */
+export interface FindingNode {
+  readonly kind: 'finding';
+  readonly pkg: PackageLayout;
+  readonly finding: CompilationFinding;
+}
+
+/** One warning under an expanded finding row. */
+export interface FindingWarningNode {
+  readonly kind: 'findingWarning';
+  readonly pkg: PackageLayout;
+  readonly finding: CompilationFinding;
+  readonly warning: CompilationWarning;
+  /** Its position among the finding's warnings, which is what makes the id unique. */
+  readonly index: number;
+}
+
+/**
+ * The stable row id. Identical to the `TreeItem.id`s the tree used.
+ *
+ * Still rooted at the package directory even though no row draws that level:
+ * the ids outlive the package on screen -- the client keeps a selection, and
+ * the host resolves context-menu commands through a map of them -- so an id
+ * from one package must never name a row of another.
+ */
 export function nodeId(node: RunNode): string {
   switch (node.kind) {
-    case 'package':
-      return node.pkg.root;
+    // `compile` rather than a solution index: a solution that failed to compile
+    // has no index, because it never entered the run.
+    case 'finding':
+      return `${node.pkg.root}::compile::${node.finding.entry.path}`;
+    case 'findingWarning':
+      return `${node.pkg.root}::compile::${node.finding.entry.path}::${node.index}`;
     case 'solution':
       return `${node.pkg.root}::${node.run.solution.index}`;
     case 'group':
@@ -64,45 +96,49 @@ export function nodeId(node: RunNode): string {
 export interface PackageRunView {
   readonly pkg: PackageLayout;
   readonly run: PackageRun | undefined;
-  /**
-   * What to call this package in the view.
-   *
-   * Supplied by the host rather than derived here, because telling two packages
-   * named `prob` apart needs `vscode.workspace` to say which folder each sits
-   * in -- and this module's value is being testable without the editor API.
-   * Absent in tests and wherever the basename is unambiguous.
-   */
-  readonly label?: string;
 }
 
 /**
- * Every row in display order, each parent immediately before its children.
+ * Every row of one package's run, in display order, parents before children.
  *
- * The package level is dropped when the workspace holds exactly one package --
- * the common case, where making the user expand one node forever buys nothing.
- * The count is of discovered packages, not of packages that have run, so the
- * view does not gain and lose a level as runs come and go.
+ * One package, because the view shows one: the selector upstream decides which,
+ * so there is no package level left to draw and no rule about when to draw it.
  */
-export function flattenNodes(packages: readonly PackageRunView[]): RunNode[] {
-  const showPackages = packages.length > 1;
-  const nodes: RunNode[] = [];
-  for (const { pkg, run, label } of packages) {
-    if (run === undefined) {
-      continue;
-    }
-    if (showPackages) {
-      nodes.push({ kind: 'package', pkg, label });
-    }
-    const solo = run.solutions.length === 1;
-    for (const solutionRun of run.solutions) {
-      nodes.push({ kind: 'solution', pkg, run: solutionRun, solo });
-      for (const group of solutionRun.groups) {
-        nodes.push({ kind: 'group', pkg, run: solutionRun, group });
-        for (const testcase of group.testcases) {
-          nodes.push({ kind: 'testcase', pkg, run: solutionRun, group, testcase });
-        }
+export function flattenNodes(view: PackageRunView): TreeNode[] {
+  const { pkg, run } = view;
+  if (run === undefined) {
+    return [];
+  }
+  const nodes: TreeNode[] = [];
+  const solo = run.solutions.length === 1;
+  for (const solutionRun of run.solutions) {
+    nodes.push({ kind: 'solution', pkg, run: solutionRun, solo });
+    for (const group of solutionRun.groups) {
+      nodes.push({ kind: 'group', pkg, run: solutionRun, group });
+      for (const testcase of group.testcases) {
+        nodes.push({ kind: 'testcase', pkg, run: solutionRun, group, testcase });
       }
     }
+  }
+  return nodes;
+}
+
+/**
+ * Every compilation finding, and every warning under one, in skeleton order.
+ *
+ * A second walk rather than a branch of `flattenNodes`: these rows are not in
+ * the tree, they answer a different question, and the panel that draws them is
+ * absent whenever this returns nothing. The warnings are walked too so that a
+ * click on one resolves to a node like any other row in the view.
+ */
+export function findingNodes(view: PackageRunView): (FindingNode | FindingWarningNode)[] {
+  const { pkg, run } = view;
+  const nodes: (FindingNode | FindingWarningNode)[] = [];
+  for (const finding of run?.findings ?? []) {
+    nodes.push({ kind: 'finding', pkg, finding });
+    finding.entry.warnings.forEach((warning, index) => {
+      nodes.push({ kind: 'findingWarning', pkg, finding, warning, index });
+    });
   }
   return nodes;
 }

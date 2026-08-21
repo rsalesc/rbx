@@ -13,7 +13,11 @@
  * events, focus, persistence -- precisely because that part cannot be tested,
  * which is why nothing that decides anything is allowed to live there.
  */
+import type { ProblemChoice } from '../rbx/problems';
 import type {
+  CardOrigin,
+  FindingRow,
+  FindingWarning,
   GroupMismatch,
   HistogramSlice,
   MismatchDetail,
@@ -31,6 +35,13 @@ export interface UiState {
   readonly expanded: ReadonlySet<string>;
   readonly selected?: string;
   readonly filter: string;
+  /**
+   * Whether the Compilation Findings panel is open.
+   *
+   * Its own flag rather than an id in `expanded`: the panel is not a row, and
+   * the seed that opens it is a fact about the run rather than about a node.
+   */
+  readonly findingsOpen: boolean;
 }
 
 /**
@@ -557,8 +568,11 @@ export function visibleRows(model: RunViewModel, state: UiState): Row[] {
 /** The welcome text, verbatim from the `viewsWelcome` block it replaces. */
 const WELCOME =
   '<div class="welcome">' +
-  '<p>No rbx run found in this workspace.</p>' +
-  '<p>Run <code>rbx run</code> in the terminal and the results will show up here.</p>' +
+  // Not "in this workspace": the view is one problem's now, and in a contest
+  // where nine problems have run and the selected one has not, a sentence about
+  // the workspace is simply false.
+  '<p>No rbx run found for this problem.</p>' +
+  '<p>Run <code>rbx run</code> in its directory and the results will show up here.</p>' +
   '</div>';
 
 /**
@@ -567,11 +581,23 @@ const WELCOME =
  * The container itself is part of the static shell so that focus and scroll
  * survive a re-render; this returns only what goes inside it.
  */
+/**
+ * What the tree says when the run has no solutions but the compile phase does.
+ *
+ * The welcome text would be a lie here: there *is* a run, and the reason it
+ * looks like nothing happened is sitting in the panel below.
+ */
+const NOTHING_COMPILED =
+  '<div class="welcome">' +
+  '<p>No solution made it into this run.</p>' +
+  '<p>See <strong>Compilation Findings</strong> below for why.</p>' +
+  '</div>';
+
 export function renderTree(model: RunViewModel, state: UiState): string {
   if (model.empty) {
     // `viewsWelcome` does not apply to a webview view, so the copy that used to
     // live in package.json lives here now.
-    return WELCOME;
+    return model.findings === undefined ? WELCOME : NOTHING_COMPILED;
   }
 
   const rows = visibleRows(model, state);
@@ -666,5 +692,232 @@ export function renderFilter(state: UiState): string {
     '<div class="filter">' +
     `<input id="filter" type="search" placeholder="Filter" value="${escapeAttr(state.filter)}">` +
     '</div>'
+  );
+}
+
+/**
+ * The problem dropdown.
+ *
+ * Hidden for a single problem: a select with one option is a control that
+ * cannot do anything, and a one-problem workspace should look exactly as it did
+ * before the selector existed.
+ *
+ * The colour dot is a `style` attribute, which the CSP permits on styles only
+ * (see the note in runView.ts) -- and the value is a colour a contest author
+ * wrote, so it goes through `escapeAttr` like everything else. Escaping alone
+ * would not be enough: a declared colour needs no markup to be a whole extra
+ * declaration, which is why `contest.ts` drops anything that is not a colour
+ * before it ever gets here.
+ */
+export function renderSelector(problems: readonly ProblemChoice[], selected?: string): string {
+  if (problems.length <= 1) {
+    return '';
+  }
+  const option = (problem: ProblemChoice): string =>
+    `<option value="${escapeAttr(problem.root)}"${problem.root === selected ? ' selected' : ''}>` +
+    escapeHtml(problem.label) +
+    '</option>';
+
+  // One pass, opening a group when it changes and closing the one before it.
+  // Safe only because `problemChoices` sorts by group: a grouped and an
+  // ungrouped run cannot interleave, so a group is never reopened. The tail of
+  // ungrouped options -- the packages no contest claimed, which `problemChoices`
+  // puts last -- closes the final group on the way past and needs no close at
+  // the end, which is why the trailing close is conditional on `openGroup`.
+  let body = '';
+  let openGroup: string | undefined;
+  for (const problem of problems) {
+    if (problem.group !== openGroup) {
+      body += openGroup === undefined ? '' : '</optgroup>';
+      openGroup = problem.group;
+      body += openGroup === undefined ? '' : `<optgroup label="${escapeAttr(openGroup)}">`;
+    }
+    body += option(problem);
+  }
+  body += openGroup === undefined ? '' : '</optgroup>';
+
+  const dot = problems.find((problem) => problem.root === selected)?.color;
+  return (
+    '<div class="selector">' +
+    (dot === undefined
+      ? ''
+      : `<span class="selector-dot" style="background:${escapeAttr(dot)}"></span>`) +
+    // Named outright rather than by a visible `<label>`: the sidebar has no
+    // room for one, and a screen reader announcing an unnamed combo box leaves
+    // the user to guess what the option list is a list of.
+    `<select id="problem" aria-label="Problem">${body}</select>` +
+    '</div>'
+  );
+}
+
+/** The two buttons every finding row carries, on the right of its summary. */
+function findingActions(row: FindingRow): string {
+  // Buttons, not just a row-wide click: the row already has a meaning when
+  // clicked (open the log, or expand), and "take me to the source" is a second
+  // destination that would otherwise have nowhere to be asked for.
+  return (
+    '<span class="finding-actions">' +
+    `<button class="finding-action" data-action="source" title="Open ${escapeAttr(row.label)}">${codicon('go-to-file')}</button>` +
+    `<button class="finding-action" data-action="log" title="Open compiler output">${codicon('output')}</button>` +
+    '</span>'
+  );
+}
+
+/**
+ * One warning under an expanded row: where it is, and what kind it is.
+ *
+ * Not what it *says*. The message is the title attribute, because the panel is
+ * a third of a narrow sidebar and a compiler's own sentence is longer than the
+ * row it would have to fit in.
+ *
+ * A `button`, like every other target in this panel, so it is reachable by Tab.
+ * The panel is deliberately not a second `role="tree"`: a tree owes the reader
+ * a roving tab stop and arrow-key navigation, and a handful of buttons in the
+ * document order they are read in owes them nothing they do not already have.
+ */
+function warningLine(warning: FindingWarning): string {
+  const flag =
+    warning.flag === ''
+      ? ''
+      : `<span class="finding-flag">${escapeHtml(warning.flag)}</span>`;
+  return (
+    `<button class="finding-warning" data-id="${escapeAttr(warning.id)}" ` +
+    `title="${escapeAttr(warning.title)}">` +
+    `<span class="finding-line">${warning.line}</span>` +
+    flag +
+    '</button>'
+  );
+}
+
+function findingRowHtml(row: FindingRow, expanded: boolean): string {
+  const expandable = row.warnings.length > 0;
+  const hue = row.labelHue === undefined ? '' : ` hue-${row.labelHue}`;
+  const bold = row.labelBold ? ' bold' : '';
+  // The path stands in as the title when there is nothing else to say: a
+  // trimmed label still has to be able to say which `sols/` it came from.
+  const title = row.reason ?? row.labelTitle;
+  const twisty = expandable
+    ? `<button class="finding-twisty codicon codicon-${expanded ? 'chevron-down' : 'chevron-right'}" aria-expanded="${expanded}" title="Show warnings"></button>`
+    : '<span class="finding-twisty"></span>';
+  return (
+    `<div class="finding-row severity-${row.severity}" ` +
+    `data-id="${escapeAttr(row.id)}" ` +
+    `data-vscode-context='${escapeAttr(
+      JSON.stringify({
+        webviewSection: row.section,
+        rbxNodeId: row.id,
+        preventDefaultContextMenuItems: true,
+      }),
+    )}'` +
+    (title === undefined ? '' : ` title="${escapeAttr(title)}"`) +
+    '>' +
+    twisty +
+    `<span class="label${hue}${bold}">${escapeHtml(row.label)}</span>` +
+    `<span class="finding-summary hue-${row.severity === 'error' ? 'red' : 'yellow'}">${escapeHtml(row.summary)}</span>` +
+    findingActions(row) +
+    '</div>' +
+    (expandable && expanded
+      ? `<div class="finding-warnings">${row.warnings.map(warningLine).join('')}</div>`
+      : '')
+  );
+}
+
+/**
+ * The three channels the second pane can hold, as buttons.
+ *
+ * `out` is the diff -- the output beside what it should have been -- which is
+ * what `rbx ui`'s output box is in two-sided mode. There is deliberately no
+ * `in` button: the input lives permanently in the first pane, and a button
+ * pointing it at the second would put the same file on screen twice.
+ *
+ * None of them is ever disabled. Whether a testcase *has* stderr is a fact
+ * about the disk, which this view does not read, and dimming would reflow the
+ * button row while arrowing down a group -- a moving target on the one control
+ * that should stay put. A button with nothing behind it says so, in words, when
+ * it is pressed.
+ */
+function cardChannels(): string {
+  const button = (action: string, label: string, title: string): string =>
+    `<button class="card-channel" data-action="${action}" title="${escapeAttr(title)}">${escapeHtml(label)}</button>`;
+  return (
+    '<div class="card-channels">' +
+    button('out', 'out', 'Show the output against the expected answer') +
+    button('err', 'err', 'Show what this solution wrote to stderr') +
+    button('log', 'log', 'Show the run log for this testcase') +
+    '</div>'
+  );
+}
+
+function originLine(origin: CardOrigin): string {
+  const text = escapeHtml(origin.text);
+  const title = escapeAttr(origin.title);
+  // A `button` only when there is somewhere to go. An origin rendered as a
+  // button that does nothing on click would promise a destination the view
+  // cannot reach -- a generator *call* names a generator, not a file.
+  return origin.open === undefined
+    ? `<div class="card-origin" title="${title}">${text}</div>`
+    : `<button class="card-origin card-link" data-action="${origin.open}" title="${title}">${text}</button>`;
+}
+
+/**
+ * The card under the tree: what the selected testcase's row cannot say.
+ *
+ * Absent whenever the selection is not a testcase, on the same rule the
+ * findings panel follows -- the card being on screen is itself a statement
+ * about what is selected, and one that lingered over a solution row would be
+ * describing something else.
+ *
+ * The verdict, the time and the memory are not here. They are on the row a few
+ * pixels above, and repeating them would spend the card on the half of the
+ * story that was never missing.
+ */
+export function renderCard(model: RunViewModel, state: UiState): string {
+  const row = model.rows.find((candidate) => candidate.id === state.selected);
+  const card = row?.card;
+  if (card === undefined) {
+    return '';
+  }
+  // The checker's own sentence, wrapped. This is the fact the extension has
+  // been parsing out of every `.eval` and rendering nowhere.
+  const checker =
+    card.checker === undefined
+      ? ''
+      : `<div class="card-checker">${escapeHtml(card.checker)}</div>`;
+  return (
+    `<div class="card-title">${escapeHtml(card.title)}</div>` +
+    checker +
+    card.origins.map(originLine).join('') +
+    cardChannels()
+  );
+}
+
+/**
+ * The Compilation Findings panel, or nothing at all.
+ *
+ * Nothing at all is the common case and the point of it: a package whose
+ * solutions all compiled cleanly gets no panel, so the panel being on screen is
+ * itself the news -- the same rule the header strip follows.
+ *
+ * Collapsed, the header stays: the badge is how a warnings-only run gets
+ * noticed at all, since that run never opens the panel by itself.
+ */
+export function renderFindings(model: RunViewModel, state: UiState): string {
+  const findings = model.findings;
+  if (findings === undefined) {
+    return '';
+  }
+  const open = state.findingsOpen;
+  const body = open
+    ? `<div class="finding-rows">${findings.rows
+        .map((row) => findingRowHtml(row, state.expanded.has(row.id)))
+        .join('')}</div>`
+    : '';
+  return (
+    `<div class="findings-header" id="findings-header" role="button" tabindex="0" aria-expanded="${open}">` +
+    `<span class="twisty codicon codicon-${open ? 'chevron-down' : 'chevron-right'}"></span>` +
+    '<span class="findings-title">Compilation Findings</span>' +
+    `<span class="findings-badge hue-${findings.hue}">${findings.badge}</span>` +
+    '</div>' +
+    body
   );
 }
