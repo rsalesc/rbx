@@ -109,6 +109,12 @@ class FakeJudge(FakeMoj):
         # solution filename -> the `tests` array to answer with, in the order the
         # judge chooses to report it.
         self.results: Dict[str, List[cli.TestrunTest]] = {}
+        # solution filename -> the *whole* finished status to answer with, for the
+        # shapes `results` cannot express: a run that failed as a whole and never
+        # entered the testset carries a verdict and a `total_tests`, and those two
+        # fields are the entire difference between "never ran" and "ran, reported
+        # fewer". Takes precedence over `results` when set.
+        self.statuses: Dict[str, cli.TestrunStatus] = {}
         # How many `testrun-status` calls a run answers `queued` to before it is
         # `done`. `None` never finishes -- the judge that died silently.
         self.polls_until_done: int = 1
@@ -146,9 +152,10 @@ class FakeJudge(FakeMoj):
             # No `tests` key at all while queued, exactly as the probe saw.
             return cli.TestrunStatus(status='queued')
         self.inflight -= 1
-        return cli.TestrunStatus(
-            status='done', tests=self.results[self.filename_of(run)]
-        )
+        filename = self.filename_of(run)
+        if filename in self.statuses:
+            return self.statuses[filename]
+        return cli.TestrunStatus(status='done', tests=self.results[filename])
 
     def filename_of(self, run: str) -> str:
         for submitted, _, filename, _ in self.submissions:
@@ -480,6 +487,160 @@ async def test_the_missing_testcase_warning_is_said_once_per_testrun(
     out = _ANSI.sub('', capsys.readouterr().out)
     assert out.count('reported no result') == 1
     assert '1 of 2 testcases of sol.cpp' in out
+
+
+# -- a run that never ran at all -----------------------------------------------
+#
+# The first end-to-end `rbx time --runner moj` submitted solutions that did not
+# build on the judge. Every one came back `{"status": "done", "verdict_canon":
+# "Compilation Error", "correct": 0, "total_tests": 0, "tests": []}`, and rbx
+# reported it as six testcases going unmeasured -- true, and no help at all to
+# someone whose real problem was a compiler error they were never shown.
+
+
+def _compile_error() -> cli.TestrunStatus:
+    """The finished status the live end-to-end run actually received."""
+    return cli.TestrunStatus(
+        status='done',
+        verdict='Compilation Error',
+        verdict_canon='Compilation Error',
+        correct=0,
+        total_tests=0,
+        tests=[],
+    )
+
+
+async def test_a_compile_error_names_the_verdict_and_the_report_command(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """The two things the setter needs: what happened, and how to read the log.
+
+    Naming the verdict is what turns "6 of 6 testcases unmeasured" into "it did
+    not compile"; quoting `moj testrun-status <run> --report ...` with the real
+    run id in it is what turns that into a fix, because the compiler's own output
+    lives in that report and nowhere rbx can reach.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.statuses['sol.cpp'] = _compile_error()
+
+    with pytest.raises(MojRunnerError) as exc:
+        await _run(runner, ctx)
+
+    message = str(exc.value)
+    assert 'Compilation Error' in message
+    # The real run id, not a placeholder: it is a 32-character digest nobody is
+    # going to reconstruct from memory.
+    run = fake.submissions[0][0]
+    assert f'moj testrun-status {run} --report' in message
+    assert 'did not build on the judge' in message
+    # Plain text: `main.py` bare-prints `str(e)`.
+    assert '[item]' not in message and '[error]' not in message
+
+
+async def test_a_compile_error_is_not_reported_as_unmeasured_testcases(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    """The old message must not survive alongside the new one.
+
+    "MOJ reported no result for 2 of 2 testcases" is what this run used to say,
+    and it is a description of the symptom that quietly implies the cause is
+    somewhere in the testset. Nothing about the testcases was wrong.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.statuses['sol.cpp'] = _compile_error()
+
+    with pytest.raises(MojRunnerError):
+        await _run(runner, ctx)
+
+    assert 'reported no result' not in _ANSI.sub('', capsys.readouterr().out)
+
+
+async def test_a_compile_error_fails_every_testcase_of_that_solution(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """Not one `SKIPPED` evaluation is produced, and the first deferred already
+    raises.
+
+    Degrading per testcase would hand the estimator a solution whose every
+    testcase is "unmeasured" -- a shape it is entitled to carry on from, since
+    that is exactly what a legitimately truncated run looks like. The estimate
+    would then be built from fewer solutions than the setter asked for, with
+    nothing in the report saying which ones dropped out. The run that found this
+    bug did stop in the end, but on `Failed to run ACCEPTED solutions`, which is
+    an accident of that package's expectations rather than a decision.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.statuses['sol.cpp'] = _compile_error()
+
+    deferreds = runner.run_solution(
+        ctx.skeleton.solutions[0], ctx.skeleton.entries, ctx
+    )
+
+    for deferred in deferreds:
+        with pytest.raises(MojRunnerError):
+            await deferred()
+
+
+async def test_a_run_level_failure_with_no_verdict_at_all_still_says_so(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """`verdict_canon` is not guaranteed -- an older server has only `verdict`,
+    and a run can carry neither.
+
+    The failure is detected from the shape of the response, not from the verdict
+    vocabulary (only five spellings of which have ever been seen), so a nameless
+    one is still refused. It just cannot say what to call it.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.statuses['sol.cpp'] = cli.TestrunStatus(status='done', total_tests=0, tests=[])
+
+    with pytest.raises(MojRunnerError) as exc:
+        await _run(runner, ctx)
+
+    message = str(exc.value)
+    assert 'without running a single testcase' in message
+    assert f'moj testrun-status {fake.submissions[0][0]} --report' in message
+
+
+async def test_a_truncated_run_with_no_entries_still_degrades_per_testcase(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    """THE discriminator test. Zero entries is not the same as never having run.
+
+    `STOPWHEN_*` breaks out of the judge's loop at the first bad verdict, and the
+    probe watched that return 4 tests out of 72. A problem whose *first* test
+    fails can return none at all -- and that is still a run that entered the
+    testset, which `total_tests` reports as 72 either way. Keying the new failure
+    on `len(tests) == 0` would call this a build failure and refuse, replacing one
+    wrong diagnosis with another.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.statuses['sol.cpp'] = cli.TestrunStatus(
+        status='done',
+        verdict='Wrong Answer,0p',
+        verdict_canon='Wrong Answer',
+        correct=0,
+        # The judge set out to run both, and said so.
+        total_tests=2,
+        tests=[],
+    )
+
+    evals = await _run(runner, ctx)
+
+    assert [e.result.outcome for e in evals] == [Outcome.SKIPPED, Outcome.SKIPPED]
+    assert [e.log.time for e in evals] == [None, None]
+    out = _ANSI.sub('', capsys.readouterr().out)
+    assert '2 of 2 testcases of sol.cpp' in out
 
 
 async def test_the_background_polling_never_writes_the_status_line(

@@ -95,9 +95,29 @@ online — and only `judge-sp1` had calibrated this problem.)
 | infinite loop | `Time Limit Exceeded,0p` | `Time Limit Exceeded` | `TLE` |
 
 `verdict` carries the score suffix (`,100p`); **`verdict_canon` does not** and is the stable
-one. Per-test `code` uses the short forms above. `MLE` / `OLE` / `PE` / `CE` / `JE` were not
+one. Per-test `code` uses the short forms above. `MLE` / `OLE` / `PE` / `JE` were not
 provoked and remain unconfirmed — Task 6's mapping must therefore treat an unknown code as
 *unknown*, not silently coerce it.
+
+### 3b. `Compilation Error` — observed 2026-08-21, by accident
+
+The first end-to-end `rbx time --runner moj` submitted solutions that did not build on the
+judge, and every testrun came back:
+
+```json
+{"status": "done", "verdict": "Compilation Error", "verdict_canon": "Compilation Error",
+ "correct": 0, "total_tests": 0, "tests": []}
+```
+
+So `Compilation Error` joins the confirmed `verdict_canon` vocabulary — **as a run-level
+verdict, never as a per-test `code`**. There is no per-test anything: a submission that does
+not compile never reaches the testset, so the `tests` array is empty and `CE` was *not*
+observed in the `code` position. `_OUTCOME_BY_MOJ_CODE` therefore still has no `CE` entry,
+and should not grow one on this evidence.
+
+What rbx said about it was `MOJ reported no result for 6 of 6 testcases ... Those testcases
+are left unmeasured` — true, useless, and pointing at the wrong thing entirely. See section
+7b for the shape that tells this apart from a truncated run.
 
 ## 4. `STOPWHEN_*` really does truncate a testrun — the Task 4 fix was necessary
 
@@ -148,11 +168,36 @@ Fields on a completed run beyond those already modelled: `host`, `lang`, `login`
 `filename`, `problem_id`, `requested_at`, `finished_at`, `success`, `report`,
 `verdict_canon`, `score`, `score_kind` (`'tests'`), `score_max`.
 
+## 7b. Shape when the run failed as a whole
+
+A `status` of `done` does **not** mean the testset ran. The three shapes seen so far, and
+the only two fields that tell them apart:
+
+| what happened | `total_tests` | `len(tests)` | `verdict_canon` |
+|---|---|---|---|
+| ran everything | 72 | 72 | `Accepted` |
+| ran, `STOPWHEN_*` cut it short (§4) | **72** | 4–5 | `Wrong Answer` / `Runtime Error` / `Time Limit Exceeded` |
+| never ran a testcase (§3b) | **0** | 0 | `Compilation Error` |
+
+**`total_tests` is the discriminator, not `len(tests)`.** It is the judge's own count of the
+tests it set out to run, so a truncated run still reports the full 72 while a run that died
+before entering the testset reports 0. `len(tests) == 0` cannot separate them: a
+`STOPWHEN_*` problem whose *first* test fails would legitimately return zero entries out of
+72, and calling that a build failure would be a fresh wrong diagnosis in place of the old
+one. `cli.TestrunStatus.ran_nothing` is that predicate (`done`, no `tests`, no
+`total_tests`); `MojRunner` fails the whole solution on it rather than degrading each
+testcase to `SKIPPED`, and quotes `moj testrun-status <run> --report <file>`, which is where
+the compiler output actually lives — rbx never sees it.
+
+Note this is still not a terminal *failure* `status`: the run above finished `done` with
+`success: true`. A failing **status** remains unobserved.
+
 ---
 
 ## Still open
 
-- Whether a testrun can reach a terminal **failure** status (nothing provoked one).
+- Whether a testrun can reach a terminal **failure** status (a compile error does not: it is
+  a `done` run with a run-level verdict — see §3b).
 - The full `code` vocabulary beyond `AC` / `WA` / `RE` / `TLE`.
 - Whether `testrun` requires a prior calibration (this problem was already calibrated).
 - Whether a submission outside `.moj-meta.json`'s `languages` is really refused.

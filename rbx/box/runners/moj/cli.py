@@ -107,7 +107,20 @@ class TestrunStatus(BaseModel):
 
     status: str
     verdict: Optional[str] = None
+    # The same verdict without the score suffix: the probe saw `Accepted,100p` in
+    # `verdict` against a bare `Accepted` here, so this is the stable one to read
+    # (`docs/plans/2026-08-21-moj-probe-notes.md`, section 3). It is what the
+    # runner names when a run failed *as a whole* -- the first end-to-end run of
+    # `rbx time --runner moj` hit `verdict_canon: 'Compilation Error'` with an
+    # empty `tests` array, and without this field rbx could only say that its
+    # testcases went unmeasured, never why.
+    verdict_canon: Optional[str] = None
     correct: Optional[int] = None
+    # How many tests the judge *intended* to run, which is not how many it
+    # reported: the probe watched a `STOPWHEN_*` problem come back with 4 entries
+    # and `total_tests: 72`, while the compile-error run came back with 0 entries
+    # and `total_tests: 0`. That difference is the only structural signal telling
+    # a truncated run from one that never started; see `ran_nothing`.
     total_tests: Optional[int] = None
     duration_s: Optional[float] = None
     tl_used: Optional[float] = None
@@ -124,6 +137,54 @@ class TestrunStatus(BaseModel):
         for why that reading obliges every caller to bound its own wait.
         """
         return self.status == DONE_STATUS
+
+    @property
+    def ran_nothing(self) -> bool:
+        """Whether this finished run never got as far as running a testcase.
+
+        **Observed.** The first end-to-end `rbx time --runner moj` submitted
+        solutions that did not build on the judge, and every one of them came back
+        as `{"status": "done", "verdict_canon": "Compilation Error", "correct": 0,
+        "total_tests": 0, "tests": []}`. rbx read that as "MOJ reported no result
+        for 6 of 6 testcases", which is true and useless: it describes the
+        symptom, and the cause -- the submission never compiled -- was one
+        `moj testrun-status <run> --report <file>` away and never mentioned.
+
+        The discriminator is `total_tests`, not `len(tests)`, and the difference
+        matters. `total_tests` is the judge's own count of the tests it set out to
+        run, so it stays at 72 on a `STOPWHEN_*` run that reported only 4 of them
+        (probe section 4) and drops to 0 only when the run died before the testset
+        was ever entered. Keying on `len(tests) == 0` alone would fold those two
+        together: a `STOPWHEN_*` problem whose very first test fails could
+        legitimately report zero entries out of 72, and calling that a build
+        failure would be a new lie replacing the old one.
+
+        `tests` being empty is required too, so that a server which someday
+        reports tests alongside a zero (or absent) `total_tests` is read by what
+        it actually returned rather than by its bookkeeping.
+
+        Deliberately structural rather than a `verdict_canon` denylist: the
+        verdict vocabulary is only half observed -- five values so far -- and
+        `_OUTCOME_BY_MOJ_CODE` already refuses to guess at the other half.
+        `verdict_canon` is what *names* the cause once this has detected it.
+        """
+        return self.done and not self.tests and not self.total_tests
+
+    @property
+    def canonical_verdict(self) -> Optional[str]:
+        """What the judge called this run, or `None` if it did not say.
+
+        `verdict_canon` first because it is the stable spelling -- `verdict`
+        carries a score suffix (`Accepted,100p`) that has no business in a message
+        about a run that scored nothing -- and `verdict` as the fallback for a
+        server that predates it. Absent is a real possibility and reads as absent:
+        a run-level failure with no verdict at all is still a run-level failure,
+        and the caller says so without a name rather than inventing one.
+        """
+        for candidate in (self.verdict_canon, self.verdict):
+            if candidate and candidate.strip():
+                return candidate.strip()
+        return None
 
     @property
     def by_name(self) -> Dict[str, TestrunTest]:

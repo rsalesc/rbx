@@ -435,6 +435,130 @@ async def test_unknown_fields_do_not_break_the_parse(
     assert status.by_name['sample001'].code == 'AC'
 
 
+# -- telling "never ran" from "ran, reported fewer". ---------------------------
+
+
+async def test_a_compile_error_reads_as_a_run_that_never_started(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The exact payload the first end-to-end `rbx time --runner moj` received.
+
+    Every solution in that run failed to build on the judge, and this is what the
+    server said about each of them. rbx had no way to tell it from a testrun that
+    ran and reported nothing back, so it said the testcases went unmeasured.
+    """
+    _fake_moj(
+        monkeypatch,
+        json.dumps(
+            {
+                'status': 'done',
+                'verdict': 'Compilation Error',
+                'verdict_canon': 'Compilation Error',
+                'correct': 0,
+                'total_tests': 0,
+                'tests': [],
+            }
+        ),
+    )
+
+    status = await cli.testrun_status('c4bbc86b0707b9870b4c25d4e92336e7')
+
+    assert status.ran_nothing
+    assert status.canonical_verdict == 'Compilation Error'
+
+
+async def test_a_truncated_run_is_not_a_run_that_never_started(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """`total_tests` is the discriminator, and it is why: it stays at the size of
+    the testset when `STOPWHEN_*` cuts the run short.
+
+    The probe watched a failing solution come back with 4 entries out of 72. Zero
+    entries out of 72 is the same event with the first test failing, and it is
+    still a run that entered the testset -- so the per-testcase degradation has to
+    keep applying to it.
+    """
+    _fake_moj(
+        monkeypatch,
+        json.dumps(
+            {
+                'status': 'done',
+                'verdict': 'Wrong Answer,0p',
+                'verdict_canon': 'Wrong Answer',
+                'correct': 0,
+                'total_tests': 72,
+                'tests': [],
+            }
+        ),
+    )
+
+    status = await cli.testrun_status('4711')
+
+    assert not status.ran_nothing
+
+
+async def test_a_queued_run_has_not_failed_at_the_run_level(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A run still in flight has no tests and no `total_tests` either.
+
+    Only `status == "done"` carries results, so reading a queued run as one that
+    never started would refuse every solution the instant it was submitted.
+    """
+    _fake_moj(monkeypatch, json.dumps({'status': 'queued', 'filename': 'sol.cpp'}))
+
+    status = await cli.testrun_status('4711')
+
+    assert not status.ran_nothing
+
+
+async def test_the_canonical_verdict_drops_the_score_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """`verdict` carries `,100p`; `verdict_canon` does not, and is preferred."""
+    _fake_moj(
+        monkeypatch,
+        json.dumps(
+            {
+                'status': 'done',
+                'verdict': 'Accepted,100p',
+                'verdict_canon': 'Accepted',
+                'tests': [],
+            }
+        ),
+    )
+
+    status = await cli.testrun_status('4711')
+
+    assert status.canonical_verdict == 'Accepted'
+
+
+async def test_an_older_server_without_verdict_canon_falls_back_to_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Suffix and all: a name with noise in it beats no name at all."""
+    _fake_moj(
+        monkeypatch,
+        json.dumps({'status': 'done', 'verdict': 'Runtime Error,0p', 'tests': []}),
+    )
+
+    status = await cli.testrun_status('4711')
+
+    assert status.canonical_verdict == 'Runtime Error,0p'
+
+
+async def test_a_run_with_no_verdict_at_all_is_nameless_rather_than_invented(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Nothing here guesses. The caller reports the failure without a name."""
+    _fake_moj(monkeypatch, json.dumps({'status': 'done', 'tests': []}))
+
+    status = await cli.testrun_status('4711')
+
+    assert status.ran_nothing
+    assert status.canonical_verdict is None
+
+
 # -- check: real JSON, nested under `tl`. --------------------------------------
 
 

@@ -189,6 +189,70 @@ class MojRunnerError(RbxException):
         self.msg.append(message)
 
 
+def _run_never_started(
+    solution: 'SolutionSkeleton', run: str, status: cli.TestrunStatus
+) -> MojRunnerError:
+    """The error for a finished testrun that never ran a single testcase.
+
+    **This exists because of the first end-to-end run of `rbx time --runner moj`.**
+    Every solution came back as `{"status": "done", "verdict_canon":
+    "Compilation Error", "correct": 0, "total_tests": 0, "tests": []}` -- they did
+    not build on the judge -- and rbx said, once per solution:
+
+        MOJ reported no result for 6 of 6 testcases of tle-and-incorrect.sol.cpp
+        (testrun c4bbc86b...). Those testcases are left unmeasured; the time limit
+        is estimated from the rest.
+
+    Every word of that is true and none of it is usable. It describes six
+    testcases that were never the problem, and it never mentions the compiler
+    output, which was one command away the whole time. So the run-level verdict is
+    named here, and the command that shows the judge's own report is quoted with
+    the real run id in it.
+
+    **Raised rather than degraded per testcase, on purpose.** A `SKIPPED`
+    testcase means "rbx has no measurement for this one", and the estimator is
+    entitled to carry on with the rest -- which is right for a truncated run,
+    where the rest genuinely exist. Here there is no rest: nothing about this
+    solution was measured, and letting N deferreds each resolve to `SKIPPED`
+    produces a report shaped like a partial success. The end-to-end run did
+    eventually stop, on `Failed to run ACCEPTED solutions`, which was luck of the
+    expectations rather than a decision -- a solution declared slow, or a `TLE`
+    the estimator is content to drop, would have gone through and left the limit
+    silently estimated from fewer solutions than the setter asked for. Failing the
+    solution outright is the same call the unknown-code check makes, for the same
+    reason: this feeds a *time limit*, and a wrong one leaves no trace.
+    """
+    verdict = status.canonical_verdict
+    named = f'`{verdict}`' if verdict else 'no verdict at all'
+
+    lines = [
+        f'MOJ finished the testrun of `{solution.path}` without running a single '
+        f'testcase: it reported {named} for the run as a whole (testrun `{run}`).',
+        'So this is not a case of some testcases going unmeasured -- the '
+        'submission never ran, and rbx has no timings for it.',
+    ]
+
+    # Named specifically because it is by far the likeliest of the run-level
+    # verdicts and because its fix is local: the judge compiles with the
+    # package's own `scripts/<lang>/compile.sh`, which is neither the compiler nor
+    # the flags rbx used to compile the same solution successfully a moment ago.
+    # `compil` rather than the exact string so the Portuguese spelling the CLI
+    # sometimes prints (`Erro de Compilacao`) lands here too.
+    if verdict and 'compil' in verdict.lower():
+        lines.append(
+            f'That usually means `{solution.path}` did not build on the judge. '
+            f"MOJ compiles a submission from a single file, with the package's "
+            f'own compile script -- not with the compiler or the flags rbx uses '
+            f'locally, so a solution that builds here can still fail there.'
+        )
+
+    lines.append(
+        f'See what the judge said, compiler output included, with '
+        f'`moj testrun-status {run} --report moj-{run}.html`.'
+    )
+    return MojRunnerError('\n'.join(lines))
+
+
 class MojRunner:
     name = 'moj'
     caps = RunnerCapabilities(
@@ -493,6 +557,13 @@ class MojRunner:
         async with self._testrun_slots:
             run = await self._submit(solution)
             status = await self._wait_for_testrun(run, solution)
+
+        # Before anything is paired: a run that never entered the testset has no
+        # per-testcase story to tell, and telling one anyway is what the first
+        # end-to-end run did wrong. Raised, not degraded, for the same reason the
+        # unknown-code check below is raised -- see `_run_never_started`.
+        if status.ran_nothing:
+            raise _run_never_started(solution, run, status)
 
         # `by_name` refuses duplicate names rather than letting a dict
         # comprehension drop one of them.
