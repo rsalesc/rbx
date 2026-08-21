@@ -990,3 +990,93 @@ async def test_no_entries_means_no_submission(testing_pkg, tmp_path, monkeypatch
 
 async def _gather(deferreds):
     return [await deferred() for deferred in deferreds]
+
+
+_ORDER_SOLUTIONS = [
+    ('sol.cpp', ExpectedOutcome.ACCEPTED),
+    ('b.cpp', ExpectedOutcome.WRONG_ANSWER),
+    ('c.cpp', ExpectedOutcome.WRONG_ANSWER),
+    ('d.cpp', ExpectedOutcome.WRONG_ANSWER),
+    ('e.cpp', ExpectedOutcome.WRONG_ANSWER),
+]
+
+
+async def _run_every_solution_in_order(runner, ctx):
+    """Drive the runner the way `_produce_solution_items` and the report do.
+
+    Every solution queued synchronously first, then consumed one at a time in
+    solution order.
+    """
+    deferreds = [
+        runner.run_solution(solution, ctx.skeleton.entries[:1], ctx)
+        for solution in ctx.skeleton.solutions
+    ]
+    for group in deferreds:
+        for deferred in group:
+            await deferred()
+
+
+async def test_solutions_reach_the_judge_in_the_order_the_report_reads_them(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """More solutions than slots, and the queue must not reorder them.
+
+    With a concurrency cap, only the first `MAX_INFLIGHT_TESTRUNS` submit
+    immediately and the rest wait on the semaphore. A setter reading the report
+    top to bottom is watching solutions resolve in package order, so a queue that
+    handed slots out in some other order would have the report waiting on a
+    solution the judge had not started while a later one was already done.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg,
+        tmp_path,
+        monkeypatch,
+        groups=['samples'],
+        solutions=_ORDER_SOLUTIONS,
+    )
+    for filename, _ in _ORDER_SOLUTIONS:
+        fake.results[filename] = [_test(SAMPLE_NAMES[0], 'AC', 0.1)]
+
+    await _run_every_solution_in_order(runner, ctx)
+
+    assert [name for (_run, _ref, name, _content) in fake.submissions] == [
+        solution.path.name for solution in ctx.skeleton.solutions
+    ]
+
+
+async def test_one_slow_solution_does_not_let_the_queue_behind_it_jump_ahead(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """The case that would expose a non-FIFO queue.
+
+    `asyncio.Semaphore` wakes waiters in arrival order, so a job that holds its
+    slot for many loop turns delays everything behind it without reordering it.
+    Pinned because the guarantee is the event loop's, not ours, and a future
+    rewrite (a pool, a `gather`, a retry that re-acquires) could quietly lose it.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg,
+        tmp_path,
+        monkeypatch,
+        groups=['samples'],
+        solutions=_ORDER_SOLUTIONS,
+    )
+    for filename, _ in _ORDER_SOLUTIONS:
+        fake.results[filename] = [_test(SAMPLE_NAMES[0], 'AC', 0.1)]
+
+    original = fake.testrun_status
+
+    async def hold_b_cpp(run):
+        entry = next((s for s in fake.submissions if s[0] == run), None)
+        if entry is not None and entry[2] == 'b.cpp':
+            for _ in range(50):
+                await asyncio.sleep(0)
+        return await original(run)
+
+    fake.testrun_status = hold_b_cpp
+
+    await _run_every_solution_in_order(runner, ctx)
+
+    assert [name for (_run, _ref, name, _content) in fake.submissions] == [
+        solution.path.name for solution in ctx.skeleton.solutions
+    ]
