@@ -4,8 +4,9 @@
 instead of the setter's machine. What it uploads is a MOJ package like any other,
 except in three ways, and all three are about *measuring* rather than judging:
 
-- the time limits are pinned **uniformly**, to the single cap rbx is measuring
-  under, instead of coming from the `moj` limits profile;
+- the time limits are the ones **this run asked to measure under** -- one cap for
+  every language while estimating, one per language group while validating --
+  instead of coming from the `moj` limits profile;
 - only the model solution is shipped, since `moj testrun` sends the source of the
   solution being timed in the request body;
 - the submission whitelist covers every language rbx may testrun, not the languages
@@ -15,6 +16,7 @@ Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 """
 
 import json
+import re
 from typing import List
 
 import pytest
@@ -483,6 +485,69 @@ def test_probe_package_whitelists_languages_it_ships_no_solution_for(
     assert [path.name for path in (into_path / 'sols' / 'good').iterdir()] == [
         'sol.cpp'
     ]
+
+
+def _plain(out: str) -> str:
+    """`capsys` output with rich's escapes removed, whitespace collapsed.
+
+    `[item]` renders as ANSI bold, so a value like `1350 ms` reaches capsys as
+    `\x1b[1m1350\x1b[0m ms` and a naive substring assertion never matches.
+    """
+    out = re.sub(r'\x1b\]8;;[^\x1b]*\x1b\\?', '', out)  # hyperlinks
+    out = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', out)  # colors
+    return ' '.join(out.split())
+
+
+def test_the_probe_report_says_which_languages_the_run_measures(
+    testing_pkg, tmp_path, capsys
+):
+    """The line must not read as a claim about how MOJ would judge Java.
+
+    Reported from a real package: its slow solutions were all C++, so the
+    validation phase pinned C++ at 1350 ms and nothing else, and the report said
+    "every other language under 1350 ms". The setter had deliberately given Java
+    and Kotlin a much higher limit and read that as the packager dropping it.
+    Nothing was dropped -- no Java solution is expected to be too slow, so the
+    phase submits nothing in Java and the default binds no run at all. Only the
+    sentence was wrong.
+    """
+    minimal_package(testing_pkg)
+    testing_pkg.save()
+
+    run_packager(
+        testing_pkg,
+        tmp_path,
+        build_entries(tmp_path, ['samples']),
+        timing_mode=ProbePinned(default_ms=1350, per_rbx_language_ms=(('cpp', 1350),)),
+    )
+
+    out = _plain(capsys.readouterr().out)
+    assert 'cpp at 1350 ms' in out
+    # The claim that misled: the default is not a limit anything runs under.
+    assert 'every other language under' not in out
+    assert 'the only language this run submits anything in' in out
+    assert 'nothing this run submits will hit' in out
+
+
+def test_the_probe_report_names_every_pinned_language(testing_pkg, tmp_path, capsys):
+    # And with several, the noun agrees and each is named with its own bound --
+    # the shape a problem with slow solutions in two language groups produces.
+    minimal_package(testing_pkg)
+    testing_pkg.save()
+
+    run_packager(
+        testing_pkg,
+        tmp_path,
+        build_entries(tmp_path, ['samples']),
+        timing_mode=ProbePinned(
+            default_ms=3450, per_rbx_language_ms=(('cpp', 1350), ('java', 3450))
+        ),
+    )
+
+    out = _plain(capsys.readouterr().out)
+    assert 'cpp at 1350 ms' in out
+    assert 'java at 3450 ms' in out
+    assert 'the only languages this run submits anything in' in out
 
 
 def test_probe_package_does_not_warn_about_a_narrowed_whitelist(

@@ -798,23 +798,36 @@ class MojPackager(BasePackager):
         nothing to show: the numbers are the judge's to measure. Under a probe pin
         the profile's table would be a lie, so the limits this run asked for are
         named instead -- they are what every timing it produces is measured against.
+
+        The per-language line says **which languages this run measures**, not what
+        MOJ would judge an arbitrary submission with, and the difference is not
+        pedantic. The validation phase runs only the solutions expected to be too
+        slow, so a package whose slow solutions are all C++ pins C++ and nothing
+        else -- and its `TLOVERRIDE[default]` then applies to no submission this
+        run makes. Saying "every other language runs under <default>" reads as a
+        claim about how Java would be judged, which is how a setter with a
+        deliberately higher Java limit concludes the packager dropped it.
         """
         if isinstance(self.timing_mode, JudgeCalibrated):
             return
         if isinstance(self.timing_mode, ProbePinned):
             if not self.timing_mode.per_rbx_language_ms:
                 console.console.print(
-                    'MOJ will run every language under a single time limit of '
-                    f'[item]{self.timing_mode.default_ms} ms[/item].'
+                    'MOJ will measure every language in this run under a single '
+                    f'time limit of [item]{self.timing_mode.default_ms} ms[/item].'
                 )
                 return
+            pinned = sorted(self.timing_mode.per_rbx_language_ms)
             per_language = ', '.join(
                 f'[item]{language}[/item] at [item]{limit_ms} ms[/item]'
-                for language, limit_ms in sorted(self.timing_mode.per_rbx_language_ms)
+                for language, limit_ms in pinned
             )
+            noun = 'language' if len(pinned) == 1 else 'languages'
             console.console.print(
-                f'MOJ will run {per_language}, and every other language under '
-                f'[item]{self.timing_mode.default_ms} ms[/item].'
+                f'MOJ will measure {per_language} -- the only {noun} this run '
+                f'submits anything in. Every other language falls back to '
+                f'[item]{self.timing_mode.default_ms} ms[/item], which nothing '
+                f'this run submits will hit.'
             )
             return
         if isinstance(self.timing_mode, ProfilePinned):
