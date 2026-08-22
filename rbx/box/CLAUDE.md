@@ -161,6 +161,41 @@ package it just built fingerprints equal to the one this machine last uploaded a
 calibrated; the fingerprint is a local record in the problem cache, so it cannot see an
 upload from another machine.
 
+**What `prepare` says while it works.** It is the slow half of a remote run -- an upload
+of the whole testset, then a calibration that can take minutes -- and all of it happens
+behind one `StatusProgress`. `_with_ticker` exists for the steps that are a *single*
+blocking call and so cannot report on themselves: `moj upload` is one subprocess that
+tars, posts and answers when done, so the spinner would otherwise hold one frozen frame
+for the longest step of `prepare`. It repaints once a second with the package size
+(`_directory_size`, the sum of the built files -- *not* wire bytes, since the CLI tars
+it and rbx never sees the archive) and an elapsed count. The polling steps need nothing:
+they come back every few seconds and repaint themselves. `_Elapsed` shows one decimal
+below ten seconds, because a ticker reading `0s` on every frame looks exactly as frozen
+as no ticker.
+
+Cancellation is forwarded and **awaited**, not just scheduled -- same reason
+`MojRunner.close` drains: a task suspended in `process.communicate()` needs several turns
+to unwind and `syncer` stops the loop as soon as the caller returns.
+
+Calibration counts **real** time, not `attempt * CALIBRATION_POLL_INTERVAL_SECONDS`. Each
+attempt also spends a `moj check` subprocess, so the nominal figure understates the wait
+-- by more the busier the park is, which is exactly when a setter is reading it to decide
+whether to give up. The give-up message quotes the real elapsed for the same reason.
+
+**And one durable line per phase**, printed at the end of `prepare` because everything
+above is spinner text that vanishes:
+
+```
+moj · alice#rbxt-delete · uploaded 1.4 MiB of package files in 12s, calibrated in 41s.
+moj · alice#rbxt-delete · reused, package unchanged since the last upload (0.4s).
+```
+
+The `reused` case is the one that had to be said: the fast path announced itself only
+through a status line, which the next `update` overwrites and the spinner then clears, so
+it was **unobservable** after the fact. Since `prepare` runs once per `run_solutions`,
+this is also the only durable evidence that the validation phase re-uploaded -- which it
+must, because the limits it measures under live in the package.
+
 **`_probe_pin` honours whichever `rbx time` phase is calling.** The estimation phase
 passes one `int` -- `inferenceTimeout`, the cap every accepted solution runs under -- and
 gets a single `TLOVERRIDE[default]`. The validation phase passes a **mapping**,

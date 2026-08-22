@@ -19,12 +19,22 @@ import hashlib
 import json
 import pathlib
 import tempfile
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+import time
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Coroutine,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+)
 
 import typer
 from pydantic import ValidationError
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import environment, package, tasks, timing_config
 from rbx.box.code import find_language
 from rbx.box.deferred import Deferred
@@ -390,6 +400,8 @@ class MojRunner:
         is persistent (`.moj-id` is committed and reused), so a session that dies
         halfway leaves the next one closer to ready rather than leaving garbage.
         """
+        overall = _Elapsed()
+
         if ctx.progress:
             ctx.progress.update('Reading your MOJ login...')
         # Surfaced as-is: `cli.whoami` already distinguishes "the CLI is not
@@ -424,6 +436,16 @@ class MojRunner:
             fingerprint = _directory_fingerprint(package_path)
             self._fingerprint = fingerprint
             if await self._is_already_prepared(moj_id, fingerprint, ctx):
+                # Said out loud, because otherwise it is unobservable. The status
+                # line `_is_already_prepared` sets is transient -- the next
+                # `update` overwrites it and the spinner clears at the end of the
+                # run -- so a setter watching two phases go past has no way to
+                # tell the cheap one from the expensive one, and no way to tell
+                # that the second phase re-uploaded at all.
+                console.console.print(
+                    f'[status]moj · [item]{moj_id}[/item] · reused, package '
+                    f'unchanged since the last upload ({overall}).[/status]'
+                )
                 return
 
             # Cleared *before* the upload, not after: from the moment the server
@@ -432,15 +454,28 @@ class MojRunner:
             # run re-uploading, never trusting a stale record.
             _forget_upload()
 
-            if ctx.progress:
-                ctx.progress.update(
-                    f'Uploading the probe package to [item]{moj_id}[/item]...'
-                )
-            await cli.upload(moj_id, package_path)
+            # Measured before the upload rather than after: the temp directory is
+            # gone by the time the summary is printed.
+            size = _directory_size(package_path)
+            upload_elapsed = _Elapsed()
+            await _with_ticker(
+                ctx,
+                cli.upload(moj_id, package_path),
+                f'Uploading the probe package to [item]{moj_id}[/item] '
+                f'([item]{utils.format_size(size)}[/item])... {{elapsed}}',
+            )
 
+        calibration_elapsed = _Elapsed()
         await cli.calibrate(moj_id)
         await self._wait_for_calibration(moj_id, ctx)
         _record_upload(moj_id, fingerprint)
+
+        console.console.print(
+            f'[status]moj · [item]{moj_id}[/item] · uploaded '
+            f'[item]{utils.format_size(size)}[/item] of package files in '
+            f'[item]{upload_elapsed}[/item], calibrated in '
+            f'[item]{calibration_elapsed}[/item].[/status]'
+        )
 
     def run_solution(
         self,
@@ -1094,13 +1129,17 @@ class MojRunner:
         ready one, not to drop the immediate first poll (which is what makes the
         already-queued case cheap).
         """
+        # Real time, not `attempt * CALIBRATION_POLL_INTERVAL_SECONDS`. Every
+        # attempt also spends a `moj check` subprocess, so the nominal figure
+        # *understates* the wait -- by more the busier the park is, which is
+        # exactly when a setter is looking at it and deciding whether to give up.
+        elapsed = _Elapsed()
         for attempt in range(CALIBRATION_POLL_ATTEMPTS):
             if (await cli.check(moj_id)).is_ready:
                 return
             if ctx.progress:
-                waited = int(attempt * CALIBRATION_POLL_INTERVAL_SECONDS)
                 ctx.progress.update(
-                    f'Waiting for MOJ to calibrate [item]{moj_id}[/item] ({waited}s)...'
+                    f'Waiting for MOJ to calibrate [item]{moj_id}[/item] ({elapsed})...'
                 )
             # Not after the last check: there is nothing left to wait for, and
             # sleeping there would delay the give-up message by a whole interval
@@ -1108,9 +1147,9 @@ class MojRunner:
             if attempt + 1 < CALIBRATION_POLL_ATTEMPTS:
                 await asyncio.sleep(CALIBRATION_POLL_INTERVAL_SECONDS)
 
-        minutes = int(
-            CALIBRATION_POLL_ATTEMPTS * CALIBRATION_POLL_INTERVAL_SECONDS / 60
-        )
+        # The real wait, for the same reason: quoting the nominal bound tells a
+        # setter it gave up sooner than it did.
+        minutes = int(elapsed.seconds / 60)
         raise MojRunnerError(
             f'MOJ has not finished calibrating `{moj_id}` after {minutes} '
             f'minutes, so rbx has no time limits to measure against and stopped '
@@ -1409,6 +1448,97 @@ def _evaluation_for(
 
 
 # -- the fast path's local record -----------------------------------------------
+
+
+# The result type `_with_ticker` passes through untouched.
+_T = TypeVar('_T')
+
+# How often the spinner repaints while a blocking step runs. One second is what
+# reads as "alive" without the message flickering.
+TICKER_INTERVAL_SECONDS = 1.0
+
+
+class _Elapsed:
+    """Wall time since it was created, on the monotonic clock.
+
+    Monotonic rather than `time.time`, because every use of this is a *duration*
+    reported to the setter and a clock adjustment mid-upload would otherwise show
+    a negative one.
+    """
+
+    def __init__(self) -> None:
+        self._started = time.monotonic()
+
+    @property
+    def seconds(self) -> float:
+        return time.monotonic() - self._started
+
+    def __str__(self) -> str:
+        """One decimal below ten seconds, whole seconds above.
+
+        Whole seconds alone would leave a ticker reading `0s` on every frame of
+        anything sub-second -- which looks exactly as frozen as no ticker at all,
+        and is the one thing this exists to prevent. Above ten seconds the
+        decimal is noise on a number nobody reads that precisely.
+        """
+        seconds = self.seconds
+        if seconds < 10:
+            return f'{seconds:.1f}s'
+        return f'{int(seconds)}s'
+
+
+async def _with_ticker(
+    ctx: RunContext,
+    coro: 'Coroutine[Any, Any, _T]',
+    label: str,
+) -> '_T':
+    """Await `coro`, repainting `label` with an elapsed count while it runs.
+
+    For the steps that are a *single* blocking call and so cannot report on
+    themselves: `moj upload` is one subprocess that tars the package, posts it,
+    and answers when it is done. Without this the spinner holds one frozen
+    message for however long that takes, which is the longest step of `prepare`
+    and the one most likely to be mistaken for a hang. The polling steps need
+    nothing here -- they already come back every few seconds and can repaint on
+    their own.
+
+    `label` is formatted with `{elapsed}`.
+
+    The result and any exception pass through untouched. Cancellation is
+    forwarded and **awaited**: `Task.cancel` only schedules the `CancelledError`,
+    and a task suspended in `process.communicate()` needs more than one turn of
+    the loop to unwind -- the same reason `MojRunner.close` drains rather than
+    just cancelling.
+    """
+    task = asyncio.ensure_future(coro)
+    elapsed = _Elapsed()
+    try:
+        while True:
+            done, _ = await asyncio.wait(
+                {task}, timeout=TICKER_INTERVAL_SECONDS if ctx.progress else None
+            )
+            if done:
+                break
+            if ctx.progress:
+                ctx.progress.update(label.format(elapsed=elapsed))
+    except asyncio.CancelledError:
+        task.cancel()
+        # `shield` is deliberately not used: the point is to let the inner task
+        # observe the cancellation and finish unwinding before this returns.
+        await asyncio.gather(task, return_exceptions=True)
+        raise
+    return await task
+
+
+def _directory_size(path: pathlib.Path) -> int:
+    """Total bytes of the files in the built package.
+
+    Not what goes over the wire -- `moj upload` tars the directory itself, and
+    rbx never sees the archive -- so whatever is said about this number must say
+    "package files" rather than imply an upload size. Guessing at the CLI's
+    archiving would be a number that can be *wrong*, which this one cannot be.
+    """
+    return sum(p.stat().st_size for p in path.rglob('*') if p.is_file())
 
 
 def _directory_fingerprint(path: pathlib.Path) -> str:

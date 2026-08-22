@@ -11,8 +11,10 @@ The upload fake **snapshots the directory it was handed**, because half of what
 `conf` and the submission whitelist in `.moj-meta.json`.
 """
 
+import asyncio
 import json
 import pathlib
+import re
 import shutil
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -633,3 +635,232 @@ async def test_an_upload_that_never_reached_calibration_is_not_trusted_later(
 
 # `run_solution` -- the testrun fan-out that used to raise here -- now exists, and
 # is exercised in `test_run_solution.py` against the same `FakeMoj`.
+
+
+# -- what `prepare` says about how it is going ---------------------------------
+#
+# `prepare` is the slow half of a remote run -- an upload of the whole testset,
+# then a calibration that can take minutes -- and all of it happens behind one
+# spinner. What it says while it works, and what it leaves behind afterwards, is
+# the only thing telling a setter that a wait is a wait rather than a hang.
+
+
+class _RecordingProgress:
+    """A stand-in for `StatusProgress` that keeps every message it was given."""
+
+    def __init__(self) -> None:
+        self.messages: List[str] = []
+
+    def update(self, message: str) -> None:
+        self.messages.append(message)
+
+
+def _plain(text: str) -> str:
+    """Rich markup stripped, so a presence assertion reads what a setter reads."""
+    return re.sub(r'\[/?[a-z]+\]', '', text)
+
+
+async def test_the_upload_reports_the_package_size_and_a_running_clock(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """`moj upload` is one blocking subprocess, so nothing ticks from inside it.
+
+    It tars the whole testset and posts it, which is the longest step of
+    `prepare` and the one most likely to be read as a hang. Without a ticker the
+    spinner holds a single frozen message for the duration.
+    """
+    minimal_package(testing_pkg)
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+    progress = _RecordingProgress()
+
+    slow_upload = fake.upload
+
+    async def upload(problem_id, directory):
+        # Long enough for the ticker to repaint more than once.
+        await asyncio.sleep(0.25)
+        await slow_upload(problem_id, directory)
+
+    monkeypatch.setattr(cli, 'upload', upload)
+    monkeypatch.setattr(runner_module, 'TICKER_INTERVAL_SECONDS', 0.05)
+
+    ctx = _context(tmp_path)
+    ctx.progress = progress  # type: ignore[assignment]
+    await MojRunner().prepare(ctx)
+
+    uploading = [
+        _plain(message) for message in progress.messages if 'Uploading' in message
+    ]
+    # It repainted rather than sitting on one frame...
+    assert len(uploading) > 1
+    # ...each frame names the size of what is going up...
+    assert all(
+        'KiB' in message or 'MiB' in message or ' B)' in message
+        for message in uploading
+    )
+    # ...and the clock moves.
+    assert uploading[0] != uploading[-1]
+    assert uploading[-1].rstrip().endswith('s')
+
+
+async def test_a_finished_upload_leaves_a_line_behind(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    """The spinner clears; this has to outlive it.
+
+    `rbx time` prepares once per phase, so this line is also the only durable
+    evidence that the validation phase re-uploaded -- which it must, since the
+    limits it measures under live in the package.
+    """
+    minimal_package(testing_pkg)
+    FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    await MojRunner().prepare(_context(tmp_path))
+
+    out = ' '.join(_plain(capsys.readouterr().out).split())
+    assert 'uploaded' in out
+    assert 'of package files in' in out
+    assert 'calibrated in' in out
+
+
+async def test_a_skipped_upload_says_so(testing_pkg, tmp_path, monkeypatch, capsys):
+    """The fast path was unobservable: the only thing announcing it was a status
+    line, which the next `update` overwrites and the spinner then clears. A
+    setter watching two phases go past could not tell the cheap one from the
+    expensive one."""
+    minimal_package(testing_pkg)
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    await MojRunner().prepare(_context(tmp_path))
+    capsys.readouterr()
+    # Same package, same problem: nothing to upload.
+    await MojRunner().prepare(_context(tmp_path))
+
+    out = ' '.join(_plain(capsys.readouterr().out).split())
+    assert 'reused, package unchanged since the last upload' in out
+    assert 'uploaded' not in out
+    assert len(fake.uploads) == 1
+
+
+async def test_the_calibration_wait_counts_real_time_not_attempts(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """Each attempt also spends a `moj check` subprocess.
+
+    `attempt * CALIBRATION_POLL_INTERVAL_SECONDS` ignores that, so the nominal
+    figure *understates* the wait -- by more the busier the park is, which is
+    exactly when a setter is reading it to decide whether to give up.
+    """
+    minimal_package(testing_pkg)
+    # Ready only on the third check, so the loop reports twice.
+    fake = FakeMoj(tmp_path / 'snapshots', ready_from_check=3).install(monkeypatch)
+    progress = _RecordingProgress()
+
+    slow_check = fake.check
+
+    async def check(problem_id):
+        await asyncio.sleep(0.1)
+        return await slow_check(problem_id)
+
+    monkeypatch.setattr(cli, 'check', check)
+
+    ctx = _context(tmp_path)
+    ctx.progress = progress  # type: ignore[assignment]
+    await MojRunner().prepare(ctx)
+
+    waiting = [
+        _plain(message) for message in progress.messages if 'to calibrate' in message
+    ]
+    assert waiting
+    # The poll interval is patched to 0 by `_instant_polls`, so a nominal count
+    # would report `0s` forever however long the checks really took.
+    assert waiting[-1] != waiting[0] or '(0s)' not in waiting[-1]
+
+
+# -- the ticker itself ---------------------------------------------------------
+
+
+def _ticker_context(progress=None) -> RunContext:
+    """The two fields `_with_ticker` reads, and nothing else."""
+    return RunContext(
+        skeleton=None,  # type: ignore[arg-type]
+        checker_digest=None,
+        interactor_digest=None,
+        verification=VerificationLevel.ALL_SOLUTIONS,
+        timelimit_override=None,
+        nruns=1,
+        progress=progress,
+        abort_on=None,
+    )
+
+
+async def test_the_ticker_hands_back_what_it_wrapped():
+    async def work():
+        return 'done'
+
+    assert (
+        await runner_module._with_ticker(  # noqa: SLF001
+            _ticker_context(), work(), 'x {elapsed}'
+        )
+        == 'done'
+    )
+
+
+async def test_the_ticker_lets_a_failure_through_unchanged():
+    """It wraps a step for *display*. Swallowing or rewrapping an error would
+    turn a named MOJ failure into a mystery."""
+
+    async def work():
+        raise MojCliError('`moj upload` failed.')
+
+    with pytest.raises(MojCliError, match='failed'):
+        await runner_module._with_ticker(  # noqa: SLF001
+            _ticker_context(), work(), 'x {elapsed}'
+        )
+
+
+async def test_the_ticker_drains_the_inner_task_when_cancelled(monkeypatch):
+    """Cancelling is not the same as having cancelled.
+
+    `Task.cancel` only *schedules* the `CancelledError`, and the wrapped step is
+    a subprocess call that needs more than one turn of the loop to unwind. If
+    this returned without awaiting it, `syncer` would stop the loop on a task
+    still holding a subprocess transport -- the exact "Task was destroyed but it
+    is pending!" that `MojRunner.close` drains for.
+    """
+    monkeypatch.setattr(runner_module, 'TICKER_INTERVAL_SECONDS', 0.01)
+    unwound = asyncio.Event()
+
+    async def work():
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            # Several turns of the loop, as a subprocess teardown would take.
+            for _ in range(3):
+                await asyncio.sleep(0)
+            unwound.set()
+            raise
+
+    outer = asyncio.ensure_future(
+        runner_module._with_ticker(  # noqa: SLF001
+            _ticker_context(), work(), 'x {elapsed}'
+        )
+    )
+    await asyncio.sleep(0.05)
+    outer.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await outer
+    # Not merely scheduled: it got to run its teardown to the end.
+    assert unwound.is_set()
+
+
+async def test_the_ticker_does_not_spin_when_there_is_nothing_to_paint():
+    """With no progress to update there is nothing to wake up for, so it waits
+    on the task itself rather than polling a timeout it would discard."""
+    ctx = _ticker_context(progress=None)
+
+    async def work():
+        await asyncio.sleep(0.02)
+        return 42
+
+    assert await runner_module._with_ticker(ctx, work(), 'x {elapsed}') == 42  # noqa: SLF001
