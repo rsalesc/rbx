@@ -344,6 +344,12 @@ but any other caller of `run_solutions` may, and pinning it would emit
 - It is **per language**, because the estimate assigns a different limit to each language
   group. The probe pins one `TLOVERRIDE[<lang>]` each; see "A third timing mode" above for
   why the alternative -- one loose cap plus local arithmetic -- was rejected.
+- The judge stops each solution at its **first timeout**, because the probe package sets
+  `STOPWHEN_TLE=y`. rbx cannot do it: the local gate works by not dispatching the
+  testcases after a timeout, and a testrun has already run everything by the time rbx
+  looks. Without it, the solutions that are by construction the most expensive in the run
+  cost a full testset each to answer a question one test settles. `STOPWHEN_WA`/`_RE` stay
+  off, matching `abort_on`, which a WA does not trip either.
 - A solution killed there is *confirmed* too slow; one that finishes *violates* the bound
   and hands over the real time. A violation re-opens the picker, so phase 2 may run
   **several times** in one command, at a different set of limits each time.

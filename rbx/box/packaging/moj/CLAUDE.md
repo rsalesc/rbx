@@ -133,13 +133,41 @@ Worth knowing: the early break only fires from inside the `JOBSCOUNT > NPROC-1` 
 of the loop, so with fewer tests than cores nothing stops early. It is a best-effort
 speed optimization, not a guarantee.
 
-**A probe package gets none of them either**, whatever its scoring — the same argument
-from the other side. A probe exists to collect a timing per test, and the solutions it
-times include the slow and wrong ones, which fail by construction; the first failure
-would return a prefix of the tests and lose the rest of the timings. Nothing is judged
-there, so the saving buys nothing. This is also what makes the runner's
-`supports_abort=False` (“a testrun has already run every test by the time rbx sees
-it”) honest rather than merely usually-true.
+**A probe package gets `STOPWHEN_TLE` and nothing else**, whatever its scoring. It is
+not a compromise between the two cases above: it is the exact rule rbx asks for
+locally. Both `rbx time` phases pass
+`abort_on=lambda ctx: ctx.evaluation.result.outcome.is_slow()`, so a timeout — and only
+a timeout — ends a solution's run. rbx cannot enforce that itself here, because the
+gate in `run_solutions` works by not *dispatching* the testcases after a timeout and a
+testrun has already run the whole submission by the time rbx sees any of it (which is
+what `supports_abort=False` says). So the judge does it. Without this, a solution
+expected to be too slow runs to the limit on **every** test when one test already
+settled the question — by definition the most expensive solutions in the run, at full
+cost, on a shared park.
+
+`STOPWHEN_WA` and `STOPWHEN_RE` stay **off**, and the asymmetry is the point. The
+upper-bound solutions are the ones expecting TLE (`TIME_LIMIT_EXCEEDED`,
+`TLE_OR_RTE`), and a `TLE_OR_RTE` one may legitimately crash; halting there would
+truncate the timings of a solution that is *not* too slow — the case that has a real
+measurement to hand back — and would cut short a crash that
+`_record_validation_run` reports as broken rather than as a violated bound. A WA does
+not abort locally either.
+
+Two things make the truncation safe to read. `ran_nothing` keys on `total_tests`, which
+the live probe watched stay at 72 on a run that reported 4 tests, so a truncated run is
+never mistaken for a submission that failed to build; and the tests MOJ does not report
+become `SKIPPED` with no timing, exactly what the local gate writes. The POINTS hazard
+above does not reach a probe either — it is about `score-summary.sh` scoring an
+unexecuted group `null`, and nothing reads a probe's score: `MojRunner` reads `tests[]`,
+`verdict_canon` and `total_tests`.
+
+**The probe is also where the early break actually fires.** The caveat above — it only
+fires from inside the `JOBSCOUNT > NPROC-1` branch, so with fewer tests than cores
+nothing stops early — is about a *parallel* package. A probe sets
+`ALLOWPARALLELTEST=n`, which pins `NPROC=1`, so the condition is `JOBSCOUNT > 0` and
+holds from the second test onward. It is still mojtools' best-effort optimization rather
+than a guarantee, and rbx depends on it for nothing: a run that stops early and one that
+does not produce the same verdict, only at different cost.
 
 ### `ALLOWPARALLELTEST`
 
@@ -422,7 +450,7 @@ knob lives:
 |---|---|---|
 | `sols/` | model solution only | [`moj testrun`](#solutions) sends the timed source in the request body; calibration needs one `sols/good` |
 | `languages` | every language rbx may testrun, across **both** `rbx time` phases | [the API rejects a submission outside it](#moj-metajson), a testrun included |
-| `STOPWHEN_*` | never emitted | [halting early returns a prefix of the tests](#stopwhen_) |
+| `STOPWHEN_*` | `STOPWHEN_TLE=y` **only** | [the judge does what `abort_on` does locally](#stopwhen_) |
 | `ALLOWPARALLELTEST` | `n` | [a timing measured against 55 competing tests is not a timing](#allowparalleltest) |
 | `TLERERUN` | `n` | [the rerun's time replaces the measured one](#allowparalleltest) |
 | `docs/` | always `DUMMY_STATEMENT` | see below |

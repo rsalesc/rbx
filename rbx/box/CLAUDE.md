@@ -148,8 +148,8 @@ over the judge's `moj` CLI (`problem_id.py`, `cli.py`) that a `MojRunner` drives
 upload, calibrate and testrun. `packaging/moj/` is the *packager* that produces what it
 uploads. They meet at one object: `MojPackager(probe=ProbePackage(...))`, the
 throwaway package a timing run measures on -- model solution only, the `TLOVERRIDE`
-block the run asked for, every testrunnable language whitelisted, no statement build
-and no `STOPWHEN_*`. Pair timings back onto testcases with `MojPackager.testcase_names()`,
+block the run asked for, every testrunnable language whitelisted, no statement build,
+and `STOPWHEN_TLE` alone (see below). Pair timings back onto testcases with `MojPackager.testcase_names()`,
 never by position and never by re-deriving the names.
 
 `MojRunner` (`runners/moj/runner.py`) is that client's `SolutionRunner`. `prepare()`
@@ -186,13 +186,24 @@ doc argues why measuring at the real bound is worth it (the judge's *verdict*, n
 its timing, is what phase 2 reads). The testrun cache is what keeps a re-run at limits
 already probed free.
 
-`supports_abort=False` has one visible consequence in the validation phase. That phase
-aborts a slow solution at its first timeout, so locally the testcases after it are
-`SKIPPED` and say nothing. On MOJ they all really ran, so a solution that both times out
-*and* answers a later test wrongly comes back with a WA beside the TLE, and
-`_record_validation_run` reads a non-slow bad verdict as "broke for another reason" rather
-than as confirmation. More information, not less -- the WA is real and the local abort
-merely hid it -- but a slow-and-wrong solution is reported here and passes locally.
+**`supports_abort=False`, and how the saving is kept anyway.** rbx cannot gate a batch
+backend: the gate works by not *dispatching* the testcases after a timeout, and a testrun
+has already run the whole submission by the time rbx sees any of it. So the probe package
+sets **`STOPWHEN_TLE=y`** and the judge does it instead -- the same rule both `rbx time`
+phases ask for with `abort_on=...outcome.is_slow()`. Without it, a solution expected to be
+too slow runs to the limit on *every* test when one already settled the question: the most
+expensive solutions in the run, at full cost, on a shared park. The tests MOJ therefore
+never reports become `SKIPPED` with no timing, exactly what the gate would have written,
+and `ran_nothing` keys on `total_tests` so a truncated run is never mistaken for a
+submission that failed to build.
+
+`STOPWHEN_WA` and `STOPWHEN_RE` stay **off**, matching the local predicate, which a WA does
+not trip either. Halting on one would truncate the timings of a solution that is *not* too
+slow -- the case with a real measurement to hand back -- and would cut short a `TLE_OR_RTE`
+solution that crashed, which `_record_validation_run` reports as broken rather than as a
+violated bound. So one difference from a local run survives: a solution that both times out
+*and* answers an earlier test wrongly is reported here as broken, where the local abort
+would have hidden the WA behind the timeout. More information, not less.
 
 `run_solution` submits the solution with `moj testrun` on a **background task** and
 returns one `Deferred` per entry over that one shared job -- it must not block, because

@@ -853,22 +853,58 @@ class MojPackager(BasePackager):
         and scores it `null` -- counted as failed. A solution that legitimately failed
         group 1 but would have passed group 2 would silently lose group 2's points.
 
-        **Nor** for a probe package, which is the same correctness argument reached
-        from the other side. A probe exists for rbx to collect a timing per test, and
-        the solutions it times include the slow and wrong ones -- which fail by
-        construction. On a BINARY problem the first WA/TLE/RE would break out of the
-        test loop and rbx would get back a *prefix* of the tests, silently losing the
-        timings the package exists to produce. Nothing is judged here, so the speed
-        optimization buys nothing to weigh against that. This is also what makes the
-        runner's `supports_abort=False` honest: a testrun has run every test by the
-        time rbx sees it only if nothing told it to stop early.
+        A probe package takes **`STOPWHEN_TLE` alone**, which is not a compromise
+        between the two cases above but an exact match for what rbx asks for
+        locally. Both `rbx time` phases pass the same predicate --
+        `abort_on=lambda ctx: ctx.evaluation.result.outcome.is_slow()` -- so a
+        timeout, and only a timeout, ends a solution's run. `STOPWHEN_TLE=y` is
+        that rule, enforced by the judge instead of by rbx.
+
+        It matters because the local abort has no counterpart here. The gate in
+        `run_solutions` works by not *dispatching* the testcases after a timeout,
+        and a testrun has already run the whole submission by the time rbx sees
+        any of it -- which is why `MojRunner` declares `supports_abort=False`.
+        Without this, a solution expected to be too slow runs to the limit on
+        **every** test of the testset when one test already settled the question:
+        by definition the most expensive solutions in the run, at full cost, on a
+        shared judge park.
+
+        `STOPWHEN_WA` and `STOPWHEN_RE` stay off, and the asymmetry is the whole
+        point. The upper-bound solutions are the ones expecting TLE
+        (`TIME_LIMIT_EXCEEDED`, `TLE_OR_RTE`), and a `TLE_OR_RTE` one may
+        legitimately crash; `_record_validation_run` reads a non-slow bad verdict
+        as "broke for another reason" and reports it, which needs the run to have
+        continued. Halting there would also truncate the timings of a solution
+        that is *not* too slow, which is the case that has a real measurement to
+        hand back. Locally a WA does not abort either.
+
+        The truncation itself is safe to read: the probe watched a `STOPWHEN_*`
+        run come back with 4 entries and `total_tests: 72`, and `ran_nothing`
+        keys on `total_tests`, so a truncated run is never mistaken for a
+        submission that failed to build. The tests MOJ did not report become
+        `SKIPPED` with no timing -- exactly what the local abort gate writes.
+
+        The POINTS hazard above does not reach a probe either: it is about
+        `score-summary.sh` scoring an unexecuted group `null`, and nothing reads a
+        probe's score. `MojRunner` reads `tests[]`, `verdict_canon` and
+        `total_tests`, and never a score.
+
+        Note the early break is mojtools' best-effort optimization rather than a
+        guarantee -- it fires only from inside the `JOBSCOUNT > NPROC-1` branch.
+        A probe is the case where it does fire: `ALLOWPARALLELTEST=n` pins
+        `NPROC=1`, so the condition holds from the second test onward. Nothing
+        here depends on it. A run that stops early and one that does not produce
+        the same verdict, at different cost.
         """
         if self.probe is not None:
             return [
-                '# STOPWHEN_* is deliberately unset: this package exists for rbx to',
-                '# measure a timing per test, and the solutions it times include ones',
-                '# that fail by construction. Halting at the first failure would return',
-                '# a prefix of the tests and silently lose the rest of the timings.',
+                '# Halt a solution at its first TIMEOUT, and only a timeout. This',
+                '# package exists for rbx to measure, and rbx asks for exactly this',
+                '# rule locally: one timeout settles whether a solution is too slow,',
+                '# so the rest of the testset only costs judge time. WA and RE do NOT',
+                '# halt -- a solution that fails some other way still owes its',
+                '# timings, and rbx reports that failure rather than the bound.',
+                'STOPWHEN_TLE=y',
                 '',
             ]
         pkg = package.find_problem_package_or_die()

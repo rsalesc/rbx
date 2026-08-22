@@ -314,19 +314,12 @@ def test_a_real_package_still_ships_every_solution(testing_pkg, tmp_path):
         assert list((into_path / 'sols' / tag).iterdir())
 
 
-# -- halting early would truncate the timings --------------------------------
+# -- halting early: on a timeout, and only on a timeout ----------------------
 
 
-def test_a_binary_probe_package_never_halts_early(testing_pkg, tmp_path):
-    # A BINARY problem normally gets STOPWHEN_WA/TLE/RE=y, and build-and-test.sh
-    # checks them *before* the RUNALL guard. But a probe exists to collect a timing
-    # per test, and the solutions it times include the slow and wrong ones, which
-    # fail by construction: the first failure would break out of the loop and rbx
-    # would get back a prefix of the tests. It is also what makes the runner's
-    # `supports_abort=False` -- "a testrun has already run every test" -- true.
+def _probe_conf(testing_pkg, tmp_path) -> str:
     _package_with_every_solution_kind(testing_pkg)
-
-    conf = (
+    return (
         run_packager(
             testing_pkg,
             tmp_path,
@@ -337,8 +330,35 @@ def test_a_binary_probe_package_never_halts_early(testing_pkg, tmp_path):
         / 'conf'
     ).read_text()
 
-    for key in ['STOPWHEN_WA=y', 'STOPWHEN_TLE=y', 'STOPWHEN_RE=y']:
-        assert key not in conf
+
+def test_a_probe_package_halts_a_solution_at_its_first_timeout(testing_pkg, tmp_path):
+    """The judge does what `abort_on` does locally, because rbx cannot here.
+
+    Both `rbx time` phases pass `abort_on=...outcome.is_slow()`, but the local
+    gate works by not *dispatching* the testcases after a timeout and a testrun
+    has already run the whole submission by the time rbx sees any of it -- hence
+    `supports_abort=False`. Without `STOPWHEN_TLE`, a solution expected to be too
+    slow runs to the limit on **every** test when one already settled the
+    question: by definition the most expensive solutions in the run, at full
+    cost, on a shared judge park.
+    """
+    assert 'STOPWHEN_TLE=y' in _directives(_probe_conf(testing_pkg, tmp_path))
+
+
+def test_a_probe_package_does_not_halt_on_a_wrong_answer_or_a_crash(
+    testing_pkg, tmp_path
+):
+    """The asymmetry is the point, and it is what the local predicate does too.
+
+    A WA does not abort locally. Halting on one here would truncate the timings
+    of a solution that is *not* too slow -- the case that has a real measurement
+    to hand back -- and would cut short a `TLE_OR_RTE` solution that crashed,
+    which `_record_validation_run` needs the rest of to report as broken rather
+    than as a violated bound.
+    """
+    directives = _directives(_probe_conf(testing_pkg, tmp_path))
+    assert 'STOPWHEN_WA=y' not in directives
+    assert 'STOPWHEN_RE=y' not in directives
 
 
 def _directives(conf: str) -> List[str]:

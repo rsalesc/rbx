@@ -325,10 +325,15 @@ class MojRunner:
         # submissions to a shared judge park, so a run asking for repeats is
         # refused by name rather than silently measured once.
         supports_nruns=False,
-        # A testrun has already run every test by the time rbx sees the result
-        # (which is exactly why a probe package suppresses `STOPWHEN_*`), so
-        # aborting saves nothing -- and gating would overwrite real judge
-        # verdicts with SKIPPED.
+        # A testrun has already run every test it was going to by the time rbx
+        # sees the result, so aborting saves nothing -- and gating would
+        # overwrite real judge verdicts with SKIPPED.
+        #
+        # The saving the local gate exists for is not lost, it is delegated: a
+        # probe package sets `STOPWHEN_TLE=y`, so the judge itself stops a
+        # solution at its first timeout, which is the same rule `abort_on` asks
+        # for in both `rbx time` phases. The tests it therefore never reports
+        # become SKIPPED here, exactly as the gate would have written them.
         #
         # One visible consequence, in `rbx time`'s validation phase. That phase
         # aborts a slow solution at its first timeout, so locally the testcases
