@@ -864,3 +864,126 @@ async def test_the_ticker_does_not_spin_when_there_is_nothing_to_paint():
         return 42
 
     assert await runner_module._with_ticker(ctx, work(), 'x {elapsed}') == 42  # noqa: SLF001
+
+
+# -- a remote problem per phase ------------------------------------------------
+#
+# The two `rbx time` phases measure under different limits, and MOJ's limits live
+# in the package. One problem holding both would be re-uploaded and re-calibrated
+# every time the phases took turns -- and since they alternate, the fingerprint
+# recorded at the end of a run is always the *other* phase's, so the fast path
+# could never fire on the next one. A problem each is what makes both packages
+# stable across runs.
+
+_ESTIMATION = 2500
+_VALIDATION = {'cpp': 150}
+
+
+async def test_each_phase_uploads_to_its_own_problem(
+    testing_pkg, tmp_path, monkeypatch
+):
+    minimal_package(testing_pkg)
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    await MojRunner().prepare(_context(tmp_path, timelimit_override=_ESTIMATION))
+    await MojRunner().prepare(_context(tmp_path, timelimit_override=_VALIDATION))
+
+    estimation, validation = (problem for problem, _ in fake.uploads)
+    assert estimation != validation
+    # The estimation phase keeps the id `.moj-id` has always named, so every
+    # binding already committed goes on working untouched...
+    assert estimation == json.loads(moj_id_path(testing_pkg.root).read_text())['id']
+    # ...and the validation one hangs off it, carrying the same `rbxt-` marker
+    # that guards against uploading over a real problem.
+    assert validation == f'{estimation}-slow'
+    assert runner_module.is_rbxt_id(validation)
+
+
+async def test_a_second_run_re_uploads_neither_phase(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """The whole point. Two problems make both packages stable across runs.
+
+    On one shared problem this was unreachable: whichever phase ran last left its
+    fingerprint recorded, so the next run's *first* phase always mismatched, and
+    then the second phase mismatched what the first had just written.
+    """
+    minimal_package(testing_pkg)
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    for _ in range(2):
+        await MojRunner().prepare(_context(tmp_path, timelimit_override=_ESTIMATION))
+        await MojRunner().prepare(_context(tmp_path, timelimit_override=_VALIDATION))
+
+    # One upload each, not four, and one calibration each.
+    assert len(fake.uploads) == 2
+    assert len(fake.calibrations) == 2
+
+
+async def test_one_phase_changing_does_not_re_upload_the_other(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """Re-estimating at a different cap must not cost the validation package.
+
+    The records are per problem, so a phase whose package moved re-uploads alone.
+    """
+    minimal_package(testing_pkg)
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    await MojRunner().prepare(_context(tmp_path, timelimit_override=_ESTIMATION))
+    await MojRunner().prepare(_context(tmp_path, timelimit_override=_VALIDATION))
+    # A different estimation cap: that package moved, the other did not.
+    await MojRunner().prepare(_context(tmp_path, timelimit_override=9000))
+    await MojRunner().prepare(_context(tmp_path, timelimit_override=_VALIDATION))
+
+    uploaded = [problem for problem, _ in fake.uploads]
+    base = json.loads(moj_id_path(testing_pkg.root).read_text())['id']
+    assert uploaded == [base, f'{base}-slow', base]
+
+
+async def test_the_validation_problem_is_refused_when_the_binding_is_not_ours(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """The guard is upstream of the derivation, not bypassed by it.
+
+    A package bound to a real, published problem must fail before anything is
+    derived from that id -- otherwise the phase suffix would invent a *second*
+    problem in someone else's namespace to write to.
+    """
+    minimal_package(testing_pkg)
+    moj_id_path(testing_pkg.root).write_text('{"id": "alice#soma-simples"}\n')
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    with pytest.raises(MojRunnerError) as exc:
+        await MojRunner().prepare(_context(tmp_path, timelimit_override=_VALIDATION))
+
+    assert 'alice#soma-simples' in str(exc.value)
+    assert fake.uploads == []
+
+
+def test_a_run_that_is_neither_phase_uses_the_base_problem():
+    """`run_solutions` is a general entry point; a caller passing no override is
+    neither phase. It falls back rather than inventing a third problem."""
+    assert runner_module._phase_of(_ctx_with(-1)) is None  # noqa: SLF001
+    assert runner_module._phase_of(_ctx_with(None)) is None  # noqa: SLF001
+    assert (
+        runner_module._phase_of(_ctx_with(2500))  # noqa: SLF001
+        is runner_module._Phase.ESTIMATION  # noqa: SLF001
+    )
+    assert (
+        runner_module._phase_of(_ctx_with({'cpp': 150}))  # noqa: SLF001
+        is runner_module._Phase.VALIDATION  # noqa: SLF001
+    )
+
+
+def _ctx_with(override) -> RunContext:
+    return RunContext(
+        skeleton=None,  # type: ignore[arg-type]
+        checker_digest=None,
+        interactor_digest=None,
+        verification=VerificationLevel.ALL_SOLUTIONS,
+        timelimit_override=override,
+        nruns=1,
+        progress=None,
+        abort_on=None,
+    )

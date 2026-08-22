@@ -1,8 +1,9 @@
 """The binding between an rbx package and its problem on the MOJ server.
 
-MOJ identifies a problem as `<org>#<slug>`, where the org is a login. rbx uses a
-throwaway, private problem per package -- `<login>#rbxt-<slug>` -- purely as a
-place to run timings, and records it in `.moj-id` at the package root.
+MOJ identifies a problem as `<org>#<slug>`, where the org is a login. rbx uses
+throwaway, private problems -- `<login>#rbxt-<slug>` and ids derived from it --
+purely as places to run timings, and records the base one in `.moj-id` at the
+package root. See `derived_id` for why there is more than one.
 
 `.moj-id` is **the CLI's own convention**, not an invention: `moj testrun` accepts
 a directory in place of an id and reads exactly this file out of it. Committing it
@@ -24,6 +25,37 @@ MOJ_ID_NAME = '.moj-id'
 RBXT_PREFIX = 'rbxt-'
 
 _RBXT_ID = re.compile(r'^(?P<org>[^#]+)#' + re.escape(RBXT_PREFIX) + r'(?P<slug>.+)$')
+
+
+def derived_id(moj_id: str, suffix: str) -> str:
+    """`moj_id` with `suffix` appended to its slug.
+
+    `rbx time` measures under different limits in each of its two phases, and
+    MOJ's limits live *in the package*, so one problem holding both would be
+    re-uploaded and re-calibrated on every phase change -- and, since the two
+    take turns, its recorded fingerprint would never match at the start of a run.
+    The fast path was therefore unreachable in practice. A problem per phase
+    makes each package stable across runs instead.
+
+    Derived rather than stored: `.moj-id` holds **one** id because that is the
+    `moj` CLI's own convention (`moj testrun <dir>` reads exactly this file), and
+    a second field there would be rbx inventing a format inside somebody else's.
+    So the committed binding stays what it always was -- the estimation problem
+    -- and every other phase hangs off it. That also means every `.moj-id` already
+    committed keeps working untouched.
+
+    A suffix rather than a second prefix, for the guard's sake: `is_rbxt_id` is
+    what stands between a timing package and a setter's published problem, and
+    widening it to a second marker is not a change worth making for a naming
+    preference. Both forms carry the one `rbxt-` marker, and they sort next to
+    each other for anyone browsing the server.
+    """
+    assert is_rbxt_id(moj_id), (
+        f'refusing to derive a problem id from `{moj_id}`, which rbx did not create'
+    )
+    if not suffix:
+        return moj_id
+    return f'{moj_id}-{suffix}'
 
 
 def moj_id_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:

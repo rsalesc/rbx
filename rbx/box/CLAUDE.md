@@ -210,16 +210,42 @@ whitelist would move the fingerprint between phases for nothing, and where it di
 the validation phase would submit slow solutions against an accepted-only whitelist the
 API refuses.
 
+**One remote problem per phase.** `_phase_of` reads the shape of
+`ctx.timelimit_override` -- an `int` is estimation, a per-language mapping is validation
+-- and that one reading decides both what the packager's report calls the solutions and
+which problem the package goes to: `<login>#rbxt-<slug>` for estimation and
+`…-slow` for validation, derived by `problem_id.derived_id`.
+
+This is not cosmetic. The phases measure under different limits, `TLOVERRIDE` lives in
+`conf`, and `conf` is inside `_directory_fingerprint` -- so on one shared problem the
+phases evict each other: whichever ran last leaves its fingerprint recorded, the next
+run's first phase always mismatches, and the second then mismatches what the first just
+wrote. **The fast path could never fire.** Two problems make each package stable across
+runs instead: two `rbx time` runs cost two uploads (the first of each) rather than four,
+pinned by `test_a_second_run_re_uploads_neither_phase`.
+
+A *suffix* on the slug, not a second prefix, and derived rather than stored. `is_rbxt_id`
+is what stands between a timing package and a setter's published problem, so it keeps one
+marker and one regex; and `.moj-id` holds one id because that is the `moj` CLI's own
+convention (`moj testrun <dir>` reads that file), so the committed binding stays exactly
+what it always was and every `.moj-id` already committed keeps working. The guard runs
+*before* the derivation -- a binding rbx did not create is refused rather than having a
+second problem derived from it in someone else's namespace.
+
+The upload record is a **map** keyed by problem id for the same reason: a single record
+would have each phase evict the other's, which is the original bug moved rather than
+fixed. Read-modify-write, so one phase re-uploading leaves the other's record alone.
+Losing the file costs a redundant upload of both, which is why it may live in the
+disposable problem cache.
+
 **Both phases run on the same runner object, and each ends its own batch.**
 `timing._run_for_inference` and `timing._validate_upper_bound` each `await result.close()`
-from a `finally`, and `close` ends a batch rather than the runner, so the second
-`run_solutions` reuses the remote problem. It does **not** reuse the upload: the limits
-moved, `TLOVERRIDE` lives in `conf`, and `conf` is inside `_directory_fingerprint` -- so
-the validation phase re-uploads and very likely re-calibrates, once per picker round trip
-that changes a limit. That is the cost the two-phase split makes unavoidable; the design
-doc argues why measuring at the real bound is worth it (the judge's *verdict*, not only
-its timing, is what phase 2 reads). The testrun cache is what keeps a re-run at limits
-already probed free.
+from a `finally`, and `close` ends a batch rather than the runner. Within a single
+command the validation phase still uploads at least once, and once more per picker round
+trip that *changes* a limit -- that is the cost the two-phase split makes unavoidable,
+and the design doc argues why measuring at the real bound is worth it (the judge's
+*verdict*, not only its timing, is what that phase reads). The testrun cache is what keeps
+a re-run at limits already probed free.
 
 **`supports_abort=False`, and how the saving is kept anyway.** rbx cannot gate a batch
 backend: the gate works by not *dispatching* the testcases after a timeout, and a testrun

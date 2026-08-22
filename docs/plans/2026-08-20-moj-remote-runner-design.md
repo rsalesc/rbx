@@ -357,14 +357,24 @@ but any other caller of `run_solutions` may, and pinning it would emit
   some limit is also killed at any lower one, and a measured one is answered by
   arithmetic, so only the solutions whose bound went up run again.
 
-### Why the package is uploaded twice
+### Why the package is uploaded twice, and a problem per phase
 
 This is the cost #696 makes unavoidable, and it is worth stating plainly rather than
 rediscovering: **the two phases measure under different limits, and MOJ's limit lives in
 the package**. `TLOVERRIDE` is emitted into `conf`, `conf` is inside
-`_directory_fingerprint`, so a phase-2 `prepare` cannot hit the fast path. It re-uploads,
-and -- since the checksum moved -- very likely re-calibrates. Each extra picker round trip
-that changes a limit costs another one.
+`_directory_fingerprint`, so within one command the validation phase re-uploads, and --
+since the checksum moved -- very likely re-calibrates. Each extra picker round trip that
+changes a limit costs another one.
+
+**So each phase gets its own remote problem**: `<login>#rbxt-<slug>` for estimation and
+`…-slow` for validation. On one shared problem the two evict each other -- whichever ran
+last leaves its fingerprint recorded, so the next run's first phase always mismatches,
+and the second then mismatches what the first just wrote -- which made the upload fast
+path *unreachable in practice*. A problem each keeps both packages stable across runs, so
+a second `rbx time` at the same limits uploads nothing at all. The id is a suffix on the
+slug rather than a second prefix, so `is_rbxt_id` -- the guard against uploading over a
+real problem -- keeps one marker; and it is derived rather than stored, so `.moj-id`
+still holds the one id the `moj` CLI's own convention expects.
 
 **Reaffirmed 2026-08-21, after the probe found that a TLE reports its time unclamped.**
 That finding makes a one-upload alternative sound -- keep `TLOVERRIDE = inferenceTimeout`

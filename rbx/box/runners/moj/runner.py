@@ -15,6 +15,7 @@ Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 
 import asyncio
 import dataclasses
+import enum
 import hashlib
 import json
 import pathlib
@@ -43,7 +44,7 @@ from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.moj.moj_language_utils import get_moj_language_from_rbx_language
 from rbx.box.packaging.moj.packager import MojPackager, ProbePackage, ProbePinned
 from rbx.box.runners.base import RunContext, RunnerCapabilities, SolutionRunner
-from rbx.box.runners.moj import cli
+from rbx.box.runners.moj import cli, problem_id
 from rbx.box.runners.moj.problem_id import ensure_moj_id, is_rbxt_id, moj_id_path
 from rbx.box.schema import CodeItem
 from rbx.grading.steps import (
@@ -409,10 +410,19 @@ class MojRunner:
         # from anything this module could say.
         login = await cli.whoami()
 
-        moj_id = self._problem_id(login)
+        phase = _phase_of(ctx)
+        # One remote problem per phase. They measure under different limits, and
+        # MOJ's limits live in the package, so a single problem would be
+        # re-uploaded and re-calibrated every time the phases took turns -- and
+        # its recorded fingerprint would never match at the start of a run, so the
+        # fast path could not fire at all. A problem each keeps both packages
+        # stable across runs. See `problem_id.derived_id`.
+        moj_id = problem_id.derived_id(
+            self._problem_id(login), phase.id_suffix if phase else ''
+        )
         self._moj_id = moj_id
 
-        pin = _probe_pin(ctx)
+        pin = _probe_pin(ctx, phase)
 
         # The package is built on every run, even when the upload is about to be
         # skipped: it is cheap (copying built tests, amalgamating the checker) and
@@ -452,7 +462,7 @@ class MojRunner:
             # starts receiving a new package, the recorded fingerprint no longer
             # describes what is up there. A crash mid-upload must leave the next
             # run re-uploading, never trusting a stale record.
-            _forget_upload()
+            _forget_upload(moj_id)
 
             # Measured before the upload rather than after: the temp directory is
             # gone by the time the summary is printed.
@@ -1161,7 +1171,61 @@ class MojRunner:
         )
 
 
-def _probe_pin(ctx: RunContext) -> ProbePinned:
+class _Phase(enum.Enum):
+    """Which `rbx time` phase a `run_solutions` call belongs to.
+
+    Read off the *shape* of `ctx.timelimit_override`, which is the only signal a
+    backend gets: within `rbx time` an `int` is the estimation phase and a
+    per-language mapping is the validation phase. Decided in one place because
+    two things now depend on it -- what the report calls the solutions, and which
+    remote problem the package goes to -- and inferring it twice would be two
+    chances to disagree.
+    """
+
+    ESTIMATION = 'estimation'
+    VALIDATION = 'validation'
+
+    @property
+    def measuring(self) -> str:
+        """What this phase submits, as a plural noun phrase for the report."""
+        return {
+            _Phase.ESTIMATION: 'accepted solutions',
+            _Phase.VALIDATION: 'slow solutions',
+        }[self]
+
+    @property
+    def id_suffix(self) -> str:
+        """What distinguishes this phase's remote problem from the base one.
+
+        Empty for estimation, so the problem it uses is exactly the one `.moj-id`
+        has always named and every committed binding keeps working. See
+        `problem_id.derived_id` for why the phases need a problem each.
+        """
+        return {_Phase.ESTIMATION: '', _Phase.VALIDATION: 'slow'}[self]
+
+
+def _phase_of(ctx: RunContext) -> Optional[_Phase]:
+    """The phase this run belongs to, or `None` when it is not one.
+
+    `None` is not a failure: `run_solutions` is a general entry point, and a
+    caller that passes no override at all is neither phase. It falls back to the
+    base problem and a neutral noun -- the worst a misread could cost is one
+    console word and one extra remote problem, never a wrong limit.
+    """
+    override = ctx.timelimit_override
+    if isinstance(override, int):
+        return _Phase.ESTIMATION if override > 0 else None
+    if override is not None and any(limit > 0 for limit in override.values()):
+        return _Phase.VALIDATION
+    return None
+
+
+def _measuring(phase: Optional[_Phase]) -> str:
+    """What to call the solutions a run submits, for the packager's report line."""
+    return phase.measuring if phase is not None else 'solutions'
+
+
+def _probe_pin(ctx: RunContext, phase: Optional[_Phase]) -> ProbePinned:
     """The limits every timing this run produces is measured under.
 
     MOJ **always** enforces a time limit, so "no limit" is not expressible in a
@@ -1192,7 +1256,7 @@ def _probe_pin(ctx: RunContext) -> ProbePinned:
         # `> 0` rather than truthiness: -1 is the "no override" sentinel elsewhere
         # in rbx, and pinning it would emit `TLOVERRIDE[default]=-0.001`.
         if override > 0:
-            return ProbePinned(default_ms=override, measuring='accepted solutions')
+            return ProbePinned(default_ms=override, measuring=_measuring(phase))
     elif override is not None:
         per_language = {
             language: limit_ms
@@ -1207,20 +1271,18 @@ def _probe_pin(ctx: RunContext) -> ProbePinned:
                 default_ms=max(per_language.values()),
                 per_rbx_language_ms=tuple(sorted(per_language.items())),
                 # Said here rather than inferred in the packager, which sees
-                # limits and not phases. It rests on the same reading of the two
-                # shapes this function is built on: within `rbx time`, an `int`
-                # is the estimation phase and a mapping is the validation phase.
-                # A caller that is neither gets the neutral fallback below, and
-                # the worst a wrong guess could ever cost is one console noun --
-                # never a limit.
-                measuring='slow solutions',
+                # limits and not phases. `_phase_of` is the one place that reads
+                # the shape; see it for what a caller outside `rbx time` gets.
+                measuring=_measuring(phase),
             )
 
     strategy = timing_config.resolve_strategy(
         environment.get_environment().timing,
         package.find_problem_package_or_die().timing,
     )
-    return ProbePinned(default_ms=strategy.inferenceTimeout)
+    return ProbePinned(
+        default_ms=strategy.inferenceTimeout, measuring=_measuring(phase)
+    )
 
 
 def _testrun_languages(ctx: RunContext) -> Tuple[str, ...]:
@@ -1564,25 +1626,49 @@ def _upload_state_path() -> pathlib.Path:
     return package.get_problem_cache_dir() / UPLOAD_STATE_NAME
 
 
+def _read_upload_state() -> Dict[str, str]:
+    """Every problem this machine has uploaded to, and what it last sent.
+
+    A **map**, not a single record: `rbx time` uploads to one problem per phase,
+    and a single record would have each phase evict the other's -- which is the
+    same way the fast path used to be unreachable, just moved. Any unreadable or
+    unrecognised state reads as empty, including the flat `{id, fingerprint}` this
+    replaced: the only cost is a redundant upload, and that is the direction to
+    fail in.
+    """
+    path = _upload_state_path()
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text())
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    uploads = payload.get('uploads')
+    if not isinstance(uploads, dict):
+        return {}
+    return {
+        moj_id: fingerprint
+        for moj_id, fingerprint in uploads.items()
+        if isinstance(moj_id, str) and isinstance(fingerprint, str)
+    }
+
+
+def _write_upload_state(uploads: Dict[str, str]) -> None:
+    _upload_state_path().write_text(
+        json.dumps({'uploads': uploads}, indent=2, sort_keys=True) + '\n'
+    )
+
+
 def _recorded_fingerprint(moj_id: str) -> Optional[str]:
     """The fingerprint this machine last uploaded to `moj_id` and saw calibrated.
 
     Keyed by the id, so a package that got rebound to a different remote problem
-    never matches a record made for the previous one. Any unreadable state reads
-    as "nothing recorded": the only cost is a redundant upload, and that is the
-    direction to fail in.
+    -- or that belongs to the other phase -- never matches a record made for
+    another one.
     """
-    path = _upload_state_path()
-    if not path.is_file():
-        return None
-    try:
-        payload = json.loads(path.read_text())
-    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
-        return None
-    if not isinstance(payload, dict) or payload.get('id') != moj_id:
-        return None
-    fingerprint = payload.get('fingerprint')
-    return fingerprint if isinstance(fingerprint, str) else None
+    return _read_upload_state().get(moj_id)
 
 
 def _record_upload(moj_id: str, fingerprint: str) -> None:
@@ -1591,15 +1677,22 @@ def _record_upload(moj_id: str, fingerprint: str) -> None:
     Written **after** the calibration finishes, never before: a package that is
     on the server but whose calibration never completed is not something the next
     run may skip work over.
+
+    Read-modify-write, so recording one phase's upload leaves the other phase's
+    record alone. Losing the file entirely costs a redundant upload of both,
+    which is why it may live in the disposable problem cache at all.
     """
-    _upload_state_path().write_text(
-        json.dumps({'id': moj_id, 'fingerprint': fingerprint}, indent=2) + '\n'
-    )
+    uploads = _read_upload_state()
+    uploads[moj_id] = fingerprint
+    _write_upload_state(uploads)
 
 
-def _forget_upload() -> None:
-    path = _upload_state_path()
-    path.unlink(missing_ok=True)
+def _forget_upload(moj_id: str) -> None:
+    """Drop what is recorded for one problem, leaving every other one intact."""
+    uploads = _read_upload_state()
+    if uploads.pop(moj_id, None) is None:
+        return
+    _write_upload_state(uploads)
 
 
 # -- the testrun cache ----------------------------------------------------------
