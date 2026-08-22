@@ -518,15 +518,19 @@ def test_the_probe_report_says_which_languages_the_run_measures(
         testing_pkg,
         tmp_path,
         build_entries(tmp_path, ['samples']),
-        timing_mode=ProbePinned(default_ms=1350, per_rbx_language_ms=(('cpp', 1350),)),
+        timing_mode=ProbePinned(
+            default_ms=1350,
+            per_rbx_language_ms=(('cpp', 1350),),
+            measuring='slow solutions',
+        ),
     )
 
     out = _plain(capsys.readouterr().out)
-    assert 'cpp at 1350 ms' in out
-    # The claim that misled: the default is not a limit anything runs under.
-    assert 'every other language under' not in out
-    assert 'the only language this run submits anything in' in out
-    assert 'nothing this run submits will hit' in out
+    # Naming what is measured is what makes "only cpp" self-explanatory.
+    assert 'MOJ will measure slow solutions in cpp at 1350 ms.' in out
+    # The claim that misled. The fallback is not a limit anything runs under, so
+    # it is not mentioned at all.
+    assert 'every other language' not in out
 
 
 def test_the_probe_report_names_every_pinned_language(testing_pkg, tmp_path, capsys):
@@ -540,14 +544,39 @@ def test_the_probe_report_names_every_pinned_language(testing_pkg, tmp_path, cap
         tmp_path,
         build_entries(tmp_path, ['samples']),
         timing_mode=ProbePinned(
-            default_ms=3450, per_rbx_language_ms=(('cpp', 1350), ('java', 3450))
+            default_ms=3450,
+            per_rbx_language_ms=(('cpp', 1350), ('java', 3450)),
+            measuring='slow solutions',
         ),
     )
 
     out = _plain(capsys.readouterr().out)
-    assert 'cpp at 1350 ms' in out
-    assert 'java at 3450 ms' in out
-    assert 'the only languages this run submits anything in' in out
+    assert 'MOJ will measure slow solutions in cpp at 1350 ms and java at 3450 ms.' in (
+        out
+    )
+
+
+def test_the_estimation_phase_report_names_the_accepted_solutions(
+    testing_pkg, tmp_path, capsys
+):
+    # The other half of the same idea: one cap, and the line says whose. Without
+    # the noun, "a single time limit of 10000 ms" invites the same question the
+    # per-language line raised -- a single limit on *what*.
+    minimal_package(testing_pkg)
+    testing_pkg.save()
+
+    run_packager(
+        testing_pkg,
+        tmp_path,
+        build_entries(tmp_path, ['samples']),
+        timing_mode=ProbePinned(default_ms=10000, measuring='accepted solutions'),
+    )
+
+    out = _plain(capsys.readouterr().out)
+    assert (
+        'MOJ will measure accepted solutions under a single time limit of 10000 ms.'
+        in out
+    )
 
 
 def test_probe_package_does_not_warn_about_a_narrowed_whitelist(

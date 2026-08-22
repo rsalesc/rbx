@@ -1148,7 +1148,7 @@ def _probe_pin(ctx: RunContext) -> ProbePinned:
         # `> 0` rather than truthiness: -1 is the "no override" sentinel elsewhere
         # in rbx, and pinning it would emit `TLOVERRIDE[default]=-0.001`.
         if override > 0:
-            return ProbePinned(default_ms=override)
+            return ProbePinned(default_ms=override, measuring='accepted solutions')
     elif override is not None:
         per_language = {
             language: limit_ms
@@ -1162,6 +1162,14 @@ def _probe_pin(ctx: RunContext) -> ProbePinned:
                 # a measurement -- being stingy could.
                 default_ms=max(per_language.values()),
                 per_rbx_language_ms=tuple(sorted(per_language.items())),
+                # Said here rather than inferred in the packager, which sees
+                # limits and not phases. It rests on the same reading of the two
+                # shapes this function is built on: within `rbx time`, an `int`
+                # is the estimation phase and a mapping is the validation phase.
+                # A caller that is neither gets the neutral fallback below, and
+                # the worst a wrong guess could ever cost is one console noun --
+                # never a limit.
+                measuring='slow solutions',
             )
 
     strategy = timing_config.resolve_strategy(

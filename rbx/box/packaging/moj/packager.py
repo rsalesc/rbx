@@ -154,6 +154,10 @@ class ProbePinned:
 
     default_ms: int
     per_rbx_language_ms: Tuple[Tuple[str, int], ...] = ()
+    # What this run submits, as a plural noun phrase, for the report line only.
+    # Supplied by the caller because the packager cannot know it: it sees limits,
+    # not phases, and "slow solutions" is true of the validation phase alone.
+    measuring: str = 'solutions'
 
     def __post_init__(self) -> None:
         # The runner derives these from `ctx.timelimit_override`, exactly the kind
@@ -799,36 +803,32 @@ class MojPackager(BasePackager):
         the profile's table would be a lie, so the limits this run asked for are
         named instead -- they are what every timing it produces is measured against.
 
-        The per-language line says **which languages this run measures**, not what
-        MOJ would judge an arbitrary submission with, and the difference is not
-        pedantic. The validation phase runs only the solutions expected to be too
-        slow, so a package whose slow solutions are all C++ pins C++ and nothing
-        else -- and its `TLOVERRIDE[default]` then applies to no submission this
-        run makes. Saying "every other language runs under <default>" reads as a
-        claim about how Java would be judged, which is how a setter with a
-        deliberately higher Java limit concludes the packager dropped it.
+        Under a probe pin the line names **what is being measured**, not what MOJ
+        would judge an arbitrary submission with. Naming the solutions is what
+        makes the language list self-explanatory: the validation phase runs only
+        the solutions expected to be too slow, so a package whose slow solutions
+        are all C++ pins C++ and nothing else. The earlier wording listed the
+        languages and then added "and every other language under <default>",
+        which reads as a claim about how Java would be judged -- and is how a
+        setter with a deliberately higher Java limit concludes the packager
+        dropped it. The fallback is not mentioned at all now, because nothing
+        this run submits can reach it.
         """
         if isinstance(self.timing_mode, JudgeCalibrated):
             return
         if isinstance(self.timing_mode, ProbePinned):
+            measuring = self.timing_mode.measuring
             if not self.timing_mode.per_rbx_language_ms:
                 console.console.print(
-                    'MOJ will measure every language in this run under a single '
-                    f'time limit of [item]{self.timing_mode.default_ms} ms[/item].'
+                    f'MOJ will measure {measuring} under a single time limit of '
+                    f'[item]{self.timing_mode.default_ms} ms[/item].'
                 )
                 return
-            pinned = sorted(self.timing_mode.per_rbx_language_ms)
-            per_language = ', '.join(
+            per_language = ' and '.join(
                 f'[item]{language}[/item] at [item]{limit_ms} ms[/item]'
-                for language, limit_ms in pinned
+                for language, limit_ms in sorted(self.timing_mode.per_rbx_language_ms)
             )
-            noun = 'language' if len(pinned) == 1 else 'languages'
-            console.console.print(
-                f'MOJ will measure {per_language} -- the only {noun} this run '
-                f'submits anything in. Every other language falls back to '
-                f'[item]{self.timing_mode.default_ms} ms[/item], which nothing '
-                f'this run submits will hit.'
-            )
+            console.console.print(f'MOJ will measure {measuring} in {per_language}.')
             return
         if isinstance(self.timing_mode, ProfilePinned):
             profile = limits_info.get_display_limits_profile(LIMITS_PROFILE)
