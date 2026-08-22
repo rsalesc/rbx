@@ -76,8 +76,239 @@ Calls `build()` then runs solutions based on verification level:
 
 1. **`run_solutions()`** -- Main entry point (called from `builder.verify()`)
 2. **`_get_report_skeleton()`** -- Compiles solutions, builds `SolutionReportSkeleton`
-3. **`_produce_solution_items()`** -- Creates `Deferred[Evaluation]` items per (solution, testcase)
+3. **`_produce_solution_items()`** -- Creates `Deferred[Evaluation]` items per (solution, testcase),
+   by asking a **`SolutionRunner`** (see below) for each solution's deferreds
 4. **`print_run_report()`** -- Drives deferred execution, displays live results
+
+### Runners (`runners/`)
+
+`run_solutions` decides *what* to run -- which solutions, which testcases, under which
+limits. A **`SolutionRunner`** (`runners/base.py`) decides *where*. `LocalRunner`
+(`runners/local.py`) is the sandbox on this machine and is the default; a remote judge
+reached over its own CLI is the other kind.
+
+The seam is **per solution**: `run_solution()` is handed a solution and its whole
+flattened testset in group order, and returns one `Deferred[Evaluation]` per entry. That
+grain is deliberate -- a remote judge judges one submission against every test at once, so
+a per-testcase seam would force every batch backend to coalesce calls back into a batch.
+
+Two things stay with the orchestrator rather than the backend:
+
+- **Abort/skip policy.** `_gated_evaluation()` wraps each returned deferred when a run asks
+  for `abort_on`, so every backend gets `_AbortGate` semantics for free instead of
+  re-implementing them. A run without `abort_on` gets the backend's deferreds
+  *unwrapped* -- a deliberate guarantee, pinned by a test. So does a backend declaring
+  `supports_abort=False`: it has already run the whole submission, so gating it would
+  overwrite verdicts the judge really produced with `SKIPPED`.
+- **`RunnerCapabilities`.** What a backend can report (memory, artifacts, checker
+  messages, repeated runs). Declared rather than sniffed, so a consumer never reads a
+  `None` as zero and calls an unmeasured run instantaneous. `_check_capabilities()` runs
+  before `prepare()` and raises `RunnerCapabilityError` when the run asks for repeated
+  runs, a sanitizer, or an interactor the backend does not support -- refusing by name
+  beats silently running something weaker under the same report. Repeats are checked on
+  the count `retries.get_retrier_config(nruns)` *resolves* to, not on the raw `nruns`:
+  `nruns=0` is every caller's default and means "whatever `repeats.reps` says", which is
+  the likelier way a run ends up repeated.
+
+**Choosing one.** `rbx time --runner <name>` (`runners/registry.py`), defaulting to
+`local`; an unknown name is refused naming the known ones. A *flag*, deliberately not the
+limits profile: a profile is the `limits/<name>.yml` file `rbx time` writes, so binding a
+transport to its name would couple an output to a transport and leave no way to estimate
+MOJ limits from a machine with no judge access. The registry imports each backend lazily
+(naming one must not cost the imports it talks to) and builds a fresh instance per call
+(a runner holds a whole run's state). The names themselves live in `runners/names.py`, a
+leaf module with no imports, so shell completion can read the same table without pulling
+`rich` in behind `RbxException` (~36ms on every TAB). The `env.rbx.yml` `runners:`/`profiles:` block the design
+sketches is **not** built: no backend has a reachable knob yet, and the flag is the whole
+surface until something needs more.
+
+**Tearing one down.** `await RunSolutionResult.close()` forwards to
+`SolutionRunner.close()`, and every consumer of a run awaits it from a `finally` around
+the *consumption* of the deferreds -- `builder.verify`, `cli.run` and
+`timing._run_for_inference`. It is **not** the `finalize` hook the seam started with and
+must not become it: `finalize` fired inside `run_solutions`, which only builds the
+deferreds, so it ran before a single result had been fetched. What `close` drops is work
+nobody will now ask for -- a backend that dispatched every solution up front still has
+jobs in flight when the report stops at the first failure, or when the setter hits
+Ctrl-C. It **ends a batch, not the runner**: `prepare` state survives on purpose, so a
+second `run_solutions` on the same object (phase 2, re-uploading at `timeLimitToTle x
+TL`) reuses the remote problem and hits the fingerprint fast path. It is `async` and
+drains: `cancel()` only schedules the `CancelledError`, a job suspended in
+`process.communicate()` needs several turns to unwind, and `syncer` stops the loop the
+moment the consumer returns -- so `MojRunner.close` awaits `gather(...,
+return_exceptions=True)` rather than hoping something pumps it. Cancelling is all rbx
+does: a cancelled `moj testrun` goes on running on the judge (outside history and placar,
+so nothing needs cleaning up -- `MojRunner.close` says so, once). `LocalRunner.close` is
+a no-op, because its work happens inside the deferred the consumer awaits. Awaiting an
+*unresolved* deferred after `close` is not supported; a resolved one keeps answering from
+its memo, which is what lets `timing` close before the group picker opens.
+
+**Two `moj` trees, different jobs.** `runners/moj/` is the *client*: a typed wrapper
+over the judge's `moj` CLI (`problem_id.py`, `cli.py`) that a `MojRunner` drives to
+upload, calibrate and testrun. `packaging/moj/` is the *packager* that produces what it
+uploads. They meet at one object: `MojPackager(probe=ProbePackage(...))`, the
+throwaway package a timing run measures on -- model solution only, the `TLOVERRIDE`
+block the run asked for, every testrunnable language whitelisted, no statement build,
+and `STOPWHEN_TLE` alone (see below). Pair timings back onto testcases with `MojPackager.testcase_names()`,
+never by position and never by re-deriving the names.
+
+`MojRunner` (`runners/moj/runner.py`) is that client's `SolutionRunner`. `prepare()`
+is the whole of it today: read the login, refuse any `.moj-id` binding that is not an
+`rbxt-` one (uploading over a real problem destroys it), resolve the limits the probe
+pins (`_probe_pin`), build the probe, upload the *directory*, calibrate, and poll `moj
+check` under a bound. It skips all of that when the judge reports ready **and** the
+package it just built fingerprints equal to the one this machine last uploaded and saw
+calibrated; the fingerprint is a local record in the problem cache, so it cannot see an
+upload from another machine.
+
+**What `prepare` says while it works.** It is the slow half of a remote run -- an upload
+of the whole testset, then a calibration that can take minutes -- and all of it happens
+behind one `StatusProgress`. `_with_ticker` exists for the steps that are a *single*
+blocking call and so cannot report on themselves: `moj upload` is one subprocess that
+tars, posts and answers when done, so the spinner would otherwise hold one frozen frame
+for the longest step of `prepare`. It repaints once a second with the package size
+(`_directory_size`, the sum of the built files -- *not* wire bytes, since the CLI tars
+it and rbx never sees the archive) and an elapsed count. The polling steps need nothing:
+they come back every few seconds and repaint themselves. `_Elapsed` shows one decimal
+below ten seconds, because a ticker reading `0s` on every frame looks exactly as frozen
+as no ticker.
+
+Cancellation is forwarded and **awaited**, not just scheduled -- same reason
+`MojRunner.close` drains: a task suspended in `process.communicate()` needs several turns
+to unwind and `syncer` stops the loop as soon as the caller returns.
+
+Calibration counts **real** time, not `attempt * CALIBRATION_POLL_INTERVAL_SECONDS`. Each
+attempt also spends a `moj check` subprocess, so the nominal figure understates the wait
+-- by more the busier the park is, which is exactly when a setter is reading it to decide
+whether to give up. The give-up message quotes the real elapsed for the same reason.
+
+**And one durable line per phase**, printed at the end of `prepare` because everything
+above is spinner text that vanishes:
+
+```
+moj · alice#rbxt-delete · uploaded 1.4 MiB of package files in 12s, calibrated in 41s.
+moj · alice#rbxt-delete · reused, package unchanged since the last upload (0.4s).
+```
+
+The `reused` case is the one that had to be said: the fast path announced itself only
+through a status line, which the next `update` overwrites and the spinner then clears, so
+it was **unobservable** after the fact. Since `prepare` runs once per `run_solutions`,
+this is also the only durable evidence that the validation phase re-uploaded -- which it
+must, because the limits it measures under live in the package.
+
+**`_probe_pin` honours whichever `rbx time` phase is calling.** The estimation phase
+passes one `int` -- `inferenceTimeout`, the cap every accepted solution runs under -- and
+gets a single `TLOVERRIDE[default]`. The validation phase passes a **mapping**,
+`ceil(TL_lang × timeLimitToTle)` per language group, and gets one `TLOVERRIDE[<lang>]`
+each, with the loosest as the default (only an unnamed language falls back to it, and no
+solution being measured is in one). Anything else -- `-1`, rbx's "no override" sentinel,
+or `None`, neither of which any `rbx time` phase passes any more -- falls back to the
+configured `inferenceTimeout`; there is nothing left to refuse, since that is resolved for
+formula and multiplier modes alike. **The whitelist is the whole package's solutions**,
+not the batch's: the two phases track disjoint sets (accepted, then slow), so a per-batch
+whitelist would move the fingerprint between phases for nothing, and where it did not move
+the validation phase would submit slow solutions against an accepted-only whitelist the
+API refuses.
+
+**One remote problem per phase.** `_phase_of` reads the shape of
+`ctx.timelimit_override` -- an `int` is estimation, a per-language mapping is validation
+-- and that one reading decides both what the packager's report calls the solutions and
+which problem the package goes to: `<login>#rbxt-<slug>` for estimation and
+`…-slow` for validation, derived by `problem_id.derived_id`.
+
+This is not cosmetic. The phases measure under different limits, `TLOVERRIDE` lives in
+`conf`, and `conf` is inside `_directory_fingerprint` -- so on one shared problem the
+phases evict each other: whichever ran last leaves its fingerprint recorded, the next
+run's first phase always mismatches, and the second then mismatches what the first just
+wrote. **The fast path could never fire.** Two problems make each package stable across
+runs instead: two `rbx time` runs cost two uploads (the first of each) rather than four,
+pinned by `test_a_second_run_re_uploads_neither_phase`.
+
+A *suffix* on the slug, not a second prefix, and derived rather than stored. `is_rbxt_id`
+is what stands between a timing package and a setter's published problem, so it keeps one
+marker and one regex; and `.moj-id` holds one id because that is the `moj` CLI's own
+convention (`moj testrun <dir>` reads that file), so the committed binding stays exactly
+what it always was and every `.moj-id` already committed keeps working. The guard runs
+*before* the derivation -- a binding rbx did not create is refused rather than having a
+second problem derived from it in someone else's namespace.
+
+The upload record is a **map** keyed by problem id for the same reason: a single record
+would have each phase evict the other's, which is the original bug moved rather than
+fixed. Read-modify-write, so one phase re-uploading leaves the other's record alone.
+Losing the file costs a redundant upload of both, which is why it may live in the
+disposable problem cache.
+
+**Both phases run on the same runner object, and each ends its own batch.**
+`timing._run_for_inference` and `timing._validate_upper_bound` each `await result.close()`
+from a `finally`, and `close` ends a batch rather than the runner. Within a single
+command the validation phase still uploads at least once, and once more per picker round
+trip that *changes* a limit -- that is the cost the two-phase split makes unavoidable,
+and the design doc argues why measuring at the real bound is worth it (the judge's
+*verdict*, not only its timing, is what that phase reads). The testrun cache is what keeps
+a re-run at limits already probed free.
+
+**`supports_abort=False`, and how the saving is kept anyway.** rbx cannot gate a batch
+backend: the gate works by not *dispatching* the testcases after a timeout, and a testrun
+has already run the whole submission by the time rbx sees any of it. So the probe package
+sets **`STOPWHEN_TLE=y`** and the judge does it instead -- the same rule both `rbx time`
+phases ask for with `abort_on=...outcome.is_slow()`. Without it, a solution expected to be
+too slow runs to the limit on *every* test when one already settled the question: the most
+expensive solutions in the run, at full cost, on a shared park. The tests MOJ therefore
+never reports become `SKIPPED` with no timing, exactly what the gate would have written,
+and `ran_nothing` keys on `total_tests` so a truncated run is never mistaken for a
+submission that failed to build.
+
+`STOPWHEN_WA` and `STOPWHEN_RE` stay **off**, matching the local predicate, which a WA does
+not trip either. Halting on one would truncate the timings of a solution that is *not* too
+slow -- the case with a real measurement to hand back -- and would cut short a `TLE_OR_RTE`
+solution that crashed, which `_record_validation_run` reports as broken rather than as a
+violated bound. So one difference from a local run survives: a solution that both times out
+*and* answers an earlier test wrongly is reported here as broken, where the local abort
+would have hidden the WA behind the timeout. More information, not less.
+
+`run_solution` submits the solution with `moj testrun` on a **background task** and
+returns one `Deferred` per entry over that one shared job -- it must not block, because
+`_produce_solution_items` builds every solution's deferreds before the first resolves,
+which is how every solution ends up queued while the report prints the first. `Deferred`
+memoizes each deferred's *own* result and nothing else, so the task is held by the runner.
+Results are paired to entries **by MOJ test name**, out of the mapping `prepare` captured
+off the packager that built the uploaded package: the live probe
+(`docs/plans/2026-08-21-moj-probe-notes.md`) found the `tests` array is *not ordered*, so
+pairing by position would misattribute essentially every timing. That mapping is keyed on
+**`subgroup_entry`**, never `group_entry`: `group_entry.index` restarts at 0 per subgroup
+while its `group` is the top-level one, so `beta/one/0` and `beta/two/0` collide.
+Everything the runner says to the setter is said from `_evaluation_from_job`, on the
+consumer's own thread of control -- the polling tasks are silent, because the reporter owns
+the console and the `StatusProgress` while they run. `MAX_INFLIGHT_TESTRUNS` is **1**: MOJ allows one account only a few queued testruns
+(three, observed) and answers 429 past that, `moj testrun` cannot pick a judge so two in
+flight may share a machine and inflate each other, and the park is shared with everyone
+else. A 429 is waited out rather than failed -- it cannot be cleared, since `moj` has no
+way to cancel a testrun. The poll is bounded, like `prepare`'s. `_OUTCOME_BY_MOJ_CODE` maps only the four codes the probe actually saw
+(`AC`/`WA`/`RE`/`TLE`) and **refuses an unrecognised one by name** rather than guessing --
+a wrong verdict silently corrupts the time limit being estimated. A testcase MOJ did not
+report on becomes `SKIPPED` with no timing (never a zero), and only the `.eval` is written,
+never an empty `.out`.
+
+**Finished testruns are cached, so re-running `rbx time` costs no judge time.** The key
+(`_cache_key`) is the probe package's `_directory_fingerprint` -- which already contains
+the cap, since `TLOVERRIDE` is emitted into `conf` -- plus the remote problem id and the
+**amalgamated bytes** actually submitted (never the source path or its mtime: amalgamation
+inlines headers). What is stored is the judge's `TestrunStatus` itself, not the derived
+result, and a hit is put back through the same `_result_from_status` as a fresh response,
+so a hit and a miss produce identical `Evaluation`s and the entry is re-derived against
+whatever testcases *this* run asked about. Nothing that raises out of that derivation is
+ever written: a run-level failure (the `Compilation Error` shape) and an unrecognised
+verdict code are things the setter is about to fix, and a cached one would make the fix
+look like it did nothing. A **bad verdict is cached** -- a WA or a TLE is a real,
+reproducible measurement, and the validation phase exists to take exactly those. The cache lives beside
+the upload record in the disposable problem cache, is consulted *before* the concurrency
+slot (a hit costs no judge time and must not queue behind one that does), and is announced
+once per testrun from `_evaluation_from_job`, naming the directory to delete. There is no
+`--no-cache` flag: the key covers everything rbx can observe, and what it cannot observe --
+another machine's `moj upload`, a park that changed under the numbers -- is fixed by
+throwing the observations away.
+
+Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 
 ### Deferred Execution (`deferred.py`)
 

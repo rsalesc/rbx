@@ -87,17 +87,40 @@ def build_fixed_limits(
     return FixedTimeLimits(base_ms=base, per_language_ms=per_language)
 
 
+# Why the numbers below are what they are, when they come from `rbx time -p moj`.
+PROFILE_EXPLANATION = [
+    '# Time limits are PINNED here, not calibrated: they come from the `moj`',
+    '# limits profile `rbx time -p moj` estimated. MOJ applies TLOVERRIDE after',
+    '# everything else -- calibration and the TLMOD knobs alike -- both when it',
+    '# judges and everywhere it shows a limit, so these are the numbers that',
+    '# count. calibreitor.sh still has to run, since mojtools refuses to judge a',
+    '# package with no `tl` file, but what it measures no longer decides anything.',
+]
+
+# ... and when this package exists only for rbx to measure timings on the judge.
+PROBE_EXPLANATION = [
+    '# Time limits are PINNED here, not calibrated: this package exists for rbx to',
+    '# measure solution timings on the judge, and the limits below are what it is',
+    '# measuring under. `rbx time` runs in two phases and pins a different shape in',
+    '# each: one cap for every language while it estimates from the accepted',
+    '# solutions, and one limit per language group while it checks the solutions',
+    '# expected to be too slow against the limit it estimated. MOJ applies',
+    '# TLOVERRIDE after everything else, so these are the limits every run here sees.',
+]
+
+
 def fixed_limit_lines(
-    limits: FixedTimeLimits, inference_timeout_ms: Optional[int] = None
+    limits: FixedTimeLimits,
+    inference_timeout_ms: Optional[int] = None,
+    explanation: Optional[List[str]] = None,
 ) -> List[str]:
-    """The `conf` block pinning the limits, as commented lines."""
+    """The `conf` block pinning the limits, as commented lines.
+
+    `explanation` says where the numbers came from; it defaults to the profile's
+    story, since that is what `rbx package moj` emits.
+    """
     lines = [
-        '# Time limits are PINNED here, not calibrated: they come from the `moj`',
-        '# limits profile `rbx time -p moj` estimated. MOJ applies TLOVERRIDE after',
-        '# everything else -- calibration and the TLMOD knobs alike -- both when it',
-        '# judges and everywhere it shows a limit, so these are the numbers that',
-        '# count. calibreitor.sh still has to run, since mojtools refuses to judge a',
-        '# package with no `tl` file, but what it measures no longer decides anything.',
+        *(explanation if explanation is not None else PROFILE_EXPLANATION),
         f'# Default time limit: {limits.base_ms} ms.',
         f'TLOVERRIDE[default]={fmt_seconds(limits.base_ms)}',
         '',

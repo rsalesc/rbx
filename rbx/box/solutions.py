@@ -8,6 +8,7 @@ import typing
 from collections.abc import AsyncIterator
 from enum import Enum
 from typing import (
+    TYPE_CHECKING,
     Callable,
     Collection,
     Dict,
@@ -37,6 +38,7 @@ from rbx.box import (
     limits_info,
     package,
     remote,
+    retries,
     run_report,
     setter_config,
     visualizers,
@@ -105,6 +107,11 @@ from rbx.grading.steps import (
     TestcaseLog,
 )
 from rbx.utils import StatusProgress
+
+if TYPE_CHECKING:
+    # `runners.local` reads this module's abort/skip machinery, so the runner
+    # types can only be named here, never imported at run time.
+    from rbx.box.runners.base import RunContext, SolutionRunner
 
 StructuredEvaluation = Dict[str, Dict[str, List[Optional[Deferred[Evaluation]]]]]
 
@@ -352,9 +359,35 @@ class SolutionReportSkeleton(BaseModel):
 class RunSolutionResult:
     skeleton: SolutionReportSkeleton
     items: List[EvaluationItem]
+    # The backend that produced `items`, so whoever consumes them can tell it
+    # when it is done. Optional because a result can be built without a run at
+    # all -- the reporting tests do exactly that -- and a result with no backend
+    # has nothing to close.
+    runner: Optional['SolutionRunner'] = None
 
     def empty_structured_evaluation(self) -> StructuredEvaluation:
         return self.skeleton.empty_structured_evaluation()
+
+    async def close(self) -> None:
+        """Tell the backend this batch is over. Idempotent.
+
+        `await` it from a `finally` around the *consumption* of `items`, which is
+        the only moment at which this can be correct: a backend may dispatch work
+        ahead of the consumer, so anything still outstanding when consumption
+        ends is work whose result nobody will ever read. `SolutionRunner.close`
+        explains at length why this is not the `finalize` hook the seam started
+        with -- that one fired while every job was still in flight -- and why it
+        ends the *batch* rather than the runner, which a second `run_solutions`
+        on the same object is free to reuse.
+
+        Every consumer of a `RunSolutionResult` should do this, including the
+        ones that only ever run locally: `LocalRunner.close` is a no-op, so the
+        cost is nothing and the alternative is a call site that silently breaks
+        the day someone points it at a remote backend.
+        """
+        if self.runner is None:
+            return
+        await self.runner.close()
 
 
 class FailedSolutionIssue(issue_stack.Issue):
@@ -593,83 +626,6 @@ def _record_skipped_evaluation(
     return eval
 
 
-def _run_solution(
-    solution: Solution,
-    compiled_digest: str,
-    checker_digest: Optional[str],
-    runs_dir: pathlib.Path,
-    entries: List[GenerationTestcaseEntry],
-    groups: List[GroupSkeleton],
-    interactor_digest: Optional[str] = None,
-    progress: Optional[StatusProgress] = None,
-    verification: VerificationLevel = VerificationLevel.NONE,
-    timelimit_override: Optional[TimelimitOverride] = None,
-    nruns: int = 0,
-    capture_pipes: bool = False,
-    gate: Optional['_AbortGate'] = None,
-    abort_on: Optional[AbortPredicate] = None,
-) -> List[Deferred[Evaluation]]:
-    groups_by_name = {group.name: group for group in groups}
-    # Resolved once per solution: its language cannot change between testcases.
-    solution_timelimit = resolve_timelimit_override(
-        timelimit_override, find_language_name(solution)
-    )
-
-    res: List[Deferred[Evaluation]] = []
-    for i, entry in enumerate(entries):
-        testcase = entry.metadata.copied_to
-        group_name = entry.group_entry.group
-        assert testcase.outputPath is not None
-        output_path = runs_dir / group_name
-        output_path.mkdir(parents=True, exist_ok=True)
-
-        if progress:
-            progress.update(
-                f'Running solution {href(solution.path)} on test [item]{entry}[/item]...'
-            )
-
-        async def run_fn(i=i, testcase=testcase, output_path=output_path, entry=entry):
-            group_name = entry.group_entry.group
-            if gate is not None and gate.is_skipped(group_name):
-                return _record_skipped_evaluation(testcase, i, output_path)
-            evaluation = await run_solution_on_testcase(
-                solution,
-                compiled_digest,
-                checker_digest,
-                testcase,
-                output_dir=output_path,
-                interactor_digest=interactor_digest,
-                testcase_index=i,
-                verification=verification,
-                timelimit_override=solution_timelimit,
-                nruns=nruns,
-                capture_pipes=capture_pipes,
-            )
-            if gate is not None and abort_on is not None:
-                # Every entry belongs to a group of the skeleton. Assert rather
-                # than skip: a refactor that broke this would silently turn the
-                # abort off instead of failing.
-                group = groups_by_name.get(group_name)
-                assert group is not None
-                context = AbortContext(
-                    solution=solution,
-                    group=group,
-                    entry=entry.group_entry,
-                    expected_outcome=solution.outcome,
-                    group_expected_outcome=solution.expected_outcome_for_group(
-                        group_name
-                    ),
-                    evaluation=evaluation,
-                )
-                if abort_on(context):
-                    gate.trip(group_name)
-            return evaluation
-
-        res.append(Deferred(run_fn))
-
-    return res
-
-
 async def convert_list_of_solution_evaluations_to_dict(
     skeleton: SolutionReportSkeleton,
     items: Iterable[EvaluationItem],
@@ -832,15 +788,8 @@ async def _get_report_skeleton(
     return skeleton
 
 
-async def _produce_solution_items(
-    skeleton: SolutionReportSkeleton,
-    progress: Optional[StatusProgress] = None,
-    verification: VerificationLevel = VerificationLevel.NONE,
-    check: bool = True,
-    timelimit_override: Optional[TimelimitOverride] = None,
-    nruns: int = 0,
-    abort_on: Optional[AbortPredicate] = None,
-) -> List[EvaluationItem]:
+async def _compile_checking_digests(check: bool) -> Tuple[Optional[str], Optional[str]]:
+    """The (checker, interactor) digests a run judges its outputs with."""
     pkg = package.find_problem_package_or_die()
 
     if pkg.type == TaskType.COMMUNICATION:
@@ -854,55 +803,203 @@ async def _produce_solution_items(
         checker_digest = await checkers.compile_checker() if check else None
         interactor_digest = None
 
-    def yield_items(
-        solution: SolutionSkeleton,
-        entries: List[GenerationTestcaseEntry],
-        gate: Optional[_AbortGate],
-    ) -> List[EvaluationItem]:
-        res: List[EvaluationItem] = []
-        for entry, eval in zip(
-            entries,
-            _run_solution(
-                solution,
-                skeleton.get_solution_compiled_digest(solution),
-                checker_digest,
-                solution.runs_dir,
-                entries,
-                skeleton.groups,
-                interactor_digest=interactor_digest,
-                progress=progress,
-                verification=verification,
-                timelimit_override=timelimit_override,
-                nruns=nruns,
-                capture_pipes=skeleton.capture_pipes,
-                gate=gate,
-                abort_on=abort_on,
-            ),
-        ):
+    return checker_digest, interactor_digest
+
+
+def _gated_evaluation(
+    inner: Deferred[Evaluation],
+    gate: _AbortGate,
+    abort_on: AbortPredicate,
+    solution: SolutionSkeleton,
+    entry: GenerationTestcaseEntry,
+    group: GroupSkeleton,
+    output_dir: pathlib.Path,
+) -> Deferred[Evaluation]:
+    """Wrap one backend evaluation in the abort gate.
+
+    Deliberately here and not in the backend: skipping is a decision about the
+    *run*, not about where a testcase executes, and a copy of it in every runner
+    is a copy that can drift. `Deferred` is lazy, so a gate that has already
+    tripped means `inner` is never awaited and the testcase never dispatches --
+    the saving is real, not just cosmetic.
+    """
+    group_name = group.name
+
+    async def run_fn() -> Evaluation:
+        if gate.is_skipped(group_name):
+            # The skipped `.eval` still has to land somewhere, and this is the one
+            # path where nothing else guarantees the directory: `LocalRunner` mkdirs
+            # it eagerly, but a batch backend that never ran this testcase has no
+            # reason to have created it.
+            output_dir.mkdir(parents=True, exist_ok=True)
+            return _record_skipped_evaluation(
+                entry.metadata.copied_to, entry.group_entry.index, output_dir
+            )
+        evaluation = await inner()
+        context = AbortContext(
+            solution=solution,
+            group=group,
+            entry=entry.group_entry,
+            expected_outcome=solution.outcome,
+            group_expected_outcome=solution.expected_outcome_for_group(group_name),
+            evaluation=evaluation,
+        )
+        if abort_on(context):
+            gate.trip(group_name)
+        return evaluation
+
+    return Deferred(run_fn)
+
+
+def _check_capabilities(
+    runner: 'SolutionRunner',
+    *,
+    nruns: int,
+    sanitized: bool,
+) -> None:
+    """Refuse up front what the backend cannot do, naming it.
+
+    Refusing beats silently downgrading: a caller who asked for three runs and
+    got one would read a single noisy measurement as a stable one, and would have
+    no way to tell. The same goes for a sanitizer that was never applied or an
+    interactor that was never driven -- each would produce a plausible-looking
+    report that answers a different question than the one asked.
+
+    Called before `prepare`, so nothing is compiled, uploaded or submitted on a
+    run that cannot mean what it says.
+    """
+    # Locally imported for the same reason as everywhere else in this module:
+    # `runners.base` reaches back here for the skeleton types, so an eager import
+    # would close the cycle.
+    from rbx.box.runners.base import RunnerCapabilityError
+
+    caps = runner.caps
+
+    # These messages are printed with a bare `print(str(e))` (`main.py`), not
+    # through the rich console, so rich markup would reach the setter as literal
+    # `[item]` tags. Backticks, like `TimingStrategyError` and `MojNamingError`.
+    #
+    # TODO(runner-selection): each message ends with "run this on a backend
+    # that ...", deliberately vague, because there is no way for a setter to pick
+    # one yet -- the backend is chosen in code. Name the `--runner` flag here once
+    # it exists; until then, naming it would be advice they cannot act on.
+
+    if not caps.supports_nruns:
+        # The *resolved* count, not the raw parameter: `nruns=0` means "whatever
+        # the setter configured", which is both the default for every caller and
+        # a value that can be greater than one. Trusting the parameter would let
+        # the commonest route -- `repeats.reps` set once in `setter_config.yml`
+        # for stable timings -- past the guard, and hand back a single
+        # measurement under the name of the average that was asked for.
+        reps = retries.get_retrier_config(nruns).reps
+        if reps > 1:
+            # Which of the two causes it was decides which file the setter has to
+            # open; naming the wrong one sends them to edit something irrelevant,
+            # so each cause gets its whole sentence rather than a shared template.
+            explicitly_requested = nruns > 0
+            if explicitly_requested:
+                cause = (
+                    f'`--runs {reps}` asked for {reps} runs per testcase. '
+                    f'Drop `--runs`/`-r`'
+                )
+            else:
+                cause = (
+                    f'`repeats.reps` in your `setter_config.yml` is {reps}. '
+                    f'Set it back to 1'
+                )
+            raise RunnerCapabilityError(
+                f'Runner `{runner.name}` runs each testcase exactly once, but '
+                f'{cause}, or run this on a backend that can repeat.'
+            )
+
+    if sanitized and not caps.supports_sanitizers:
+        raise RunnerCapabilityError(
+            f'Runner `{runner.name}` cannot run solutions under a sanitizer. '
+            f'Drop the sanitizer, or run this on a backend that supports one.'
+        )
+
+    pkg = package.find_problem_package_or_die()
+    if pkg.type == TaskType.COMMUNICATION and not caps.supports_interactive:
+        raise RunnerCapabilityError(
+            f'Runner `{runner.name}` cannot drive an interactor, but this problem '
+            f'is of type `communication`. Run this on a backend that can drive '
+            f'one.'
+        )
+
+
+def _produce_solution_items(
+    runner: 'SolutionRunner',
+    ctx: 'RunContext',
+) -> List[EvaluationItem]:
+    skeleton = ctx.skeleton
+    groups_by_name = {group.name: group for group in skeleton.groups}
+    res: List[EvaluationItem] = []
+
+    for solution in skeleton.solutions:
+        # One gate per solution: a solution that dooms its own run must not
+        # decide anything about the solutions that follow it.
+        #
+        # A backend declaring `supports_abort=False` is left ungated even when
+        # the run asked to abort. That is a correctness rule, not a missing
+        # optimization: such a backend runs the whole submission at once, so by
+        # the time rbx sees anything every testcase already has a real verdict.
+        # Gating would replace those verdicts with SKIPPED -- discarding results
+        # the judge genuinely produced and making the report claim work did not
+        # happen. Aborting exists to save work; there is none left to save here,
+        # and real verdicts always beat skip markers.
+        #
+        # Note this ignores `abort_on` rather than refusing the run by name, which
+        # is the opposite of what `_check_capabilities` does for repeats, a
+        # sanitizer or an interactor. The asymmetry is deliberate: dropping those
+        # changes what the report *means*, so a run that quietly dropped them
+        # would answer a different question than the one asked. Dropping the abort
+        # loses nothing -- the caller gets every verdict it would have got, and
+        # more -- so there is nothing to warn about.
+        gate = (
+            _AbortGate(skeleton.groups, package.get_scoring())
+            if ctx.abort_on is not None and runner.caps.supports_abort
+            else None
+        )
+        # The whole testset in one call, flattened in `skeleton.groups` order --
+        # which is the (solution, group) order the report renders. A backend that
+        # submits to a remote judge gets one submission per solution this way,
+        # instead of one per group.
+        entries = [
+            entry
+            for group in skeleton.groups
+            for entry in skeleton.get_entries_for_group(group.name)
+        ]
+        evals = runner.run_solution(solution, entries, ctx)
+        # The protocol says one deferred per entry, in entry order. Zipping a
+        # short list would silently drop that solution's last testcases.
+        assert len(evals) == len(entries), (
+            f'runner {runner.name} returned {len(evals)} evaluations '
+            f'for {len(entries)} testcases'
+        )
+
+        for entry, eval in zip(entries, evals):
+            if gate is not None:
+                assert ctx.abort_on is not None
+                # Every entry belongs to a group of the skeleton. Assert rather
+                # than skip: a refactor that broke this would silently turn the
+                # abort off instead of failing.
+                group = groups_by_name.get(entry.group_entry.group)
+                assert group is not None
+                eval = _gated_evaluation(
+                    eval,
+                    gate,
+                    ctx.abort_on,
+                    solution,
+                    entry,
+                    group,
+                    solution.runs_dir / group.name,
+                )
             res.append(
                 EvaluationItem(
                     solution=solution,
                     testcase_entry=entry.group_entry,
                     eval=eval,
                 )
-            )
-
-        return res
-
-    res: List[EvaluationItem] = []
-
-    # Just ensure the iteration is (solution, group) order.
-    for solution in skeleton.solutions:
-        # One gate per solution: `_run_solution` is called once per group, so a
-        # gate built inside it would forget every group boundary.
-        gate = (
-            _AbortGate(skeleton.groups, package.get_scoring())
-            if abort_on is not None
-            else None
-        )
-        for group in skeleton.groups:
-            res.extend(
-                yield_items(solution, skeleton.get_entries_for_group(group.name), gate)
             )
 
     return res
@@ -917,7 +1014,22 @@ async def run_solutions(
     sanitized: bool = False,
     nruns: int = 0,
     abort_on: Optional[AbortPredicate] = None,
+    runner: Optional['SolutionRunner'] = None,
 ) -> RunSolutionResult:
+    # Imported here, not at module scope: `runners.local` imports this module
+    # back -- for `run_solution_on_testcase` and for `SolutionSkeleton` -- so an
+    # eager import would close the cycle. Untangling that means lifting the
+    # skeleton types out of this 2185-line module, which is its own change.
+    from rbx.box.runners.base import RunContext
+    from rbx.box.runners.local import LocalRunner
+
+    if runner is None:
+        runner = LocalRunner()
+
+    # Before anything is compiled or dispatched: a run that cannot mean what it
+    # says should cost nothing and fail by name.
+    _check_capabilities(runner, nruns=nruns, sanitized=sanitized)
+
     skeleton = await _get_report_skeleton(
         progress=progress,
         tracked_solutions=tracked_solutions,
@@ -925,19 +1037,24 @@ async def run_solutions(
         timelimit_override=timelimit_override,
         sanitized=sanitized,
     )
-    result = RunSolutionResult(
+
+    checker_digest, interactor_digest = await _compile_checking_digests(check)
+
+    ctx = RunContext(
         skeleton=skeleton,
-        items=await _produce_solution_items(
-            skeleton=skeleton,
-            progress=progress,
-            verification=verification,
-            check=check,
-            timelimit_override=timelimit_override,
-            nruns=nruns,
-            abort_on=abort_on,
-        ),
+        checker_digest=checker_digest,
+        interactor_digest=interactor_digest,
+        verification=verification,
+        timelimit_override=timelimit_override,
+        nruns=nruns,
+        progress=progress,
+        abort_on=abort_on,
     )
-    return result
+
+    await runner.prepare(ctx)
+    items = _produce_solution_items(runner=runner, ctx=ctx)
+
+    return RunSolutionResult(skeleton=skeleton, items=items, runner=runner)
 
 
 async def _generate_testcase_interactively(

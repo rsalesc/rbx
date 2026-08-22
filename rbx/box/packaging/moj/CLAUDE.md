@@ -93,6 +93,26 @@ land where `rbx time` would have put the limit, but measured on the judge machin
 rather than the setter's. It needs `timing.multipliers` in `env.rbx.yml`: a problem
 estimating with a *formula* defines no such ratio, and packaging errors out saying so.
 
+**A third mode, `ProbePinned(default_ms, per_rbx_language_ms)`**, exists for the MOJ
+*runner* and is not reachable from the CLI. It pins exactly what the timing run asked
+to measure under, and `rbx time` asks for a different shape in each of its two phases:
+one `inferenceTimeout` cap for every language while it estimates from the accepted
+solutions (so `TLOVERRIDE[default]` alone), and `ceil(TL_lang × timeLimitToTle)` **per
+language group** while it checks the solutions expected to be too slow (so one
+`TLOVERRIDE[<lang>]` each). `per_rbx_language_ms` is keyed by rbx language name and
+translated to MOJ ids by `_probe_time_limits`, which pins each language under the
+emitted spelling *and* its normalized alias, exactly as `_fixed_time_limits` does; the
+default is the loosest limit, since only a language the run did not name falls back to
+it. What must never happen -- and cannot, since this mode consults no profile -- is
+emitting the *`moj` profile's* per-language entries beside a limit this run chose,
+which would measure some language under a limit nobody asked for.
+`_require_limits_profile()` deliberately does not fire, but `inferenceTimeout` still
+feeds `CALIBRATIONTL`, since calibration runs on that package too. The three modes are
+`ProfilePinned` / `JudgeCalibrated` / `ProbePinned`; `_time_limit_lines`,
+`_report_time_limits` and `check_timing_setup` all dispatch on them, and
+`fixed_limit_lines` takes the `explanation` block that says which story the emitted
+numbers came from.
+
 `tl` itself is still never emitted -- the package remains unjudgeable until a judge
 calibrates it, since mojtools refuses to judge without that file. Pinning removes
 rbx's dependence on *what* calibration measures, not on it running.
@@ -112,6 +132,112 @@ silently loses group 2's points. Never enable these alongside `tests/score`.
 Worth knowing: the early break only fires from inside the `JOBSCOUNT > NPROC-1` branch
 of the loop, so with fewer tests than cores nothing stops early. It is a best-effort
 speed optimization, not a guarantee.
+
+**A probe package gets `STOPWHEN_TLE` and nothing else**, whatever its scoring. It is
+not a compromise between the two cases above: it is the exact rule rbx asks for
+locally. Both `rbx time` phases pass
+`abort_on=lambda ctx: ctx.evaluation.result.outcome.is_slow()`, so a timeout — and only
+a timeout — ends a solution's run. rbx cannot enforce that itself here, because the
+gate in `run_solutions` works by not *dispatching* the testcases after a timeout and a
+testrun has already run the whole submission by the time rbx sees any of it (which is
+what `supports_abort=False` says). So the judge does it. Without this, a solution
+expected to be too slow runs to the limit on **every** test when one test already
+settled the question — by definition the most expensive solutions in the run, at full
+cost, on a shared park.
+
+`STOPWHEN_WA` and `STOPWHEN_RE` stay **off**, and the asymmetry is the point. The
+upper-bound solutions are the ones expecting TLE (`TIME_LIMIT_EXCEEDED`,
+`TLE_OR_RTE`), and a `TLE_OR_RTE` one may legitimately crash; halting there would
+truncate the timings of a solution that is *not* too slow — the case that has a real
+measurement to hand back — and would cut short a crash that
+`_record_validation_run` reports as broken rather than as a violated bound. A WA does
+not abort locally either.
+
+Two things make the truncation safe to read. `ran_nothing` keys on `total_tests`, which
+the live probe watched stay at 72 on a run that reported 4 tests, so a truncated run is
+never mistaken for a submission that failed to build; and the tests MOJ does not report
+become `SKIPPED` with no timing, exactly what the local gate writes. The POINTS hazard
+above does not reach a probe either — it is about `score-summary.sh` scoring an
+unexecuted group `null`, and nothing reads a probe's score: `MojRunner` reads `tests[]`,
+`verdict_canon` and `total_tests`.
+
+**The probe is also where the early break actually fires.** The caveat above — it only
+fires from inside the `JOBSCOUNT > NPROC-1` branch, so with fewer tests than cores
+nothing stops early — is about a *parallel* package. A probe sets
+`ALLOWPARALLELTEST=n`, which pins `NPROC=1`, so the condition is `JOBSCOUNT > 0` and
+holds from the second test onward. It is still mojtools' best-effort optimization rather
+than a guarantee, and rbx depends on it for nothing: a run that stops early and one that
+does not produce the same verdict, only at different cost.
+
+### `ALLOWPARALLELTEST`
+
+**MOJ runs the testset in parallel by default.** `build-and-test.sh` sets
+`NPROC=$(nproc)` and only drops to a single job when `ALLOWPARALLELTEST` is exactly `n`:
+
+```sh
+NPROC=$(nproc)
+[[ "$ALLOWPARALLELTEST" == "n" ]] && NPROC=1 && LOG " - Parallel Test not allowed in this problem"
+[[ -n "$MAXPARALLELTESTS" ]] && NPROC=$MAXPARALLELTESTS && ...
+```
+
+The park reports **56 CPUs**, so a package that says nothing is judged with dozens of
+tests competing for the machine. That is fine for judging — and it is why the `tests`
+array of a testrun comes back unordered — but it is fatal to *measuring*: every time
+reported is inflated by whatever contention it happened to meet.
+
+**A probe package therefore emits `ALLOWPARALLELTEST=n`**, and mojtools already agrees
+this is the right call when measuring: `calibreitor.sh:125` exports the same value
+before running the accepted solutions. Calibration measures, so it serialises; the probe
+measures, so it does too.
+
+A package a setter builds is left at MOJ's default: there, parallelism is a
+judging-speed feature and the limits are pinned through `TLOVERRIDE`, so what the judge
+measures decides nothing.
+
+Note `MAXPARALLELTESTS` is applied *after* this knob and would override it. The packager
+emits it nowhere, and a probe must never grow one.
+
+**`TLERERUN` goes with it, and for the same reason.** It defaults to `y`, and
+`build-and-test.sh` re-runs any test that hit the limit and takes the **rerun's** verdict
+and time. Its own log line says what it is for:
+
+```
+LOG " - Rerun: because got TLE while running parallel tests"
+```
+
+It exists to absorb a false TLE caused by the contention `ALLOWPARALLELTEST=n` has just
+removed. Left on for a probe it does three unhelpful things: replaces a measured time with
+a second one taken under different conditions, spends the judge twice on the slowest
+solutions (the ones that were already the most expensive), and does so **only until some
+test stays TLE** — the script latches `TLERERUN=n` from that point on — so which tests got
+a second chance depends on the order they happened to finish in. A probe therefore emits
+`TLERERUN=n`.
+
+A package a setter builds keeps the default: there a false TLE is a wrong verdict for a
+student, and a second chance is exactly right.
+
+### `ULIMITS[-f]` is fixed, and deliberately not `outputLimit`
+
+`conf` emits `ULIMITS[-f]=102400` (100 MiB in KB), a constant — **not** the problem's
+`outputLimit`, which is what it used to be.
+
+MOJ applies this ulimit to the **compile** step, not only to the running solution.
+Observed on the judge on 2026-08-21, packaging a problem whose `outputLimit` was 100 KB:
+
+```
+collect2: fatal error: ld terminated with signal 25 [File size limit exceeded]
+```
+
+The linker could not write the executable, so *every* submission came back
+`Compilation Error` without reaching a single test — any problem with a tight output
+limit was simply unjudgeable on MOJ.
+
+One knob cannot serve both purposes: a compile needs megabytes, a sane output limit is
+often a few hundred KB. Pinning it high is the side that fails safe. The cost, stated
+plainly: **MOJ no longer enforces the problem's `outputLimit`** — a runaway solution is
+cut off at 100 MiB instead of the setter's threshold. rbx still enforces `outputLimit`
+locally, so a solution that overruns it shows up in `rbx run` long before MOJ would have
+said anything. See `OUTPUT_ULIMIT_KB` in [`packager.py`](packager.py).
 
 ## Test naming (`naming.py`)
 
@@ -176,8 +302,9 @@ back to `ls *.class` — locale-dependent once javac emits nested `Main$X.class`
 packager then converts each block TeX → Markdown with pandoc and writes
 `docs/enunciado.md` plus `docs/notes/<sample>.md`.
 
-**`statement_types()` is deliberately not overridden**, so the default
-`[StatementType.PDF]` applies — as for `PolygonPackager`, the other
+**`statement_types()` is overridden only to return nothing for a probe package**
+(see [The probe package](#the-probe-package) below); for every package a setter
+builds, the default `[StatementType.PDF]` applies — as for `PolygonPackager`, the other
 block-consuming packager. That hook names the *output* a statement is built into,
 and statements v2 emits only pdf/tex/md (`build_statements._emit_output`);
 returning the *source* type `rbxTeX` fails the build outright with "statements v2
@@ -297,6 +424,68 @@ so a setter who ships only a C++ solution gets a C++-only problem. Packaging the
 prints the enabled set and warns by name about every emitted language left out —
 "no **ACCEPTED** solution in those languages" — with the fix (add an accepted solution
 in that language). See `_report_submission_languages`.
+
+**A probe package inverts this.** `ProbePackage(submission_languages=[...])` is set
+when the package exists for rbx to *measure* timings on the judge rather than to be
+judged (the MOJ runner). It then ships **only the model solution** — `moj testrun`
+sends the timed source in the request body, so the rest never have to be there, and
+`calibreitor.sh` needs exactly one `sols/good` — and whitelists **every language rbx
+may testrun** instead of the shipped ones. That is not a nicety: the API rejects a
+submission outside the whitelist, a testrun included, so an accepted-solutions
+whitelist would collapse to the model solution's language and refuse every testrun in
+another one, the slow and wrong solutions included (never ACCEPTED by construction).
+The narrowing report is skipped with it — nothing narrowed, and nobody else submits to
+a throwaway `rbxt-` problem. The two axes are separate constructor arguments because
+"what limits" and "what is in the package / who may submit" are genuinely orthogonal.
+
+## The probe package
+
+`MojPackager(probe=ProbePackage(submission_languages=(...)), timing_mode=ProbePinned(...))`
+builds a **throwaway package uploaded to measure timings**, never judged by students —
+what the MOJ runner in [`rbx/box/runners/moj/`](../../runners/moj/) uploads to a private
+`rbxt-` problem. Four differences from a package a setter builds, each argued where the
+knob lives:
+
+| | Probe | Why |
+|---|---|---|
+| `sols/` | model solution only | [`moj testrun`](#solutions) sends the timed source in the request body; calibration needs one `sols/good` |
+| `languages` | every language rbx may testrun, across **both** `rbx time` phases | [the API rejects a submission outside it](#moj-metajson), a testrun included |
+| `STOPWHEN_*` | `STOPWHEN_TLE=y` **only** | [the judge does what `abort_on` does locally](#stopwhen_) |
+| `ALLOWPARALLELTEST` | `n` | [a timing measured against 55 competing tests is not a timing](#allowparalleltest) |
+| `TLERERUN` | `n` | [the rerun's time replaces the measured one](#allowparalleltest) |
+| `docs/` | always `DUMMY_STATEMENT` | see below |
+| `conf` | the `TLOVERRIDE` block this run asked for | [the profile's limits are the ones this run exists to replace](#time-limits-pinned-or-calibrated-on-demand) |
+
+The two axes are separate constructor arguments — "what limits" and "what is in the
+package" are different questions — but of their product only one cell is legal, and
+`__init__` rejects the rest: a probe must pin the limits the timing run asked for.
+
+**Why the statement is always the dummy.** The real path reads `blocks.sub.yml` and the
+externalized TikZ PDFs out of the v2 overlay, which only the forced-externalize
+statement build writes. A runner calling `package()` directly would therefore hit
+`StatementExportError` on any problem declaring an rbxTeX statement, and its only
+escapes would be running pdflatex locally for a document nobody reads, or going through
+`run_packager` — which re-runs the full local build *and every solution locally*, the
+exact work the remote runner exists to avoid. `statement_types()` and
+`statement_export_params()` return nothing for a probe for the same reason. Nothing on
+MOJ ever renders a probe's statement, and a `MojGateError` over one would make
+`rbx time --runner moj` refuse a timing run for a document that is never read.
+
+**Pairing timings back.** `MojPackager.testcase_names()` is public precisely so the
+runner never re-derives a name: it returns each built entry with the file name it takes
+in the package, and `_write_tests` consumes that same list. The index is a **1-based
+running counter over the built entries of each group**, not `entry.group_entry.index`
+(0-based, over the declared ones), so a reimplementation yields well-formed names for
+the *wrong* tests — silent timing misattribution, the one failure by-name pairing
+exists to prevent.
+
+**What a probe path can still raise.** `MojPackager` reports setter mistakes with
+`typer.Exit`, which a programmatic caller sees as a control-flow exception. Suppressing
+the statement build removes most of them; what a probe can still reach is the checker
+amalgamation (`_amalgamate_checker`, and a non-C++ checker), a package with no
+`samples` group, no accepted solution, and — for a runner amalgamating a solution to
+upload — `solution_content()`. Task 5 must catch `typer.Exit` around `package()`
+regardless.
 
 ## Running tests
 

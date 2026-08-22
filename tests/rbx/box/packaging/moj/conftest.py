@@ -6,7 +6,12 @@ import pytest
 
 from rbx import utils
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
-from rbx.box.packaging.moj.packager import MojPackager
+from rbx.box.packaging.moj.packager import (
+    MojPackager,
+    ProbePackage,
+    ProfilePinned,
+    TimingMode,
+)
 from rbx.box.schema import LimitModifiers, LimitsProfile, Testcase
 from rbx.box.statements import export
 from rbx.box.statements.render import StatementBlocks
@@ -80,19 +85,27 @@ def run_packager(
     tmp_path: pathlib.Path,
     entries: List[GenerationTestcaseEntry],
     main_language: Optional[str] = None,
-    calibrate: bool = False,
     pin_limits: bool = True,
+    timing_mode: Optional[TimingMode] = None,
+    probe: Optional[ProbePackage] = None,
 ) -> pathlib.Path:
     # Packaging needs the time limits settled one way or the other, so the default
     # profile is written here for the tests that are about something else. The tests
     # that ARE about it (test_timing.py) write their own or pass pin_limits=False.
     if pin_limits and not (testing_pkg.root / '.limits' / 'moj.yml').is_file():
         with_limits_profile(testing_pkg)
+    if timing_mode is None:
+        # What `rbx package moj` does without `--calibrate`. Every other mode is
+        # passed explicitly, so this helper has exactly one way to say each thing.
+        timing_mode = ProfilePinned()
     into_path = tmp_path / 'package'
     build_path = tmp_path / 'build'
     build_path.mkdir(parents=True, exist_ok=True)
     MojPackager(
-        testcase_entries=entries, main_language=main_language, calibrate=calibrate
+        testcase_entries=entries,
+        main_language=main_language,
+        timing_mode=timing_mode,
+        probe=probe,
     ).package(build_path, into_path, [])
     return into_path
 

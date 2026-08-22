@@ -2,7 +2,7 @@ import dataclasses
 import functools
 import math
 from fractions import Fraction
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
 
 import rich
 import rich.console
@@ -38,6 +38,12 @@ from rbx.box.solutions import (
     run_solutions,
 )
 from rbx.grading.steps import Outcome
+
+if TYPE_CHECKING:
+    # Only for the annotation. `runners.base` reaches back into `solutions`,
+    # which this module imports at run time, so naming the type is all this
+    # needs -- the backend itself is resolved by the CLI and handed down.
+    from rbx.box.runners.base import SolutionRunner
 
 
 class MissingLowerBoundError(RbxException):
@@ -1076,6 +1082,7 @@ async def _run_for_inference(
     detailed: bool,
     runs: int,
     formula: Optional[str],
+    runner: Optional['SolutionRunner'] = None,
 ) -> Optional[_InferenceRun]:
     """Run the solutions the time limit is inferred from, report them, and say
     what their verdicts mean. ``None`` when the estimate must not proceed."""
@@ -1100,6 +1107,10 @@ async def _run_for_inference(
         )
         result = await run_solutions(
             progress=s,
+            # `None` means the local sandbox, which is what `run_solutions`
+            # itself falls back to -- so passing it through is not a special
+            # case, it is the absence of one.
+            runner=runner,
             tracked_solutions=tracked_solutions,
             check=check,
             # ALL_SOLUTIONS keeps `isDoubleTL` off (only FULL turns it on):
@@ -1113,30 +1124,52 @@ async def _run_for_inference(
             abort_on=lambda ctx: ctx.evaluation.result.outcome.is_slow(),
         )
 
-    console.console.print()
-    console.console.rule(
-        '[status]Run report (for time estimation)[/status]', style='status'
-    )
-    ok = await print_run_report(
-        result,
-        console.console,
-        _INFERENCE_VERIFICATION,
-        detailed=detailed,
-        skip_printing_limits=True,
-        gating_solutions={str(solution.path) for solution in lower_solutions},
-    )
-
-    diagnosis = await _diagnose_inference_run(result)
-    if not _report_inference_diagnosis(diagnosis, timeout):
-        return None
-
-    if not ok:
-        console.console.print(
-            '[error]Failed to run ACCEPTED solutions, so cannot estimate a reliable time limit.[/error]'
+    try:
+        console.console.print()
+        console.console.rule(
+            '[status]Run report (for time estimation)[/status]', style='status'
         )
-        return None
+        ok = await print_run_report(
+            result,
+            console.console,
+            _INFERENCE_VERIFICATION,
+            detailed=detailed,
+            skip_printing_limits=True,
+            gating_solutions={str(solution.path) for solution in lower_solutions},
+        )
 
-    return _InferenceRun(result=result, strategy=strategy, timeout=timeout)
+        diagnosis = await _diagnose_inference_run(result)
+        if not _report_inference_diagnosis(diagnosis, timeout):
+            return None
+
+        if not ok:
+            console.console.print(
+                '[error]Failed to run ACCEPTED solutions, so cannot estimate a reliable time limit.[/error]'
+            )
+            return None
+
+        return _InferenceRun(result=result, strategy=strategy, timeout=timeout)
+    finally:
+        # The report above is what *consumes* this run: it awaits every
+        # deferred, in order, and only then does anything else read one. So by
+        # here the backend has nothing left that anybody wants -- and whatever
+        # it does still have in flight belongs to a run that ended early, which
+        # is precisely the case the `finally` is here for.
+        #
+        # Closing here rather than at the end of `compute_time_limits` rests on
+        # `Deferred`'s memoization, which is load-bearing and not incidental: the
+        # estimation, the diagnosis and the `--share` re-report downstream all
+        # re-key the *same* deferred objects (`consume_and_key_evaluation_items`
+        # does not rebuild them), so every later read comes out of the memo and
+        # never asks the backend for anything again.
+        #
+        # And it is the better place on its own merits: the picker can open and
+        # sit there while the setter reads it, and the validation phase then
+        # re-`prepare`s the same runner. Closing first means rbx is not polling a
+        # shared judge park for results it already has while nobody is looking at
+        # the screen. `close` ends a *batch*, not the runner: see
+        # `SolutionRunner.close`.
+        await result.close()
 
 
 def violates_upper_bound(time: int, time_limit: int, time_limit_to_tle: float) -> bool:
@@ -1294,6 +1327,7 @@ async def _validate_upper_bound(
     check: bool,
     detailed: bool,
     runs: int,
+    runner: Optional['SolutionRunner'] = None,
 ) -> _ValidationOutcome:
     """Run each slow solution at the limit this estimate demands of it, and say
     whether it is genuinely too slow.
@@ -1319,6 +1353,9 @@ async def _validate_upper_bound(
     with utils.StatusProgress('Checking solutions expected to be too slow...') as s:
         result = await run_solutions(
             progress=s,
+            # The same backend the estimate was measured on. A limit checked
+            # somewhere else than it was estimated is not checked at all.
+            runner=runner,
             tracked_solutions=tracked_solutions,
             check=check,
             # ALL_SOLUTIONS keeps `isDoubleTL` off (only FULL turns it on):
@@ -1333,23 +1370,32 @@ async def _validate_upper_bound(
             abort_on=lambda ctx: ctx.evaluation.result.outcome.is_slow(),
         )
 
-    console.console.print()
-    console.console.rule(
-        '[status]Run report (upper-bound validation)[/status]', style='status'
-    )
-    await print_run_report(
-        result,
-        console.console,
-        _INFERENCE_VERIFICATION,
-        detailed=detailed,
-        skip_printing_limits=True,
-        gating_solutions=set(tracked_solutions),
-    )
+    try:
+        console.console.print()
+        console.console.rule(
+            '[status]Run report (upper-bound validation)[/status]', style='status'
+        )
+        await print_run_report(
+            result,
+            console.console,
+            _INFERENCE_VERIFICATION,
+            detailed=detailed,
+            skip_printing_limits=True,
+            gating_solutions=set(tracked_solutions),
+        )
 
-    failed, unmeasured = await _record_validation_run(result, to_run, limits, knowledge)
-    return _classify_slow_solutions(
-        profile, upper_solutions, knowledge, failed, unmeasured
-    )
+        failed, unmeasured = await _record_validation_run(
+            result, to_run, limits, knowledge
+        )
+        return _classify_slow_solutions(
+            profile, upper_solutions, knowledge, failed, unmeasured
+        )
+    finally:
+        # Same reasoning as the estimation phase: the report and the recording
+        # above are what consume this batch, and the picker may re-open right
+        # after. This loop can run `_validate_upper_bound` several times, so the
+        # batch has to end each time rather than at the end of the command.
+        await result.close()
 
 
 def _report_validation_outcome(
@@ -1392,6 +1438,7 @@ async def _estimate_and_validate(
     check: bool,
     detailed: bool,
     runs: int,
+    runner: Optional['SolutionRunner'] = None,
 ) -> Optional[TimingProfile]:
     """Estimate a limit and check it against the solutions expected to be too
     slow, letting the setter re-decide until the two agree.
@@ -1434,6 +1481,7 @@ async def _estimate_and_validate(
             check=check,
             detailed=detailed,
             runs=runs,
+            runner=runner,
         )
         _report_validation_outcome(outcome, profile)
         if outcome.ok:
@@ -1470,6 +1518,7 @@ async def compute_time_limits(
     auto: bool = False,
     share: Optional[str] = None,
     skip_slow: bool = False,
+    runner: Optional['SolutionRunner'] = None,
 ):
     if package.get_main_solution() is None:
         # An error, not a warning: with no accepted solution nothing bounds the
@@ -1480,7 +1529,7 @@ async def compute_time_limits(
         return None
 
     run = await _run_for_inference(
-        check=check, detailed=detailed, runs=runs, formula=formula
+        check=check, detailed=detailed, runs=runs, formula=formula, runner=runner
     )
     if run is None:
         return None
@@ -1504,6 +1553,7 @@ async def compute_time_limits(
         check=check,
         detailed=detailed,
         runs=runs,
+        runner=runner,
     )
     if estimated_tl is None:
         return None

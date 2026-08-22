@@ -2,6 +2,7 @@ import pytest
 import typer
 
 from rbx.box.packaging.moj import timing
+from rbx.box.packaging.moj.packager import JudgeCalibrated
 from tests.rbx.box.packaging.moj.conftest import (
     CHECKER,
     build_entries,
@@ -152,7 +153,7 @@ def test_calibrate_hands_the_ac_ratio_to_moj(testing_pkg, tmp_path):
             testing_pkg,
             tmp_path,
             build_entries(tmp_path, ['samples']),
-            calibrate=True,
+            timing_mode=JudgeCalibrated(),
             pin_limits=False,
         )
         / 'conf'

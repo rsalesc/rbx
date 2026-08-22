@@ -67,7 +67,12 @@ def _invoke_run(runner: CliRunner, *args: str) -> Tuple[Any, _Invocation]:
 
     async def run_solutions(**kwargs):
         calls.run_solutions_kwargs = kwargs
-        return mock.MagicMock()
+        result = mock.MagicMock()
+        # `close` is a coroutine: the consumer awaits it in a `finally`, because a
+        # backend that dispatched ahead has to be awaited out of its polls rather
+        # than merely told to stop. A plain mock attribute would not be awaitable.
+        result.close = mock.AsyncMock()
+        return result
 
     async def print_run_report(result, console, verification, **kwargs):
         calls.reports.append((console, kwargs))

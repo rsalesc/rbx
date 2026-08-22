@@ -153,6 +153,17 @@ def complete_verification_level(
     return [CompletionItem(v, help=h) for v, h in _VERIFICATION_TABLE]
 
 
+@register_completer('runner')
+def complete_runner(ctx: CompletionContext, incomplete: str) -> List[CompletionItem]:
+    # `runners.names` is a leaf module with no imports of its own, which is why
+    # the table can be read rather than copied here. `runners.registry` could
+    # not: it names `RbxException`, which pulls `rich` in behind it and would
+    # put ~36ms on every TAB press.
+    from rbx.box.runners.names import RUNNERS
+
+    return [CompletionItem(v, help=h) for v, h in RUNNERS]
+
+
 @register_completer('profile')
 def complete_profile(ctx: CompletionContext, incomplete: str) -> List[CompletionItem]:
     root = ctx.package_root

@@ -152,11 +152,20 @@ async def moj(
         'instead of pinning the ones estimated by `rbx time -p moj`.',
     ),
 ):
-    from rbx.box.packaging.moj.packager import MojPackager, check_timing_setup
+    from rbx.box.packaging.moj.packager import (
+        JudgeCalibrated,
+        MojPackager,
+        ProfilePinned,
+        check_timing_setup,
+    )
+
+    # The CLI knows only two of the three timing modes; the third (a uniform pin) is
+    # what a remote timing run uploads and is never reachable from `rbx package moj`.
+    timing_mode = JudgeCalibrated() if calibrate else ProfilePinned()
 
     # Before the build, not after it: a setter who has not estimated the limits yet
     # should not pay for a full verification run to hear about it.
-    check_timing_setup(calibrate)
+    check_timing_setup(timing_mode)
 
     # A MOJ package holds one statement, and its `display_title` resolves from
     # the same one, so the body and the rendered <h1> can never disagree.
@@ -164,7 +173,7 @@ async def moj(
         MojPackager,
         verification=verification,
         main_language=language,
-        calibrate=calibrate,
+        timing_mode=timing_mode,
     )
 
 
