@@ -1,0 +1,27 @@
+% Spike: the JOINING contest document (design §6.2).
+% Lives at the overlay ROOT. pdflatex is run from here.
+%
+% Proves, in one compile:
+%   1. \usepackage{icpc}     -> contest chrome resolves from root
+%   2. \includegraphics{logo}-> root-level chrome image resolves
+%   3. \subimport of each problem fragment, each in its own isolated folder
+%      (.problems/A/... and .problems/B/...), where both ship a "fig.png" that
+%      must NOT collide.
+\documentclass{article}
+
+\usepackage{import}
+\usepackage{graphicx}
+\usepackage{icpc}   % contest chrome, resolved from overlay root
+
+\begin{document}
+
+\begin{center}
+  \includegraphics[width=2cm]{logo}\\[1ex]
+  {\Large Statements v2 path-resolution spike}
+\end{center}
+
+% --- join: one \subimport per problem, base = the problem's statement dir ---
+\subimport{.problems/A/statements/}{statement}
+\subimport{.problems/B/statements/}{statement}
+
+\end{document}

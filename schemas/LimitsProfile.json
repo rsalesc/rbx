@@ -1,0 +1,421 @@
+{
+    "$defs": {
+        "LimitModifiers": {
+            "properties": {
+                "timeMultiplier": {
+                    "anyOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Multiplier for time limit.",
+                    "title": "Timemultiplier"
+                },
+                "time": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Value to override time limit with, in milliseconds.",
+                    "title": "Time"
+                },
+                "memory": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Value to override memory limit with, in MB.",
+                    "title": "Memory"
+                }
+            },
+            "title": "LimitModifiers",
+            "type": "object"
+        },
+        "TimingBound": {
+            "properties": {
+                "value": {
+                    "description": "The bound, in milliseconds. A lower bound is the smallest\ntime limit it allows, before it is rounded up to `timeResolution`; an upper bound is\nthe largest time limit it allows.",
+                    "title": "Value",
+                    "type": "integer"
+                },
+                "solution": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The solution that set this bound, when it came from a measured\nsolution of the group. Absent when the bound was derived from another group's limit.",
+                    "title": "Solution"
+                }
+            },
+            "required": [
+                "value"
+            ],
+            "title": "TimingBound",
+            "type": "object"
+        },
+        "TimingGroupOrigin": {
+            "enum": [
+                "estimated",
+                "multiplier",
+                "defaulted"
+            ],
+            "title": "TimingGroupOrigin",
+            "type": "string"
+        },
+        "TimingGroupReport": {
+            "properties": {
+                "languages": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "title": "Languages",
+                    "type": "array"
+                },
+                "timeLimit": {
+                    "title": "Timelimit",
+                    "type": "integer"
+                },
+                "origin": {
+                    "$ref": "#/$defs/TimingGroupOrigin"
+                },
+                "solutionCount": {
+                    "default": 0,
+                    "title": "Solutioncount",
+                    "type": "integer"
+                },
+                "fastest": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Fastest"
+                },
+                "slowest": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Slowest"
+                },
+                "relativeToLanguage": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Relativetolanguage"
+                },
+                "multiplier": {
+                    "anyOf": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Multiplier"
+                },
+                "increment": {
+                    "anyOf": [
+                        {
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "title": "Increment"
+                },
+                "isLeftover": {
+                    "default": false,
+                    "title": "Isleftover",
+                    "type": "boolean"
+                },
+                "lowerBound": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/TimingBound"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The lower bound this group's time limit had to respect, when it\nwas estimated from multipliers. Presentation-only."
+                },
+                "upperBound": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/TimingBound"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "The upper bound this group's time limit had to respect, when it\nwas estimated from multipliers and some slow solution of the group bounded it.\nPresentation-only."
+                },
+                "upperValidation": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/TimingGroupUpperValidation"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "What checking this group's slow solutions against its estimated\ntime limit found. Absent when the group has no slow solutions. Presentation-only."
+                },
+                "droppedUpper": {
+                    "default": [],
+                    "deprecated": true,
+                    "description": "Deprecated: replaced by `upperValidation`. Accepted so that a\nlimits profile written before the estimation was split into two phases still parses;\nnever written.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "title": "Droppedupper",
+                    "type": "array"
+                }
+            },
+            "required": [
+                "languages",
+                "timeLimit",
+                "origin"
+            ],
+            "title": "TimingGroupReport",
+            "type": "object"
+        },
+        "TimingGroupUpperValidation": {
+            "description": "What checking a group's slow solutions against its time limit found.",
+            "properties": {
+                "confirmed": {
+                    "default": [],
+                    "description": "Solutions of this group expected to be too slow that were\nconfirmed to be so: they were still running once the estimated time limit times\n`timeLimitToTle` had elapsed. Presentation-only.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "title": "Confirmed",
+                    "type": "array"
+                },
+                "violating": {
+                    "default": [],
+                    "description": "Solutions of this group expected to be too slow that finished\nwithin the estimated time limit times `timeLimitToTle`, so they do not respect the\nupper bound. `value` is the time the solution actually took. Presentation-only.",
+                    "items": {
+                        "$ref": "#/$defs/TimingBound"
+                    },
+                    "title": "Violating",
+                    "type": "array"
+                },
+                "skipped": {
+                    "default": [],
+                    "description": "Solutions of this group expected to be too slow that were not\nrun, either because `timeLimitToTle` is unset or because the validation phase was\nskipped. Presentation-only.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "title": "Skipped",
+                    "type": "array"
+                }
+            },
+            "title": "TimingGroupUpperValidation",
+            "type": "object"
+        },
+        "TimingMultipliers": {
+            "properties": {
+                "acToTimeLimit": {
+                    "description": "Minimum ratio between the time limit and the slowest accepted\nsolution, used to estimate the time limit from below: the slowest accepted solution\ntimes `acToTimeLimit` must fit within the time limit.",
+                    "exclusiveMinimum": 0,
+                    "title": "Actotimelimit",
+                    "type": "number"
+                },
+                "timeLimitToTle": {
+                    "anyOf": [
+                        {
+                            "exclusiveMinimum": 0,
+                            "type": "number"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Minimum ratio between the fastest solution expected to be too\nslow and the time limit: the time limit times `timeLimitToTle` must fit within the\nfastest solution expected to be too slow. When omitted, solutions expected to be too\nslow are not run and the time limit is not bounded from above.",
+                    "title": "Timelimittotle"
+                },
+                "inferenceTimeout": {
+                    "anyOf": [
+                        {
+                            "exclusiveMinimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Deprecated: use `timing.inferenceTimeout`, which applies to\nevery estimation strategy instead of only to multiplier-based ones. Kept for\nbackwards compatibility; setting both is an error.",
+                    "title": "Inferencetimeout"
+                },
+                "timeResolution": {
+                    "default": 100,
+                    "description": "Granularity (in milliseconds) of the estimated time limit.\nThe estimate is the smallest multiple of this value that is valid.",
+                    "exclusiveMinimum": 0,
+                    "title": "Timeresolution",
+                    "type": "integer"
+                }
+            },
+            "required": [
+                "acToTimeLimit"
+            ],
+            "title": "TimingMultipliers",
+            "type": "object"
+        }
+    },
+    "properties": {
+        "inheritFromPackage": {
+            "default": false,
+            "description": "\nWhether to inherit limits from the package.\n",
+            "title": "Inheritfrompackage",
+            "type": "boolean"
+        },
+        "timeLimit": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Time limit of the problem, in milliseconds.",
+            "title": "Timelimit"
+        },
+        "memoryLimit": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Memory limit of the problem, in MB.",
+            "title": "Memorylimit"
+        },
+        "outputLimit": {
+            "anyOf": [
+                {
+                    "type": "integer"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Output limit of the problem, in KB.",
+            "title": "Outputlimit"
+        },
+        "modifiers": {
+            "additionalProperties": {
+                "$ref": "#/$defs/LimitModifiers"
+            },
+            "default": {},
+            "description": "\n    Limit modifiers that can be specified per language.\n    ",
+            "title": "Modifiers",
+            "type": "object"
+        },
+        "formula": {
+            "anyOf": [
+                {
+                    "type": "string"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "\nA formula to estimate the time limit for the problem.\n",
+            "title": "Formula"
+        },
+        "multipliers": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/TimingMultipliers"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "\nThe multipliers this profile was estimated from, when it was estimated from\nratios instead of a formula. Presentation-only; never used for limit resolution.\n"
+        },
+        "groups": {
+            "anyOf": [
+                {
+                    "items": {
+                        "$ref": "#/$defs/TimingGroupReport"
+                    },
+                    "type": "array"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "\nMetadata describing the language grouping used when this profile was estimated.\nPresentation-only; never used for limit resolution.\n",
+            "title": "Groups"
+        },
+        "baseEstimate": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/TimingGroupReport"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "\nMetadata describing how the base (fallback) time limit was estimated, pooled\nacross every solution. Presentation-only; never used for limit resolution.\n"
+        }
+    },
+    "title": "LimitsProfile",
+    "type": "object"
+}

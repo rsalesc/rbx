@@ -1,0 +1,3126 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A tool for creating and managing competitive programming problems">
+      
+      
+        <meta name="author" content="Roberto Sales">
+      
+      
+        <link rel="canonical" href="https://rbx.rsalesc.dev/plans/2026-08-13-moj-markdown-statements/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>MOJ Markdown Statements Implementation Plan - rbx</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,300i,400,400i,700,700i%7CSource+Code+Pro:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Source Sans Pro";--md-code-font:"Source Code Pro"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../extra.css">
+    
+      <link rel="stylesheet" href="../../assets/asciinema-player.css">
+    
+      <link rel="stylesheet" href="../../termynal.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="orange" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#moj-markdown-statements-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="rbx" class="md-header__button md-logo" aria-label="rbx" data-md-component="logo">
+      
+  <img src="../../rbx_black_fit.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rbx
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              MOJ Markdown Statements Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/rsalesc/rbx" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    rsalesc/rbx
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="rbx" class="md-nav__button md-logo" aria-label="rbx" data-md-component="logo">
+      
+  <img src="../../rbx_black_fit.png" alt="logo">
+
+    </a>
+    rbx
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/rsalesc/rbx" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    rsalesc/rbx
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../intro/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../intro/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/cheatsheet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheatsheet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Walkthrough
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Walkthrough
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_1" id="__nav_4_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authoring a problem
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Authoring a problem
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/first-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    First steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/custom-checker-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a custom checker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/stress-testing-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stress-testing your solutions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Delivering a contest
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Delivering a contest
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/packaging-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packaging a problem
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Feature Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/variables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/testset/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testset
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testset
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/testset/generators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Generators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/testset/visualizers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualizers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/stress-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stress testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/running/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Running
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/grading/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grading
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_4" id="__nav_5_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Grading
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/grading/checkers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/grading/interactors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interactors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/verification/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Verification
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_5" id="__nav_5_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Verification
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/verification/validators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/verification/unit-tests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Unit tests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/stress-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stress testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/profiling/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profiling
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profiling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/statements/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Statements
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Statements
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_7_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_7_2" id="__nav_5_7_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Formats
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_7_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_7_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Formats
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/statements/formats/rbxtex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rbxTeX
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/statements/formats/latex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JinjaTeX & LaTeX
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/statements/formats/pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDF
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_7_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_7_3" id="__nav_5_7_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Customizing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_7_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_7_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Customizing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/statements/templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Write a template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/statements/contest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Write contest statements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_8" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/packaging/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packaging
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Packaging
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/packaging/boca/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    BOCA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/packaging/polygon/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Polygon
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_9" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/presets/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Presets
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Presets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/reference/package/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Package
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6_2" id="__nav_6_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Package
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/reference/package/schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/reference/contest/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contest
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6_3" id="__nav_6_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contest
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/reference/contest/schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/reference/environment/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6_4" id="__nav_6_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Environment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/reference/environment/schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Troubleshooting
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../generators-and-rbx-h/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Generators and rbx.h
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cpp-on-macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C/C++ on MacOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../stack-limit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stack limit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../intro/windows-git/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows and symlinks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../migrating-to-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating to rbx v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#branch-state-read-this-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Branch state — read this first
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="moj-markdown-statements-implementation-plan">MOJ Markdown Statements Implementation Plan<a class="headerlink" href="#moj-markdown-statements-implementation-plan" title="Permanent link">#</a></h1>
+<blockquote>
+<p><strong>For Claude:</strong> REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.</p>
+</blockquote>
+<p><strong>Goal:</strong> Replace the MOJ packager's dummy <code>docs/enunciado.md</code> with the real statement, converted from the Polygon TeX subset to Markdown, with every asset placed where MOJ's renderer can resolve it.</p>
+<p><strong>Architecture:</strong> <code>build_statement_bundle</code> from #640 (<code>rbx/box/statements/export.py</code>) resolves blocks and assets against a <code>SubtreeLayout</code> describing MOJ's tree; each block is then converted TeX → Markdown with pandoc (via the already-present <code>pypandoc</code>), and the MOJ packager assembles <code>docs/enunciado.md</code> plus <code>docs/notes/&lt;sample&gt;.md</code>. PDF-valued assets are rasterized to PNG with poppler, reached through a new general external-tool registry. Design: <a href="../2026-08-13-moj-markdown-statements-design/"><code>2026-08-13-moj-markdown-statements-design.md</code></a>.</p>
+<p><strong>Tech Stack:</strong> Python 3.14, pytest, pydantic v2, <code>pypandoc</code> (already a dependency), <code>pdftoppm</code> (poppler, new external tool), TexSoup.</p>
+<hr />
+<h2 id="branch-state-read-this-first">Branch state — read this first<a class="headerlink" href="#branch-state-read-this-first" title="Permanent link">#</a></h2>
+<p>This branch is <strong>stacked on #640</strong> (<code>worktree-statement-export-bundle</code>) and already carries a <strong>merge of <code>origin/main</code></strong>. That merge is load-bearing and was not optional:</p>
+<ul>
+<li>
+<h1 id="640-branched-before-641-so-on-640s-head-the-new-moj-packager-still-lives-at-rbxboxpackagingmoj_next">640 branched <strong>before</strong> #641, so on #640's head the new MOJ packager still lives at <code>rbx/box/packaging/moj_next/</code>.<a class="headerlink" href="#640-branched-before-641-so-on-640s-head-the-new-moj-packager-still-lives-at-rbxboxpackagingmoj_next" title="Permanent link">#</a></h1>
+</li>
+<li><code>origin/main</code> (30d09a21) already renamed it to <code>rbx/box/packaging/moj/</code>.</li>
+<li>The merge was clean, and <code>tests/rbx/box/statements/ tests/rbx/box/packaging/moj/</code> is <strong>419 passed</strong> on the merged tree — verified before this plan was written.</li>
+</ul>
+<p>So all paths below are the post-#641 ones (<code>rbx/box/packaging/moj/...</code>). Do <strong>not</strong> create anything under <code>moj_next/</code>.</p>
+<p>When #640 merges to main, rebase this branch onto main and drop the merge commit.</p>
+<h2 id="background-the-engineer-needs">Background the engineer needs<a class="headerlink" href="#background-the-engineer-needs" title="Permanent link">#</a></h2>
+<p><code>rbx</code> is a CLI for competitive-programming problem setters. "Packaging" exports a built problem to a judge system's format. MOJ (<code>moj.naquadah.com.br</code>) consumes a tarball, judged by <a href="https://github.com/cd-moj/mojtools"><code>cd-moj/mojtools</code></a>.</p>
+<p><strong>MOJ renders statements with pandoc.</strong> <code>mojtools/render-statement.sh</code> runs <code>pandoc -f markdown --mathml -s --embed-resources --resource-path=&lt;dir of enunciado&gt;</code>. Two consequences you must keep in mind throughout:</p>
+<ol>
+<li>Producing <em>pandoc-flavored</em> Markdown is correct, not sloppy. Fenced divs (<code>center</code>), grid tables and attribute spans (<code>[x]{.smallcaps}</code>) all round-trip, because the same tool reads them back.</li>
+<li><code>$…$</code> math needs <strong>no conversion</strong> — it becomes MathML.</li>
+</ol>
+<p><strong>Sample notes have a different resource base than their own directory.</strong> <code>mojtools/gen-problem-json.sh</code> renders <code>docs/notes/&lt;sample&gt;.md</code> with <code>--resource-path="$PKG/docs"</code>. The note file is in <code>docs/notes/</code>, but its images resolve against <code>docs/</code>. This is the single most surprising fact in this plan; Task 3 and Task 6 both depend on it.</p>
+<p><strong>The release gate.</strong> <code>mojtools/validate-problem.sh</code> hard-requires headings grepped from the <strong>raw file</strong> as <code>^\s*#{1,3}\s*(entrada|input)</code> and <code>…(saída|saida|output)</code>. It soft-warns on an <code>## Exemplos</code>-style heading or any <code>`` fence (MOJ injects examples itself from</code>tests/input/sample*`), and on a note with no matching sample.</p>
+<p><strong>No title in the document.</strong> <code>render-statement.sh</code> injects <code>&lt;h1&gt;</code> from <code>display_title</code> in <code>.moj-meta.json</code> and strips a legacy <code>% Title</code> first line.</p>
+<p>If you have <code>cd-moj/mojtools</code> checked out, read those three scripts. There is a copy at <code>/Users/rsalesc/.claude/jobs/c7f335b3/tmp/mojtools</code> on this machine.</p>
+<h2 id="conventions">Conventions<a class="headerlink" href="#conventions" title="Permanent link">#</a></h2>
+<ul>
+<li><strong>Single quotes</strong> for strings. <strong>Absolute imports only</strong> (relative imports are banned by ruff's <code>TID</code>).</li>
+<li>Lint/format before every commit: <code>uv run ruff check --fix . &amp;&amp; uv run ruff format .</code></li>
+<li>Commits are <strong>conventional commits</strong>, enforced by a pre-commit hook. Use the <code>/commit</code> skill; see <code>.claude/skills/commit.md</code>.</li>
+<li>Test with <code>uv run pytest</code>. Reuse fixtures from <code>tests/rbx/conftest.py</code> and <code>tests/rbx/box/conftest.py</code>.</li>
+<li>Write the test first, watch it fail, then implement. Commit after each task.</li>
+</ul>
+<hr />
+<h3 id="task-1-the-external-tool-registry">Task 1: The external-tool registry<a class="headerlink" href="#task-1-the-external-tool-registry" title="Permanent link">#</a></h3>
+<p>rbx shells out to several tools with no shared story: <code>rbx/box/statements/latex.py:42</code> does an inline <code>command_exists('pdflatex')</code> plus an ad-hoc console error, <code>install_tex_packages</code> silently no-ops when <code>texliveonfly</code> is missing, and <code>pypandoc</code> raises a bare <code>OSError</code> when pandoc is absent. This task builds the abstraction; Task 2 migrates everyone onto it.</p>
+<p><strong>Files:</strong>
+- Create: <code>rbx/tooling.py</code>
+- Test: <code>tests/rbx/test_tooling.py</code></p>
+<p><strong>Step 1: Write the failing tests</strong></p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">unittest</span><span class="w"> </span><span class="kn">import</span> <span class="n">mock</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="kn">import</span><span class="w"> </span><span class="nn">typer</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">rbx</span><span class="w"> </span><span class="kn">import</span> <span class="n">tooling</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="k">def</span><span class="w"> </span><span class="nf">_tool</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">tooling</span><span class="o">.</span><span class="n">ExternalTool</span><span class="p">:</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">defaults</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>        <span class="n">name</span><span class="o">=</span><span class="s1">&#39;poppler&#39;</span><span class="p">,</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>        <span class="n">executable</span><span class="o">=</span><span class="s1">&#39;pdftoppm&#39;</span><span class="p">,</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>        <span class="n">probe_flags</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;-v&#39;</span><span class="p">],</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>        <span class="n">purpose</span><span class="o">=</span><span class="s1">&#39;rasterizing PDF figures&#39;</span><span class="p">,</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>        <span class="n">install_hints</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;darwin&#39;</span><span class="p">:</span> <span class="s1">&#39;brew install poppler&#39;</span><span class="p">,</span> <span class="s1">&#39;linux&#39;</span><span class="p">:</span> <span class="s1">&#39;apt install poppler-utils&#39;</span><span class="p">},</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="p">)</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    <span class="n">defaults</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    <span class="k">return</span> <span class="n">tooling</span><span class="o">.</span><span class="n">ExternalTool</span><span class="p">(</span><span class="o">**</span><span class="n">defaults</span><span class="p">)</span>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_is_available_true_when_command_exists</span><span class="p">():</span>
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>    <span class="k">with</span> <span class="n">mock</span><span class="o">.</span><span class="n">patch</span><span class="p">(</span><span class="s1">&#39;rbx.tooling.command_exists&#39;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>        <span class="k">assert</span> <span class="n">_tool</span><span class="p">()</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span>
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_is_available_false_when_command_missing</span><span class="p">():</span>
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>    <span class="k">with</span> <span class="n">mock</span><span class="o">.</span><span class="n">patch</span><span class="p">(</span><span class="s1">&#39;rbx.tooling.command_exists&#39;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>        <span class="k">assert</span> <span class="ow">not</span> <span class="n">_tool</span><span class="p">()</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span>
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_ensure_is_a_noop_when_available</span><span class="p">():</span>
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>    <span class="k">with</span> <span class="n">mock</span><span class="o">.</span><span class="n">patch</span><span class="p">(</span><span class="s1">&#39;rbx.tooling.command_exists&#39;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>        <span class="n">_tool</span><span class="p">()</span><span class="o">.</span><span class="n">ensure</span><span class="p">()</span>
+</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>
+</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>
+</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_ensure_reports_purpose_and_platform_hint</span><span class="p">(</span><span class="n">capsys</span><span class="p">):</span>
+</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>    <span class="k">with</span> <span class="p">(</span>
+</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>        <span class="n">mock</span><span class="o">.</span><span class="n">patch</span><span class="p">(</span><span class="s1">&#39;rbx.tooling.command_exists&#39;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>
+</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>        <span class="n">mock</span><span class="o">.</span><span class="n">patch</span><span class="p">(</span><span class="s1">&#39;rbx.tooling.sys.platform&#39;</span><span class="p">,</span> <span class="s1">&#39;darwin&#39;</span><span class="p">),</span>
+</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>        <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="n">typer</span><span class="o">.</span><span class="n">Exit</span><span class="p">),</span>
+</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>    <span class="p">):</span>
+</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>        <span class="n">_tool</span><span class="p">()</span><span class="o">.</span><span class="n">ensure</span><span class="p">()</span>
+</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>    <span class="n">out</span> <span class="o">=</span> <span class="n">capsys</span><span class="o">.</span><span class="n">readouterr</span><span class="p">()</span><span class="o">.</span><span class="n">out</span>
+</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>    <span class="k">assert</span> <span class="s1">&#39;pdftoppm&#39;</span> <span class="ow">in</span> <span class="n">out</span>
+</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>    <span class="k">assert</span> <span class="s1">&#39;rasterizing PDF figures&#39;</span> <span class="ow">in</span> <span class="n">out</span>
+</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>    <span class="k">assert</span> <span class="s1">&#39;brew install poppler&#39;</span> <span class="ow">in</span> <span class="n">out</span>
+</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>
+</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>
+</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_ensure_still_names_the_tool_without_a_hint_for_the_platform</span><span class="p">(</span><span class="n">capsys</span><span class="p">):</span>
+</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>    <span class="k">with</span> <span class="p">(</span>
+</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>        <span class="n">mock</span><span class="o">.</span><span class="n">patch</span><span class="p">(</span><span class="s1">&#39;rbx.tooling.command_exists&#39;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>
+</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>        <span class="n">mock</span><span class="o">.</span><span class="n">patch</span><span class="p">(</span><span class="s1">&#39;rbx.tooling.sys.platform&#39;</span><span class="p">,</span> <span class="s1">&#39;sunos&#39;</span><span class="p">),</span>
+</span><span id="__span-0-54"><a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>        <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="n">typer</span><span class="o">.</span><span class="n">Exit</span><span class="p">),</span>
+</span><span id="__span-0-55"><a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a>    <span class="p">):</span>
+</span><span id="__span-0-56"><a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a>        <span class="n">_tool</span><span class="p">()</span><span class="o">.</span><span class="n">ensure</span><span class="p">()</span>
+</span><span id="__span-0-57"><a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a>    <span class="n">out</span> <span class="o">=</span> <span class="n">capsys</span><span class="o">.</span><span class="n">readouterr</span><span class="p">()</span><span class="o">.</span><span class="n">out</span>
+</span><span id="__span-0-58"><a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a>    <span class="k">assert</span> <span class="s1">&#39;pdftoppm&#39;</span> <span class="ow">in</span> <span class="n">out</span>
+</span><span id="__span-0-59"><a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a>
+</span><span id="__span-0-60"><a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a>
+</span><span id="__span-0-61"><a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_run_ensures_before_invoking</span><span class="p">():</span>
+</span><span id="__span-0-62"><a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A missing tool must fail with the actionable error, never a raw</span>
+</span><span id="__span-0-63"><a id="__codelineno-0-63" name="__codelineno-0-63" href="#__codelineno-0-63"></a><span class="sd">    FileNotFoundError from subprocess.&quot;&quot;&quot;</span>
+</span><span id="__span-0-64"><a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a>    <span class="k">with</span> <span class="p">(</span>
+</span><span id="__span-0-65"><a id="__codelineno-0-65" name="__codelineno-0-65" href="#__codelineno-0-65"></a>        <span class="n">mock</span><span class="o">.</span><span class="n">patch</span><span class="p">(</span><span class="s1">&#39;rbx.tooling.command_exists&#39;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>
+</span><span id="__span-0-66"><a id="__codelineno-0-66" name="__codelineno-0-66" href="#__codelineno-0-66"></a>        <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="n">typer</span><span class="o">.</span><span class="n">Exit</span><span class="p">),</span>
+</span><span id="__span-0-67"><a id="__codelineno-0-67" name="__codelineno-0-67" href="#__codelineno-0-67"></a>    <span class="p">):</span>
+</span><span id="__span-0-68"><a id="__codelineno-0-68" name="__codelineno-0-68" href="#__codelineno-0-68"></a>        <span class="n">_tool</span><span class="p">()</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="s1">&#39;-png&#39;</span><span class="p">,</span> <span class="s1">&#39;a.pdf&#39;</span><span class="p">])</span>
+</span><span id="__span-0-69"><a id="__codelineno-0-69" name="__codelineno-0-69" href="#__codelineno-0-69"></a>
+</span><span id="__span-0-70"><a id="__codelineno-0-70" name="__codelineno-0-70" href="#__codelineno-0-70"></a>
+</span><span id="__span-0-71"><a id="__codelineno-0-71" name="__codelineno-0-71" href="#__codelineno-0-71"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_run_passes_args_after_the_executable</span><span class="p">():</span>
+</span><span id="__span-0-72"><a id="__codelineno-0-72" name="__codelineno-0-72" href="#__codelineno-0-72"></a>    <span class="k">with</span> <span class="p">(</span>
+</span><span id="__span-0-73"><a id="__codelineno-0-73" name="__codelineno-0-73" href="#__codelineno-0-73"></a>        <span class="n">mock</span><span class="o">.</span><span class="n">patch</span><span class="p">(</span><span class="s1">&#39;rbx.tooling.command_exists&#39;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+</span><span id="__span-0-74"><a id="__codelineno-0-74" name="__codelineno-0-74" href="#__codelineno-0-74"></a>        <span class="n">mock</span><span class="o">.</span><span class="n">patch</span><span class="p">(</span><span class="s1">&#39;rbx.tooling.subprocess.run&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">run</span><span class="p">,</span>
+</span><span id="__span-0-75"><a id="__codelineno-0-75" name="__codelineno-0-75" href="#__codelineno-0-75"></a>    <span class="p">):</span>
+</span><span id="__span-0-76"><a id="__codelineno-0-76" name="__codelineno-0-76" href="#__codelineno-0-76"></a>        <span class="n">run</span><span class="o">.</span><span class="n">return_value</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">CompletedProcess</span><span class="p">([],</span> <span class="mi">0</span><span class="p">)</span>
+</span><span id="__span-0-77"><a id="__codelineno-0-77" name="__codelineno-0-77" href="#__codelineno-0-77"></a>        <span class="n">_tool</span><span class="p">()</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="s1">&#39;-png&#39;</span><span class="p">,</span> <span class="s1">&#39;a.pdf&#39;</span><span class="p">])</span>
+</span><span id="__span-0-78"><a id="__codelineno-0-78" name="__codelineno-0-78" href="#__codelineno-0-78"></a>    <span class="k">assert</span> <span class="n">run</span><span class="o">.</span><span class="n">call_args</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="p">[</span><span class="s1">&#39;pdftoppm&#39;</span><span class="p">,</span> <span class="s1">&#39;-png&#39;</span><span class="p">,</span> <span class="s1">&#39;a.pdf&#39;</span><span class="p">]</span>
+</span><span id="__span-0-79"><a id="__codelineno-0-79" name="__codelineno-0-79" href="#__codelineno-0-79"></a>
+</span><span id="__span-0-80"><a id="__codelineno-0-80" name="__codelineno-0-80" href="#__codelineno-0-80"></a>
+</span><span id="__span-0-81"><a id="__codelineno-0-81" name="__codelineno-0-81" href="#__codelineno-0-81"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_registry_entries_exist</span><span class="p">():</span>
+</span><span id="__span-0-82"><a id="__codelineno-0-82" name="__codelineno-0-82" href="#__codelineno-0-82"></a>    <span class="k">for</span> <span class="n">tool</span> <span class="ow">in</span> <span class="p">(</span><span class="n">tooling</span><span class="o">.</span><span class="n">PDFLATEX</span><span class="p">,</span> <span class="n">tooling</span><span class="o">.</span><span class="n">TEXLIVEONFLY</span><span class="p">,</span> <span class="n">tooling</span><span class="o">.</span><span class="n">PANDOC</span><span class="p">,</span> <span class="n">tooling</span><span class="o">.</span><span class="n">PDFTOPPM</span><span class="p">):</span>
+</span><span id="__span-0-83"><a id="__codelineno-0-83" name="__codelineno-0-83" href="#__codelineno-0-83"></a>        <span class="k">assert</span> <span class="n">tool</span><span class="o">.</span><span class="n">executable</span>
+</span><span id="__span-0-84"><a id="__codelineno-0-84" name="__codelineno-0-84" href="#__codelineno-0-84"></a>        <span class="k">assert</span> <span class="n">tool</span><span class="o">.</span><span class="n">purpose</span>
+</span><span id="__span-0-85"><a id="__codelineno-0-85" name="__codelineno-0-85" href="#__codelineno-0-85"></a>        <span class="k">assert</span> <span class="n">tool</span><span class="o">.</span><span class="n">install_hints</span>
+</span></code></pre></div>
+<p><strong>Step 2: Run to verify it fails</strong></p>
+<p>Run: <code>uv run pytest tests/rbx/test_tooling.py -v</code>
+Expected: FAIL — <code>ModuleNotFoundError: No module named 'rbx.tooling'</code></p>
+<p><strong>Step 3: Implement</strong></p>
+<p>Create <code>rbx/tooling.py</code>. Key design points, all of which the tests pin:</p>
+<ul>
+<li>Frozen dataclass with <code>name</code>, <code>executable</code>, <code>probe_flags: List[str]</code>, <code>purpose</code>, <code>install_hints: Dict[str, str]</code>. Because a frozen dataclass with <code>Dict</code>/<code>List</code> fields is unhashable-by-default and mutable-by-reference, declare them with <code>dataclasses.field(default_factory=...)</code> and never mutate them.</li>
+<li><code>is_available()</code> delegates to <code>rbx.utils.command_exists</code> — import it as <code>from rbx.utils import command_exists</code> so the tests can patch <code>rbx.tooling.command_exists</code>.</li>
+<li><code>ensure()</code> returns <code>None</code> when available; otherwise prints via <code>rbx.console.console.print</code> in the project's rich theme (<code>[error]…[/error]</code>, <code>[item]…[/item]</code>) naming the executable, the purpose, and <code>install_hints.get(sys.platform)</code> when present, then raises <code>typer.Exit(1)</code>.</li>
+<li><code>run(args, **kwargs)</code> calls <code>ensure()</code> first, then <code>subprocess.run([self.executable, *args], **kwargs)</code>. Calling <code>ensure()</code> first is the whole point: it converts a <code>FileNotFoundError</code> deep in a packaging run into a message that says what to install.</li>
+<li>Module-level registry constants <code>PDFLATEX</code>, <code>TEXLIVEONFLY</code>, <code>PANDOC</code>, <code>PDFTOPPM</code>.</li>
+</ul>
+<p>Import <code>sys</code> and <code>subprocess</code> at module level so the tests can patch <code>rbx.tooling.sys.platform</code> and <code>rbx.tooling.subprocess.run</code>.</p>
+<p><strong>Step 4: Run to verify it passes</strong></p>
+<p>Run: <code>uv run pytest tests/rbx/test_tooling.py -v</code>
+Expected: all PASS</p>
+<p><strong>Step 5: Lint and commit</strong></p>
+<p><div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>--fix<span class="w"> </span>.<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>format<span class="w"> </span>.
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>git<span class="w"> </span>add<span class="w"> </span>rbx/tooling.py<span class="w"> </span>tests/rbx/test_tooling.py
+</span></code></pre></div>
+Commit with <code>/commit</code>: <code>feat(tooling): add an external tool registry</code></p>
+<hr />
+<h3 id="task-2-migrate-the-existing-call-sites-onto-the-registry">Task 2: Migrate the existing call sites onto the registry<a class="headerlink" href="#task-2-migrate-the-existing-call-sites-onto-the-registry" title="Permanent link">#</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>rbx/box/statements/latex.py:42-46</code> (pdflatex), and <code>install_tex_packages</code> (texliveonfly)
+- Modify: <code>rbx/box/statements/render.py:260-285</code> (the two <code>pypandoc</code> call sites)
+- Test: <code>tests/rbx/box/statements/test_latex_tooling.py</code></p>
+<p><strong>Step 1: Write the failing test</strong></p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">unittest</span><span class="w"> </span><span class="kn">import</span> <span class="n">mock</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">typer</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="kn">from</span><span class="w"> </span><span class="nn">rbx.box.statements</span><span class="w"> </span><span class="kn">import</span> <span class="n">latex</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_build_pdf_reports_missing_pdflatex_via_the_registry</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">,</span> <span class="n">capsys</span><span class="p">):</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="k">with</span> <span class="p">(</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>        <span class="n">mock</span><span class="o">.</span><span class="n">patch</span><span class="p">(</span><span class="s1">&#39;rbx.tooling.command_exists&#39;</span><span class="p">,</span> <span class="n">return_value</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>        <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="n">typer</span><span class="o">.</span><span class="n">Exit</span><span class="p">),</span>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="p">):</span>
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>        <span class="n">latex</span><span class="o">.</span><span class="n">Latex</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\\</span><span class="s1">documentclass</span><span class="si">{article}</span><span class="se">\\</span><span class="s1">begin</span><span class="si">{document}</span><span class="s1">x</span><span class="se">\\</span><span class="s1">end</span><span class="si">{document}</span><span class="s1">&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">build_pdf</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">)</span>
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="k">assert</span> <span class="s1">&#39;pdflatex&#39;</span> <span class="ow">in</span> <span class="n">capsys</span><span class="o">.</span><span class="n">readouterr</span><span class="p">()</span><span class="o">.</span><span class="n">out</span>
+</span></code></pre></div>
+<p><strong>Step 2: Run to verify it fails</strong></p>
+<p>Run: <code>uv run pytest tests/rbx/box/statements/test_latex_tooling.py -v</code>
+Expected: FAIL — the current code patches nothing named <code>rbx.tooling.command_exists</code>, so <code>pdflatex</code> is found and the test does not raise <code>typer.Exit</code>.</p>
+<p><strong>Step 3: Implement</strong></p>
+<ul>
+<li>In <code>latex.py</code>, replace the inline <code>command_exists('pdflatex', flags=['-v'])</code> + console error with <code>tooling.PDFLATEX.ensure()</code>. Drop the now-unused <code>command_exists</code> import if nothing else uses it.</li>
+<li>In <code>install_tex_packages</code>, replace <code>if not command_exists('texliveonfly'): return</code> with <code>if not tooling.TEXLIVEONFLY.is_available(): return</code>. <strong>Keep the silent return</strong> — texliveonfly is genuinely optional, so this is <code>is_available()</code>, not <code>ensure()</code>. Do not "improve" it into an error.</li>
+<li>In <code>render.py</code>, call <code>tooling.PANDOC.ensure()</code> before each <code>pypandoc.convert_text</code> call, so a missing binary produces the install hint instead of a bare <code>OSError</code>.</li>
+</ul>
+<p><strong>Step 4: Verify no regressions</strong></p>
+<p>Run: <code>uv run pytest tests/rbx/box/statements/ -q</code>
+Expected: all PASS (419-test baseline for statements+moj must not drop)</p>
+<p><strong>Step 5: Lint and commit</strong></p>
+<p><code>refactor(statements): route external tools through the registry</code></p>
+<hr />
+<h3 id="task-3-let-a-document-dir-be-constant-in-subtreelayout">Task 3: Let a document dir be constant in <code>SubtreeLayout</code><a class="headerlink" href="#task-3-let-a-document-dir-be-constant-in-subtreelayout" title="Permanent link">#</a></h3>
+<p><code>SubtreeLayout.document_dir</code> currently <strong>requires</strong> an <code>{index}</code> placeholder for the <code>sample_explanation</code> slot and rejects a constant (<code>rbx/box/statements/export.py</code>, <code>_check_index_placeholder</code>). MOJ needs a constant <code>docs</code>, because mojtools renders every note with <code>--resource-path=$PKG/docs</code> regardless of sample. As shipped, the layout cannot express its own intended first consumer.</p>
+<p>The rule's rationale — that entries from different samples would "collide into one path" — holds for <code>asset_roots[SAMPLE]</code>, where many <em>files</em> land, and stays required there. It does not hold for <code>document_dir</code>, which is only the <strong>base a remap is computed against</strong>: two samples sharing <code>docs</code> derive identical references for shared statement-scope assets (correct — same file) and distinct ones for their own sample-scope assets, which live under <code>docs/samples/{index}/</code>.</p>
+<p><strong>Files:</strong>
+- Modify: <code>rbx/box/statements/export.py</code> (<code>SubtreeLayout._check_index_placeholder</code> / <code>document_dir</code>, and the class docstring)
+- Test: <code>tests/rbx/box/statements/test_export_layout.py</code></p>
+<p><strong>Step 1: Write the failing tests</strong></p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_sample_explanation_dir_may_be_constant</span><span class="p">():</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;MOJ renders every note with --resource-path=&lt;pkg&gt;/docs, so the note slot&#39;s</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="sd">    remap base is constant across samples even though the note FILES are per-sample.&quot;&quot;&quot;</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">layout</span> <span class="o">=</span> <span class="n">export</span><span class="o">.</span><span class="n">SubtreeLayout</span><span class="p">(</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>        <span class="n">asset_roots</span><span class="o">=</span><span class="p">{</span><span class="n">export</span><span class="o">.</span><span class="n">AssetScope</span><span class="o">.</span><span class="n">SAMPLE</span><span class="p">:</span> <span class="s1">&#39;docs/samples/</span><span class="si">{index:03d}</span><span class="s1">&#39;</span><span class="p">},</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>        <span class="n">document_dirs</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;body&#39;</span><span class="p">:</span> <span class="s1">&#39;docs&#39;</span><span class="p">,</span> <span class="s1">&#39;sample_explanation&#39;</span><span class="p">:</span> <span class="s1">&#39;docs&#39;</span><span class="p">},</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    <span class="p">)</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    <span class="k">assert</span> <span class="n">layout</span><span class="o">.</span><span class="n">document_dir</span><span class="p">(</span><span class="n">export</span><span class="o">.</span><span class="n">DocumentSlot</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span> <span class="o">==</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">PurePosixPath</span><span class="p">(</span><span class="s1">&#39;docs&#39;</span><span class="p">)</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="k">assert</span> <span class="n">layout</span><span class="o">.</span><span class="n">document_dir</span><span class="p">(</span><span class="n">export</span><span class="o">.</span><span class="n">DocumentSlot</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span> <span class="o">==</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">PurePosixPath</span><span class="p">(</span><span class="s1">&#39;docs&#39;</span><span class="p">)</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_sample_explanation_dir_may_still_carry_an_index</span><span class="p">():</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    <span class="n">layout</span> <span class="o">=</span> <span class="n">export</span><span class="o">.</span><span class="n">SubtreeLayout</span><span class="p">(</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>        <span class="n">asset_roots</span><span class="o">=</span><span class="p">{</span><span class="n">export</span><span class="o">.</span><span class="n">AssetScope</span><span class="o">.</span><span class="n">SAMPLE</span><span class="p">:</span> <span class="s1">&#39;docs/samples/</span><span class="si">{index:03d}</span><span class="s1">&#39;</span><span class="p">},</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>        <span class="n">document_dirs</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;sample_explanation&#39;</span><span class="p">:</span> <span class="s1">&#39;notes/</span><span class="si">{index:03d}</span><span class="s1">&#39;</span><span class="p">},</span>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>    <span class="p">)</span>
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>    <span class="k">assert</span> <span class="n">layout</span><span class="o">.</span><span class="n">document_dir</span><span class="p">(</span><span class="n">export</span><span class="o">.</span><span class="n">DocumentSlot</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="mi">7</span><span class="p">))</span> <span class="o">==</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">PurePosixPath</span><span class="p">(</span><span class="s1">&#39;notes/007&#39;</span><span class="p">)</span>
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>
+</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>
+</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_sample_asset_root_still_requires_an_index</span><span class="p">():</span>
+</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Relaxing the DOCUMENT slot must not relax the ASSET root, where many files</span>
+</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a><span class="sd">    really would collide into one directory.&quot;&quot;&quot;</span>
+</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>    <span class="n">layout</span> <span class="o">=</span> <span class="n">export</span><span class="o">.</span><span class="n">SubtreeLayout</span><span class="p">(</span><span class="n">asset_roots</span><span class="o">=</span><span class="p">{</span><span class="n">export</span><span class="o">.</span><span class="n">AssetScope</span><span class="o">.</span><span class="n">SAMPLE</span><span class="p">:</span> <span class="s1">&#39;docs/samples&#39;</span><span class="p">})</span>
+</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>    <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="n">export</span><span class="o">.</span><span class="n">StatementExportError</span><span class="p">,</span> <span class="n">match</span><span class="o">=</span><span class="s1">&#39;index&#39;</span><span class="p">):</span>
+</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>        <span class="n">layout</span><span class="o">.</span><span class="n">place_asset</span><span class="p">(</span><span class="n">_sample_asset</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+</span><span id="__span-3-26"><a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a>
+</span><span id="__span-3-27"><a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a>
+</span><span id="__span-3-28"><a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_body_dir_still_rejects_an_index</span><span class="p">():</span>
+</span><span id="__span-3-29"><a id="__codelineno-3-29" name="__codelineno-3-29" href="#__codelineno-3-29"></a>    <span class="n">layout</span> <span class="o">=</span> <span class="n">export</span><span class="o">.</span><span class="n">SubtreeLayout</span><span class="p">(</span><span class="n">document_dirs</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;body&#39;</span><span class="p">:</span> <span class="s1">&#39;docs/</span><span class="si">{index}</span><span class="s1">&#39;</span><span class="p">})</span>
+</span><span id="__span-3-30"><a id="__codelineno-3-30" name="__codelineno-3-30" href="#__codelineno-3-30"></a>    <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="n">export</span><span class="o">.</span><span class="n">StatementExportError</span><span class="p">,</span> <span class="n">match</span><span class="o">=</span><span class="s1">&#39;index&#39;</span><span class="p">):</span>
+</span><span id="__span-3-31"><a id="__codelineno-3-31" name="__codelineno-3-31" href="#__codelineno-3-31"></a>        <span class="n">layout</span><span class="o">.</span><span class="n">document_dir</span><span class="p">(</span><span class="n">export</span><span class="o">.</span><span class="n">DocumentSlot</span><span class="o">.</span><span class="n">body</span><span class="p">())</span>
+</span></code></pre></div>
+<p>Reuse whatever helper the existing file already has for building a sample-scope <code>ResolvedAsset</code>; do not invent a second one.</p>
+<p><strong>Step 2: Run to verify it fails</strong></p>
+<p>Run: <code>uv run pytest tests/rbx/box/statements/test_export_layout.py -v</code>
+Expected: <code>test_sample_explanation_dir_may_be_constant</code> FAILS with <code>StatementExportError</code> about a required <code>{index}</code> placeholder. The other three PASS already — they are the regression guard proving the relaxation is surgical.</p>
+<p><strong>Step 3: Implement</strong></p>
+<p>In <code>document_dir</code>, stop passing <code>needed=True</code> for the <code>sample_explanation</code> slot: <code>{index}</code> becomes <strong>optional</strong> there — permitted, but no longer required. Leave <code>place_asset</code> untouched, so <code>asset_roots[AssetScope.SAMPLE]</code> still requires it. The "rejected where there is no index to interpolate" branch stays exactly as-is for every other slot.</p>
+<p>Update the <code>SubtreeLayout</code> docstring: it currently states <code>{index}</code> is REQUIRED for <code>document_dirs['sample_explanation']</code>. Replace that with the reason it is <em>optional</em> — a document dir is a remap base, not a destination — and cite MOJ's <code>--resource-path</code> as the motivating case. The docstring is the only place a future reader will look before re-adding the constraint.</p>
+<p><strong>Step 4: Run to verify it passes</strong></p>
+<p>Run: <code>uv run pytest tests/rbx/box/statements/ -q</code>
+Expected: all PASS</p>
+<p><strong>Step 5: Lint and commit</strong></p>
+<p><code>fix(statements): let a document dir be constant across samples</code></p>
+<hr />
+<h3 id="task-4-rasterize-pdf-assets-to-png">Task 4: Rasterize PDF assets to PNG<a class="headerlink" href="#task-4-rasterize-pdf-assets-to-png" title="Permanent link">#</a></h3>
+<p>MOJ renders to HTML and base64-embeds every image, so an <code>&lt;img src="fig.pdf"&gt;</code> is broken in every browser — and rbx's TikZ externalization produces exactly that. rbx has no rasterizer, and PyMuPDF is AGPL, incompatible with rbx's Apache-2.0, so this shells out to poppler through Task 1's registry.</p>
+<p><strong>Files:</strong>
+- Create: <code>rbx/box/packaging/moj/statement_assets.py</code>
+- Test: <code>tests/rbx/box/packaging/moj/test_statement_assets.py</code></p>
+<p><strong>Step 1: Write the failing tests</strong></p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_layout_places_a_pdf_asset_as_png</span><span class="p">():</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;The remap is derived from place_asset, so the extension must change HERE --</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="sd">    rasterizing after materialize would leave every reference pointing at a .pdf.&quot;&quot;&quot;</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">inner</span> <span class="o">=</span> <span class="n">export</span><span class="o">.</span><span class="n">SubtreeLayout</span><span class="p">(</span><span class="n">document_dirs</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;body&#39;</span><span class="p">:</span> <span class="s1">&#39;docs&#39;</span><span class="p">},</span> <span class="n">asset_roots</span><span class="o">=</span><span class="p">{</span><span class="n">export</span><span class="o">.</span><span class="n">AssetScope</span><span class="o">.</span><span class="n">STATEMENT</span><span class="p">:</span> <span class="s1">&#39;docs/assets&#39;</span><span class="p">})</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">layout</span> <span class="o">=</span> <span class="n">statement_assets</span><span class="o">.</span><span class="n">RasterizingLayout</span><span class="p">(</span><span class="n">inner</span><span class="p">)</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="k">assert</span> <span class="n">layout</span><span class="o">.</span><span class="n">place_asset</span><span class="p">(</span><span class="n">_asset</span><span class="p">(</span><span class="s1">&#39;fig.pdf&#39;</span><span class="p">))</span> <span class="o">==</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">PurePosixPath</span><span class="p">(</span><span class="s1">&#39;docs/assets/fig.png&#39;</span><span class="p">)</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_layout_leaves_raster_and_vector_assets_alone</span><span class="p">():</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="n">inner</span> <span class="o">=</span> <span class="n">export</span><span class="o">.</span><span class="n">SubtreeLayout</span><span class="p">(</span><span class="n">document_dirs</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;body&#39;</span><span class="p">:</span> <span class="s1">&#39;docs&#39;</span><span class="p">},</span> <span class="n">asset_roots</span><span class="o">=</span><span class="p">{</span><span class="n">export</span><span class="o">.</span><span class="n">AssetScope</span><span class="o">.</span><span class="n">STATEMENT</span><span class="p">:</span> <span class="s1">&#39;docs/assets&#39;</span><span class="p">})</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>    <span class="n">layout</span> <span class="o">=</span> <span class="n">statement_assets</span><span class="o">.</span><span class="n">RasterizingLayout</span><span class="p">(</span><span class="n">inner</span><span class="p">)</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>    <span class="k">assert</span> <span class="n">layout</span><span class="o">.</span><span class="n">place_asset</span><span class="p">(</span><span class="n">_asset</span><span class="p">(</span><span class="s1">&#39;fig.png&#39;</span><span class="p">))</span> <span class="o">==</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">PurePosixPath</span><span class="p">(</span><span class="s1">&#39;docs/assets/fig.png&#39;</span><span class="p">)</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>    <span class="k">assert</span> <span class="n">layout</span><span class="o">.</span><span class="n">place_asset</span><span class="p">(</span><span class="n">_asset</span><span class="p">(</span><span class="s1">&#39;fig.svg&#39;</span><span class="p">))</span> <span class="o">==</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">PurePosixPath</span><span class="p">(</span><span class="s1">&#39;docs/assets/fig.svg&#39;</span><span class="p">)</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_rasterize_invokes_pdftoppm_and_replaces_the_pdf</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">):</span>
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>    <span class="o">...</span>  <span class="c1"># assert pdftoppm called with -png -r 300 -singlefile, and the .pdf is gone</span>
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>
+</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>
+</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_rasterize_refuses_when_poppler_is_missing_and_names_the_figures</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">,</span> <span class="n">capsys</span><span class="p">):</span>
+</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a>    <span class="o">...</span>  <span class="c1"># typer.Exit, output names fig.pdf</span>
+</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>
+</span><span id="__span-4-23"><a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a>
+</span><span id="__span-4-24"><a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_rasterize_is_a_noop_without_pdf_assets</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">):</span>
+</span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Must not probe for poppler at all -- the overwhelmingly common package has no</span>
+</span><span id="__span-4-26"><a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="sd">    PDF figures, and demanding poppler from it would be a gratuitous new requirement.&quot;&quot;&quot;</span>
+</span></code></pre></div>
+<p><strong>Step 2: Run to verify it fails</strong></p>
+<p>Run: <code>uv run pytest tests/rbx/box/packaging/moj/test_statement_assets.py -v</code>
+Expected: FAIL — module does not exist.</p>
+<p><strong>Step 3: Implement</strong></p>
+<ul>
+<li><code>RasterizingLayout</code>: an <code>AssetLayout</code> that wraps another one, delegating <code>keep_extension</code> and <code>document_dir</code>, and mapping a <code>.pdf</code> result from <code>place_asset</code> to <code>.png</code> via <code>with_suffix('.png')</code>. Doing it in the layout — rather than in the packager after the fact — is what makes the <em>derived remap</em> already point at the rasterized name; <code>derive_remap</code> reads <code>place_asset</code>, so any other placement leaves references pointing at a <code>.pdf</code>. Extension mangling is already a layout concern (<code>keep_extension</code>), so this is in-idiom.</li>
+<li><code>rasterize_pdf_assets(bundle, root)</code>: after <code>bundle.materialize(root)</code>, find each <code>BundledAsset</code> whose <strong>source</strong> is a <code>.pdf</code>, run <code>tooling.PDFTOPPM.run(['-png', '-r', '300', '-singlefile', str(src), str(dest_without_suffix)])</code>, and delete the PDF. Return early when there are none, <strong>without</strong> probing for poppler.</li>
+<li>Missing poppler: <code>tooling.PDFTOPPM.ensure()</code> raises with the install hint; catch and re-raise/print listing the offending figures so the setter knows which ones to convert. This follows the MOJ packager's existing rule — refuse rather than ship something that breaks on the judge.</li>
+<li>SVG passes through untouched: pandoc embeds it fine.</li>
+</ul>
+<p><strong>Step 4: Run to verify it passes</strong></p>
+<p>Run: <code>uv run pytest tests/rbx/box/packaging/moj/test_statement_assets.py -v</code>
+Expected: all PASS</p>
+<p><strong>Step 5: Lint and commit</strong></p>
+<p><code>feat(packaging): rasterize PDF statement assets for MOJ</code></p>
+<hr />
+<h3 id="task-5-tex-markdown-conversion">Task 5: TeX → Markdown conversion<a class="headerlink" href="#task-5-tex-markdown-conversion" title="Permanent link">#</a></h3>
+<p><strong>Files:</strong>
+- Create: <code>rbx/box/statements/markdown_export.py</code>
+- Test: <code>tests/rbx/box/statements/test_markdown_export.py</code>
+- Test fixtures: <code>tests/rbx/box/statements/testdata/markdown_export/*.tex</code> + <code>*.md</code></p>
+<p><strong>Step 1: Write the failing tests</strong></p>
+<p>Golden-file tests, one <code>.tex</code>/<code>.md</code> pair per construct in the Polygon subset. Cover at minimum: inline and display math; <code>\textbf</code>/<code>\textit</code>/<code>\texttt</code>/<code>\emph</code>/<code>\underline</code>/<code>\sout</code>/<code>\textsc</code>; <code>{\bf …}</code>/<code>{\it …}</code> font switches; <code>itemize</code>; <code>enumerate</code>; <code>center</code>; <code>tabular</code> with <code>\hline</code>; <code>tabular</code> with <code>\multicolumn</code>; <code>verbatim</code>/<code>lstlisting</code>; <code>\url</code>/<code>\href</code>; <code>\includegraphics</code>; <code>\epigraph</code>.</p>
+<p>The whole subset was verified to survive <code>pandoc -f latex -t markdown</code> and round-trip back to HTML, so these goldens are recording behavior, not aspiration. Generate each golden by running the converter once and <strong>reading the output</strong> before committing it — a golden nobody read is not a test.</p>
+<p>Plus the two behavioral tests that are not about pandoc:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_image_alt_text_is_cleared</span><span class="p">():</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;pandoc&#39;s LaTeX reader emits ![image](f.png); non-empty alt triggers</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="sd">    implicit_figures on MOJ&#39;s side, captioning EVERY figure &#39;image&#39;.&quot;&quot;&quot;</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">out</span> <span class="o">=</span> <span class="n">markdown_export</span><span class="o">.</span><span class="n">tex_to_markdown</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\\</span><span class="s1">includegraphics</span><span class="si">{fig.png}</span><span class="s1">&#39;</span><span class="p">)</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="k">assert</span> <span class="s1">&#39;![](fig.png)&#39;</span> <span class="ow">in</span> <span class="n">out</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="k">assert</span> <span class="s1">&#39;![image]&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">out</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_converted_output_has_no_fences</span><span class="p">():</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A ``` fence trips validate-problem.sh&#39;s hand-written-example warning.</span>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="sd">    pandoc emits INDENTED code blocks by default -- this pins that.&quot;&quot;&quot;</span>
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>    <span class="n">out</span> <span class="o">=</span> <span class="n">markdown_export</span><span class="o">.</span><span class="n">tex_to_markdown</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\\</span><span class="s1">begin</span><span class="si">{lstlisting}</span><span class="se">\n</span><span class="s1">x = 1</span><span class="se">\n\\</span><span class="s1">end</span><span class="si">{lstlisting}</span><span class="s1">&#39;</span><span class="p">)</span>
+</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>    <span class="k">assert</span> <span class="s1">&#39;```&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">out</span>
+</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>
+</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>
+</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">mark</span><span class="o">.</span><span class="n">parametrize</span><span class="p">(</span><span class="s1">&#39;block&#39;</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;## Exemplos</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">,</span> <span class="s1">&#39;```</span><span class="se">\n</span><span class="s1">x</span><span class="se">\n</span><span class="s1">```</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">])</span>
+</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_gate_guard_rejects_leaked_examples</span><span class="p">(</span><span class="n">block</span><span class="p">):</span>
+</span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>    <span class="k">with</span> <span class="n">pytest</span><span class="o">.</span><span class="n">raises</span><span class="p">(</span><span class="o">...</span><span class="p">):</span>
+</span><span id="__span-5-19"><a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>        <span class="n">markdown_export</span><span class="o">.</span><span class="n">check_moj_gate</span><span class="p">(</span><span class="n">block</span><span class="p">,</span> <span class="n">block_name</span><span class="o">=</span><span class="s1">&#39;legend&#39;</span><span class="p">)</span>
+</span></code></pre></div>
+<p><strong>Step 2: Run to verify it fails</strong></p>
+<p>Run: <code>uv run pytest tests/rbx/box/statements/test_markdown_export.py -v</code>
+Expected: FAIL — module does not exist.</p>
+<p><strong>Step 3: Implement</strong></p>
+<ul>
+<li><code>tex_to_markdown(tex: str) -&gt; str</code>: <code>tooling.PANDOC.ensure()</code>, then convert LaTeX → <strong>pandoc JSON AST</strong> → clear every <code>Image</code> node's alt inlines → JSON → Markdown, using <code>pypandoc.convert_text</code>. Going through the AST rather than regexing <code>![image](</code> is what makes the alt fix robust against captions, attributes and nested contexts, and it gives later fixes a home.</li>
+<li><code>check_moj_gate(markdown: str, *, block_name: str) -&gt; None</code>: raise with an actionable message when the converted text contains a <code>`` fence or an</code>^#{1,3}\s<em>(exemplos?|examples?|sample)<code>heading, naming the block. MOJ injects examples from</code>tests/input/sample</em><code>; a statement carrying its own trips</code>render_warnings`.</li>
+<li>Pin a pandoc floor in <code>pyproject.toml</code> if <code>pypandoc&gt;=1.15</code> does not already imply one, and note in the module docstring that the goldens are pandoc-version-sensitive.</li>
+</ul>
+<p><strong>Step 4: Run to verify it passes</strong></p>
+<p>Run: <code>uv run pytest tests/rbx/box/statements/test_markdown_export.py -v</code>
+Expected: all PASS</p>
+<p><strong>Step 5: Lint and commit</strong></p>
+<p><code>feat(statements): convert Polygon-TeX blocks to markdown</code></p>
+<hr />
+<h3 id="task-6-assemble-the-moj-statement-documents">Task 6: Assemble the MOJ statement documents<a class="headerlink" href="#task-6-assemble-the-moj-statement-documents" title="Permanent link">#</a></h3>
+<p><strong>Files:</strong>
+- Create: <code>rbx/box/packaging/moj/statement.py</code>
+- Test: <code>tests/rbx/box/packaging/moj/test_statement.py</code></p>
+<p><strong>Step 1: Write the failing tests</strong></p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_body_has_no_title_heading</span><span class="p">():</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;render-statement.sh injects &lt;h1&gt; from display_title and strips a legacy</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="sd">    &#39;% Title&#39; line, so a title in the document would be a duplicate.&quot;&quot;&quot;</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_mandatory_headings_are_emitted_for_portuguese</span><span class="p">():</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">doc</span> <span class="o">=</span> <span class="n">statement</span><span class="o">.</span><span class="n">build_enunciado</span><span class="p">(</span><span class="n">blocks</span><span class="p">,</span> <span class="n">language</span><span class="o">=</span><span class="s1">&#39;pt-br&#39;</span><span class="p">)</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="k">assert</span> <span class="s1">&#39;## Entrada&#39;</span> <span class="ow">in</span> <span class="n">doc</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="k">assert</span> <span class="s1">&#39;## Saída&#39;</span> <span class="ow">in</span> <span class="n">doc</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_headings_follow_the_statement_language</span><span class="p">():</span>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;validate-problem.sh accepts entrada|input and saída|saida|output, case</span>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="sd">    insensitively, so an English statement gets English headings and still passes.&quot;&quot;&quot;</span>
+</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>    <span class="n">doc</span> <span class="o">=</span> <span class="n">statement</span><span class="o">.</span><span class="n">build_enunciado</span><span class="p">(</span><span class="n">blocks</span><span class="p">,</span> <span class="n">language</span><span class="o">=</span><span class="s1">&#39;en&#39;</span><span class="p">)</span>
+</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>    <span class="k">assert</span> <span class="s1">&#39;## Input&#39;</span> <span class="ow">in</span> <span class="n">doc</span>
+</span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>    <span class="k">assert</span> <span class="s1">&#39;## Output&#39;</span> <span class="ow">in</span> <span class="n">doc</span>
+</span><span id="__span-6-18"><a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a>
+</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>
+</span><span id="__span-6-20"><a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_notes_block_becomes_a_section</span><span class="p">():</span>
+</span><span id="__span-6-21"><a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>    <span class="o">...</span>
+</span><span id="__span-6-22"><a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>
+</span><span id="__span-6-23"><a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a>
+</span><span id="__span-6-24"><a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_explanations_are_written_per_sample_by_test_name</span><span class="p">():</span>
+</span><span id="__span-6-25"><a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;mojtools pairs docs/notes/&lt;sample&gt;.md to tests/input/&lt;sample&gt; BY NAME.&quot;&quot;&quot;</span>
+</span><span id="__span-6-26"><a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a>    <span class="c1"># index 0 -&gt; docs/notes/sample001.md, matching naming.testcase_name(is_sample=True)</span>
+</span><span id="__span-6-27"><a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a>
+</span><span id="__span-6-28"><a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a>
+</span><span id="__span-6-29"><a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_layout_uses_docs_as_the_remap_base_for_both_slots</span><span class="p">():</span>
+</span><span id="__span-6-30"><a id="__codelineno-6-30" name="__codelineno-6-30" href="#__codelineno-6-30"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;The note FILE lives in docs/notes/, but gen-problem-json.sh renders it with</span>
+</span><span id="__span-6-31"><a id="__codelineno-6-31" name="__codelineno-6-31" href="#__codelineno-6-31"></a><span class="sd">    --resource-path=&lt;pkg&gt;/docs, so its images resolve against docs/. A remap base of</span>
+</span><span id="__span-6-32"><a id="__codelineno-6-32" name="__codelineno-6-32" href="#__codelineno-6-32"></a><span class="sd">    docs/notes/ would derive &#39;../assets/f.png&#39; and break every note image.&quot;&quot;&quot;</span>
+</span><span id="__span-6-33"><a id="__codelineno-6-33" name="__codelineno-6-33" href="#__codelineno-6-33"></a>    <span class="n">layout</span> <span class="o">=</span> <span class="n">statement</span><span class="o">.</span><span class="n">moj_layout</span><span class="p">()</span>
+</span><span id="__span-6-34"><a id="__codelineno-6-34" name="__codelineno-6-34" href="#__codelineno-6-34"></a>    <span class="k">assert</span> <span class="n">layout</span><span class="o">.</span><span class="n">document_dir</span><span class="p">(</span><span class="n">export</span><span class="o">.</span><span class="n">DocumentSlot</span><span class="o">.</span><span class="n">body</span><span class="p">())</span> <span class="o">==</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">PurePosixPath</span><span class="p">(</span><span class="s1">&#39;docs&#39;</span><span class="p">)</span>
+</span><span id="__span-6-35"><a id="__codelineno-6-35" name="__codelineno-6-35" href="#__codelineno-6-35"></a>    <span class="k">assert</span> <span class="n">layout</span><span class="o">.</span><span class="n">document_dir</span><span class="p">(</span><span class="n">export</span><span class="o">.</span><span class="n">DocumentSlot</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span> <span class="o">==</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">PurePosixPath</span><span class="p">(</span><span class="s1">&#39;docs&#39;</span><span class="p">)</span>
+</span></code></pre></div>
+<p><strong>Step 2: Run to verify it fails</strong></p>
+<p>Run: <code>uv run pytest tests/rbx/box/packaging/moj/test_statement.py -v</code>
+Expected: FAIL — module does not exist.</p>
+<p><strong>Step 3: Implement</strong></p>
+<ul>
+<li><code>moj_layout()</code> returns the <code>SubtreeLayout</code> (wrapped by Task 4's <code>RasterizingLayout</code>):</li>
+<li><code>document_dirs = {'body': 'docs', 'sample_explanation': 'docs'}</code> — <strong>both constant <code>docs</code></strong>, which is exactly why Task 3 was needed. Comment the <code>sample_explanation</code> value with the <code>--resource-path</code> reason; it looks like a bug otherwise.</li>
+<li><code>asset_roots = {STATEMENT: 'docs/assets', SAMPLE: 'docs/samples/{index:03d}', ...}</code> — the SAMPLE root keeps <code>{index}</code>, which is still required.</li>
+<li><code>build_enunciado(blocks, *, language)</code>: <code>legend</code> as the body with <strong>no heading</strong>, then <code>## Entrada</code>, <code>## Saída</code>, and <code>## Notas</code> when a <code>notes</code> block exists — heading text selected from the statement language, defaulting to Portuguese. Run <code>check_moj_gate</code> over each converted block.</li>
+<li><code>build_notes(explanations, testcase_names)</code>: map each explanation index to its sample's test name via <code>rbx/box/packaging/moj/naming.py:testcase_name(..., is_sample=True)</code>, producing <code>docs/notes/&lt;name&gt;.md</code>. Do not re-derive the <code>sample%03d</code> format by hand — call <code>naming</code>, so the two can never drift.</li>
+<li>Warn (do not fail) when an explanation contains <code>$…$</code>: <code>gen-problem-json.sh</code> renders notes <strong>without</strong> <code>--mathml</code>, unlike the body, so math reaches the student as literal <code>\(x\)</code>. Nothing in the package can fix it.</li>
+</ul>
+<p><strong>Step 4: Run to verify it passes</strong></p>
+<p>Run: <code>uv run pytest tests/rbx/box/packaging/moj/test_statement.py -v</code>
+Expected: all PASS</p>
+<p><strong>Step 5: Lint and commit</strong></p>
+<p><code>feat(packaging): assemble MOJ statement documents</code></p>
+<hr />
+<h3 id="task-7-wire-it-into-the-packager-and-the-cli">Task 7: Wire it into the packager and the CLI<a class="headerlink" href="#task-7-wire-it-into-the-packager-and-the-cli" title="Permanent link">#</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>rbx/box/packaging/moj/packager.py</code> — <code>statement_types()</code> (~line 86), add <code>statement_export_params()</code>, <code>_write_metadata</code> (~line 214-221)
+- Modify: <code>rbx/box/packaging/main.py:135-143</code> — add <code>--language</code>
+- Test: <code>tests/rbx/box/packaging/moj/test_packager.py</code>, <code>tests/rbx/box/packaging/moj/test_cli.py</code></p>
+<p><strong>Step 1: Write the failing tests</strong></p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># CORRECTED after implementation: this assertion was wrong and shipped a bug.</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># `statement_types()` names the OUTPUT type, and v2 emits only pdf/tex/md, so</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="c1"># rbxTeX (a SOURCE type) fails the build. Leave the hook at its default [PDF].</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_builds_pdf_statements_even_though_it_consumes_blocks</span><span class="p">():</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="k">assert</span> <span class="n">MojPackager</span><span class="p">(</span><span class="n">testcase_entries</span><span class="o">=</span><span class="p">[])</span><span class="o">.</span><span class="n">statement_types</span><span class="p">()</span> <span class="o">==</span> <span class="p">[</span><span class="n">StatementType</span><span class="o">.</span><span class="n">PDF</span><span class="p">]</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_export_params_force_externalize_and_demacro</span><span class="p">():</span>
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Without these the overlay has no blocks.sub.yml/macros.json and the export</span>
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="sd">    pipeline has nothing to read. Mirrors PolygonPackager.statement_export_params.&quot;&quot;&quot;</span>
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_package_writes_a_real_enunciado</span><span class="p">(</span><span class="o">...</span><span class="p">):</span>
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>    <span class="c1"># docs/enunciado.md contains the legend text and the two headings, not DUMMY_STATEMENT</span>
+</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>
+</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>
+</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_package_falls_back_to_the_dummy_without_statements</span><span class="p">(</span><span class="o">...</span><span class="p">):</span>
+</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;MOJ requires the two headings; a statement-less package must still package.&quot;&quot;&quot;</span>
+</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>
+</span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>
+</span><span id="__span-7-21"><a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_language_option_selects_the_statement</span><span class="p">(</span><span class="o">...</span><span class="p">):</span>
+</span><span id="__span-7-22"><a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a>
+</span><span id="__span-7-23"><a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a>
+</span><span id="__span-7-24"><a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a><span class="k">def</span><span class="w"> </span><span class="nf">test_display_title_comes_from_the_selected_statement</span><span class="p">(</span><span class="o">...</span><span class="p">):</span>
+</span><span id="__span-7-25"><a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Body and &lt;h1&gt; must never come from different languages.&quot;&quot;&quot;</span>
+</span></code></pre></div>
+<p><strong>Step 2: Run to verify it fails</strong></p>
+<p>Run: <code>uv run pytest tests/rbx/box/packaging/moj/ -v</code>
+Expected: FAIL — <code>statement_types()</code> still returns <code>[]</code>.</p>
+<p><strong>Step 3: Implement</strong></p>
+<ul>
+<li><strong>Do NOT override <code>statement_types()</code></strong> — leave the inherited <code>[StatementType.PDF]</code>, as <code>PolygonPackager</code> does. (The plan originally said <code>[StatementType.rbxTeX]</code>; that shipped a bug. The hook names the <em>output</em> type and v2 emits only pdf/tex/md, so a source type fails the build — and TeX/Markdown output would skip <code>render.compile_pdf</code>, where externalization and demacro actually run.)</li>
+<li>Add <code>statement_export_params()</code> returning the same forced steps as <code>PolygonPackager.statement_export_params</code> (<code>rbx/box/packaging/polygon/packager.py:73</code>): <code>rbxToTeX(externalize=True)</code> and <code>TexToPDF(externalize=True, demacro=True)</code>.</li>
+<li><code>MojPackager.__init__</code> takes <code>main_language: Optional[str] = None</code>, mirroring <code>PolygonPackager</code>. <code>_get_main_statement()</code> honors it, and <code>_display_title()</code> resolves from <strong>the same</strong> statement.</li>
+<li>In <code>_write_metadata</code>, replace the <code>DUMMY_STATEMENT</code> write with: build the bundle via <code>export.build_statement_bundle(statement, layout=statement_mod.moj_layout())</code>, <code>materialize</code> into <code>into_path</code>, <code>rasterize_pdf_assets</code>, then write <code>docs/enunciado.md</code> and each <code>docs/notes/&lt;name&gt;.md</code>. Keep <code>DUMMY_STATEMENT</code> for the no-statement case — do not delete the constant.</li>
+<li><code>rbx/box/packaging/main.py</code>: add <code>language: Optional[str] = typer.Option(None, '--language', help=...)</code> to the <code>moj</code> command and pass it through, mirroring <code>rbx package polygon --language</code>. Error clearly when the requested language has no statement.</li>
+</ul>
+<p><strong>Step 4: Run to verify it passes</strong></p>
+<p>Run: <code>uv run pytest tests/rbx/box/packaging/moj/ tests/rbx/box/statements/ -q</code>
+Expected: all PASS, and not fewer than the 419-test baseline plus the new tests.</p>
+<p><strong>Step 5: Lint and commit</strong></p>
+<p><code>feat(packaging): build markdown statements for MOJ</code></p>
+<hr />
+<h3 id="task-8-end-to-end-against-the-real-judge-tooling-and-docs">Task 8: End-to-end against the real judge tooling, and docs<a class="headerlink" href="#task-8-end-to-end-against-the-real-judge-tooling-and-docs" title="Permanent link">#</a></h3>
+<p>This is the check that matters: it runs the same renderer the student sees.</p>
+<p><strong>Files:</strong>
+- Test: <code>tests/rbx/box/packaging/moj/test_statement_e2e.py</code>
+- Modify: <code>rbx/box/packaging/moj/CLAUDE.md</code> (the <strong>Out of scope → Statements</strong> section is now wrong), <code>rbx/box/packaging/CLAUDE.md</code> (the MOJ bullet saying <code>statement_types()</code> is <code>[]</code>), <code>rbx/box/statements/CLAUDE.md</code> (SubtreeLayout now has a production consumer)</p>
+<p><strong>Step 1: Write the test</strong></p>
+<p>Package a fixture carrying a statement image and a sample explanation, then, when <code>MOJTOOLS_DIR</code> is set (skip otherwise, and mark <code>slow</code>), run mojtools' real <code>validate-problem.sh</code> over the output and assert the JSON it emits has <code>secao_entrada</code>, <code>secao_saida</code> and <code>html_builds</code> all ok <strong>with empty <code>render_warnings</code></strong>. Also run <code>render-statement.sh</code> and assert the statement image appears as an embedded <code>data:</code> URI — that is the end-to-end proof the remap and the resource-path base are right.</p>
+<p><strong>Step 2: Run it</strong></p>
+<p>Run: <code>MOJTOOLS_DIR=/path/to/mojtools uv run pytest tests/rbx/box/packaging/moj/test_statement_e2e.py -v</code>
+Expected: PASS. Without <code>MOJTOOLS_DIR</code>: SKIPPED.</p>
+<p><strong>Step 3: Update the docs</strong></p>
+<ul>
+<li><code>moj/CLAUDE.md</code>: statements are no longer out of scope. Document the <code>--language</code> flag, the <code>docs/</code> remap base for notes and <strong>why</strong>, the poppler requirement for PDF figures, and the no-<code>--mathml</code>-in-notes limitation.</li>
+<li><code>packaging/CLAUDE.md</code>: update the MOJ bullet.</li>
+<li><code>statements/CLAUDE.md</code>: <code>SubtreeLayout</code> has a consumer now; record that a document dir may be constant and why.</li>
+</ul>
+<p><strong>Step 4: Full verification</strong></p>
+<p><div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>uv<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>--ignore<span class="o">=</span>tests/rbx/box/cli<span class="w"> </span>-n<span class="w"> </span>auto
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>check<span class="w"> </span>.<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>uv<span class="w"> </span>run<span class="w"> </span>ruff<span class="w"> </span>format<span class="w"> </span>--check<span class="w"> </span>.
+</span></code></pre></div>
+Compare the failure set against a clean checkout of <code>main</code> — this repo has known pre-existing local failures (C++/sandbox/docker). <strong>Zero new failures</strong> is the bar.</p>
+<p><strong>Step 5: Commit and open the PR</strong></p>
+<p><code>docs(packaging): document MOJ markdown statements</code>, then open the PR <strong>against #640's branch</strong>, not <code>main</code>, noting it must merge after #640.</p>
+<hr />
+<h2 id="definition-of-done">Definition of done<a class="headerlink" href="#definition-of-done" title="Permanent link">#</a></h2>
+<ul>
+<li><code>rbx package moj</code> emits a real <code>docs/enunciado.md</code> with the mandatory headings, no title, no fences and no examples section.</li>
+<li>Statement and sample-note images resolve and embed under mojtools' actual renderer.</li>
+<li>PDF figures are rasterized; a missing poppler refuses the package with an install hint.</li>
+<li><code>mojtools/validate-problem.sh</code> reports empty <code>render_warnings</code>.</li>
+<li>Zero new test failures against the <code>main</code> baseline; ruff clean.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/rsalesc/rbx" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.code.copy", "content.code.annotate", "navigation.sections", "navigation.indexes", "navigation.path", "navigation.expand", "search.highlight", "search.suggest", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": {"accepted": "\u003cspan style=\"color: green\"\u003eaccepted\u003c/span\u003e", "wrong_answer": "\u003cspan style=\"color: red\"\u003ewrong answer\u003c/span\u003e"}, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="../../assets/asciinema-player.min.js"></script>
+      
+        <script src="../../assets/casts-loop.js"></script>
+      
+        <script src="../../termynal.js"></script>
+      
+    
+  </body>
+</html>

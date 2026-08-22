@@ -1,0 +1,3344 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A tool for creating and managing competitive programming problems">
+      
+      
+        <meta name="author" content="Roberto Sales">
+      
+      
+        <link rel="canonical" href="https://rbx.rsalesc.dev/plans/2026-08-20-moj-remote-runner-design/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>Remote solution runners, and MOJ as the first one - rbx</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,300i,400,400i,700,700i%7CSource+Code+Pro:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Source Sans Pro";--md-code-font:"Source Code Pro"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../extra.css">
+    
+      <link rel="stylesheet" href="../../assets/asciinema-player.css">
+    
+      <link rel="stylesheet" href="../../termynal.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="orange" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#remote-solution-runners-and-moj-as-the-first-one" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="rbx" class="md-header__button md-logo" aria-label="rbx" data-md-component="logo">
+      
+  <img src="../../rbx_black_fit.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rbx
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Remote solution runners, and MOJ as the first one
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/rsalesc/rbx" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    rsalesc/rbx
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="rbx" class="md-nav__button md-logo" aria-label="rbx" data-md-component="logo">
+      
+  <img src="../../rbx_black_fit.png" alt="logo">
+
+    </a>
+    rbx
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/rsalesc/rbx" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    rsalesc/rbx
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../intro/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../intro/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/cheatsheet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheatsheet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Walkthrough
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Walkthrough
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_1" id="__nav_4_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authoring a problem
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Authoring a problem
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/first-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    First steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/custom-checker-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a custom checker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/stress-testing-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stress-testing your solutions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Delivering a contest
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Delivering a contest
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/packaging-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packaging a problem
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Feature Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/variables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/testset/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testset
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testset
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/testset/generators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Generators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/testset/visualizers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualizers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/stress-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stress testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/running/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Running
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/grading/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grading
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_4" id="__nav_5_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Grading
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/grading/checkers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/grading/interactors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interactors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/verification/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Verification
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_5" id="__nav_5_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Verification
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/verification/validators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/verification/unit-tests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Unit tests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/stress-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stress testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/profiling/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profiling
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profiling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/statements/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Statements
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Statements
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_7_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_7_2" id="__nav_5_7_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Formats
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_7_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_7_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Formats
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/statements/formats/rbxtex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rbxTeX
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/statements/formats/latex/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    JinjaTeX & LaTeX
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/statements/formats/pdf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PDF
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_7_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_7_3" id="__nav_5_7_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Customizing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_5_7_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_7_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Customizing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/statements/templates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Write a template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/statements/contest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Write contest statements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_8" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/packaging/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packaging
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Packaging
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/packaging/boca/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    BOCA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/packaging/polygon/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Polygon
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_9" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/presets/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Presets
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Presets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/reference/package/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Package
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6_2" id="__nav_6_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Package
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/reference/package/schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/reference/contest/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contest
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6_3" id="__nav_6_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contest
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/reference/contest/schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../setters/reference/environment/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6_4" id="__nav_6_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Environment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../setters/reference/environment/schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Troubleshooting
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../generators-and-rbx-h/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Generators and rbx.h
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cpp-on-macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C/C++ on MacOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../stack-limit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stack limit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../intro/windows-git/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows and symlinks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../migrating-to-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating to rbx v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-moj-cli-actually-offers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the MOJ CLI actually offers
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What the MOJ CLI actually offers">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#confirmed-from-the-cli-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confirmed from the CLI source
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-seam-solutionrunner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The seam: SolutionRunner
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The seam: SolutionRunner">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-deferreds-do-not-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The deferreds do not change
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#degrading-when-the-backend-knows-less" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Degrading when the backend knows less
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#selecting-a-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selecting a runner
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-moj-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The MOJ runner
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The MOJ runner">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#prepare" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        prepare()
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="prepare()">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-third-timing-mode-not-a-new-one" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A third timing mode, not a new one
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-language-whitelist-is-load-bearing-here" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The language whitelist is load-bearing here
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run_solution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        run_solution()
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-timing-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The timing flow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The timing flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-estimation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1, estimation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2, validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-the-package-is-uploaded-twice-and-a-problem-per-phase" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why the package is uploaded twice, and a problem per phase
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-limitation-the-judge-is-not-selectable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known limitation: the judge is not selectable
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#incremental-delivery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Incremental delivery
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="remote-solution-runners-and-moj-as-the-first-one">Remote solution runners, and MOJ as the first one<a class="headerlink" href="#remote-solution-runners-and-moj-as-the-first-one" title="Permanent link">#</a></h1>
+<p>Issue: <a href="https://github.com/rsalesc/rbx/issues/689">#689</a>.</p>
+<p><code>rbx time</code> decides a time limit from timings measured <strong>where rbx runs</strong>. The well-lit
+path is therefore to walk to the judge machine and run it there. This design keeps that
+path untouched and adds a second one: measure the timings <strong>on the judge park itself</strong>,
+through the judge's own CLI, and feed them into the estimation logic rbx already has.</p>
+<p>MOJ is the motivating case. The seam is deliberately general, because <code>rbx run</code> wants the
+same thing later.</p>
+<h2 id="what-the-moj-cli-actually-offers">What the MOJ CLI actually offers<a class="headerlink" href="#what-the-moj-cli-actually-offers" title="Permanent link">#</a></h2>
+<p>Read from <a href="https://github.com/cd-moj/moj-cli"><code>cd-moj/moj-cli</code></a> (<code>moj</code>, build
+<code>c2716d8-20260820</code>). More is available than the issue assumes:</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it gives</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>moj testrun &lt;id\|dir&gt; &lt;file&gt; [--no-wait]</code></td>
+<td>Runs <strong>one standalone solution on the judge</strong> -- same jail, same calibrated TL as a real submission -- outside history/placar. Returns <code>{run}</code>. Requires <strong>edit</strong> permission (the result exposes hidden tests).</td>
+</tr>
+<tr>
+<td><code>moj testrun-status &lt;run&gt;</code></td>
+<td><code>{status, verdict, correct, total_tests, duration_s, tl_used, tests: [{name, code, time, tl}]}</code></td>
+</tr>
+<tr>
+<td><code>moj calibrate &lt;id&gt; [--hosts h1,h2 \| --all-judges \| --per-cpu]</code></td>
+<td>Queues calibration. Repeating does not duplicate (<code>already_queued</code> per host).</td>
+</tr>
+<tr>
+<td><code>moj calibrate --judges</code></td>
+<td>The park: <code>{host, cpu, online}</code>.</td>
+</tr>
+<tr>
+<td><code>moj calib &lt;id&gt; --json</code></td>
+<td>The whole calibration by extension: <strong>per host</strong>, per solution dir (<code>good/pass/slow/wrong</code>), per test <code>{name, code, time, tl}</code>.</td>
+</tr>
+<tr>
+<td><code>moj --json check &lt;id&gt;</code></td>
+<td><code>{validation, calib, tl}</code>; <code>tl.calibrated</code>, <code>tl.being_calibrated</code>, <code>tl.needs_recalibration</code>, <code>tl.tl_override</code>. <strong><code>--json</code> is a global flag and goes before the subcommand</strong>, not after.</td>
+</tr>
+<tr>
+<td><code>moj upload &lt;id&gt; &lt;dir&gt;</code></td>
+<td>Tars the directory itself and uploads.</td>
+</tr>
+<tr>
+<td><code>moj whoami</code></td>
+<td>The login.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="confirmed-from-the-cli-source">Confirmed from the CLI source<a class="headerlink" href="#confirmed-from-the-cli-source" title="Permanent link">#</a></h3>
+<p>The repo is not readable anonymously (<code>raw.githubusercontent.com</code> 404s), so these were read
+through the authenticated contents API, from <code>moj</code> and <code>lib/core.sh</code>. Recording them here
+so nobody re-derives them:</p>
+<ul>
+<li><strong><code>moj whoami</code> does not honour <code>--json</code>.</strong> It prints <code>login: &lt;x&gt;  nome: &lt;y&gt;</code> and the login
+  must be parsed out of that line (<code>cmd_whoami</code>).</li>
+<li><strong>A session-less command exits non-zero and writes to stderr.</strong>
+  <code>need_login(){ [[ -f "$(token_file)" ]] || die "faça '$MOJ_TOOL login' primeiro."; }</code> and
+  <code>die(){ printf '%s: %s\n' "$MOJ_TOOL" "$*" &gt;&amp;2; exit 1; }</code>. So a wrapper that captures
+  only stdout loses the reason.</li>
+<li><strong><code>moj testrun --no-wait</code> prints prose, not JSON, even under <code>--json</code>.</strong> It returns at
+  <code>cmd_testrun</code>'s <code>[[ "$wait" == 1 ]] || { ...; return 0; }</code> — <em>before</em> the <code>RAW</code> branch
+  inside the polling loop — after <code>echo "enfileirado no juiz: run $run  (...)"</code>. The run id
+  has to be parsed out of that line. Passing <code>--json</code> to <code>testrun</code> therefore buys nothing.</li>
+<li><strong><code>moj --json testrun-status</code> is real JSON</strong>, carrying <code>status</code>, <code>verdict</code>, <code>correct</code>,
+  <code>total_tests</code>, <code>duration_s</code>, <code>tl_used</code> and <code>tests[].{name,code,time,tl}</code>.</li>
+<li><strong>The CLI's own wait is bounded and knows only one terminal state.</strong> <code>cmd_testrun</code> loops
+  200 times at 3s (~10 minutes) testing <code>[[ "$st" == done ]]</code>, then gives up and tells the
+  user to check later. It handles no failure status. So <code>MojRunner</code>'s poll needs its own
+  bound — a judge that never reaches <code>done</code> must not hang the run — and <strong>whether the
+  server can report a terminal failure state is still an open probe question</strong>.</li>
+</ul>
+<p>Two facts shape the design:</p>
+<ul>
+<li><strong><code>moj testrun</code> accepts a directory containing <code>.moj-id</code></strong> in place of an id
+  (<code>cmd_testrun</code> reads <code>"$ref/.moj-id"</code>). So binding an rbx package to a remote problem
+  through that file is the CLI's own convention, not an invention.</li>
+<li><strong><code>TLOVERRIDE</code> in <code>conf</code> beats the calibrated TL</strong>, per language, and <code>moj check</code>
+  surfaces it as <code>⚙ TL OVERRIDE (vence o calibrado)</code>. <strong>rbx already speaks it</strong>:
+  <a href="https://github.com/rsalesc/rbx/pull/685">#685</a> replaced the old slope-zero
+  <code>TLMOD[calibrafactor]</code> pinning with <code>TLOVERRIDE[default]</code>, per-language entries and a
+  <code>CALIBRATIONTL</code> floor
+  (<a href="../../rbx/box/packaging/moj/timing.py"><code>packaging/moj/timing.py</code></a>). The runner
+  therefore needs no new emission machinery -- only a way to ask for a limit that is not
+  the <code>moj</code> profile's.</li>
+</ul>
+<h2 id="the-seam-solutionrunner">The seam: <code>SolutionRunner</code><a class="headerlink" href="#the-seam-solutionrunner" title="Permanent link">#</a></h2>
+<p>Today <a href="../../rbx/box/solutions.py"><code>solutions.py</code></a> splits cleanly already:
+<code>run_solutions</code> calls <code>_get_report_skeleton</code> (compile + testcase layout) and then
+<code>_produce_solution_items</code>, which calls <code>_run_solution</code> once per (solution, group) and gets
+back <code>List[Deferred[Evaluation]]</code> -- one deferred per testcase.</p>
+<p>The backend seam goes at exactly that grain, <strong>per solution</strong>, because that is MOJ's grain:
+one testrun judges a solution against every test at once.</p>
+<p><strong>As built</strong> (Tasks 1-2; this replaces the sketch this section originally carried, which
+differed in three ways worth knowing about -- see below):</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nd">@dataclasses</span><span class="o">.</span><span class="n">dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">RunnerCapabilities</span><span class="p">:</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">measures_memory</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>             <span class="c1"># TestcaseLog.memory</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">captures_artifacts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>          <span class="c1"># .out / .err / .log beside the .eval</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">reports_checker_messages</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>    <span class="c1"># CheckerResult.message</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">supports_nruns</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">supports_abort</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>              <span class="c1"># can SAVE the work of a skipped testcase</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">supports_interactive</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">supports_sanitizers</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="k">class</span><span class="w"> </span><span class="nc">SolutionRunner</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="n">caps</span><span class="p">:</span> <span class="n">RunnerCapabilities</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">prepare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">RunContext</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">run_solution</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">solution</span><span class="p">,</span> <span class="n">entries</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">RunContext</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Deferred</span><span class="p">[</span><span class="n">Evaluation</span><span class="p">]]:</span> <span class="o">...</span>
+</span></code></pre></div>
+<p><code>RunContext</code> carries the skeleton, the checker and interactor digests, <code>verification</code>,
+<code>timelimit_override</code>, <code>nruns</code>, <code>abort_on</code>, and the progress handle.</p>
+<p>Three corrections the implementation forced, each of which would have broken <code>MojRunner</code>:</p>
+<ol>
+<li><strong><code>run_solution</code> is called once per SOLUTION, with the whole testset flattened in group
+   order.</strong> The first cut kept <code>_produce_solution_items</code>' group loop and called the runner
+   inside it -- which is per <em>group</em>, and would have fired one <code>moj testrun</code> per group per
+   solution while the docstring above claimed otherwise.</li>
+<li><strong>There is no <code>finalize</code>.</strong> It fired inside a <code>finally</code> around item production, which
+   only <em>builds</em> thunks -- so it ran before a single deferred resolved, and would have torn
+   a remote session down before the first result was fetched. Nothing needs it: the remote
+   problem is persistent by design (<code>.moj-id</code> is committed and reused), so a half-calibrated
+   problem is the next run's starting point, not garbage. A correctly-timed teardown hook
+   can be added when something actually needs one.</li>
+<li><strong>The abort/skip gate is not the backend's job.</strong> <code>_gated_evaluation</code> in <code>solutions.py</code>
+   wraps each returned deferred <em>when the run asks for <code>abort_on</code> and the backend declares
+   <code>supports_abort</code></em>; a run without <code>abort_on</code> gets the backend's deferreds unwrapped, which
+   is a deliberate guarantee pinned by a test. Otherwise every backend would re-implement
+   <code>_AbortGate</code> correctly or silently lose the abort -- and a batch backend would have a
+   real judge verdict overwritten with <code>SKIPPED</code>.</li>
+</ol>
+<h3 id="the-deferreds-do-not-change">The deferreds do not change<a class="headerlink" href="#the-deferreds-do-not-change" title="Permanent link">#</a></h3>
+<p>This is a requirement of the issue and it falls out naturally. <code>MojRunner.run_solution</code>
+starts the remote work <strong>in the background immediately</strong> and hands back deferreds that all
+await the same job:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">run_solution</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">solution</span><span class="p">,</span> <span class="n">entries</span><span class="p">,</span> <span class="n">ctx</span><span class="p">):</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">job</span> <span class="o">=</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">create_task</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_submit_and_poll</span><span class="p">(</span><span class="n">solution</span><span class="p">))</span>   <span class="c1"># queued on the judge now</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="k">return</span> <span class="p">[</span><span class="n">Deferred</span><span class="p">(</span><span class="k">lambda</span> <span class="n">e</span><span class="o">=</span><span class="n">e</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_slice</span><span class="p">(</span><span class="n">job</span><span class="p">,</span> <span class="n">e</span><span class="p">))</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">entries</span><span class="p">]</span>
+</span></code></pre></div>
+<p>Slice by MOJ <strong>test name</strong>, never by position -- see <code>run_solution()</code> below.</p>
+<p>Two mechanics this sketch glosses over, both found while reviewing the branch:</p>
+<ul>
+<li><strong><code>Deferred</code> will not memoize the shared job for you.</strong> <code>Deferred.__call__</code>
+  (<a href="../../rbx/box/deferred.py"><code>deferred.py</code></a>) memoizes each deferred's <em>own</em> result with a
+  bare <code>if self.cache is None</code> and no lock. N deferreds over one submission need <code>MojRunner</code>
+  to hold the job itself (an <code>asyncio.Task</code>, awaited by all of them) -- which the sketch does,
+  but nothing in <code>Deferred</code> enforces it.</li>
+<li><strong><code>MojPackager.package()</code> writes a <code>.zip</code> into <code>build_path</code> and returns its path</strong>, while
+  <code>moj upload</code> wants a <em>directory</em>. The runner uploads the directory and should not leave the
+  stray archive behind.</li>
+</ul>
+<p>Consumption order is unchanged, so the report streams exactly as it does locally; but every
+solution is already sitting in the judge queue while the first one is still being printed.
+This is why the estimation loop uses <code>testrun</code> per solution rather than reading one
+<code>moj calib --json</code>: calibration would be a single barrier, testrun gives incremental progress.</p>
+<h3 id="degrading-when-the-backend-knows-less">Degrading when the backend knows less<a class="headerlink" href="#degrading-when-the-backend-knows-less" title="Permanent link">#</a></h3>
+<p>A remote runner cannot report everything a sandbox can. <code>RunnerCapabilities</code> makes the gap
+explicit so the consumers can be audited once rather than discovered by crash:</p>
+<ul>
+<li><strong>memory</strong> -- <code>TestcaseLog.memory</code> is already <code>Optional</code>, and
+  <code>_get_evals_memory_in_bytes</code> already returns <code>Optional[int]</code>. MLE detection and the
+  limits columns need auditing.</li>
+<li><strong>artifacts</strong> -- no <code>.out</code> / <code>.err</code>. <code>_record_skipped_evaluation</code> already establishes the
+  precedent: write the <code>.eval</code> only, and let the log viewer render "(does not exist)".
+  Never write an empty file that claims the run produced no output.</li>
+<li><strong>checker message</strong> -- MOJ judges with the packaged checker and returns a code, not a
+  message. <code>CheckerResult.message</code> says it was judged remotely.</li>
+<li><strong><code>nruns &gt; 1</code></strong> -- each testrun is one run. Either N submissions, or refuse with a clear
+  message. Refusing is the default; judge time is a shared resource.</li>
+<li><strong><code>abort_on</code></strong> -- a testrun has already run every test by the time rbx sees it, so the
+  abort saves nothing and is ignored. Nothing may assume <code>SKIPPED</code> evaluations appear.
+  That sentence is only true because the probe package <strong>suppresses <code>STOPWHEN_*</code></strong>
+  (<code>_stopwhen_lines</code>): a BINARY problem would otherwise ship <code>STOPWHEN_WA/TLE/RE=y</code>,
+  and <code>build-and-test.sh</code> checks those before the <code>RUNALL</code> guard -- so the first
+  failure of a slow or wrong solution, which fails by construction, would break out of
+  the loop and return a <em>prefix</em> of the tests. Nothing is judged on a probe, so the
+  judge-time saving buys nothing to weigh against the lost timings.</li>
+</ul>
+<h3 id="selecting-a-runner">Selecting a runner<a class="headerlink" href="#selecting-a-runner" title="Permanent link">#</a></h3>
+<p>An explicit <code>--runner</code> flag, with an optional per-profile default in <code>env.rbx.yml</code>:</p>
+<div class="language-console highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="gp">$ </span>rbx<span class="w"> </span><span class="nb">time</span><span class="w"> </span>-p<span class="w"> </span>moj<span class="w"> </span>--runner<span class="w"> </span>moj
+</span></code></pre></div>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># env.rbx.yml</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">runners</span><span class="p">:</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">moj</span><span class="p">:</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">moj</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="nt">concurrency</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="nt">profiles</span><span class="p">:</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span><span class="nt">moj</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">runner</span><span class="p">:</span><span class="w"> </span><span class="nv">moj</span><span class="p p-Indicator">}</span>
+</span></code></pre></div>
+<p>The flag rather than the profile name, because a limits profile is just the
+<code>limits/&lt;name&gt;.yml</code> file <code>rbx time</code> <em>writes</em>; making its name select a backend would couple
+an output to a transport, and would leave no way to estimate MOJ limits on a local machine.
+The same flag is what <code>rbx run --runner moj</code> will use later.</p>
+<h2 id="the-moj-runner">The MOJ runner<a class="headerlink" href="#the-moj-runner" title="Permanent link">#</a></h2>
+<h3 id="prepare"><code>prepare()</code><a class="headerlink" href="#prepare" title="Permanent link">#</a></h3>
+<ol>
+<li><code>moj whoami</code> -&gt; the login. Not logged in is a hard error naming <code>moj login</code>; the CLI's
+   session is reused, rbx never handles credentials.</li>
+<li>Read-or-create <code>.moj-id</code> at the <strong>rbx package root</strong>, git-tracked, holding
+   <code>{"id": "&lt;login&gt;#rbxt-&lt;problem-id&gt;"}</code>. Committing it is what makes two setters on the
+   same problem reach the same remote problem instead of each orphaning one on the server.</li>
+<li>Build a MOJ package with <code>MojPackager</code>, carrying <strong>only the model solution</strong> in
+   <code>sols/good/</code>, the <code>TLOVERRIDE</code> block <code>ctx.timelimit_override</code> asks for, and the
+   full submission-language whitelist (see below).</li>
+<li><code>moj upload &lt;id&gt; &lt;dir&gt;</code>.</li>
+<li><code>moj calibrate &lt;id&gt;</code>, then poll <code>moj --json check &lt;id&gt;</code> until it is ready -- which is
+   <code>calibrated and not being_calibrated and not needs_recalibration</code>, the third clause
+   included because an upload that moved the checksum leaves a <em>stale</em> calibration that
+   still reports <code>calibrated: true</code>. <code>MojCheck.is_ready</code> is that predicate. Skipped
+   entirely when the problem is already ready.</li>
+</ol>
+<p><strong>The uploaded package never has to contain the solutions being timed.</strong> <code>moj testrun</code>
+takes the source in the request body, and calibration only needs one <code>good/</code> solution to
+succeed at all. So a whole session is one upload and one calibration however many solutions
+get measured -- which is also why the package can stay minimal.</p>
+<h4 id="a-third-timing-mode-not-a-new-one">A third timing mode, not a new one<a class="headerlink" href="#a-third-timing-mode-not-a-new-one" title="Permanent link">#</a></h4>
+<p><code>_time_limit_lines</code> today refuses to guess between two modes: the <code>moj</code> limits profile
+pins the limits, or <code>--calibrate</code> hands them to the judge. The runner needs a third --
+<em>pin exactly what this run asked to measure under</em> -- so the boolean <code>calibrate</code> flag
+becomes a small mode object (<code>ProfilePinned</code> / <code>JudgeCalibrated</code> /
+<code>ProbePinned(default_ms, per_rbx_language_ms)</code>). <code>ProbePinned</code> builds a <code>FixedTimeLimits</code>
+and reuses <code>fixed_limit_lines</code> unchanged; <code>calibration_tl_seconds</code> then raises
+<code>CALIBRATIONTL</code> to match on its own.</p>
+<p><strong>Why a mapping and not one number.</strong> This started as <code>UniformPinned(limit_ms)</code>, because
+<code>ctx.timelimit_override</code> was a single cap. Splitting <code>rbx time</code> into two phases (#696)
+changed the question rather than the answer:</p>
+<ul>
+<li><strong>Estimation</strong> still asks for one number -- <code>inferenceTimeout</code>, the cap every accepted
+  solution runs under -- so <code>ProbePinned</code> carries <code>default_ms</code> and nothing else, and the
+  emitted <code>conf</code> has a single <code>TLOVERRIDE[default]</code>.</li>
+<li><strong>Validation</strong> asks for <code>ceil(TL_lang x timeLimitToTle)</code>, <strong>per language group</strong>. That
+  is the bound each slow solution has to clear, and it differs by language by
+  construction, since the estimate assigns a different limit to each group.</li>
+</ul>
+<p>So the honest thing is to emit what was asked for: one <code>TLOVERRIDE[&lt;lang&gt;]</code> per language
+the run named, and <code>TLOVERRIDE[default]</code> for the rest. What must still never happen is the
+thing <code>UniformPinned</code> was defensive about -- emitting the <em><code>moj</code> profile's</em> per-language
+entries alongside a cap this run chose, which would measure some languages under a limit
+nobody asked for. <code>ProbePinned</code> cannot do that: it consults no profile, only
+<code>ctx.timelimit_override</code>.</p>
+<p>The default, when the run names several languages, is the <strong>loosest</strong> of them rather than
+the tightest. Only a language the run did <em>not</em> name falls back to it -- and no solution
+being measured is in one, since the mapping covers every language being run -- so being
+generous there cannot truncate a measurement, while being stingy could.</p>
+<p><strong>A rejected alternative: pin the loosest limit for everybody and compare locally.</strong> A TLE
+reports its real time unclamped (see the probe notes), so rbx could run every language at
+<code>max(limits)</code> and decide the verdict itself. It is worse on both counts that matter. A
+slow solution that <em>finishes</em> under the loose cap comes back WA or RE rather than TLE, and
+<code>_record_validation_run</code> reads a non-slow bad verdict as "broke for another reason", so a
+solution that is genuinely too slow would be reported as broken. And it costs judge time
+on exactly the most expensive solutions, for nothing.</p>
+<h4 id="the-language-whitelist-is-load-bearing-here">The language whitelist is load-bearing here<a class="headerlink" href="#the-language-whitelist-is-load-bearing-here" title="Permanent link">#</a></h4>
+<p><code>.moj-meta.json</code>'s <code>languages</code> is the whitelist of submission languages, and <strong>the API
+rejects a submission outside it</strong> -- a testrun included. The packager derives it from the
+languages with an <strong>ACCEPTED solution</strong>, which is right for a real problem and wrong here:
+a calibration-only package ships one accepted solution, so the whitelist would collapse to
+that one language and every testrun of a solution in another language would be refused --
+including, in the validation phase, the slow and wrong solutions, which are never accepted
+by construction.</p>
+<p>So the runner package emits the whitelist from the languages of <strong>every solution in the
+package</strong>, not from the shipped ones -- and, deliberately, not from the ones <em>this batch</em>
+tracks either. The two phases track disjoint solution sets: estimation tracks only the
+accepted ones and validation only the ones expected to be too slow. A whitelist built per
+batch would therefore differ between the phases even when the limits did not move, paying
+an upload and a calibration for nothing; and where it happened to fingerprint equal, the
+validation phase would be submitting slow solutions against the estimation phase's
+accepted-only whitelist, which the API refuses. A language rbx cannot map to a MOJ id is
+refused only when this batch actually runs a solution in it. The narrowing that protects a real problem's
+submission surface buys nothing on a private, throwaway <code>rbxt-</code> problem.</p>
+<p>Relatedly, MOJ picks the language from the <strong>file extension</strong> of the uploaded source
+(<code>moj testrun</code> sends <code>filename: basename(sol)</code>), so the amalgamated file must carry the
+right one.</p>
+<h3 id="run_solution"><code>run_solution()</code><a class="headerlink" href="#run_solution" title="Permanent link">#</a></h3>
+<ol>
+<li>Amalgamate the solution to a single file. MOJ compiles a submission from one file, and
+   the packager already does this for the solutions it ships.</li>
+<li><code>moj testrun &lt;dir&gt; &lt;file&gt; --no-wait</code>, and parse the run id out of the prose it prints.
+   <strong>No <code>--json</code></strong> -- see "Confirmed from the CLI source": <code>--no-wait</code> returns before the
+   JSON branch, so the flag buys nothing and the id has to be read from the text.</li>
+<li>Poll <code>moj --json testrun-status &lt;run&gt;</code> until <code>status == "done"</code>.</li>
+<li>Map each <code>{name, code, time, tl}</code> onto an <code>Evaluation</code>. Tests are paired <strong>by name</strong>
+   through <a href="../../rbx/box/packaging/moj/naming.py"><code>packaging/moj/naming.py</code></a>, the same
+   module that named them into the package -- never by position, so a naming change can
+   never silently misattribute a timing.</li>
+<li>Dispatch <strong>one testrun at a time</strong>. MOJ caps queued testruns per <em>account</em> and answers
+   429 past it (waited out, since nothing can cancel a testrun); <code>moj testrun</code> cannot pick
+   a judge, so two in flight may share one and inflate each other; and the park is shared.
+   Dispatch stays eager, so the next testrun leaves the moment the previous finishes rather
+   than when the report gets to it.</li>
+</ol>
+<h2 id="the-timing-flow">The timing flow<a class="headerlink" href="#the-timing-flow" title="Permanent link">#</a></h2>
+<p><code>rbx time</code> runs in two phases (#696, #693), and the split is what decides how many times a
+probe package is uploaded. The phases are not an rbx-time detail the runner can ignore:
+they differ in <em>which</em> solutions run and in <em>what limit</em> they run under, and both reach
+the runner as a plain <code>run_solutions</code> call with a different <code>timelimit_override</code>.</p>
+<h3 id="phase-1-estimation">Phase 1, estimation<a class="headerlink" href="#phase-1-estimation" title="Permanent link">#</a></h3>
+<ul>
+<li><code>timing._run_for_inference</code> runs <strong>only the accepted solutions</strong>, capped at
+  <code>strategy.inferenceTimeout</code>, and passes that as <code>timelimit_override</code>. On the MOJ runner
+  it becomes one <code>TLOVERRIDE[default]</code>, so the judge enforces the cap exactly as the
+  sandbox does locally.</li>
+<li>Their timings feed <code>build_estimation_context</code> and the existing picker, unchanged.</li>
+<li>The solutions expected to be too slow are <strong>not</strong> run here. That is #696's central
+  point: nothing bounds how long they take, so the only limit that could terminate them is
+  a cap set for somebody else, and a measurement taken under it answers no question. On a
+  shared judge park that also happens to be the expensive half of the run, so the MOJ
+  runner gets the saving for free.</li>
+</ul>
+<p>There is always a cap. <code>inferenceTimeout</code> is a property of the estimation rather than of
+the multipliers and is resolved for both estimation modes (#695), so the formula-mode
+refusal this design once specified is gone: the runner falls back to the configured
+<code>inferenceTimeout</code> when a caller passes no override at all, and has nothing left to refuse.
+The <code>-1</code> "no override" sentinel is still handled -- no <code>rbx time</code> phase passes it any more,
+but any other caller of <code>run_solutions</code> may, and pinning it would emit
+<code>TLOVERRIDE[default]=-0.001</code> and TLE every measurement.</p>
+<h3 id="phase-2-validation">Phase 2, validation<a class="headerlink" href="#phase-2-validation" title="Permanent link">#</a></h3>
+<ul>
+<li>Runs <strong>only the solutions expected to be too slow</strong>, each at
+  <code>ceil(TL_lang x timeLimitToTle)</code> -- <code>timing_validation.probe_limit</code> -- and aborts each at
+  its first timeout.</li>
+<li>The limit is <code>timeLimitToTle x TL</code>, not the decided TL itself. A solution that is
+  supposed to be too slow must be given just enough margin to <em>prove</em> it: killed at exactly
+  the limit it only shows it was over; killed at the TLE bound it shows it was comfortably
+  over, which is what the multiplier means.</li>
+<li>It is <strong>per language</strong>, because the estimate assigns a different limit to each language
+  group. The probe pins one <code>TLOVERRIDE[&lt;lang&gt;]</code> each; see "A third timing mode" above for
+  why the alternative -- one loose cap plus local arithmetic -- was rejected.</li>
+<li>The judge stops each solution at its <strong>first timeout</strong>, because the probe package sets
+  <code>STOPWHEN_TLE=y</code>. rbx cannot do it: the local gate works by not dispatching the
+  testcases after a timeout, and a testrun has already run everything by the time rbx
+  looks. Without it, the solutions that are by construction the most expensive in the run
+  cost a full testset each to answer a question one test settles. <code>STOPWHEN_WA</code>/<code>_RE</code> stay
+  off, matching <code>abort_on</code>, which a WA does not trip either.</li>
+<li>A solution killed there is <em>confirmed</em> too slow; one that finishes <em>violates</em> the bound
+  and hands over the real time. A violation re-opens the picker, so phase 2 may run
+  <strong>several times</strong> in one command, at a different set of limits each time.
+  <code>timing_validation.SlowKnowledge</code> is what keeps that cheap: a solution already killed at
+  some limit is also killed at any lower one, and a measured one is answered by
+  arithmetic, so only the solutions whose bound went up run again.</li>
+</ul>
+<h3 id="why-the-package-is-uploaded-twice-and-a-problem-per-phase">Why the package is uploaded twice, and a problem per phase<a class="headerlink" href="#why-the-package-is-uploaded-twice-and-a-problem-per-phase" title="Permanent link">#</a></h3>
+<p>This is the cost #696 makes unavoidable, and it is worth stating plainly rather than
+rediscovering: <strong>the two phases measure under different limits, and MOJ's limit lives in
+the package</strong>. <code>TLOVERRIDE</code> is emitted into <code>conf</code>, <code>conf</code> is inside
+<code>_directory_fingerprint</code>, so within one command the validation phase re-uploads, and --
+since the checksum moved -- very likely re-calibrates. Each extra picker round trip that
+changes a limit costs another one.</p>
+<p><strong>So each phase gets its own remote problem</strong>: <code>&lt;login&gt;#rbxt-&lt;slug&gt;</code> for estimation and
+<code>…-slow</code> for validation. On one shared problem the two evict each other -- whichever ran
+last leaves its fingerprint recorded, so the next run's first phase always mismatches,
+and the second then mismatches what the first just wrote -- which made the upload fast
+path <em>unreachable in practice</em>. A problem each keeps both packages stable across runs, so
+a second <code>rbx time</code> at the same limits uploads nothing at all. The id is a suffix on the
+slug rather than a second prefix, so <code>is_rbxt_id</code> -- the guard against uploading over a
+real problem -- keeps one marker; and it is derived rather than stored, so <code>.moj-id</code>
+still holds the one id the <code>moj</code> CLI's own convention expects.</p>
+<p><strong>Reaffirmed 2026-08-21, after the probe found that a TLE reports its time unclamped.</strong>
+That finding makes a one-upload alternative sound -- keep <code>TLOVERRIDE = inferenceTimeout</code>
+for the whole session and recompute the phase-2 verdicts locally, since the real times come
+back regardless. It was weighed and <strong>rejected</strong>, now for two reasons rather than one:</p>
+<ul>
+<li>A slow solution runs <em>to the cap on every test</em>, by definition. Letting it run to a 10s
+  <code>inferenceTimeout</code> instead of dying at <code>timeLimitToTle x TL</code> multiplies the judge time of
+  exactly the solutions that are already the most expensive, across the whole testset, on a
+  shared two-judge park.</li>
+<li><code>_record_validation_run</code> reads the judge's <em>verdict</em>, not only its timing. A slow
+  solution that finishes under a loose cap comes back WA or RE rather than TLE, and a
+  non-slow bad verdict is read as "broke for another reason" -- so a solution that is
+  genuinely too slow would be reported as broken. Measuring at the real bound is what makes
+  the judge's own verdict answer the question being asked.</li>
+</ul>
+<p>So the wiring must surface progress during a wait that may run into minutes rather than
+looking hung, and the testrun cache must survive across phases -- which it does: its key is
+the package fingerprint plus the submitted bytes, so a phase-2 re-run at limits already
+probed costs no judge time even though the package moved.</p>
+<h2 id="known-limitation-the-judge-is-not-selectable">Known limitation: the judge is not selectable<a class="headerlink" href="#known-limitation-the-judge-is-not-selectable" title="Permanent link">#</a></h2>
+<p><code>moj calibrate</code> targets judges (<code>--hosts</code>, <code>--per-cpu</code>, <code>--all-judges</code>, and <code>--judges</code>
+lists host + CPU + online). <strong><code>moj testrun</code> does not</strong>: <code>cmd_testrun</code> posts only
+<code>{id, filename, code_b64}</code> to <code>/problems/test-run</code> and the server picks the machine. On a
+heterogeneous park that is timing noise rbx cannot control, and a time limit must be safe on
+the <em>slowest</em> judge.</p>
+<p><code>moj calib --json</code> does report per-host timings, for every solution dir. So the escape hatch
+exists: one <code>moj calibrate --per-cpu</code> with the full solution set gives cross-machine data.
+This design does not use it, because it is a single barrier and loses the incremental
+progress that motivated testrun in the first place. It is the natural follow-up once the
+runner works, and is called out here so the limitation is not rediscovered later.</p>
+<p><strong>In practice the park is homogeneous, which softens this a lot.</strong> Observed 2026-08-21 via
+<code>moj calibrate --judges</code>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>judge      Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz  online
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>judge-sp1  Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz  online
+</span></code></pre></div>
+<p>Two judges, <strong>the same CPU model</strong>, both online (<code>moj status</code>: 2/2, 56 CPUs). So whichever
+machine the server picks for a testrun, the timings are comparable, and the cross-host spread
+this section warns about is currently near zero. Note what that does <em>not</em> mean: identical
+CPU models still differ under load, thermal state and memory configuration, so this makes the
+limitation tolerable rather than absent — and a park that gains a third, different machine
+would silently reintroduce it. <code>--per-cpu</code> would today target exactly one judge, which is why
+the cross-machine follow-up buys little right now.</p>
+<h2 id="incremental-delivery">Incremental delivery<a class="headerlink" href="#incremental-delivery" title="Permanent link">#</a></h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Task</th>
+<th>What ships</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><strong>Probe</strong> a throwaway <code>rbxt-</code> problem on the live MOJ: does <code>testrun</code> require a prior calibration (and a prior <code>moj validate</code>); the <code>code</code> vocabulary; does the response name the host; is a submission outside <code>languages</code> really refused; does a <code>TLOVERRIDE</code>-only <code>conf</code> change force recalibration</td>
+<td>notes + recorded JSON fixtures</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Extract <code>SolutionRunner</code> / <code>RunContext</code> / <code>LocalRunner</code>; <code>run_solutions(runner=)</code></td>
+<td>pure refactor, no behavior change</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>RunnerCapabilities</code>; audit every consumer of memory, artifacts and checker messages for <code>None</code>-tolerance</td>
+<td>degradation is safe</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>.moj-id</code> handling and a <code>moj</code> CLI wrapper (<code>whoami</code>, <code>upload</code>, <code>calibrate</code>, <code>check</code>, <code>testrun</code>, <code>testrun-status</code>) over <code>--json</code></td>
+<td>testable against the recorded fixtures</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>MojPackager</code>: a <code>ProbePinned</code> timing mode, a calibration-only solution set, and the widened language whitelist</td>
+<td>the package the runner uploads</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>MojRunner.prepare</code> -- upload, calibrate, poll, already-calibrated fast path</td>
+<td><code>rbx time -p moj --runner moj</code> reaches a calibrated remote problem</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>MojRunner.run_solution</code> -- testrun fan-out, verdict mapping, background task, concurrency cap</td>
+<td>phase 1 end to end</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Wire into <code>timing._run_for_inference</code> and <code>timing._validate_upper_bound</code>; the validation phase's re-upload at <code>timeLimitToTle x TL</code></td>
+<td>the full flow, both phases</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Cache testrun results by (package checksum, solution digest, <code>TLOVERRIDE</code>)</td>
+<td>re-runs cost no judge time</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Task 8, as built.</strong> The three terms the table names turned out to be two: <code>TLOVERRIDE</code>
+is emitted into the package's <code>conf</code>, so it is already inside <code>_directory_fingerprint</code> --
+which is also why the validation phase misses on every solution whose limit moved, exactly
+as "Why the package is uploaded twice" above says it must. So the key is (package fingerprint, remote problem id, the
+<strong>amalgamated bytes</strong> submitted, the submitted file name, a cache version). Not the source
+path and not its mtime: amalgamation inlines headers, so the same path can be two
+programs.</p>
+<p>What is stored is the judge's own <code>TestrunStatus</code>, run-level verdict included, rather than
+the <code>_TestrunResult</code> derived from it -- the derivation depends on which testcases the
+current run asked about, and a hit goes back through the same <code>_result_from_status</code> as a
+fresh response, which is what makes a hit and a miss produce identical <code>Evaluation</code>s.
+Nothing that raises out of that derivation is written, so a <code>Compilation Error</code> and an
+unrecognised verdict code are never cached; a WA or a TLE is, because it is a real
+measurement of a solution that is supposed to fail.</p>
+<p>It lives beside the upload record under <code>get_problem_cache_dir()</code>, for the same reason:
+losing it must cost a redundant testrun, never a wrong measurement. <strong>What it cannot see</strong>
+is what <code>prepare</code>'s fingerprint cannot see -- rbx has no way to ask MOJ which package a
+problem currently holds, so another machine's upload (or a <code>moj upload</code> by hand) is
+invisible to both -- plus the park itself: its hardware, its load, and which judge the
+server picked. A cached timing is a measurement from whenever it was taken. No
+<code>--no-cache</code> flag: the key covers everything rbx can observe, and for the blind spots the
+honest fix is to delete the directory the cache-hit line names.</p>
+<p>Task 0 gates 4 and 6; tasks 1 and 2 are independent of every MOJ-specific one and can land
+first on their own merits.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/rsalesc/rbx" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.code.copy", "content.code.annotate", "navigation.sections", "navigation.indexes", "navigation.path", "navigation.expand", "search.highlight", "search.suggest", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": {"accepted": "\u003cspan style=\"color: green\"\u003eaccepted\u003c/span\u003e", "wrong_answer": "\u003cspan style=\"color: red\"\u003ewrong answer\u003c/span\u003e"}, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="../../assets/asciinema-player.min.js"></script>
+      
+        <script src="../../assets/casts-loop.js"></script>
+      
+        <script src="../../termynal.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,22 @@
+% Minimal "contest chrome" package, standing in for an icpc-style .sty.
+% Its only job in the spike is to prove that \usepackage{icpc} resolves from
+% the overlay root (where pdflatex runs) even though the document being
+% compiled subimports content from deep subfolders.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{icpc}[2026/06/09 statements-v2 spike chrome]
+
+\RequirePackage{graphicx}
+\RequirePackage{fancyvrb}
+
+% The sample-printing macro real statements use. Prints I/O verbatim from files.
+% Crucially, \VerbatimInput does NOT respect \subimport's base, so callers must
+% pass ROOT-RELATIVE paths here (design §6.4).
+\newcommand{\example}[2]{%
+  \par\noindent\textbf{Input}\par
+  \VerbatimInput{#1}%
+  \par\noindent\textbf{Output}\par
+  \VerbatimInput{#2}%
+  \par
+}
+
+\endinput
