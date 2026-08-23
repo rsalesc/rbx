@@ -52,12 +52,21 @@ that silently lacks the extension.
 ### The hatchling trap
 
 The `.vsix` is a build output, so it is gitignored -- and hatchling excludes
-VCS-ignored files from wheels by default. Including it needs an explicit
+VCS-ignored files by default. Including it needs an explicit `artifacts` entry
+on **both** build targets:
 
 ```toml
 [tool.hatch.build.targets.wheel]
 artifacts = ["rbx/resources/vscode/*.vsix"]
+
+[tool.hatch.build.targets.sdist]
+artifacts = ["rbx/resources/vscode/*.vsix"]
 ```
+
+The sdist half is not redundant: `uv build` builds the sdist first and then the
+wheel *from that sdist*, so a vsix dropped at the sdist stage never reaches the
+wheel however the wheel target is configured. Verified by building both ways --
+with the wheel entry alone, the wheel comes out empty.
 
 Without this the wheel builds fine, tests pass, and the command breaks only for
 real users. It is the one step of this design that fails invisibly.
@@ -113,7 +122,10 @@ already handles by graceful degradation, so it stays out until it earns its plac
 `.vscode-server`, per the detected editor) is a JSON list of installed
 extensions with `identifier.id` and `version`. Finding `rsalesc.rbx-vscode` in it
 is a single file read -- sub-millisecond, no subprocess -- so it can sit at the
-end of `rbx run` and at `rbx ui` startup without touching their timing.
+end of `rbx run` and of `rbx ui` without touching their timing.
+
+For `rbx ui` that means when the UI *exits*, not at startup: a fullscreen TUI
+wipes anything printed ahead of it, so a startup hint is a hint nobody sees.
 
 The comparison is `utils.check_version_compatibility_between`, whose `OUTDATED`
 case is exactly this condition.
