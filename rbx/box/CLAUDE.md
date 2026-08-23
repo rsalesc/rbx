@@ -351,11 +351,11 @@ verdict code are things the setter is about to fix, and a cached one would make 
 look like it did nothing. A **bad verdict is cached** -- a WA or a TLE is a real,
 reproducible measurement, and the validation phase exists to take exactly those. The cache lives beside
 the upload record in the disposable problem cache, is consulted *before* the concurrency
-slot (a hit costs no judge time and must not queue behind one that does), and is announced
-once per testrun from `_evaluation_from_job`, naming the directory to delete. There is no
-`--no-cache` flag: the key covers everything rbx can observe, and what it cannot observe --
-another machine's `moj upload`, a park that changed under the numbers -- is fixed by
-throwing the observations away.
+slot (a hit costs no judge time and must not queue behind one that does), and is not
+announced beyond the solution's `cached` board chip -- the explanatory paragraph it used to
+print per solution drowned the report. There is no `--no-cache` flag: the key covers
+everything rbx can observe, and what it cannot observe -- another machine's `moj upload`, a
+park that changed under the numbers -- is fixed by deleting the cache directory.
 
 Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 

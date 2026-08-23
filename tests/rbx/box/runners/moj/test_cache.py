@@ -18,7 +18,6 @@ same fake the rest of the runner's tests drive.
 import asyncio
 import json
 import pathlib
-import re
 from typing import Dict, List, Optional, Tuple
 
 import pytest
@@ -36,8 +35,6 @@ from tests.rbx.box.runners.moj.test_run_solution import (
 from tests.rbx.box.runners.moj.test_runner import _context
 
 pytestmark = pytest.mark.shared_cache
-
-_ANSI = re.compile(r'\x1b\[[0-9;]*m')
 
 
 # What every solution in this file is measured as, unless a test says otherwise.
@@ -139,47 +136,6 @@ async def test_a_hit_produces_exactly_the_evaluations_a_miss_did(
     hit = await _time(fake, ctx)
 
     assert _dump(hit) == _dump(missed)
-
-
-async def test_a_hit_is_reported_once_and_says_how_to_measure_again(
-    testing_pkg, tmp_path, monkeypatch, capsys
-):
-    """A setter who expected a judge round-trip and got an instant answer has to
-    be told why -- and told the one way to force a real measurement.
-
-    There is no `--no-cache` flag: the key already covers everything rbx can
-    observe, and what it cannot observe (somebody else's upload, a park that
-    changed) is fixed by throwing the observations away. So the line names the
-    directory to delete. Said once per testrun, not once per testcase, and from
-    the consumer's own thread of control -- the polling tasks say nothing.
-    """
-    fake = _session(testing_pkg, tmp_path, monkeypatch)
-    ctx = _context(tmp_path, entries=build_entries(tmp_path, ['samples']))
-
-    await _time(fake, ctx)
-    capsys.readouterr()
-    await _time(fake, ctx)
-
-    out = _ANSI.sub('', capsys.readouterr().out)
-    assert out.count('Reused MOJ timings') == 1
-    assert 'sol.cpp' in out
-    # The real testrun id, so the run that was actually measured can be looked up.
-    assert fake.submissions[0][0] in out
-    # And where the observations live, which is the escape hatch.
-    assert runner_module.TESTRUN_CACHE_DIR_NAME in out
-
-
-async def test_nothing_is_said_when_the_judge_really_ran_it(
-    testing_pkg, tmp_path, monkeypatch, capsys
-):
-    """The counter-test: a message printed unconditionally would satisfy the one
-    above while telling the setter a submission never happened."""
-    fake = _session(testing_pkg, tmp_path, monkeypatch)
-    ctx = _context(tmp_path, entries=build_entries(tmp_path, ['samples']))
-
-    await _time(fake, ctx)
-
-    assert 'Reused MOJ timings' not in _ANSI.sub('', capsys.readouterr().out)
 
 
 async def test_the_cache_lives_in_the_disposable_problem_cache(
