@@ -2997,6 +2997,49 @@ SPEC = {
                 }
             ],
         },
+        {
+            'children': [
+                {
+                    'help': 'Install the rbx extension into VS Code (or...',
+                    'is_group': False,
+                    'name': 'install',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Editor to install into: cursor, windsurf, '
+                            'codium, code-insiders, code.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--editor', '-e'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                }
+            ],
+            'help': 'Manage the rbx editor extension...',
+            'is_group': True,
+            'name': 'vscode',
+            'panel': 'Misc',
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
     ],
     'help': None,
     'is_group': True,

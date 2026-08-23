@@ -111,9 +111,17 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["rbx"]
 exclude = ["rbx/testdata", "docs"]
+# The .vsix is a build output and therefore gitignored, and hatchling drops
+# VCS-ignored files from the wheel by default. Without this the wheel builds
+# cleanly and `rbx vscode install` is broken for users only.
+artifacts = ["rbx/resources/vscode/*.vsix"]
 
 [tool.hatch.build.targets.sdist]
 exclude = ["rbx/testdata", ".claude", ".worktrees", "docs"]
+# Also here, not just on the wheel: `uv build` builds the sdist first and then
+# the wheel *from that sdist*, so a vsix dropped here never reaches the wheel
+# however the wheel target is configured.
+artifacts = ["rbx/resources/vscode/*.vsix"]
 
 [tool.ruff]
 extend-exclude = ["rbx/box/ui/_vendor"]

@@ -63,7 +63,13 @@ run = "python scripts/release.py --prerelease rc {{arg(name='bump_args', var=tru
 
 [tasks.build]
 description = "Clean build the package"
-run = "rm -rf dist/ && uv build"
+# The .vsix is built first: `rbx vscode install` reads it out of the wheel, and
+# a wheel built without it is broken for users only -- every test still passes.
+run = [
+  "rm -rf dist/ rbx/resources/vscode/",
+  "mise run vscode:vsix",
+  "uv build",
+]
 
 [tasks.publish]
 description = "Build and publish to PyPI"
@@ -127,3 +133,8 @@ run = "npm test"
 description = "Build the VS Code extension for publishing"
 dir = "vscode"
 run = "npm run package"
+
+[tasks."vscode:vsix"]
+description = "Build the extension .vsix that ships inside the wheel"
+dir = "vscode"
+run = "npm run package && npm run vsix"

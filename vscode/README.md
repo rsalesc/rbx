@@ -1,5 +1,30 @@
 # rbx for VS Code
 
+## Installing
+
+From the editor's integrated terminal:
+
+```
+rbx vscode install
+```
+
+That sideloads the `.vsix` bundled with your `rbx`, so the extension always
+matches the CLI that produced the runs it reads. Reload the window afterwards --
+a freshly installed extension does not activate in windows that are already
+open.
+
+Cursor, Windsurf and VSCodium work the same way: they all report themselves as
+VS Code, and `rbx` tells them apart by which app the terminal belongs to. Pass
+`--editor cursor` (or `windsurf`, `codium`, `code-insiders`) if it guesses
+wrong, which is also how you install from a terminal outside the editor.
+
+Over SSH or in a devcontainer this installs into the *remote* extension host --
+which is the right place, since that is where `.rbx/runs/` lives.
+
+The extension is not published on any marketplace. When your `rbx` ships a newer
+extension than the one you have installed, `rbx run` says so once and points you
+back at this command.
+
 Browse the results of an `rbx run` without leaving the editor: solution →
 group → testcase, with verdicts, timings and a diff of what a solution printed
 against the expected answer.

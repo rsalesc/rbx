@@ -58,6 +58,8 @@ from rbx.box.solutions import (
 from rbx.box.statements import build_statements
 from rbx.box.testcases import main as testcases
 from rbx.box.tooling import main as tooling
+from rbx.box.vscode import extension as vscode_extension
+from rbx.box.vscode import main as vscode
 from rbx.grading import grading_context
 from rbx.grading.judge.lock import CacheBusyError
 
@@ -125,6 +127,13 @@ app.add_typer(
     name='tool, tooling',
     cls=annotations.AliasGroup,
     help='Manage tooling (sub-command).',
+    rich_help_panel='Misc',
+)
+app.add_typer(
+    vscode.app,
+    name='vscode',
+    cls=annotations.AliasGroup,
+    help='Manage the rbx editor extension (sub-command).',
     rich_help_panel='Misc',
 )
 
@@ -269,6 +278,9 @@ def ui():
     from rbx.box.ui import main as ui_pkg
 
     ui_pkg.start()
+    # After the UI, not before: a fullscreen TUI wipes anything printed ahead of
+    # it, so a startup hint is a hint nobody sees.
+    vscode_extension.print_outdated_hint()
 
 
 @app.command(
@@ -612,6 +624,8 @@ async def run(
 
         if fail_fast:
             _print_fail_fast_warning(console.console)
+
+        vscode_extension.print_outdated_hint()
 
         if not ok:
             raise typer.Exit(1)
