@@ -1,6 +1,15 @@
+import json
 import pathlib
+from typing import Any, List
 
 from rbx.box.vscode import extension
+
+
+def _write_extensions_json(root: pathlib.Path, entries: List[Any]) -> pathlib.Path:
+    extensions = root / 'extensions'
+    extensions.mkdir(parents=True, exist_ok=True)
+    (extensions / 'extensions.json').write_text(json.dumps(entries))
+    return root
 
 
 def test_bundled_vsix_is_none_when_directory_is_absent(tmp_path: pathlib.Path):
@@ -88,3 +97,87 @@ def test_editor_by_key_allows_an_explicit_override():
     assert cursor is not None
     assert cursor.binary == 'cursor'
     assert extension.editor_by_key('nope') is None
+
+
+def test_installed_version_is_none_without_an_extensions_file(tmp_path: pathlib.Path):
+    assert extension.installed_version(tmp_path) is None
+
+
+def test_installed_version_reads_the_entry_for_our_extension(tmp_path: pathlib.Path):
+    _write_extensions_json(
+        tmp_path,
+        [
+            {'identifier': {'id': 'ms-python.python'}, 'version': '2024.1.0'},
+            {'identifier': {'id': 'rsalesc.rbx-vscode'}, 'version': '0.1.0'},
+        ],
+    )
+
+    assert extension.installed_version(tmp_path) == '0.1.0'
+
+
+def test_installed_version_is_none_when_our_extension_is_absent(
+    tmp_path: pathlib.Path,
+):
+    _write_extensions_json(
+        tmp_path, [{'identifier': {'id': 'ms-python.python'}, 'version': '2024.1.0'}]
+    )
+
+    assert extension.installed_version(tmp_path) is None
+
+
+def test_installed_version_is_none_when_the_file_is_malformed(tmp_path: pathlib.Path):
+    # A half-written extensions.json must never break `rbx run`.
+    extensions = tmp_path / 'extensions'
+    extensions.mkdir(parents=True)
+    (extensions / 'extensions.json').write_text('{not json')
+
+    assert extension.installed_version(tmp_path) is None
+
+
+def test_installed_version_tolerates_entries_of_the_wrong_shape(
+    tmp_path: pathlib.Path,
+):
+    _write_extensions_json(
+        tmp_path,
+        [
+            'not-a-dict',
+            {'identifier': 'not-a-dict'},
+            {'identifier': {'id': 'rsalesc.rbx-vscode'}, 'version': '0.1.0'},
+        ],
+    )
+
+    assert extension.installed_version(tmp_path) == '0.1.0'
+
+
+def test_installed_version_matches_the_id_case_insensitively(tmp_path: pathlib.Path):
+    _write_extensions_json(
+        tmp_path, [{'identifier': {'id': 'rsalesc.RBX-VSCode'}, 'version': '0.3.0'}]
+    )
+
+    assert extension.installed_version(tmp_path) == '0.3.0'
+
+
+def test_editor_home_picks_the_first_existing_directory(tmp_path: pathlib.Path):
+    editor = extension.editor_by_key('code')
+    assert editor is not None
+    (tmp_path / '.vscode').mkdir()
+
+    assert extension.editor_home(editor, tmp_path) == tmp_path / '.vscode'
+
+
+def test_editor_home_prefers_the_remote_directory(tmp_path: pathlib.Path):
+    # Over SSH or in a devcontainer the extensions live under *-server, and that
+    # is where the extension has to be for it to see .rbx/runs/ at all.
+    editor = extension.editor_by_key('code')
+    assert editor is not None
+    (tmp_path / '.vscode').mkdir()
+    (tmp_path / '.vscode-server').mkdir()
+
+    assert extension.editor_home(editor, tmp_path) == tmp_path / '.vscode-server'
+
+
+def test_editor_home_is_none_when_nothing_exists(tmp_path: pathlib.Path):
+    editor = extension.editor_by_key('code')
+    assert editor is not None
+
+    assert extension.editor_home(editor, tmp_path) is None

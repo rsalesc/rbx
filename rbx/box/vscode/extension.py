@@ -8,6 +8,7 @@ own `extensions.json`.
 
 import dataclasses
 import importlib.resources
+import json
 import pathlib
 import re
 from typing import Mapping, Optional, Tuple
@@ -84,6 +85,48 @@ def detect_editor(env: Mapping[str, str]) -> Optional[Editor]:
             return editor
     # An integrated terminal that told us nothing else is VS Code.
     return editor_by_key('code')
+
+
+def editor_home(
+    editor: Editor, home: Optional[pathlib.Path] = None
+) -> Optional[pathlib.Path]:
+    home = home if home is not None else pathlib.Path.home()
+    for candidate in editor.homes:
+        root = home / candidate
+        if root.is_dir():
+            return root
+    return None
+
+
+def installed_version(root: pathlib.Path) -> Optional[str]:
+    """The version of our extension the editor currently has enabled.
+
+    The extensions *directory* can hold several versions of one extension at
+    once, so `extensions.json` is the only authoritative record of which one is
+    live.
+    """
+    path = root / 'extensions' / 'extensions.json'
+    try:
+        entries = json.loads(path.read_text())
+    except (OSError, ValueError):
+        # A missing, unreadable or half-written extensions.json is not an error
+        # worth surfacing -- it just means we cannot tell, so we say nothing.
+        return None
+    if not isinstance(entries, list):
+        return None
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        identifier = entry.get('identifier') or {}
+        if not isinstance(identifier, dict):
+            continue
+        if str(identifier.get('id', '')).lower() != EXTENSION_ID.lower():
+            continue
+        version = entry.get('version')
+        if isinstance(version, str) and utils.is_valid_semver(version):
+            return version
+    return None
 
 
 def vsix_dir() -> pathlib.Path:
