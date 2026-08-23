@@ -6,6 +6,7 @@ from unittest import mock
 import pytest
 from typer.testing import CliRunner
 
+from rbx.box.contest import contest_utils
 from rbx.box.contest import main as contest_main
 
 
@@ -16,6 +17,16 @@ def runner() -> CliRunner:
 
 def _write_single_contest(root: pathlib.Path) -> None:
     (root / 'contest.rbx.yml').write_text('name: ctt\nproblems: []\n')
+
+
+@pytest.fixture
+def clear_package_caches():
+    # `find_contest_package` and friends are lru_cached on the resolved paths,
+    # so a test that runs a command inside a temporary contest would otherwise
+    # leave that contest visible to whatever runs next.
+    contest_utils.clear_all_caches()
+    yield
+    contest_utils.clear_all_caches()
 
 
 def _write_minimal_problem(dest: pathlib.Path, name: str) -> None:
@@ -361,7 +372,10 @@ class TestContestOn:
 
     @pytest.fixture
     def contest_dir(
-        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        clear_package_caches,
     ) -> pathlib.Path:
         monkeypatch.chdir(tmp_path)
         (tmp_path / 'contest.rbx.yml').write_text(
@@ -439,7 +453,10 @@ class TestContestOn:
 class TestContestEach:
     @pytest.fixture
     def contest_dir(
-        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        clear_package_caches,
     ) -> pathlib.Path:
         monkeypatch.chdir(tmp_path)
         (tmp_path / 'contest.rbx.yml').write_text(

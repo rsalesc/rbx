@@ -303,6 +303,22 @@ class TabState:
         return self._append_sub_command(name, shell_command)
 
     @property
+    def active_sub_command_index(self) -> Optional[int]:
+        """The sub-command worth showing when this tab is opened.
+
+        The one that is running, or the next one up if the tab is between
+        commands. Falls back to the last one once the whole queue is done --
+        with nothing left to watch, its output is what you came to read.
+        """
+        if not self.sub_commands:
+            return None
+        for status in (CommandStatus.RUNNING, CommandStatus.PENDING):
+            for i, sub_command in enumerate(self.sub_commands):
+                if sub_command.status is status:
+                    return i
+        return len(self.sub_commands) - 1
+
+    @property
     def is_idle(self) -> bool:
         if not self.sub_commands:
             return True
@@ -618,8 +634,30 @@ class rbxCommandApp(rbxBaseApp):
         sub.status = CommandStatus.RUNNING
         self._update_sidebar(task.terminal_id)
         self._refresh_select_if_active(task.terminal_id)
+        self._follow_running_sub_command(task.terminal_id, sub)
         pane = self.query_one(f'#{sub.pane_id}', CommandPane)
         pane.execute(task.command)
+
+    def _follow_running_sub_command(self, tab_index: int, started: SubCommand) -> None:
+        """Move the view onto a command that just started.
+
+        Only when the view is parked on a command that already finished --
+        typically the previous link of the same chain. A pending selection is
+        someone looking ahead on purpose, so it is left alone.
+        """
+        if tab_index != self._active_tab:
+            return
+        tab = self._tabs[tab_index]
+        select = self.query_one('#command-select', Select)
+        if select.value is Select.BLANK:
+            return
+        current: int = select.value  # type: ignore[assignment]
+        if not 0 <= current < len(tab.sub_commands):
+            return
+        if tab.sub_commands[current].status not in _FINISHED_STATUSES:
+            return
+        select.value = tab.sub_commands.index(started)
+        self._show_pane(started.pane_id)
 
     def _on_tab_selected(self, index: Optional[int]):
         if index is None:
@@ -630,12 +668,14 @@ class rbxCommandApp(rbxBaseApp):
         self._active_tab = index
         self._refresh_select()
 
-        # Select the latest sub-command by default.
+        # Land on the command that is actually executing, not on the tail of
+        # the queue -- with a chain, the last one has not started yet.
         tab = self._tabs[index]
         select = self.query_one('#command-select', Select)
-        if tab.sub_commands:
-            select.value = len(tab.sub_commands) - 1
-            self._show_pane(tab.sub_commands[-1].pane_id)
+        active = tab.active_sub_command_index
+        if active is not None:
+            select.value = active
+            self._show_pane(tab.sub_commands[active].pane_id)
         else:
             # Hide all panes for this tab.
             container = self.query_one('#command-pane-container', Vertical)
