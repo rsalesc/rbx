@@ -1131,6 +1131,7 @@ rbx contest statements build <NAMES> [OPTIONS]
 | `--vars` | TEXT | Variables to be used in the statements. | - |
 | `--install-tex` | BOOLEAN | Whether to install missing LaTeX packages. | `False` |
 | `-p`, `--profile` | TEXT | Timing profile to render statements against. Problems missing this profile are skipped with a warning. | - |
+| `--partial` | BOOLEAN | Build a statement even if some of its problems fail, omitting them. Without this, a problem that fails makes its statement fail. | `False` |
 
 
 ---
@@ -1172,6 +1173,7 @@ rbx contest tutorials build <NAMES> [OPTIONS]
 | `--vars` | TEXT | Variables to be used in the tutorials. | - |
 | `--install-tex` | BOOLEAN | Whether to install missing LaTeX packages. | `False` |
 | `-p`, `--profile` | TEXT | Timing profile to render tutorials against. Problems missing this profile are skipped with a warning. | - |
+| `--partial` | BOOLEAN | Build a statement even if some of its problems fail, omitting them. Without this, a problem that fails makes its statement fail. | `False` |
 
 
 ---
