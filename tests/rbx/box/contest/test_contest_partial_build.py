@@ -1,4 +1,6 @@
 import inspect
+import pathlib
+from unittest import mock
 
 import pytest
 import typer
@@ -86,3 +88,50 @@ async def test_missing_contest_problem_template_reports_clearly(
     out = capsys.readouterr().out
     assert 'contestProblemTemplate' in out
     assert 'AssertionError' not in out
+
+
+async def _build_samples_failing_for(short_name: str):
+    """A build_samples stand-in that fails only for one problem.
+
+    build_samples runs with the cwd already inside the problem's package, so
+    the problem is identified by that directory's name.
+    """
+
+    async def _fake(verification, validate, check_outputs_only=False):
+        return pathlib.Path.cwd().name != short_name
+
+    return _fake
+
+
+@pytest.mark.test_pkg('contests/statements_v2_partial')
+async def test_sample_failure_does_not_silently_shorten_the_statement(
+    cleandir_with_testdata,
+):
+    # Without --partial a problem whose samples failed must not simply vanish
+    # from the joined document: every statement joining it fails instead.
+    with mock.patch(
+        'rbx.box.testcase_sample_utils.build_samples',
+        new=await _build_samples_failing_for('B'),
+    ):
+        with pytest.raises(typer.Exit):
+            await _run(samples=True, languages=['en'])
+
+    assert not (cleandir_with_testdata / 'build' / 'main-en.tex').exists()
+
+
+@pytest.mark.test_pkg('contests/statements_v2_partial')
+async def test_sample_failure_drops_the_problem_under_partial(
+    cleandir_with_testdata,
+):
+    with mock.patch(
+        'rbx.box.testcase_sample_utils.build_samples',
+        new=await _build_samples_failing_for('B'),
+    ):
+        with pytest.raises(typer.Exit):
+            await _run(samples=True, languages=['en'], partial=True)
+
+    # The statement is produced, without B, and the command still exits 1
+    # because a problem's samples genuinely failed.
+    en_tex = (cleandir_with_testdata / 'build' / 'main-en.tex').read_text()
+    assert '\\subimport{.problems/A/}{statement}' in en_tex
+    assert '\\subimport{.problems/B/}{statement}' not in en_tex

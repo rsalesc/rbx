@@ -136,6 +136,22 @@ async def _execute_build(
         for statement in valid_statements:
             # Each statement builds in isolation: one that fails must never stop
             # the others, so a broken `en` cannot keep `pt` from being built.
+            if failed_problems and not partial:
+                # Those problems were dropped from `problems_of_interest`, so
+                # building now would silently emit a document missing them.
+                # Refuse up-front rather than shipping a short statement.
+                dropped = ', '.join(p.short_name for p in failed_problems)
+                reason = (
+                    f'samples failed for problem(s) {dropped}; pass --partial to '
+                    f'build without them'
+                )
+                console.console.print(
+                    f'[error]Skipping {kind.singular} '
+                    f'[item]{statement.name}[/item]: {reason}[/error]'
+                )
+                issue_stack.add_issue(StatementFailedIssue(statement.name, reason))
+                failed_statements.append((statement.name, reason))
+                continue
             try:
                 built_statements.append(
                     (
