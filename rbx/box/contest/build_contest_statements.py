@@ -61,6 +61,48 @@ class StatementBuildIssue(Issue):
         return f'Error building statement for problem [item]{self.problem.short_name}[/item].'
 
 
+class StatementFailedIssue(Issue):
+    """An issue-stack entry flagging that an entire statement failed to build.
+
+    Distinct from :class:`StatementBuildIssue`, which flags a single problem
+    dropped from an otherwise-successful statement -- only possible under
+    ``--partial``.
+    """
+
+    def __init__(self, statement_name: str, reason: str):
+        self.statement_name = statement_name
+        self.reason = reason
+
+    def get_overview_section(self) -> Optional[Tuple[str, ...]]:
+        return ('statement',)
+
+    def get_overview_message(self) -> str:
+        return (
+            f'Failed to build statement [item]{self.statement_name}[/item]: '
+            f'{self.reason}'
+        )
+
+
+class StatementBuildError(RbxException):
+    """A problem failed to render, so the statement joining it cannot be built.
+
+    Raised instead of silently dropping the problem, which would produce a
+    statement missing it. Under ``--partial`` the caller drops the problem and
+    keeps building rather than raising this.
+    """
+
+    def __init__(self, statement_name: str, problem_short_name: str, cause: str):
+        super().__init__()
+        self.statement_name = statement_name
+        self.problem_short_name = problem_short_name
+        self.cause = cause
+        self.print(
+            f'[error]Cannot build statement [item]{statement_name}[/item]: problem '
+            f'[item]{problem_short_name}[/item] failed to render ({cause}). Pass '
+            f'[item]--partial[/item] to build it without this problem.[/error]'
+        )
+
+
 def get_statement_build_dir(statement: BaseStatement) -> pathlib.Path:
     """The per-statement scratch overlay root under the contest's
     ``build/statements`` dir (keyed by the contest statement/document name)."""
