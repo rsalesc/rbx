@@ -1,18 +1,16 @@
 # Running
 
-{{rbx}} provides a range of options to run your solutions. In the sections below,
-we'll go through each of them.
+{{rbx}} offers several ways to run your solutions. The sections below cover each one.
 
 ## Running solutions on the whole testset
 
-You can use the `rbx run` command to run your solutions on the whole testset.
-
-The command will run all selected solutions (or all declared solutions if none are selected) on all testcases,
-providing for each of them the solution outcome, and for the whole testset the timing and memory usage.
+`rbx run` runs the selected solutions on every testcase, or all declared solutions if you
+select none. It reports an outcome per solution, plus timing and memory usage for the whole
+testset.
 
 {{ asciinema("run-basic") }}
 
-Below are some examples of how to use the command.
+Some examples:
 
 ```bash
 # Run all solutions on all testcases
@@ -35,7 +33,7 @@ rbx run -d
 rbx run -c
 ```
 
-One can also set the verification level to be used when running the solutions.
+You can also set the verification level.
 
 ```bash
 rbx run -v{0,1,2,3,4}
@@ -43,13 +41,14 @@ rbx run -v{0,1,2,3,4}
 
 You can read more about each verification level [here](/setters/verification/#verification-level).
 
-By default, {{rbx}} will run solutions with the maximum verification level. This means tests will be built
-and verified, and that all solutions will be run with twice the time limit, and a warning will show up if a TLE solution passed in `2*TL`.
+By default, {{rbx}} runs solutions at the maximum verification level: tests are built and
+verified, every solution runs with twice the time limit, and a warning appears when a TLE
+solution passes within `2*TL`.
 
-Solutions are also bounded by a configurable **wall (real) time** limit, derived from the CPU time limit — see [Wall time limits](/setters/reference/environment/#wall-time-limits).
+Solutions are also bounded by a configurable **wall (real) time** limit, derived from the CPU
+time limit. See [Wall time limits](/setters/reference/environment/#wall-time-limits).
 
-The results of a `rbx run` command can be inspected through the `rbx ui` command, as shown in the
-animation below.
+Inspect the results of a run with `rbx ui`:
 
 {{ asciinema("ui-navigation") }}
 
@@ -72,11 +71,11 @@ what a judge cannot report back.
 
 Two things are specific to `rbx run`:
 
-- The judge enforces **the same time limits your local run would** — the ones from the
-  limits profile in effect, per language group.
+- The judge enforces **the same time limits your local run would**: the ones from the limits
+  profile in effect, per language group.
 - `--fail-fast` is honoured by the judge: it stops a solution at its first non-accepted
-  verdict, and the testcases it never reached are reported as skipped, exactly as they
-  are locally. Toggling the flag changes the uploaded package, so the first run after a
+  verdict, and the testcases it never reached are reported as skipped, as they are
+  locally. Toggling the flag changes the uploaded package, so the first run after a
   toggle pays for an upload and a calibration.
 
 `--no-check` is **refused** on a remote runner: the judge always judges with the packaged
@@ -84,9 +83,8 @@ checker, so there is no run it could do that means "do not check".
 
 ## Sharing a report
 
-Sometimes you want to send a run report (or a time-estimation report) to someone
-else. The `--share` flag captures the report exactly as it appears in your
-terminal and copies it to your **clipboard**, ready to paste into a chat, an
+`--share` captures a run report (or a time-estimation report) as it appears in
+your terminal and copies it to your **clipboard**, ready to paste into a chat, an
 issue, or an email.
 
 ```bash
@@ -108,9 +106,9 @@ A few things to keep in mind:
   `qlmanage`. If none is found, the report is saved as an SVG file instead and
   its path is printed.
 - Copying an **image** to the clipboard is supported on **macOS** and **Linux**
-  (the latter needs `xclip` or `wl-copy`). On other platforms — or when no
-  clipboard tool is available — the report is written to a file in your build
-  directory and its path is printed, so you never lose the artifact.
+  (the latter needs `xclip` or `wl-copy`). On other platforms, or when no
+  clipboard tool is available, the report is written to a file in your build
+  directory and its path is printed.
 - `--share text` works everywhere a clipboard tool is available, and falls back
   to a file otherwise.
 
@@ -119,8 +117,7 @@ A few things to keep in mind:
 You might want to run your solutions on a testcase that is not part of the testset, or even on a specific
 testcase of the testset.
 
-You can do this with the `rbx irun` command. The command will select which solutions to run similar to `rbx run`.
-This means you can specify with the following flags:
+`rbx irun` does that, and selects solutions the same way `rbx run` does:
 
 ```bash
 # Run a single solution (or a list of solutions) on a specific testcase
@@ -133,18 +130,17 @@ rbx irun --outcome AC
 rbx irun -c
 ```
 
-By default, `rbx irun` will prompt you to type a testcase input. After you've finished typing it, you can press
-`Ctrl+D` to tell {{rbx}} that you're done.
+By default, `rbx irun` prompts you to type a testcase input. Press `Ctrl+D` when you're done.
 
-{{rbx}} will then run the solutions on the testcase you've provided, and print the results into files. You can
-also use the `-p` flag to instruct it to print the results into the console instead.
+{{rbx}} then runs the solutions on that testcase and writes the results into files. Pass `-p`
+to print them to the console instead.
 
 {{ asciinema("irun-stdin") }}
 
 When printing with `-p`, the solution's `stderr` is shown in its own colored section right after the output.
-If you'd rather see it woven into the output in true line order — handy for debugging where each log line was
-emitted relative to the program's output — add the `--merge-stderr` / `-e` flag. The interleaved `stderr` lines
-are colored distinctly, and the clean output is left untouched so the checker still sees exactly what the
+To weave it into the output in true line order, add `--merge-stderr` / `-e`, which shows where
+each log line was emitted relative to the program's output. The interleaved `stderr` lines are
+colored distinctly, and the clean output is left untouched, so the checker still sees what the
 solution printed.
 
 ```bash
@@ -170,7 +166,7 @@ rbx irun -t sample/0
 
 {{ asciinema("irun-testcase") }}
 
-Last but not least, you can also specify a [generator call](/setters/testset/generators/#generator-call) to be used when generating the testcase.
+You can also name a [generator call](/setters/testset/generators/#generator-call) to produce the testcase.
 
 ```bash
 rbx irun -g "gen 100 123" -p

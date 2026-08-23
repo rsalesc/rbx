@@ -1,20 +1,19 @@
 # Generators and `rbx.h`
 
 `rbx` refuses to build a problem when a **generator** depends on `rbx.h`. This
-page explains why and how to proceed if you really need to.
+page explains why, and how to opt out.
 
 ## Why this is an error
 
 `rbx.h` exposes `getVar<T>("NAME")`, which reads the problem's
-[variables](setters/variables.md) — your constraints — at compile time. That is
-exactly what a **validator** wants. A **generator** is different: its job is to
-produce a fixed, reproducible testset.
+[variables](setters/variables.md), your constraints, at compile time. That is what a
+**validator** wants. A **generator** is different: its job is to produce a fixed,
+reproducible testset.
 
-If a generator reads a constraint through `getVar`, then changing that constraint
-silently changes every test the generator produces — with no edit to the
-generator and no warning. A test that used to stress `N = 10^5` quietly becomes
-`N = 10^6` (or shrinks), solutions that were once correctly judged may flip, and
-nothing in your diff hints at why.
+If a generator reads a constraint through `getVar`, changing that constraint
+silently changes every test the generator produces. A test that used to stress
+`N = 10^5` quietly becomes `N = 10^6`, solutions that were once correctly judged
+may flip, and nothing in your diff hints at why.
 
 ### Example
 

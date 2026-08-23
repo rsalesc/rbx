@@ -1,8 +1,7 @@
 # Verification
 
-{{rbx}} provides a range of solutions to improve the quality and correctness of your testset and
-the {{testlib}} assets you use. You can see a quick summary of the features in the table below,
-and then read more about each one in the following sections.
+{{rbx}} offers several ways to check your testset and the {{testlib}} assets you use. The table
+below summarizes them, and the sections that follow cover each one.
 
 +-------------------------------------------+---------------------------------------------------------------+
 |                  Feature                  |                          Description                          |
@@ -19,10 +18,8 @@ and then read more about each one in the following sections.
 
 ## Verification Level
 
-{{rbx}} also has the concept of a verification level. This is a way to specify how strict the verification
-should be when building your testset and running solutions.
-
-The verification level will usually be specified along your {{rbx}} command.
+A verification level says how strict verification should be when building your testset and
+running solutions. You usually specify it on the command itself.
 
 ```bash
 rbx build -v{0,1}  # defaults to 1
@@ -44,14 +41,12 @@ the table below:
 | `3` / `ALL_SOLUTIONS`  | Run all solutions, including TLE.                                     |
 | `4` / `FULL`           | Run solutions with twice the TL to check if TLE solutions still pass. |
 
-Setting a larger value is usually the recommended approach to ensure all your expectations are being met.
-
-Setting a smaller value is usually useful when you want to run the commands faster, and you are sure that
-the checks you are running are not being violated.
+Prefer a larger value: it confirms more of your expectations. Drop to a smaller one to run
+faster, when you already know the skipped checks hold.
 
 ## Exit codes
 
-Verification is only useful in a pipeline if a failure actually fails the pipeline. The commands
+Verification is only useful in a pipeline if a failed check fails the pipeline. The commands
 below exit with status `1` when a check they ran did not pass, and `0` otherwise:
 
 | Command                      | Exits `1` when                                                           |
@@ -69,7 +64,7 @@ report tells you which problems are broken rather than stopping at the first one
 
     Up to and including `1.0.0`, `rbx build` and `rbx run` exited `0` even when they printed a
     failing report. A CI job that is silently green today on a broken package will start failing
-    once you upgrade — which is the point, but it may surprise you.
+    once you upgrade. That is the point, but it may surprise you.
 
     Use a lower [verification level](#verification-level) (or `--no-validate`) if you deliberately
     want a step that does not check the testset.

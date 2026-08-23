@@ -4,17 +4,15 @@
     This documentation is mainly targeted at head setters trying to create a contest
     from scratch.
 
-    If you're just a setter that wants to contribute to an already existing contest,
-    you can probably just clone the repository the head setters shared with you and skip
-    this documentation altogether.
+    If you're a setter contributing to an existing contest, clone the repository the head
+    setters shared with you and skip this page.
 
-Presets is a feature that allows head setters to create a contest template that can be reused
-across multiple contests.
+A preset is a contest template that head setters reuse across contests.
 
-A preset consists of four different pieces:
+It consists of four pieces:
 
-- A **contest template**: simply, a contest folder with some sensible defaults set that will
-  be used to bootstrap a contest based on this preset
+- A **contest template**: a contest folder with defaults set, used to bootstrap a contest
+  based on this preset
 - A **problem template**: a problem folder with some sensible defaults set that will
   be used to bootstrap each problem based on this preset
 - An **environment**: a configuration file that will be inherited by contests and problems
@@ -24,15 +22,12 @@ A preset consists of four different pieces:
 
 ## Why a preset?
 
-Presets strongly encourage code reuse across different contests. Besides that, it provides
-a way to standardize the contest environment across different contests, making it easier
-for setters to focus on creating the contest instead of configuring the environment.
+A preset standardizes the environment across contests, so setters spend their time writing
+problems instead of configuring one. It also gives every new problem in a contest a starting
+point the head setter defined.
 
-Also, it makes it easier for setters to create new problems in a contest, offering a way for
-the head setter to define a starting point for the problem.
-
-Also, if the head setter wants to change the preset at some point, presets offer a way
-to synchronize the changes across all the problems and contests that use the preset.
+And when the head setter changes the preset later, `rbx presets sync` carries the change into
+every problem and contest built from it.
 
 ## Creating a preset
 
@@ -67,11 +62,8 @@ The GitHub URI will be an unique identifier of your preset, and
 can be used by other {{rbx}} users to fetch your preset from there if you decide to share
 it publicly.
 
-You can start from a preset of your own by specifying the `-p` flag.
-
 !!! tip
-    If you want to start from a preset of your own, you can do so by specifying the `-p`
-    flag.
+    To start from a preset of your own, pass the `-p` flag.
 
     ```bash
     rbx presets create -p your-base-preset
@@ -79,9 +71,8 @@ You can start from a preset of your own by specifying the `-p` flag.
 
 ### Setting up the problem template
 
-You can go to the problem template and modify it to your liking: package structure,
-the `problem.rbx.yml` file, default testlib components, statement templates, etc. Everything
-can be customized to fulfill your requirements.
+Modify the problem template to your liking: package structure, the `problem.rbx.yml` file,
+default testlib components, statement templates, and anything else the template carries.
 
 Every problem created from this preset will be a clone of this folder, except for the folder name
 and the `name` field of the `problem.rbx.yml` file, which will be changed to match your problem name.
@@ -126,8 +117,7 @@ see when picking a variant, so make it say what the template is *for*.
 
 #### Adding a variant
 
-There is nothing magic about a variant directory -- it is just another problem template, so
-you build it the same way you built the canonical one:
+A variant directory is another problem template, built the same way as the canonical one:
 
 ```bash
 # Start from the canonical template, so you keep your own conventions.
@@ -217,8 +207,8 @@ one library for this variant only, and every other declared library still applie
 Variants are usually near-duplicates of each other, and you don't want to maintain the same
 `.gitignore` or `validator.cpp` twice. Two options, both supported:
 
-- **Plain copies**: just keep a copy of the file in each template directory. Simple, and
-  what the bundled `default` preset does.
+- **Plain copies**: keep a copy of the file in each template directory. This is what the
+  bundled `default` preset does.
 - **Symlinks inside the preset**: point a file in one template at a file elsewhere in the
   preset. When the package is created, {{rbx}} rewrites such a symlink into a relative link
   into the installed package's `.local.rbx/`, so the created package stays self-contained
@@ -249,8 +239,8 @@ above — the reserved `default` id, the picker, the merge rule — applies unch
 
 ### Setting up the contest template
 
-You can go to the contest template and modify it to your liking: statement templates, `contest.rbx.yml` file,
-etc. Everything can be customized to fulfill your requirements.
+Modify the contest template to your liking: statement templates, the `contest.rbx.yml` file,
+and anything else it carries.
 
 Usually, the contest template should have no problems initially. One should add problems with
 `rbx contest add` after the contest has been created.
@@ -267,10 +257,10 @@ and the `name` field of the `contest.rbx.yml` file, which will be changed to mat
 The environment file will be used to configure the execution environment of {{rbx}} to be used
 in the contest.
 
-This file is rather complex, and its full reference documentation can be found [here](../reference/environment).
+This file is complex, and its full reference documentation lives [here](../reference/environment).
 
-You can usually get away with the environment used by the `default` preset, which is
-a good starting point for most contests. You can check its code [here](https://github.com/rsalesc/rbx/blob/main/rbx/resources/presets/default/env.rbx.yml).
+The environment of the `default` preset is a good starting point for most contests. You can read
+it [here](https://github.com/rsalesc/rbx/blob/main/rbx/resources/presets/default/env.rbx.yml).
 
 ### Setting up the preset definition
 
@@ -317,18 +307,18 @@ tracking:
 
 ```
 
-The first few sections are pretty self-explanatory. Let's focus on the `tracking` section.
+The first few sections are self-explanatory. The `tracking` section deserves a closer look.
 
 The `tracking` section describes a set of files that should be tracked by {{rbx}} when a problem
 or contest is created from this preset.
 
 If a file is tracked, it means that -- in theory -- it should be automatically synced with the preset.
 Let's say you have a `.tex` file that is imported by all the problems in your contest. Let's say your
-contest has 10 problems, but just now you realized you have to modify this `.tex` file to fix a typo.
+contest has 10 problems, and you have to modify this `.tex` file to fix a typo.
 
-Usually, this would mean you have to repeat the same change in all 10 problems. With presets, you
-can just modify the `.tex` file in the preset definition, and run `rbx presets sync` inside your
-contest folder, as long as the file is tracked.
+Without presets, that means repeating the same change in all 10 problems. With them, you modify
+the `.tex` file in the preset definition and run `rbx presets sync` inside your contest folder,
+as long as the file is tracked.
 
 This will sync all packages that use this preset with its newest changes, based on the set of tracked files.
 Files that are not tracked **will not** be synced.
@@ -340,7 +330,7 @@ Tracked files can be specified both explicitly, or through Python-compliant glob
 ##### Flag-based symlink tracking
 
 When you know for sure that a file should always be kept in sync (without manual intervention), you can
-also create them as symlinks. Just mark the tracked file with the `symlink: true` flag, and {{rbx}} will
+also create them as symlinks. Mark the tracked file with the `symlink: true` flag, and {{rbx}} will
 create a symlink to the file in the package instead of copying it. Then, every modification you do to it
 will be instantly reflected in all other packages that use the preset.
 
@@ -359,9 +349,9 @@ problem/
 └── common_icpc.sty
 ```
 
-In this case, you can track both `contest/documents/icpc.sty` and `problem/documents/icpc.sty` (no need for the `symlink: true` flag), and {{rbx}} will make sure to create a symlink to `common_icpc.sty` automagically for you.
+In this case, you can track both `contest/documents/icpc.sty` and `problem/documents/icpc.sty` (no need for the `symlink: true` flag), and {{rbx}} creates the symlink to `common_icpc.sty` for you.
 
-This approach is particularly useful when you want to share a common file between the contest and the problem packages.
+Use this to share a common file between the contest and the problem packages.
 
 ## Libraries
 
@@ -432,9 +422,8 @@ libraries:
 
 ### Fetching libraries manually
 
-You usually don't need to fetch libraries by hand -- they are materialized automatically when packages
-are created and refreshed on `rbx presets sync`. When you do want to fetch them explicitly, use
-`rbx download`:
+You rarely need to fetch libraries by hand: they are materialized when packages are created and
+refreshed on `rbx presets sync`. To fetch one explicitly, use `rbx download`:
 
 ```bash
 # Fetch and materialize a single declared library, by name.
@@ -453,8 +442,8 @@ resolve the declared library of the same name.
 
 !!! note
     The `default` preset declares `testlib`, `jngen`, and `tgen`, all with `always_include: true`.
-    Packages created from it therefore behave just like before -- those headers are available to every
-    source -- but now they are versioned, fetched, and cached instead of being hardcoded into {{rbx}}.
+    Those headers stay available to every source in packages created from it, but they are now
+    versioned, fetched, and cached instead of hardcoded into {{rbx}}.
 
 ## Using a preset
 
@@ -468,7 +457,7 @@ rbx contest create -p your-preset
 # Initialize a contest (in the current directory) from a preset.
 rbx contest init -p your-preset
 
-# Add a problem to a contest (that already has its own preset), using the very same preset.
+# Add a problem to a contest (that already has its own preset), using that same preset.
 rbx contest add
 
 # Create a standalone problem from a preset.
@@ -508,8 +497,8 @@ rbx create my-problem --preset default
 
 The registry is the merge of two files:
 
-- a **built-in** registry shipped with {{rbx}} (currently just the `default`
-  preset);
+- a **built-in** registry shipped with {{rbx}} (currently the `default`
+  preset alone);
 - a **user** registry stored in your {{rbx}} app directory
   (`presets/registry.yml`), initially empty.
 
@@ -539,7 +528,7 @@ registry for you.
 ## Sharing a preset publicly
 
 You can share your preset publicly by uploading it to a GitHub repository. If your repository is
-`<your-organization>/<your-preset-name>`, other uses can create a package from it by using
+`<your-organization>/<your-preset-name>`, other users can create a package from it with
 
 ```bash
 rbx contest create -p <your-organization>/<your-preset-name>

@@ -1,10 +1,9 @@
 # Environment
 
-An environment file is a YAML configuration file that describes the environment in which {{rbx}} will execute
-your code.
+An environment file describes, in YAML, the environment {{rbx}} executes your code in.
 
-The [`Environment`][rbx.box.environment.Environment] class is used to describe the environment in which the code will be executed. You can follow the schema of this class to figure out everything you can
-configure in the environment file, but here we'll describe the most common fields.
+The [`Environment`][rbx.box.environment.Environment] schema lists everything an environment file
+can configure. This page covers the most common fields.
 
 ## Compilation configuration
 
@@ -18,13 +17,12 @@ defaultCompilation:
   # Defines a few default limits when compiling in the sandbox.
   sandbox:
     timeLimit: 10000 # 10 seconds
-    wallTimeLimit: 10000 # 20 seconds
+    wallTimeLimit: 10000 # 10 seconds
     memoryLimit: 1024 # 1gb
 ```
 
-Usually, the default values here are enough, but you can customize this for your needs. For instance,
-if you have a very slow computer at hand, you might want to increase the limits to ensure the compilers
-have the time to do their job.
+The defaults are usually enough. On a slow machine, raise them so the compilers have time to
+finish.
 
 ## Default execution configuration
 
@@ -36,22 +34,18 @@ defaultExecution:
   # Defines a few default limits when running programs in the sandbox.
   sandbox:
     timeLimit: 10000 # 10 seconds
-    wallTimeLimit: 10000 # 20 seconds
+    wallTimeLimit: 10000 # 10 seconds
     memoryLimit: 1024 # 1gb
 ```
 
-Notice these limits are language agnostic, and problem agnostic. This means you should set this to a
-value larger than any limit you expect for any problem. This is mostly used to ensure programs that
-eat too much memory or take too long to finish, but don't have limits applied to them, don't hang forever
-or crash your system. Examples are checkers, validators, etc.
+These limits are language- and problem-agnostic, so set them above any limit you expect any
+problem to need. They are a backstop for programs that carry no limits of their own, such as
+checkers and validators, so a runaway one cannot hang forever or take your machine down.
 
 ## Languages
 
-The `languages` field is used to define the languages supported by the environment. This is
-a list of [`EnvironmentLanguage`][rbx.box.environment.EnvironmentLanguage] objects, which you can
-look at the schema for more details.
-
-Here's an example of a language definition:
+The `languages` field lists the languages the environment supports, as
+[`EnvironmentLanguage`][rbx.box.environment.EnvironmentLanguage] objects. Here's one:
 
 ```yaml
 languages:
@@ -101,7 +95,7 @@ languages:
         applies_to: [generators]                      # restrict to asset kinds
 ```
 
-- The **shorthand form** is just the linter name; it applies to every asset
+- The **shorthand form** is the linter name alone, and applies to every asset
   kind the linter supports.
 - The **full form** is an object with `name` and an optional `applies_to`
   list. `applies_to` restricts the linter to specific asset kinds. When it is
@@ -184,7 +178,7 @@ And you also have available to you a `@glob:...` command that is expanded into a
 
 ## Timing estimation
 
-Last but not least, you can configure how time limits are estimated when running `rbx time` or
+You can also configure how time limits are estimated when running `rbx time` or
 `rbx run -t`. There are two strategies, and they are **mutually exclusive**: declaring both
 `timing.multipliers` and `timing.formula` is an error. The published JSON schema does not
 express that exclusivity, so your editor will happily autocomplete both keys — {{rbx}} rejects
@@ -265,9 +259,8 @@ exactly as it did.
 Whichever strategy above is in use, the time limit is by default estimated once from the
 pooled timings of all accepted solutions and applied to every language. With `timing.groups`
 you can instead estimate a
-separate time limit per group of languages, which is useful when languages with very
-different performance characteristics (e.g. compiled vs. interpreted) should not share a
-single limit.
+separate time limit per group of languages, which matters when compiled and interpreted
+languages should not share a single limit.
 
 ```yaml
 timing:

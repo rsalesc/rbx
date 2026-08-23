@@ -4,7 +4,7 @@ rbx v1 removes a few {{boca}} configuration knobs in `env.rbx.yml` that were kep
 only for backward compatibility. They are marked **deprecated** in the current
 schema and will stop working in v1.
 
-If you rely on the bundled `default` preset, there's nothing to do — it has already
+If you rely on the bundled `default` preset, there's nothing to do: it has already
 been migrated. You only need to act if you maintain a **custom `env.rbx.yml`** (run
 `rbx config edit` to open it). Each section below shows the old form and its
 replacement.
@@ -84,8 +84,8 @@ extensions:
     template: "cc"             # required, names the template dir to source scripts from
 ```
 
-After v1, loading an `env.rbx.yml` that uses any removed field (or omits a now-required
-`template`) fails with a clear validation error.
+After v1, loading an `env.rbx.yml` that uses any removed field, or omits a now-required
+`template`, fails with a validation error.
 
 ## Also removed: `maximumTimeError`
 
