@@ -155,6 +155,12 @@ class TestrunStatus(BaseModel):
     total_tests: Optional[int] = None
     duration_s: Optional[float] = None
     tl_used: Optional[float] = None
+    # Which machine of the park ran this. The 2026-08-21 probe came back
+    # `host: judge-sp1`; it is surfaced on the run reporter's solution header, so
+    # a timing can be read against the machine that produced it. Optional because
+    # nothing guarantees every response carries it -- and a park with one judge
+    # may well never send it.
+    host: Optional[str] = None
     # Absent while the run is still queued or running: the CLI's own formatter
     # falls back to `.filename` / `.problem_id` in that case, so a status without
     # tests is normal, not an error.

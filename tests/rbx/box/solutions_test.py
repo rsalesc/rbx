@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import pathlib
 import re
@@ -19,6 +20,7 @@ from rbx.box.generators import (
     generate_outputs_for_testcases,
     generate_testcases,
 )
+from rbx.box.runners.base import RunnerChip, RunProgress
 from rbx.box.sanitizers.issue_stack import IssueAccumulator, issue_stack_var
 from rbx.box.schema import (
     ExpectedOutcome,
@@ -2387,6 +2389,115 @@ def test_elapsed_reads_one_decimal_below_ten_seconds():
         assert str(elapsed) == '41s'
 
 
+# -- backend chips on the header ----------------------------------------------
+
+
+async def test_the_header_carries_what_the_backend_put_on_the_board(
+    mock_problem_root, mock_binary_scoring
+):
+    """The reporter renders the backend's chips verbatim, and knows nothing.
+
+    A typed status would put MOJ's vocabulary into the reporter, and the next
+    judge's after that. What arrives here is text and a style.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    result.progress_board.set(
+        'sol.cpp',
+        RunnerChip('moj rbxt-a1b2'),
+        RunnerChip('testrun 4821'),
+        RunnerChip('running'),
+    )
+    console = recording_console()
+
+    with fresh_issue_stack():
+        await drive_reporter(
+            LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
+        )
+
+    header = next(
+        line for line in rendered_lines(console) if line.startswith('sol.cpp')
+    )
+    assert 'moj rbxt-a1b2' in header
+    assert 'testrun 4821' in header
+    assert 'running' in header
+
+
+async def test_backend_chips_survive_a_non_terminal_console(
+    mock_problem_root, mock_binary_scoring
+):
+    """Unlike the wall clock, backend chips do render into a shared report.
+
+    They are not wall-clock, so they do not turn every re-run into a diff -- and a
+    setter reading a `--share` report wants to know which testrun produced its
+    numbers.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    result.progress_board.set('sol.cpp', RunnerChip('testrun 4821'))
+    console = recording_console()
+    assert not console.is_terminal
+
+    with fresh_issue_stack():
+        await drive_reporter(
+            LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
+        )
+
+    header = next(
+        line for line in rendered_lines(console) if line.startswith('sol.cpp')
+    )
+    assert 'testrun 4821' in header
+    # ...and still no clock.
+    assert not re.search(r'\d+(\.\d)?s', header)
+
+
+async def test_only_the_solution_being_drawn_reaches_the_header(
+    mock_problem_root, mock_binary_scoring
+):
+    """Every in-flight solution keeps its slot current; one of them is drawn.
+
+    That is what makes a background poll safe to write from at all: it lands in
+    its own slot, and the reporter never draws a slot it is not blocked on.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    result.progress_board.set('sol.cpp', RunnerChip('testrun 4821'))
+    result.progress_board.set('other.cpp', RunnerChip('testrun 4822'))
+    console = recording_console()
+
+    with fresh_issue_stack():
+        await drive_reporter(
+            LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
+        )
+
+    text = console.export_text(clear=False)
+    assert 'testrun 4821' in text
+    assert 'testrun 4822' not in text
+
+
+async def test_a_run_with_no_backend_chips_renders_exactly_as_before(
+    mock_problem_root, mock_binary_scoring
+):
+    """`LocalRunner` writes nothing, and an empty board adds no separator."""
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    console = recording_console()
+
+    with fresh_issue_stack():
+        await drive_reporter(
+            LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
+        )
+
+    header = next(
+        line for line in rendered_lines(console) if line.startswith('sol.cpp')
+    )
+    assert '·' not in header
+
+
 async def test_the_clock_advances_on_a_frame_nobody_triggered(
     mock_problem_root, mock_binary_scoring
 ):
@@ -2442,3 +2553,96 @@ async def test_the_block_is_rebuilt_per_frame_not_frozen_at_update(
         solutions_module._SolutionBlock,  # noqa: SLF001
     )
     reporter.close()
+
+
+async def test_the_frozen_frame_still_carries_the_backend_chips(
+    mock_problem_root, mock_binary_scoring
+):
+    """What the block holds at `stop()` is what scrollback keeps.
+
+    The block is rebuilt on every drawn frame, so the last frame renders the
+    board as it stands *then* -- and on a non-terminal console that last frame is
+    the only one emitted at all. A backend that emptied its slot on finishing
+    would drop the testrun id out of the permanent record and out of every
+    `--share` report.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    console = recording_console()
+
+    # Set the way a backend leaves it: the finished state, not an empty slot.
+    result.progress_board.set(
+        'sol.cpp', RunnerChip('testrun 4821'), RunnerChip('done', style='green')
+    )
+
+    with fresh_issue_stack():
+        await drive_reporter(
+            LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
+        )
+
+    header = next(
+        line for line in rendered_lines(console) if line.startswith('sol.cpp')
+    )
+    assert 'testrun 4821' in header
+    assert 'done' in header
+
+
+async def test_a_slow_testcase_repaints_the_header_while_it_waits(
+    mock_problem_root, mock_binary_scoring
+):
+    """The reported symptom, end to end, through the real refresh thread.
+
+    A backend that learns something while the report is blocked on an
+    unresolved deferred has to reach the screen *during* the wait. This drives
+    `rich`'s own auto-refresh rather than calling `refresh()` by hand: the
+    reporter is blocked in `await`, nothing calls `update()`, and the frames that
+    appear are the ones the refresh thread produced on its own.
+
+    Before the block rendered itself, this test saw only `waiting`, then the
+    finished report -- which is exactly what a `rbx time --runner moj` run looked
+    like.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    board = RunProgress()
+    board.set('sol.cpp', RunnerChip('waiting for a slot'))
+
+    on_screen_during_the_wait: List[str] = []
+
+    async def slow() -> Evaluation:
+        # Stands in for a judge: the deferred the reporter is awaiting does not
+        # resolve for a while, and the backend learns something meanwhile.
+        await asyncio.sleep(0.1)
+        board.set('sol.cpp', RunnerChip('testrun 4821'), RunnerChip('running'))
+        await asyncio.sleep(0.6)
+        # Snapshotted from *inside* the unresolved deferred, which is the only
+        # place that can tell "reached the screen during the wait" from "reached
+        # it once the wait was over". Asserting on the finished transcript cannot:
+        # the frame drawn after this resolves carries the chip either way.
+        on_screen_during_the_wait.append(console.export_text(clear=False))
+        return make_evaluation(Outcome.ACCEPTED, time_ms=100, memory_bytes=1024)
+
+    result = RunSolutionResult(
+        skeleton=skeleton,
+        items=[
+            EvaluationItem(
+                solution=solution,
+                testcase_entry=TestcaseEntry(group='group1', index=0),
+                eval=Deferred(slow),
+            )
+        ],
+        progress_board=board,
+    )
+    console = terminal_console()
+
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+    with fresh_issue_stack():
+        await drive_reporter(reporter, skeleton)
+    reporter.close()
+
+    (during,) = on_screen_during_the_wait
+    # The mid-flight state was on screen while the reporter was still in `await`,
+    # drawn by frames nothing in this reporter asked for.
+    assert 'testrun 4821' in during
+    assert 'running' in during

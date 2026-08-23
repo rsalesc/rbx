@@ -20,6 +20,7 @@ from typing import Dict, List, Optional, Tuple
 
 import pytest
 
+from rbx import utils
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.runners.moj import cli
 from rbx.box.runners.moj import runner as runner_module
@@ -650,8 +651,13 @@ async def test_the_background_polling_never_writes_the_status_line(
 
     They share the `StatusProgress` the reporter is driving, so a poll writing to
     it makes the status line flip between two solutions -- and keep flipping after
-    the reporter has moved on to printing the first one's results. Nothing the
-    runner says may come from a task the consumer is not waiting on.
+    the reporter has moved on to printing the first one's results.
+
+    This is about the *console*, and stays true now that polls report themselves
+    on the board: a board write lands in the polled solution's own slot, and the
+    reporter draws only the slot it is blocked on, so nothing a non-awaited task
+    learns can reach the display. See
+    `test_a_poll_writes_to_its_own_slot_and_no_other` for that half.
     """
     progress = RecordingProgress()
     runner, fake, ctx = await _prepared(
@@ -1191,3 +1197,207 @@ async def test_a_queue_that_never_drains_says_it_cannot_be_cancelled(
     assert 'cannot be cancelled' in message
     assert 'moj status' in message
     assert '[item]' not in message
+
+
+# -- what the runner puts on the board -----------------------------------------
+
+
+def _chips(ctx, solution_path: str) -> List[str]:
+    return [chip.text for chip in ctx.progress_board.get(solution_path)]
+
+
+async def test_a_queued_solution_says_so_before_it_is_submitted(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """A solution the report has not reached is accounted for, not blank.
+
+    `run_solution` returns without awaiting -- that is the point of the seam --
+    so every solution is queued while the report is still printing the first. A
+    blank header for the other nine reads as nothing happening, which is the
+    opposite of the truth.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+
+    runner.run_solution(ctx.skeleton.solutions[0], ctx.skeleton.entries, ctx)
+
+    # Synchronously, before a single turn of the loop has run the task.
+    assert _chips(ctx, 'sol.cpp') == [f'moj {runner._moj_id}', 'waiting for a slot']  # noqa: SLF001
+
+
+async def test_the_board_names_the_testrun_once_it_is_submitted(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """The testrun id is the one thing that makes the rest of the line
+    actionable: it is what `moj testrun-status <run>` takes."""
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.results['sol.cpp'] = [
+        _test(SAMPLE_NAMES[0], 'AC', 0.1),
+        _test(SAMPLE_NAMES[1], 'AC', 0.2),
+    ]
+    fake.polls_until_done = 3
+
+    seen: List[List[str]] = []
+    original = runner._wait_for_testrun  # noqa: SLF001
+
+    async def watching(run, solution, board, since):
+        status = await original(run, solution, board, since)
+        seen.append([chip.text for chip in board.get(str(solution.path))])
+        return status
+
+    monkeypatch.setattr(runner, '_wait_for_testrun', watching)
+    await _run(runner, ctx)
+
+    assert seen, 'the wait was never entered'
+    assert any(text.startswith('testrun ') for text in seen[0])
+
+
+async def test_every_poll_repaints_the_solution_it_is_waiting_on(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """This is the slow half of a remote run and the half a setter wants moving.
+
+    The judge's own state word goes on the board on each poll, so a run that is
+    queued behind the park looks different from one that is being judged.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.results['sol.cpp'] = [
+        _test(SAMPLE_NAMES[0], 'AC', 0.1),
+        _test(SAMPLE_NAMES[1], 'AC', 0.2),
+    ]
+    fake.polls_until_done = 3
+
+    seen: List[List[str]] = []
+    original = runner_module.cli.testrun_status
+
+    async def watching(run):
+        status = await original(run)
+        seen.append([chip.text for chip in ctx.progress_board.get('sol.cpp')])
+        return status
+
+    monkeypatch.setattr(runner_module.cli, 'testrun_status', watching)
+    await _run(runner, ctx)
+
+    # By the last poll the board is describing this testrun, not the queue.
+    assert any(any(text.startswith('testrun ') for text in chips) for chips in seen[1:])
+
+
+async def test_a_finished_solution_keeps_the_testrun_on_its_header(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """The slot is left holding `done`, not emptied.
+
+    The reporter rebuilds its block on every drawn frame, so the last frame --
+    the one `Live.stop()` freezes into scrollback, and the only one a
+    non-terminal console emits at all -- shows whatever the board holds then.
+    Clearing it would drop the testrun id out of the permanent record and out of
+    every `--share` report, which is exactly where it is worth having.
+
+    Nothing stale survives, because `_submit_and_poll` overwrites the slot with
+    `done` before any deferred can resolve.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.results['sol.cpp'] = [
+        _test(SAMPLE_NAMES[0], 'AC', 0.1),
+        _test(SAMPLE_NAMES[1], 'AC', 0.2),
+    ]
+
+    await _run(runner, ctx)
+
+    chips = _chips(ctx, 'sol.cpp')
+    assert any(text.startswith('testrun ') for text in chips)
+    assert 'done' in chips
+    # ...and nothing left over from while it was still running.
+    assert 'waiting for a slot' not in chips
+    assert 'submitted' not in chips
+
+
+async def test_a_poll_writes_to_its_own_slot_and_no_other(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """The rule that lets a background task say anything at all.
+
+    Up to `MAX_INFLIGHT_TESTRUNS` tasks poll at once, long after the call that
+    created them returned. Printing from one would make the display flip between
+    solutions; a board write cannot, because the reporter draws only the slot it
+    is blocked on. Pinned here from the writing end: `other.cpp` being polled
+    throughout never touches `sol.cpp`'s slot.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg,
+        tmp_path,
+        monkeypatch,
+        groups=['samples'],
+        solutions=[
+            ('sol.cpp', ExpectedOutcome.ACCEPTED),
+            ('other.cpp', ExpectedOutcome.WRONG_ANSWER),
+        ],
+    )
+    for filename in ('sol.cpp', 'other.cpp'):
+        fake.results[filename] = [
+            _test(SAMPLE_NAMES[0], 'AC', 0.1),
+            _test(SAMPLE_NAMES[1], 'AC', 0.2),
+        ]
+    fake.polls_until_done = 5
+
+    first = runner.run_solution(ctx.skeleton.solutions[0], ctx.skeleton.entries, ctx)
+    runner.run_solution(ctx.skeleton.solutions[1], ctx.skeleton.entries, ctx)
+
+    await _gather(first)
+
+    # `sol.cpp` is finished; `other.cpp` kept its own slot the whole time, and
+    # never appeared in `sol.cpp`'s.
+    assert 'done' in _chips(ctx, 'sol.cpp')
+    assert _chips(ctx, 'other.cpp')
+    assert not any('other' in text for text in _chips(ctx, 'sol.cpp'))
+
+
+def test_poll_chips_say_only_what_the_judge_reported(testing_pkg):
+    """A `0/0` on a run that has not started would read as a lost testset.
+
+    The state word is always answered; the counts and the host are reported by
+    some responses and not others, so they are added when present rather than
+    defaulted.
+    """
+    runner = MojRunner()
+    runner._moj_id = 'alice#rbxt-x'  # noqa: SLF001
+    since = utils.Elapsed()
+
+    bare = runner._poll_chips(  # noqa: SLF001
+        '4821', cli.TestrunStatus(status='queued'), since
+    )
+    texts = [chip.text for chip in bare]
+    assert 'queued' in texts
+    assert not any('/' in text and 'ok' in text for text in texts)
+
+    full = runner._poll_chips(  # noqa: SLF001
+        '4821',
+        cli.TestrunStatus(
+            status='running', correct=12, total_tests=72, host='judge-sp1'
+        ),
+        since,
+    )
+    texts = [chip.text for chip in full]
+    assert 'running' in texts
+    assert 'judge-sp1' in texts
+    # `correct`, not "tests run": MOJ reports how many passed, and calling that
+    # progress would show a solution expected to fail stuck at 0 while it works.
+    assert '12/72 ok' in texts
+
+
+def test_the_host_is_read_off_a_status_that_carries_one():
+    """The live probe came back `host: judge-sp1`.
+
+    Optional because nothing guarantees every response carries it -- a park with
+    one judge may well never send it -- and `extra='ignore'` means a missing field
+    is not an error.
+    """
+    assert cli.TestrunStatus(status='done', host='judge-sp1').host == 'judge-sp1'
+    assert cli.TestrunStatus(status='done').host is None
