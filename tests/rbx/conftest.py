@@ -85,6 +85,7 @@ def mock_app_path(monkeysession, tmp_path_factory):
 @pytest.fixture(autouse=True)
 def _isolate_global_state() -> Iterator[None]:
     from rbx import testing_utils
+    from rbx.box import global_package as _global_package
     from rbx.box import package as _package
     from rbx.box import state as _state
     from rbx.box.contest import contest_state as _contest_state
@@ -122,3 +123,4 @@ def _isolate_global_state() -> Iterator[None]:
         for var, value in snapshots:
             var.set(value)
         testing_utils.clear_all_functools_cache()
+        _global_package.clear_cache_session_locks()

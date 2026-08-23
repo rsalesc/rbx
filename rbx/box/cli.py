@@ -58,6 +58,7 @@ from rbx.box.statements import build_statements
 from rbx.box.testcases import main as testcases
 from rbx.box.tooling import main as tooling
 from rbx.grading import grading_context
+from rbx.grading.judge.lock import CacheBusyError
 
 app = typer.Typer(
     no_args_is_help=True, add_completion=False, cls=annotations.AliasGroup
@@ -135,6 +136,35 @@ def version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+def _revalidate_cache(cache_path: pathlib.Path, name: str) -> bool:
+    """Clear `cache_path` if it was written by an incompatible rbx version.
+
+    The check and the wipe happen under the cache's exclusive lock, so two rbx
+    processes starting at once do not wipe each other's cache, and neither
+    wipes one that a third process is already using (issue #700).
+    """
+
+    def _on_wait():
+        console.console.print(
+            f'[warning]Waiting for other [item]rbx[/item] processes to release the {name.lower()}...[/warning]'
+        )
+
+    try:
+        cleared = global_package.ensure_cache_dir_is_valid(cache_path, on_wait=_on_wait)
+    except CacheBusyError:
+        console.console.print(
+            f'[error]{name} was written by another version of [item]rbx[/item] and cannot be '
+            'cleared while other [item]rbx[/item] processes are using it. '
+            'Try again once they finish.[/error]'
+        )
+        raise typer.Exit(1) from None
+    if cleared:
+        console.console.print(
+            f'[warning]{name} was incompatible with the current version of [item]rbx[/item], so it was cleared.[/warning]'
+        )
+    return cleared
+
+
 @app.callback()
 def main(
     cache: Annotated[
@@ -200,16 +230,12 @@ def main(
     contest_state.apply_cli_selection(contest_id)
 
     presets.check_active_preset_compatibility()
-    if cd.is_problem_package() and not package.is_cache_valid():
-        console.console.print(
-            '[warning]Cache is incompatible with the current version of [item]rbx[/item], so it will be cleared.[/warning]'
-        )
-        clear()
-    if not global_package.is_global_cache_valid():
-        console.console.print(
-            '[warning]Global cache is incompatible with the current version of [item]rbx[/item], so it will be cleared.[/warning]'
-        )
-        clear(global_cache=True)
+    if cd.is_problem_package() and _revalidate_cache(
+        package.get_problem_cache_path(), 'Cache'
+    ):
+        # A cache from another rbx version leaves stale build artifacts behind.
+        _clean_build_dirs()
+    _revalidate_cache(global_package.get_global_cache_dir_path(), 'Global cache')
 
     state.STATE.run_through_cli = True
     state.STATE.sanitized = sanitized
@@ -1493,23 +1519,57 @@ def wizard():
     run_server()
 
 
+def _clean_dir(path: pathlib.Path):
+    if not path.exists():
+        return
+    console.console.print(f'Cleaning [item]{path}[/item]...')
+    shutil.rmtree(path, ignore_errors=True)
+
+
+def _clean_cache_dir(cache_path: pathlib.Path, name: str):
+    """Empty a cache directory, waiting for other rbx processes to let go of it.
+
+    The directory and its lock files stay in place: deleting them would pull the
+    ground from under any process that still has the cache open, and would break
+    mutual exclusion for every process that comes after (issue #700).
+    """
+    if not cache_path.is_dir():
+        return
+    console.console.print(f'Cleaning [item]{cache_path}[/item]...')
+
+    def _on_wait():
+        console.console.print(
+            f'[warning]Waiting for other [item]rbx[/item] processes to release the {name.lower()}...[/warning]'
+        )
+
+    try:
+        global_package.clear_cache_dir(cache_path, on_wait=_on_wait)
+    except CacheBusyError:
+        console.console.print(
+            f'[error]{name} is being used by another [item]rbx[/item] process and was not cleared. '
+            'Try again once it finishes.[/error]'
+        )
+        raise typer.Exit(1) from None
+
+
+@cd.within_closest_package
+def _clean_build_dirs():
+    _clean_dir(pathlib.Path('build'))
+    if cd.is_problem_package():
+        _clean_dir(package.get_build_path())
+    if cd.is_contest_package():
+        _clean_dir(get_contest_build_path())
+
+
 @cd.within_closest_package
 def _clear_package_cache():
     console.console.print('Cleaning cache and build directories...')
 
-    def _clean(path: pathlib.Path):
-        if not path.exists():
-            return
-        console.console.print(f'Cleaning [item]{path}[/item]...')
-        shutil.rmtree(path, ignore_errors=True)
-
-    _clean(pathlib.Path('build'))
+    _clean_build_dirs()
     if cd.is_problem_package():
-        _clean(package.get_build_path())
-        _clean(package.get_problem_cache_path())
+        _clean_cache_dir(package.get_problem_cache_path(), 'Cache')
 
     if cd.is_contest_package():
-        _clean(get_contest_build_path())
         console.console.print(
             '[warning]If you want to clear the problem caches of all problems in the contest, '
             'run [item]rbx contest each clean[/item].[/warning]'
@@ -1525,7 +1585,7 @@ def clear(global_cache: bool = typer.Option(False, '--global', '-g')):
     cleared = False
     if global_cache:
         console.console.print('Cleaning global cache...')
-        global_package.clear_global_cache()
+        _clean_cache_dir(global_package.get_global_cache_dir_path(), 'Global cache')
         cleared = True
 
     closest_package = cd.find_package()
