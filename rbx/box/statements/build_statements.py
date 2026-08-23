@@ -7,6 +7,7 @@ import typer
 
 from rbx import annotations, console, utils
 from rbx.box import environment, limits_info, naming, package
+from rbx.box.exception import describe_exception
 from rbx.box.formatting import href
 from rbx.box.schema import Package, expand_any_vars
 from rbx.box.statements import engine, overlay, render, resolver
@@ -378,6 +379,7 @@ async def execute_build_on_statements(
     extra_mergeable_params: Optional[List[ConversionStep]] = None,
     skip_building: bool = False,
     kind: StatementKind = StatementKind.STATEMENTS,
+    keep_going: bool = False,
 ) -> List[pathlib.Path]:
     """Build samples once (if any statement needs them) then build each statement.
 
@@ -386,6 +388,11 @@ async def execute_build_on_statements(
     pre-built samples instead of regenerating them (the packager builds them
     first). ``extra_mergeable_params`` carries packager export toggles. Returns
     the built output paths, one per statement.
+
+    ``keep_going`` isolates each statement so one failure does not stop the
+    rest, exiting non-zero at the end instead. It defaults to False because
+    packagers cannot ship an incomplete set of statements -- aborting on the
+    first failure is safer there than emitting the others. The CLI passes True.
     """
     pkg = package.find_problem_package_or_die()
     samples = samples and any(needs_samples(st) for st in statements)
@@ -400,18 +407,40 @@ async def execute_build_on_statements(
             raise typer.Exit(1)
 
     res = []
+    failed: List[Tuple[str, str]] = []
     for statement in statements:
-        res.append(
-            await build_statement(
-                statement,
-                pkg,
-                output_type=output,
-                use_samples=samples,
-                custom_vars=expand_any_vars(annotations.parse_dictionary_items(vars)),
-                extra_mergeable_params=extra_mergeable_params,
-                kind=kind,
+        try:
+            res.append(
+                await build_statement(
+                    statement,
+                    pkg,
+                    output_type=output,
+                    use_samples=samples,
+                    custom_vars=expand_any_vars(
+                        annotations.parse_dictionary_items(vars)
+                    ),
+                    extra_mergeable_params=extra_mergeable_params,
+                    kind=kind,
+                )
             )
-        )
+        except Exception as exc:
+            if not keep_going:
+                raise
+            # Isolated: a statement that fails must not stop the others, so a
+            # broken `en` cannot keep `pt` from being built.
+            reason = describe_exception(exc)
+            label = '/'.join(statement.key)
+            console.console.print(
+                f'[error]Failed to build {kind.singular} '
+                f'[item]{label}[/item]: {reason}[/error]'
+            )
+            failed.append((label, reason))
+
+    if failed:
+        console.console.rule(title=f'Failed {kind.value}')
+        for name, reason in failed:
+            console.console.print(f'[error]{name}[/error]: {reason}')
+        raise typer.Exit(1)
     return res
 
 
@@ -425,6 +454,7 @@ async def execute_build(
     validate: bool = True,
     profile: Optional[str] = None,
     kind: StatementKind = StatementKind.STATEMENTS,
+    keep_going: bool = False,
 ) -> None:
     """Select and build this problem's statements or tutorials (the ``rbx st b``
     / ``rbx tut b`` body).
@@ -471,6 +501,7 @@ async def execute_build(
             vars=vars,
             validate=validate,
             kind=kind,
+            keep_going=keep_going,
         )
 
 
@@ -537,6 +568,7 @@ async def build(
         vars,
         validate,
         profile=profile,
+        keep_going=True,
     )
 
 
@@ -610,6 +642,7 @@ async def build_tutorials(
         validate,
         profile=profile,
         kind=StatementKind.TUTORIALS,
+        keep_going=True,
     )
 
 
