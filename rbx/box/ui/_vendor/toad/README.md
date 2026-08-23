@@ -24,3 +24,14 @@ Only the files required for the `CommandPane` terminal widget are included:
 - PEP 695 type parameter syntax converted to `TypeVar`/`Generic` for Python 3.10 compatibility
 - Removed Toad-specific `Conversation` widget reference from `terminal.py`
 - Removed unused `MenuItem` import from `terminal.py`
+- `terminal.py`: `update_size()` now recomputes the scrollable extents (extracted as
+  `_update_virtual_size()`, shared with `_update_from_state()`). Upstream only sets
+  `virtual_size` on a write, so a resize that reflows the buffer with nothing written
+  afterwards -- a command that already finished -- leaves the extents describing the old
+  fold count and an anchored terminal scrolls past the end of its own output.
+- `command_pane.py`: `CommandPane` takes an optional `get_fallback_dimensions` callable,
+  used when its own region is zero-sized (a hidden pane), and exposes
+  `refresh_terminal_size()` so an owner can re-apply the size to a pane that gets no
+  `Resize` of its own. `_size_changed()` no longer bails before the process starts (it
+  just skips the ioctl), and `_execute()` sizes the pty *before* forking, so a program
+  reading its width on the first write does not see the 0x0 a fresh pty starts with.

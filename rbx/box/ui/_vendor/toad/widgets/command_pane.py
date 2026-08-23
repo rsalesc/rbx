@@ -1,6 +1,7 @@
 import asyncio
 import codecs
 from dataclasses import dataclass
+from typing import Callable
 
 import os
 import fcntl
@@ -33,10 +34,12 @@ class CommandPane(Terminal):
         name: str | None = None,
         id: str | None = None,
         classes: str | None = None,
+        get_fallback_dimensions: Callable[[], tuple[int, int]] | None = None,
     ):
         self._execute_task: asyncio.Task | None = None
         self._return_code: int | None = None
         self._master: int | None = None
+        self._get_fallback_dimensions = get_fallback_dimensions
         super().__init__(name=name, id=id, classes=classes)
 
     @property
@@ -54,21 +57,36 @@ class CommandPane(Terminal):
 
     def on_resize(self, event: events.Resize):
         event.prevent_default()
-        if self._master is None:
-            return
         self._size_changed()
 
-    def _size_changed(self):
-        if self._master is None:
-            return
+    def refresh_terminal_size(self) -> None:
+        """Re-apply the terminal size.
+
+        Useful for panes that are currently hidden: they get no `Resize` event
+        of their own, yet their child process is still running and must be told
+        the size it will be shown at.
+        """
+        self._size_changed()
+
+    def _terminal_dimensions(self) -> tuple[int, int]:
         width, height = self.scrollable_content_region.size
+        if (width <= 0 or height <= 0) and self._get_fallback_dimensions is not None:
+            # A hidden pane has a zero-sized region. Falling back keeps its
+            # child process on a sane winsize instead of a 0x0 pty (which makes
+            # every size-aware program render at its 80 column default).
+            width, height = self._get_fallback_dimensions()
+        return width, height
+
+    def _size_changed(self):
+        width, height = self._terminal_dimensions()
         if width <= 0 or height <= 0:
             return
-        try:
-            size = struct.pack("HHHH", height, width, 0, 0)
-            fcntl.ioctl(self._master, termios.TIOCSWINSZ, size)
-        except OSError:
-            pass
+        if self._master is not None:
+            try:
+                size = struct.pack("HHHH", height, width, 0, 0)
+                fcntl.ioctl(self._master, termios.TIOCSWINSZ, size)
+            except OSError:
+                pass
         self.update_size(width, height)
 
     @property
@@ -96,6 +114,10 @@ class CommandPane(Terminal):
 
         master, slave = pty.openpty()
         self._master = master
+
+        # Size the pty *before* forking: a program that reads its width on the
+        # very first write would otherwise see the 0x0 the pty starts with.
+        self._size_changed()
 
         flags = fcntl.fcntl(master, fcntl.F_GETFL)
         fcntl.fcntl(master, fcntl.F_SETFL, flags | os.O_NONBLOCK)

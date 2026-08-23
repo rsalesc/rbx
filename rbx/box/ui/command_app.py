@@ -32,6 +32,13 @@ _ESCAPE_TAP_DURATION = 0.4
 class _AppCommandPane(CommandPane):
     """CommandPane that redirects focus to sidebar on blur (double-escape)."""
 
+    def on_resize(self, event: events.Resize) -> None:
+        super().on_resize(event)
+        # All panes share the container's geometry, so whatever this one just
+        # got is exactly what the hidden ones will get once shown. Tell them,
+        # otherwise their commands keep rendering at the 80-column fallback.
+        self.app.sync_hidden_pane_sizes(self)  # type: ignore[attr-defined]
+
     def blur(self):
         try:
             sidebar = self.screen.query_one('#command-list', ListView)
@@ -375,6 +382,7 @@ class rbxCommandApp(rbxBaseApp):
             on_task_ready=lambda t: self.post_message(self.TaskReady(t)),
         )
         self._pending_command: Optional[str] = None
+        self._pane_size: Tuple[int, int] = (0, 0)
 
         # Initialize tab states and add initial sub-commands.
         for i, cmd in enumerate(commands):
@@ -488,6 +496,32 @@ class rbxCommandApp(rbxBaseApp):
         elif options:
             select.value = options[-1][1]
 
+    def _pane_dimensions(self) -> Tuple[int, int]:
+        """Size a hidden pane should pretend to have."""
+        return self._pane_size
+
+    def sync_hidden_pane_sizes(self, source: CommandPane) -> None:
+        """Propagate a laid-out pane's geometry to the hidden ones.
+
+        Only one pane is displayed at a time, and a hidden widget has a
+        zero-sized region -- so a hidden pane never learns the terminal size and
+        its command runs on a 0x0 pty, which every size-aware program (rich,
+        included) reads as the 80-column fallback. Switching to that tab then
+        shows output hard-wrapped at 80 inside a much wider pane.
+        """
+        width, height = source.scrollable_content_region.size
+        if width <= 0 or height <= 0 or (width, height) == self._pane_size:
+            return
+        self._pane_size = (width, height)
+        for pane in self.query(_AppCommandPane):
+            if pane is not source:
+                pane.refresh_terminal_size()
+
+    def _make_pane(self, pane_id: str) -> '_AppCommandPane':
+        return _AppCommandPane(
+            id=pane_id, get_fallback_dimensions=self._pane_dimensions
+        )
+
     def _show_pane(self, pane_id: str):
         container = self.query_one('#command-pane-container', Vertical)
         for child in container.query(CommandPane):
@@ -515,7 +549,7 @@ class rbxCommandApp(rbxBaseApp):
         container = self.query_one('#command-pane-container', Vertical)
         for tab in self._tabs:
             for sub in tab.sub_commands:
-                pane = _AppCommandPane(id=sub.pane_id)
+                pane = self._make_pane(sub.pane_id)
                 pane.border_title = sub.name
                 container.mount(pane)
 
@@ -709,7 +743,7 @@ class rbxCommandApp(rbxBaseApp):
 
         # Mount the new pane.
         container = self.query_one('#command-pane-container', Vertical)
-        pane = _AppCommandPane(id=sub.pane_id)
+        pane = self._make_pane(sub.pane_id)
         pane.border_title = sub.name
         pane.display = False
         container.mount(pane)
