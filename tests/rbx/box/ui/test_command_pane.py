@@ -96,3 +96,47 @@ async def test_resize_keeps_scroll_extents_in_sync():
             for y in range(terminal.scrollable_content_region.height)
         ]
         assert any(rendered)
+
+
+# A line exactly as wide as the terminal says it is -- what rich emits when it
+# hard-wraps a paragraph -- followed by enough output to bring up the scrollbar.
+_OVERFLOW = [
+    sys.executable,
+    '-c',
+    'import os\n'
+    'print("A" * os.get_terminal_size().columns, flush=True)\n'
+    'for i in range(60): print(f"line {i}", flush=True)\n',
+]
+
+
+async def test_scrollbar_does_not_narrow_the_terminal_mid_command():
+    # Textual posts `Resize` only when a widget's own size changes, so the
+    # vertical scrollbar appearing once the output overflows would otherwise
+    # take a column out of the content region without telling the pty. Anything
+    # printed until the next genuine resize is then one column too wide, and
+    # that resize re-folds it one short -- spilling a trailing character onto a
+    # line of its own. Reserving the gutter keeps the width constant instead.
+    app = rbxCommandApp([CommandEntry(argv=_OVERFLOW, name='a')])
+    async with app.run_test(size=(150, 40)) as pilot:
+        await _wait_for_commands(app, pilot, panes_expected=1)
+        pane = app.query_one(CommandPane)
+        assert pane.show_vertical_scrollbar
+
+        # What the command was told matches what the pane can actually draw.
+        assert pane.width == pane.scrollable_content_region.width
+
+        # A height-only resize re-folds the buffer at the width measured now.
+        await pilot.resize_terminal(150, 30)
+        await pilot.pause()
+        await asyncio.sleep(0.1)
+        await pilot.pause()
+
+        full_width_line = next(
+            record
+            for record in pane.state.scrollback_buffer.lines
+            if record.content.plain.startswith('A')
+        )
+        assert len(full_width_line.folds) == 1, (
+            'a line the command wrapped at its own terminal width spilled onto '
+            'a second line'
+        )
