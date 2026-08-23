@@ -204,8 +204,6 @@ class _TestrunResult:
     # `run` is then the id of the testrun that was really measured, back when it
     # was measured -- which is the id the setter needs to look the run up.
     cached: bool = False
-    # Same idea as `warned`, for the cache-hit line.
-    announced: bool = False
 
 
 def _retrieve_exception(task: 'asyncio.Task') -> None:
@@ -1098,22 +1096,10 @@ class MojRunner:
         # until the next poll came round to fix it.
         result = await job
 
-        # Said out loud, and said here, for the same reason the missing-testcase
-        # warning is: a setter who expected a judge round-trip and got an answer
-        # instantly has to be told *why* it was instant, or the run reads as
-        # either magic or a bug. It also names the one way to force a real
-        # measurement -- see `_testrun_cache_dir` for why that is a directory to
-        # delete rather than a `--no-cache` flag.
-        if result.cached and not result.announced:
-            result.announced = True
-            console.console.print(
-                f'[status]Reused MOJ timings for [item]{solution.path}[/item] from '
-                f'testrun [item]{result.run}[/item]: the probe package and the '
-                f'submitted source are byte-for-byte the ones that run measured, '
-                f'so nothing was submitted to the judge.[/status]\n'
-                f'[status]Delete [item]{_testrun_cache_dir()}[/item] to measure it '
-                f'again.[/status]'
-            )
+        # A cache hit is deliberately *not* announced here. It used to print a
+        # two-line explanation per solution, which drowned the report it was
+        # attached to; the solution's own board slot already says `cached`, which
+        # is enough to tell an instant answer from a judged one.
 
         # Once per testrun, not once per testcase, and only when the report has
         # actually got here. `warned` is set before anything awaits, so two
