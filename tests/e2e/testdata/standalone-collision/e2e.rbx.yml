@@ -11,4 +11,9 @@ scenarios:
       - cmd: st b --output tex --no-samples
         expect_exit: 1
         expect:
-          stderr_contains: "Asset name collision while merging"
+          # The build no longer lets this escape as an uncaught exception
+          # (#705): statements are built in isolation, so the collision is
+          # caught, reported and summarized by the command itself. The runner
+          # only synthesizes `stderr` from an *uncaught* exception, so the
+          # message is asserted where the command actually prints it.
+          stdout_contains: "Asset name collision while merging"
