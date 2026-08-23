@@ -115,11 +115,12 @@ Once your profile is ready, you can run your solutions under the BOCA limits to 
 sure everything still passes:
 
 ```bash
-rbx -p boca run
+rbx run -p boca
 ```
 
-The `-p` (or `--profile`) flag is a **global** flag that tells {{rbx}} to use the
-specified limits profile for the run.
+The `-p` (or `--profile`) flag tells {{rbx}} to use the specified limits profile
+for the run. It also works as a global flag, before the command
+(`rbx -p boca run`).
 
 ### Working with multiple profiles
 

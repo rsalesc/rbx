@@ -348,6 +348,24 @@ async def build(
         raise typer.Exit(1)
 
 
+def _set_timing_profile(profile: Optional[str]) -> None:
+    """Apply a command-level `--profile`, if one was given.
+
+    Mirrors the root callback's `-p`, so `rbx run -p boca` and `rbx -p boca run`
+    mean the same thing. Unlike the root flag, a missing profile is an error
+    here: naming one is a deliberate act, and falling back to the package limits
+    would silently run the solutions against limits the setter did not ask for.
+    """
+    if profile is None:
+        # Leaves whatever the root callback set (or nothing) in place.
+        return
+
+    from rbx.box import limits_info
+
+    limits_info.get_limits_profile(profile, fallback_to_package_profile=False)
+    limits_info.profile_var.set(profile)
+
+
 @app.command(
     'run, r',
     rich_help_panel='Testing',
@@ -432,7 +450,18 @@ async def run(
         ),
         autocompletion=annotations._adapt('runner'),  # noqa: SLF001
     ),
+    profile: Annotated[
+        Optional[str],
+        typer.Option(
+            '-p',
+            '--profile',
+            help='Timing profile to run the solutions against. Must exist in this problem.',
+            autocompletion=annotations._adapt('profile'),  # noqa: SLF001
+        ),
+    ] = None,
 ):
+    _set_timing_profile(profile)
+
     if share is not None and share not in ('png', 'text'):
         console.console.print(
             f'[error]Invalid --share format: {share!r} (use png or text).[/error]'
@@ -898,7 +927,19 @@ async def irun(
         '-c',
         help='Whether to pick solutions interactively.',
     ),
+    profile: Annotated[
+        Optional[str],
+        typer.Option(
+            # No short flag: `-p` is already `--print` here, and stealing it
+            # would silently change what an existing `rbx irun -p` does.
+            '--profile',
+            help='Timing profile to run the solutions against. Must exist in this problem.',
+            autocompletion=annotations._adapt('profile'),  # noqa: SLF001
+        ),
+    ] = None,
 ):
+    _set_timing_profile(profile)
+
     if not print:
         console.console.print(
             '[warning]Outputs will be written to files. If you wish to print them to the terminal, use the "-p" parameter.'
