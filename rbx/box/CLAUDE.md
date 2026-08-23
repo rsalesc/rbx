@@ -485,6 +485,21 @@ Singleton factories (via `@functools.cache`) for shared resources:
 - `get_global_sandbox()` -- Shared `StupidSandbox` instance
 - `get_global_dependency_cache()` -- Shared `DependencyCache`
 - Cache versioning via `CACHE_STEP_VERSION` -- incremented when cache format changes
-- `clear_global_cache()` -- Nukes the cache directory (used by `rbx clear`)
+- `clear_global_cache()` -- Empties the cache directory (used by `rbx clear`)
+
+**Cache directories are shared between processes.** Any number of rbx processes may
+use the same cache at once; what they must never do is pull it out from under each
+other. Every cache directory carries a reader/writer lock (`session.lock`), taken in
+shared mode by `get_global_cache_dir()` / `get_problem_cache_dir()` and held until the
+process exits. Emptying a cache -- `rbx clear`, or the automatic clear when
+`CACHE_STEP_VERSION` moved -- goes through `clear_cache_dir()`, which takes that lock
+exclusively and so waits for (or refuses, with `CacheBusyError`) the processes still
+using it. Two rules follow, and breaking either brings back #700 (`attempt to write a
+readonly database`, and a lock that stops excluding):
+
+- **Never `rmtree` a cache directory** -- `wipe_cache_dir()` empties it in place, so
+  live sqlite/storage handles and the lock inodes inside it stay valid.
+- **Re-check validity under the lock** -- `ensure_cache_dir_is_valid()` does, which is
+  what keeps two processes starting at once from both wiping the cache.
 
 **Test isolation rule:** `rbx.testing_utils.clear_all_functools_cache` holds a list of *modules* and clears every attribute of each that exposes `cache_clear`. So a new `@functools.cache` (or `@async_lru.alru_cache`) on a module-level function in `rbx/box/` is covered automatically **if its module is already in that list** -- add the module if it is not (individual functions are never registered). The autouse `_isolate_global_state` fixture in `tests/rbx/conftest.py` calls this between every test; uncovered caches will leak path-resolved state across tests and surface as flaky cross-test failures (#423). `global_package` is excluded on purpose -- see the function's docstring.

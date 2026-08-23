@@ -148,6 +148,9 @@ def get_problem_cache_dir(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
     fingerprint_file = cache_dir / 'fingerprint'
     if not fingerprint_file.is_file():
         fingerprint_file.write_text(get_cache_fingerprint())
+    # From here on this process is a user of the cache, and nobody gets to wipe
+    # it until we exit.
+    global_package.hold_cache_dir(cache_dir)
     return cache_dir
 
 
