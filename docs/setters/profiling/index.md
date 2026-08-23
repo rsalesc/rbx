@@ -404,6 +404,24 @@ group instead of from its own measured timings:
 Unlike the env `whenEmpty` fallback (which only applies to groups that have **no** solutions),
 a forced relative **always overrides** the group's measured estimate.
 
+!!! warning "A derived limit can be one the group's own solutions cannot meet"
+
+    Because the override is total, a group can end up with a limit **below** what its own
+    accepted solutions need -- deriving `java` from `cpp` at `×1.0` gives it `cpp`'s limit
+    however slow the Java solutions actually are. {{rbx}} checks every derived limit against
+    the group's own measurements and flags the row in the table, in the picker preview as
+    well as in the final report:
+
+    ```
+    java  1  200 ms  ×1.0 of cpp ⚠ needs ≥ 1800 ms (sol.java takes 900 ms)
+    ```
+
+    The row is red when the group's accepted solutions do not pass at the limit at all, and
+    yellow when they pass but without the margin `acToTimeLimit` asks for. The bound is
+    recorded in the profile under `lowerViolation`. This is a warning, not an error: the
+    limit is written as asked, so regroup or drop the reference if it was not what you
+    meant.
+
 Press <kbd>Enter</kbd> to confirm, or pass `--auto` to skip the prompt and use the configured
 env groups as-is.
 

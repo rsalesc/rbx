@@ -264,6 +264,26 @@ class LimitsTableRow(BaseModel):
     # Slow solutions of this group that finished within its limit times
     # `timeLimitToTle`, so they do not respect the upper bound.
     violating_upper: List[str] = []
+    # Set when the group's own accepted solutions do not fit its time limit:
+    # the smallest limit they allow, and the one that takes the longest.
+    lower_violation_ms: Optional[int] = None
+    lower_violation_solution: Optional[str] = None
+    # The group's slowest accepted solution, to tell a limit its solutions
+    # outright fail from one they merely clear without the configured margin.
+    slowest_ms: Optional[int] = None
+
+    @property
+    def violates_lower(self) -> bool:
+        """Whether this row's limit is below what its own accepted solutions
+        allow -- a limit no good solution of the group can be judged under as
+        the setter intended."""
+        return self.lower_violation_ms is not None
+
+    @property
+    def rejects_own_solutions(self) -> bool:
+        """Whether the group's own accepted solutions do not pass at all, as
+        opposed to passing without the configured margin."""
+        return self.slowest_ms is not None and self.slowest_ms > self.time_limit_ms
 
 
 def _bounds_note(report: TimingGroupReport) -> str:
@@ -291,6 +311,23 @@ def _bounds_note(report: TimingGroupReport) -> str:
     return ' [' + ', '.join(parts) + ']'
 
 
+def _violation_note(report: TimingGroupReport) -> str:
+    """What the group's own accepted solutions need, when its limit denies it.
+
+    Spelled out beside the limit rather than left to the caption: the caption
+    counts the groups, this says which row and by how much.
+    """
+    violation = report.lowerViolation
+    if violation is None:
+        return ''
+    note = f'needs ≥ {violation.value} ms'
+    if violation.solution is not None and report.slowest is not None:
+        note += f' ({violation.solution} takes {report.slowest} ms)'
+    elif violation.solution is not None:
+        note += f' from {violation.solution}'
+    return f' ⚠ {note}'
+
+
 def _report_source(report: TimingGroupReport) -> str:
     if report.origin == TimingGroupOrigin.ESTIMATED:
         source = (
@@ -303,7 +340,7 @@ def _report_source(report: TimingGroupReport) -> str:
             source += f' + {report.increment} ms'
     else:
         source = 'DEFAULTED to base'
-    return source + _bounds_note(report)
+    return source + _bounds_note(report) + _violation_note(report)
 
 
 def _base_row(profile: LimitsProfile) -> LimitsTableRow:
@@ -317,9 +354,13 @@ def _base_row(profile: LimitsProfile) -> LimitsTableRow:
     solutions = None
     confirmed: List[str] = []
     violating: List[str] = []
+    lower_violation = None
+    slowest = None
     if profile.baseEstimate is not None:
         source = _report_source(profile.baseEstimate)
         solutions = profile.baseEstimate.solutionCount
+        lower_violation = profile.baseEstimate.lowerViolation
+        slowest = profile.baseEstimate.slowest
         validation = profile.baseEstimate.upperValidation
         if validation is not None:
             confirmed = list(validation.confirmed)
@@ -333,6 +374,11 @@ def _base_row(profile: LimitsProfile) -> LimitsTableRow:
         source=source,
         confirmed_upper=confirmed,
         violating_upper=violating,
+        lower_violation_ms=lower_violation.value if lower_violation else None,
+        lower_violation_solution=(
+            lower_violation.solution if lower_violation else None
+        ),
+        slowest_ms=slowest,
     )
 
 
@@ -366,6 +412,17 @@ def build_limits_table_rows(profile: LimitsProfile) -> List[LimitsTableRow]:
                         if report.upperValidation is not None
                         else []
                     ),
+                    lower_violation_ms=(
+                        report.lowerViolation.value
+                        if report.lowerViolation is not None
+                        else None
+                    ),
+                    lower_violation_solution=(
+                        report.lowerViolation.solution
+                        if report.lowerViolation is not None
+                        else None
+                    ),
+                    slowest_ms=report.slowest,
                 )
             )
         # Leftover group is shown first; stable sort keeps the rest in order.
@@ -419,6 +476,20 @@ def _highlight_ms(text: str) -> str:
     return _MS_PATTERN.sub(r'[timelimit]\1[/timelimit] [dim]ms[/dim]', text)
 
 
+def _subject(rows: List[LimitsTableRow]) -> str:
+    """Name the solutions a caption is about, or count their groups when the
+    rows carry no name. Always phrased so a singular verb follows."""
+    named = [
+        row.lower_violation_solution for row in rows if row.lower_violation_solution
+    ]
+    if not named:
+        plural = 's' if len(rows) > 1 else ''
+        return f'The slowest accepted solution of {len(rows)} group{plural} is'
+    if len(named) == 1:
+        return f'{named[0]} is'
+    return f'Each of {", ".join(named)} is'
+
+
 def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
     """Build a styled rich Table of the resolved per-language/group limits.
 
@@ -443,6 +514,29 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
         caption_lines.append(
             '[warning]⚠ DEFAULTED: no accepted solutions and no whenEmpty rule; '
             'fell back to the base time limit.[/warning]'
+        )
+    # The grouping handed a group a limit its own good solutions cannot meet --
+    # the group's limit was derived from elsewhere and its own measurements were
+    # never consulted. Split by severity: a limit its solutions outright fail is
+    # a different problem from one they clear without the configured margin, and
+    # collapsing the two would understate the first.
+    rejecting = [
+        row for row in rows if row.violates_lower and row.rejects_own_solutions
+    ]
+    if rejecting:
+        caption_lines.append(
+            f'[error]⚠ {_subject(rejecting)} accepted, but does not pass at the '
+            f'time limit of its own group, which was derived from another group '
+            f'instead of estimated from it. Regroup, or drop the reference so the '
+            f'group is estimated from its own solutions.[/error]'
+        )
+    thin = [row for row in rows if row.violates_lower and not row.rejects_own_solutions]
+    if thin:
+        caption_lines.append(
+            f'[warning]⚠ {_subject(thin)} accepted and passes at the time limit of '
+            f'its own group, but without the margin acToTimeLimit asks for, because '
+            f'the limit was derived from another group. See the Source column for '
+            f'what each group needs.[/warning]'
         )
     # Terse on purpose: the validation run already reported each offending
     # solution by name, with what to do about it. This only says the table's
@@ -485,7 +579,17 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
         # any other consumer -- and before the styling helpers, whose own markup
         # must survive.
         source = rich.markup.escape(row.source)
-        if row.defaulted:
+        if row.violates_lower:
+            # Red beats the defaulted yellow: a limit the group's own solutions
+            # cannot meet is a broken grouping, not a fallback.
+            style = 'error' if row.rejects_own_solutions else 'warning'
+            table.add_row(
+                f'[{style}]{row.languages}[/{style}]',
+                f'[{style}]{sols}[/{style}]',
+                f'[{style}]{tl}[/{style}]',
+                f'[{style}]{source}[/{style}]',
+            )
+        elif row.defaulted:
             # Defaulted rows are warnings: the yellow signals the fallback and
             # deliberately overrides the per-figure time highlight.
             table.add_row(

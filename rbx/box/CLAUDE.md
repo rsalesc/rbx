@@ -17,7 +17,7 @@ The central Pydantic model hierarchy defining `problem.rbx.yml`:
 - **`CodeItem`** -- `path`, `language`, `compilationArgs` (reference to any code file)
 - **`LimitsProfile`** -- Per-packager limit overrides with `modifiers` per language, `formula` support; also carries optional `groups` metadata (a `TimingGroupReport` list, presentation-only) recording how languages were grouped during estimation
 - **`LimitModifiers`** -- `time`, `timeMultiplier`, `memory` per language
-- **`TimingGroupOrigin` / `TimingGroupReport`** -- presentation-only types describing each language group's resolved time limit and its source (estimated / `whenEmpty` multiple / defaulted)
+- **`TimingGroupOrigin` / `TimingGroupReport`** -- presentation-only types describing each language group's resolved time limit and its source (estimated / `whenEmpty` multiple / defaulted). `lowerViolation` records the smallest limit the group's *own* accepted solutions allow, and is set only when the resolved limit is below it -- which only a **derived** limit can be, since an estimated one is built from that bound and rounded up. It is a warning, never an error: the limit is written as asked and the table flags the row (see `timing.make_formula_derive` / `make_multipliers_derive`)
 
 ### Vars and per-group overrides
 
