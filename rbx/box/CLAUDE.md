@@ -304,9 +304,13 @@ problem, the testrun id, the judge's own state word, its host and how long the w
 been. Only what the judge actually answered with goes there -- a `0/0` on a run that has
 not started would read as a lost testset -- and the counts are `correct`, never "tests
 run", since a solution the validation phase *expects* to fail would otherwise look stuck at
-zero. The slot is cleared once the solution has a real verdict, so no stale `running` chip
-survives beside an outcome. This replaced a `ctx.progress.update(...)` that nobody ever
-saw: every caller exits its `StatusProgress` before `print_run_report` runs, so the
+zero. The slot is **left holding** `done` (or `cached`) rather than cleared when the
+solution finishes: the reporter rebuilds its block on every drawn frame, so the last frame
+-- the one frozen into scrollback, and the only one a non-terminal console emits at all --
+renders whatever the board holds then, and clearing first dropped the testrun id out of the
+permanent record and out of every `--share` report. Nothing stale survives either way,
+because `_submit_and_poll` overwrites the slot before any deferred can resolve. This
+replaced a `ctx.progress.update(...)` that nobody ever saw: every caller exits its `StatusProgress` before `print_run_report` runs, so the
 `Status` being updated there was always already stopped. `MAX_INFLIGHT_TESTRUNS` is **1**: MOJ allows one account only a few queued testruns
 (three, observed) and answers 429 past that, `moj testrun` cannot pick a judge so two in
 flight may share a machine and inflate each other, and the park is shared with everyone
@@ -355,6 +359,8 @@ Evaluations are **not truly parallel** -- they are deferred/lazy sequential. The
 - **`LiveRunReporter`** -- One `rich.live.Live` per **solution**, not per group. The region holds the solution header and the group lines indented under it, with compact verdict marks (accepted testcases are omitted). Used whenever more than one solution runs, terminal or not: on a non-terminal console Live emits nothing until `stop()`, so the whole solution finalizes as one frame, which is what `--share`'s recorded consoles rely on.
 
   The scope is the solution because the header carries things that only become true *while* it runs -- how long it has been going, and (see `runners/`) whatever the backend running it wants said. A header printed once, ahead of the first group, is already in scrollback by then.
+
+  **`Live` is handed a `_SolutionBlock`, not a finished frame.** `Live.refresh` redraws the renderable it was *given*, so a block assembled as a `Text` freezes the clock and the backend's chips at the moment of the `update()` call -- and the display then only changes when an evaluation resolves. On a remote run the first one does not resolve until the judge has finished the whole testrun, so the header stayed on `waiting for a slot` with a clock reading `0.0s` for the entire wait, then jumped to finished. `_SolutionBlock.__rich_console__` calls back into `block_renderable()` instead, so the frames the refresh thread produces are as current as the ones an evaluation triggers. `block_renderable` therefore runs on that thread too: it only reads, and the board hands back a tuple, so a write landing mid-frame cannot be seen half-applied.
 
   Two rules keep that from leaking into recorded output. **Wall-clock chips render on a terminal only** (`_header_chips`): a shared report, an e2e golden and an asciinema cast are all non-terminal, and an elapsed time in any of them is a diff on every run. And **auto-refresh is on for terminals only** -- the clock has to repaint with nothing else happening, but a refresh thread on a non-terminal would spin for frames nobody sees.
 

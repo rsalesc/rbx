@@ -3029,6 +3029,41 @@ class TraditionalRunReporter:
         """
 
 
+class _SolutionBlock:
+    """The live region, rebuilt from scratch on every frame that is drawn.
+
+    `rich.live.Live` redraws the renderable it was **handed**, not one it asks
+    for: `Live.refresh` re-renders `self.renderable`, the object passed to
+    `update()`. Handing it a `Text` built from the clock and the board therefore
+    freezes both at the moment of that call, and the display only changes when
+    something calls `update()` again -- which, in this reporter, is an evaluation
+    resolving.
+
+    On a remote run that is precisely the wrong moment. The first evaluation does
+    not resolve until the judge has finished the whole testrun, so the header sat
+    on whatever the backend last said before the wait began -- `waiting for a
+    slot` -- and then jumped straight to finished, with a clock that had never
+    left `0.0s`. The entire span the setter is watching is the span in which
+    nothing called `update()`.
+
+    So `Live` is handed *this* instead: an object that renders the block afresh
+    each time it is asked. The refresh thread then produces a frame that shows
+    what is true now, without the reporter having to know when the interesting
+    changes happen -- which it cannot know, because they happen on someone else's
+    task.
+    """
+
+    def __init__(self, reporter: 'LiveRunReporter') -> None:
+        self._reporter = reporter
+
+    def __rich_console__(
+        self,
+        console: rich.console.Console,
+        options: rich.console.ConsoleOptions,
+    ) -> rich.console.RenderResult:
+        yield self._reporter.block_renderable()
+
+
 class LiveRunReporter(TraditionalRunReporter):
     """The reporter used whenever more than one solution is run.
 
@@ -3056,6 +3091,10 @@ class LiveRunReporter(TraditionalRunReporter):
         # the per-group Live this class used to be; see `_fits_as_block`.
         self._block = False
         self._finished_lines: List[rich.text.Text] = []
+        # The group line being worked on, kept rather than pushed: the frame is
+        # assembled by `block_renderable` whenever someone draws, which is mostly
+        # the refresh thread rather than this reporter. See `_SolutionBlock`.
+        self._current_line: Optional[rich.text.Text] = None
         self._elapsed: Optional[utils.Elapsed] = None
 
     # -- the block ------------------------------------------------------------
@@ -3166,23 +3205,45 @@ class LiveRunReporter(TraditionalRunReporter):
             )
         return renderable
 
+    def block_renderable(self) -> rich.console.RenderableType:
+        """The whole block as it stands right now.
+
+        Called by `_SolutionBlock` on every drawn frame, which means it is called
+        from `rich`'s refresh thread as well as from this reporter. It only reads
+        -- the header off `self.current_solution`, the clock off `self._elapsed`,
+        the chips off the board -- and the board hands back a tuple, so a write
+        landing mid-frame cannot be seen half-applied.
+        """
+        if self.current_solution is None:
+            return rich.text.Text('')
+        rows: List[rich.console.RenderableType] = [
+            self._header_line(self.current_solution)
+        ]
+        # Copied, because the list is appended to from the reporter while this
+        # may be running on the refresh thread.
+        for line in list(self._finished_lines):
+            rows.append(rich.padding.Padding(line, (0, 0, 0, 2)))
+        current = self._current_line
+        if current is not None:
+            rows.append(rich.padding.Padding(current, (0, 0, 0, 2)))
+        return rich.console.Group(*rows)
+
     def _render(self, current: Optional[rich.text.Text]) -> None:
-        """Push a frame: the header, the groups already done, and the live one."""
+        """Record the current group line and ask for a repaint.
+
+        Deliberately not "build a frame and hand it to `Live`": in block mode the
+        frame is built by `block_renderable`, so that the frames nobody here
+        triggers -- the ones the refresh thread produces while a judge is
+        thinking -- are as current as the ones that come from an evaluation.
+        """
+        self._current_line = current
         if self.live is None:
             return
         if not self._block:
             if current is not None:
                 self.live.update(current, refresh=True)
             return
-        assert self.current_solution is not None
-        rows: List[rich.console.RenderableType] = [
-            self._header_line(self.current_solution)
-        ]
-        for line in self._finished_lines:
-            rows.append(rich.padding.Padding(line, (0, 0, 0, 2)))
-        if current is not None:
-            rows.append(rich.padding.Padding(current, (0, 0, 0, 2)))
-        self.live.update(rich.console.Group(*rows), refresh=True)
+        self.live.refresh()
 
     def _update_live(self, finished: bool = False):
         if self.live is None or self.current_group is None:
@@ -3194,6 +3255,7 @@ class LiveRunReporter(TraditionalRunReporter):
     def render_solution(self, solution: Solution):
         self._elapsed = utils.Elapsed()
         self._finished_lines = []
+        self._current_line = None
         self._block = self._fits_as_block()
         if not self._block:
             solution_skeleton = self.result.skeleton.find_solution_skeleton(solution)
@@ -3204,6 +3266,7 @@ class LiveRunReporter(TraditionalRunReporter):
             )
             return
         self.live = rich.live.Live(
+            _SolutionBlock(self),
             console=self.console,
             # The elapsed chip has to repaint with nothing else happening, which
             # is the whole point of it during a remote run. Off on a non-terminal

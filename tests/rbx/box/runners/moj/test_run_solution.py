@@ -1287,13 +1287,19 @@ async def test_every_poll_repaints_the_solution_it_is_waiting_on(
     assert any(any(text.startswith('testrun ') for text in chips) for chips in seen[1:])
 
 
-async def test_the_board_is_cleared_once_the_solution_has_a_verdict(
+async def test_a_finished_solution_keeps_the_testrun_on_its_header(
     testing_pkg, tmp_path, monkeypatch
 ):
-    """A stale `running` chip beside a finished verdict is worse than no chip.
+    """The slot is left holding `done`, not emptied.
 
-    The header is about to carry the solution's outcome; whatever the judge was
-    doing a moment ago is no longer what the setter is being told.
+    The reporter rebuilds its block on every drawn frame, so the last frame --
+    the one `Live.stop()` freezes into scrollback, and the only one a
+    non-terminal console emits at all -- shows whatever the board holds then.
+    Clearing it would drop the testrun id out of the permanent record and out of
+    every `--share` report, which is exactly where it is worth having.
+
+    Nothing stale survives, because `_submit_and_poll` overwrites the slot with
+    `done` before any deferred can resolve.
     """
     runner, fake, ctx = await _prepared(
         testing_pkg, tmp_path, monkeypatch, groups=['samples']
@@ -1305,7 +1311,12 @@ async def test_the_board_is_cleared_once_the_solution_has_a_verdict(
 
     await _run(runner, ctx)
 
-    assert _chips(ctx, 'sol.cpp') == []
+    chips = _chips(ctx, 'sol.cpp')
+    assert any(text.startswith('testrun ') for text in chips)
+    assert 'done' in chips
+    # ...and nothing left over from while it was still running.
+    assert 'waiting for a slot' not in chips
+    assert 'submitted' not in chips
 
 
 async def test_a_poll_writes_to_its_own_slot_and_no_other(
@@ -1341,9 +1352,9 @@ async def test_a_poll_writes_to_its_own_slot_and_no_other(
 
     await _gather(first)
 
-    # `sol.cpp` is finished and cleared; `other.cpp` kept its own slot the whole
-    # time, and never appeared in `sol.cpp`'s.
-    assert _chips(ctx, 'sol.cpp') == []
+    # `sol.cpp` is finished; `other.cpp` kept its own slot the whole time, and
+    # never appeared in `sol.cpp`'s.
+    assert 'done' in _chips(ctx, 'sol.cpp')
     assert _chips(ctx, 'other.cpp')
     assert not any('other' in text for text in _chips(ctx, 'sol.cpp'))
 

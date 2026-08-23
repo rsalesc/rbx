@@ -1119,10 +1119,19 @@ class MojRunner:
                 f'estimated from the rest.[/warning]'
             )
 
-        # Cleared once there is a real verdict to show: the header is about to
-        # carry the solution's outcome, and a stale `running` chip beside a
-        # finished verdict is worse than no chip at all.
-        ctx.progress_board.clear(str(solution.path))
+        # The slot is deliberately **not** cleared here. Clearing it was meant to
+        # keep a stale `running` chip from sitting beside a finished verdict, but
+        # nothing here is stale: `_submit_and_poll` has already overwritten the
+        # slot with `done` and the total wait, or with `cached`, before any
+        # deferred can resolve. Both are exactly what the finished line should
+        # say.
+        #
+        # And clearing actively lost them. The reporter's block is rebuilt on
+        # every drawn frame, so the last frame -- the one `Live.stop()` freezes
+        # into scrollback, and the only one a non-terminal console emits at all --
+        # renders whatever the board holds *then*. Clearing first meant the
+        # testrun id vanished from the permanent record and from every `--share`
+        # report, which is where it is most worth having.
 
         # `.get`, not `[]`: a name MOJ did not report is a case with an answer,
         # and it is not this one blowing up. See `_evaluation_for`.

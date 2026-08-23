@@ -2495,3 +2495,93 @@ async def test_a_run_with_no_backend_chips_renders_exactly_as_before(
         line for line in rendered_lines(console) if line.startswith('sol.cpp')
     )
     assert '·' not in header
+
+
+async def test_the_clock_advances_on_a_frame_nobody_triggered(
+    mock_problem_root, mock_binary_scoring
+):
+    """The wall clock has to move on frames the refresh thread produces.
+
+    `rich.live.Live` redraws the renderable it was handed, so a block built as a
+    static `Text` freezes the clock at the moment of the call and only moves it
+    when an evaluation resolves. On a remote run the first evaluation does not
+    resolve until the judge has finished the whole testrun -- so the clock sat at
+    `0.0s` for exactly the wait it exists to describe, and then jumped. Driven
+    here the way the refresh thread drives it: a bare `refresh()`, with no
+    reporter event in between.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    console = terminal_console()
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+
+    reporter.start_solution(solution)
+    reporter.start_group(skeleton.groups[0])
+    assert reporter.live is not None
+
+    started = reporter._elapsed._started  # noqa: SLF001
+    console.export_text(clear=True)
+    with patch('rbx.utils.time.monotonic', return_value=started + 42.0):
+        reporter.live.refresh()
+
+    assert '42s' in console.export_text(clear=False)
+    reporter.close()
+
+
+async def test_the_block_is_rebuilt_per_frame_not_frozen_at_update(
+    mock_problem_root, mock_binary_scoring
+):
+    """`Live` is handed something that renders itself, not a finished frame.
+
+    Pinned directly, because it is the property the bug turned on: everything
+    else about the block can be right while the display still never changes.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    console = terminal_console()
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+
+    reporter.start_solution(solution)
+    assert reporter.live is not None
+    # `get_renderable()`, not `.renderable`: the latter wraps the first Live of
+    # the stack in a Group, which would hide what was actually handed over.
+    assert isinstance(
+        reporter.live.get_renderable(),
+        solutions_module._SolutionBlock,  # noqa: SLF001
+    )
+    reporter.close()
+
+
+async def test_the_frozen_frame_still_carries_the_backend_chips(
+    mock_problem_root, mock_binary_scoring
+):
+    """What the block holds at `stop()` is what scrollback keeps.
+
+    The block is rebuilt on every drawn frame, so the last frame renders the
+    board as it stands *then* -- and on a non-terminal console that last frame is
+    the only one emitted at all. A backend that emptied its slot on finishing
+    would drop the testrun id out of the permanent record and out of every
+    `--share` report.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    console = recording_console()
+
+    # Set the way a backend leaves it: the finished state, not an empty slot.
+    result.progress_board.set(
+        'sol.cpp', RunnerChip('testrun 4821'), RunnerChip('done', style='green')
+    )
+
+    with fresh_issue_stack():
+        await drive_reporter(
+            LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
+        )
+
+    header = next(
+        line for line in rendered_lines(console) if line.startswith('sol.cpp')
+    )
+    assert 'testrun 4821' in header
+    assert 'done' in header
