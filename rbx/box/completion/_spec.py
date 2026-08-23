@@ -2333,6 +2333,17 @@ SPEC = {
                                     },
                                 },
                                 {
+                                    'help': 'Build a statement even if some of '
+                                    'its problems fail, omitting them. '
+                                    'Without this, a problem that fails '
+                                    'makes its statement fail.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--partial'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
                                     'help': 'Show this message and exit.',
                                     'kind': 'option',
                                     'multiple': False,
@@ -2464,6 +2475,17 @@ SPEC = {
                                     'multiple': False,
                                     'names': ['-p', '--profile'],
                                     'takes_value': True,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Build a statement even if some of '
+                                    'its problems fail, omitting them. '
+                                    'Without this, a problem that fails '
+                                    'makes its statement fail.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--partial'],
+                                    'takes_value': False,
                                     'value': {'kind': 'none'},
                                 },
                                 {
