@@ -24,6 +24,7 @@ from typing import (
 import rich
 import rich.live
 import rich.markup
+import rich.padding
 import rich.table
 import rich.text
 import typer
@@ -2820,6 +2821,12 @@ def _print_limits(limits: Dict[str, Limits]):
     console.console.print()
 
 
+# How many lines a solution block costs beyond its group lines: the header, plus
+# one row of slack for a header long enough to wrap. Used by the height guard in
+# `LiveRunReporter._fits_as_block`.
+_BLOCK_CHROME_LINES = 3
+
+
 class TraditionalRunReporter:
     result: RunSolutionResult
     console: rich.console.Console
@@ -2988,13 +2995,34 @@ class TraditionalRunReporter:
     ):
         pass
 
+    def close(self) -> None:
+        """Drop any live display this reporter still owns.
+
+        Called from a `finally` around the report loop, because the loop does not
+        always reach the end of a solution: a deferred can raise (a judge that
+        never answered, a `Ctrl-C`), and that unwinds straight through the
+        reporter. A `rich.live.Live` left started keeps the cursor hidden and
+        overwrites the first lines of whatever is printed next -- which, on that
+        path, is the traceback explaining what went wrong.
+        """
+
 
 class LiveRunReporter(TraditionalRunReporter):
     """The reporter used whenever more than one solution is run.
 
-    Group lines are rendered through ``rich.live.Live``, which also covers the
-    non-terminal case: there, Live finalizes a single frame per group instead of
-    animating, which is what the recorded consoles behind ``--share`` rely on.
+    The live region spans a whole **solution**, not a group. The header line
+    carries things that only become true *while* the solution runs -- how long it
+    has been going, and whatever the backend running it wants said -- and a
+    header printed once, before the first group, could never show any of them.
+    Group lines accumulate underneath it, so the block a setter watches animate
+    is the same block that ends up in scrollback.
+
+    Non-terminal consoles (the recorded console behind ``--share``, e2e goldens,
+    asciinema casts) go through this same code: ``rich.live.Live`` emits nothing
+    until ``stop()`` there, so the whole solution finalizes as one frame instead
+    of one frame per group. Wall-clock chips are suppressed on those consoles --
+    see ``_header_chips`` -- because an elapsed time would be a diff on every
+    single run.
     """
 
     def __init__(self, *args, **kwargs):
@@ -3002,32 +3030,59 @@ class LiveRunReporter(TraditionalRunReporter):
         self.live: Optional[rich.live.Live] = None
         self.pre_evaluated = 0
         self.post_evaluated = 0
+        # Whether this solution is being drawn as one block. False falls back to
+        # the per-group Live this class used to be; see `_fits_as_block`.
+        self._block = False
+        self._finished_lines: List[rich.text.Text] = []
+        self._elapsed: Optional[utils.Elapsed] = None
 
-    def render_solution(self, solution: Solution):
+    # -- the block ------------------------------------------------------------
+
+    def _fits_as_block(self) -> bool:
+        """Whether the whole solution can be drawn as one live region.
+
+        A live region taller than the terminal is not merely ugly: rich redraws
+        it by moving the cursor back up over its own output, so a block that does
+        not fit either flickers or leaves torn copies of itself behind. A package
+        with more groups than the terminal has rows therefore falls back to the
+        per-group Live, which is exactly the behaviour that shipped before this
+        block existed -- a degradation, but a familiar one.
+
+        Not a question worth asking on a non-terminal console: nothing is
+        animated there, `Live` emits one frame at `stop()`, and the height rich
+        reports for a file is a default rather than a measurement.
+        """
+        if not self.console.is_terminal:
+            return True
+        return len(self.result.skeleton.groups) + _BLOCK_CHROME_LINES <= (
+            self.console.height
+        )
+
+    def _header_chips(self) -> List[rich.text.Text]:
+        """The live annotations on the solution header, left to right.
+
+        Wall-clock chips render on a terminal only. A shared report, an e2e
+        golden and an asciinema cast are all non-terminal consoles, and an
+        elapsed time in any of them turns every re-run into a diff.
+        """
+        chips: List[rich.text.Text] = []
+        if self._elapsed is not None and self.console.is_terminal:
+            chips.append(rich.text.Text(str(self._elapsed), style='bright_black'))
+        return chips
+
+    def _header_line(self, solution: Solution) -> rich.text.Text:
         solution_skeleton = self.result.skeleton.find_solution_skeleton(solution)
         assert solution_skeleton is not None
-        _print_solution_header(
-            solution_skeleton,
-            self.console,
+        line = rich.text.Text.from_markup(
+            f'{solution_skeleton.href()} ({solution_skeleton.runs_dir_href()})'
         )
+        for chip in self._header_chips():
+            line.append(rich.text.Text(' · ', style='bright_black'))
+            line.append(chip)
+        return line
 
-    def render_solution_end(
-        self, solution: Solution
-    ) -> Optional[SolutionOutcomeReport]:
-        report = _print_solution_outcome(
-            solution,
-            self.result.skeleton,
-            self.current_solution_evals,
-            self.console,
-            verification=self.verification,
-            print_message=True,
-        )
-        self.console.print()
-        return report
-
-    def _update_live(self, finished: bool = False):
-        if self.live is None:
-            return
+    def _group_line(self, finished: bool = False) -> rich.text.Text:
+        """One group's line: its name, the verdicts worth showing, its extremes."""
         assert self.current_group is not None
         renderable = rich.text.Text.from_markup(
             f'[bstatus]{self.current_group.name} ({len(self.current_group.testcases)})[/bstatus] '
@@ -3078,27 +3133,117 @@ class LiveRunReporter(TraditionalRunReporter):
                     end='',
                 )
             )
+        return renderable
 
-        self.live.update(renderable, refresh=True)
+    def _render(self, current: Optional[rich.text.Text]) -> None:
+        """Push a frame: the header, the groups already done, and the live one."""
+        if self.live is None:
+            return
+        if not self._block:
+            if current is not None:
+                self.live.update(current, refresh=True)
+            return
+        assert self.current_solution is not None
+        rows: List[rich.console.RenderableType] = [
+            self._header_line(self.current_solution)
+        ]
+        for line in self._finished_lines:
+            rows.append(rich.padding.Padding(line, (0, 0, 0, 2)))
+        if current is not None:
+            rows.append(rich.padding.Padding(current, (0, 0, 0, 2)))
+        self.live.update(rich.console.Group(*rows), refresh=True)
+
+    def _update_live(self, finished: bool = False):
+        if self.live is None or self.current_group is None:
+            return
+        self._render(self._group_line(finished))
+
+    # -- lifecycle ------------------------------------------------------------
+
+    def render_solution(self, solution: Solution):
+        self._elapsed = utils.Elapsed()
+        self._finished_lines = []
+        self._block = self._fits_as_block()
+        if not self._block:
+            solution_skeleton = self.result.skeleton.find_solution_skeleton(solution)
+            assert solution_skeleton is not None
+            _print_solution_header(
+                solution_skeleton,
+                self.console,
+            )
+            return
+        self.live = rich.live.Live(
+            console=self.console,
+            # The elapsed chip has to repaint with nothing else happening, which
+            # is the whole point of it during a remote run. Off on a non-terminal
+            # console, which emits one frame at `stop()` regardless: a refresh
+            # thread there would spin for frames nobody ever sees.
+            auto_refresh=self.console.is_terminal,
+            refresh_per_second=4,
+            vertical_overflow='visible',
+        )
+        self.live.start()
+        self._render(None)
+
+    def render_solution_end(
+        self, solution: Solution
+    ) -> Optional[SolutionOutcomeReport]:
+        self._stop_live()
+        self._elapsed = None
+        report = _print_solution_outcome(
+            solution,
+            self.result.skeleton,
+            self.current_solution_evals,
+            self.console,
+            verification=self.verification,
+            print_message=True,
+        )
+        self.console.print()
+        return report
+
+    def _stop_live(self) -> None:
+        """Freeze whatever is live right now. Idempotent, and safe to call late.
+
+        Called from `render_solution_end` on the happy path and from `close()`
+        when a run never reaches one -- a deferred that raises (a judge that
+        never answered, a Ctrl-C) unwinds straight through the reporter, and a
+        `Live` left started leaves the cursor hidden and eats the first lines of
+        the traceback that follows.
+        """
+        if self.live is None:
+            return
+        self.live.stop()
+        self.live = None
+        # On a real terminal, Live.stop() advances to a new line. On a
+        # non-terminal console (e.g. when capturing the report to share it) it
+        # finalizes without a trailing newline, so what follows would otherwise
+        # run into the last line of the block; emit one explicitly.
+        if not self.console.is_terminal:
+            self.console.print()
+
+    def close(self) -> None:
+        self._stop_live()
 
     def render_group(self, group: GroupSkeleton):
         self.pre_evaluated = 0
         self.post_evaluated = 0
-        self.live = rich.live.Live(console=self.console, auto_refresh=False)
-        self.live.start()
+        if not self._block:
+            self.live = rich.live.Live(console=self.console, auto_refresh=False)
+            self.live.start()
         self._update_live()
 
     def render_group_end(self, group: GroupSkeleton):
         assert self.live is not None
-        self._update_live(finished=True)
-        self.live.stop()
-        self.live = None
-        # On a real terminal, Live.stop() advances to a new line, so each group
-        # lands on its own row. On a non-terminal console (e.g. when capturing
-        # the report to share it) Live finalizes without a trailing newline, so
-        # groups would otherwise run together; emit one explicitly.
-        if not self.console.is_terminal:
-            self.console.print()
+        line = self._group_line(finished=True)
+        if self._block:
+            # Kept as a rendered line rather than recomputed on every later
+            # frame: `finish_group` clears the evals behind it the moment this
+            # returns, so this is the last point at which it can be drawn.
+            self._finished_lines.append(line)
+            self._render(None)
+            return
+        self.live.update(line, refresh=True)
+        self._stop_live()
 
     def render_pre_evaluation(self, entry: GenerationTestcaseEntry):
         self.pre_evaluated = entry.group_entry.index + 1
@@ -3112,7 +3257,20 @@ class LiveRunReporter(TraditionalRunReporter):
 
 
 class SingleSolutionRunReporter(TraditionalRunReporter):
+    """The reporter used when exactly one solution runs.
+
+    Deliberately **not** a live block. It prints a line per testcase, so the
+    region that would have to stay live is as tall as the testset -- the case
+    `LiveRunReporter._fits_as_block` refuses. The wall clock is reported once, at
+    the end, instead of ticking.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._elapsed: Optional[utils.Elapsed] = None
+
     def render_solution(self, solution: Solution):
+        self._elapsed = utils.Elapsed()
         solution_skeleton = self.result.skeleton.find_solution_skeleton(solution)
         assert solution_skeleton is not None
         _print_solution_header(solution_skeleton, self.console)
@@ -3129,6 +3287,12 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
             verification=self.verification,
             print_message=False,
         )
+        # Terminal only, for the same reason the live chip is: a shared report,
+        # an e2e golden and a cast are all non-terminal, and a wall clock in any
+        # of them is a diff on every run.
+        if self._elapsed is not None and self.console.is_terminal:
+            self.console.print(f'[status]Ran in[/status] {self._elapsed}.')
+        self._elapsed = None
         self.console.print()
         return report
 
@@ -3214,22 +3378,28 @@ async def print_run_report(
 
     ok = True
 
-    for solution in result.skeleton.solutions:
-        reporter.start_solution(solution)
-        for group in result.skeleton.groups:
-            reporter.start_group(group)
-            entries = result.skeleton.get_entries_for_group(group.name)
-            for entry in entries:
-                reporter.start_testcase(entry)
-                eval = reporter.get_current_evaluation()
-                evaled = None
-                if eval is not None:
-                    evaled = await eval()
-                reporter.finish_testcase(evaled)
-            reporter.finish_group()
-        cur_ok = reporter.finish_solution()
-        if _gates_report(solution, gating_solutions):
-            ok = ok and cur_ok
+    try:
+        for solution in result.skeleton.solutions:
+            reporter.start_solution(solution)
+            for group in result.skeleton.groups:
+                reporter.start_group(group)
+                entries = result.skeleton.get_entries_for_group(group.name)
+                for entry in entries:
+                    reporter.start_testcase(entry)
+                    eval = reporter.get_current_evaluation()
+                    evaled = None
+                    if eval is not None:
+                        evaled = await eval()
+                    reporter.finish_testcase(evaled)
+                reporter.finish_group()
+            cur_ok = reporter.finish_solution()
+            if _gates_report(solution, gating_solutions):
+                ok = ok and cur_ok
+    finally:
+        # Awaiting a deferred can raise -- a remote judge that never answered, a
+        # Ctrl-C mid-run -- and the reporter holds a live display that has to be
+        # torn down before anything else reaches the terminal.
+        reporter.close()
 
     if not single_solution and timing:
         await _print_timing(
