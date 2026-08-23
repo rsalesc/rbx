@@ -339,6 +339,14 @@ class rbxCommandApp(rbxBaseApp):
         border: solid $accent;
         padding: 0 1;
         scrollbar-size-vertical: 1;
+        /* Reserve the scrollbar column up front. Textual only posts `Resize`
+           when the widget's own size changes, so a scrollbar appearing once
+           the output overflows silently narrows the content region by one
+           column -- the emulator and the pty keep the old width until some
+           unrelated relayout corrects them, and everything printed until then
+           is re-folded one column short (a trailing character per line spills
+           onto a line of its own). */
+        scrollbar-gutter: stable;
     }
     #command-pane-container CommandPane:focus {
         border: solid dodgerblue;

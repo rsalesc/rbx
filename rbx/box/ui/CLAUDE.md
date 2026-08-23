@@ -105,6 +105,17 @@ command gets a `SIGWINCH` and adapts mid-run). Panes are built through `_make_pa
 wires `get_fallback_dimensions=self._pane_dimensions` -- consulted by `CommandPane` only
 when its own region is degenerate, so a visible pane always measures itself.
 
+The pane CSS sets **`scrollbar-gutter: stable`**, and that is load-bearing rather than
+cosmetic. Textual posts `Resize` only when a widget's *own* size changes, so the vertical
+scrollbar appearing once the output overflows narrows `scrollable_content_region` by one
+column **without any event**: the pty and the emulator keep the pre-scrollbar width, and
+everything the command prints from then on is one column wider than the pane can draw. The
+next genuine resize (the window, a new pane mounting, a relayout) then re-folds that
+backlog one column short, spilling a trailing character of each full-width line onto a line
+of its own -- the `...byte-for-byte th` / `e` shape from #707. Reserving the gutter keeps
+the width constant for the whole command instead. The invariant a test pins is
+`pane.width == pane.scrollable_content_region.width`.
+
 The other half of the same symptom lived in the vendored `Terminal`: a resize reflows the
 buffer but upstream only refreshes `virtual_size` on a write, so a resize after the command
 finished left the scroll extents stale and the anchored view scrolled past the real end of
