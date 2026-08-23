@@ -172,3 +172,5 @@ build_log.txt
 agents/
 
 .worktrees/
+# Built by `mise run vscode:vsix`, shipped in the wheel via hatch artifacts.
+rbx/resources/vscode/
