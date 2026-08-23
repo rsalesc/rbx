@@ -1,5 +1,6 @@
 import contextlib
 import pathlib
+import re
 from typing import Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
 from unittest.mock import patch
 
@@ -360,8 +361,24 @@ def rendered_lines(console: rich.console.Console) -> List[str]:
 
 
 def rendered_group_lines(console: rich.console.Console) -> List[str]:
-    """Only the group lines, which are what this feature marks."""
-    return [line for line in rendered_lines(console) if line.startswith('group')]
+    """Only the group lines, which are what this feature marks.
+
+    Accepts either indent: `LiveRunReporter` draws a solution as one block and
+    indents its group lines two spaces under the header, while the per-group
+    fallback does not. What every caller here asserts on is the content of the
+    line, never where it starts.
+
+    Deliberately *not* `line.strip().startswith(...)`. A solution that misses
+    expectations in more than one group continues its failure message on further
+    lines, indented to clear the `FAILED ` label -- and those name a group too,
+    so stripping first would pull `group3: expected ..., got: ...` in as if it
+    were a group line.
+    """
+    return [
+        line.strip()
+        for line in rendered_lines(console)
+        if line.startswith('group') or line.startswith('  group')
+    ]
 
 
 def test_get_solution_limits_display_time_recovers_declared_tl(tmp_path, mock_skeleton):
@@ -1189,7 +1206,9 @@ async def test_reporter_group_lines_carry_only_the_score(
             LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
         )
 
-    lines = rendered_lines(console)
+    # Stripped: the live reporter indents group lines under the solution header,
+    # and where the line starts is not what this test is about.
+    lines = [line.strip() for line in rendered_lines(console)]
     # group2 failed its tests, so it scores 0 of 60 -- while still meeting the
     # expectation that it fail, which the line says nothing about.
     assert 'group2 (1) 0/✗ (100 ms, 1 KiB) [0/60 pts]' in lines
@@ -2137,3 +2156,289 @@ async def test_detailed_table_does_not_time_a_fully_skipped_group(
     text = ' '.join(console.export_text(clear=False).split())
     assert '0 ms' not in text
     assert '0 B' not in text
+
+
+# -- the solution block ------------------------------------------------------
+
+
+def terminal_console(height: int = 40, width: int = 120) -> rich.console.Console:
+    """A console that claims to be a terminal, so the reporter animates.
+
+    `height` is what the block's guard measures itself against; rich reports the
+    size it is given rather than probing anything, which is what makes the guard
+    testable at all.
+    """
+    return rich.console.Console(
+        record=True,
+        force_terminal=True,
+        color_system=None,
+        width=width,
+        height=height,
+    )
+
+
+async def test_live_reporter_draws_the_solution_as_one_block(
+    mock_problem_root, mock_binary_scoring
+):
+    """The header and the group lines finalize together, header first.
+
+    That ordering is the whole point of moving the Live up to the solution: a
+    header printed before the first group is already in scrollback by the time
+    anything worth putting on it is known.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(
+        mock_problem_root, solution, {'samples': 1, 'group1': 2}
+    )
+    result = make_run_result(
+        skeleton,
+        {
+            ('samples', 0): Outcome.ACCEPTED,
+            ('group1', 0): Outcome.ACCEPTED,
+            ('group1', 1): Outcome.ACCEPTED,
+        },
+    )
+    console = recording_console()
+
+    with fresh_issue_stack():
+        await drive_reporter(
+            LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
+        )
+
+    lines = [line.strip() for line in rendered_lines(console)]
+    header = next(i for i, line in enumerate(lines) if line.startswith('sol.cpp'))
+    samples = next(i for i, line in enumerate(lines) if line.startswith('samples ('))
+    group1 = next(i for i, line in enumerate(lines) if line.startswith('group1 ('))
+    assert header < samples < group1
+
+
+async def test_live_reporter_indents_group_lines_under_the_header(
+    mock_problem_root, mock_binary_scoring
+):
+    """Group lines are indented so the block reads as one thing."""
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    console = recording_console()
+
+    with fresh_issue_stack():
+        await drive_reporter(
+            LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
+        )
+
+    raw = rendered_lines(console)
+    assert any(line.startswith('  group1 (1)') for line in raw)
+    # The header itself is not indented -- it is what the group lines hang from.
+    assert any(line.startswith('sol.cpp') for line in raw)
+
+
+async def test_live_reporter_omits_the_clock_on_a_non_terminal(
+    mock_problem_root, mock_binary_scoring
+):
+    """No wall clock in a recorded report.
+
+    `--share` reports, e2e goldens and asciinema casts are all non-terminal
+    consoles. An elapsed time in any of them is a diff on every single run, which
+    is how a golden stops being a golden.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    console = recording_console()
+
+    with fresh_issue_stack():
+        await drive_reporter(
+            LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
+        )
+
+    header = next(
+        line for line in rendered_lines(console) if line.startswith('sol.cpp')
+    )
+    assert '·' not in header
+
+
+async def test_live_reporter_ticks_a_clock_on_a_terminal(
+    mock_problem_root, mock_binary_scoring
+):
+    """On a terminal the header carries how long the solution has been running."""
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    console = terminal_console()
+
+    with fresh_issue_stack():
+        await drive_reporter(
+            LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
+        )
+
+    text = console.export_text(clear=False)
+    assert re.search(r'sol\.cpp.*·\s*\d+(\.\d)?s', text)
+
+
+async def test_live_reporter_falls_back_when_the_block_would_not_fit(
+    mock_problem_root, mock_binary_scoring
+):
+    """More groups than the terminal has rows drops back to a Live per group.
+
+    A live region taller than the terminal is redrawn by moving the cursor up
+    over its own output, so it flickers or tears. The fallback is what shipped
+    before the block existed, so the degradation is a familiar one -- and the
+    give-away is that the header no longer sits above the group lines in one
+    finalized frame.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    groups = {f'group{i}': 1 for i in range(10)}
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, groups)
+    result = make_run_result(skeleton, {(name, 0): Outcome.ACCEPTED for name in groups})
+    # 10 groups + chrome does not fit in 8 rows.
+    console = terminal_console(height=8)
+
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+    with fresh_issue_stack():
+        await drive_reporter(reporter, skeleton)
+
+    assert reporter._block is False  # noqa: SLF001
+    # Still a complete report: falling back changes the framing, never the
+    # content. Compared as a set, because a terminal console records every
+    # animation frame and so repeats each line many times over.
+    assert {line.split()[0] for line in rendered_group_lines(console)} == {
+        f'group{i}' for i in range(10)
+    }
+
+
+async def test_live_reporter_keeps_the_block_when_it_fits(
+    mock_problem_root, mock_binary_scoring
+):
+    """The same package on a tall enough terminal is drawn as one block."""
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    groups = {f'group{i}': 1 for i in range(10)}
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, groups)
+    result = make_run_result(skeleton, {(name, 0): Outcome.ACCEPTED for name in groups})
+    console = terminal_console(height=40)
+
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+    with fresh_issue_stack():
+        await drive_reporter(reporter, skeleton)
+
+    assert reporter._block is True  # noqa: SLF001
+    assert {line.split()[0] for line in rendered_group_lines(console)} == {
+        f'group{i}' for i in range(10)
+    }
+
+
+async def test_live_reporter_stops_its_live_when_an_evaluation_raises(
+    mock_problem_root, mock_binary_scoring
+):
+    """A deferred that raises must not leave the display live.
+
+    A remote judge that never answers raises out of the awaited deferred and
+    unwinds straight through the reporter. A `rich.live.Live` left started keeps
+    the cursor hidden and overwrites the first lines of whatever is printed next
+    -- which on this path is the traceback saying what went wrong.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+
+    async def boom() -> Evaluation:
+        raise RuntimeError('the judge never answered')
+
+    items = [
+        EvaluationItem(
+            solution=solution,
+            testcase_entry=TestcaseEntry(group='group1', index=0),
+            eval=Deferred(boom),
+        )
+    ]
+    result = RunSolutionResult(skeleton=skeleton, items=items)
+    console = terminal_console()
+
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+    with fresh_issue_stack():
+        with pytest.raises(RuntimeError, match='never answered'):
+            await drive_reporter(reporter, skeleton)
+        reporter.close()
+
+    assert reporter.live is None
+    assert console.is_terminal and not console._live_stack  # noqa: SLF001
+
+
+async def test_reporter_close_is_idempotent(mock_problem_root, mock_binary_scoring):
+    """`close` runs from a `finally`, so it also runs after a clean report."""
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    console = terminal_console()
+
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+    with fresh_issue_stack():
+        await drive_reporter(reporter, skeleton)
+
+    reporter.close()
+    reporter.close()
+    assert reporter.live is None
+
+
+def test_elapsed_reads_one_decimal_below_ten_seconds():
+    """A ticker reading `0s` on every frame looks exactly as frozen as none."""
+    elapsed = utils.Elapsed()
+    with patch('rbx.utils.time.monotonic', return_value=elapsed._started + 3.25):  # noqa: SLF001
+        assert str(elapsed) == '3.2s'
+    with patch('rbx.utils.time.monotonic', return_value=elapsed._started + 41.9):  # noqa: SLF001
+        assert str(elapsed) == '41s'
+
+
+async def test_the_clock_advances_on_a_frame_nobody_triggered(
+    mock_problem_root, mock_binary_scoring
+):
+    """The wall clock has to move on frames the refresh thread produces.
+
+    `rich.live.Live` redraws the renderable it was handed, so a block built as a
+    static `Text` freezes the clock at the moment of the call and only moves it
+    when an evaluation resolves. On a remote run the first evaluation does not
+    resolve until the judge has finished the whole testrun -- so the clock sat at
+    `0.0s` for exactly the wait it exists to describe, and then jumped. Driven
+    here the way the refresh thread drives it: a bare `refresh()`, with no
+    reporter event in between.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    console = terminal_console()
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+
+    reporter.start_solution(solution)
+    reporter.start_group(skeleton.groups[0])
+    assert reporter.live is not None
+
+    started = reporter._elapsed._started  # noqa: SLF001
+    console.export_text(clear=True)
+    with patch('rbx.utils.time.monotonic', return_value=started + 42.0):
+        reporter.live.refresh()
+
+    assert '42s' in console.export_text(clear=False)
+    reporter.close()
+
+
+async def test_the_block_is_rebuilt_per_frame_not_frozen_at_update(
+    mock_problem_root, mock_binary_scoring
+):
+    """`Live` is handed something that renders itself, not a finished frame.
+
+    Pinned directly, because it is the property the bug turned on: everything
+    else about the block can be right while the display still never changes.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    console = terminal_console()
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+
+    reporter.start_solution(solution)
+    assert reporter.live is not None
+    # `get_renderable()`, not `.renderable`: the latter wraps the first Live of
+    # the stack in a Group, which would hide what was actually handed over.
+    assert isinstance(
+        reporter.live.get_renderable(),
+        solutions_module._SolutionBlock,  # noqa: SLF001
+    )
+    reporter.close()

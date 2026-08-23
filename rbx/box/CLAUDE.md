@@ -324,8 +324,18 @@ Evaluations are **not truly parallel** -- they are deferred/lazy sequential. The
 ### Reporter Hierarchy
 
 - **`TraditionalRunReporter`** -- Base with start/finish lifecycle per solution/group/testcase
-- **`LiveRunReporter`** -- One `rich.live.Live` line per group, with compact verdict marks (accepted testcases are omitted). Used whenever more than one solution runs, terminal or not: on a non-terminal console Live finalizes a single frame per group, which is what `--share`'s recorded consoles rely on.
-- **`SingleSolutionRunReporter`** -- Verbose per-testcase details (used when only 1 solution)
+- **`LiveRunReporter`** -- One `rich.live.Live` per **solution**, not per group. The region holds the solution header and the group lines indented under it, with compact verdict marks (accepted testcases are omitted). Used whenever more than one solution runs, terminal or not: on a non-terminal console Live emits nothing until `stop()`, so the whole solution finalizes as one frame, which is what `--share`'s recorded consoles rely on.
+
+  The scope is the solution because the header carries things that only become true *while* it runs -- how long it has been going, and (see `runners/`) whatever the backend running it wants said. A header printed once, ahead of the first group, is already in scrollback by then.
+
+  **`Live` is handed a `_SolutionBlock`, not a finished frame.** `Live.refresh` redraws the renderable it was *given*, so a block assembled as a `Text` freezes the clock and the backend's chips at the moment of the `update()` call -- and the display then only changes when an evaluation resolves. On a remote run the first one does not resolve until the judge has finished the whole testrun, so the header stayed on `waiting for a slot` with a clock reading `0.0s` for the entire wait, then jumped to finished. `_SolutionBlock.__rich_console__` calls back into `block_renderable()` instead, so the frames the refresh thread produces are as current as the ones an evaluation triggers. `block_renderable` therefore runs on that thread too: it only reads, and the board hands back a tuple, so a write landing mid-frame cannot be seen half-applied.
+
+  Two rules keep that from leaking into recorded output. **Wall-clock chips render on a terminal only** (`_header_chips`): a shared report, an e2e golden and an asciinema cast are all non-terminal, and an elapsed time in any of them is a diff on every run. And **auto-refresh is on for terminals only** -- the clock has to repaint with nothing else happening, but a refresh thread on a non-terminal would spin for frames nobody sees.
+
+  `_fits_as_block` is the height guard: a live region taller than the terminal is redrawn by moving the cursor back over its own output, so a package with more groups than the terminal has rows falls back to the per-group Live this class used to be. The fallback is the pre-block behaviour exactly, so the degradation is a familiar one.
+
+  `close()` (on `TraditionalRunReporter`, called from a `finally` in `print_run_report`) stops whatever is live. The report loop does not always reach the end of a solution -- a deferred can raise, which is the normal shape of a remote judge that never answered -- and a `Live` left started keeps the cursor hidden and overwrites the first lines of the traceback that follows.
+- **`SingleSolutionRunReporter`** -- Verbose per-testcase details (used when only 1 solution). Deliberately not a block: it prints a line per testcase, so the region that would have to stay live is as tall as the testset. It reports the wall clock once, at the end, on a terminal only.
 
 ### Verdict Verification
 

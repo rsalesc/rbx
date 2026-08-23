@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from typing import (
     Any,
     Awaitable,
@@ -562,6 +563,35 @@ def copytree_honoring_gitignore(
             write_to = dst / rel
             write_to.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(file, write_to)
+
+
+class Elapsed:
+    """Wall time since it was created, on the monotonic clock.
+
+    Monotonic rather than `time.time`, because every use of this is a *duration*
+    reported to the setter and a clock adjustment mid-run would otherwise show a
+    negative one.
+    """
+
+    def __init__(self) -> None:
+        self._started = time.monotonic()
+
+    @property
+    def seconds(self) -> float:
+        return time.monotonic() - self._started
+
+    def __str__(self) -> str:
+        """One decimal below ten seconds, whole seconds above.
+
+        Whole seconds alone would leave a ticker reading `0s` on every frame of
+        anything sub-second -- which looks exactly as frozen as no ticker at all,
+        and is the one thing this exists to prevent. Above ten seconds the
+        decimal is noise on a number nobody reads that precisely.
+        """
+        seconds = self.seconds
+        if seconds < 10:
+            return f'{seconds:.1f}s'
+        return f'{int(seconds)}s'
 
 
 class StatusProgress(rich.status.Status):

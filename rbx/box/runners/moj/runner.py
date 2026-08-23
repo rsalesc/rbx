@@ -20,7 +20,6 @@ import hashlib
 import json
 import pathlib
 import tempfile
-import time
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -1520,33 +1519,10 @@ _T = TypeVar('_T')
 TICKER_INTERVAL_SECONDS = 1.0
 
 
-class _Elapsed:
-    """Wall time since it was created, on the monotonic clock.
-
-    Monotonic rather than `time.time`, because every use of this is a *duration*
-    reported to the setter and a clock adjustment mid-upload would otherwise show
-    a negative one.
-    """
-
-    def __init__(self) -> None:
-        self._started = time.monotonic()
-
-    @property
-    def seconds(self) -> float:
-        return time.monotonic() - self._started
-
-    def __str__(self) -> str:
-        """One decimal below ten seconds, whole seconds above.
-
-        Whole seconds alone would leave a ticker reading `0s` on every frame of
-        anything sub-second -- which looks exactly as frozen as no ticker at all,
-        and is the one thing this exists to prevent. Above ten seconds the
-        decimal is noise on a number nobody reads that precisely.
-        """
-        seconds = self.seconds
-        if seconds < 10:
-            return f'{seconds:.1f}s'
-        return f'{int(seconds)}s'
+# Wall-clock durations are shared with the run reporter, which ticks one on the
+# solution header while this runner is waiting on the judge -- the same clock,
+# formatted the same way, so a header and a summary line never disagree.
+_Elapsed = utils.Elapsed
 
 
 async def _with_ticker(
