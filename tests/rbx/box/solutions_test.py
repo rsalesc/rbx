@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import pathlib
 import re
@@ -19,7 +20,7 @@ from rbx.box.generators import (
     generate_outputs_for_testcases,
     generate_testcases,
 )
-from rbx.box.runners.base import RunnerChip
+from rbx.box.runners.base import RunnerChip, RunProgress
 from rbx.box.sanitizers.issue_stack import IssueAccumulator, issue_stack_var
 from rbx.box.schema import (
     ExpectedOutcome,
@@ -2585,3 +2586,63 @@ async def test_the_frozen_frame_still_carries_the_backend_chips(
     )
     assert 'testrun 4821' in header
     assert 'done' in header
+
+
+async def test_a_slow_testcase_repaints_the_header_while_it_waits(
+    mock_problem_root, mock_binary_scoring
+):
+    """The reported symptom, end to end, through the real refresh thread.
+
+    A backend that learns something while the report is blocked on an
+    unresolved deferred has to reach the screen *during* the wait. This drives
+    `rich`'s own auto-refresh rather than calling `refresh()` by hand: the
+    reporter is blocked in `await`, nothing calls `update()`, and the frames that
+    appear are the ones the refresh thread produced on its own.
+
+    Before the block rendered itself, this test saw only `waiting`, then the
+    finished report -- which is exactly what a `rbx time --runner moj` run looked
+    like.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    board = RunProgress()
+    board.set('sol.cpp', RunnerChip('waiting for a slot'))
+
+    on_screen_during_the_wait: List[str] = []
+
+    async def slow() -> Evaluation:
+        # Stands in for a judge: the deferred the reporter is awaiting does not
+        # resolve for a while, and the backend learns something meanwhile.
+        await asyncio.sleep(0.1)
+        board.set('sol.cpp', RunnerChip('testrun 4821'), RunnerChip('running'))
+        await asyncio.sleep(0.6)
+        # Snapshotted from *inside* the unresolved deferred, which is the only
+        # place that can tell "reached the screen during the wait" from "reached
+        # it once the wait was over". Asserting on the finished transcript cannot:
+        # the frame drawn after this resolves carries the chip either way.
+        on_screen_during_the_wait.append(console.export_text(clear=False))
+        return make_evaluation(Outcome.ACCEPTED, time_ms=100, memory_bytes=1024)
+
+    result = RunSolutionResult(
+        skeleton=skeleton,
+        items=[
+            EvaluationItem(
+                solution=solution,
+                testcase_entry=TestcaseEntry(group='group1', index=0),
+                eval=Deferred(slow),
+            )
+        ],
+        progress_board=board,
+    )
+    console = terminal_console()
+
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+    with fresh_issue_stack():
+        await drive_reporter(reporter, skeleton)
+    reporter.close()
+
+    (during,) = on_screen_during_the_wait
+    # The mid-flight state was on screen while the reporter was still in `await`,
+    # drawn by frames nothing in this reporter asked for.
+    assert 'testrun 4821' in during
+    assert 'running' in during
