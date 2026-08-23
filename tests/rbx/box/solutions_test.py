@@ -2385,3 +2385,60 @@ def test_elapsed_reads_one_decimal_below_ten_seconds():
         assert str(elapsed) == '3.2s'
     with patch('rbx.utils.time.monotonic', return_value=elapsed._started + 41.9):  # noqa: SLF001
         assert str(elapsed) == '41s'
+
+
+async def test_the_clock_advances_on_a_frame_nobody_triggered(
+    mock_problem_root, mock_binary_scoring
+):
+    """The wall clock has to move on frames the refresh thread produces.
+
+    `rich.live.Live` redraws the renderable it was handed, so a block built as a
+    static `Text` freezes the clock at the moment of the call and only moves it
+    when an evaluation resolves. On a remote run the first evaluation does not
+    resolve until the judge has finished the whole testrun -- so the clock sat at
+    `0.0s` for exactly the wait it exists to describe, and then jumped. Driven
+    here the way the refresh thread drives it: a bare `refresh()`, with no
+    reporter event in between.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    console = terminal_console()
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+
+    reporter.start_solution(solution)
+    reporter.start_group(skeleton.groups[0])
+    assert reporter.live is not None
+
+    started = reporter._elapsed._started  # noqa: SLF001
+    console.export_text(clear=True)
+    with patch('rbx.utils.time.monotonic', return_value=started + 42.0):
+        reporter.live.refresh()
+
+    assert '42s' in console.export_text(clear=False)
+    reporter.close()
+
+
+async def test_the_block_is_rebuilt_per_frame_not_frozen_at_update(
+    mock_problem_root, mock_binary_scoring
+):
+    """`Live` is handed something that renders itself, not a finished frame.
+
+    Pinned directly, because it is the property the bug turned on: everything
+    else about the block can be right while the display still never changes.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    console = terminal_console()
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+
+    reporter.start_solution(solution)
+    assert reporter.live is not None
+    # `get_renderable()`, not `.renderable`: the latter wraps the first Live of
+    # the stack in a Group, which would hide what was actually handed over.
+    assert isinstance(
+        reporter.live.get_renderable(),
+        solutions_module._SolutionBlock,  # noqa: SLF001
+    )
+    reporter.close()
