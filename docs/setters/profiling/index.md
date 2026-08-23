@@ -531,14 +531,25 @@ solutions with `rbx run` without specifying a profile.
 
 ### Using profiles when running solutions
 
-You can tell {{rbx}} to use a specific limits profile when running solutions with the global `--profile` flag:
+You can tell {{rbx}} to use a specific limits profile when running solutions with the `--profile` flag:
 
 ```bash
-rbx --profile=boca run
+rbx run -p boca
+rbx irun --profile=polygon
 rbx -p polygon run
 ```
 
 This applies the limits from the specified profile instead of the package defaults.
+
+The flag exists both on `rbx` itself (global, before the command) and on `rbx run`
+/ `rbx irun` (after the command); the two spellings mean the same thing, and the
+subcommand-level flag wins when both are passed. `rbx run` fails loudly if the
+named profile doesn't exist for the current problem, so you never run against
+limits you didn't ask for.
+
+!!! note
+    `rbx irun` only takes the long `--profile` spelling: `-p` is already
+    `--print` there.
 
 ### Using profiles when building statements
 

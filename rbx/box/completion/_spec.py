@@ -227,6 +227,15 @@ SPEC = {
                     'value': {'completer': 'runner', 'kind': 'completer'},
                 },
                 {
+                    'help': 'Timing profile to run the solutions against. Must exist in '
+                    'this problem.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['-p', '--profile'],
+                    'takes_value': True,
+                    'value': {'completer': 'profile', 'kind': 'completer'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,
@@ -496,6 +505,15 @@ SPEC = {
                     'names': ['--choice', '--choose', '-c'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Timing profile to run the solutions against. Must exist in '
+                    'this problem.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--profile'],
+                    'takes_value': True,
+                    'value': {'completer': 'profile', 'kind': 'completer'},
                 },
                 {
                     'help': 'Show this message and exit.',
