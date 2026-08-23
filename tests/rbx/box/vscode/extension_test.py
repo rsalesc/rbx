@@ -37,3 +37,54 @@ def test_bundled_vsix_ignores_files_it_cannot_version(tmp_path: pathlib.Path):
     (tmp_path / 'rbx-vscode-not-a-version.vsix').touch()
 
     assert extension.bundled_vsix(tmp_path) is None
+
+
+def test_detect_editor_is_none_outside_an_integrated_terminal():
+    assert extension.detect_editor({}) is None
+    assert extension.detect_editor({'TERM_PROGRAM': 'iTerm.app'}) is None
+
+
+def test_detect_editor_defaults_to_vscode_without_an_app_path():
+    found = extension.detect_editor({'TERM_PROGRAM': 'vscode'})
+
+    assert found is not None
+    assert found.key == 'code'
+
+
+def test_detect_editor_recognizes_forks_by_their_app_path():
+    # Every fork reports TERM_PROGRAM=vscode, so the app path is the only thing
+    # that tells them apart -- and each of these paths contains 'code' too.
+    cases = {
+        '/Applications/Cursor.app/Contents/Resources/app/out/node': 'cursor',
+        '/usr/share/cursor/resources/app/out/node': 'cursor',
+        '/Applications/Windsurf.app/Contents/Resources/app/out/node': 'windsurf',
+        '/usr/share/codium/resources/app/out/node': 'codium',
+        '/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/out/node': 'code-insiders',
+        '/Applications/Visual Studio Code.app/Contents/Resources/app/out/node': 'code',
+    }
+    for path, expected in cases.items():
+        found = extension.detect_editor(
+            {'TERM_PROGRAM': 'vscode', 'VSCODE_GIT_ASKPASS_NODE': path}
+        )
+        assert found is not None, path
+        assert found.key == expected, path
+
+
+def test_detect_editor_falls_back_to_the_askpass_main_path():
+    found = extension.detect_editor(
+        {
+            'TERM_PROGRAM': 'vscode',
+            'VSCODE_GIT_ASKPASS_MAIN': '/Applications/Cursor.app/Contents/x.js',
+        }
+    )
+
+    assert found is not None
+    assert found.key == 'cursor'
+
+
+def test_editor_by_key_allows_an_explicit_override():
+    cursor = extension.editor_by_key('cursor')
+
+    assert cursor is not None
+    assert cursor.binary == 'cursor'
+    assert extension.editor_by_key('nope') is None

@@ -10,7 +10,7 @@ import dataclasses
 import importlib.resources
 import pathlib
 import re
-from typing import Optional
+from typing import Mapping, Optional, Tuple
 
 from rbx import utils
 
@@ -25,6 +25,65 @@ _VSIX_NAME = re.compile(r'^rbx-vscode-(?P<version>.+)\.vsix$')
 class BundledVsix:
     path: pathlib.Path
     version: str
+
+
+@dataclasses.dataclass(frozen=True)
+class Editor:
+    key: str
+    label: str
+    binary: str
+    # Substring looked for in the running app's path. Checked in EDITORS order,
+    # so the forks must come before plain 'code' -- their paths contain it too.
+    marker: str
+    # Home directories, most specific first. A remote (SSH, devcontainer) keeps
+    # its extensions under the *-server variant.
+    homes: Tuple[str, ...]
+
+
+EDITORS: Tuple[Editor, ...] = (
+    Editor('cursor', 'Cursor', 'cursor', 'cursor', ('.cursor-server', '.cursor')),
+    Editor(
+        'windsurf',
+        'Windsurf',
+        'windsurf',
+        'windsurf',
+        ('.windsurf-server', '.windsurf'),
+    ),
+    Editor('codium', 'VSCodium', 'codium', 'codium', ('.vscode-oss',)),
+    Editor(
+        'code-insiders',
+        'VS Code Insiders',
+        'code-insiders',
+        'code - insiders',
+        ('.vscode-server-insiders', '.vscode-insiders'),
+    ),
+    Editor('code', 'VS Code', 'code', 'code', ('.vscode-server', '.vscode')),
+)
+
+
+def editor_by_key(key: str) -> Optional[Editor]:
+    for editor in EDITORS:
+        if editor.key == key:
+            return editor
+    return None
+
+
+def detect_editor(env: Mapping[str, str]) -> Optional[Editor]:
+    """Which editor's integrated terminal we are running in, if any.
+
+    `TERM_PROGRAM=vscode` is set by VS Code *and every fork*, so it only says we
+    are in an integrated terminal. The app path is what tells them apart.
+    """
+    if env.get('TERM_PROGRAM') != 'vscode':
+        return None
+    app_path = (
+        env.get('VSCODE_GIT_ASKPASS_NODE') or env.get('VSCODE_GIT_ASKPASS_MAIN') or ''
+    ).lower()
+    for editor in EDITORS:
+        if editor.marker in app_path:
+            return editor
+    # An integrated terminal that told us nothing else is VS Code.
+    return editor_by_key('code')
 
 
 def vsix_dir() -> pathlib.Path:
