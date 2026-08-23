@@ -66,3 +66,23 @@ async def test_partial_exits_zero(cleandir_with_testdata):
 
     assert (cleandir_with_testdata / 'build' / 'main-en.tex').exists()
     assert (cleandir_with_testdata / 'build' / 'main-pt.tex').exists()
+
+
+@pytest.mark.test_pkg('contests/statements_v2_partial')
+async def test_missing_contest_problem_template_reports_clearly(
+    cleandir_with_testdata, capsys
+):
+    config = cleandir_with_testdata / 'contest.rbx.yml'
+    config.write_text(
+        config.read_text().replace(
+            "    contestProblemTemplate: 'statements/problem-in-contest.rbx.tex'\n",
+            '',
+        )
+    )
+
+    with pytest.raises(typer.Exit):
+        await _run()
+
+    out = capsys.readouterr().out
+    assert 'contestProblemTemplate' in out
+    assert 'AssertionError' not in out

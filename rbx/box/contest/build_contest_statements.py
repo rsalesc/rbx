@@ -43,6 +43,7 @@ from rbx.box.statements.context import (
     contest_jinja_kwargs,
 )
 from rbx.box.statements.overlay import problem_overlay_dir
+from rbx.box.statements.resolver import StatementResolverError
 from rbx.box.statements.schema import BaseStatement, StatementKind, StatementType
 from rbx.box.testcase_sample_utils import get_statement_samples
 
@@ -240,7 +241,12 @@ async def build_statement(
             statement, contest, output_type, custom_vars, problems_of_interest
         )
 
-    assert statement.file is not None
+    if statement.file is None:
+        with StatementResolverError() as err:
+            err.print(
+                f'[error]Contest {kind.singular} [item]{statement.name}[/item] '
+                f'defines no [item]file[/item], which is required to build it.[/error]'
+            )
     overlay_root = _fresh_dir(get_statement_build_dir(statement))
     chrome_dir = (contest_root / statement.file).resolve().parent
     overlay.stage_chrome(overlay_root, chrome_dir)
@@ -353,7 +359,13 @@ async def _render_problem_fragment_async(
             contest_statement, problem_candidates, problem.short_name
         )
 
-        assert problem_statement.file is not None
+        if problem_statement.file is None:
+            with StatementResolverError() as err:
+                err.print(
+                    f'[error]Problem [item]{problem.short_name}[/item] statement '
+                    f'[item]{problem_statement.language}[/item] defines no '
+                    f'[item]file[/item], which is required to join it.[/error]'
+                )
         problem_dir = (problem_statement.file).resolve().parent
 
         short = problem.short_name
@@ -361,7 +373,14 @@ async def _render_problem_fragment_async(
         root_prefix = f'.problems/{short}/'
         overlay.stage_join_problem(overlay_root, problem_dir, short)
 
-        assert contest_statement.contestProblemTemplate is not None
+        if contest_statement.contestProblemTemplate is None:
+            with StatementResolverError() as err:
+                err.print(
+                    f'[error]Contest statement '
+                    f'[item]{contest_statement.name}[/item] defines no '
+                    f'[item]contestProblemTemplate[/item], which is required to '
+                    f'join problem statements into it.[/error]'
+                )
         template_rel = engine.relativize_template(
             contest_root,
             chrome_dir,
@@ -444,7 +463,12 @@ def _emit_simple(
     (e.g. a limits table); ``problems_of_interest`` bounds which problems that
     list covers (default: all contest problems)."""
     name: str = statement.name  # type: ignore[attr-defined]
-    assert statement.file is not None
+    if statement.file is None:
+        with StatementResolverError() as err:
+            err.print(
+                f'[error]Contest document [item]{name}[/item] defines no '
+                f'[item]file[/item], which is required to build it.[/error]'
+            )
     languages = get_environment_languages_for_statement()
     contest_root = find_contest()
     overlay_root = _fresh_dir(get_contest_statements_build_path() / name)
