@@ -183,6 +183,12 @@ class HelpModal(ModalScreen[None]):
                 markup=True,
             )
             yield Label(
+                '[b]Status[/b]\n'
+                '  \u25cb queued   \u25cf running   \u2713 done   \u2717 failed\n'
+                '  \u2298 skipped (an earlier command in the chain failed)',
+                markup=True,
+            )
+            yield Label(
                 '[b]esc[/b] or [b]?[/b] to close',
                 id='help-hints',
             )
@@ -193,6 +199,7 @@ class CommandStatus(enum.Enum):
     RUNNING = 'running'
     SUCCESS = 'success'
     FAILED = 'failed'
+    SKIPPED = 'skipped'
 
 
 _STATUS_MARKUP = {
@@ -200,6 +207,7 @@ _STATUS_MARKUP = {
     CommandStatus.RUNNING: '[yellow]●[/yellow]',
     CommandStatus.SUCCESS: '[green]✓[/green]',
     CommandStatus.FAILED: '[red]✗[/red]',
+    CommandStatus.SKIPPED: '[dim]⊘[/dim]',
 }
 
 _STATUS_ICON = {
@@ -207,12 +215,20 @@ _STATUS_ICON = {
     CommandStatus.RUNNING: '●',
     CommandStatus.SUCCESS: '✓',
     CommandStatus.FAILED: '✗',
+    CommandStatus.SKIPPED: '⊘',
 }
+
+_FINISHED_STATUSES = (
+    CommandStatus.SUCCESS,
+    CommandStatus.FAILED,
+    CommandStatus.SKIPPED,
+)
 
 
 @dataclasses.dataclass
 class CommandEntry:
-    argv: List[str]
+    # One argv per command in the chain; they are queued in order in the tab.
+    argvs: List[List[str]]
     name: Optional[str] = None
     cwd: Optional[str] = None
     prefix: Optional[str] = None
@@ -223,7 +239,9 @@ class CommandEntry:
 
     @property
     def display_name(self) -> str:
-        return self.name if self.name else ' '.join(self.argv)
+        if self.name:
+            return self.name
+        return ' '.join(self.argvs[0]) if self.argvs else ''
 
     def make_raw_shell_command(self, cmd: str) -> str:
         if self.prefix is not None:
@@ -236,8 +254,8 @@ class CommandEntry:
         return self.make_raw_shell_command(shlex.join(argv))
 
     @property
-    def shell_command(self) -> str:
-        return self.make_shell_command(self.argv)
+    def shell_commands(self) -> List[str]:
+        return [self.make_shell_command(argv) for argv in self.argvs]
 
 
 @dataclasses.dataclass
@@ -247,6 +265,10 @@ class SubCommand:
     pane_id: str
     status: CommandStatus = CommandStatus.PENDING
     task_id: Optional[int] = None
+    # Seeded from the CLI as part of a `::` chain. Only chained commands are
+    # skipped when an earlier one fails; commands queued interactively always
+    # run, so a typo in one does not silently swallow the next.
+    chained: bool = False
 
 
 class TabState:
@@ -256,33 +278,51 @@ class TabState:
         self.sub_commands: List[SubCommand] = []
         self._next_sub_id = 0
 
-    def _append_sub_command(self, name: str, shell_command: str) -> SubCommand:
+    def _append_sub_command(
+        self, name: str, shell_command: str, chained: bool = False
+    ) -> SubCommand:
         pane_id = f'cmd-pane-{self.tab_index}-{self._next_sub_id}'
         sub = SubCommand(
             name=name,
             shell_command=shell_command,
             pane_id=pane_id,
+            chained=chained,
         )
         self._next_sub_id += 1
         self.sub_commands.append(sub)
         return sub
 
-    def add_sub_command(self, name: str, argv: List[str]) -> SubCommand:
+    def add_sub_command(
+        self, name: str, argv: List[str], chained: bool = False
+    ) -> SubCommand:
         shell_command = self.entry.make_shell_command(argv)
-        return self._append_sub_command(name, shell_command)
+        return self._append_sub_command(name, shell_command, chained=chained)
 
     def add_sub_command_raw(self, name: str, raw_command: str) -> SubCommand:
         shell_command = self.entry.make_raw_shell_command(raw_command)
         return self._append_sub_command(name, shell_command)
 
     @property
+    def active_sub_command_index(self) -> Optional[int]:
+        """The sub-command worth showing when this tab is opened.
+
+        The one that is running, or the next one up if the tab is between
+        commands. Falls back to the last one once the whole queue is done --
+        with nothing left to watch, its output is what you came to read.
+        """
+        if not self.sub_commands:
+            return None
+        for status in (CommandStatus.RUNNING, CommandStatus.PENDING):
+            for i, sub_command in enumerate(self.sub_commands):
+                if sub_command.status is status:
+                    return i
+        return len(self.sub_commands) - 1
+
+    @property
     def is_idle(self) -> bool:
         if not self.sub_commands:
             return True
-        return all(
-            s.status in (CommandStatus.SUCCESS, CommandStatus.FAILED)
-            for s in self.sub_commands
-        )
+        return all(s.status in _FINISHED_STATUSES for s in self.sub_commands)
 
     @property
     def aggregate_status(self) -> CommandStatus:
@@ -291,6 +331,7 @@ class TabState:
         statuses = {s.status for s in self.sub_commands}
         for status in (
             CommandStatus.FAILED,
+            CommandStatus.SKIPPED,
             CommandStatus.RUNNING,
             CommandStatus.PENDING,
         ):
@@ -377,10 +418,16 @@ class rbxCommandApp(rbxBaseApp):
         ('q', 'quit', 'Quit'),
     ]
 
-    def __init__(self, commands: List[CommandEntry], parallel: bool = False):
+    def __init__(
+        self,
+        commands: List[CommandEntry],
+        parallel: bool = False,
+        keep_going: bool = False,
+    ):
         super().__init__()
         self.commands = commands
         self.parallel = parallel
+        self.keep_going = keep_going
         self._tabs: List[TabState] = []
         self._active_tab: int = 0
         self._label_mode: ProblemLabelMode = get_setter_config().ui.problem_label
@@ -395,8 +442,11 @@ class rbxCommandApp(rbxBaseApp):
         # Initialize tab states and add initial sub-commands.
         for i, cmd in enumerate(commands):
             tab = TabState(entry=cmd, tab_index=i)
-            if cmd.argv:
-                tab.add_sub_command(name=' '.join(cmd.argv), argv=cmd.argv)
+            chained = len(cmd.argvs) > 1
+            for argv in cmd.argvs:
+                if not argv:
+                    continue
+                tab.add_sub_command(name=' '.join(argv), argv=argv, chained=chained)
             self._tabs.append(tab)
 
     def compose(self) -> ComposeResult:
@@ -592,8 +642,30 @@ class rbxCommandApp(rbxBaseApp):
         sub.status = CommandStatus.RUNNING
         self._update_sidebar(task.terminal_id)
         self._refresh_select_if_active(task.terminal_id)
+        self._follow_running_sub_command(task.terminal_id, sub)
         pane = self.query_one(f'#{sub.pane_id}', CommandPane)
         pane.execute(task.command)
+
+    def _follow_running_sub_command(self, tab_index: int, started: SubCommand) -> None:
+        """Move the view onto a command that just started.
+
+        Only when the view is parked on a command that already finished --
+        typically the previous link of the same chain. A pending selection is
+        someone looking ahead on purpose, so it is left alone.
+        """
+        if tab_index != self._active_tab:
+            return
+        tab = self._tabs[tab_index]
+        select = self.query_one('#command-select', Select)
+        if select.value is Select.BLANK:
+            return
+        current: int = select.value  # type: ignore[assignment]
+        if not 0 <= current < len(tab.sub_commands):
+            return
+        if tab.sub_commands[current].status not in _FINISHED_STATUSES:
+            return
+        select.value = tab.sub_commands.index(started)
+        self._show_pane(started.pane_id)
 
     def _on_tab_selected(self, index: Optional[int]):
         if index is None:
@@ -604,12 +676,14 @@ class rbxCommandApp(rbxBaseApp):
         self._active_tab = index
         self._refresh_select()
 
-        # Select the latest sub-command by default.
+        # Land on the command that is actually executing, not on the tail of
+        # the queue -- with a chain, the last one has not started yet.
         tab = self._tabs[index]
         select = self.query_one('#command-select', Select)
-        if tab.sub_commands:
-            select.value = len(tab.sub_commands) - 1
-            self._show_pane(tab.sub_commands[-1].pane_id)
+        active = tab.active_sub_command_index
+        if active is not None:
+            select.value = active
+            self._show_pane(tab.sub_commands[active].pane_id)
         else:
             # Hide all panes for this tab.
             container = self.query_one('#command-pane-container', Vertical)
@@ -734,11 +808,37 @@ class rbxCommandApp(rbxBaseApp):
                     sub.status = CommandStatus.FAILED
                     pane.border_subtitle = f'Exit code: {pane.return_code}'
 
+                if sub.status == CommandStatus.FAILED:
+                    self._skip_rest_of_chain(tab_index, sub)
+
                 self._update_sidebar(tab_index)
                 self._refresh_select_if_active(tab_index)
                 if sub.task_id is not None:
                     self._task_queue.notify_complete(sub.task_id)
                 return
+
+    def _skip_rest_of_chain(self, tab_index: int, failed: SubCommand) -> None:
+        """Cancel the rest of a failed CLI chain in this tab.
+
+        Runs before `notify_complete` releases the terminal, otherwise the
+        queue would drain the next command before it is cancelled. Commands
+        queued interactively are left alone -- they keep going by design.
+        """
+        if self.keep_going or not failed.chained:
+            return
+        tab = self._tabs[tab_index]
+        for later in tab.sub_commands[tab.sub_commands.index(failed) + 1 :]:
+            if later.status != CommandStatus.PENDING or not later.chained:
+                continue
+            if later.task_id is None or not self._task_queue.cancel(later.task_id):
+                continue
+            later.status = CommandStatus.SKIPPED
+            later.task_id = None
+            try:
+                pane = self.query_one(f'#{later.pane_id}', CommandPane)
+            except NoMatches:
+                continue
+            pane.border_subtitle = 'Skipped'
 
     def _queue_command_in_tab(self, tab_index: int, raw_command: str) -> SubCommand:
         tab = self._tabs[tab_index]
@@ -874,16 +974,20 @@ class rbxCommandApp(rbxBaseApp):
             self.notify(f'Command queued in {queued} tab(s)')
 
 
-def start_command_app(commands: List[CommandEntry], parallel: bool = False) -> None:
-    app = rbxCommandApp(commands, parallel=parallel)
+def start_command_app(
+    commands: List[CommandEntry],
+    parallel: bool = False,
+    keep_going: bool = False,
+) -> None:
+    app = rbxCommandApp(commands, parallel=parallel, keep_going=keep_going)
     app.run()
 
 
 if __name__ == '__main__':
     start_command_app(
         [
-            CommandEntry(argv=['echo', 'hello'], name='echo1'),
-            CommandEntry(argv=['echo', 'world'], name='echo2'),
-            CommandEntry(argv=['echo', 'foo'], name='echo3'),
+            CommandEntry(argvs=[['echo', 'hello']], name='echo1'),
+            CommandEntry(argvs=[['echo', 'world']], name='echo2'),
+            CommandEntry(argvs=[['echo', 'foo']], name='echo3'),
         ]
     )

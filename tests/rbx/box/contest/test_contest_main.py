@@ -1,10 +1,12 @@
 """Tests for `rbx contest` Typer commands."""
 
 import pathlib
+from unittest import mock
 
 import pytest
 from typer.testing import CliRunner
 
+from rbx.box.contest import contest_utils
 from rbx.box.contest import main as contest_main
 
 
@@ -15,6 +17,23 @@ def runner() -> CliRunner:
 
 def _write_single_contest(root: pathlib.Path) -> None:
     (root / 'contest.rbx.yml').write_text('name: ctt\nproblems: []\n')
+
+
+@pytest.fixture
+def clear_package_caches():
+    # `find_contest_package` and friends are lru_cached on the resolved paths,
+    # so a test that runs a command inside a temporary contest would otherwise
+    # leave that contest visible to whatever runs next.
+    contest_utils.clear_all_caches()
+    yield
+    contest_utils.clear_all_caches()
+
+
+def _write_minimal_problem(dest: pathlib.Path, name: str) -> None:
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / 'problem.rbx.yml').write_text(
+        f'name: {name}\ntimeLimit: 1000\nmemoryLimit: 256\n'
+    )
 
 
 def _write_dispatcher(root: pathlib.Path, *variant_ids: str) -> None:
@@ -346,3 +365,131 @@ class TestContestAddVariant:
         contest_package.find_contest_yaml.cache_clear()
         variants = contest_package.discover_contest_variants(tmp_path)
         assert 'extra' in variants
+
+
+class TestContestOn:
+    """`rbx on` dispatch: inline fast path vs. the queued command app."""
+
+    @pytest.fixture
+    def contest_dir(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        clear_package_caches,
+    ) -> pathlib.Path:
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / 'contest.rbx.yml').write_text(
+            'name: ctt\nproblems:\n  - short_name: A\n    path: probs/a\n'
+        )
+        _write_minimal_problem(tmp_path / 'probs' / 'a', 'prob-a')
+        return tmp_path
+
+    def test_single_command_on_single_problem_runs_inline(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with (
+            mock.patch.object(contest_main.subprocess, 'call') as call,
+            mock.patch.object(contest_main, 'start_command_app') as start_app,
+        ):
+            result = runner.invoke(contest_main.app, ['on', 'A', 'build'])
+
+        assert result.exit_code == 0, result.output
+        start_app.assert_not_called()
+        assert call.call_args.args[0] == 'rbx build'
+
+    def test_chained_commands_on_single_problem_open_the_app(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with (
+            mock.patch.object(contest_main.subprocess, 'call') as call,
+            mock.patch.object(contest_main, 'start_command_app') as start_app,
+        ):
+            result = runner.invoke(
+                contest_main.app, ['on', 'A', 'build', '::', 'run', '-s']
+            )
+
+        assert result.exit_code == 0, result.output
+        call.assert_not_called()
+        (commands,), kwargs = start_app.call_args
+        assert len(commands) == 1
+        assert commands[0].argvs == [['rbx', 'build'], ['rbx', 'run', '-s']]
+        assert kwargs['keep_going'] is False
+
+    def test_keep_going_flag_precedes_the_problem_selector(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with mock.patch.object(contest_main, 'start_command_app') as start_app:
+            result = runner.invoke(
+                contest_main.app, ['on', '-k', 'A', 'build', '::', 'run']
+            )
+
+        assert result.exit_code == 0, result.output
+        assert start_app.call_args.kwargs['keep_going'] is True
+
+    def test_flags_after_the_selector_belong_to_the_chained_command(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        # `-k` here is `rbx run`'s business, not `rbx on`'s.
+        with mock.patch.object(contest_main, 'start_command_app') as start_app:
+            result = runner.invoke(
+                contest_main.app, ['on', 'A', 'build', '::', 'run', '-k']
+            )
+
+        assert result.exit_code == 0, result.output
+        (commands,), kwargs = start_app.call_args
+        assert commands[0].argvs == [['rbx', 'build'], ['rbx', 'run', '-k']]
+        assert kwargs['keep_going'] is False
+
+    def test_empty_command_in_chain_is_an_error(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with mock.patch.object(contest_main, 'start_command_app') as start_app:
+            result = runner.invoke(contest_main.app, ['on', 'A', 'build', '::'])
+
+        assert result.exit_code == 1
+        start_app.assert_not_called()
+
+
+class TestContestEach:
+    @pytest.fixture
+    def contest_dir(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        clear_package_caches,
+    ) -> pathlib.Path:
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / 'contest.rbx.yml').write_text(
+            'name: ctt\n'
+            'problems:\n'
+            '  - short_name: A\n    path: probs/a\n'
+            '  - short_name: B\n    path: probs/b\n'
+        )
+        for name in ('a', 'b'):
+            _write_minimal_problem(tmp_path / 'probs' / name, f'prob-{name}')
+        return tmp_path
+
+    def test_each_queues_the_chain_in_every_problem(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with mock.patch.object(contest_main, 'start_command_app') as start_app:
+            result = runner.invoke(
+                contest_main.app, ['each', 'build', '::', 'package', 'build']
+            )
+
+        assert result.exit_code == 0, result.output
+        (commands,), _ = start_app.call_args
+        assert len(commands) == 2
+        for command in commands:
+            assert command.argvs == [['rbx', 'build'], ['rbx', 'package', 'build']]
+
+    def test_each_without_args_opens_an_empty_app(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with mock.patch.object(contest_main, 'start_command_app') as start_app:
+            result = runner.invoke(contest_main.app, ['each'])
+
+        assert result.exit_code == 0, result.output
+        (commands,), _ = start_app.call_args
+        assert all(command.argvs == [] for command in commands)
+        assert all(command.placeholder_prefix == 'rbx' for command in commands)

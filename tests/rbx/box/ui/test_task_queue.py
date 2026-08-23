@@ -216,3 +216,51 @@ class TestTaskQueue:
         q.notify_complete(t1.task_id)
         assert t2.status == TaskStatus.RUNNING
         assert t4.status == TaskStatus.PENDING
+
+
+class TestTaskQueueCancel:
+    def _make_queue(self, num_terminals=2, parallel=True):
+        self.ready_tasks = []
+        return TaskQueue(
+            num_terminals=num_terminals,
+            parallel=parallel,
+            on_task_ready=lambda t: self.ready_tasks.append(t),
+        )
+
+    def test_cancel_drops_pending_task(self):
+        q = self._make_queue()
+        running = q.enqueue('echo first', terminal_id=0)
+        pending = q.enqueue('echo second', terminal_id=0)
+        assert pending.status == TaskStatus.PENDING
+
+        assert q.cancel(pending.task_id) is True
+
+        # The cancelled task never runs, even once the terminal frees up.
+        q.notify_complete(running.task_id)
+        assert len(self.ready_tasks) == 1
+        assert len(q) == 0
+
+    def test_cancel_refuses_running_task(self):
+        q = self._make_queue()
+        running = q.enqueue('echo first', terminal_id=0)
+
+        # A running task owns its terminal; cancelling it would leak that flag.
+        assert q.cancel(running.task_id) is False
+        assert running.status == TaskStatus.RUNNING
+
+    def test_cancel_unknown_task_is_noop(self):
+        q = self._make_queue()
+        assert q.cancel(1234) is False
+
+    def test_cancel_leaves_other_terminals_alone(self):
+        q = self._make_queue()
+        first = q.enqueue('echo a1', terminal_id=0)
+        cancelled = q.enqueue('echo a2', terminal_id=0)
+        q.enqueue('echo b1', terminal_id=1)
+        other_pending = q.enqueue('echo b2', terminal_id=1)
+
+        assert q.cancel(cancelled.task_id) is True
+        q.notify_complete(first.task_id)
+
+        assert other_pending.status == TaskStatus.PENDING
+        assert [t.command for t in self.ready_tasks] == ['echo a1', 'echo b1']

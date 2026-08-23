@@ -21,3 +21,29 @@ rbx stress: |
   Stress testing allows you to find counter-examples where your solution fails (or where two solutions differ).
   
   You usually provide a generator command (with random seed) and a reference solution (or validator/checker).
+
+rbx each: |
+  Runs a command for each problem in the contest, in a TUI with one tab per problem.
+
+  Chain several commands with `::` to queue them all at once, in order:
+
+  ```bash
+  rbx each build :: package build
+  ```
+
+  Each problem runs its whole chain before the next problem starts. If a command in a chain fails, the rest of that problem's chain is skipped -- pass `-k`/`--keep-going` to run it anyway. Other problems are unaffected either way.
+
+  Commands you type into the TUI later are queued too, but they always run, even after a failure.
+
+rbx on: |
+  Runs a command in the context of one problem (or a set of problems) of a contest.
+
+  Problems can be selected by short name, alias, a comma-separated list (`A,C`), a range (`A-C`) or `*`.
+
+  Like [`rbx each`](#each), commands can be chained with `::`:
+
+  ```bash
+  rbx on A-C build :: run -s
+  ```
+
+  A single command on a single problem runs directly in your terminal; anything else opens the TUI. Since flags after the problem selector belong to the chained commands, `-k`/`--keep-going` has to come first: `rbx on -k A build :: run`.
