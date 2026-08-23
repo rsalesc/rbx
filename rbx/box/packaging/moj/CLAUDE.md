@@ -133,7 +133,9 @@ Worth knowing: the early break only fires from inside the `JOBSCOUNT > NPROC-1` 
 of the loop, so with fewer tests than cores nothing stops early. It is a best-effort
 speed optimization, not a guarantee.
 
-**A probe package gets `STOPWHEN_TLE` and nothing else**, whatever its scoring. It is
+**A probe package gets exactly the bits its caller asked for** (`ProbePackage.halt_on`),
+whatever its scoring -- `TLE` alone for `rbx time`, all three for `rbx run --fail-fast`,
+none for a plain `rbx run`. Each is
 not a compromise between the two cases above: it is the exact rule rbx asks for
 locally. Both `rbx time` phases pass
 `abort_on=lambda ctx: ctx.evaluation.result.outcome.is_slow()`, so a timeout — and only
@@ -450,7 +452,7 @@ knob lives:
 |---|---|---|
 | `sols/` | model solution only | [`moj testrun`](#solutions) sends the timed source in the request body; calibration needs one `sols/good` |
 | `languages` | every language rbx may testrun, across **both** `rbx time` phases | [the API rejects a submission outside it](#moj-metajson), a testrun included |
-| `STOPWHEN_*` | `STOPWHEN_TLE=y` **only** | [the judge does what `abort_on` does locally](#stopwhen_) |
+| `STOPWHEN_*` | whatever `halt_on` names (`TLE` while timing) | [the judge does what `abort_on` does locally](#stopwhen_) |
 | `ALLOWPARALLELTEST` | `n` | [a timing measured against 55 competing tests is not a timing](#allowparalleltest) |
 | `TLERERUN` | `n` | [the rerun's time replaces the measured one](#allowparalleltest) |
 | `docs/` | always `DUMMY_STATEMENT` | see below |

@@ -130,6 +130,7 @@ rbx run <SOLUTIONS> [OPTIONS]
 | `--choice`, `--choose`, `-c` | BOOLEAN | Whether to pick solutions interactively. | `False` |
 | `--share` | TEXT | Capture the run report and copy it to the clipboard. Pass a format: --share png or --share text. | - |
 | `--fail-fast`, `--ff` | BOOLEAN | Whether to stop running a solution as soon as it gets a non-accepted verdict. Only meant for quick experimentation, as the remaining tests are reported as failed. | `False` |
+| `--runner` | TEXT | Where to run the solutions (local, moj). | `local` |
 
 
 ---

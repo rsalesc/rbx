@@ -18,6 +18,7 @@ see `supports_abort` below for why that is a correctness rule, not an optimizati
 """
 
 import dataclasses
+import enum
 import typing
 from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, Tuple
 
@@ -80,6 +81,44 @@ class RunnerCapabilities:
     supports_interactive: bool = True
     # Can build and run the solution under a sanitizer.
     supports_sanitizers: bool = True
+    # Can run the solutions *without* checking their output. A remote judge
+    # decides the verdict itself, so `check=False` -- which locally means "build
+    # no outputs and run no checker" -- has no counterpart there: the run would
+    # come back checked, answering a different question than the flag asked.
+    supports_unchecked: bool = True
+
+
+class RunPurpose(enum.Enum):
+    """What the run a backend is serving is *for*.
+
+    A backend that only runs solutions does not need this -- `LocalRunner` never
+    reads it. A backend that has to *stage* something first does: `MojRunner`
+    uploads a package per purpose, because MOJ's limits and its stop rules live
+    in the package, so two purposes sharing one remote problem would re-upload
+    and re-calibrate every time they took turns.
+
+    Stated by the caller rather than inferred. It used to be read off the shape
+    of `timelimit_override` -- an `int` meant `rbx time`'s estimation phase, a
+    per-language mapping meant its validation phase -- which worked only for as
+    long as `rbx time` was the sole command with a `--runner` flag. `rbx run`
+    passes no override at all, so under that rule it was indistinguishable from
+    "neither phase" and would have landed on the estimation problem, thrashing
+    its package on every alternation. The signal is now said out loud, and the
+    inference is gone.
+
+    `RUN` is the default because `run_solutions` is a general entry point and a
+    plain run is what a caller that says nothing means. Getting it wrong costs a
+    backend an extra staging area, never a wrong limit: the limits come from
+    `ctx.skeleton.limits`, which no purpose touches.
+    """
+
+    # `rbx run` -- and any other caller that just wants the solutions run.
+    RUN = 'run'
+    # `rbx time`, measuring the accepted solutions to estimate a limit.
+    ESTIMATION = 'estimation'
+    # `rbx time`, checking the estimated limit against the solutions expected to
+    # be too slow.
+    VALIDATION = 'validation'
 
 
 @dataclasses.dataclass(frozen=True)
@@ -159,6 +198,10 @@ class RunContext:
     nruns: int
     progress: Optional[StatusProgress]
     abort_on: Optional['AbortPredicate']
+    # What this run is for. See `RunPurpose`: only a backend that stages
+    # something per purpose reads it, and `RUN` is what a caller that says
+    # nothing means.
+    purpose: RunPurpose = RunPurpose.RUN
     # Where a backend says what it is doing, per solution, while the report is
     # waiting on it. Defaulted so a caller that does not care -- every test that
     # builds a context by hand -- gets a working board rather than a `None` to

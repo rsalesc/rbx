@@ -53,6 +53,35 @@ animation below.
 
 {{ asciinema("ui-navigation") }}
 
+## Running on the judge itself
+
+`rbx run` runs the solutions in the sandbox on your machine. `--runner` is the other
+way: run them **on the judge park**, through the judge's own CLI, and read the verdicts
+and timings the judge produced.
+
+```bash
+# Run every solution on MOJ instead of locally
+rbx run --runner moj
+```
+
+The setup is the same one `rbx time --runner moj` uses — you must be logged in to the
+[`moj` CLI](https://github.com/cd-moj/moj-cli), and {{rbx}} uploads a throwaway problem
+of its own rather than touching one you published. See [Measuring on the judge
+itself](/setters/profiling/#measuring-on-the-judge-itself) for the whole story, including
+what a judge cannot report back.
+
+Two things are specific to `rbx run`:
+
+- The judge enforces **the same time limits your local run would** — the ones from the
+  limits profile in effect, per language group.
+- `--fail-fast` is honoured by the judge: it stops a solution at its first non-accepted
+  verdict, and the testcases it never reached are reported as skipped, exactly as they
+  are locally. Toggling the flag changes the uploaded package, so the first run after a
+  toggle pays for an upload and a calibration.
+
+`--no-check` is **refused** on a remote runner: the judge always judges with the packaged
+checker, so there is no run it could do that means "do not check".
+
 ## Sharing a report
 
 Sometimes you want to send a run report (or a time-estimation report) to someone

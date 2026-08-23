@@ -118,7 +118,7 @@ from rbx.utils import StatusProgress
 if TYPE_CHECKING:
     # `runners.local` reads this module's abort/skip machinery, so the runner
     # types can only be named here, never imported at run time.
-    from rbx.box.runners.base import RunContext, SolutionRunner
+    from rbx.box.runners.base import RunContext, RunPurpose, SolutionRunner
 
 StructuredEvaluation = Dict[str, Dict[str, List[Optional[Deferred[Evaluation]]]]]
 
@@ -868,6 +868,7 @@ def _check_capabilities(
     *,
     nruns: int,
     sanitized: bool,
+    check: bool,
 ) -> None:
     """Refuse up front what the backend cannot do, naming it.
 
@@ -928,6 +929,19 @@ def _check_capabilities(
         raise RunnerCapabilityError(
             f'Runner `{runner.name}` cannot run solutions under a sanitizer. '
             f'Drop the sanitizer, or run this on a backend that supports one.'
+        )
+
+    if not check and not caps.supports_unchecked:
+        # Refused rather than quietly upgraded to a checked run, for the same
+        # reason as every other refusal here: the report would look like an
+        # answer to `--no-check` and be an answer to something else. On a remote
+        # judge there is no third option -- it checks with the packaged checker,
+        # and a package cannot even be built without the answers `--no-check`
+        # skips building.
+        raise RunnerCapabilityError(
+            f'Runner `{runner.name}` always judges with the packaged checker, so '
+            f'it cannot honour `--no-check`. Drop `--no-check`, or run this on a '
+            f'backend that can skip checking.'
         )
 
     pkg = package.find_problem_package_or_die()
@@ -1027,20 +1041,26 @@ async def run_solutions(
     nruns: int = 0,
     abort_on: Optional[AbortPredicate] = None,
     runner: Optional['SolutionRunner'] = None,
+    purpose: Optional['RunPurpose'] = None,
 ) -> RunSolutionResult:
     # Imported here, not at module scope: `runners.local` imports this module
     # back -- for `run_solution_on_testcase` and for `SolutionSkeleton` -- so an
     # eager import would close the cycle. Untangling that means lifting the
     # skeleton types out of this 2185-line module, which is its own change.
-    from rbx.box.runners.base import RunContext
+    from rbx.box.runners.base import RunContext, RunPurpose
     from rbx.box.runners.local import LocalRunner
 
     if runner is None:
         runner = LocalRunner()
+    if purpose is None:
+        # Defaulted here rather than in the signature so the annotation does not
+        # have to be a live import: `runners.base` reaches back into this module,
+        # so importing it at module scope would close the cycle.
+        purpose = RunPurpose.RUN
 
     # Before anything is compiled or dispatched: a run that cannot mean what it
     # says should cost nothing and fail by name.
-    _check_capabilities(runner, nruns=nruns, sanitized=sanitized)
+    _check_capabilities(runner, nruns=nruns, sanitized=sanitized, check=check)
 
     skeleton = await _get_report_skeleton(
         progress=progress,
@@ -1066,6 +1086,7 @@ async def run_solutions(
         nruns=nruns,
         progress=progress,
         abort_on=abort_on,
+        purpose=purpose,
         progress_board=progress_board,
     )
 

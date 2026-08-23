@@ -301,6 +301,51 @@ async def test_a_sanitized_run_is_refused_by_a_backend_without_sanitizers(
     assert runner.calls == 0
 
 
+@pytest.mark.test_pkg('problems/abort-groups')
+async def test_an_unchecked_run_is_refused_by_a_backend_that_always_checks(
+    pkg_from_testdata: pathlib.Path,
+):
+    """`--no-check` has no counterpart on a judge that decides the verdict itself.
+
+    Refused rather than quietly upgraded to a checked run: the report would look
+    like an answer to `--no-check` and be an answer to a different question.
+    """
+    runner = LimitedRunner(caps=RunnerCapabilities(supports_unchecked=False))
+
+    with pytest.raises(RunnerCapabilityError) as exc:
+        await run_solutions(
+            verification=VerificationLevel.FULL,
+            tracked_solutions=['sol.cpp'],
+            check=False,
+            runner=runner,
+        )
+
+    assert 'limited' in exc.value.message
+    # Printed with a bare `print`, so markup would show up as literal tags.
+    assert '[item]' not in str(exc.value)
+    assert runner.prepared == 0
+    assert runner.calls == 0
+
+
+@pytest.mark.test_pkg('problems/abort-groups')
+async def test_a_checked_run_is_fine_for_a_backend_that_always_checks(
+    pkg_from_testdata: pathlib.Path,
+):
+    """The refusal is about the flag, not about the backend."""
+    await _build_testset()
+    runner = LimitedRunner(caps=RunnerCapabilities(supports_unchecked=False))
+
+    result = await run_solutions(
+        verification=VerificationLevel.FULL,
+        tracked_solutions=['sol.cpp'],
+        check=True,
+        runner=runner,
+    )
+
+    assert runner.prepared == 1
+    await result.close()
+
+
 @pytest.mark.test_pkg('problems/interactive')
 async def test_a_communication_problem_is_refused_by_a_non_interactive_backend(
     pkg_from_testdata: pathlib.Path,
