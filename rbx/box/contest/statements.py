@@ -41,6 +41,7 @@ async def _execute_build(
     profile: Optional[str],
     kind: StatementKind,
     build_documents: bool,
+    partial: bool = False,
 ) -> None:
     """Shared body of ``rbx contest st b`` / ``rbx contest tut b``.
 
@@ -150,6 +151,7 @@ async def _execute_build(
                                 annotations.parse_dictionary_items(vars)
                             ),
                             kind=kind,
+                            partial=partial,
                         ),
                     )
                 )
@@ -270,6 +272,13 @@ async def build(
             autocompletion=annotations._adapt('profile'),  # noqa: SLF001
         ),
     ] = None,
+    partial: Annotated[
+        bool,
+        typer.Option(
+            '--partial',
+            help='Build a statement even if some of its problems fail, omitting them. Without this, a problem that fails makes its statement fail.',
+        ),
+    ] = False,
 ):
     await _execute_build(
         verification=verification,
@@ -283,6 +292,7 @@ async def build(
         profile=profile,
         kind=StatementKind.STATEMENTS,
         build_documents=True,
+        partial=partial,
     )
 
 
@@ -342,6 +352,13 @@ async def build_tutorials(
             help='Timing profile to render tutorials against. Problems missing this profile are skipped with a warning.',
         ),
     ] = None,
+    partial: Annotated[
+        bool,
+        typer.Option(
+            '--partial',
+            help='Build a statement even if some of its problems fail, omitting them. Without this, a problem that fails makes its statement fail.',
+        ),
+    ] = False,
 ):
     await _execute_build(
         verification=verification,
@@ -355,6 +372,7 @@ async def build_tutorials(
         profile=profile,
         kind=StatementKind.TUTORIALS,
         build_documents=False,
+        partial=partial,
     )
 
 

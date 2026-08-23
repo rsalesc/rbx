@@ -28,7 +28,7 @@ from rbx.box.contest.contest_package import (
     get_contest_statements_build_path,
 )
 from rbx.box.contest.schema import Contest, ContestProblem, ContestStatement, Document
-from rbx.box.exception import RbxException
+from rbx.box.exception import RbxException, describe_exception
 from rbx.box.formatting import href
 from rbx.box.sanitizers import issue_stack
 from rbx.box.sanitizers.issue_stack import Issue
@@ -203,6 +203,7 @@ async def build_statement(
     custom_vars: Optional[Dict[str, Any]] = None,
     install_tex: bool = False,
     kind: StatementKind = StatementKind.STATEMENTS,
+    partial: bool = False,
 ) -> pathlib.Path:
     """Build one contest statement (or tutorial) and return its output path.
 
@@ -222,6 +223,10 @@ async def build_statement(
         use_samples: stage sample I/O (assumes samples were already built).
         custom_vars: ``--vars`` overrides merged on top of each problem's vars.
         install_tex: best-effort ``texliveonfly`` install before compiling.
+        partial: build the statement even if some of its problems fail to
+            render, omitting them. Off by default: a problem that fails
+            otherwise makes this whole statement fail, since producing it
+            without that problem would silently ship an incomplete document.
     """
     output_type = output_type or StatementType.PDF
     custom_vars = custom_vars or {}
@@ -267,15 +272,18 @@ async def build_statement(
                 custom_vars,
                 kind,
             )
-        except (typer.Exit, RbxException):
-            # Hard config/abort errors (e.g. a missing matching statement, or
-            # conflicting explanation files) must surface, not be downgraded to a
-            # per-problem skip.
-            raise
         except Exception as exc:
+            if not partial:
+                # Dropping the problem would silently produce a statement that
+                # is missing it. Fail this statement instead; the caller keeps
+                # building the other statements.
+                raise StatementBuildError(
+                    statement.name, problem.short_name, describe_exception(exc)
+                ) from exc
             console.console.print(
-                f'[error]Error building statement for problem '
-                f'[item]{problem.short_name}[/item]: {exc}[/error]'
+                f'[warning]Dropping problem [item]{problem.short_name}[/item] from '
+                f'{kind.singular} [item]{statement.name}[/item]: '
+                f'{describe_exception(exc)}[/warning]'
             )
             issue_stack.add_issue(StatementBuildIssue(problem))
             continue
