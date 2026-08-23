@@ -140,6 +140,17 @@ class TimingBounds(BaseModel):
     # Whether ``lower`` came from a reference group instead of this group's own
     # accepted solutions.
     derived: bool = False
+    # The smallest limit this group's own accepted solutions allow, whatever
+    # decided ``lower``. On the estimated path it *is* ``lower``; on a derived
+    # one it is the evidence the derivation ignored, which is the only way a
+    # limit can end up below what the group's own good solutions need.
+    own_lower: Optional[int] = None
+    own_lower_solution: Optional[str] = None
+
+    def violates_own_lower(self, time_limit: int) -> bool:
+        """Whether ``time_limit`` is below what this group's own accepted
+        solutions allow -- an invalid-by-nature limit for this group."""
+        return self.own_lower is not None and time_limit < self.own_lower
 
     @property
     def fits(self) -> bool:
@@ -165,13 +176,21 @@ def compute_bounds(
     estimate); otherwise the lower bound is this group's slowest accepted
     solution scaled by ``acToTimeLimit``.
     """
+    own_lower = None
+    own_lower_solution = None
+    if measured.lower is not None:
+        own_lower = math.ceil(
+            measured.lower.slowest * _exact(multipliers.acToTimeLimit)
+        )
+        own_lower_solution = measured.lower.slowest_solution
+
     lower_solution = None
     if derived_from is not None:
         lower = derived_from
     else:
-        assert measured.lower is not None
-        lower = math.ceil(measured.lower.slowest * _exact(multipliers.acToTimeLimit))
-        lower_solution = measured.lower.slowest_solution
+        assert own_lower is not None
+        lower = own_lower
+        lower_solution = own_lower_solution
 
     upper = None
     upper_solution = None
@@ -192,6 +211,8 @@ def compute_bounds(
         upper=upper,
         upper_solution=upper_solution,
         derived=derived_from is not None,
+        own_lower=own_lower,
+        own_lower_solution=own_lower_solution,
     )
 
 
@@ -209,6 +230,15 @@ def _as_eval_result(bounds: TimingBounds, time_limit: int) -> timing_groups.Eval
             None
             if bounds.upper is None
             else schema.TimingBound(value=bounds.upper, solution=bounds.upper_solution)
+        ),
+        # Recorded only when broken: a limit that respects the group's own
+        # solutions has nothing to say about them.
+        lower_violation=(
+            schema.TimingBound(
+                value=bounds.own_lower, solution=bounds.own_lower_solution
+            )
+            if bounds.own_lower is not None and bounds.violates_own_lower(time_limit)
+            else None
         ),
     )
 
@@ -228,6 +258,34 @@ def make_formula_eval(formula: str) -> timing_groups.EvalFn:
         )
 
     return _eval
+
+
+def make_formula_derive() -> timing_groups.DeriveFn:
+    """Post-processor for a formula-mode limit that did NOT come from the group's
+    own accepted solutions.
+
+    Takes no formula, because there is nothing to evaluate: the limit belongs to
+    the group this one derives from. A formula bounds nothing, so this invents no
+    bounds and never moves the limit; it exists so that a derived group is still
+    checked against the one thing its own measurements do say -- that a solution
+    taking ``T`` ms needs a limit of at least ``T`` ms. Without it a formula-mode
+    reference group is checked from neither side.
+    """
+
+    def _derive(
+        tl: int, measured: timing_groups.GroupMeasurements
+    ) -> timing_groups.EvalResult:
+        timings = measured.lower
+        if timings is None or timings.slowest <= tl:
+            return timing_groups.EvalResult(time_limit=tl)
+        return timing_groups.EvalResult(
+            time_limit=tl,
+            lower_violation=schema.TimingBound(
+                value=timings.slowest, solution=timings.slowest_solution
+            ),
+        )
+
+    return _derive
 
 
 def _check_bounds(
@@ -398,7 +456,7 @@ def build_timing_profile(
         )
     else:
         eval_fn = make_formula_eval(strategy.formula_or_die())
-        derive_fn = None
+        derive_fn = make_formula_derive()
 
     slow_per_language = slow_timing_per_solution_per_language or {}
     confirmed_per_language = confirmed_upper_per_language or {}

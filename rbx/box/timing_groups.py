@@ -166,6 +166,10 @@ class EvalResult(BaseModel):
     time_limit: int
     lower_bound: Optional[TimingBound] = None
     upper_bound: Optional[TimingBound] = None
+    # The smallest limit the group's own accepted solutions allow, set only when
+    # ``time_limit`` is below it. Only a limit that did not come from those
+    # solutions can break that -- an estimated one is built from this very bound.
+    lower_violation: Optional[TimingBound] = None
 
 
 # An estimator that derives no bounds at all (the formula path) may return the
@@ -212,9 +216,16 @@ def _record_provenance(
         return
     report.lowerBound = result.lower_bound
     report.upperBound = result.upper_bound
+    report.lowerViolation = result.lower_violation
     upper = measured.upper
-    if upper is not None and (
-        upper.confirmed_upper or upper.violating_upper or upper.skipped_upper
+    # Only an estimator that computes bounds says anything about the slow
+    # solutions -- the same rule ``_provenance_of`` states. The formula path
+    # reports a lower violation and nothing else, so a formula-mode group must
+    # not start emitting an upper record its estimated siblings never emit.
+    if (
+        result.lower_bound is not None
+        and upper is not None
+        and (upper.confirmed_upper or upper.violating_upper or upper.skipped_upper)
     ):
         # Set only when there is something to record. The profile is serialized
         # with `exclude_unset`, so assigning an empty record would make an

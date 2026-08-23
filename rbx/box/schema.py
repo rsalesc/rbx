@@ -1020,6 +1020,16 @@ Presentation-only.""",
 time limit found. Absent when the group has no slow solutions. Presentation-only.""",
     )
 
+    lowerViolation: Optional[TimingBound] = Field(
+        default=None,
+        description="""The smallest time limit this group's own accepted solutions
+allow, recorded only when the group's time limit is below it -- that is, when the
+limit was derived from a reference group or the base estimate instead of being
+estimated from the group's own solutions, and the group's own solutions do not fit
+in it. `solution` is the accepted solution that sets the bound. Absent whenever the
+limit respects the group's own evidence. Presentation-only.""",
+    )
+
     droppedUpper: List[str] = Field(
         default=[],
         deprecated=True,
