@@ -67,6 +67,12 @@ from rbx.box.generators import (
 )
 from rbx.box.parallel import live_tasks
 from rbx.box.rendering import CellSlot, Throttling
+
+# Imported eagerly, unlike `runners.local` below: `runners.base` reaches back
+# into this module for type names only, under TYPE_CHECKING, so there is no cycle
+# to break -- and the board has to be a real class here, not a string, because a
+# dataclass default_factory is evaluated at runtime.
+from rbx.box.runners.base import RunProgress
 from rbx.box.sanitizers import compilation_warnings, issue_stack
 from rbx.box.schema import (
     ExpectedOutcome,
@@ -365,6 +371,11 @@ class RunSolutionResult:
     # all -- the reporting tests do exactly that -- and a result with no backend
     # has nothing to close.
     runner: Optional['SolutionRunner'] = None
+    # The board the backend writes what it is doing on, per solution, read by the
+    # reporter every time it paints a solution header. Defaulted so a result
+    # built without a run at all -- which every reporting test does -- reads back
+    # empty rather than needing a guard at the one place that reads it.
+    progress_board: 'RunProgress' = dataclasses.field(default_factory=RunProgress)
 
     def empty_structured_evaluation(self) -> StructuredEvaluation:
         return self.skeleton.empty_structured_evaluation()
@@ -1041,6 +1052,11 @@ async def run_solutions(
 
     checker_digest, interactor_digest = await _compile_checking_digests(check)
 
+    # One board for the whole run, handed to the backend here and to the reporter
+    # on the result below. It cannot be created by either of them: the reporter
+    # does not exist until this function has returned.
+    progress_board = RunProgress()
+
     ctx = RunContext(
         skeleton=skeleton,
         checker_digest=checker_digest,
@@ -1050,12 +1066,18 @@ async def run_solutions(
         nruns=nruns,
         progress=progress,
         abort_on=abort_on,
+        progress_board=progress_board,
     )
 
     await runner.prepare(ctx)
     items = _produce_solution_items(runner=runner, ctx=ctx)
 
-    return RunSolutionResult(skeleton=skeleton, items=items, runner=runner)
+    return RunSolutionResult(
+        skeleton=skeleton,
+        items=items,
+        runner=runner,
+        progress_board=progress_board,
+    )
 
 
 async def _generate_testcase_interactively(
@@ -3058,16 +3080,25 @@ class LiveRunReporter(TraditionalRunReporter):
             self.console.height
         )
 
-    def _header_chips(self) -> List[rich.text.Text]:
+    def _header_chips(self, solution: Solution) -> List[rich.text.Text]:
         """The live annotations on the solution header, left to right.
 
-        Wall-clock chips render on a terminal only. A shared report, an e2e
-        golden and an asciinema cast are all non-terminal consoles, and an
-        elapsed time in any of them turns every re-run into a diff.
+        The wall clock first, then whatever the backend running this solution has
+        put on the board -- a testrun id, a queue state, a cache hit. The
+        reporter renders those verbatim and knows nothing about what they mean;
+        see `runners.base.RunProgress`.
+
+        The clock renders on a terminal only. A shared report, an e2e golden and
+        an asciinema cast are all non-terminal consoles, and an elapsed time in
+        any of them turns every re-run into a diff. Backend chips are not
+        wall-clock and do render there: a setter reading a shared report wants to
+        know which testrun produced its numbers.
         """
         chips: List[rich.text.Text] = []
         if self._elapsed is not None and self.console.is_terminal:
             chips.append(rich.text.Text(str(self._elapsed), style='bright_black'))
+        for chip in self.result.progress_board.get(str(solution.path)):
+            chips.append(rich.text.Text(chip.text, style=chip.style))
         return chips
 
     def _header_line(self, solution: Solution) -> rich.text.Text:
@@ -3076,7 +3107,7 @@ class LiveRunReporter(TraditionalRunReporter):
         line = rich.text.Text.from_markup(
             f'{solution_skeleton.href()} ({solution_skeleton.runs_dir_href()})'
         )
-        for chip in self._header_chips():
+        for chip in self._header_chips(solution):
             line.append(rich.text.Text(' · ', style='bright_black'))
             line.append(chip)
         return line

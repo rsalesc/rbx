@@ -19,7 +19,7 @@ see `supports_abort` below for why that is a correctness rule, not an optimizati
 
 import dataclasses
 import typing
-from typing import TYPE_CHECKING, List, Optional, Protocol
+from typing import TYPE_CHECKING, Dict, List, Optional, Protocol, Tuple
 
 from rbx.box.deferred import Deferred
 from rbx.box.environment import VerificationLevel
@@ -82,6 +82,65 @@ class RunnerCapabilities:
     supports_sanitizers: bool = True
 
 
+@dataclasses.dataclass(frozen=True)
+class RunnerChip:
+    """One thing a backend wants said about a solution, right now.
+
+    Text and a style, not a typed state. A typed `RunnerStatus` would put MOJ's
+    vocabulary -- `queued`, `running`, `done` -- into the reporter, and the next
+    judge's vocabulary after that. The backend owns its own words; the reporter
+    owns the layout and knows nothing about judges.
+    """
+
+    text: str
+    style: str = 'bright_black'
+
+
+class RunProgress:
+    """What each backend wants said about each solution while the report waits.
+
+    A **board**, written by the backend and read by the reporter, rather than a
+    channel between them. The two cannot be wired together directly: the reporter
+    is built from a `RunSolutionResult`, so it does not exist yet when
+    `run_solutions` hands the backend its `RunContext`. The board is created
+    before either and handed to both.
+
+    **Pull, not push.** The reporter reads whichever solution it is currently
+    blocked on, every time it paints. A backend that dispatched ten solutions is
+    therefore free to keep all ten slots current -- the nine nobody is looking at
+    cost a dict write each -- which is what lets a poll say something without
+    fighting the reporter for the console. That was the standing objection to a
+    backend writing status lines at all (see `MojRunner._wait_for_testrun`), and
+    it is dissolved rather than worked around: a poll writes into its own slot,
+    and only the slot being waited on is ever drawn.
+
+    **No locking.** Backend and reporter run on the same event loop, so a write
+    is a plain dict assignment. Chips are stored as a tuple so a reader cannot be
+    handed a list that the next write mutates underneath it.
+
+    A backend that never writes -- `LocalRunner` -- costs nothing and reads back
+    empty.
+    """
+
+    def __init__(self) -> None:
+        self._chips: Dict[str, Tuple[RunnerChip, ...]] = {}
+
+    def set(self, solution_path: str, *chips: RunnerChip) -> None:
+        """Replace this solution's chips. Whole line at once, never appended.
+
+        A backend says what is true *now*; it does not accumulate. Half a
+        solution's state from one moment beside half from another is exactly the
+        kind of line that reads as a bug in whatever it describes.
+        """
+        self._chips[solution_path] = chips
+
+    def clear(self, solution_path: str) -> None:
+        self._chips.pop(solution_path, None)
+
+    def get(self, solution_path: str) -> Tuple[RunnerChip, ...]:
+        return self._chips.get(solution_path, ())
+
+
 @dataclasses.dataclass
 class RunContext:
     """Everything a runner needs that is fixed for a whole `run_solutions` call."""
@@ -100,6 +159,11 @@ class RunContext:
     nruns: int
     progress: Optional[StatusProgress]
     abort_on: Optional['AbortPredicate']
+    # Where a backend says what it is doing, per solution, while the report is
+    # waiting on it. Defaulted so a caller that does not care -- every test that
+    # builds a context by hand -- gets a working board rather than a `None` to
+    # guard against at every write site.
+    progress_board: RunProgress = dataclasses.field(default_factory=RunProgress)
 
 
 @typing.runtime_checkable

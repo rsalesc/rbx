@@ -92,6 +92,24 @@ flattened testset in group order, and returns one `Deferred[Evaluation]` per ent
 grain is deliberate -- a remote judge judges one submission against every test at once, so
 a per-testcase seam would force every batch backend to coalesce calls back into a batch.
 
+**Saying what it is doing.** `RunContext.progress_board` is a `RunProgress`: one slot per
+solution, holding the chips a backend wants on that solution's header while the report waits
+on it. The same object reaches the reporter as `RunSolutionResult.progress_board`, because
+the two ends cannot be wired directly -- the reporter does not exist until `run_solutions`
+has returned. Chips are text plus a style, never a typed state, so the backend owns its own
+vocabulary and the reporter knows nothing about judges.
+
+The board is what makes a **background task** able to say anything. The standing rule was
+that a polling task must stay silent: the console and the `StatusProgress` belong to the
+reporter, and a poll printing from one of ten in-flight solutions makes the display flip
+every few seconds. A board write is not a print -- it lands in that solution's own slot, and
+the reporter draws only the slot it is currently blocked on. So every in-flight solution
+keeps its slot current for the cost of a dict write, while the one being watched reports
+itself live. Reads and writes share one event loop, so there is no lock; chips come back as
+a tuple, so a reader holds a snapshot. `LocalRunner` writes nothing and reads back empty.
+Anything that must be said *durably* still goes through the console from
+`_evaluation_from_job`. The board is a status line -- overwritten, then gone.
+
 Two things stay with the orchestrator rather than the backend:
 
 - **Abort/skip policy.** `_gated_evaluation()` wraps each returned deferred when a run asks
@@ -277,9 +295,19 @@ off the packager that built the uploaded package: the live probe
 pairing by position would misattribute essentially every timing. That mapping is keyed on
 **`subgroup_entry`**, never `group_entry`: `group_entry.index` restarts at 0 per subgroup
 while its `group` is the top-level one, so `beta/one/0` and `beta/two/0` collide.
-Everything the runner says to the setter is said from `_evaluation_from_job`, on the
-consumer's own thread of control -- the polling tasks are silent, because the reporter owns
-the console and the `StatusProgress` while they run. `MAX_INFLIGHT_TESTRUNS` is **1**: MOJ allows one account only a few queued testruns
+Everything the runner *prints* is printed from `_evaluation_from_job`, on the
+consumer's own thread of control -- the polling tasks never touch the console, because the
+reporter owns it and the `StatusProgress` while they run. They are not silent, though: each
+poll repaints its own solution's slot on `RunContext.progress_board` (`_say`,
+`_poll_chips`), so the header of the solution the report is waiting on carries the remote
+problem, the testrun id, the judge's own state word, its host and how long the wait has
+been. Only what the judge actually answered with goes there -- a `0/0` on a run that has
+not started would read as a lost testset -- and the counts are `correct`, never "tests
+run", since a solution the validation phase *expects* to fail would otherwise look stuck at
+zero. The slot is cleared once the solution has a real verdict, so no stale `running` chip
+survives beside an outcome. This replaced a `ctx.progress.update(...)` that nobody ever
+saw: every caller exits its `StatusProgress` before `print_run_report` runs, so the
+`Status` being updated there was always already stopped. `MAX_INFLIGHT_TESTRUNS` is **1**: MOJ allows one account only a few queued testruns
 (three, observed) and answers 429 past that, `moj testrun` cannot pick a judge so two in
 flight may share a machine and inflate each other, and the park is shared with everyone
 else. A 429 is waited out rather than failed -- it cannot be cleared, since `moj` has no

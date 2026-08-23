@@ -19,6 +19,7 @@ from rbx.box.generators import (
     generate_outputs_for_testcases,
     generate_testcases,
 )
+from rbx.box.runners.base import RunnerChip
 from rbx.box.sanitizers.issue_stack import IssueAccumulator, issue_stack_var
 from rbx.box.schema import (
     ExpectedOutcome,
@@ -2385,3 +2386,112 @@ def test_elapsed_reads_one_decimal_below_ten_seconds():
         assert str(elapsed) == '3.2s'
     with patch('rbx.utils.time.monotonic', return_value=elapsed._started + 41.9):  # noqa: SLF001
         assert str(elapsed) == '41s'
+
+
+# -- backend chips on the header ----------------------------------------------
+
+
+async def test_the_header_carries_what_the_backend_put_on_the_board(
+    mock_problem_root, mock_binary_scoring
+):
+    """The reporter renders the backend's chips verbatim, and knows nothing.
+
+    A typed status would put MOJ's vocabulary into the reporter, and the next
+    judge's after that. What arrives here is text and a style.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    result.progress_board.set(
+        'sol.cpp',
+        RunnerChip('moj rbxt-a1b2'),
+        RunnerChip('testrun 4821'),
+        RunnerChip('running'),
+    )
+    console = recording_console()
+
+    with fresh_issue_stack():
+        await drive_reporter(
+            LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
+        )
+
+    header = next(
+        line for line in rendered_lines(console) if line.startswith('sol.cpp')
+    )
+    assert 'moj rbxt-a1b2' in header
+    assert 'testrun 4821' in header
+    assert 'running' in header
+
+
+async def test_backend_chips_survive_a_non_terminal_console(
+    mock_problem_root, mock_binary_scoring
+):
+    """Unlike the wall clock, backend chips do render into a shared report.
+
+    They are not wall-clock, so they do not turn every re-run into a diff -- and a
+    setter reading a `--share` report wants to know which testrun produced its
+    numbers.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    result.progress_board.set('sol.cpp', RunnerChip('testrun 4821'))
+    console = recording_console()
+    assert not console.is_terminal
+
+    with fresh_issue_stack():
+        await drive_reporter(
+            LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
+        )
+
+    header = next(
+        line for line in rendered_lines(console) if line.startswith('sol.cpp')
+    )
+    assert 'testrun 4821' in header
+    # ...and still no clock.
+    assert not re.search(r'\d+(\.\d)?s', header)
+
+
+async def test_only_the_solution_being_drawn_reaches_the_header(
+    mock_problem_root, mock_binary_scoring
+):
+    """Every in-flight solution keeps its slot current; one of them is drawn.
+
+    That is what makes a background poll safe to write from at all: it lands in
+    its own slot, and the reporter never draws a slot it is not blocked on.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    result.progress_board.set('sol.cpp', RunnerChip('testrun 4821'))
+    result.progress_board.set('other.cpp', RunnerChip('testrun 4822'))
+    console = recording_console()
+
+    with fresh_issue_stack():
+        await drive_reporter(
+            LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
+        )
+
+    text = console.export_text(clear=False)
+    assert 'testrun 4821' in text
+    assert 'testrun 4822' not in text
+
+
+async def test_a_run_with_no_backend_chips_renders_exactly_as_before(
+    mock_problem_root, mock_binary_scoring
+):
+    """`LocalRunner` writes nothing, and an empty board adds no separator."""
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    console = recording_console()
+
+    with fresh_issue_stack():
+        await drive_reporter(
+            LiveRunReporter(result, VerificationLevel.FULL, console), skeleton
+        )
+
+    header = next(
+        line for line in rendered_lines(console) if line.startswith('sol.cpp')
+    )
+    assert '·' not in header

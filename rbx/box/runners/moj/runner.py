@@ -42,7 +42,13 @@ from rbx.box.exception import RbxException
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.moj.moj_language_utils import get_moj_language_from_rbx_language
 from rbx.box.packaging.moj.packager import MojPackager, ProbePackage, ProbePinned
-from rbx.box.runners.base import RunContext, RunnerCapabilities, SolutionRunner
+from rbx.box.runners.base import (
+    RunContext,
+    RunnerCapabilities,
+    RunnerChip,
+    RunProgress,
+    SolutionRunner,
+)
 from rbx.box.runners.moj import cli, problem_id
 from rbx.box.runners.moj.problem_id import ensure_moj_id, is_rbxt_id, moj_id_path
 from rbx.box.schema import CodeItem
@@ -486,6 +492,29 @@ class MojRunner:
             f'[item]{calibration_elapsed}[/item].[/status]'
         )
 
+    def _say(
+        self,
+        board: RunProgress,
+        solution: 'SolutionSkeleton',
+        *chips: RunnerChip,
+    ) -> None:
+        """Put this solution's current state on the board, as one whole line.
+
+        Always led by the remote problem, because on a park shared between the
+        two `rbx time` phases -- which upload to *different* problems -- knowing
+        which one a testrun belongs to is what makes the rest of the line mean
+        anything.
+
+        Writing here is safe from a polling task in a way that writing to the
+        console is not: the board is a per-solution slot, and the reporter draws
+        only the slot it is currently blocked on. See `RunProgress`.
+        """
+        board.set(
+            str(solution.path),
+            RunnerChip(f'moj {self._moj_id}' if self._moj_id else 'moj'),
+            *chips,
+        )
+
     def run_solution(
         self,
         solution: 'SolutionSkeleton',
@@ -521,7 +550,13 @@ class MojRunner:
         # judge starts working before anything awaits. The task is captured by
         # every deferred below and by `self._jobs`, so it is never
         # garbage-collected mid-flight.
-        job = asyncio.create_task(self._submit_and_poll(solution, names))
+        # Said before the task is even created, so a solution the report has not
+        # reached yet is already accounted for on the board rather than blank.
+        self._say(ctx.progress_board, solution, RunnerChip('waiting for a slot'))
+
+        job = asyncio.create_task(
+            self._submit_and_poll(solution, names, ctx.progress_board)
+        )
         job.add_done_callback(_retrieve_exception)
         self._jobs.append(job)
 
@@ -657,6 +692,7 @@ class MojRunner:
         self,
         solution: 'SolutionSkeleton',
         expected_names: List[str],
+        board: RunProgress,
     ) -> '_TestrunResult':
         """Submit one solution and wait for its verdicts, keyed by MOJ test name.
 
@@ -665,15 +701,21 @@ class MojRunner:
         occupies, and a run that has been dispatched is occupying it whether or
         not rbx is still talking to the server.
 
-        **Takes no `RunContext`, and says nothing to the setter.** This runs on a
-        background task -- up to `MAX_INFLIGHT_TESTRUNS` of them at once, on their
-        own schedule, long after the call that created them returned. The
+        **Writes to the board, never to the console.** This runs on a background
+        task -- up to `MAX_INFLIGHT_TESTRUNS` of them at once, on their own
+        schedule, long after the call that created them returned. The
         `StatusProgress` and the console belong to the reporter that is printing
-        results right now, so a poll writing a status line from here makes the
-        display flip between solutions and the reporter's own message every few
-        seconds. Everything this learns is handed back and said by
-        `_evaluation_from_job`, which runs on the consumer's own thread of
-        control.
+        results right now, so a poll *printing* from here would make the display
+        flip between solutions every few seconds. A board write does not: it
+        lands in this solution's own slot, and the reporter draws only the slot
+        it is currently blocked on (see `RunProgress`). So the solution the
+        report is waiting on reports itself, live, while the nine queued behind
+        it keep their slots current for free.
+
+        Anything that has to be said *durably* -- a cache hit, a short testset --
+        is still handed back and printed by `_evaluation_from_job`, on the
+        consumer's own thread of control. The board is a status line: it is
+        overwritten and then gone.
 
         **The cache is consulted before the semaphore, not inside it.** A hit
         costs one file read and no judge time at all, so making it queue behind
@@ -687,6 +729,12 @@ class MojRunner:
         cached = _load_cached_testrun(key)
         if cached is not None:
             run, status = cached
+            self._say(
+                board,
+                solution,
+                RunnerChip(f'testrun {run}'),
+                RunnerChip('cached', style='green'),
+            )
             # Deliberately put through the *same* derivation a fresh status goes
             # through, rather than storing the derived `_TestrunResult`. That is
             # what makes a hit and a miss provably identical: there is one place
@@ -698,10 +746,30 @@ class MojRunner:
             result.cached = True
             return result
 
+        # Started before the slot is taken, so what it counts is the whole wait
+        # a setter is actually enduring -- queueing behind other solutions
+        # included, which on `MAX_INFLIGHT_TESTRUNS = 1` is most of it.
+        since = _Elapsed()
+
         assert self._testrun_slots is not None
         async with self._testrun_slots:
             run = await self._submit(solution, content)
-            status = await self._wait_for_testrun(run, solution)
+            self._say(
+                board,
+                solution,
+                RunnerChip(f'testrun {run}'),
+                RunnerChip('submitted'),
+                RunnerChip(str(since)),
+            )
+            status = await self._wait_for_testrun(run, solution, board, since)
+
+        self._say(
+            board,
+            solution,
+            RunnerChip(f'testrun {run}'),
+            RunnerChip('done', style='green'),
+            RunnerChip(str(since)),
+        )
 
         result = self._result_from_status(solution, run, status, expected_names)
         # Written only once the status has survived every check above, which is
@@ -927,18 +995,31 @@ class MojRunner:
         return digest.hexdigest()
 
     async def _wait_for_testrun(
-        self, run: str, solution: 'SolutionSkeleton'
+        self,
+        run: str,
+        solution: 'SolutionSkeleton',
+        board: RunProgress,
+        since: '_Elapsed',
     ) -> cli.TestrunStatus:
-        """Poll until the judge is finished with `run`. Bounded, and silent.
+        """Poll until the judge is finished with `run`. Bounded, and on the board.
 
-        Silent because it is a background task: see `_submit_and_poll`. What the
-        setter sees while this runs is one line from `_evaluation_from_job`, for
-        the solution whose result the report is actually waiting on.
+        This is the slow half of a remote run and the half a setter most wants to
+        see moving, so every poll repaints this solution's slot. It writes to the
+        board rather than the console for the reason `_submit_and_poll` gives:
+        printing from a background task would make the display flip between
+        solutions, a board write cannot.
+
+        What it can say depends on what the judge chose to answer with. The state
+        word is always there; the counts and the host are reported by some
+        responses and not others, so they are added when present rather than
+        defaulted -- a `0/0` on a run that simply has not started would read as a
+        judge losing the testset.
         """
         for attempt in range(TESTRUN_POLL_ATTEMPTS):
             status = await cli.testrun_status(run)
             if status.done:
                 return status
+            self._say(board, solution, *self._poll_chips(run, status, since))
             if attempt + 1 < TESTRUN_POLL_ATTEMPTS:
                 await asyncio.sleep(TESTRUN_POLL_INTERVAL_SECONDS)
 
@@ -951,6 +1032,26 @@ class MojRunner:
             f'outside history and placar, so nothing on the server needs cleaning '
             f'up.'
         )
+
+    def _poll_chips(
+        self,
+        run: str,
+        status: cli.TestrunStatus,
+        since: '_Elapsed',
+    ) -> List[RunnerChip]:
+        """What one in-flight poll has to say. Only what the judge reported."""
+        chips = [RunnerChip(f'testrun {run}')]
+        if status.status:
+            chips.append(RunnerChip(status.status))
+        if status.host:
+            chips.append(RunnerChip(status.host))
+        # `correct`, not "tests run": MOJ reports how many *passed*, and calling
+        # that progress would show a solution expected to fail -- which is half
+        # of what the validation phase submits -- stuck at 0 while it works fine.
+        if status.total_tests:
+            chips.append(RunnerChip(f'{status.correct or 0}/{status.total_tests} ok'))
+        chips.append(RunnerChip(str(since)))
+        return chips
 
     async def _evaluation_from_job(
         self,
@@ -965,17 +1066,27 @@ class MojRunner:
         Awaiting a `Task` more than once is fine -- it hands every waiter the same
         result (or the same exception), and does not re-run the body.
 
-        This is where the runner talks to the setter, and the only place it does
-        during a run: it is reached from the deferred the reporter itself is
-        awaiting, so a status line or a warning written here lands on the
-        consumer's own thread of control rather than racing the live display from
-        a polling task.
-        """
-        if not job.done() and ctx.progress:
-            ctx.progress.update(
-                f'Waiting for MOJ to judge [item]{solution.path}[/item]...'
-            )
+        This is where the runner *prints* to the setter, and the only place it
+        does during a run: it is reached from the deferred the reporter itself is
+        awaiting, so a warning written here lands on the consumer's own thread of
+        control rather than racing the live display from a polling task.
 
+        Live status is not printed at all -- it goes on `ctx.progress_board`, from
+        whichever task owns the solution, and this method only *clears* the slot
+        once there is a real verdict to show instead.
+        """
+        # Nothing is said here on the way in, deliberately. This used to be
+        # `ctx.progress.update('Waiting for MOJ to judge ...')`, which nobody ever
+        # saw: every caller exits its `StatusProgress` context manager *before*
+        # `print_run_report` runs, so the `Status` being updated was always
+        # already stopped.
+        #
+        # It is not replaced by a board write either, and that is the more
+        # interesting half. This solution's slot is already being repainted by
+        # its own polling task, with the testrun id, the judge's state and how
+        # long the wait has been -- strictly more than "waiting" -- so writing
+        # here would overwrite a better line with a worse one, and leave it worse
+        # until the next poll came round to fix it.
         result = await job
 
         # Said out loud, and said here, for the same reason the missing-testcase
@@ -1007,6 +1118,11 @@ class MojRunner:
                 f'[warning]Those testcases are left unmeasured; the time limit is '
                 f'estimated from the rest.[/warning]'
             )
+
+        # Cleared once there is a real verdict to show: the header is about to
+        # carry the solution's outcome, and a stale `running` chip beside a
+        # finished verdict is worse than no chip at all.
+        ctx.progress_board.clear(str(solution.path))
 
         # `.get`, not `[]`: a name MOJ did not report is a case with an answer,
         # and it is not this one blowing up. See `_evaluation_for`.
