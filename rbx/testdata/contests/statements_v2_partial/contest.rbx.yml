@@ -1,0 +1,26 @@
+---
+name: 'sv2-partial'
+titles:
+  en: 'Partial Contest'
+  pt: 'Contest Parcial'
+vars:
+  year: 2026
+problems:
+  - short_name: 'A'
+  - short_name: 'B'
+statements:
+  # main-pt is listed FIRST on purpose: it is the one that fails (problem B has
+  # no pt statement), so the tests can prove that a *later* statement still
+  # builds after an earlier one failed. Do not reorder.
+  - name: 'main-pt'
+    language: 'pt'
+    file: 'statements/contest.rbx.tex'
+    type: 'rbxTeX'
+    standaloneProblemTemplate: 'statements/problem-standalone.rbx.tex'
+    contestProblemTemplate: 'statements/problem-in-contest.rbx.tex'
+  - name: 'main-en'
+    language: 'en'
+    file: 'statements/contest.rbx.tex'
+    type: 'rbxTeX'
+    standaloneProblemTemplate: 'statements/problem-standalone.rbx.tex'
+    contestProblemTemplate: 'statements/problem-in-contest.rbx.tex'

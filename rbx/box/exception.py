@@ -1,6 +1,7 @@
 from typing import List, Optional
 
 import rich.text
+import typer
 from rich.console import Capture, Console
 
 from rbx import console
@@ -87,3 +88,16 @@ class RbxException(RuntimeError):
 
     def plain(self) -> str:
         return self.from_ansi().plain
+
+
+def describe_exception(exc: BaseException) -> str:
+    """A short, single-line reason for a build summary.
+
+    ``typer.Exit`` carries no message at all -- whatever raised it already
+    printed one -- and ``RbxException`` accumulates rich-rendered output that
+    has to be stripped of ANSI before it can sit on a summary line.
+    """
+    if isinstance(exc, typer.Exit):
+        return 'see the error above'
+    text = exc.plain() if isinstance(exc, RbxException) else str(exc)
+    return ' '.join(text.split()) or type(exc).__name__

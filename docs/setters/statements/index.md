@@ -88,6 +88,35 @@ rbx statements build -p icpc
 
 The built statements will be placed in the `build/` directory of your package.
 
+### When a statement fails to build
+
+Statements are built **independently of each other**. If your contest has an
+English and a Portuguese statement and the English one fails, the Portuguese
+one is still built; the command lists everything that failed at the end and
+exits non-zero. One broken language never blocks the others.
+
+Within a single statement the rule is the opposite, and deliberately strict: if
+any problem cannot be rendered into a contest statement — it has no statement
+in that language, its samples failed to build, its template is broken — then
+**that statement fails**. {{rbx}} will not quietly hand you a problemset PDF
+with a problem missing from it.
+
+When you *do* want the incomplete document — proofreading a book mid-edit, say,
+while one problem is still being written — pass `--partial`:
+
+```bash
+# Build the contest book without the problems that fail, instead of failing.
+rbx contest statements build --partial
+```
+
+`--partial` omits the failing problems and reports each one it dropped. Because
+you asked for best-effort output, the command exits `0` when every statement
+was produced this way.
+
+!!! warning
+    Problem lettering follows the problems that made it into the document, so a
+    partial book is not a preview of the final one. Don't ship it.
+
 ### Rendering against a timing profile
 
 The `-p` / `--profile` flag tells {{rbx}} to render the statement using the time

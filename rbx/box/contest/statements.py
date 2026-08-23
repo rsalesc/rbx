@@ -1,4 +1,4 @@
-from typing import Annotated, List, Optional
+from typing import Annotated, List, Optional, Tuple
 
 import syncer
 import typer
@@ -7,6 +7,7 @@ from rbx import annotations, console
 from rbx.box import cd, environment, limits_info, package_utils
 from rbx.box.contest.build_contest_statements import (
     StatementBuildIssue,
+    StatementFailedIssue,
     build_document,
     build_statement,
 )
@@ -15,6 +16,7 @@ from rbx.box.contest.contest_package import (
     within_contest,
 )
 from rbx.box.contest.schema import ContestProblem
+from rbx.box.exception import describe_exception
 from rbx.box.formatting import href
 from rbx.box.sanitizers import issue_stack
 from rbx.box.schema import expand_any_vars
@@ -39,6 +41,7 @@ async def _execute_build(
     profile: Optional[str],
     kind: StatementKind,
     build_documents: bool,
+    partial: bool = False,
 ) -> None:
     """Shared body of ``rbx contest st b`` / ``rbx contest tut b``.
 
@@ -122,6 +125,7 @@ async def _execute_build(
 
     built_statements = []
     built_documents = []
+    failed_statements: List[Tuple[str, str]] = []
     valid_documents = (
         [doc for doc in contest.expanded_documents if should_process(doc)]
         if build_documents
@@ -130,47 +134,95 @@ async def _execute_build(
 
     with limits_info.use_profile(profile, when=lambda: profile is not None):
         for statement in valid_statements:
-            built_statements.append(
-                await build_statement(
-                    statement,
-                    contest,
-                    problems_of_interest=problems_of_interest,
-                    output_type=output,
-                    use_samples=samples,
-                    install_tex=install_tex,
-                    custom_vars=expand_any_vars(
-                        annotations.parse_dictionary_items(vars)
-                    ),
-                    kind=kind,
+            # Each statement builds in isolation: one that fails must never stop
+            # the others, so a broken `en` cannot keep `pt` from being built.
+            if failed_problems and not partial:
+                # Those problems were dropped from `problems_of_interest`, so
+                # building now would silently emit a document missing them.
+                # Refuse up-front rather than shipping a short statement.
+                dropped = ', '.join(p.short_name for p in failed_problems)
+                reason = (
+                    f'samples failed for problem(s) {dropped}; pass --partial to '
+                    f'build without them'
                 )
-            )
+                console.console.print(
+                    f'[error]Skipping {kind.singular} '
+                    f'[item]{statement.name}[/item]: {reason}[/error]'
+                )
+                issue_stack.add_issue(StatementFailedIssue(statement.name, reason))
+                failed_statements.append((statement.name, reason))
+                continue
+            try:
+                built_statements.append(
+                    (
+                        statement,
+                        await build_statement(
+                            statement,
+                            contest,
+                            problems_of_interest=problems_of_interest,
+                            output_type=output,
+                            use_samples=samples,
+                            install_tex=install_tex,
+                            custom_vars=expand_any_vars(
+                                annotations.parse_dictionary_items(vars)
+                            ),
+                            kind=kind,
+                            partial=partial,
+                        ),
+                    )
+                )
+            except Exception as exc:
+                reason = describe_exception(exc)
+                console.console.print(
+                    f'[error]Failed to build {kind.singular} '
+                    f'[item]{statement.name}[/item]: {reason}[/error]'
+                )
+                issue_stack.add_issue(StatementFailedIssue(statement.name, reason))
+                failed_statements.append((statement.name, reason))
 
         # Documents (infosheets etc.) don't join problem statements or samples,
         # but may read problem metadata (e.g. an info sheet's limits table), so
         # pass the eligible problems and resolve their limits under the active
         # profile (hence inside the use_profile block).
         for document in valid_documents:
-            built_documents.append(
-                await build_document(
-                    document,
-                    contest,
-                    problems_of_interest=eligible_problems,
-                    output_type=output,
-                    custom_vars=expand_any_vars(
-                        annotations.parse_dictionary_items(vars)
-                    ),
+            try:
+                built_documents.append(
+                    (
+                        document,
+                        await build_document(
+                            document,
+                            contest,
+                            problems_of_interest=eligible_problems,
+                            output_type=output,
+                            custom_vars=expand_any_vars(
+                                annotations.parse_dictionary_items(vars)
+                            ),
+                        ),
+                    )
                 )
-            )
+            except Exception as exc:
+                reason = describe_exception(exc)
+                console.console.print(
+                    f'[error]Failed to build document '
+                    f'[item]{document.name}[/item]: {reason}[/error]'
+                )
+                issue_stack.add_issue(StatementFailedIssue(document.name, reason))
+                failed_statements.append((document.name, reason))
 
     console.console.rule(title=f'Built {kind.value}')
-    for statement, built_path in zip(valid_statements, built_statements):
+    for statement, built_path in built_statements:
         console.console.print(
             f'[item]{statement.name} {statement.language}[/item] -> {href(built_path)}'
         )
-    for document, built_path in zip(valid_documents, built_documents):
+    for document, built_path in built_documents:
         console.console.print(
             f'[item]{document.name} {document.language}[/item] (document) -> {href(built_path)}'
         )
+
+    if failed_statements:
+        console.console.rule(title=f'Failed {kind.value}')
+        for name, reason in failed_statements:
+            console.console.print(f'[error]{name}[/error]: {reason}')
 
     if failed_problems:
         # The statements that could be built were built, but samples are missing
@@ -179,6 +231,8 @@ async def _execute_build(
             f'[error]Failed to build samples for [item]{len(failed_problems)}[/item] '
             'problem(s), check the report above.[/error]'
         )
+
+    if failed_statements or failed_problems:
         raise typer.Exit(1)
 
 
@@ -234,6 +288,13 @@ async def build(
             autocompletion=annotations._adapt('profile'),  # noqa: SLF001
         ),
     ] = None,
+    partial: Annotated[
+        bool,
+        typer.Option(
+            '--partial',
+            help='Build a statement even if some of its problems fail, omitting them. Without this, a problem that fails makes its statement fail.',
+        ),
+    ] = False,
 ):
     await _execute_build(
         verification=verification,
@@ -247,6 +308,7 @@ async def build(
         profile=profile,
         kind=StatementKind.STATEMENTS,
         build_documents=True,
+        partial=partial,
     )
 
 
@@ -306,6 +368,13 @@ async def build_tutorials(
             help='Timing profile to render tutorials against. Problems missing this profile are skipped with a warning.',
         ),
     ] = None,
+    partial: Annotated[
+        bool,
+        typer.Option(
+            '--partial',
+            help='Build a statement even if some of its problems fail, omitting them. Without this, a problem that fails makes its statement fail.',
+        ),
+    ] = False,
 ):
     await _execute_build(
         verification=verification,
@@ -319,6 +388,7 @@ async def build_tutorials(
         profile=profile,
         kind=StatementKind.TUTORIALS,
         build_documents=False,
+        partial=partial,
     )
 
 

@@ -1,0 +1,12 @@
+name: 'problem-b'
+timeLimit: 1000
+memoryLimit: 256
+vars:
+  author: 'Bob'
+statements:
+  # Deliberately no 'pt' statement: this is what makes the contest's main-pt
+  # statement unbuildable.
+  - language: 'en'
+    title: 'Problem B'
+    file: 'statement/statement.rbx.tex'
+    type: 'rbxTeX'
