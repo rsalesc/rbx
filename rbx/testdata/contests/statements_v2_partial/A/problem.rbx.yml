@@ -1,0 +1,14 @@
+name: 'problem-a'
+timeLimit: 1000
+memoryLimit: 256
+vars:
+  author: 'Alice'
+statements:
+  - language: 'en'
+    title: 'Problem A'
+    file: 'statement/statement.rbx.tex'
+    type: 'rbxTeX'
+  - language: 'pt'
+    title: 'Problema A'
+    file: 'statement/statement-pt.rbx.tex'
+    type: 'rbxTeX'
