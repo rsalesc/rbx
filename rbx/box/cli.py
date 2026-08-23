@@ -273,8 +273,15 @@ def ui():
 
 @app.command(
     'on',
-    help='Run a command in the context of a problem (or a set of problems) of a contest.',
-    context_settings={'allow_extra_args': True, 'ignore_unknown_options': True},
+    help=(
+        'Run a command in the context of a problem (or a set of problems) of a '
+        'contest. Chain commands with `::` to queue them.'
+    ),
+    context_settings={
+        'allow_extra_args': True,
+        'ignore_unknown_options': True,
+        'allow_interspersed_args': False,
+    },
 )
 def on(
     ctx: typer.Context,
@@ -282,17 +289,25 @@ def on(
         str,
         typer.Argument(autocompletion=annotations._adapt('problem')),  # noqa: SLF001
     ],
+    keep_going: bool = contest.KEEP_GOING_OPTION,
 ) -> None:
-    contest.on(ctx, problems)
+    contest.on(ctx, problems, keep_going=keep_going)
 
 
 @app.command(
     'each',
-    help='Run a command for each problem in the contest.',
-    context_settings={'allow_extra_args': True, 'ignore_unknown_options': True},
+    help=(
+        'Run a command for each problem in the contest. '
+        'Chain commands with `::` to queue them.'
+    ),
+    context_settings={
+        'allow_extra_args': True,
+        'ignore_unknown_options': True,
+        'allow_interspersed_args': False,
+    },
 )
-def each(ctx: typer.Context) -> None:
-    contest.each(ctx)
+def each(ctx: typer.Context, keep_going: bool = contest.KEEP_GOING_OPTION) -> None:
+    contest.each(ctx, keep_going=keep_going)
 
 
 @app.command('diff', hidden=True)

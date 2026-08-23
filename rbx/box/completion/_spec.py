@@ -34,6 +34,16 @@ SPEC = {
                     'value': {'completer': 'problem', 'kind': 'completer'},
                 },
                 {
+                    'help': 'Keep running the rest of a chain in a problem even after a '
+                    'command fails. Must come before the problem selector in `rbx '
+                    'on`.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--keep-going', '-k'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,
@@ -50,13 +60,23 @@ SPEC = {
             'panel': None,
             'params': [
                 {
+                    'help': 'Keep running the rest of a chain in a problem even after a '
+                    'command fails. Must come before the problem selector in `rbx '
+                    'on`.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--keep-going', '-k'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,
                     'names': ['--help'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
-                }
+                },
             ],
         },
         {
@@ -2156,13 +2176,23 @@ SPEC = {
                     'panel': None,
                     'params': [
                         {
+                            'help': 'Keep running the rest of a chain in a problem '
+                            'even after a command fails. Must come before the '
+                            'problem selector in `rbx on`.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--keep-going', '-k'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
                             'multiple': False,
                             'names': ['--help'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
-                        }
+                        },
                     ],
                 },
                 {
@@ -2178,6 +2208,16 @@ SPEC = {
                             'names': [],
                             'takes_value': True,
                             'value': {'completer': 'problem', 'kind': 'completer'},
+                        },
+                        {
+                            'help': 'Keep running the rest of a chain in a problem '
+                            'even after a command fails. Must come before the '
+                            'problem selector in `rbx on`.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--keep-going', '-k'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
                         },
                         {
                             'help': 'Show this message and exit.',

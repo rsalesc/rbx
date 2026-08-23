@@ -46,9 +46,9 @@ async def test_hidden_panes_run_at_the_visible_pane_width():
     # at the 80-column fallback and look hard-wrapped once shown.
     app = rbxCommandApp(
         [
-            CommandEntry(argv=_PRINT_WIDTH, name='a'),
-            CommandEntry(argv=_PRINT_WIDTH, name='b'),
-            CommandEntry(argv=_PRINT_WIDTH, name='c'),
+            CommandEntry(argvs=[_PRINT_WIDTH], name='a'),
+            CommandEntry(argvs=[_PRINT_WIDTH], name='b'),
+            CommandEntry(argvs=[_PRINT_WIDTH], name='c'),
         ],
         parallel=True,
     )

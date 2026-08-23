@@ -2,7 +2,7 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
-from typing import Annotated, Optional
+from typing import Annotated, List, Optional, Tuple
 
 import rich.prompt
 import ruyaml
@@ -371,21 +371,48 @@ def remove(path_or_short_name: str):
     )
 
 
+KEEP_GOING_OPTION = typer.Option(
+    False,
+    '--keep-going',
+    '-k',
+    help=(
+        'Keep running the rest of a chain in a problem even after a command '
+        'fails. Must come before the problem selector in `rbx on`.'
+    ),
+)
+
+
+def _build_command_argvs_or_die(
+    args: List[str],
+) -> Tuple[List[List[str]], Optional[str]]:
+    try:
+        return contest_utils.build_command_argvs(args)
+    except contest_utils.EmptyCommandError as e:
+        console.console.print(f'[error]{e}[/error]')
+        raise typer.Exit(1) from e
+
+
 @app.command(
     'each',
-    help='Run a command for each problem in the contest.',
-    context_settings={'allow_extra_args': True, 'ignore_unknown_options': True},
+    help=(
+        'Run a command for each problem in the contest. '
+        f'Chain commands with `{contest_utils.COMMAND_SEPARATOR}` to queue them.'
+    ),
+    context_settings={
+        'allow_extra_args': True,
+        'ignore_unknown_options': True,
+        # Stop parsing at the first positional, otherwise click would steal a
+        # `-k` meant for one of the chained commands.
+        'allow_interspersed_args': False,
+    },
 )
 @within_contest
-def each(ctx: typer.Context) -> None:
+def each(ctx: typer.Context, keep_going: bool = KEEP_GOING_OPTION) -> None:
     contest = find_contest_package_or_die()
-    if ctx.args:
-        argv, placeholder_prefix = contest_utils.build_command_argv(ctx.args)
-    else:
-        argv, placeholder_prefix = [], 'rbx'
+    argvs, placeholder_prefix = _build_command_argvs_or_die(ctx.args)
     commands = [
         CommandEntry(
-            argv=argv,
+            argvs=argvs,
             placeholder_prefix=placeholder_prefix,
             name=naming.get_contest_problem_label(problem),
             labels=naming.get_contest_problem_labels(problem),
@@ -393,13 +420,22 @@ def each(ctx: typer.Context) -> None:
         )
         for problem in contest.problems
     ]
-    start_command_app(commands)
+    start_command_app(commands, keep_going=keep_going)
 
 
 @app.command(
     'on',
-    help='Run a command in the problem (or in a set of problems) of a context.',
-    context_settings={'allow_extra_args': True, 'ignore_unknown_options': True},
+    help=(
+        'Run a command in the problem (or in a set of problems) of a context. '
+        f'Chain commands with `{contest_utils.COMMAND_SEPARATOR}` to queue them.'
+    ),
+    context_settings={
+        'allow_extra_args': True,
+        'ignore_unknown_options': True,
+        # See `each`: keeps a chained command's own flags out of click's hands.
+        # As a result, `-k` has to come before the problem selector.
+        'allow_interspersed_args': False,
+    },
 )
 @within_contest
 def on(
@@ -408,6 +444,7 @@ def on(
         str,
         typer.Argument(autocompletion=annotations._adapt('problem')),  # noqa: SLF001
     ],
+    keep_going: bool = KEEP_GOING_OPTION,
 ) -> None:
     problems_of_interest = contest_utils.get_problems_of_interest(problems)
 
@@ -417,7 +454,11 @@ def on(
         )
         raise typer.Exit(1)
 
-    if len(problems_of_interest) == 1:
+    argvs, placeholder_prefix = _build_command_argvs_or_die(ctx.args)
+
+    # A single command on a single problem keeps the plain-terminal fast path;
+    # a chain needs the queue, so it opens the app with one tab.
+    if len(problems_of_interest) == 1 and len(argvs) <= 1:
         command = ' '.join(['rbx'] + ctx.args)
         console.console.print(
             f'[status]Running [item]{command}[/item] for [item]{naming.get_contest_problem_label(problems_of_interest[0])}[/item]...[/status]'
@@ -425,10 +466,9 @@ def on(
         subprocess.call(command, cwd=problems_of_interest[0].get_path(), shell=True)
         return
 
-    argv, placeholder_prefix = contest_utils.build_command_argv(ctx.args)
     commands = [
         CommandEntry(
-            argv=argv,
+            argvs=argvs,
             placeholder_prefix=placeholder_prefix,
             name=naming.get_contest_problem_label(p),
             labels=naming.get_contest_problem_labels(p),
@@ -436,7 +476,7 @@ def on(
         )
         for p in problems_of_interest
     ]
-    start_command_app(commands)
+    start_command_app(commands, keep_going=keep_going)
 
 
 @app.command(

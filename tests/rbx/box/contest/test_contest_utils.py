@@ -3,7 +3,15 @@
 from typing import Optional
 from unittest.mock import patch
 
-from rbx.box.contest.contest_utils import get_problems_of_interest, match_problem
+import pytest
+
+from rbx.box.contest.contest_utils import (
+    EmptyCommandError,
+    build_command_argvs,
+    get_problems_of_interest,
+    match_problem,
+    split_commands,
+)
 from rbx.box.contest.schema import Contest, ContestProblem
 
 
@@ -73,3 +81,59 @@ class TestGetProblemsOfInterest:
 
         all_three = get_problems_of_interest('*')
         assert len(all_three) == 3
+
+
+class TestSplitCommands:
+    def test_no_separator_yields_single_group(self):
+        assert split_commands(['build', '-v']) == [['build', '-v']]
+
+    def test_empty_args_yield_no_groups(self):
+        assert split_commands([]) == []
+
+    def test_splits_on_separator_keeping_per_command_flags(self):
+        assert split_commands(
+            ['build', '::', 'run', '-s', '::', 'package', 'build']
+        ) == [
+            ['build'],
+            ['run', '-s'],
+            ['package', 'build'],
+        ]
+
+    def test_separator_only_matches_a_bare_token(self):
+        # A `::` glued to something else is a normal argument.
+        assert split_commands(['run', '--filter', 'a::b']) == [
+            ['run', '--filter', 'a::b']
+        ]
+
+    @pytest.mark.parametrize(
+        'args',
+        [
+            ['::'],
+            ['::', 'build'],
+            ['build', '::'],
+            ['build', '::', '::', 'run'],
+        ],
+    )
+    def test_empty_group_is_an_error(self, args):
+        with pytest.raises(EmptyCommandError):
+            split_commands(args)
+
+
+class TestBuildCommandArgvs:
+    def test_prefixes_each_command_with_rbx(self):
+        argvs, prefix = build_command_argvs(['build', '::', 'run', '-s'])
+        assert argvs == [['rbx', 'build'], ['rbx', 'run', '-s']]
+        assert prefix == 'rbx'
+
+    def test_shell_group_keeps_its_own_argv(self):
+        argvs, _ = build_command_argvs(['build', '::', 'bash', '-c', 'ls'])
+        assert argvs == [['rbx', 'build'], ['bash', '-c', 'ls']]
+
+    def test_placeholder_prefix_follows_the_first_command(self):
+        _, prefix = build_command_argvs(['bash', '-c', 'ls', '::', 'build'])
+        assert prefix is None
+
+    def test_no_args_still_gives_the_rbx_placeholder(self):
+        argvs, prefix = build_command_argvs([])
+        assert argvs == []
+        assert prefix == 'rbx'

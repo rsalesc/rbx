@@ -20,8 +20,8 @@ def _reset_label_mode():
 
 def _labeled_entry() -> CommandEntry:
     return CommandEntry(
-        # Empty argv => no sub-command is enqueued, so no subprocess is spawned.
-        argv=[],
+        # Empty argvs => no sub-command is enqueued, so no subprocess is spawned.
+        argvs=[],
         name='A. two-sum',
         labels={
             ProblemLabelMode.NAME: 'A. two-sum',
@@ -81,7 +81,7 @@ async def test_l_cycles_and_persists_problem_label():
 
 
 async def test_l_is_inert_without_labels():
-    app = rbxCommandApp([CommandEntry(argv=[], name='echo')])
+    app = rbxCommandApp([CommandEntry(argvs=[], name='echo')])
     async with app.run_test() as pilot:
         await pilot.press('shift+tab')
         await pilot.pause()

@@ -55,6 +55,19 @@ class TaskQueue:
         self._drain()
         return task
 
+    def cancel(self, task_id: int) -> bool:
+        """Drop a still-pending task from the queue.
+
+        A running task owns its terminal, so cancelling it would leave the
+        terminal marked busy forever -- those must go through
+        `notify_complete` instead, and this returns False for them.
+        """
+        task = self._find_task(task_id)
+        if task is None or task.status != TaskStatus.PENDING:
+            return False
+        self._queue.remove(task)
+        return True
+
     def notify_complete(self, task_id: int) -> None:
         task = self._find_task(task_id)
         if task is None:
