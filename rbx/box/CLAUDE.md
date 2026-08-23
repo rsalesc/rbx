@@ -165,9 +165,10 @@ its memo, which is what lets `timing` close before the group picker opens.
 over the judge's `moj` CLI (`problem_id.py`, `cli.py`) that a `MojRunner` drives to
 upload, calibrate and testrun. `packaging/moj/` is the *packager* that produces what it
 uploads. They meet at one object: `MojPackager(probe=ProbePackage(...))`, the
-throwaway package a timing run measures on -- model solution only, the `TLOVERRIDE`
+throwaway package a remote run measures on -- model solution only, the `TLOVERRIDE`
 block the run asked for, every testrunnable language whitelisted, no statement build,
-and `STOPWHEN_TLE` alone (see below). Pair timings back onto testcases with `MojPackager.testcase_names()`,
+and whatever `STOPWHEN_*` rule the caller's own abort predicate translates to (see
+below). Pair timings back onto testcases with `MojPackager.testcase_names()`,
 never by position and never by re-deriving the names.
 
 `MojRunner` (`runners/moj/runner.py`) is that client's `SolutionRunner`. `prepare()`
@@ -228,19 +229,24 @@ whitelist would move the fingerprint between phases for nothing, and where it di
 the validation phase would submit slow solutions against an accepted-only whitelist the
 API refuses.
 
-**One remote problem per phase.** `_phase_of` reads the shape of
-`ctx.timelimit_override` -- an `int` is estimation, a per-language mapping is validation
--- and that one reading decides both what the packager's report calls the solutions and
-which problem the package goes to: `<login>#rbxt-<slug>` for estimation and
-`…-slow` for validation, derived by `problem_id.derived_id`.
+**One remote problem per purpose.** `ctx.purpose` -- a `RunPurpose`, set by the
+command that called `run_solutions` -- decides both what the packager's report calls the
+solutions and which problem the package goes to: `<login>#rbxt-<slug>` for `ESTIMATION`,
+`…-slow` for `VALIDATION`, `…-run` for `RUN`, derived by `problem_id.derived_id`.
 
-This is not cosmetic. The phases measure under different limits, `TLOVERRIDE` lives in
-`conf`, and `conf` is inside `_directory_fingerprint` -- so on one shared problem the
-phases evict each other: whichever ran last leaves its fingerprint recorded, the next
-run's first phase always mismatches, and the second then mismatches what the first just
-wrote. **The fast path could never fire.** Two problems make each package stable across
-runs instead: two `rbx time` runs cost two uploads (the first of each) rather than four,
-pinned by `test_a_second_run_re_uploads_neither_phase`.
+It used to be *inferred*, from the shape of `ctx.timelimit_override`: an `int` meant
+estimation, a per-language mapping meant validation. That held only while `rbx time` was
+the sole command with a `--runner` flag. `rbx run` passes no override at all, so under
+that rule it was indistinguishable from "neither phase" and would have landed on the
+estimation problem. The signal is said out loud now, and the inference is gone.
+
+This is not cosmetic. The purposes run under different limits and different stop rules,
+both of which live in `conf`, and `conf` is inside `_directory_fingerprint` -- so on one
+shared problem they evict each other: whichever ran last leaves its fingerprint recorded,
+the next run's first purpose always mismatches, and the second then mismatches what the
+first just wrote. **The fast path could never fire.** A problem each makes every package
+stable across runs instead: two `rbx time` runs cost two uploads (the first of each)
+rather than four, pinned by `test_a_second_run_re_uploads_neither_phase`.
 
 A *suffix* on the slug, not a second prefix, and derived rather than stored. `is_rbxt_id`
 is what stands between a timing package and a setter's published problem, so it keeps one
@@ -268,16 +274,27 @@ a re-run at limits already probed free.
 **`supports_abort=False`, and how the saving is kept anyway.** rbx cannot gate a batch
 backend: the gate works by not *dispatching* the testcases after a timeout, and a testrun
 has already run the whole submission by the time rbx sees any of it. So the probe package
-sets **`STOPWHEN_TLE=y`** and the judge does it instead -- the same rule both `rbx time`
-phases ask for with `abort_on=...outcome.is_slow()`. Without it, a solution expected to be
-too slow runs to the limit on *every* test when one already settled the question: the most
-expensive solutions in the run, at full cost, on a shared park. The tests MOJ therefore
-never reports become `SKIPPED` with no timing, exactly what the gate would have written,
-and `ran_nothing` keys on `total_tests` so a truncated run is never mistaken for a
-submission that failed to build.
+carries the `STOPWHEN_*` bits (`ProbePackage.halt_on`, chosen by `runner._halt_on`) and the
+judge does it instead -- an exact translation of the abort predicate the caller passed:
 
-`STOPWHEN_WA` and `STOPWHEN_RE` stay **off**, matching the local predicate, which a WA does
-not trip either. Halting on one would truncate the timings of a solution that is *not* too
+| caller | `abort_on` | `STOPWHEN_*` |
+|---|---|---|
+| `rbx time`, either phase | `...outcome.is_slow()` | `TLE` |
+| `rbx run --fail-fast` | any non-accepted verdict | `WA`, `TLE`, `RE` |
+| `rbx run` | none | none |
+
+Without it, a solution expected to be too slow runs to the limit on *every* test when one
+already settled the question: the most expensive solutions in the run, at full cost, on a
+shared park. The tests MOJ therefore never reports become `SKIPPED` with no timing, exactly
+what the gate would have written, and `ran_nothing` keys on `total_tests` so a truncated
+run is never mistaken for a submission that failed to build.
+
+**A plain `rbx run` halts on nothing**, and that is load-bearing rather than a saving
+forgone: it asked for every test to be judged, and a halt would come back as tests rbx
+never saw -- reported as SKIPPED -- on a run that never asked to stop.
+
+For `rbx time`, `STOPWHEN_WA` and `STOPWHEN_RE` stay **off**, matching the local predicate,
+which a WA does not trip either. Halting on one would truncate the timings of a solution that is *not* too
 slow -- the case with a real measurement to hand back -- and would cut short a `TLE_OR_RTE`
 solution that crashed, which `_record_validation_run` reports as broken rather than as a
 violated bound. So one difference from a local run survives: a solution that both times out

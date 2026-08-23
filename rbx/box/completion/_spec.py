@@ -219,6 +219,14 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Where to run the solutions (local, moj).',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--runner'],
+                    'takes_value': True,
+                    'value': {'completer': 'runner', 'kind': 'completer'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,

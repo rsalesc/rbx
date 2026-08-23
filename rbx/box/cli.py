@@ -44,6 +44,7 @@ from rbx.box.generation_schema import get_parsed_entry
 from rbx.box.header import generate_header
 from rbx.box.packaging import main as packaging
 from rbx.box.runners import registry as runners_registry
+from rbx.box.runners.base import RunPurpose
 from rbx.box.schema import ExpectedOutcome, GeneratorScript, TestcaseGroup
 from rbx.box.solutions import (
     fail_fast_abort_predicate,
@@ -392,12 +393,31 @@ async def run(
         help='Whether to stop running a solution as soon as it gets a non-accepted verdict. '
         'Only meant for quick experimentation, as the remaining tests are reported as failed.',
     ),
+    runner: str = typer.Option(
+        runners_registry.DEFAULT_RUNNER,
+        '--runner',
+        # Built from the table, never spelled out, for the same reason as in
+        # `rbx time`: this string is baked into the committed completion spec, so
+        # a hard-coded list would be a second copy of the runner names with
+        # nothing pinning it to the first.
+        help=(
+            f'Where to run the solutions '
+            f'({", ".join(runners_registry.runner_names())}).'
+        ),
+        autocompletion=annotations._adapt('runner'),  # noqa: SLF001
+    ),
 ):
     if share is not None and share not in ('png', 'text'):
         console.console.print(
             f'[error]Invalid --share format: {share!r} (use png or text).[/error]'
         )
         raise typer.Exit(1)
+
+    # Before anything is built, for the same reason as in `rbx time`: naming a
+    # backend that does not exist is a typo in the command line, and a typo
+    # should cost the setter an error rather than a build. `UnknownRunnerError`
+    # names the valid runners, so the fix is in the message.
+    solution_runner = runners_registry.get_runner(runner)
 
     main_solution = package.get_main_solution()
     if check and main_solution is None:
@@ -470,6 +490,12 @@ async def run(
             verification=VerificationLevel(verification),
             sanitized=sanitized,
             abort_on=fail_fast_abort_predicate if fail_fast else None,
+            runner=solution_runner,
+            # Said explicitly even though it is the default: this is the purpose
+            # a backend stages for, and a remote one uploads to a different
+            # problem for each. Leaving it implicit here would make the two
+            # `rbx time` phases the only ones that look deliberate.
+            purpose=RunPurpose.RUN,
         )
 
     try:

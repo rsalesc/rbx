@@ -28,6 +28,7 @@ from rbx.box.code import find_language_name
 from rbx.box.environment import VerificationLevel
 from rbx.box.exception import RbxException
 from rbx.box.formatting import href
+from rbx.box.runners.base import RunPurpose
 from rbx.box.schema import InferenceRole, Solution
 from rbx.box.solutions import (
     RunSolutionResult,
@@ -40,9 +41,11 @@ from rbx.box.solutions import (
 from rbx.grading.steps import Outcome
 
 if TYPE_CHECKING:
-    # Only for the annotation. `runners.base` reaches back into `solutions`,
-    # which this module imports at run time, so naming the type is all this
-    # needs -- the backend itself is resolved by the CLI and handed down.
+    # Only for the annotation -- the backend itself is resolved by the CLI and
+    # handed down. `RunPurpose` above is a live import instead because it is a
+    # *value* this module passes: `runners.base` only reaches back into
+    # `solutions` under TYPE_CHECKING, so importing it at run time closes no
+    # cycle.
     from rbx.box.runners.base import SolutionRunner
 
 
@@ -1176,6 +1179,11 @@ async def _run_for_inference(
             # bound the solutions running under it.
             verification=_INFERENCE_VERIFICATION,
             timelimit_override=timeout,
+            # Said out loud rather than inferred from the override's shape. A
+            # backend that stages something per purpose -- `MojRunner` uploads a
+            # package per purpose -- has no other way to tell this run from the
+            # validation one, or from a plain `rbx run`.
+            purpose=RunPurpose.ESTIMATION,
             nruns=runs,
             # An accepted solution killed at the cap fails the estimate outright,
             # so its remaining tests only cost wall clock.
@@ -1422,6 +1430,10 @@ async def _validate_upper_bound(
             timelimit_override={
                 lang: limit for lang, limit in limits.items() if lang in languages
             },
+            # See the estimation phase: the purpose is what sends this run to its
+            # own staging area, so the two phases' packages stay stable across
+            # runs instead of overwriting each other.
+            purpose=RunPurpose.VALIDATION,
             nruns=runs,
             # One timeout settles the question, so the remaining testcases only
             # cost wall clock.

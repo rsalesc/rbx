@@ -477,6 +477,14 @@ def test_a_probe_package_must_whitelist_something():
         ProbePackage(submission_languages=())
 
 
+def test_a_probe_package_refuses_a_halt_bit_mojtools_has_no_name_for():
+    # mojtools reads `conf` with grep, so a misspelled bit is not an error there
+    # -- it is a line nothing ever matches, and a run that silently fails to stop
+    # where its caller asked it to.
+    with pytest.raises(ValueError, match='can only halt on'):
+        ProbePackage(submission_languages=('cpp',), halt_on=frozenset({'PE'}))
+
+
 def test_probe_package_whitelists_languages_it_ships_no_solution_for(
     testing_pkg, tmp_path
 ):

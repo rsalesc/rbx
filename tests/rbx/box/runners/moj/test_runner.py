@@ -28,7 +28,7 @@ from rbx.box.environment import (
     VerificationLevel,
 )
 from rbx.box.generation_schema import GenerationTestcaseEntry
-from rbx.box.runners.base import RunContext
+from rbx.box.runners.base import RunContext, RunPurpose
 from rbx.box.runners.moj import cli
 from rbx.box.runners.moj import runner as runner_module
 from rbx.box.runners.moj.cli import MojCheck, MojCliError
@@ -36,6 +36,7 @@ from rbx.box.runners.moj.problem_id import moj_id_path
 from rbx.box.runners.moj.runner import MojRunner, MojRunnerError
 from rbx.box.schema import ExpectedOutcome
 from rbx.box.solutions import SolutionReportSkeleton, SolutionSkeleton
+from rbx.grading.limits import Limits
 from tests.rbx.box.packaging.moj.conftest import build_entries, minimal_package
 
 pytestmark = pytest.mark.shared_cache
@@ -108,17 +109,57 @@ def _instant_polls(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runner_module, 'CALIBRATION_POLL_INTERVAL_SECONDS', 0)
 
 
+def _limits_for(
+    timelimit_override: Optional[Union[int, Dict[str, int]]],
+) -> Dict[str, Limits]:
+    """The per-language limits `_get_report_skeleton` would have resolved.
+
+    The runner pins MOJ's `TLOVERRIDE` from `skeleton.limits`, because that is
+    where the profile, the verification level and the override have already been
+    reconciled into the number the local sandbox would enforce. These contexts
+    are built by hand, so they have to carry the same thing a real run does --
+    an empty table would pin every purpose at the configured estimation cap and
+    make packages that should differ compare equal.
+    """
+    if isinstance(timelimit_override, dict):
+        return {
+            language: Limits(time=limit_ms)
+            for language, limit_ms in timelimit_override.items()
+        }
+    if isinstance(timelimit_override, int) and timelimit_override > 0:
+        return {'cpp': Limits(time=timelimit_override)}
+    # The "no override" sentinel keeps the profile's own limit; one language is
+    # enough for every assertion here.
+    return {'cpp': Limits(time=1000)}
+
+
+def _purpose_for(
+    timelimit_override: Optional[Union[int, Dict[str, int]]],
+) -> RunPurpose:
+    """The purpose the caller that passes this override would have declared."""
+    if isinstance(timelimit_override, dict):
+        return RunPurpose.VALIDATION
+    if isinstance(timelimit_override, int) and timelimit_override > 0:
+        return RunPurpose.ESTIMATION
+    return RunPurpose.RUN
+
+
 def _context(
     tmp_path: pathlib.Path,
     solutions: Optional[List[Tuple[str, ExpectedOutcome]]] = None,
     timelimit_override: Optional[Union[int, Dict[str, int]]] = -1,
     entries: Optional[List[GenerationTestcaseEntry]] = None,
+    purpose: Optional[RunPurpose] = None,
+    limits: Optional[Dict[str, Limits]] = None,
+    abort_on=None,
 ) -> RunContext:
-    """A `RunContext` carrying what `prepare` reads: the entries and the solutions.
+    """A `RunContext` carrying what `prepare` reads: entries, solutions, limits.
 
     `timelimit_override` takes the two shapes `rbx time` really passes -- an
     `int` while estimating, a per-language mapping while validating -- and
-    defaults to **-1**, rbx's "no override" sentinel, which is neither.
+    defaults to **-1**, rbx's "no override" sentinel, which is neither. The
+    limits and the purpose are derived from it by default, exactly as the real
+    caller that passes that shape would have set them.
     """
     if solutions is None:
         solutions = [('sol.cpp', ExpectedOutcome.ACCEPTED)]
@@ -135,7 +176,7 @@ def _context(
         ],
         entries=entries,
         groups=[],
-        limits={},
+        limits=_limits_for(timelimit_override) if limits is None else limits,
         compiled_solutions={},
         verification=VerificationLevel.ALL_SOLUTIONS,
     )
@@ -147,7 +188,8 @@ def _context(
         timelimit_override=timelimit_override,
         nruns=1,
         progress=None,
-        abort_on=None,
+        abort_on=abort_on,
+        purpose=_purpose_for(timelimit_override) if purpose is None else purpose,
     )
 
 
@@ -265,34 +307,63 @@ async def test_the_validation_phase_pins_the_limit_each_language_must_clear(
     assert conf['TLOVERRIDE[default]'] == '0.900'
 
 
-async def test_the_no_override_sentinel_falls_back_to_the_inference_timeout(
+async def test_the_no_override_sentinel_never_reaches_the_package(
     testing_pkg, tmp_path, monkeypatch
 ):
     """-1 is rbx's "no override" sentinel, and it is not a cap.
 
-    No `rbx time` phase passes it any more -- both pin something real -- but any
-    other caller of `run_solutions` may, and reading it as a cap would pin
-    `TLOVERRIDE[default]=-0.001` and TLE every single measurement.
+    It cannot reach `conf` at all any more: the pin is read off
+    `skeleton.limits`, where the sentinel has already been resolved -- to the
+    profile's own limit, which is what a run with no override enforces. Reading
+    the sentinel as a cap would have pinned `TLOVERRIDE[default]=-0.001` and
+    TLE'd every measurement.
     """
     minimal_package(testing_pkg)
     fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
 
-    await MojRunner().prepare(_context(tmp_path, timelimit_override=-1))
+    await MojRunner().prepare(
+        _context(tmp_path, timelimit_override=-1, limits={'cpp': Limits(time=1500)})
+    )
 
-    # The estimation cap the problem configures, 10s by default: the limit rbx
-    # itself enforces on a solution while estimating.
-    assert _conf(fake.uploaded)['TLOVERRIDE[default]'] == '10.000'
+    assert _conf(fake.uploaded)['TLOVERRIDE[default]'] == '1.500'
 
 
-async def test_an_absent_override_also_falls_back_rather_than_crashing(
+async def test_an_absent_override_pins_the_profile_limit(
     testing_pkg, tmp_path, monkeypatch
 ):
-    """`RunContext.timelimit_override` is `Optional[int]`, so `None` is reachable."""
+    """What `rbx run` passes: no override at all, so the profile's limits stand."""
     minimal_package(testing_pkg)
     fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
 
-    await MojRunner().prepare(_context(tmp_path, timelimit_override=None))
+    await MojRunner().prepare(
+        _context(
+            tmp_path,
+            timelimit_override=None,
+            purpose=RunPurpose.RUN,
+            limits={'cpp': Limits(time=1500)},
+        )
+    )
 
+    assert _conf(fake.uploaded)['TLOVERRIDE[default]'] == '1.500'
+
+
+async def test_a_run_with_no_limits_at_all_falls_back_to_the_inference_timeout(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """Nothing to pin from is not a crash, and not a guess at zero.
+
+    An empty `limits` means no tracked solution resolved to a language. MOJ
+    always enforces a limit, so the package still needs a number, and the
+    configured estimation cap is the one the problem already chose for "run this
+    while we work out what it should be".
+    """
+    minimal_package(testing_pkg)
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    await MojRunner().prepare(_context(tmp_path, limits={}))
+
+    # 10s by default: the limit rbx itself enforces on a solution while
+    # estimating.
     assert _conf(fake.uploaded)['TLOVERRIDE[default]'] == '10.000'
 
 
@@ -318,7 +389,7 @@ async def test_a_formula_problem_falls_back_like_any_other(
     )
     fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
 
-    await MojRunner().prepare(_context(tmp_path, timelimit_override=-1))
+    await MojRunner().prepare(_context(tmp_path, limits={}))
 
     assert _conf(fake.uploaded)['TLOVERRIDE[default]'] == '10.000'
 
@@ -961,29 +1032,125 @@ async def test_the_validation_problem_is_refused_when_the_binding_is_not_ours(
     assert fake.uploads == []
 
 
-def test_a_run_that_is_neither_phase_uses_the_base_problem():
-    """`run_solutions` is a general entry point; a caller passing no override is
-    neither phase. It falls back rather than inventing a third problem."""
-    assert runner_module._phase_of(_ctx_with(-1)) is None  # noqa: SLF001
-    assert runner_module._phase_of(_ctx_with(None)) is None  # noqa: SLF001
-    assert (
-        runner_module._phase_of(_ctx_with(2500))  # noqa: SLF001
-        is runner_module._Phase.ESTIMATION  # noqa: SLF001
-    )
-    assert (
-        runner_module._phase_of(_ctx_with({'cpp': 150}))  # noqa: SLF001
-        is runner_module._Phase.VALIDATION  # noqa: SLF001
-    )
+def test_every_purpose_gets_its_own_problem():
+    """One staging area each, and the estimation problem keeps the base id.
+
+    `.moj-id` is committed, and it has always named the problem `rbx time`
+    estimates on. A purpose that changed that id would strand every binding
+    already in a repository.
+    """
+    assert runner_module._id_suffix(RunPurpose.ESTIMATION) == ''  # noqa: SLF001
+    assert runner_module._id_suffix(RunPurpose.VALIDATION) == 'slow'  # noqa: SLF001
+    assert runner_module._id_suffix(RunPurpose.RUN) == 'run'  # noqa: SLF001
+    suffixes = [runner_module._id_suffix(p) for p in RunPurpose]  # noqa: SLF001
+    assert len(set(suffixes)) == len(suffixes)
 
 
-def _ctx_with(override) -> RunContext:
-    return RunContext(
-        skeleton=None,  # type: ignore[arg-type]
-        checker_digest=None,
-        interactor_digest=None,
-        verification=VerificationLevel.ALL_SOLUTIONS,
-        timelimit_override=override,
-        nruns=1,
-        progress=None,
-        abort_on=None,
+async def test_a_plain_run_uploads_to_its_own_problem(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """`rbx run --runner moj` must not land on `rbx time`'s package.
+
+    Its limits and its stop rules differ, so sharing a problem would re-upload
+    and re-calibrate on every alternation between the two commands -- which is
+    the whole reason a purpose picks a problem.
+    """
+    minimal_package(testing_pkg)
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    await MojRunner().prepare(_context(tmp_path, purpose=RunPurpose.RUN))
+    await MojRunner().prepare(_context(tmp_path, timelimit_override=_ESTIMATION))
+
+    base = json.loads(moj_id_path(testing_pkg.root).read_text())['id']
+    assert [problem for problem, _ in fake.uploads] == [f'{base}-run', base]
+
+
+async def test_a_plain_run_halts_on_nothing(testing_pkg, tmp_path, monkeypatch):
+    """No `abort_on` means no `STOPWHEN_*`, so every test gets a real verdict.
+
+    The probe used to hard-code `STOPWHEN_TLE`, which on a plain run would turn
+    the tests after the first timeout into SKIPPED -- work the judge really did,
+    reported as work it did not.
+    """
+    minimal_package(testing_pkg)
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    await MojRunner().prepare(_context(tmp_path, purpose=RunPurpose.RUN))
+
+    conf = _conf(fake.uploaded)
+    assert 'STOPWHEN_WA' not in conf
+    assert 'STOPWHEN_TLE' not in conf
+    assert 'STOPWHEN_RE' not in conf
+
+
+async def test_fail_fast_halts_on_every_bad_verdict(testing_pkg, tmp_path, monkeypatch):
+    """`rbx run --fail-fast` aborts on any non-accepted verdict, so all three go on.
+
+    The judge is the only place this can be enforced: a testrun has already run
+    the whole submission by the time rbx sees any of it.
+    """
+    minimal_package(testing_pkg)
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    await MojRunner().prepare(
+        _context(tmp_path, purpose=RunPurpose.RUN, abort_on=lambda ctx: True)
     )
+
+    conf = _conf(fake.uploaded)
+    assert conf['STOPWHEN_WA'] == 'y'
+    assert conf['STOPWHEN_TLE'] == 'y'
+    assert conf['STOPWHEN_RE'] == 'y'
+
+
+async def test_timing_still_halts_on_a_timeout_alone(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """`rbx time` aborts on `is_slow()` only, and that rule is unchanged.
+
+    A `TLE_OR_RTE` solution may legitimately crash, and the validation phase
+    reads a non-slow bad verdict as "broke for another reason" -- which needs the
+    run to have continued past it.
+    """
+    minimal_package(testing_pkg)
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    await MojRunner().prepare(
+        _context(tmp_path, timelimit_override=_ESTIMATION, abort_on=lambda ctx: True)
+    )
+
+    conf = _conf(fake.uploaded)
+    assert conf['STOPWHEN_TLE'] == 'y'
+    assert 'STOPWHEN_WA' not in conf
+    assert 'STOPWHEN_RE' not in conf
+
+
+def test_the_pin_is_what_the_local_run_would_enforce(tmp_path):
+    """Per-language, off the skeleton -- including the doubled limit.
+
+    A double-TL language really runs at twice the declared number locally, so
+    pinning the undoubled one would TLE a solution here that passes there.
+    """
+    pin = runner_module._probe_pin(  # noqa: SLF001
+        _context(
+            tmp_path,
+            limits={
+                'cpp': Limits(time=1000),
+                'java': Limits(time=2000, isDoubleTL=True),
+            },
+        )
+    )
+
+    assert dict(pin.per_rbx_language_ms) == {'cpp': 1000, 'java': 4000}
+    # The loosest, not the tightest: only a language the run did not name falls
+    # back to it, and being stingy there could truncate a measurement.
+    assert pin.default_ms == 4000
+
+
+def test_an_unlimited_language_is_refused(tmp_path):
+    """MOJ always enforces a limit, so "no limit" has no package that means it."""
+    with pytest.raises(MojRunnerError) as exc:
+        runner_module._probe_pin(  # noqa: SLF001
+            _context(tmp_path, limits={'cpp': Limits(time=None)})
+        )
+
+    assert '`cpp`' in str(exc.value)

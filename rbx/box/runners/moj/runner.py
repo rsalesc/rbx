@@ -15,7 +15,6 @@ Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 
 import asyncio
 import dataclasses
-import enum
 import hashlib
 import json
 import pathlib
@@ -25,6 +24,7 @@ from typing import (
     Any,
     Coroutine,
     Dict,
+    FrozenSet,
     List,
     Optional,
     Tuple,
@@ -41,12 +41,18 @@ from rbx.box.deferred import Deferred
 from rbx.box.exception import RbxException
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.moj.moj_language_utils import get_moj_language_from_rbx_language
-from rbx.box.packaging.moj.packager import MojPackager, ProbePackage, ProbePinned
+from rbx.box.packaging.moj.packager import (
+    HALT_VERDICTS,
+    MojPackager,
+    ProbePackage,
+    ProbePinned,
+)
 from rbx.box.runners.base import (
     RunContext,
     RunnerCapabilities,
     RunnerChip,
     RunProgress,
+    RunPurpose,
     SolutionRunner,
 )
 from rbx.box.runners.moj import cli, problem_id
@@ -368,6 +374,11 @@ class MojRunner:
         # Sanitizers are a local-compilation concept; the judge compiles the
         # submission itself, with the package's own `scripts/<lang>/compile.sh`.
         supports_sanitizers=False,
+        # MOJ judges every submission with the packaged checker; there is no
+        # "just run it" mode. And a probe package cannot be built at all without
+        # the answers `--no-check` skips building, so this would fail on the way
+        # up regardless -- pointing at packaging rather than at the flag.
+        supports_unchecked=False,
     )
 
     def __init__(self) -> None:
@@ -415,19 +426,17 @@ class MojRunner:
         # from anything this module could say.
         login = await cli.whoami()
 
-        phase = _phase_of(ctx)
-        # One remote problem per phase. They measure under different limits, and
-        # MOJ's limits live in the package, so a single problem would be
-        # re-uploaded and re-calibrated every time the phases took turns -- and
-        # its recorded fingerprint would never match at the start of a run, so the
-        # fast path could not fire at all. A problem each keeps both packages
-        # stable across runs. See `problem_id.derived_id`.
-        moj_id = problem_id.derived_id(
-            self._problem_id(login), phase.id_suffix if phase else ''
-        )
+        purpose = ctx.purpose
+        # One remote problem per purpose. They run under different limits and
+        # different stop rules, and both live *in the package*, so a single
+        # problem would be re-uploaded and re-calibrated every time two purposes
+        # took turns -- and its recorded fingerprint would never match at the
+        # start of a run, so the fast path could not fire at all. A problem each
+        # keeps every package stable across runs. See `problem_id.derived_id`.
+        moj_id = problem_id.derived_id(self._problem_id(login), _id_suffix(purpose))
         self._moj_id = moj_id
 
-        pin = _probe_pin(ctx, phase)
+        pin = _probe_pin(ctx)
 
         # The package is built on every run, even when the upload is about to be
         # skipped: it is cheap (copying built tests, amalgamating the checker) and
@@ -1174,7 +1183,10 @@ class MojRunner:
         packager = MojPackager(
             testcase_entries=ctx.skeleton.entries,
             timing_mode=pin,
-            probe=ProbePackage(submission_languages=_testrun_languages(ctx)),
+            probe=ProbePackage(
+                submission_languages=_testrun_languages(ctx),
+                halt_on=_halt_on(ctx),
+            ),
         )
         # Kept for `run_solution`, which needs two things from this exact object:
         # the names the testcases take **in the package that gets uploaded**, and
@@ -1295,117 +1307,146 @@ class MojRunner:
         )
 
 
-class _Phase(enum.Enum):
-    """Which `rbx time` phase a `run_solutions` call belongs to.
+# What distinguishes each purpose's remote problem from the base one.
+#
+# Empty for estimation, so the problem `rbx time` uses is exactly the one
+# `.moj-id` has always named and every committed binding keeps working. See
+# `problem_id.derived_id` for why the purposes need a problem each.
+#
+# A table rather than a method on `RunPurpose`: the enum lives in `runners.base`
+# and is shared by every backend, and a MOJ problem-id suffix is this backend's
+# business alone.
+_ID_SUFFIXES = {
+    RunPurpose.ESTIMATION: '',
+    RunPurpose.VALIDATION: 'slow',
+    RunPurpose.RUN: 'run',
+}
 
-    Read off the *shape* of `ctx.timelimit_override`, which is the only signal a
-    backend gets: within `rbx time` an `int` is the estimation phase and a
-    per-language mapping is the validation phase. Decided in one place because
-    two things now depend on it -- what the report calls the solutions, and which
-    remote problem the package goes to -- and inferring it twice would be two
-    chances to disagree.
+# What to call the solutions a run submits, for the packager's report line. Only
+# a noun phrase; nothing reads it back.
+_MEASURING = {
+    RunPurpose.ESTIMATION: 'accepted solutions',
+    RunPurpose.VALIDATION: 'slow solutions',
+    RunPurpose.RUN: 'solutions',
+}
+
+
+def _id_suffix(purpose: RunPurpose) -> str:
+    return _ID_SUFFIXES[purpose]
+
+
+def _measuring(purpose: RunPurpose) -> str:
+    return _MEASURING[purpose]
+
+
+def _halt_on(ctx: RunContext) -> FrozenSet[str]:
+    """The `STOPWHEN_*` bits that enforce this run's abort predicate on the judge.
+
+    The predicate itself cannot be inspected -- it is a closure over an
+    `Evaluation` -- so the rule is read off the pair (purpose, did the caller ask
+    to abort at all), which is the whole of what distinguishes the three cases:
+
+    - **No `abort_on`** -- a plain `rbx run` -- halts on nothing. Every test comes
+      back with a real verdict, which is exactly what the local run reports. This
+      is the case the hard-coded `STOPWHEN_TLE` used to get wrong: it would have
+      turned the tests after the first timeout into SKIPPED on a run that never
+      asked to stop, and a setter comparing local against MOJ would have read that
+      as the judge losing tests.
+    - **`rbx time`, either phase**, aborts on `outcome.is_slow()` and nothing
+      else, so a timeout alone halts. WA and RE deliberately do not: a
+      `TLE_OR_RTE` solution may legitimately crash, and `_record_validation_run`
+      reads a non-slow bad verdict as "broke for another reason", which needs the
+      run to have continued.
+    - **`rbx run --fail-fast`** aborts on any non-accepted verdict
+      (`fail_fast_abort_predicate`), so all three bits go on.
+
+    Reading the purpose rather than the predicate means a *new* caller passing
+    some third predicate under `RUN` would get the fail-fast rule, which is the
+    safe direction to be wrong in: it stops early where the caller asked to stop
+    early, and `rbx run` already refuses to trust the timings of a truncated run.
     """
-
-    ESTIMATION = 'estimation'
-    VALIDATION = 'validation'
-
-    @property
-    def measuring(self) -> str:
-        """What this phase submits, as a plural noun phrase for the report."""
-        return {
-            _Phase.ESTIMATION: 'accepted solutions',
-            _Phase.VALIDATION: 'slow solutions',
-        }[self]
-
-    @property
-    def id_suffix(self) -> str:
-        """What distinguishes this phase's remote problem from the base one.
-
-        Empty for estimation, so the problem it uses is exactly the one `.moj-id`
-        has always named and every committed binding keeps working. See
-        `problem_id.derived_id` for why the phases need a problem each.
-        """
-        return {_Phase.ESTIMATION: '', _Phase.VALIDATION: 'slow'}[self]
+    if ctx.abort_on is None:
+        return frozenset()
+    if ctx.purpose is RunPurpose.RUN:
+        return HALT_VERDICTS
+    return frozenset({'TLE'})
 
 
-def _phase_of(ctx: RunContext) -> Optional[_Phase]:
-    """The phase this run belongs to, or `None` when it is not one.
+def _probe_pin(ctx: RunContext) -> ProbePinned:
+    """The limits this run is measured under: whatever the local run would enforce.
 
-    `None` is not a failure: `run_solutions` is a general entry point, and a
-    caller that passes no override at all is neither phase. It falls back to the
-    base problem and a neutral noun -- the worst a misread could cost is one
-    console word and one extra remote problem, never a wrong limit.
+    Read off `ctx.skeleton.limits`, the one place that has already resolved
+    everything deciding an enforced time limit -- the active limits profile, the
+    verification level (`isDoubleTL`), and any `timelimit_override` the caller
+    passed. Pinning from it is what makes `--runner moj` answer the same question
+    the local run answers, and it collapses three cases into one:
+
+    - **`rbx run`** passes no override, so the skeleton holds the profile's own
+      per-language limits. Those are what a plain run enforces, and now what MOJ
+      enforces.
+    - **`rbx time`, estimating**, passes one `int`, so every language in the
+      skeleton holds that same `inferenceTimeout` cap.
+    - **`rbx time`, validating**, passes a mapping, so each language group holds
+      its own `ceil(TL x timeLimitToTle)` -- and a language the mapping does not
+      mention keeps the profile's own limit, which the old
+      `timelimit_override`-shaped reading could only approximate with the loosest
+      of the others.
+
+    The expanded limit (`get_expanded_tl`), not the declared one: a double-TL
+    language really is run at twice the number locally
+    (`tasks._get_execution_config`), and pinning the undoubled figure would TLE a
+    solution here that passes there. Neither `rbx time` phase is affected -- both
+    run at `ALL_SOLUTIONS`, which keeps `isDoubleTL` off.
+
+    Two things it refuses rather than guesses at:
+
+    - A language whose enforced limit is `None`. MOJ **always** enforces a time
+      limit, so "no limit" -- which the local sandbox expresses by nulling
+      `Limits.time` -- has no package-level counterpart, and every number that
+      could be substituted is one nobody chose.
+    - Nothing at all to read. An empty `limits` means no tracked solution resolved
+      to a language, which is a run with nothing to pin; it falls back to the
+      configured estimation cap so a caller outside these three -- a test building
+      a context by hand, say -- still gets a buildable package.
     """
-    override = ctx.timelimit_override
-    if isinstance(override, int):
-        return _Phase.ESTIMATION if override > 0 else None
-    if override is not None and any(limit > 0 for limit in override.values()):
-        return _Phase.VALIDATION
-    return None
+    limits = ctx.skeleton.limits if ctx.skeleton is not None else {}
+    unlimited = sorted(
+        language
+        for language, limit in limits.items()
+        if limit.get_expanded_tl() is None
+    )
+    if unlimited:
+        named = ', '.join(f'`{language}`' for language in unlimited)
+        raise MojRunnerError(
+            f'This run enforces no time limit for {named}, and MOJ always '
+            f'enforces one -- there is no package that means "run this untimed".\n'
+            f'Pick a limits profile that sets a time limit for that language, or '
+            f'run this on the local sandbox.'
+        )
 
-
-def _measuring(phase: Optional[_Phase]) -> str:
-    """What to call the solutions a run submits, for the packager's report line."""
-    return phase.measuring if phase is not None else 'solutions'
-
-
-def _probe_pin(ctx: RunContext, phase: Optional[_Phase]) -> ProbePinned:
-    """The limits every timing this run produces is measured under.
-
-    MOJ **always** enforces a time limit, so "no limit" is not expressible in a
-    package the way it is in the local sandbox, and `ProbePinned` refuses a
-    non-positive number rather than emitting a `TLOVERRIDE` that TLEs every run.
-    `rbx time` asks for a different shape in each of its two phases, and both are
-    honoured literally:
-
-    - **Estimation** passes one `int`, the `inferenceTimeout` every accepted
-      solution is capped at. Pinned as `TLOVERRIDE[default]`, with no per-language
-      entry: one cap for the whole run is exactly what was asked for.
-    - **Validation** passes a mapping, `ceil(TL x timeLimitToTle)` per language
-      group -- the bound each slow solution has to clear. Pinned per language, so
-      the judge enforces the same limit the local sandbox would have. The default
-      is the loosest of them, which is what an unnamed language falls back to; no
-      solution this run measures is in one, since the mapping covers every
-      language being run.
-
-    Anything else -- no override at all, which no `rbx time` path produces but any
-    other caller of `run_solutions` may -- falls back to the estimation cap the
-    problem configures. `inferenceTimeout` is resolved for **both** estimation
-    modes since #695, formula included, so there is nothing left to refuse: its
-    own description is "the cap enforced on every solution run while estimating",
-    which is exactly the question being asked.
-    """
-    override = ctx.timelimit_override
-    if isinstance(override, int):
-        # `> 0` rather than truthiness: -1 is the "no override" sentinel elsewhere
-        # in rbx, and pinning it would emit `TLOVERRIDE[default]=-0.001`.
-        if override > 0:
-            return ProbePinned(default_ms=override, measuring=_measuring(phase))
-    elif override is not None:
-        per_language = {
-            language: limit_ms
-            for language, limit_ms in override.items()
-            if limit_ms > 0
-        }
-        if per_language:
-            return ProbePinned(
-                # The loosest, not the tightest. Only a language the run did not
-                # name falls back to it, and being generous there cannot truncate
-                # a measurement -- being stingy could.
-                default_ms=max(per_language.values()),
-                per_rbx_language_ms=tuple(sorted(per_language.items())),
-                # Said here rather than inferred in the packager, which sees
-                # limits and not phases. `_phase_of` is the one place that reads
-                # the shape; see it for what a caller outside `rbx time` gets.
-                measuring=_measuring(phase),
-            )
+    per_language = {
+        language: limit_ms
+        for language, limit in limits.items()
+        if (limit_ms := limit.get_expanded_tl()) is not None
+    }
+    if per_language:
+        return ProbePinned(
+            # The loosest, not the tightest. Only a language the run did not name
+            # falls back to it, and being generous there cannot truncate a
+            # measurement -- being stingy could.
+            default_ms=max(per_language.values()),
+            per_rbx_language_ms=tuple(sorted(per_language.items())),
+            # Said here rather than inferred in the packager, which sees limits
+            # and not purposes.
+            measuring=_measuring(ctx.purpose),
+        )
 
     strategy = timing_config.resolve_strategy(
         environment.get_environment().timing,
         package.find_problem_package_or_die().timing,
     )
     return ProbePinned(
-        default_ms=strategy.inferenceTimeout, measuring=_measuring(phase)
+        default_ms=strategy.inferenceTimeout, measuring=_measuring(ctx.purpose)
     )
 
 

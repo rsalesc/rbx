@@ -4,7 +4,7 @@ import json
 import pathlib
 import shutil
 import typing
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, FrozenSet, List, Optional, Tuple, Union
 
 import typer
 
@@ -191,6 +191,15 @@ TimingMode = Union[ProfilePinned, JudgeCalibrated, ProbePinned]
 DEFAULT_TIMING_MODE = ProfilePinned()
 
 
+# The verdicts mojtools has a `STOPWHEN_*` bit for, in the order `conf` spells
+# them. A set for membership and a tuple for emission, so the emitted block is
+# ordered by mojtools' own convention rather than by whatever order a caller
+# happened to build its request in -- an unstable order would re-fingerprint the
+# package, and a re-fingerprinted package is an upload and a calibration.
+HALT_VERDICT_ORDER = ('WA', 'TLE', 'RE')
+HALT_VERDICTS = frozenset(HALT_VERDICT_ORDER)
+
+
 @dataclasses.dataclass(frozen=True)
 class ProbePackage:
     """A throwaway package uploaded to measure timings, never judged by students.
@@ -210,6 +219,22 @@ class ProbePackage:
     # immutable and hashable, which a package cache key will want.
     submission_languages: Tuple[str, ...]
 
+    # Which verdicts end a solution's run early, as `STOPWHEN_*` bits. The judge
+    # is the only place this can be decided: a testrun has already run the whole
+    # submission by the time rbx sees any of it, so the local abort gate has no
+    # counterpart here (`MojRunner` declares `supports_abort=False`), and what
+    # rbx would have stopped locally has to be stopped by the package instead.
+    #
+    # It is therefore the caller's rule, translated -- not a packaging
+    # preference. `rbx time` aborts on a timeout and only a timeout, so it asks
+    # for `{'TLE'}`; `rbx run --fail-fast` aborts on any non-accepted verdict, so
+    # it asks for all three; a plain `rbx run` aborts on nothing, so it asks for
+    # none and every test comes back with a real verdict.
+    #
+    # Defaulted to the timing rule, which is what every probe asked for before
+    # `rbx run` had a `--runner` flag.
+    halt_on: FrozenSet[str] = frozenset({'TLE'})
+
     def __post_init__(self) -> None:
         # Empty would *work*, in the permissive direction: `_write_moj_meta` omits an
         # empty `languages` and the server then preserves whatever the problem already
@@ -221,6 +246,15 @@ class ProbePackage:
                 'A probe package must whitelist at least one submission language: '
                 'the MOJ API rejects a submission outside `.moj-meta.json`, a '
                 'testrun included.'
+            )
+        unknown = sorted(self.halt_on - HALT_VERDICTS)
+        if unknown:
+            # mojtools reads `conf` with grep, so a misspelled bit is not an
+            # error there -- it is a line nothing ever matches, and a run that
+            # silently fails to stop where the caller asked it to.
+            raise ValueError(
+                f'A probe package can only halt on {sorted(HALT_VERDICTS)}, got '
+                f'`{unknown}`.'
             )
 
 
@@ -853,12 +887,17 @@ class MojPackager(BasePackager):
         and scores it `null` -- counted as failed. A solution that legitimately failed
         group 1 but would have passed group 2 would silently lose group 2's points.
 
-        A probe package takes **`STOPWHEN_TLE` alone**, which is not a compromise
-        between the two cases above but an exact match for what rbx asks for
-        locally. Both `rbx time` phases pass the same predicate --
-        `abort_on=lambda ctx: ctx.evaluation.result.outcome.is_slow()` -- so a
-        timeout, and only a timeout, ends a solution's run. `STOPWHEN_TLE=y` is
-        that rule, enforced by the judge instead of by rbx.
+        A probe package takes **whatever rule its caller asked for**
+        (`ProbePackage.halt_on`), which is not a compromise between the two cases
+        above but an exact translation of the abort predicate rbx would have
+        enforced locally. Both `rbx time` phases pass the same predicate --
+        `abort_on=lambda ctx: ctx.evaluation.result.outcome.is_slow()` -- so they
+        ask for `STOPWHEN_TLE` alone. `rbx run --fail-fast` aborts on any
+        non-accepted verdict, so it asks for all three. A plain `rbx run` aborts
+        on nothing and asks for none: every test then comes back with a real
+        verdict, which is what the local run reports, and halting there would
+        turn the tests after the first timeout into SKIPPED on a run that never
+        asked to stop.
 
         It matters because the local abort has no counterpart here. The gate in
         `run_solutions` works by not *dispatching* the testcases after a timeout,
@@ -897,14 +936,26 @@ class MojPackager(BasePackager):
         the same verdict, at different cost.
         """
         if self.probe is not None:
+            halting = [
+                verdict
+                for verdict in HALT_VERDICT_ORDER
+                if verdict in self.probe.halt_on
+            ]
+            if not halting:
+                return [
+                    '# No STOPWHEN_* at all: the run this package serves asked for every',
+                    '# test to be judged. A halt here would come back as tests rbx never',
+                    '# saw -- reported as SKIPPED -- on a run that never asked to stop.',
+                    '',
+                ]
             return [
-                '# Halt a solution at its first TIMEOUT, and only a timeout. This',
-                '# package exists for rbx to measure, and rbx asks for exactly this',
-                '# rule locally: one timeout settles whether a solution is too slow,',
-                '# so the rest of the testset only costs judge time. WA and RE do NOT',
-                '# halt -- a solution that fails some other way still owes its',
-                '# timings, and rbx reports that failure rather than the bound.',
-                'STOPWHEN_TLE=y',
+                '# Halt a solution at the verdicts rbx would have stopped it at locally.',
+                '# The local abort gate has no counterpart on a judge -- a testrun has',
+                '# already run the whole submission by the time rbx sees any of it -- so',
+                "# the caller's own abort predicate is enforced here instead, and the",
+                '# tests that never run come back as SKIPPED, exactly as that gate writes',
+                '# them.',
+                *[f'STOPWHEN_{verdict}=y' for verdict in halting],
                 '',
             ]
         pkg = package.find_problem_package_or_die()
