@@ -9,11 +9,12 @@ own `extensions.json`.
 import dataclasses
 import importlib.resources
 import json
+import os
 import pathlib
 import re
 from typing import Mapping, Optional, Tuple
 
-from rbx import utils
+from rbx import console, utils
 
 EXTENSION_ID = 'rsalesc.rbx-vscode'
 
@@ -153,3 +154,49 @@ def bundled_vsix(directory: Optional[pathlib.Path] = None) -> Optional[BundledVs
     if not candidates:
         return None
     return max(candidates, key=lambda candidate: utils.get_semver(candidate.version))
+
+
+def outdated_hint(
+    env: Optional[Mapping[str, str]] = None,
+    home: Optional[pathlib.Path] = None,
+    vsix_directory: Optional[pathlib.Path] = None,
+) -> Optional[str]:
+    """One line telling the user their editor extension lags the bundled one.
+
+    None -- stay silent -- for every other state: not in an editor, nothing
+    installed, already current, or anything unreadable. The question being
+    answered is "is the extension in my editor older than the one my rbx
+    ships?", so both sides of the comparison are extension versions; a newer
+    extension from a marketplace is a fine state to be in and says nothing.
+    """
+    env = env if env is not None else os.environ
+
+    editor = detect_editor(env)
+    if editor is None:
+        return None
+    bundled = bundled_vsix(vsix_directory)
+    if bundled is None:
+        return None
+    root = editor_home(editor, home)
+    if root is None:
+        return None
+    installed = installed_version(root)
+    if installed is None:
+        return None
+    if (
+        utils.check_version_compatibility_between(installed, bundled.version)
+        is not utils.SemVerCompatibility.OUTDATED
+    ):
+        return None
+
+    return (
+        f'[info]The rbx {editor.label} extension is outdated '
+        f'({installed} < {bundled.version}). Run [item]rbx vscode install[/item] '
+        f'to re-sync it.[/info]'
+    )
+
+
+def print_outdated_hint(**kwargs) -> None:
+    hint = outdated_hint(**kwargs)
+    if hint is not None:
+        console.console.print(hint)

@@ -181,3 +181,96 @@ def test_editor_home_is_none_when_nothing_exists(tmp_path: pathlib.Path):
     assert editor is not None
 
     assert extension.editor_home(editor, tmp_path) is None
+
+
+def _bundled(tmp_path: pathlib.Path, version: str) -> pathlib.Path:
+    directory = tmp_path / 'resources'
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / f'rbx-vscode-{version}.vsix').touch()
+    return directory
+
+
+def _installed(tmp_path: pathlib.Path, version: str) -> pathlib.Path:
+    _write_extensions_json(
+        tmp_path / 'home' / '.vscode',
+        [{'identifier': {'id': 'rsalesc.rbx-vscode'}, 'version': version}],
+    )
+    return tmp_path / 'home'
+
+
+def test_no_hint_outside_an_integrated_terminal(tmp_path: pathlib.Path):
+    assert (
+        extension.outdated_hint(
+            env={'TERM_PROGRAM': 'iTerm.app'},
+            home=_installed(tmp_path, '0.1.0'),
+            vsix_directory=_bundled(tmp_path, '0.2.0'),
+        )
+        is None
+    )
+
+
+def test_hint_when_the_installed_extension_is_older(tmp_path: pathlib.Path):
+    hint = extension.outdated_hint(
+        env={'TERM_PROGRAM': 'vscode'},
+        home=_installed(tmp_path, '0.1.0'),
+        vsix_directory=_bundled(tmp_path, '0.2.0'),
+    )
+
+    assert hint is not None
+    assert '0.1.0' in hint
+    assert '0.2.0' in hint
+    assert 'rbx vscode install' in hint
+
+
+def test_no_hint_when_nothing_is_installed(tmp_path: pathlib.Path):
+    # Someone who never opted into the extension is not nagged into it.
+    _write_extensions_json(tmp_path / 'home' / '.vscode', [])
+
+    assert (
+        extension.outdated_hint(
+            env={'TERM_PROGRAM': 'vscode'},
+            home=tmp_path / 'home',
+            vsix_directory=_bundled(tmp_path, '0.2.0'),
+        )
+        is None
+    )
+
+
+def test_no_hint_when_the_installed_extension_is_current(tmp_path: pathlib.Path):
+    assert (
+        extension.outdated_hint(
+            env={'TERM_PROGRAM': 'vscode'},
+            home=_installed(tmp_path, '0.2.0'),
+            vsix_directory=_bundled(tmp_path, '0.2.0'),
+        )
+        is None
+    )
+
+
+def test_no_hint_when_the_installed_extension_is_newer(tmp_path: pathlib.Path):
+    # A newer extension from a marketplace is a fine state to be in.
+    assert (
+        extension.outdated_hint(
+            env={'TERM_PROGRAM': 'vscode'},
+            home=_installed(tmp_path, '0.9.0'),
+            vsix_directory=_bundled(tmp_path, '0.2.0'),
+        )
+        is None
+    )
+
+
+def test_no_hint_when_no_vsix_is_bundled(tmp_path: pathlib.Path):
+    assert (
+        extension.outdated_hint(
+            env={'TERM_PROGRAM': 'vscode'},
+            home=_installed(tmp_path, '0.1.0'),
+            vsix_directory=tmp_path / 'empty',
+        )
+        is None
+    )
+
+
+def test_print_outdated_hint_is_silent_when_there_is_nothing_to_say(capsys):
+    extension.print_outdated_hint(env={'TERM_PROGRAM': 'iTerm.app'})
+
+    assert capsys.readouterr().out == ''
