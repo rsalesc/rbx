@@ -97,6 +97,21 @@ The build is a pipeline of small, unit-tested pieces:
   passes a **metadata-only** `problems` list (via `_collect_problem_metadata`:
   title/short_name/limits/profiles/groups, no blocks/samples/import handles) so a
   Jinja document can render e.g. an info sheet's per-problem limits table.
+- **Failure isolation (#705).** Both outer loops — over contest statements in
+  `contest/statements.py` and over problem statements in
+  `execute_build_on_statements` — build each statement in its own `try`, so one
+  failure never stops the rest; failures are collected, reported through
+  `issue_stack` (`StatementFailedIssue`) plus an explicit end-of-run summary,
+  and the command exits 1. `execute_build_on_statements` gates this on
+  `keep_going`, **defaulting to False** so the packagers keep failing fast — a
+  silently incomplete Polygon/MOJ upload is worse than an aborted one; only the
+  CLI passes True. Inside one contest statement the inner problem loop has no
+  exception-type tiering (the old `except (typer.Exit, RbxException): raise`
+  misrouted `typer.Abort` and `AssertionError` into silent per-problem skips at
+  exit 0): any problem-level failure raises `StatementBuildError` and fails that
+  statement, unless `--partial` is passed, which drops the problem instead. The
+  samples-phase drop is gated on the same flag, so no short document is ever
+  written without it.
 - **Tutorials (editorials)** are the parallel `tutorials` section (design §3),
   built by the same code via a `StatementKind` arg threaded through
   `build_statement` / `execute_build` (problem) and `build_statement` (contest):
