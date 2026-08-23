@@ -87,6 +87,30 @@ Helper functions that load run results from disk:
 - **Surfacing exceptions** -- `rbxBaseApp.show_error(exc)` (`main.py`) pushes an `ErrorModal` rendering `exc.from_ansi()` (formatting preserved, scrollable, not truncated). Use it instead of `notify(e.plain(), severity='error')` for `RbxException`s that may carry long output; the visualizer actions in `test_explorer.py`/`run_test_explorer.py` do (#380). Short one-line validation messages ("No test selected") stay toasts. Screens call it as `self.app.show_error(e)  # type: ignore[attr-defined]`.
 - **YAML/config error safety net** -- `rbxBaseApp._handle_exception` (`main.py`) intercepts `RbxException` (e.g. invalid `problem.rbx.yml`/`env.rbx.yml` from `load_yaml_model`): if the app is running it shows the error via `show_error` (ErrorModal) and keeps the TUI alive; otherwise it exits cleanly via `exit(return_code=1, message=exc.from_ansi())` (no Rich traceback, not re-raised, so the top-level CLI handler in `rbx/box/main.py` can't double-print). This recovers screen-entry crashes (`compose`/`on_mount` of a pushed screen — e.g. `RunScreen.compose`, `TestExplorerScreen.on_mount`). The explorer screens need no per-call guard: their loads run at mount and `find_problem_package` is `@functools.cache`d (later action loads hit the cache; a failed first load re-parses on retry since exceptions aren't cached). Loads whose *first* execution is in an action/watcher body cannot recover from `_handle_exception` (verified: the app goes half-dead), so they catch `RbxException` at the call site and call `self.app.show_error(e)` directly — currently only `limits_editor._load_profile_detail_from`.
 
+## Command app pane sizing (`command_app.py`)
+
+`rbxCommandApp` stacks one `_AppCommandPane` per (problem, sub-command) in
+`#command-pane-container` and shows exactly one at a time via `display`. A hidden Textual
+widget has a **zero-sized region**, which used to mean two things at once: its child
+process ran on a `0x0` pty (so rich, and anything else that measures its terminal, fell
+back to 80 columns), and the pane's own emulator sat at the `Terminal` default of 80x24.
+Switching to that problem then showed output hard-wrapped at 80 inside a much wider pane
+-- stray line breaks, and tables rendered at half the available width.
+
+All panes share the container's geometry, so the fix is to let the laid-out one speak for
+the hidden ones: `_AppCommandPane.on_resize` reports its size to
+`rbxCommandApp.sync_hidden_pane_sizes`, which caches it in `_pane_size` and calls
+`refresh_terminal_size()` on every other pane (re-applying `TIOCSWINSZ`, so a *running*
+command gets a `SIGWINCH` and adapts mid-run). Panes are built through `_make_pane`, which
+wires `get_fallback_dimensions=self._pane_dimensions` -- consulted by `CommandPane` only
+when its own region is degenerate, so a visible pane always measures itself.
+
+The other half of the same symptom lived in the vendored `Terminal`: a resize reflows the
+buffer but upstream only refreshes `virtual_size` on a write, so a resize after the command
+finished left the scroll extents stale and the anchored view scrolled past the real end of
+the output -- the tail (e.g. a time-limits table) looked eaten. `update_size()` now calls
+`_update_virtual_size()`. Both are covered by `tests/rbx/box/ui/test_command_pane.py`.
+
 ## Keybindings
 
 Vim navigation lives in `vim_nav.py` (`VimNavMixin`, mixed into `rbxBaseApp` in `main.py`, ahead of `App` in the MRO). It registers app-level `h/j/k/l` bindings that dispatch to the focused widget's existing `cursor_*` action, falling back to `scroll_*`: `j`/`k` move down/up everywhere; `h`/`l` move left/right only where horizontal movement exists (e.g. `DataTable` cells, scroll viewers). `check_action` disables the keys while an `Input`/`TextArea` is focused, so typing is never hijacked. The mixin subclasses `DOMNode` so Textual merges its `BINDINGS`.

@@ -224,6 +224,12 @@ Tap escape *twice* to exit.
         self._width = max(self._width, self.minimum_terminal_width)
 
         self.state.update_size(self._width, self._height)
+        # Reflowing changes how many folded lines the buffer has, so the
+        # scrollable extents have to follow. Without this, a resize that is not
+        # followed by a write (e.g. the command already finished) leaves
+        # `virtual_size` describing the *old* fold count, and an anchored
+        # terminal scrolls to a `max_scroll_y` past the real end of the output.
+        self._update_virtual_size()
         self._terminal_render_cache.clear()
         self.refresh()
 
@@ -272,12 +278,12 @@ Tap escape *twice* to exit.
         self.focus()
         event.stop()
 
-    def _update_from_state(
-        self, scrollback_delta: set[int] | None, alternate_delta: set[int] | None
-    ) -> None:
-        if self.state.current_directory:
-            self.current_directory = self.state.current_directory
-            self.finalize()
+    def _update_virtual_size(self) -> int:
+        """Recompute the scrollable extents from the current terminal state.
+
+        Returns:
+            The buffer height used for the virtual size.
+        """
         width = self.state.width
         height = self.state.scrollback_buffer.height
 
@@ -286,6 +292,15 @@ Tap escape *twice* to exit.
         self.virtual_size = Size(min(self.state.buffer.max_line_width, width), height)
         if self._anchored and not self._anchor_released:
             self.scroll_y = self.max_scroll_y
+        return height
+
+    def _update_from_state(
+        self, scrollback_delta: set[int] | None, alternate_delta: set[int] | None
+    ) -> None:
+        if self.state.current_directory:
+            self.current_directory = self.state.current_directory
+            self.finalize()
+        height = self._update_virtual_size()
 
         scroll_y = int(self.scroll_y)
         visible_lines = frozenset(range(scroll_y, scroll_y + height))
