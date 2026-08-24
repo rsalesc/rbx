@@ -2,8 +2,13 @@ from unittest import mock
 
 import pytest
 
-from rbx.box.packaging.moj.upload import build_problem_id, resolve_problem_id
+from rbx.box.packaging.moj.upload import (
+    build_problem_id,
+    resolve_problem_id,
+    upload_package,
+)
 from rbx.box.runners.moj.cli import MojCliError
+from tests.rbx.box.runners.moj.test_cli import _stub_calls, _stub_moj
 
 
 def test_uses_the_configured_org():
@@ -73,3 +78,36 @@ async def test_resolve_does_not_warn_when_an_org_is_configured(capsys):
 
     assert problem_id == 'unicamp#a-aplusb'
     assert 'personal' not in capsys.readouterr().out
+
+
+# -- The upload itself. --------------------------------------------------------
+#
+# Driven through the stub binary rather than a fake, so the argv asserted on is
+# the argv a process really received. Nothing here touches the network.
+
+
+async def test_upload_shells_out_to_moj_upload(monkeypatch, tmp_path):
+    _stub_moj(monkeypatch, tmp_path, 'exit 0')
+    directory = tmp_path / 'package'
+    directory.mkdir()
+
+    await upload_package('unicamp#a-aplusb', directory, calibrate=False)
+
+    assert _stub_calls(tmp_path) == [['upload', 'unicamp#a-aplusb', str(directory)]]
+
+
+async def test_upload_queues_a_calibration_when_asked(monkeypatch, tmp_path):
+    _stub_moj(monkeypatch, tmp_path, 'exit 0')
+    directory = tmp_path / 'package'
+    directory.mkdir()
+
+    await upload_package('unicamp#a-aplusb', directory, calibrate=True)
+
+    calls = _stub_calls(tmp_path)
+    assert calls == [
+        ['upload', 'unicamp#a-aplusb', str(directory)],
+        ['calibrate', 'unicamp#a-aplusb'],
+    ]
+    # Queued, never waited on: no `check` poll follows it. A setter who has just
+    # uploaded has nothing to block on, and calibration is a long judge-side job.
+    assert not any('check' in call for call in calls)

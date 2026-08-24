@@ -6,6 +6,7 @@ same CLI wrapper -- `rbx.box.runners.moj.cli` -- so credentials never pass
 through rbx and the session `moj login` established is reused.
 """
 
+import pathlib
 import re
 from typing import Optional
 
@@ -83,3 +84,36 @@ async def resolve_problem_id(basename: str) -> str:
             f'it somewhere shared.[/warning]'
         )
     return problem_id
+
+
+async def upload_package(
+    problem_id: str, directory: pathlib.Path, calibrate: bool
+) -> None:
+    """Upload the built tree, and optionally queue a calibration.
+
+    The **directory**, never the `.zip` beside it: `moj upload` tars what it is
+    given, and an unzipped tree arrives with the judge's per-language scripts no
+    longer executable (`zipfile.extract` does not restore mode bits).
+
+    The server creates the problem when it does not exist -- that is how
+    `rbx time --runner moj` bootstraps its own -- so there is nothing to create
+    here first. What it does *not* create is the **org**: an upload to an org
+    that does not exist fails, and the CLI's own message is what says so.
+
+    The calibration is queued and **not waited on**. Calibrating is a long
+    server-side job, and a setter who has just uploaded has nothing to block on;
+    `moj check <id>` reports the state whenever they want it.
+    """
+    console.console.print(f'Uploading the package to [item]{problem_id}[/item]...')
+    await cli.upload(problem_id, directory)
+    console.console.print(
+        f'[success]Package uploaded to [item]{problem_id}[/item]![/success]'
+    )
+
+    if calibrate:
+        await cli.calibrate(problem_id)
+        console.console.print(
+            f'[status]Calibration queued for [item]{problem_id}[/item]. It runs on '
+            f'the judge; check on it with [item]moj check {problem_id}[/item].'
+            f'[/status]'
+        )

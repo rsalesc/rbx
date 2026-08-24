@@ -74,7 +74,11 @@ class BasePackager(ABC):
             res.add(statement.language)
         return list(res)
 
-    def package_basename(self):
+    @classmethod
+    def package_basename(cls):
+        # A classmethod because `rbx package moj --upload` resolves the remote
+        # problem id from this *before* the build, and so before there is an
+        # instance. It never used `self`.
         pkg = package.find_problem_package_or_die()
         shortname = naming.get_problem_shortname_or_require()
         if shortname is not None:

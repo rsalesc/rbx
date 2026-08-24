@@ -1,3 +1,5 @@
+import pathlib
+import tempfile
 from typing import List, Optional
 
 import syncer
@@ -137,6 +139,12 @@ async def boca(
 @syncer.sync
 async def moj(
     verification: environment.VerificationParam,
+    upload: bool = typer.Option(
+        False,
+        '--upload',
+        '-u',
+        help='If set, will upload the package to MOJ.',
+    ),
     language: Optional[str] = typer.Option(
         None,
         '--language',
@@ -169,12 +177,33 @@ async def moj(
 
     # A MOJ package holds one statement, and its `display_title` resolves from
     # the same one, so the body and the rendered <h1> can never disagree.
-    await run_packager(
-        MojPackager,
-        verification=verification,
-        main_language=language,
-        timing_mode=timing_mode,
-    )
+    if not upload:
+        await run_packager(
+            MojPackager,
+            verification=verification,
+            main_language=language,
+            timing_mode=timing_mode,
+        )
+        return
+
+    from rbx.box.packaging.moj.upload import resolve_problem_id, upload_package
+
+    # Resolved *before* the build: a missing `moj login`, or a name MOJ will not
+    # accept, should not cost a full verification run to find out about.
+    problem_id = await resolve_problem_id(MojPackager.package_basename())
+
+    # The tree is what gets uploaded, so it has to outlive `run_packager` --
+    # which otherwise builds into a temp dir of its own and returns only the zip.
+    with tempfile.TemporaryDirectory(prefix='rbx-moj-upload-') as tmp:
+        directory = pathlib.Path(tmp) / 'package'
+        await run_packager(
+            MojPackager,
+            verification=verification,
+            main_language=language,
+            timing_mode=timing_mode,
+            into_dir=directory,
+        )
+        await upload_package(problem_id, directory, calibrate=calibrate)
 
 
 @app.command('pkg', help='Build a package for PKG.')

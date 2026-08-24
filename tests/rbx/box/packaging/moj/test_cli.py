@@ -33,6 +33,14 @@ def test_moj_command_takes_a_language():
     assert '--language' in _plain(result.output)
 
 
+def test_moj_command_takes_an_upload_flag():
+    # Same spelling as `package boca` and `package polygon`, so `-u` means the
+    # same thing on every backend.
+    result = CliRunner().invoke(app, ['moj', '--help'])
+    assert result.exit_code == 0
+    assert '--upload' in _plain(result.output)
+
+
 def test_moj_command_has_no_legacy_boca_flag():
     # `--for-boca` belonged to the legacy BocaPackager subclass, which is gone.
     result = CliRunner().invoke(app, ['moj', '--help'])
