@@ -1,3 +1,4 @@
+import inspect
 import pathlib
 import shutil
 import subprocess
@@ -377,6 +378,36 @@ def remove(path_or_short_name: str):
     )
 
 
+# The selector syntax, documented once: `rbx on` is declared both here and as a
+# top-level command in `rbx/box/cli.py`, and both render into the CLI reference.
+PROBLEM_SELECTOR_DOCS = inspect.cleandoc("""
+The problem selector is a comma-separated list. Each entry names a problem by its
+short name, by the `name` it declares in its `problem.rbx.yml`, by one of its
+aliases, or by the basename of its folder -- looked up in that order, so the
+letter always wins over another problem's alias.
+
+| Selector | Selects |
+| :--- | :--- |
+| `B` | the problem whose short name, name, alias or folder is `B` |
+| `A,C` | both problems |
+| `A..C` | every problem from `A` to `C`, in contest order |
+| `day1-*` | every problem matching the pattern (`*` and `?` are wildcards) |
+| `*` | every problem in the contest |
+| `*,!C` | every problem but `C` |
+| `!C` | the same -- a selector of exclusions starts from every problem |
+
+Ranges are written with two dots: `A-C` is read as a literal name, since a
+problem may well be called `two-sum`. An entry that matches no problem is an
+error, so a typo never runs on a subset of what you meant.
+
+Quote selectors that use `*` or `!`, which your shell would otherwise expand.
+""")
+
+PROBLEM_SELECTOR_HELP = (
+    'Problems to run on: short names, names, aliases or folders, comma-separated. '
+    'Also `A..C`, `*`, globs and `!` exclusions.'
+)
+
 KEEP_GOING_OPTION = typer.Option(
     False,
     '--keep-going',
@@ -444,40 +475,18 @@ def each(ctx: typer.Context, keep_going: bool = KEEP_GOING_OPTION) -> None:
     },
 )
 @within_contest
-@annotations.docs("""
-    Run a command in the problem (or in a set of problems) of a contest.
-
-    The problem selector is a comma-separated list. Each entry names a problem by
-    its short name, by the `name` it declares in its `problem.rbx.yml`, by one of
-    its aliases, or by the basename of its folder -- looked up in that order, so
-    the letter always wins over another problem's alias.
-
-    | Selector | Selects |
-    | :--- | :--- |
-    | `B` | the problem whose short name, name, alias or folder is `B` |
-    | `A,C` | both problems |
-    | `A..C` | every problem from `A` to `C`, in contest order |
-    | `day1-*` | every problem matching the pattern (`*` and `?` are wildcards) |
-    | `*` | every problem in the contest |
-    | `*,!C` | every problem but `C` |
-    | `!C` | the same -- a selector of exclusions starts from every problem |
-
-    Ranges are written with two dots: `A-C` is read as a literal name, since a
-    problem may well be called `two-sum`. An entry that matches no problem is an
-    error, so a typo never runs on a subset of what you meant.
-
-    Quote selectors that use `*` or `!`, which your shell would otherwise expand.
-
-    Chain commands with `::` to queue them.
-""")
+@annotations.docs(
+    'Run a command in the problem (or in a set of problems) of a contest.\n\n'
+    + PROBLEM_SELECTOR_DOCS
+    + '\n\nChain commands with `::` to queue them.'
+)
 def on(
     ctx: typer.Context,
     problems: Annotated[
         str,
         typer.Argument(
             autocompletion=annotations._adapt('problem'),  # noqa: SLF001
-            help='Problems to run on: short names, names, aliases or folders, '
-            'comma-separated. Also `A..C`, `*`, globs and `!` exclusions.',
+            help=PROBLEM_SELECTOR_HELP,
         ),
     ],
     keep_going: bool = KEEP_GOING_OPTION,

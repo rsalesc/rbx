@@ -984,7 +984,7 @@ _GROUP_VARS_MAIN = """
 int main() {
   std::printf("AB.min=%lld\\n", (long long)getVar<int64_t>("AB.min"));
   std::printf("AB.max=%lld\\n", (long long)getVar<int64_t>("AB.max"));
-  std::printf("name=%s\\n", getVar<std::string>("name").c_str());
+  std::printf("label=%s\\n", getVar<std::string>("label").c_str());
   std::printf("ratio=%.2f\\n", getVar<double>("ratio"));
   std::printf("flag=%d\\n", (int)getVar<bool>("flag"));
   return 0;
@@ -1044,7 +1044,7 @@ _UNSUPPORTED_PLATFORM_GUARD = (
 
 _PACKAGE_VARS: RecVars = {
     'AB': {'min': -200, 'max': 200},
-    'name': 'pkg',
+    'label': 'pkg',
     'ratio': 1.5,
     'flag': True,
 }
@@ -1074,7 +1074,7 @@ class TestGroupVars:
             {
                 'sub2': {
                     'AB': {'min': 0},
-                    'name': 'sub2name',
+                    'label': 'sub2label',
                     'ratio': 2.5,
                     'flag': False,
                 },
@@ -1086,15 +1086,15 @@ class TestGroupVars:
         header.generate_header()
         _compile(gpp, _GROUP_VARS_MAIN, 'groupvars', ['-Wextra'])
 
-        package_expected = 'AB.min=-200\nAB.max=200\nname=pkg\nratio=1.50\nflag=1\n'
+        package_expected = 'AB.min=-200\nAB.max=200\nlabel=pkg\nratio=1.50\nflag=1\n'
         cases = [
             (
                 ['--group', 'sub2'],
-                'AB.min=0\nAB.max=200\nname=sub2name\nratio=2.50\nflag=0\n',
+                'AB.min=0\nAB.max=200\nlabel=sub2label\nratio=2.50\nflag=0\n',
             ),
             (
                 ['--group', 'sub3'],
-                'AB.min=-200\nAB.max=0\nname=pkg\nratio=1.50\nflag=1\n',
+                'AB.min=-200\nAB.max=0\nlabel=pkg\nratio=1.50\nflag=1\n',
             ),
             (['--group', 'sub4'], package_expected),
             (['--group', 'unknown'], package_expected),

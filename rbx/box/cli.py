@@ -1,4 +1,5 @@
 import atexit
+import inspect
 import pathlib
 import shlex
 import shutil
@@ -299,27 +300,31 @@ def ui():
         'allow_interspersed_args': False,
     },
 )
-@annotations.docs("""
-    Runs a command in the context of one problem (or a set of problems) of a contest.
-
-    Problems can be selected by short name, alias, a comma-separated list (`A,C`), a
-    range (`A-C`) or `*`.
-
+@annotations.docs(
+    'Runs a command in the context of one problem (or a set of problems) of a '
+    'contest.\n\n'
+    + contest.PROBLEM_SELECTOR_DOCS
+    + '\n\n'
+    + inspect.cleandoc("""
     Like [`rbx each`](#rbx-each), commands can be chained with `::`:
 
     ```bash
-    rbx on A-C build :: run -s
+    rbx on A..C build :: run -s
     ```
 
     A single command on a single problem runs directly in your terminal; anything
     else opens the TUI. Since flags after the problem selector belong to the chained
     commands, `-k`/`--keep-going` has to come first: `rbx on -k A build :: run`.
-""")
+    """)
+)
 def on(
     ctx: typer.Context,
     problems: Annotated[
         str,
-        typer.Argument(autocompletion=annotations._adapt('problem')),  # noqa: SLF001
+        typer.Argument(
+            autocompletion=annotations._adapt('problem'),  # noqa: SLF001
+            help=contest.PROBLEM_SELECTOR_HELP,
+        ),
     ],
     keep_going: bool = contest.KEEP_GOING_OPTION,
 ) -> None:
