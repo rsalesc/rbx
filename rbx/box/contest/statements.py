@@ -13,6 +13,7 @@ from rbx.box.contest.build_contest_statements import (
 )
 from rbx.box.contest.contest_package import (
     find_contest_package_or_die,
+    get_selected_variant_id,
     within_contest,
 )
 from rbx.box.contest.schema import ContestProblem
@@ -26,6 +27,14 @@ app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 # Parallel app for contest-level tutorials (editorials), mounted as `tutorials,
 # tut`. Reuses the same build pipeline as statements (StatementKind.TUTORIALS).
 tutorials_app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
+
+
+def built_rule_title(kind: StatementKind, variant_id: Optional[str]) -> str:
+    """The summary rule title, naming the contest variant when one is selected
+    so it is clear which `build/variants/<id>/` subtree the artifacts landed in."""
+    if variant_id is None:
+        return f'Built {kind.value}'
+    return f'Built {kind.value} (variant: {variant_id})'
 
 
 async def _execute_build(
@@ -209,7 +218,7 @@ async def _execute_build(
                 issue_stack.add_issue(StatementFailedIssue(document.name, reason))
                 failed_statements.append((document.name, reason))
 
-    console.console.rule(title=f'Built {kind.value}')
+    console.console.rule(title=built_rule_title(kind, get_selected_variant_id()))
     for statement, built_path in built_statements:
         console.console.print(
             f'[item]{statement.name} {statement.language}[/item] -> {href(built_path)}'
