@@ -2,6 +2,7 @@
 build/
 .limits/local.yml
 __pycache__/
+.moj-id
 
 .DS_Store
 .vscode/
