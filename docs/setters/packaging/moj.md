@@ -239,6 +239,59 @@ Warnings go to stderr in this mode, and a problem that couldn't be read is repor
 instead of taking a line -- so whatever consumes the output never sees a problem pointing at an
 empty id.
 
+## Downloading a submission
+
+When a contestant's solution does something your testset didn't expect, you usually want to run
+it here rather than read it on the contest page. Point any command that takes a solution at
+`@moj/<contest>/<submission>` and {{rbx}} downloads the source into the package:
+
+```bash
+rbx run @moj/sbc2026/d89e6b7735c675fd7b50b3354ba64097
+rbx download remote @moj/sbc2026/d89e6b7735c675fd7b50b3354ba64097
+```
+
+The submission id is the 32-character hexadecimal string MOJ shows beside the submission. The
+downloaded file lands under the package's remote cache and, as with any downloaded code,
+{{rbx}} shows it to you for review before running it.
+
+If you work in one contest at a time, set `MOJ_CONTEST` and drop the contest from the reference:
+
+```bash
+export MOJ_CONTEST=sbc2026
+rbx run @moj/d89e6b7735c675fd7b50b3354ba64097
+```
+
+Prefer the long form in `problem.rbx.yml`. A reference you commit is read months later on
+someone else's machine, where nothing says which contest was meant.
+
+### Logging in to a contest
+
+Downloading needs a session **for that contest**, which is not the one `moj login` creates --
+that one covers the training area alone. Contest accounts are handed out by whoever runs the
+contest, and they log in through a second CLI, `moj-contest`:
+
+```bash
+moj-contest login sbc2026
+```
+
+Install it alongside `moj` if you don't have it yet:
+
+```bash
+curl -fLO https://moj.naquadah.com.br/moj-contest && chmod +x moj-contest
+```
+
+As with uploading, {{rbx}} reuses the session that command establishes and never handles your
+credentials.
+
+### What you're allowed to download
+
+**Judges see every submission in the contest.** If your contest account is a judge, a chief
+judge or an admin, any submission id in that contest downloads.
+
+**Everyone else sees only their own.** A submission id that isn't yours is reported as not found
+rather than downloaded, and {{rbx}} says which of the two cases it hit -- reading someone else's
+code needs a judge account, not a different reference.
+
 ## Troubleshooting
 
 ### My problem has a tight `outputLimit`, but MOJ doesn't enforce it
