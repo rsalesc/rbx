@@ -177,6 +177,29 @@ Combining `-u` with `--calibrate` also queues the calibration right after the up
 server-side job and {{rbx}} doesn't wait for it -- check on it with `moj check <org>#<problem>`
 whenever you want.
 
+## Iterating faster with a single solution
+
+Calibration runs **every solution the package ships**: the accepted ones to measure the limits,
+then the rest to check they get the verdict you declared. On a problem with a dozen solutions
+that's the slowest part of an upload, and it's paid again on every re-upload.
+
+While you're still iterating -- fixing a statement, re-cutting the tests, re-uploading over and
+over -- `--reference-only` (or `-ro`) ships just the reference solution, your main one, and
+drops the rest:
+
+```bash
+rbx package moj -u -ro
+```
+
+Calibration then has exactly one solution to run, which is the minimum MOJ accepts. Everything
+else about the package is unchanged, and your solutions are still all run and checked locally
+before it's built -- what you give up is the judge's own verification of them.
+
+!!! warning
+    A package built this way is for iterating, not for the contest. Package again without the
+    flag before the problem goes live, so calibration verifies your solutions on the judge --
+    and, under `--calibrate`, so MOJ measures a limit for every language you ship a solution in.
+
 ## Previewing what a contest uploads
 
 Uploading a whole contest creates a problem per short name, and a typo in an org or a package

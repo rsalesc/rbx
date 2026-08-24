@@ -1955,6 +1955,20 @@ SPEC = {
                             'value': {'kind': 'none'},
                         },
                         {
+                            'help': 'If set, ship only the reference (main) solution, '
+                            'dropping the others. MOJ runs every solution in '
+                            'the package when it calibrates, so this makes an '
+                            'upload much faster -- at the cost of nothing '
+                            'verifying the dropped solutions on the judge. '
+                            'For iterating; package again without it before '
+                            'going live.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--reference-only', '-ro'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
                             'multiple': False,

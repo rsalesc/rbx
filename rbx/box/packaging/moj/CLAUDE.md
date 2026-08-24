@@ -284,6 +284,17 @@ and then `pass`, `slow`, `wrong` (verification only, and skipped entirely under
 `sols/good` among the solution dirs, so a draft never forces a recalibration either.
 Shipping drafts is about not losing them, not about getting them executed.
 
+**`rbx package moj --reference-only` / `-ro` ships only the model solution** (`reference_only`,
+read in `_solutions_to_ship` beside the probe case). Calibration runs everything the package
+ships — `sols/good` to measure, then `pass`/`slow`/`wrong` to verify — so on a problem with many
+solutions it is the bulk of an upload, paid again on every re-upload. The flag exists to make
+that iteration cheap; what it costs is exactly the judge-side verification, so `_write_solutions`
+says so out loud and the docs say to package again without it before the problem goes live.
+It is orthogonal to the timing mode, and it feeds
+`_languages_with_an_accepted_solution` — which reads the solutions **shipped**, not the ones
+declared, so under `--calibrate` the uncalibrated-languages warning names the languages the flag
+just dropped and points at the flag as the fix.
+
 ## Languages
 
 `MojLanguageExtension` (key `moj`, in `rbx/box/extensions.py`) mirrors
@@ -422,8 +433,9 @@ measure and it measures them from `sols/good`. A whitelisted language with no ac
 solution then falls back to `TL[default]` — the *tightest* measured limit, typically the
 C++ one, which no Python submission survives. So `_report_submission_languages` prints
 the enabled set always, and under `JudgeCalibrated` adds a warning naming those
-languages, with both fixes (an accepted solution in them, or `rbx time -p moj`). Under
-the pinned modes there is nothing to warn about.
+languages, with both fixes (an accepted solution in them, or `rbx time -p moj`) — or,
+under `--reference-only`, dropping the flag, which is what took their accepted
+solution out of the package. Under the pinned modes there is nothing to warn about.
 
 **A probe package still authors its own.** `ProbePackage(submission_languages=[...])` is
 set when the package exists for rbx to *measure* timings on the judge rather than to be

@@ -376,6 +376,7 @@ class MojPackager(BasePackager):
         main_language: Optional[str] = None,
         timing_mode: TimingMode = DEFAULT_TIMING_MODE,
         probe: Optional[ProbePackage] = None,
+        reference_only: bool = False,
     ):
         super().__init__(testcase_entries)
         # A MOJ package holds ONE statement, so the language is chosen here and
@@ -388,6 +389,11 @@ class MojPackager(BasePackager):
         # judged: it then ships only the model solution and whitelists the languages
         # rbx may testrun. See `ProbePackage`.
         self.probe = probe
+        # Ship only the model solution, dropping the rest. A probe package does this
+        # by construction; a setter asks for it with `rbx package moj
+        # --reference-only`, to keep the calibration MOJ runs on upload short.
+        # See `_solutions_to_ship`.
+        self.reference_only = reference_only
 
         # The two axes are separate arguments because they are separate questions --
         # but of their product only one cell is legal. A probe pinned from the profile
@@ -588,17 +594,27 @@ class MojPackager(BasePackager):
             'calibrate the time limits.[/warning]\n'
             '[warning]MOJ measures a limit per language from the accepted solutions '
             'the package ships, so those languages are judged under the tightest '
-            'measured limit. Add an accepted solution in them, or pin the limits with '
-            '[item]rbx time -p moj[/item].[/warning]'
+            'measured limit. '
+            + (
+                'Drop [item]--reference-only[/item], which is why this package '
+                'ships no accepted solution in them, '
+                if self.reference_only
+                else 'Add an accepted solution in them, '
+            )
+            + 'or pin the limits with [item]rbx time -p moj[/item].[/warning]'
         )
 
     def _languages_with_an_accepted_solution(self) -> Set[str]:
         """The MOJ ids MOJ can calibrate a time limit for: those of the accepted
-        solutions this package ships in `sols/good`."""
+        solutions this package ships in `sols/good`.
+
+        The solutions *shipped*, not the ones declared -- under
+        `--reference-only` every language but the model solution's loses its
+        measured limit, which is precisely what the caller is warned about."""
         from rbx.box.code import find_language
 
         languages = set()
-        for solution in package.get_solutions():
+        for solution in self._solutions_to_ship():
             if solution.outcome != ExpectedOutcome.ACCEPTED:
                 continue
             moj_language = get_moj_language_from_rbx_language(
@@ -1242,14 +1258,22 @@ class MojPackager(BasePackager):
     def _solutions_to_ship(self) -> List[Solution]:
         """The solutions this package carries.
 
-        Every declared one, normally -- MOJ verifies them during calibration. A probe
-        package carries only the model solution: `moj testrun` sends the source of the
-        solution being timed in the request body, so the timed solutions never have to
-        be in the package at all, and `calibreitor.sh` needs exactly one `sols/good`
-        to succeed. Shipping just that one keeps the single calibration a timing
-        session pays for as short as it can be.
+        Every declared one, normally -- MOJ verifies them during calibration. Only the
+        model solution in two cases:
+
+        - A probe package. `moj testrun` sends the source of the solution being timed
+          in the request body, so the timed solutions never have to be in the package
+          at all, and `calibreitor.sh` needs exactly one `sols/good` to succeed.
+        - `--reference-only`. Calibration runs every solution the package ships --
+          `sols/good` to measure the limits, then the rest to check their verdicts --
+          so on a problem with many solutions it is the slowest part of an upload.
+          Dropping all but the model solution is what makes an upload iterated on
+          repeatedly cheap; what is lost is exactly what calibration would have
+          verified, so the package is no longer one to hand to students.
+
+        Both keep the single `sols/good` `calibreitor.sh` cannot do without.
         """
-        if self.probe is None:
+        if self.probe is None and not self.reference_only:
             return package.get_solutions()
         main_solution = package.get_main_solution()
         # An empty list rather than an error: `_write_solutions` already reports a
@@ -1257,6 +1281,19 @@ class MojPackager(BasePackager):
         return [main_solution] if main_solution is not None else []
 
     def _write_solutions(self, into_path: pathlib.Path) -> None:
+        if self.reference_only and self.probe is None:
+            # Loud, because the dropped solutions are the ones calibration would have
+            # checked the verdicts of: this package is for iterating on an upload, not
+            # for handing to students.
+            console.console.print(
+                '[warning]Shipping only the reference solution: [item]--reference-only'
+                '[/item] is set.[/warning]\n'
+                '[warning]MOJ runs every solution the package ships when it '
+                'calibrates, so this is much faster -- but nothing verifies the '
+                'dropped solutions on the judge. Package again without the flag '
+                'before the problem goes live.[/warning]'
+            )
+
         sols_path = into_path / 'sols'
         written: Dict[str, Dict[str, pathlib.Path]] = collections.defaultdict(dict)
 

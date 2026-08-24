@@ -159,6 +159,15 @@ async def moj(
         help='If set, let MOJ calibrate the time limits on the judge machine '
         'instead of pinning the ones estimated by `rbx time -p moj`.',
     ),
+    reference_only: bool = typer.Option(
+        False,
+        '--reference-only',
+        '-ro',
+        help='If set, ship only the reference (main) solution, dropping the others. '
+        'MOJ runs every solution in the package when it calibrates, so this makes an '
+        'upload much faster -- at the cost of nothing verifying the dropped solutions '
+        'on the judge. For iterating; package again without it before going live.',
+    ),
 ):
     from rbx.box.packaging.moj.packager import (
         JudgeCalibrated,
@@ -183,6 +192,7 @@ async def moj(
             verification=verification,
             main_language=language,
             timing_mode=timing_mode,
+            reference_only=reference_only,
         )
         return
 
@@ -201,6 +211,7 @@ async def moj(
             verification=verification,
             main_language=language,
             timing_mode=timing_mode,
+            reference_only=reference_only,
             into_dir=directory,
         )
         await upload_package(problem_id, directory, calibrate=calibrate)
