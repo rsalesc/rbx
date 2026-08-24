@@ -191,6 +191,11 @@ class GradingFileOutput(BaseModel):
     intermediate: bool = False
     # Whether to track file through its hash (disable for optimization).
     hash: bool = True
+    # Whether the destination may be a symlink into the storage. Turn this off
+    # for an artifact something outside rbx opens by path: a symlink is typed by
+    # its target, and a storage blob is named by its digest, so it has no
+    # extension to be typed by.
+    symlink: bool = True
     # Whether to touch the file before the command runs.
     touch: bool = False
 
@@ -313,6 +318,11 @@ class TestcaseLog(RunLog):
     stderr_absolute_path: Optional[pathlib.Path] = None
     log_absolute_path: Optional[pathlib.Path] = None
     eval_absolute_path: Optional[pathlib.Path] = None
+    # The checker's *full* stderr, kept only when the run asked for it
+    # (`--keep-checker-stderr`). `None` -- the overwhelmingly common case -- is
+    # dropped from the serialized `.eval`/`.log`, so a run without the flag
+    # writes exactly the bytes it always did.
+    checker_stderr_absolute_path: Optional[pathlib.Path] = None
 
 
 class CheckerResult(BaseModel):
@@ -392,7 +402,8 @@ async def _process_output_artifacts(
         dst.parent.mkdir(parents=True, exist_ok=True)
 
         if (
-            output_artifact.digest is not None
+            output_artifact.symlink
+            and output_artifact.digest is not None
             and output_artifact.digest.value is not None
             and (
                 path_to_symlink := await sandbox.file_cacher.path_for_symlink(
@@ -406,7 +417,11 @@ async def _process_output_artifacts(
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.symlink_to(path_to_symlink)
         else:
-            # File is not in the persistent cache, copy it.
+            # File is not in the persistent cache, or the artifact asked not to
+            # be a symlink -- copy it. The unlink matters in the second case:
+            # dst may be a symlink left by an earlier run, and opening that
+            # 'wb' would write through it, into the storage blob.
+            dst.unlink(missing_ok=True)
             with dst.open('wb') as f:
                 with sandbox.get_file(output_artifact.src) as sb_f:
                     copyfileobj(

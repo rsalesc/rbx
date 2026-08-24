@@ -229,6 +229,17 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': "Also keep each testcase's full checker stderr, as a "
+                    "`.checker.err` file next to its output. Only the checker's "
+                    'last line reaches the verdict, so this is how to read whatever '
+                    'it printed before that.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--keep-checker-stderr'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Whether to stop running a solution as soon as it gets a '
                     'non-accepted verdict. Only meant for quick experimentation, as '
                     'the remaining tests are reported as failed.',
@@ -507,6 +518,17 @@ SPEC = {
                     'kind': 'option',
                     'multiple': False,
                     'names': ['--merge-stderr', '-e'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': "Also keep each testcase's full checker stderr, as a "
+                    "`.checker.err` file next to its output. Only the checker's "
+                    'last line reaches the verdict, so this is how to read whatever '
+                    'it printed before that.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--keep-checker-stderr'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
                 },

@@ -243,4 +243,9 @@ def get_run_testcase_metadata_markup(
     lines.append(f'[b]Time:[/b] {time_str} / [b]Memory:[/b] {memory_str}')
     if checker_msg is not None:
         lines.append(f'[b]Checker:[/b] {utils.escape_markup(checker_msg)}')
+    # Only `--keep-checker-stderr` runs have one, and only its presence is worth
+    # saying: the file itself is one keystroke away (`4`), and dumping it here
+    # would push the verdict off the panel.
+    if eval.log.checker_stderr_absolute_path is not None:
+        lines.append('[b]Checker stderr:[/b] press [b]4[/b] to view')
     return '\n'.join(lines)

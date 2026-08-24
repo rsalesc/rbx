@@ -1,7 +1,7 @@
 import textwrap
 
 from rbx import testing_utils
-from rbx.box import code, tasks
+from rbx.box import checkers, code, tasks
 from rbx.box.environment import VerificationLevel
 from rbx.box.schema import CodeItem, Testcase
 from rbx.box.testing import testing_package
@@ -378,3 +378,62 @@ class TestGetLimitsForLanguage:
         assert limits.time is None
         assert limits.configuredTime == 1000
         assert limits.display_time() == 1000
+
+
+class TestKeepCheckerStderr:
+    """`run_solution_on_testcase(keep_checker_stderr=...)` and its artifact."""
+
+    async def _run(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        keep_checker_stderr: bool,
+    ):
+        testing_pkg.set_checker('checker.cpp', src='checkers/checker-verbose.cpp')
+        checker_digest = await checkers.compile_checker()
+
+        py_file = testing_pkg.add_file(
+            'solution.py', src='program_test/simple_hello.py'
+        )
+        solution = CodeItem(path=py_file)
+        compiled_digest = await code.compile_item(solution)
+
+        input_file = testing_pkg.add_file('test.in')
+        input_file.write_text('')
+        output_file = testing_pkg.path('test.ans')
+        output_file.write_text('Hello, World!\n')
+
+        output_dir = testing_pkg.path('outputs')
+        output_dir.mkdir(exist_ok=True)
+
+        return await tasks.run_solution_on_testcase(
+            solution=solution,
+            compiled_digest=compiled_digest,
+            checker_digest=checker_digest,
+            testcase=Testcase(inputPath=input_file, outputPath=output_file),
+            output_dir=output_dir,
+            verification=VerificationLevel.NONE,
+            use_retries=False,
+            keep_checker_stderr=keep_checker_stderr,
+        )
+
+    async def test_writes_checker_err_artifact_when_asked(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        evaluation = await self._run(testing_pkg, keep_checker_stderr=True)
+
+        checker_stderr_path = evaluation.log.checker_stderr_absolute_path
+        assert checker_stderr_path is not None
+        assert checker_stderr_path.name == 'test.checker.err'
+        contents = checker_stderr_path.read_text()
+        assert 'diagnostic line 1' in contents
+        assert 'diagnostic line 2' in contents
+        # The verdict message is unchanged -- still the last line only.
+        assert evaluation.result.message == 'wrong answer verdict line'
+
+    async def test_writes_nothing_by_default(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        evaluation = await self._run(testing_pkg, keep_checker_stderr=False)
+
+        assert evaluation.log.checker_stderr_absolute_path is None
+        assert not list(testing_pkg.path('outputs').glob('*.checker.err'))

@@ -344,6 +344,13 @@ async def run_visualizer(
                 src=sandbox_path,
                 dest=visualization_path,
                 optional=True,
+                # A visualization is opened by whatever handles its extension:
+                # a browser, the editor, the VS Code panel's <iframe>. A symlink
+                # is typed by its target, and the storage blob it would point at
+                # is named by its digest -- so a symlinked .html renders as its
+                # own source. This is the one artifact rbx hands to somebody
+                # else, so it is written as a real file.
+                symlink=False,
             ),
         ],
     )

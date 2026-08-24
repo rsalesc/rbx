@@ -516,6 +516,13 @@ async def run(
         help='Capture the run report and copy it to the clipboard. '
         'Pass a format: --share png or --share text.',
     ),
+    keep_checker_stderr: bool = typer.Option(
+        False,
+        '--keep-checker-stderr',
+        help="Also keep each testcase's full checker stderr, as a `.checker.err` file "
+        "next to its output. Only the checker's last line reaches the verdict, so "
+        'this is how to read whatever it printed before that.',
+    ),
     fail_fast: bool = typer.Option(
         False,
         '--fail-fast',
@@ -636,6 +643,7 @@ async def run(
             only_accepted=only_accepted,
             abort_on=fail_fast_abort_predicate if fail_fast else None,
             runner=solution_runner,
+            keep_checker_stderr=keep_checker_stderr,
             # Said explicitly even though it is the default: this is the purpose
             # a backend stages for, and a remote one uploads to a different
             # problem for each. Leaving it implicit here would make the two
@@ -1006,6 +1014,13 @@ async def irun(
         '(colored distinctly). Requires -p. Default: stderr is shown in a '
         'separate section.',
     ),
+    keep_checker_stderr: bool = typer.Option(
+        False,
+        '--keep-checker-stderr',
+        help="Also keep each testcase's full checker stderr, as a `.checker.err` file "
+        "next to its output. Only the checker's last line reaches the verdict, so "
+        'this is how to read whatever it printed before that.',
+    ),
     sanitized: bool = typer.Option(
         False,
         '--sanitized',
@@ -1092,6 +1107,7 @@ async def irun(
             custom_output=output,
             print=print,
             merge_stderr=merge_stderr,
+            keep_checker_stderr=keep_checker_stderr,
             sanitized=sanitized,
             only_accepted=only_accepted,
             validate=validate,

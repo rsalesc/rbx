@@ -650,6 +650,24 @@ Can only be set for the "samples" testgroup.
 """,
     )
 
+    validateStatementFiles: bool = Field(
+        default=False,
+        description="""
+Whether the statement-only testcase files of this group should be validated.
+
+Statement-only files -- `<name>.in.statement` and `<name>.out.statement` -- override
+what a sample shows in the statement without touching the testcase that is actually
+judged. By default they are taken at face value: nothing is run over them.
+
+Setting this to `true` runs this group's `validator` and `extraValidators` over every
+`.in.statement` file, and its `outputValidators` over every `.out.statement` file, so a
+malformed statement-only file fails the build instead of shipping. The checker is still
+not run over these files -- skipping it is the whole point of the `.statement` extension.
+
+Mostly useful in the `samples` group. Applies to the group's subgroups as well.
+""",
+    )
+
     @model_validator(mode='after')
     def check_model_solution_for_samples(self):
         if self.name == 'samples':

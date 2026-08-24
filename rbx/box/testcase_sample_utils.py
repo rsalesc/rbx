@@ -8,6 +8,7 @@ from rbx import console, utils
 from rbx.box import builder, checkers, package, testcase_extractors, validators
 from rbx.box.environment import VerificationLevel, VerificationParam
 from rbx.box.generation_schema import GenerationTestcaseEntry
+from rbx.box.schema import CodeItem
 from rbx.box.testcase_utils import (
     Testcase,
     TestcaseInteraction,
@@ -20,6 +21,7 @@ from rbx.box.testcase_utils import (
 from rbx.box.validators import (
     TestcaseValidationInfo,
     compile_output_validators_for_entries,
+    compile_validators_for_entries,
 )
 from rbx.grading.steps import Outcome
 
@@ -42,6 +44,8 @@ class StatementSample(BaseModel):
     explanationFromBlocks: bool = False
     hasOutput: bool = True
     checkOutput: bool = False
+    validateStatementInput: bool = False
+    validateStatementOutput: bool = False
     interaction: Optional[SampleTestcaseInteraction] = None
 
 
@@ -167,6 +171,14 @@ def _get_statement_sample_from_entry(
 
         process_additional_files(entry.metadata.copied_from)
 
+        # Applied after `process_additional_files` -- unlike `.out.statement`, which is
+        # applied before it. An explicit `.in.statement` is the setter saying what the
+        # statement should show, so it outranks a `.pin` captured from an interaction;
+        # and resolving it last keeps the interaction lookup anchored to the real input.
+        in_statement = entry.metadata.copied_from.inputPath.with_suffix('.in.statement')
+        if in_statement.is_file():
+            input_path = in_statement
+
     # Make all paths absolute.
     input_path = utils.abspath(input_path)
     output_path = utils.abspath(output_path)
@@ -185,6 +197,15 @@ def _get_statement_sample_from_entry(
     ):
         should_check_output = True
 
+    # Statement-only files are never checked, but the group can ask for them to be
+    # validated -- see `validateStatementFiles` in the schema.
+    validate_statement_input = (
+        entry.validate_statement_files and input_path.name.endswith('.in.statement')
+    )
+    validate_statement_output = (
+        entry.validate_statement_files and output_path.name.endswith('.out.statement')
+    )
+
     return StatementSample(
         entry=entry,
         inputPath=input_path,
@@ -192,6 +213,8 @@ def _get_statement_sample_from_entry(
         answerPath=answer_path,
         hasOutput=output_path is not None,
         checkOutput=should_check_output,
+        validateStatementInput=validate_statement_input,
+        validateStatementOutput=validate_statement_output,
         interaction=_build_sample_interaction(entry, interaction)
         if interaction is not None
         else None,
@@ -246,17 +269,37 @@ async def _check_sample(checker_digest: str, sample: StatementSample) -> bool:
     return True
 
 
-async def _validate_sample_outputs(
+def _input_validators_for(entry: GenerationTestcaseEntry) -> List[CodeItem]:
+    validators_for_entry: List[CodeItem] = []
+    if entry.validator is not None:
+        validators_for_entry.append(entry.validator)
+    validators_for_entry.extend(entry.extra_validators)
+    return validators_for_entry
+
+
+async def _validate_samples(
     samples: List[StatementSample],
+    output: bool,
     progress: Optional[utils.StatusProgress] = None,
 ) -> bool:
+    """Run the samples' validators over their input or output files.
+
+    With ``output=True`` this runs the entries' output validators over
+    ``outputPath``; otherwise it runs the entries' validator and extra validators
+    over ``inputPath``.
+    """
+
     def step():
         if progress is not None:
             progress.step()
 
-    validator_to_compiled_digest = await compile_output_validators_for_entries(
-        [sample.entry for sample in samples]
-    )
+    entries = [sample.entry for sample in samples]
+    if output:
+        validator_to_compiled_digest = await compile_output_validators_for_entries(
+            entries
+        )
+    else:
+        validator_to_compiled_digest = await compile_validators_for_entries(entries)
 
     if not validator_to_compiled_digest:
         if progress is not None:
@@ -267,20 +310,24 @@ async def _validate_sample_outputs(
 
     for sample in samples:
         entry = sample.entry
-        for output_validator in entry.output_validators:
-            compiled_digest = validator_to_compiled_digest[str(output_validator.path)]
+        path = sample.outputPath if output else sample.inputPath
+        validators_for_entry = (
+            entry.output_validators if output else _input_validators_for(entry)
+        )
+        for validator in validators_for_entry:
+            compiled_digest = validator_to_compiled_digest[str(validator.path)]
             ok, message, _ = await validators.validate_file(
-                sample.outputPath,
-                output_validator,
+                path,
+                validator,
                 compiled_digest,
                 group=entry.group_entry.group,
             )
             validation_info.append(
                 TestcaseValidationInfo(
-                    validator=output_validator,
+                    validator=validator,
                     testcase=entry.group_entry,
                     generation_metadata=entry.metadata,
-                    path=sample.outputPath,
+                    path=path,
                     ok=ok,
                     hit_bounds={},
                     message=message,
@@ -288,9 +335,23 @@ async def _validate_sample_outputs(
             )
             step()
 
-    validators.print_validation_report(validation_info, output_validation=True)
+    validators.print_validation_report(validation_info, output_validation=output)
 
     return all(info.ok for info in validation_info)
+
+
+async def _validate_sample_outputs(
+    samples: List[StatementSample],
+    progress: Optional[utils.StatusProgress] = None,
+) -> bool:
+    return await _validate_samples(samples, output=True, progress=progress)
+
+
+async def _validate_sample_inputs(
+    samples: List[StatementSample],
+    progress: Optional[utils.StatusProgress] = None,
+) -> bool:
+    return await _validate_samples(samples, output=False, progress=progress)
 
 
 async def build_samples(
@@ -311,21 +372,40 @@ async def build_samples(
     if not validate or verification < VerificationLevel.VALIDATE.value:
         return True
 
-    # Validate manually specified statement-only outputs.
+    # Validate manually specified statement-only inputs and outputs.
     samples = await get_statement_samples()
+    # `.out` outputs are both validated and checked; `.out.statement` outputs are only
+    # validated, and only when the group opts in through `validateStatementFiles`.
     samples_to_check = [sample for sample in samples if sample.checkOutput]
+    inputs_to_validate = [sample for sample in samples if sample.validateStatementInput]
+    outputs_to_validate = [
+        sample
+        for sample in samples
+        if sample.checkOutput or sample.validateStatementOutput
+    ]
 
-    if not samples_to_check:
+    if not inputs_to_validate and not outputs_to_validate:
         return True
 
-    with utils.StatusProgress(
-        'Validating manual statement outputs for testcases...',
-        'Validated [item]{processed}[/item] manual statement outputs...',
-        keep=True,
-    ) as s:
-        ok = await _validate_sample_outputs(samples_to_check, s)
+    if inputs_to_validate:
+        with utils.StatusProgress(
+            'Validating manual statement inputs for testcases...',
+            'Validated [item]{processed}[/item] manual statement inputs...',
+            keep=True,
+        ) as s:
+            ok = await _validate_sample_inputs(inputs_to_validate, s)
 
-    if ok:
+    if ok and outputs_to_validate:
+        with utils.StatusProgress(
+            'Validating manual statement outputs for testcases...',
+            'Validated [item]{processed}[/item] manual statement outputs...',
+            keep=True,
+        ) as s:
+            ok = await _validate_sample_outputs(outputs_to_validate, s)
+
+    checked = False
+    if ok and samples_to_check:
+        checked = True
         with utils.StatusProgress(
             'Checking manual statement outputs for testcases...',
             'Checked [item]{processed}[/item] manual statement outputs...',
@@ -339,16 +419,17 @@ async def build_samples(
 
     if not ok:
         console.console.print(
-            '[error]Some manually provided sample outputs are not considered valid answers.[/error]'
+            '[error]Some manually provided sample files are not considered valid.[/error]'
         )
-        console.console.print(
-            '[error]If you think these files should not be checked, use the [item].out.statement[/item] file extension (not recommended).[/error]'
-        )
+        if checked:
+            console.console.print(
+                '[error]If you think these files should not be checked, use the [item].out.statement[/item] file extension (not recommended).[/error]'
+            )
         console.console.print(
             '[error]You can also use either the [item]-v0[/item] or the [item]--no-validate[/item] flag to disable sample validation temporarily.[/error]'
         )
     else:
         console.console.print(
-            '[success]All manual statement outputs are considered valid.[/success]'
+            '[success]All manual statement files are considered valid.[/success]'
         )
     return ok

@@ -177,10 +177,20 @@ def _preset_tree():
     return env.macros['preset_tree']
 
 
-def _tracked_preset_paths():
+def _contest_tree():
+    env = _Env()
+    env.variables = _mkdocs_extra()
+    define_env(env)
+    return env.macros['contest_preset_tree']
+
+
+def _tracked_preset_paths(preset_dir=None):
+    import main
     from main import _tracked_preset_files
 
-    return {str(p) for p in _tracked_preset_files()}
+    return {
+        str(p) for p in _tracked_preset_files(preset_dir or main.PRESET_PROBLEM_DIR)
+    }
 
 
 def test_the_first_steps_tree_is_rendered_rather_than_transcribed():
@@ -236,6 +246,48 @@ def test_an_annotation_for_a_path_the_preset_dropped_is_an_error():
         _preset_tree()()
     finally:
         main.PRESET_TREE_ANNOTATIONS = original
+
+
+def test_the_contest_tree_is_rendered_rather_than_transcribed():
+    root = pathlib.Path(__file__).resolve().parents[2]
+    page = (
+        root / 'docs' / 'setters' / 'contest-scaffolding-walkthrough.md'
+    ).read_text()
+
+    assert '{{ contest_preset_tree() }}' in page
+    assert not re.search(r'^\s*[├└]── .*# \(\d+\)!', page, re.M), (
+        'the contest-scaffolding walkthrough has grown a hand-written tree; '
+        'render it with {{ contest_preset_tree() }} instead'
+    )
+
+
+def test_every_file_the_contest_preset_ships_shows_up_in_the_tree():
+    import main
+
+    rendered = _contest_tree()()
+
+    for path in _tracked_preset_paths(main.PRESET_CONTEST_DIR):
+        assert pathlib.Path(path).name in rendered, (
+            f'the preset ships {path}, but the contest tree does not show it'
+        )
+
+
+def test_the_contest_tree_shows_the_chrome_a_problem_does_not_carry():
+    tree = _contest_tree()().split('```')[1]
+
+    # The other half of the statements v2 split the problem tree asserts:
+    # whatever a problem no longer ships has to be findable here.
+    assert 'contest.rbx.yml' in tree
+    assert 'icpc.sty' in tree
+    # A fresh contest holds no problems -- that is the point the page makes
+    # right under the tree.
+    assert 'problem.rbx.yml' not in tree
+
+
+def test_an_annotation_for_a_contest_path_the_preset_dropped_is_an_error():
+    # Same contract as the problem tree: a stale key fails the build instead of
+    # quietly annotating nothing.
+    _contest_tree()()
 
 
 def test_annotations_resolve_the_mkdocs_variables_they_use():

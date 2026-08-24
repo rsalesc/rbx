@@ -27,6 +27,7 @@ def create_entry(
     copied_to_output: Optional[pathlib.Path] = None,
     copied_from_input: Optional[pathlib.Path] = None,
     copied_from_output: Optional[pathlib.Path] = None,
+    validate_statement_files: bool = False,
 ) -> GenerationTestcaseEntry:
     # Resolve all paths to avoid symlink issues
     copied_to_input = copied_to_input.resolve()
@@ -54,6 +55,7 @@ def create_entry(
         group_entry=group_entry,
         subgroup_entry=group_entry,  # Reuse for simplicity
         metadata=metadata,
+        validate_statement_files=validate_statement_files,
     )
 
 
@@ -741,6 +743,8 @@ async def test_build_samples_success(
     # Setup samples with checkOutput=True
     sample = AsyncMock()
     sample.checkOutput = True
+    sample.validateStatementInput = False
+    sample.validateStatementOutput = False
     sample.entry = AsyncMock()
     val_mock = MagicMock()
     val_mock.path = 'val1'
@@ -777,6 +781,8 @@ async def test_build_samples_validation_fail(
 
     sample = AsyncMock()
     sample.checkOutput = True
+    sample.validateStatementInput = False
+    sample.validateStatementOutput = False
     sample.entry = AsyncMock()
     val_mock = MagicMock()
     val_mock.path = 'val1'
@@ -808,6 +814,8 @@ async def test_build_samples_checker_fail(
 
     sample = AsyncMock()
     sample.checkOutput = True
+    sample.validateStatementInput = False
+    sample.validateStatementOutput = False
     sample.entry = AsyncMock()
     val_mock = MagicMock()
     val_mock.path = 'val1'
@@ -891,3 +899,238 @@ async def test_build_samples_check_outputs_only_true(
 
     assert result is True
     mocks['build'].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_statement_samples_in_statement_overrides_input(
+    tmp_path, mock_extract_generation_testcases_from_groups
+):
+    """A manual .in.statement file becomes the input shown in the statement."""
+    dest_input = tmp_path / 'dest.in'
+
+    src_input = tmp_path / 'manual.in'
+    src_input.touch()
+    src_in_stmt = tmp_path / 'manual.in.statement'
+    src_in_stmt.touch()
+
+    entry = create_entry(
+        TestcaseEntry(group='samples', index=0),
+        copied_to_input=dest_input,
+        copied_from_input=src_input,
+    )
+    mock_extract_generation_testcases_from_groups.return_value = [entry]
+
+    samples = await testcase_sample_utils.get_statement_samples()
+    sample = samples[0]
+
+    assert sample.inputPath.resolve() == src_in_stmt.resolve()
+    # Not validated: the group did not opt in.
+    assert sample.validateStatementInput is False
+
+
+@pytest.mark.asyncio
+async def test_get_statement_samples_in_statement_beats_pin(
+    tmp_path, mock_extract_generation_testcases_from_groups
+):
+    """An explicit .in.statement outranks a .pin captured from an interaction."""
+    dest_input = tmp_path / 'dest.in'
+
+    src_input = tmp_path / 'manual.in'
+    src_input.touch()
+    (tmp_path / 'manual.pin').touch()
+    src_in_stmt = tmp_path / 'manual.in.statement'
+    src_in_stmt.touch()
+
+    entry = create_entry(
+        TestcaseEntry(group='samples', index=0),
+        copied_to_input=dest_input,
+        copied_from_input=src_input,
+    )
+    mock_extract_generation_testcases_from_groups.return_value = [entry]
+
+    samples = await testcase_sample_utils.get_statement_samples()
+    assert samples[0].inputPath.resolve() == src_in_stmt.resolve()
+
+
+@pytest.mark.asyncio
+async def test_get_statement_samples_statement_files_validated_when_opted_in(
+    tmp_path, mock_extract_generation_testcases_from_groups
+):
+    """With validateStatementFiles on, both .statement files are marked for validation."""
+    dest_input = tmp_path / 'dest.in'
+
+    src_input = tmp_path / 'manual.in'
+    src_input.touch()
+    src_in_stmt = tmp_path / 'manual.in.statement'
+    src_in_stmt.touch()
+    src_out_stmt = tmp_path / 'manual.out.statement'
+    src_out_stmt.touch()
+
+    entry = create_entry(
+        TestcaseEntry(group='samples', index=0),
+        copied_to_input=dest_input,
+        copied_from_input=src_input,
+        validate_statement_files=True,
+    )
+    mock_extract_generation_testcases_from_groups.return_value = [entry]
+
+    samples = await testcase_sample_utils.get_statement_samples()
+    sample = samples[0]
+
+    assert sample.inputPath.resolve() == src_in_stmt.resolve()
+    assert sample.outputPath.resolve() == src_out_stmt.resolve()
+    assert sample.validateStatementInput is True
+    assert sample.validateStatementOutput is True
+    # The checker is still never run over a .statement file.
+    assert sample.checkOutput is False
+
+
+@pytest.mark.asyncio
+async def test_get_statement_samples_opt_in_does_not_touch_plain_files(
+    tmp_path, mock_extract_generation_testcases_from_groups
+):
+    """validateStatementFiles only marks .statement files, not plain .in/.out ones."""
+    dest_input = tmp_path / 'dest.in'
+    dest_output = tmp_path / 'dest.out'
+    dest_output.touch()
+
+    src_input = tmp_path / 'manual.in'
+    src_input.touch()
+    src_out = tmp_path / 'manual.out'
+    src_out.touch()
+
+    entry = create_entry(
+        TestcaseEntry(group='samples', index=0),
+        copied_to_input=dest_input,
+        copied_to_output=dest_output,
+        copied_from_input=src_input,
+        validate_statement_files=True,
+    )
+    mock_extract_generation_testcases_from_groups.return_value = [entry]
+
+    samples = await testcase_sample_utils.get_statement_samples()
+    sample = samples[0]
+
+    assert sample.validateStatementInput is False
+    assert sample.validateStatementOutput is False
+    # The plain .out is still checked, as before.
+    assert sample.checkOutput is True
+
+
+def _statement_sample_mock(
+    *,
+    check_output: bool = False,
+    validate_input: bool = False,
+    validate_output: bool = False,
+) -> MagicMock:
+    sample = MagicMock()
+    sample.checkOutput = check_output
+    sample.validateStatementInput = validate_input
+    sample.validateStatementOutput = validate_output
+    sample.inputPath = 'in_path'
+    sample.outputPath = 'out_path'
+    sample.entry = MagicMock()
+    sample.entry.group_entry.group = 'samples'
+    sample.entry.metadata = 'metadata'
+    sample.entry.validator = None
+    sample.entry.extra_validators = []
+    sample.entry.output_validators = []
+    return sample
+
+
+@pytest.mark.asyncio
+async def test_build_samples_validates_statement_output_without_checking(
+    mock_dependencies_for_build_samples,
+):
+    """A .out.statement sample is validated but never handed to the checker."""
+    mocks = mock_dependencies_for_build_samples
+
+    val_mock = MagicMock()
+    val_mock.path = 'out_val'
+    sample = _statement_sample_mock(validate_output=True)
+    sample.entry.output_validators = [val_mock]
+    mocks['get_statement_samples'].return_value = [sample]
+
+    mocks['compile_output_validators'].return_value = {'out_val': 'digest'}
+    mocks['validate_file'].return_value = (True, 'ok', {})
+
+    result = await testcase_sample_utils.build_samples(verification=10, validate=True)
+
+    assert result is True
+    mocks['validate_file'].assert_called_once()
+    assert mocks['validate_file'].call_args.args[0] == 'out_path'
+    mocks['compile_checker'].assert_not_called()
+    mocks['check_sample'].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_build_samples_validates_statement_input(
+    mock_dependencies_for_build_samples, monkeypatch
+):
+    """A .in.statement sample is validated with the group's input validators."""
+    mocks = mock_dependencies_for_build_samples
+
+    compile_input_validators = AsyncMock(return_value={'in_val': 'digest'})
+    monkeypatch.setattr(
+        'rbx.box.testcase_sample_utils.compile_validators_for_entries',
+        compile_input_validators,
+    )
+
+    val_mock = MagicMock()
+    val_mock.path = 'in_val'
+    sample = _statement_sample_mock(validate_input=True)
+    sample.entry.validator = val_mock
+    mocks['get_statement_samples'].return_value = [sample]
+
+    mocks['validate_file'].return_value = (True, 'ok', {})
+
+    result = await testcase_sample_utils.build_samples(verification=10, validate=True)
+
+    assert result is True
+    compile_input_validators.assert_called_once()
+    mocks['validate_file'].assert_called_once()
+    assert mocks['validate_file'].call_args.args[0] == 'in_path'
+    mocks['check_sample'].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_build_samples_statement_input_validation_fails(
+    mock_dependencies_for_build_samples, monkeypatch
+):
+    """A failing .in.statement validation fails the build."""
+    mocks = mock_dependencies_for_build_samples
+
+    monkeypatch.setattr(
+        'rbx.box.testcase_sample_utils.compile_validators_for_entries',
+        AsyncMock(return_value={'in_val': 'digest'}),
+    )
+
+    val_mock = MagicMock()
+    val_mock.path = 'in_val'
+    sample = _statement_sample_mock(validate_input=True)
+    sample.entry.validator = val_mock
+    mocks['get_statement_samples'].return_value = [sample]
+
+    mocks['validate_file'].return_value = (False, 'fail', {})
+
+    result = await testcase_sample_utils.build_samples(verification=10, validate=True)
+
+    assert result is False
+    mocks['compile_output_validators'].assert_not_called()
+    mocks['check_sample'].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_build_samples_skips_statement_files_when_not_opted_in(
+    mock_dependencies_for_build_samples,
+):
+    """Without the opt-in there is nothing to validate and nothing to check."""
+    mocks = mock_dependencies_for_build_samples
+    mocks['get_statement_samples'].return_value = [_statement_sample_mock()]
+
+    result = await testcase_sample_utils.build_samples(verification=10, validate=True)
+
+    assert result is True
+    mocks['compile_output_validators'].assert_not_called()
+    mocks['validate_file'].assert_not_called()
+    mocks['check_sample'].assert_not_called()

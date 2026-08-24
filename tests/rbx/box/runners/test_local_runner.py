@@ -4,6 +4,7 @@ from typing import List, Tuple
 
 import pytest
 
+from rbx.box import solutions
 from rbx.box.deferred import Deferred
 from rbx.box.environment import VerificationLevel
 from rbx.box.generation_schema import GenerationTestcaseEntry
@@ -227,3 +228,30 @@ async def test_local_runner_yields_one_lazy_deferred_per_testcase(
     assert first.eval.peek() is evaluation
     assert await first.eval() is evaluation
     assert evaluation.result.outcome == Outcome.ACCEPTED
+
+
+@pytest.mark.test_pkg('problems/box1')
+async def test_local_runner_forwards_keep_checker_stderr(
+    pkg_from_testdata: pathlib.Path,
+):
+    """`--keep-checker-stderr` has to reach the one call that can honour it."""
+    await _build_testset()
+
+    seen: List[bool] = []
+    real_run = solutions.run_solution_on_testcase
+
+    async def spy(*args, **kwargs):
+        seen.append(kwargs.get('keep_checker_stderr', False))
+        return await real_run(*args, **kwargs)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(solutions, 'run_solution_on_testcase', spy)
+        result = await run_solutions(
+            verification=VerificationLevel.FULL,
+            tracked_solutions=['sol.cpp'],
+            runner=LocalRunner(),
+            keep_checker_stderr=True,
+        )
+        await result.items[0].eval()
+
+    assert seen == [True]

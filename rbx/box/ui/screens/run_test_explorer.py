@@ -38,6 +38,7 @@ class RunTestExplorerScreen(TestListSearchMixin, Screen):
         Binding('1', 'show_output', 'Show output', show=False),
         Binding('2', 'show_stderr', 'Show stderr', show=False),
         Binding('3', 'show_log', 'Show log', show=False),
+        Binding('4', 'show_checker_stderr', 'Show checker stderr', show=False),
         Binding('m', 'toggle_test_metadata', 'Toggle metadata', show=False),
         Binding('r', 'toggle_metadata', 'Toggle run metadata', show=False),
         Binding('s', 'toggle_side_by_side', 'Toggle sxs', show=False),
@@ -237,6 +238,11 @@ class RunTestExplorerScreen(TestListSearchMixin, Screen):
 
     def action_show_log(self):
         self.query_one('#test-output', TwoSidedTestBoxWidget).show_log()
+
+    def action_show_checker_stderr(self):
+        # Empty unless the run was made with `--keep-checker-stderr`; the
+        # metadata panel is what says whether there is anything to look at.
+        self.query_one('#test-output', TwoSidedTestBoxWidget).show_checker_stderr()
 
     def action_toggle_metadata(self):
         self.query_one('#test-output', TwoSidedTestBoxWidget).toggle_metadata()

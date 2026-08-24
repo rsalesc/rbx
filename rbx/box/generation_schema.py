@@ -74,6 +74,7 @@ class GenerationTestcaseEntry(BaseModel):
     validator: Optional[CodeItem] = None
     extra_validators: List[CodeItem] = []
     output_validators: List[CodeItem] = []
+    validate_statement_files: bool = False
     model_solution: Optional[Solution] = None
 
     visualizer: Optional[Visualizer] = None
