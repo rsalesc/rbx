@@ -190,7 +190,7 @@ Or target specific problems by letter:
 
 ```bash
 rbx on A package boca       # Only problem A
-rbx on A-C package boca     # Problems A through C
+rbx on A..C package boca    # Problems A through C
 rbx on A,C package boca     # Problems A and C
 ```
 
@@ -250,7 +250,7 @@ rbx each package boca -u
 rbx on A package boca -u
 
 # Upload problems A through C
-rbx on A-C package boca -u
+rbx on A..C package boca -u
 ```
 
 ### Option B: Manual upload {: #manual-upload }

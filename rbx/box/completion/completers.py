@@ -56,13 +56,23 @@ def complete_problem(ctx: CompletionContext, incomplete: str) -> List[Completion
     for p in _peek_list(Path(root), 'contest.rbx.yml', 'problems'):
         if not isinstance(p, dict):
             continue
-        if p.get('short_name'):
-            names.add(p['short_name'])
+        short_name = p.get('short_name')
+        if short_name:
+            names.add(short_name)
         aliases = p.get('aliases')
         if isinstance(aliases, list):
             for alias in aliases:
                 if alias:
                     names.add(alias)
+        # The other two things `rbx on` accepts: the folder the problem lives
+        # in, and the name it declares in its own package.
+        path = p.get('path') or short_name
+        if not isinstance(path, str) or not path:
+            continue
+        names.add(Path(path).name)
+        problem_name = peek.peek(Path(root) / path / 'problem.rbx.yml').get('name')
+        if isinstance(problem_name, str) and problem_name:
+            names.add(problem_name)
     return _items(names)
 
 

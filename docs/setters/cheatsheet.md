@@ -92,7 +92,9 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | Build each problem, not stopping at failures    | `rbx contest each -k build`           |
 | Package each problem in the contest             | `rbx contest each package boca`       |
 | Build problem A in the contest                  | `rbx contest on A build`              |
-| Build problems A to C in the contest            | `rbx contest on A-C build`            |
+| Build a problem by name, alias or folder        | `rbx contest on knapsack build`       |
+| Build problems A to C in the contest            | `rbx contest on A..C build`           |
+| Build every problem but C                       | `rbx contest on '*,!C' build`         |
 | Chain commands for a problem                    | `rbx contest on A build :: run`       |
 | Print a summary of the contest                  | `rbx contest summary`                 |
 | List all contests in the current directory      | `rbx contest list`                    |
@@ -481,6 +483,8 @@ problems:
     path: "problem_folder"
     color: "ff0000"  # Optional
     aliases: ["apple", "prob-a"]  # Optional; use any of these or short_name in e.g. rbx on <name> run
+# A problem can also be selected by its own `name` or by its folder basename.
+# See the contest reference for the full selector syntax.
 ```
 
 ## `env.rbx.yml`
