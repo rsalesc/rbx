@@ -77,13 +77,70 @@ give you more:
 | --- | --- |
 | `!Command {command: ..., hidden: true}` | Run it, but keep it out of the cast |
 | `!Interactive {command: ..., keys: [...]}` | Run it and feed it keys — for TUIs and prompts |
+| `!Command {command: ..., speed: 8}` | Run it, but play it back eight times faster (see below) |
+| `!Command {command: ..., width: 80, height: 20}` | Run it in a terminal of its own size (see below) |
 | `!Wait 3s` | Pause the *cast* without slowing the recording |
 | `!Marker Chapter one` | A chapter marker in the player |
 | `!Clear` | Clear the terminal |
 
+`speed` and the two size keys work on `!Interactive` too.
+
 `keys` accepts single characters, caret-escaped control codes (`^C`, `^D`,
-`^M` for Enter), and durations (`500ms`) to pause between keystrokes. The keys
-**must** leave the program exited, or the instruction hits its timeout.
+`^M` for Enter), durations (`500ms`) to pause between keystrokes, and `x8`
+tokens that change the playback rate from that point on. The keys **must**
+leave the program exited, or the instruction hits its timeout.
+
+### `speed`, and the `x8` key
+
+A cast's timeline is real elapsed time, so a command that computes for a minute
+costs a minute of playback. `speed` divides the time that command contributes:
+`speed: 8` plays a minute of work in under eight seconds without dropping a
+frame of it.
+
+It scales **measured** time only. The typing animation is synthesized at
+`type_speed`, so a fast-forwarded command still types its own name at a
+readable pace.
+
+One instruction, one rate is not always enough. `rbx time` is a single
+interactive command holding both the seconds that let a reader take in a prompt
+and the minute that waits out the estimation, so an `x8` inside its `keys`
+switches rate part-way through and `x1` switches back:
+
+```yaml
+- !Interactive
+  command: rbx time
+  keys:
+    - 4s          # read the strategy prompt at real speed
+    - '^M'
+    - x8          # ...then hurry through the estimation
+    - 45s
+    - x1
+    - '^M'
+```
+
+An `x8` steers the recording rather than the program: it costs no time and is
+never written to the pty.
+
+One thing this buys beyond pacing: a key dwell is an authored duration, not a
+measured one, so a scaled window has the same length on any machine. The
+warning below about recording on an idle machine does not apply to what you
+fast-forward.
+
+### `width` and `height` per instruction
+
+The spec's `width`/`height` size the whole recording, which sizes every screen
+to the tallest one in it. An instruction can ask for its own:
+
+```yaml
+- !Command {command: rbx time --auto, height: 20}
+```
+
+Each instruction already runs on its own pty, so this is a genuinely smaller
+terminal rather than a crop applied afterwards — `COLUMNS`/`LINES` go with it,
+and Rich reflows into the smaller view instead of being clipped. The recorder
+emits an asciicast `r` event so the player follows the change, and restores the
+spec's size afterwards so a crop meant for one instruction does not leak into
+the next.
 
 ### `end_pause`
 
