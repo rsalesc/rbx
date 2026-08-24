@@ -82,7 +82,8 @@ def complete_problem(ctx: CompletionContext, incomplete: str) -> List[Completion
 # `@boca/` trails it (the order the engine emits, preserved by the shell scripts).
 _MAIN_PREFIX = ('@main', 'first accepted solution')
 _BOCA_PREFIX = ('@boca/', 'download a BOCA submission, e.g. @boca/123')
-_SOLUTION_PREFIXES = (_MAIN_PREFIX, _BOCA_PREFIX)
+_MOJ_PREFIX = ('@moj/', 'download a MOJ submission, e.g. @moj/<contest>/<id>')
+_SOLUTION_PREFIXES = (_MAIN_PREFIX, _BOCA_PREFIX, _MOJ_PREFIX)
 
 
 def _expand_solution_paths(root: Path, sol: dict):
@@ -119,6 +120,7 @@ def complete_solutions(ctx: CompletionContext, incomplete: str) -> List[Completi
                     seen.add(value)
                     items.append(CompletionItem(value, help=help_text))
     items.append(CompletionItem(_BOCA_PREFIX[0], help=_BOCA_PREFIX[1]))
+    items.append(CompletionItem(_MOJ_PREFIX[0], help=_MOJ_PREFIX[1]))
     return items
 
 

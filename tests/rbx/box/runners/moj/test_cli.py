@@ -809,3 +809,119 @@ async def test_another_failure_that_mentions_a_queue_is_not_a_full_queue(
     with pytest.raises(cli.MojCliError) as exc_info:
         await cli.testrun('alice#rbxt-deadbeef', tmp_path / 'sol.cpp')
     assert not isinstance(exc_info.value, cli.MojQueueFullError)
+
+
+# -- contest whoami: the contest-scoped session, through the `contest` layer. ---
+
+# What `moj contest --json -c <cid> whoami` really prints: with `--json` the CLI's
+# `out` relays `/auth/status` untouched. Confirmed live on 2026-08-24 against
+# `treino`; the role flags below are the ones a judge account carries.
+_CONTEST_WHOAMI = (
+    '{"success":true,"logged_in":true,"login":"ana.judge","name":"Ana A",'
+    '"contest":"sbc2026","is_admin":false,"is_judge":true,"is_staff":false,'
+    '"is_cstaff":false,"is_chief":false,"is_animeitor":false}\n'
+)
+
+
+def test_contest_whoami_reads_the_role_flags(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """The argv is the assertion here as much as the parse is.
+
+    `moj --json contest whoami` **silently loses the flag** -- `moj` consumes it
+    into a shell variable and then `exec`s `moj-contest` without it -- and the
+    prose that comes back instead parses as nothing at all. So the flag has to sit
+    after `contest`, and a refactor that "tidies" it back to the front has to fail
+    here rather than in front of a setter.
+    """
+    _stub_moj(monkeypatch, tmp_path, f"cat <<'EOF'\n{_CONTEST_WHOAMI}EOF\n")
+
+    who = cli.contest_whoami('sbc2026')
+
+    assert who.login == 'ana.judge'
+    assert who.can_read_any_submission
+    assert _stub_calls(tmp_path) == [['contest', '--json', '-c', 'sbc2026', 'whoami']]
+
+
+def test_contest_whoami_denies_any_submission_to_a_plain_competitor(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        'cat <<\'EOF\'\n{"login":"ana","is_admin":false,"is_judge":false,'
+        '"is_chief":false}\nEOF\n',
+    )
+
+    assert not cli.contest_whoami('sbc2026').can_read_any_submission
+
+
+def test_contest_whoami_treats_absent_role_flags_as_no_access(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """A server that predates a flag must read as "no access", never as access."""
+    _stub_moj(monkeypatch, tmp_path, 'cat <<\'EOF\'\n{"login":"ana"}\nEOF\n')
+
+    who = cli.contest_whoami('sbc2026')
+
+    assert who.login == 'ana'
+    assert not who.can_read_any_submission
+
+
+def test_contest_whoami_says_how_to_log_in_when_there_is_no_session(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """The CLI's own hint names a command that cannot be followed.
+
+    `moj-contest login` without a contest exits asking for one, so relaying that
+    message unchanged sends the setter around a loop. rbx names the contest.
+    """
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        """
+        echo "moj-contest: faca 'moj-contest login' primeiro." >&2
+        exit 1
+        """,
+    )
+
+    with pytest.raises(MojCliError) as exc_info:
+        cli.contest_whoami('sbc2026')
+    assert 'moj-contest login sbc2026' in str(exc_info.value)
+
+
+def test_contest_whoami_passes_the_missing_layer_message_through(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """`moj-contest` is a separate artifact, and moj's own error installs it.
+
+    Rewriting this one would replace a working `curl` command with a `login` hint
+    for a CLI that is not there yet -- the wrong fix, in the wrong order.
+    """
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        """
+        echo "moj: camada 'contest' nao instalada: curl -fLO https://moj.naquadah.com.br/moj-contest" >&2
+        exit 1
+        """,
+    )
+
+    with pytest.raises(MojCliError) as exc_info:
+        cli.contest_whoami('sbc2026')
+    assert 'curl -fLO' in str(exc_info.value)
+    assert 'moj-contest login sbc2026' not in str(exc_info.value)
+
+
+def test_contest_whoami_refuses_output_that_is_not_json(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """The prose form is what a dropped `--json` produces, and it is not a login."""
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        "echo 'contest: sbc2026  login: ana  nome: Ana  admin: nao'\n",
+    )
+
+    with pytest.raises(MojCliError):
+        cli.contest_whoami('sbc2026')

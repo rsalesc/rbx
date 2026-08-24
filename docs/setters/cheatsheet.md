@@ -36,6 +36,7 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | Run against a timing profile [:material-open-in-new:](/setters/profiling#using-profiles-when-running-solutions) | `rbx run -p icpc` |
 | Copy the run report to the clipboard [:material-open-in-new:](/setters/running#sharing-a-report) | `rbx run --share png` |
 | Run a submission downloaded from {{boca}} | `rbx run @boca/123` |
+| Run a submission downloaded from {{moj}} [:material-open-in-new:](/setters/packaging/moj#downloading-a-submission) | `rbx run @moj/<contest>/<id>` |
 | Run all solutions interactively [:material-open-in-new:](/setters/running#running-tests-with-custom-inputs) | `rbx irun` |
 | Choose solutions and run interactively | `rbx irun -c` |
 | Run solutions in a single testcase | `rbx irun -t samples/0` |
@@ -54,6 +55,7 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | Download {{tgen}} to the current folder | `rbx download tgen` |
 | Download a built-in {{testlib}} checker [:material-open-in-new:](/setters/grading/checkers) | `rbx download checker wcmp.cpp` |
 | Download a {{boca}} submission into the package | `rbx download remote @boca/123` |
+| Download a {{moj}} submission into the package [:material-open-in-new:](/setters/packaging/moj#downloading-a-submission) | `rbx download remote @moj/<contest>/<id>` |
 | Generate the `rbx.h` header in the package [:material-open-in-new:](/generators-and-rbx-h) | `rbx header` |
 | Build all statements [:material-open-in-new:](/setters/statements) | `rbx statements build` |
 | Build a specific variant [:material-open-in-new:](/setters/statements#keeping-two-recipes-for-one-language) | `rbx statements build <variant>` |
