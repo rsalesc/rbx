@@ -36,7 +36,7 @@ import re
 import shlex
 from typing import Any, Dict, List, Optional, Sequence, Union
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from rbx.box.exception import RbxException
 
@@ -466,3 +466,83 @@ async def testrun(ref: Union[str, pathlib.Path], solution: pathlib.Path) -> str:
 async def testrun_status(run: str) -> TestrunStatus:
     """The state of a queued testrun. Poll until `done`, and bound the wait."""
     return TestrunStatus.model_validate(await _run_moj_json(['testrun-status', run]))
+
+
+class ContestWhoami(BaseModel):
+    """`/auth/status` for one contest, as `moj contest --json whoami` relays it.
+
+    Every role flag defaults to `False` rather than being required: a server that
+    predates one of them has to read as *no* access. The opposite default would
+    turn a missing field into a permission.
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    login: str
+    contest: Optional[str] = None
+    is_admin: bool = False
+    is_judge: bool = False
+    is_chief: bool = False
+
+    @property
+    def can_read_any_submission(self) -> bool:
+        """Whether this session may list submissions other than its own.
+
+        A plain `.judge` is enough. The contest's own judge screen lists every
+        submission through `/contest/allsubmissions` and links each one's source;
+        what a plain judge loses is the *identity* behind a row -- the server
+        blanks `username`/`fullname`/`univ` for judge and monitor -- and never the
+        code. Chief and admin get the identities too, which rbx does not need.
+        """
+        return self.is_judge or self.is_chief or self.is_admin
+
+
+# The CLI's `need_login`: `die "faça '$MOJ_TOOL login' primeiro."`. Matched on the
+# two words that survive a rewording rather than on the sentence, and case-folded,
+# since the only cost of a false positive is a *better* message than the CLI's.
+_NO_SESSION_RE = re.compile(r'\blogin\b.*\bprimeiro\b', re.IGNORECASE)
+
+
+async def contest_whoami(contest: str) -> ContestWhoami:
+    """Who this machine is inside `contest`, and what it is allowed to read.
+
+    Contest sessions are **not** the session `moj login` creates. That one covers
+    `treino` and only `treino`; a contest gets its own account, its own token file
+    (`$CFG/token-<contest>`) and its own login command. Which is why a missing
+    session here cannot be reported the way the rest of this module reports one.
+
+    `--json` goes **after** `contest`, and that is load-bearing: `moj` parses the
+    global flag into a shell variable and then `exec`s `moj-contest` without it,
+    so `moj --json contest whoami` prints prose and parses as nothing.
+    """
+    try:
+        out = await _run_moj(['contest', '--json', '-c', contest, 'whoami'])
+    except MojNotInstalledError:
+        # No `moj` at all. Its own message installs the right thing; so does the
+        # one for a missing `contest` *layer*, which arrives as a plain
+        # `MojCliError` below and is likewise passed through.
+        raise
+    except MojCliError as e:
+        if _NO_SESSION_RE.search(str(e)):
+            raise MojCliError(
+                f'There is no MOJ session for the contest `{contest}`.\n'
+                f'Log in with `moj-contest login {contest}`, then try again.\n'
+                f'Note this is a different session from the one `moj login` '
+                f'creates: that one only ever covers `treino`.'
+            ) from e
+        raise
+
+    try:
+        parsed = json.loads(out)
+    except json.JSONDecodeError as e:
+        raise MojCliError(
+            f'Could not read the output of `{MOJ_BINARY} contest --json -c '
+            f'{contest} whoami` as JSON.\n{out.strip()}'
+        ) from e
+    try:
+        return ContestWhoami.model_validate(parsed)
+    except ValidationError as e:
+        raise MojCliError(
+            f'`{MOJ_BINARY} contest --json -c {contest} whoami` returned JSON '
+            f'without a login in it.\n{out.strip()}'
+        ) from e
