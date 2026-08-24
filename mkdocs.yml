@@ -54,6 +54,8 @@ nav:
           - "Polygon": "setters/packaging/polygon.md"
       - "Presets":
           - "setters/presets/index.md"
+  - "Tools":
+      - "VS Code extension": "tools/vscode.md"
   - "Reference":
       - "CLI": "setters/reference/cli.md"
       - "Package":
