@@ -3020,6 +3020,56 @@ SPEC = {
                         }
                     ],
                 },
+                {
+                    'children': [
+                        {
+                            'help': 'List the problems this contest would...',
+                            'is_group': False,
+                            'name': 'summary, sum',
+                            'panel': None,
+                            'params': [
+                                {
+                                    'help': 'If set, will report the title of '
+                                    'the statement in the given '
+                                    'language. Leave unset if you want '
+                                    'to use the language of the topmost '
+                                    'statement, which is the one `rbx '
+                                    'package moj` would upload.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--language', '-l'],
+                                    'takes_value': True,
+                                    'value': {
+                                        'completer': 'language',
+                                        'kind': 'completer',
+                                    },
+                                },
+                                {
+                                    'help': 'Show this message and exit.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--help'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                            ],
+                        }
+                    ],
+                    'help': 'Inspect MOJ packaging for a contest.',
+                    'is_group': True,
+                    'name': 'moj',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
             ],
             'help': 'Manage tooling (sub-command).',
             'is_group': True,

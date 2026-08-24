@@ -10,10 +10,12 @@ import typer
 
 from rbx import annotations, console
 from rbx.box.tooling.boca import main as boca_main
+from rbx.box.tooling.moj import main as moj_main
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 
 app.add_typer(boca_main.app, name='boca')
+app.add_typer(moj_main.app, name='moj', help='Inspect MOJ packaging for a contest.')
 
 
 @app.command('convert')

@@ -182,6 +182,42 @@ Combining `-u` with `--calibrate` also queues the calibration right after the up
 server-side job and {{rbx}} doesn't wait for it -- check on it with `moj check <org>#<problem>`
 whenever you want.
 
+## Previewing what a contest uploads
+
+Uploading a whole contest creates a problem per short name, and a typo in an org or a package
+name is only visible once it's on the judge. `rbx tooling moj summary` shows you the whole list
+first, from inside the contest directory:
+
+```bash
+rbx tooling moj summary
+```
+
+```
+            MOJ upload summary: my-contest
+┏━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┓
+┃ # ┃ Title     ┃ MOJ problem       ┃ Color          ┃
+┡━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━┩
+│ A │ A Plus B  │ your-org#a-aplusb │ ● red #ff0000  │
+│ B │ Chocolate │ your-org#b-choco  │ ● blue #0000ff │
+└───┴───────────┴───────────────────┴────────────────┘
+```
+
+One row per problem: its short name in the contest, the title MOJ would display, the
+`<org>#<problem>` it would be created as, and the color the contest gives it (empty when the
+problem configures none).
+
+Every value is resolved the way `rbx package moj` resolves it, so the table is a preview of the
+upload rather than a second guess at it. The title in particular comes from the very statement
+the package would ship -- the topmost declared one, or the one you name with `--language` / `-l`:
+
+```bash
+rbx tooling moj summary -l en
+```
+
+Nothing is built and nothing is sent to the judge. You don't even need to be logged in, as long
+as `extensions.moj.org` is set: reading your login is the one thing a session is needed for, and
+that only happens when no org is configured.
+
 ## Troubleshooting
 
 ### My problem has a tight `outputLimit`, but MOJ doesn't enforce it
