@@ -117,11 +117,20 @@ exclude = ["rbx/testdata", "docs"]
 artifacts = ["rbx/resources/vscode/*.vsix"]
 
 [tool.hatch.build.targets.sdist]
-exclude = ["rbx/testdata", ".claude", ".worktrees", "docs"]
+exclude = ["rbx/testdata", ".claude", ".worktrees", "docs", "vscode/node_modules"]
 # Also here, not just on the wheel: `uv build` builds the sdist first and then
 # the wheel *from that sdist*, so a vsix dropped here never reaches the wheel
 # however the wheel target is configured.
 artifacts = ["rbx/resources/vscode/*.vsix"]
+
+[tool.rbx.dist]
+# Hard ceilings on the artifacts `mise run build` produces, enforced by
+# scripts/check_dist_size.py before anything is published. They are here to
+# catch a whole directory being swept into a release by accident: 1.2.0 shipped
+# a 23.8 MB sdist because vscode/node_modules was never excluded, and nothing
+# complained. Raise a limit only when the growth is understood and intended.
+max-wheel-mb = 5.0
+max-sdist-mb = 5.0
 
 [tool.ruff]
 extend-exclude = ["rbx/box/ui/_vendor"]
