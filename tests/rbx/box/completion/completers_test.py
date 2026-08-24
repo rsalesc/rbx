@@ -157,7 +157,7 @@ def test_solutions_completer_expands_globs_to_actual_files(tmp_path):
     assert by_value['sols/main.cpp'].help == 'ac'  # outcome carries to each match
 
 
-def test_solutions_completer_orders_main_first_boca_last(tmp_path):
+def test_solutions_completer_orders_main_first_remote_prefixes_last(tmp_path):
     (tmp_path / 'problem.rbx.yml').write_text(
         'solutions:\n  - path: sols/z.cpp\n  - path: sols/a.cpp\n'
     )
@@ -168,6 +168,8 @@ def test_solutions_completer_orders_main_first_boca_last(tmp_path):
     values = [
         i.value for i in completers.complete_solutions(_ctx(package_root=tmp_path), '')
     ]
+    # `@main` leads because it is the one a setter picks blind; the download
+    # prefixes trail because neither can enumerate anything to complete *to*.
     assert values[0] == '@main'
-    assert values[-1] == '@boca/'
-    assert set(values[1:-1]) == {'sols/z.cpp', 'sols/a.cpp'}
+    assert values[-2:] == ['@boca/', '@moj/']
+    assert set(values[1:-2]) == {'sols/z.cpp', 'sols/a.cpp'}

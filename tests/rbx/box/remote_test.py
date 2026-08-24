@@ -5,9 +5,15 @@ import pytest
 import typer
 
 from rbx.box import package, remote
+from rbx.box.runners.moj import cli
+from rbx.box.runners.moj.cli import MojCliError
 from rbx.box.schema import ExpectedOutcome
 from rbx.box.testing import testing_package
 from rbx.box.tooling.boca.scraper import BocaRun
+from rbx.box.tooling.moj import api
+
+# A submission id as MOJ issues one: an md5 digest.
+_SUB = 'd89e6b7735c675fd7b50b3354ba64097'
 
 
 class TestExpander:
@@ -382,3 +388,206 @@ class TestBocaRegex:
         match = remote.BocaExpander.BOCA_REGEX.match('@main')
 
         assert match is None
+
+
+class TestMojExpander:
+    """`@moj/<contest>/<submission>`."""
+
+    def _who(self, login: str = 'ana.judge', **flags):
+        return cli.ContestWhoami(login=login, **flags)
+
+    # -- Parsing the reference. ------------------------------------------------
+
+    def test_get_match_reads_the_contest_and_the_submission(self):
+        expander = remote.MojExpander()
+
+        assert expander.get_match(f'@moj/sbc2026/{_SUB}') == ('sbc2026', _SUB)
+
+    def test_get_match_falls_back_to_moj_contest(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv('MOJ_CONTEST', 'sbc2026')
+        expander = remote.MojExpander()
+
+        assert expander.get_match(f'@moj/{_SUB}') == ('sbc2026', _SUB)
+
+    def test_the_explicit_contest_wins_over_the_environment(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A reference committed to `problem.rbx.yml` has to mean one thing."""
+        monkeypatch.setenv('MOJ_CONTEST', 'somewhere-else')
+        expander = remote.MojExpander()
+
+        assert expander.get_match(f'@moj/sbc2026/{_SUB}') == ('sbc2026', _SUB)
+
+    def test_the_shorthand_without_moj_contest_says_what_is_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.delenv('MOJ_CONTEST', raising=False)
+        expander = remote.MojExpander()
+
+        with pytest.raises(MojCliError) as exc_info:
+            expander.get_match(f'@moj/{_SUB}')
+        assert 'MOJ_CONTEST' in str(exc_info.value)
+
+    def test_a_malformed_id_is_refused_rather_than_ignored(self):
+        """Refused, not passed over: the reference is plainly addressed here.
+
+        Returning `None` would make the engine report "not a valid expansion",
+        which describes the outcome and not the mistake. And the id rule is the
+        server's own -- MOJ answers `400 id_invalid` -- so checking it locally
+        costs a round-trip rather than buying one.
+        """
+        expander = remote.MojExpander()
+
+        with pytest.raises(MojCliError) as exc_info:
+            expander.get_match('@moj/sbc2026/123')
+        assert '32' in str(exc_info.value)
+
+    def test_an_uppercase_digest_is_not_a_submission_id(self):
+        """MOJ generates the id with `md5`, and matches it lowercase."""
+        expander = remote.MojExpander()
+
+        with pytest.raises(MojCliError):
+            expander.get_match(f'@moj/sbc2026/{_SUB.upper()}')
+
+    def test_get_match_ignores_other_expanders_references(self):
+        expander = remote.MojExpander()
+
+        assert expander.get_match('@boca/123') is None
+        assert expander.get_match('@main') is None
+        assert expander.get_match('sols/main.cpp') is None
+
+    # -- Caching. --------------------------------------------------------------
+
+    def test_cacheable_globs_cover_any_extension(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """The extension is only known after the listing, so the glob spans them."""
+        expander = remote.MojExpander()
+
+        globs = expander.cacheable_globs(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        assert len(globs) == 1
+        assert globs[0].endswith(f'moj/sbc2026/{_SUB}.*')
+
+    # -- Downloading. ----------------------------------------------------------
+
+    def test_expand_downloads_the_source_under_the_right_extension(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        row = api.SubmissionRow(subid=_SUB, lang='cpp', epoch=1755000000)
+        monkeypatch.setattr(
+            remote.cli, 'contest_whoami', lambda c: self._who(is_judge=True)
+        )
+        monkeypatch.setattr(remote.api, 'read_token', lambda c: 'tok')
+        monkeypatch.setattr(
+            remote.api, 'list_submissions', lambda c, t, any_submission: {_SUB: row}
+        )
+        monkeypatch.setattr(
+            remote.api, 'download_source', lambda c, t, r: 'int main(){}\n'
+        )
+
+        result = remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        assert result is not None
+        assert result.name == f'{_SUB}.cpp'
+        assert result.read_text() == 'int main(){}\n'
+
+    def test_a_judge_is_asked_for_every_submission(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        """The two listing endpoints are not interchangeable.
+
+        `/contest/allsubmissions` answers `403 judge_required` to a competitor, and
+        `/contest/history` never carries anyone else's rows -- so the role decides
+        which one can be asked at all.
+        """
+        seen = {}
+        row = api.SubmissionRow(subid=_SUB, lang='cpp', epoch=1755000000)
+
+        def fake_list(contest, token, any_submission):
+            seen['any'] = any_submission
+            return {_SUB: row}
+
+        monkeypatch.setattr(
+            remote.cli, 'contest_whoami', lambda c: self._who(is_judge=True)
+        )
+        monkeypatch.setattr(remote.api, 'read_token', lambda c: 'tok')
+        monkeypatch.setattr(remote.api, 'list_submissions', fake_list)
+        monkeypatch.setattr(remote.api, 'download_source', lambda c, t, r: 'x\n')
+
+        remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        assert seen['any'] is True
+
+    def test_a_competitor_is_asked_only_for_their_own(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        seen = {}
+        row = api.SubmissionRow(subid=_SUB, lang='cpp', epoch=1755000000)
+
+        def fake_list(contest, token, any_submission):
+            seen['any'] = any_submission
+            return {_SUB: row}
+
+        monkeypatch.setattr(remote.cli, 'contest_whoami', lambda c: self._who('ana'))
+        monkeypatch.setattr(remote.api, 'read_token', lambda c: 'tok')
+        monkeypatch.setattr(remote.api, 'list_submissions', fake_list)
+        monkeypatch.setattr(remote.api, 'download_source', lambda c, t, r: 'x\n')
+
+        remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        assert seen['any'] is False
+
+    def test_an_unknown_id_is_reported_before_the_download(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        """The download would answer a bare 404 that cannot say which case it is."""
+        downloaded = []
+        monkeypatch.setattr(remote.cli, 'contest_whoami', lambda c: self._who('ana'))
+        monkeypatch.setattr(remote.api, 'read_token', lambda c: 'tok')
+        monkeypatch.setattr(
+            remote.api, 'list_submissions', lambda c, t, any_submission: {}
+        )
+        monkeypatch.setattr(
+            remote.api,
+            'download_source',
+            lambda c, t, r: downloaded.append(r) or 'x\n',
+        )
+
+        with pytest.raises(MojCliError) as exc_info:
+            remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        message = str(exc_info.value)
+        assert _SUB in message
+        assert 'ana' in message
+        # A competitor is told what would let them read someone else's.
+        assert 'judge account' in message
+        assert not downloaded
+
+    def test_an_unknown_language_falls_back_to_mojs_own_id(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        """What MOJ's web UI names the download, when rbx claims no such language."""
+        row = api.SubmissionRow(subid=_SUB, lang='Kt', epoch=1755000000)
+        monkeypatch.setattr(
+            remote.cli, 'contest_whoami', lambda c: self._who(is_judge=True)
+        )
+        monkeypatch.setattr(remote.api, 'read_token', lambda c: 'tok')
+        monkeypatch.setattr(
+            remote.api, 'list_submissions', lambda c, t, any_submission: {_SUB: row}
+        )
+        monkeypatch.setattr(remote.api, 'download_source', lambda c, t, r: 'fun main\n')
+
+        result = remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        assert result is not None
+        assert result.name == f'{_SUB}.kt'
+
+    def test_expand_ignores_a_reference_that_is_not_ours(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        assert remote.MojExpander().expand(pathlib.Path('@boca/123')) is None
+
+    def test_the_download_needs_review(self):
+        """Third-party code entering the package, exactly as with BOCA."""
+        assert remote.MojExpander().needs_review()

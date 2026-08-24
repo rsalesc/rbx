@@ -34,6 +34,7 @@ import json
 import pathlib
 import re
 import shlex
+import subprocess
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -341,34 +342,70 @@ async def _run_moj(args: Sequence[str]) -> str:
     except (FileNotFoundError, NotADirectoryError, PermissionError) as e:
         # Caught at the spawn call specifically, so that a `FileNotFoundError`
         # raised by something deeper cannot be mislabelled as a missing CLI.
-        raise MojNotInstalledError(
-            f'Could not run `{MOJ_BINARY}`: the MOJ CLI is not installed, or is '
-            f'not on your `PATH`. Install it and run `moj login` before using '
-            f'the MOJ runner.'
-        ) from e
+        raise _not_installed_error(e) from e
 
     stdout, stderr = await process.communicate()
-    out = stdout.decode(errors='replace')
-    err = stderr.decode(errors='replace')
+    return _stdout_or_raise(
+        args,
+        process.returncode,
+        stdout.decode(errors='replace'),
+        stderr.decode(errors='replace'),
+    )
 
-    if process.returncode != 0:
-        # Both streams: the CLI's `die()` writes to stderr, but not every failure
-        # path goes through it, and a failure whose reason we dropped is a failure
-        # the setter cannot act on.
-        detail = '\n'.join(part.strip() for part in (err, out) if part.strip())
-        message = (
-            f'Command `{MOJ_BINARY} {shlex.join(args)}` failed with exit code '
-            f'{process.returncode}.'
+
+def _not_installed_error(e: BaseException) -> MojNotInstalledError:
+    """The failure to *spawn* the CLI, which is never a failure of the command."""
+    return MojNotInstalledError(
+        f'Could not run `{MOJ_BINARY}`: the MOJ CLI is not installed, or is '
+        f'not on your `PATH`. Install it and run `moj login` before using '
+        f'the MOJ runner.'
+    )
+
+
+def _stdout_or_raise(
+    args: Sequence[str], returncode: Optional[int], out: str, err: str
+) -> str:
+    """What the CLI printed, or the reason it failed.
+
+    Shared by the async and the sync spawners so that the two cannot disagree
+    about what a failure means -- the 429 in particular, which decides whether a
+    caller waits or gives up.
+    """
+    if returncode == 0:
+        return out
+
+    # Both streams: the CLI's `die()` writes to stderr, but not every failure
+    # path goes through it, and a failure whose reason we dropped is a failure
+    # the setter cannot act on.
+    detail = '\n'.join(part.strip() for part in (err, out) if part.strip())
+    message = (
+        f'Command `{MOJ_BINARY} {shlex.join(args)}` failed with exit code {returncode}.'
+    )
+    full = f'{message}\n{detail}' if detail else message
+    status = _HTTP_STATUS_RE.search(detail)
+    if status is not None and status.group(1) == _QUEUE_FULL_STATUS:
+        # Raised as its own type so a caller can wait it out. Everything else
+        # here is a mistake to report; this one is a queue to sit behind.
+        raise MojQueueFullError(full)
+    raise MojCliError(full)
+
+
+def _run_moj_sync(args: Sequence[str]) -> str:
+    """`_run_moj`, for the callers that cannot await.
+
+    Solution-path expansion (`rbx.box.remote`) is synchronous, and is itself
+    called from inside async code -- `compile.any` does -- so it can neither
+    `await` nor start a loop of its own. A second spawner is the small price;
+    the error handling above is shared, which is the part worth not duplicating.
+    """
+    try:
+        process = subprocess.run(
+            [MOJ_BINARY, *args], capture_output=True, text=True, errors='replace'
         )
-        full = f'{message}\n{detail}' if detail else message
-        status = _HTTP_STATUS_RE.search(detail)
-        if status is not None and status.group(1) == _QUEUE_FULL_STATUS:
-            # Raised as its own type so a caller can wait it out. Everything else
-            # here is a mistake to report; this one is a queue to sit behind.
-            raise MojQueueFullError(full)
-        raise MojCliError(full)
+    except (FileNotFoundError, NotADirectoryError, PermissionError) as e:
+        raise _not_installed_error(e) from e
 
-    return out
+    return _stdout_or_raise(args, process.returncode, process.stdout, process.stderr)
 
 
 async def _run_moj_json(args: Sequence[str]) -> Any:
@@ -503,7 +540,7 @@ class ContestWhoami(BaseModel):
 _NO_SESSION_RE = re.compile(r'\blogin\b.*\bprimeiro\b', re.IGNORECASE)
 
 
-async def contest_whoami(contest: str) -> ContestWhoami:
+def contest_whoami(contest: str) -> ContestWhoami:
     """Who this machine is inside `contest`, and what it is allowed to read.
 
     Contest sessions are **not** the session `moj login` creates. That one covers
@@ -511,12 +548,16 @@ async def contest_whoami(contest: str) -> ContestWhoami:
     (`$CFG/token-<contest>`) and its own login command. Which is why a missing
     session here cannot be reported the way the rest of this module reports one.
 
+    Synchronous, alone among the wrappers here, because its caller is: solution
+    paths expand synchronously, from inside async code, so there is neither a
+    loop to await on nor room to start one.
+
     `--json` goes **after** `contest`, and that is load-bearing: `moj` parses the
     global flag into a shell variable and then `exec`s `moj-contest` without it,
     so `moj --json contest whoami` prints prose and parses as nothing.
     """
     try:
-        out = await _run_moj(['contest', '--json', '-c', contest, 'whoami'])
+        out = _run_moj_sync(['contest', '--json', '-c', contest, 'whoami'])
     except MojNotInstalledError:
         # No `moj` at all. Its own message installs the right thing; so does the
         # one for a missing `contest` *layer*, which arrives as a plain

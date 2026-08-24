@@ -823,7 +823,7 @@ _CONTEST_WHOAMI = (
 )
 
 
-async def test_contest_whoami_reads_the_role_flags(
+def test_contest_whoami_reads_the_role_flags(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ):
     """The argv is the assertion here as much as the parse is.
@@ -836,14 +836,14 @@ async def test_contest_whoami_reads_the_role_flags(
     """
     _stub_moj(monkeypatch, tmp_path, f"cat <<'EOF'\n{_CONTEST_WHOAMI}EOF\n")
 
-    who = await cli.contest_whoami('sbc2026')
+    who = cli.contest_whoami('sbc2026')
 
     assert who.login == 'ana.judge'
     assert who.can_read_any_submission
     assert _stub_calls(tmp_path) == [['contest', '--json', '-c', 'sbc2026', 'whoami']]
 
 
-async def test_contest_whoami_denies_any_submission_to_a_plain_competitor(
+def test_contest_whoami_denies_any_submission_to_a_plain_competitor(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ):
     _stub_moj(
@@ -853,22 +853,22 @@ async def test_contest_whoami_denies_any_submission_to_a_plain_competitor(
         '"is_chief":false}\nEOF\n',
     )
 
-    assert not (await cli.contest_whoami('sbc2026')).can_read_any_submission
+    assert not cli.contest_whoami('sbc2026').can_read_any_submission
 
 
-async def test_contest_whoami_treats_absent_role_flags_as_no_access(
+def test_contest_whoami_treats_absent_role_flags_as_no_access(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ):
     """A server that predates a flag must read as "no access", never as access."""
     _stub_moj(monkeypatch, tmp_path, 'cat <<\'EOF\'\n{"login":"ana"}\nEOF\n')
 
-    who = await cli.contest_whoami('sbc2026')
+    who = cli.contest_whoami('sbc2026')
 
     assert who.login == 'ana'
     assert not who.can_read_any_submission
 
 
-async def test_contest_whoami_says_how_to_log_in_when_there_is_no_session(
+def test_contest_whoami_says_how_to_log_in_when_there_is_no_session(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ):
     """The CLI's own hint names a command that cannot be followed.
@@ -886,11 +886,11 @@ async def test_contest_whoami_says_how_to_log_in_when_there_is_no_session(
     )
 
     with pytest.raises(MojCliError) as exc_info:
-        await cli.contest_whoami('sbc2026')
+        cli.contest_whoami('sbc2026')
     assert 'moj-contest login sbc2026' in str(exc_info.value)
 
 
-async def test_contest_whoami_passes_the_missing_layer_message_through(
+def test_contest_whoami_passes_the_missing_layer_message_through(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ):
     """`moj-contest` is a separate artifact, and moj's own error installs it.
@@ -908,12 +908,12 @@ async def test_contest_whoami_passes_the_missing_layer_message_through(
     )
 
     with pytest.raises(MojCliError) as exc_info:
-        await cli.contest_whoami('sbc2026')
+        cli.contest_whoami('sbc2026')
     assert 'curl -fLO' in str(exc_info.value)
     assert 'moj-contest login sbc2026' not in str(exc_info.value)
 
 
-async def test_contest_whoami_refuses_output_that_is_not_json(
+def test_contest_whoami_refuses_output_that_is_not_json(
     monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ):
     """The prose form is what a dropped `--json` produces, and it is not a login."""
@@ -924,4 +924,4 @@ async def test_contest_whoami_refuses_output_that_is_not_json(
     )
 
     with pytest.raises(MojCliError):
-        await cli.contest_whoami('sbc2026')
+        cli.contest_whoami('sbc2026')
