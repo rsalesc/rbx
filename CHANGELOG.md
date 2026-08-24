@@ -1,3 +1,9 @@
+## 1.2.5 (2026-08-24)
+
+### Feat
+
+- **moj**: add `--reference-only` to `rbx package moj` (#769)
+
 ## 1.2.4 (2026-08-24)
 
 ### Feat
