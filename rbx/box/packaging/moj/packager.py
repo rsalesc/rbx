@@ -48,9 +48,16 @@ from rbx.box.statements.schema import (
 )
 from rbx.config import get_default_app_path, get_testlib
 
-# rbx has no author field, and MOJ hard-requires the file, so a visible placeholder
-# keeps validate-problem.sh green until the setter fills it in on the server.
-DEFAULT_AUTHOR = 'Unknown\n'
+# The package var the setter puts their name in. rbx has no first-class author field,
+# and `vars` is where a problem already carries free-form metadata the statement can
+# render (`\VAR{author}`), so MOJ's `author` file reads the same var rather than
+# introducing a second place to say the same thing.
+AUTHOR_VAR = 'author'
+
+# MOJ hard-requires the file, so a package with no `vars.author` still gets a visible
+# placeholder that keeps validate-problem.sh green until the setter fills it in on the
+# server.
+DEFAULT_AUTHOR = 'Unknown'
 
 # `ULIMITS[-f]` in KB, and deliberately a **fixed, generous** number rather than the
 # problem's `outputLimit`.
@@ -652,8 +659,23 @@ class MojPackager(BasePackager):
             json.dumps(meta, ensure_ascii=False, indent=2) + '\n'
         )
 
+    def _author(self) -> str:
+        """The `author` file's contents, taken from `vars.author`.
+
+        Any primitive var is accepted and stringified -- `vars` is untyped by design,
+        and a name that happens to parse as a number is still a name. A var that is
+        absent, or that is blank once stripped, falls back to `DEFAULT_AUTHOR`: MOJ
+        requires the file to be non-empty, so an empty `author: ""` must not travel
+        through as an empty file.
+        """
+        author = package.find_problem_package_or_die().expanded_vars.get(AUTHOR_VAR)
+        if author is None:
+            return DEFAULT_AUTHOR
+        author = str(author).strip()
+        return author or DEFAULT_AUTHOR
+
     def _write_metadata(self, into_path: pathlib.Path) -> None:
-        (into_path / 'author').write_text(DEFAULT_AUTHOR)
+        (into_path / 'author').write_text(self._author() + '\n')
         (into_path / 'tags').write_text('')
         self._write_moj_meta(into_path)
         self._write_statement(into_path)

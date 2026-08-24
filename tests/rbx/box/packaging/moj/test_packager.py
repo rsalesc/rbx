@@ -64,6 +64,43 @@ def test_writes_the_mandatory_metadata_files(moj_package):
     assert (moj_package / 'tags').exists()
 
 
+def test_writes_the_author_from_vars(testing_pkg, tmp_path):
+    minimal_package(testing_pkg)
+    testing_pkg.yml.vars = {'author': 'Ada Lovelace'}
+    testing_pkg.save()
+
+    moj_package = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+
+    assert (moj_package / 'author').read_text() == 'Ada Lovelace\n'
+
+
+def test_falls_back_to_a_placeholder_author_without_the_var(testing_pkg, tmp_path):
+    # MOJ requires a non-empty `author`, so a package that never declared one still
+    # has to produce something validate-problem.sh accepts.
+    minimal_package(testing_pkg)
+    testing_pkg.save()
+
+    moj_package = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+
+    assert (moj_package / 'author').read_text() == 'Unknown\n'
+
+
+def test_falls_back_to_a_placeholder_author_for_a_blank_var(testing_pkg, tmp_path):
+    minimal_package(testing_pkg)
+    testing_pkg.yml.vars = {'author': '   '}
+    testing_pkg.save()
+
+    moj_package = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+
+    assert (moj_package / 'author').read_text() == 'Unknown\n'
+
+
 def test_falls_back_to_the_dummy_statement_without_statements(moj_package):
     # MOJ requires the two headings, so a package that declares no statement at
     # all must still produce a valid enunciado.md.
