@@ -1,7 +1,7 @@
 # Packaging a problem
 
-This walkthrough covers the full process of packaging a problem for a judge system,
-from profiling time limits all the way to uploading the final package. We'll use
+This walkthrough covers the process of turning a finished problem into a package a
+judge system can ingest, and getting that package into the judge. We'll use
 {{boca}} as our target judge, but the overall workflow applies to any
 [supported format](/setters/packaging).
 
@@ -9,139 +9,22 @@ We assume you already have a working problem -- tests build, solutions run, and
 expected outcomes match. If you're starting from scratch, follow the
 [First steps](/setters/first-steps) walkthrough first.
 
+!!! note "Prerequisite"
+    The BOCA packager **requires** a *limits profile* named `boca` -- a named set of
+    time and memory limits, stored in `.limits/boca.yml` -- to exist in your problem.
+    You create it by profiling the problem against the judge's hardware, which is what
+    [Profiling time limits](/setters/contest-profiling-walkthrough) walks you through.
+    If you haven't done that yet, start there and come back once `.limits/boca.yml` is
+    in place.
+
 ## Overview
 
-Packaging a problem involves three main stages:
+Packaging a problem involves two main stages:
 
-1. **Profiling** -- Measure solution timings and decide on a time limit appropriate
-   for the target judge's hardware.
-2. **Packaging** -- Build the problem into a format the judge system understands.
-3. **Uploading** -- Get the package into the judge, either manually or automatically.
+1. **Packaging** -- Build the problem into a format the judge system understands.
+2. **Uploading** -- Get the package into the judge, either manually or automatically.
 
-## Step 1: Profile the time limit {: #profiling }
-
-Different judge systems run on different hardware. A time limit that works on your
-laptop may be too tight -- or too generous -- on the actual judging machine. {{rbx}}
-solves this with **limits profiles**: named sets of time/memory limits stored in the
-`.limits/` directory of your problem.
-
-!!! info
-    For a complete reference on profiling, formulas, and profiles, see the
-    [Profiling](/setters/profiling) guide.
-
-### Create a profile for BOCA
-
-The BOCA packager **requires** a limits profile named `boca` to exist.
-You create it with the `time` command. Preferrably, log in to your judge
-machine, clone your contest's repository and run the command there.
-
-```bash
-rbx time -p boca
-```
-
-This launches an interactive session that:
-
-1. Shows the current profile (if one already exists).
-2. Asks you to choose a **strategy** for deciding the time limit.
-3. Runs the solutions the limit is inferred from, measuring their true execution
-   times.
-4. Applies the configured ratios (or formula) to the timings and writes the result
-   to `.limits/boca.yml`.
-
-!!! tip
-    If you want to skip the interactive prompts and use the configured strategy, add the
-    `--auto` flag:
-
-    ```bash
-    rbx time -p boca --auto
-    ```
-
-### Choose a strategy
-
-When prompted, you'll see four strategies:
-
-| Strategy                         | When to use                                                                 |
-| :------------------------------- | :-------------------------------------------------------------------------- |
-| **Estimate** (recommended)       | Let {{rbx}} measure your solutions and estimate from them. Best default.    |
-| **Inherit from package**         | Mirror whatever `timeLimit` and `memoryLimit` are set in `problem.rbx.yml`. |
-| **Estimate with custom formula** | Like Estimate, but you provide your own formula.                            |
-| **Custom time limit**            | You already know the exact time limit you want.                             |
-
-By default, {{rbx}} estimates from ratios: the limit is at least `acToTimeLimit`
-times the slowest accepted solution, and rounded up to a multiple of
-`timeResolution`. Once it is decided, each solution expected to be too slow is run
-at `timeLimitToTle` times that limit to confirm it really is too slow. If one of
-them finishes, {{rbx}} says so and lets you regroup the languages, keep the limit
-anyway, or start over. You can tune the ratios (or switch
-to a formula) in `env.rbx.yml` -- see the
-[Profiling](/setters/profiling/computing/#time-limit-ratios) docs for details.
-
-### Review the resulting profile
-
-After the estimation finishes, the profile is saved to `.limits/boca.yml`. It looks
-something like this:
-
-```yaml
-# .limits/boca.yml
-inheritFromPackage: false
-timeLimit: 2000
-memoryLimit: 256
-multipliers:
-  acToTimeLimit: 2.0
-  timeLimitToTle: 1.5
-  timeResolution: 100
-```
-
-You can also add per-language overrides if your contest accepts solutions in multiple
-languages with different performance characteristics:
-
-```yaml
-modifiers:
-  py:
-    time: 6000          # Python gets a higher time limit (ms)
-  java:
-    timeMultiplier: 2.0 # Java gets 2x the base time limit
-```
-
-!!! tip
-    You normally don't write `modifiers` by hand. When you run `rbx time`, the interactive
-    [language groups](/setters/profiling/language-groups/) picker estimates a limit per group of
-    languages and writes the per-language modifiers for you. You can also edit the profile
-    manually or through the TUI (`rbx ui` > **Edit limits profiles (in development)**).
-
-### Verify with the profile active
-
-Once your profile is ready, you can run your solutions under the BOCA limits to make
-sure everything still passes:
-
-```bash
-rbx run -p boca
-```
-
-The `-p` (or `--profile`) flag tells {{rbx}} to use the specified limits profile
-for the run. It also works as a global flag, before the command
-(`rbx -p boca run`).
-
-### Working with multiple profiles
-
-You can create as many profiles as you need -- one per target judge:
-
-```bash
-rbx time -p boca
-rbx time -p polygon
-rbx time -p local    # the default profile
-```
-
-Each profile is independent, so you can tune limits for each judge's hardware
-separately.
-
-### Persisting the profile
-
-Now, since the profile is saved into `.limits`, you can push it into your contest's repository,
-and access it from any machine. Feel free to follow the next steps in any machine of your choice,
-as long as you've pushed the profile into the repository.
-
-## Step 2: Build the package {: #packaging }
+## Step 1: Build the package {: #packaging }
 
 With the `boca` limits profile in place, you can now build the BOCA package:
 
@@ -197,7 +80,7 @@ rbx on sum-of-n package boca   # By name or folder
 rbx on '*,!D' package boca     # Everything except D
 ```
 
-## Step 3: Upload to BOCA {: #uploading }
+## Step 2: Upload to BOCA {: #uploading }
 
 Once you have your `.zip` package, you need to get it into the BOCA server. There are
 two ways to do this: **automated upload** via {{rbx}} and **manual upload** through
