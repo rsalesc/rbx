@@ -1,0 +1,42 @@
+fixture: timing-problem
+title: Bucketing languages in the rbx time picker
+timeout: 300s
+setup:
+  - rbx download testlib
+  - rbx build
+instructions:
+  - !Interactive
+    command: rbx time
+    keys:
+      - 3s
+      - '^M'
+      # The estimation itself is not what this recording is about.
+      - x8
+      - 40s
+      - x1
+      # The picker, with the preview table under it. Move down the language
+      # list and watch the preview follow.
+      - 5s
+      - j
+      - 1s
+      - j
+      - 1s
+      - j
+      - 2s
+      # Give java a bucket of its own. It has no solutions, so pulling it out
+      # of the group `whenEmpty` covered drops it onto the base limit -- which
+      # is the mistake the page is about, and the preview says so immediately.
+      - ' '
+      - 4s
+      # Confirm, and let the profile be written.
+      - '^M'
+      - 10s
+expect_contains:
+  # The final table, with the pooled leftover row the page explains first...
+  - Time limits (local)
+  - leftover
+  # ...java on the base limit once it is on its own, and kt still deriving
+  # from cpp beside it. The contrast is the recording's whole argument.
+  - DEFAULTED to base
+  - no whenEmpty rule
+  - 2.0 of cpp
