@@ -36,6 +36,11 @@ nav:
           - "Stress testing": "setters/stress-testing.md"
       - "Profiling":
           - "setters/profiling/index.md"
+          - "Limits profiles": "setters/profiling/profiles.md"
+          - "Estimating a time limit": "setters/profiling/estimating.md"
+          - "How the limit is computed": "setters/profiling/computing.md"
+          - "Language groups": "setters/profiling/language-groups.md"
+          - "On the judge itself": "setters/profiling/remote.md"
       - "Statements":
           - "Overview": "setters/statements/index.md"
           - "Writing statements": "setters/statements/writing.md"
