@@ -14,9 +14,13 @@ from rbx.grading.judge.program import (
     ProgramNotFoundError,
     ProgramParams,
     ProgramResult,
+    get_child_memory_usage,
     get_cpu_time,
     get_memory_usage,
     get_preexec_fn,
+    get_self_rss,
+    is_own_rss,
+    maxrss_inherits_parent,
 )
 
 
@@ -515,6 +519,9 @@ class TestProgramCode:
 class TestProgramMocks:
     """Test Program functionality using mocks to verify intended behavior."""
 
+    # The ru_maxrss correction is covered by TestMaxrssCorrection; disable it
+    # here so the mocked rusage reaches the result untouched on every platform.
+    @mock.patch('rbx.grading.judge.program.maxrss_inherits_parent', return_value=False)
     @mock.patch('rbx.grading.judge.program.get_file_sizes')
     @mock.patch('rbx.grading.judge.program.get_memory_usage')
     @mock.patch('rbx.grading.judge.program.get_cpu_time')
@@ -525,6 +532,7 @@ class TestProgramMocks:
         mock_get_cpu_time,
         mock_get_memory_usage,
         mock_get_file_sizes,
+        mock_maxrss_inherits_parent,
         simple_hello_program,
     ):
         """Test that process_exit correctly processes resource usage data."""
@@ -625,6 +633,8 @@ class TestProgramMocks:
         # Mock CPU times exceeding limit
         mock_process.cpu_times.return_value.user = 3.0
         mock_process.cpu_times.return_value.system = 2.5
+        # The alarm handler samples RSS on every tick, limit or no limit.
+        mock_process.memory_info.return_value.rss = 1024 * 1024
 
         command = [sys.executable, '-c', 'import time; time.sleep(1)']
         params = ProgramParams(time_limit=5.0)  # CPU total will be 5.5 > 5.0
@@ -706,3 +716,125 @@ class TestEdgeCases:
         # All should succeed
         for result in results:
             assert result.exitcode == 0
+
+
+class TestMaxrssCorrection:
+    """Test that a child is not charged the parent's memory (issue #720)."""
+
+    def test_get_self_rss_is_positive(self):
+        assert get_self_rss() > 0
+
+    def test_maxrss_inherits_parent_matches_the_platform(self):
+        with mock.patch('sys.platform', 'darwin'):
+            assert not maxrss_inherits_parent()
+        with mock.patch('sys.platform', 'linux'):
+            assert maxrss_inherits_parent()
+
+    @mock.patch('rbx.grading.judge.program.get_memory_usage')
+    @mock.patch('rbx.grading.judge.program.maxrss_inherits_parent', return_value=True)
+    def test_usage_above_baseline_comes_from_the_child(
+        self, mock_inherits, mock_get_memory_usage
+    ):
+        """Above the baseline, ru_maxrss can only be the child's own peak."""
+        mock_get_memory_usage.return_value = 300 * 1024 * 1024
+
+        assert (
+            get_child_memory_usage(
+                mock.MagicMock(),
+                rss_baseline=200 * 1024 * 1024,
+                sampled_peak=1024,
+            )
+            == 300 * 1024 * 1024
+        )
+
+    @mock.patch('rbx.grading.judge.program.get_memory_usage')
+    @mock.patch('rbx.grading.judge.program.maxrss_inherits_parent', return_value=True)
+    def test_usage_under_baseline_falls_back_to_the_sampled_peak(
+        self, mock_inherits, mock_get_memory_usage
+    ):
+        """Under the baseline, ru_maxrss is the parent's footprint, not the child's."""
+        mock_get_memory_usage.return_value = 200 * 1024 * 1024
+
+        assert (
+            get_child_memory_usage(
+                mock.MagicMock(),
+                rss_baseline=200 * 1024 * 1024,
+                sampled_peak=5 * 1024 * 1024,
+            )
+            == 5 * 1024 * 1024
+        )
+
+    @mock.patch('rbx.grading.judge.program.get_memory_usage')
+    @mock.patch('rbx.grading.judge.program.maxrss_inherits_parent', return_value=False)
+    def test_usage_is_untouched_where_maxrss_is_reset_at_exec(
+        self, mock_inherits, mock_get_memory_usage
+    ):
+        mock_get_memory_usage.return_value = 1024
+
+        assert (
+            get_child_memory_usage(
+                mock.MagicMock(),
+                rss_baseline=200 * 1024 * 1024,
+                sampled_peak=5 * 1024 * 1024,
+            )
+            == 1024
+        )
+
+    @mock.patch('rbx.grading.judge.program.maxrss_inherits_parent', return_value=True)
+    def test_samples_taken_before_exec_are_discarded(self, mock_inherits):
+        """A pre-exec sample still shows the parent's copy-on-write footprint."""
+        baseline = 100 * 1024 * 1024
+
+        assert not is_own_rss(baseline, baseline)
+        assert not is_own_rss(baseline + 1, baseline)
+        assert is_own_rss(7 * 1024 * 1024, baseline)
+
+    @mock.patch('rbx.grading.judge.program.maxrss_inherits_parent', return_value=False)
+    def test_every_sample_is_the_child_where_maxrss_is_reset_at_exec(
+        self, mock_inherits
+    ):
+        assert is_own_rss(300 * 1024 * 1024, 100 * 1024 * 1024)
+
+    def test_fat_parent_does_not_push_a_trivial_program_over_its_limit(
+        self, simple_hello_program
+    ):
+        """The regression itself: a bloated parent used to make everything MLE.
+
+        On Linux the child inherits the parent's RSS at fork, so before the fix a
+        hello world forked from a process holding 150 MB was charged all of it and
+        blew a 64 MB limit while exiting cleanly.
+        """
+        ballast = bytearray(150 * 1024 * 1024)
+        try:
+            for i in range(0, len(ballast), 4096):
+                ballast[i] = 1
+            assert get_self_rss() > 64 * 1024 * 1024
+
+            params = ProgramParams(memory_limit=64)
+            result = Program([sys.executable, str(simple_hello_program)], params).wait()
+        finally:
+            del ballast
+
+        assert result.exitcode == 0
+        assert ProgramCode.ML not in result.program_codes
+        assert result.memory_used < 64 * 1024 * 1024
+
+    def test_a_real_offender_is_still_caught_under_a_fat_parent(self, testdata_path):
+        """The other side of it: no false negatives in the band we cannot measure.
+
+        A program peaking at 96 MB is over its 32 MB limit and under the parent's
+        150 MB, which is exactly where ru_maxrss carries no information about the
+        child. The RSS sampler has to catch it before it exits.
+        """
+        script = testdata_path / 'steps_run_test' / 'memory_heavy.py'
+        ballast = bytearray(150 * 1024 * 1024)
+        try:
+            for i in range(0, len(ballast), 4096):
+                ballast[i] = 1
+
+            params = ProgramParams(memory_limit=32)
+            result = Program([sys.executable, str(script), '96'], params).wait()
+        finally:
+            del ballast
+
+        assert ProgramCode.ML in result.program_codes
