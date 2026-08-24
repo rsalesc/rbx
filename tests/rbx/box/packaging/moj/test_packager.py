@@ -1,6 +1,7 @@
 import fnmatch
 import json
 import shutil
+import stat
 import subprocess
 
 import pytest
@@ -87,6 +88,22 @@ def test_does_not_write_calibrated_files(moj_package):
     # A scripts/testlib.h would take precedence over the mojtools-vendored one.
     assert not (moj_package / 'scripts' / 'testlib.h').exists()
     assert not (moj_package / 'scripts' / 'rbx.h').exists()
+
+
+def test_scripts_in_the_package_tree_are_executable(moj_package):
+    """The judge runs these, so their mode bits are part of the package.
+
+    This is what forces `rbx package moj --upload` to hand `moj upload` the
+    built *tree* rather than the `.zip` beside it: `zipfile.extract` does not
+    restore mode bits, so a package rebuilt from the archive would arrive with
+    every `compile.sh` and `run.sh` non-executable -- and would fail on the
+    judge, not here.
+    """
+    scripts = sorted((moj_package / 'scripts').rglob('*.sh'))
+    assert scripts, 'expected per-language scripts in the package tree'
+    assert [
+        script for script in scripts if not script.stat().st_mode & stat.S_IXUSR
+    ] == []
 
 
 def test_writes_moj_meta_with_a_display_title(moj_package):
