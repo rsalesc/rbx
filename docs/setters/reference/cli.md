@@ -173,6 +173,7 @@ rbx time [OPTIONS]
 | `--runner` | TEXT | Where to run the solutions being timed (local, moj). | `local` |
 | `--share` | TEXT | Capture the time report (run report + limits table) and copy it to the clipboard. Pass a format: --share png or --share text. | - |
 | `--skip-slow` | BOOLEAN | Skip checking the estimated limit against the solutions expected to be too slow. The limit is written with its upper bound unchecked. | `False` |
+| `--dry` | BOOLEAN | Run the whole estimation but write nothing to the disk: the limits profile is printed instead of saved. | `False` |
 
 
 ---

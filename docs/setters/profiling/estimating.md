@@ -149,6 +149,21 @@ rbx time --runs=3
 Each testcase's timing becomes the **maximum** across its runs, which is the pessimistic reading
 and the right one for a limit.
 
+## Rehearsing without writing
+
+```bash
+rbx time --dry
+```
+
+Everything a normal run does — the measurement, the picker, the estimation, the upper-bound
+check — happens, and the profile it arrives at is printed instead of saved. Nothing on disk
+changes, so the [limits profile](profiles.md) you already have survives the rehearsal.
+
+That makes it the flag to reach for when the question is whether the estimation *works* —
+a ratio you just changed, a solution you just declared too slow, a remote judge you are trying
+for the first time — rather than what limit to commit to. It applies to every strategy, and to
+`--integrate` as well, which leaves `problem.rbx.yml` untouched under it.
+
 ## Sharing the report
 
 ```bash

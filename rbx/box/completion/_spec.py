@@ -401,6 +401,15 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Run the whole estimation but write nothing to the disk: the '
+                    'limits profile is printed instead of saved.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--dry'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,
