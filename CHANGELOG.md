@@ -1,3 +1,16 @@
+## 1.2.6 (2026-08-24)
+
+### Feat
+
+- **moj**: switch to inline statement images as base64 (#774)
+- **moj**: download a contestant's submission with `@moj/<contest>/<id>` (#772)
+- **moj**: fill the package author from vars.author (#770)
+
+### Fix
+
+- **moj**: always calibrate after `rbx package moj --upload` (#773)
+- **moj**: rename java sources to their public class in the jail (#771)
+
 ## 1.2.5 (2026-08-24)
 
 ### Feat
