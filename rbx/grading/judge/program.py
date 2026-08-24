@@ -18,10 +18,11 @@ FileLike = Union[PathOrStr, IO[bytes], int]
 
 # How often the alarm thread samples the child's RSS. Where ru_maxrss cannot be
 # trusted (see `maxrss_inherits_parent`) this sampling is the only measurement
-# of a program that stays under the parent's footprint, so it has to be fine
-# enough to catch a program that allocates and exits in a few hundred
-# milliseconds. A sample costs a few microseconds.
-RSS_SAMPLE_INTERVAL = 0.02
+# of a program that stays under the parent's footprint, and sampling cannot be
+# made precise -- a program that allocates and frees between two ticks is
+# invisible at any interval. This is a compromise, not a guarantee; #725 tracks
+# measuring the peak properly instead.
+RSS_SAMPLE_INTERVAL = 0.1
 # CPU time is read on its own, coarser cadence -- it is compared against a limit
 # in seconds and needs no such resolution.
 CPU_CHECK_INTERVAL = 0.3
