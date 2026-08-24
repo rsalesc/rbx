@@ -7,7 +7,7 @@ import subprocess
 import pytest
 import typer
 
-from rbx.box.packaging.moj.packager import MojPackager
+from rbx.box.packaging.moj.packager import JudgeCalibrated, MojPackager
 from rbx.box.schema import ScoreType, TaskType
 from rbx.box.statements.schema import ConversionType, StatementType
 from rbx.config import get_default_app_path
@@ -122,51 +122,66 @@ def test_moj_meta_omits_server_owned_fields(moj_package):
     assert 'collections' not in meta
 
 
-def test_moj_meta_allows_languages_with_an_accepted_solution(moj_package):
-    # MOJ calibrates a time limit per language from sols/good, so a language without
-    # an accepted solution can never be submitted in anyway.
+def test_moj_meta_allows_every_language_the_environment_declares(moj_package):
+    # The whitelist answers "what may a student write this in", which env.rbx.yml
+    # decides -- not the languages the setter happened to write solutions in. The
+    # fixture package ships a single C++ solution and still enables all of them.
     meta = json.loads((moj_package / '.moj-meta.json').read_text())
-    assert meta['languages'] == ['cpp']
-
-
-def test_moj_meta_languages_covers_every_accepted_language(testing_pkg, tmp_path):
-    testing_pkg.add_file('check.cpp').write_text(CHECKER)
-    testing_pkg.set_checker('check.cpp')
-    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
-    testing_pkg.add_solution('sol.py', outcome='accepted').write_text('print(1)\n')
-    # A non-accepted solution's language is not enabled for students.
-    testing_pkg.add_solution('wrong.c', outcome='wrong-answer').write_text(
-        'int main(){}\n'
-    )
-    testing_pkg.save()
-
-    into_path = run_packager(
-        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
-    )
-
-    meta = json.loads((into_path / '.moj-meta.json').read_text())
     # Sorted, and `py` rather than the legacy `py3` spelling.
-    assert meta['languages'] == ['cpp', 'py']
+    assert meta['languages'] == ['c', 'cpp', 'java', 'kt', 'py']
+
+
+def test_moj_meta_languages_are_the_ones_scripts_were_emitted_for(moj_package):
+    # Every whitelisted language is one MOJ can actually compile and run here: the
+    # whitelist and the emitted script dirs come from the same list.
+    meta = json.loads((moj_package / '.moj-meta.json').read_text())
+    emitted = {
+        path.name for path in (moj_package / 'scripts').iterdir() if path.is_dir()
+    }
+    assert set(meta['languages']) == emitted
 
 
 def test_reports_which_languages_are_enabled(moj_package_output):
-    assert 'MOJ will accept submissions in' in moj_package_output
-    assert 'cpp' in moj_package_output
-
-
-def test_names_the_languages_skipped_for_lacking_an_accepted_solution(
-    moj_package_output,
-):
-    # The whitelist is derived, and it is a real restriction -- a setter shipping only
-    # a C++ solution gets a C++-only problem. That must not be silent.
     out = ' '.join(moj_package_output.split())
-    assert 'ACCEPTED' in out
+    assert 'MOJ will accept submissions in' in out
+    assert 'env.rbx.yml' in out
+    for language in ['c', 'cpp', 'java', 'kt', 'py']:
+        assert language in out
+
+
+def test_says_nothing_about_calibration_when_the_limits_are_pinned(moj_package_output):
+    # Every emitted language gets a TLOVERRIDE, so an accepted solution in it buys
+    # the limits nothing and there is nothing to warn about.
+    assert 'ACCEPTED' not in ' '.join(moj_package_output.split())
+
+
+def test_calibrated_package_warns_about_languages_without_an_accepted_solution(
+    testing_pkg, tmp_path, capsys
+):
+    # Under --calibrate MOJ measures the limits from sols/good, and a whitelisted
+    # language with none falls back to TL[default] -- the tightest measured limit.
+    # That is the one case the env-derived whitelist outruns, so it is said out loud.
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.save()
+
+    run_packager(
+        testing_pkg,
+        tmp_path,
+        build_entries(tmp_path, ['samples']),
+        pin_limits=False,
+        timing_mode=JudgeCalibrated(),
+    )
+
+    out = ' '.join(capsys.readouterr().out.split())
+    assert 'No ACCEPTED solution in' in out
     for language in ['c', 'java', 'kt', 'py']:
         assert language in out
-    assert 'Add an accepted solution in a language to enable it' in out
+    assert 'rbx time -p moj' in out
 
 
-def test_says_nothing_about_skipping_when_every_language_is_enabled(
+def test_calibrated_package_says_nothing_when_every_language_has_a_solution(
     testing_pkg, tmp_path, capsys
 ):
     testing_pkg.add_file('check.cpp').write_text(CHECKER)
@@ -182,14 +197,18 @@ def test_says_nothing_about_skipping_when_every_language_is_enabled(
     testing_pkg.save()
 
     into_path = run_packager(
-        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+        testing_pkg,
+        tmp_path,
+        build_entries(tmp_path, ['samples']),
+        pin_limits=False,
+        timing_mode=JudgeCalibrated(),
     )
 
     # Asserted on the emitted whitelist too, so this cannot pass vacuously by simply
     # failing to resolve some language.
     meta = json.loads((into_path / '.moj-meta.json').read_text())
     assert meta['languages'] == ['c', 'cpp', 'java', 'kt', 'py']
-    assert 'no ACCEPTED solution' not in ' '.join(capsys.readouterr().out.split())
+    assert 'No ACCEPTED solution' not in ' '.join(capsys.readouterr().out.split())
 
 
 def test_display_title_uses_the_package_title(testing_pkg, tmp_path):
@@ -434,7 +453,7 @@ def test_outcomes_map_to_their_directories(testing_pkg, tmp_path):
     assert (root / 'upcoming' / 'maybe.cpp').is_file()
 
 
-def test_any_solutions_do_not_enable_a_submission_language(testing_pkg, tmp_path):
+def test_any_solutions_do_not_count_as_calibratable(testing_pkg, tmp_path, capsys):
     testing_pkg.add_file('check.cpp').write_text(CHECKER)
     testing_pkg.set_checker('check.cpp')
     testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
@@ -442,14 +461,19 @@ def test_any_solutions_do_not_enable_a_submission_language(testing_pkg, tmp_path
     testing_pkg.save()
 
     into_path = run_packager(
-        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+        testing_pkg,
+        tmp_path,
+        build_entries(tmp_path, ['samples']),
+        pin_limits=False,
+        timing_mode=JudgeCalibrated(),
     )
 
-    # Only an ACCEPTED solution gets a calibrated time limit, so a draft must not
-    # open its language up for submissions.
-    meta = json.loads((into_path / '.moj-meta.json').read_text())
-    assert meta['languages'] == ['cpp']
+    # `calibreitor.sh` never runs `sols/upcoming`, so a draft buys Python no measured
+    # time limit -- the language is still whitelisted, and still warned about.
     assert (into_path / 'sols' / 'upcoming' / 'draft.py').is_file()
+    out = ' '.join(capsys.readouterr().out.split())
+    assert 'No ACCEPTED solution in' in out
+    assert 'py' in out
 
 
 def test_refuses_a_package_without_an_accepted_solution(testing_pkg, tmp_path):

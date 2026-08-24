@@ -4,7 +4,7 @@ import json
 import pathlib
 import shutil
 import typing
-from typing import Dict, FrozenSet, List, Optional, Tuple, Union
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 import typer
 
@@ -495,32 +495,35 @@ class MojPackager(BasePackager):
         return box_naming.get_problem_title(language, statement, fallback_to_title=True)
 
     def _submission_languages(self) -> List[str]:
-        """The MOJ ids to allow submissions in: the languages with an accepted
-        solution.
+        """The MOJ ids to allow submissions in: the languages the environment
+        declares, which are exactly the ones this package ships `scripts/` for.
 
-        This is MOJ's own criterion rather than an rbx invention. The judge measures
-        a time limit per language from `sols/good`, and mojtools' guide is explicit:
-        put a good solution in every language you want to enable, because a language
-        without one never gets a time limit and so the student cannot use it. Deriving
-        the whitelist from the emitted script dirs instead would key it off the
-        setter's env, which says nothing about who may submit what.
+        The whitelist answers "what may a student write this in", and that is a
+        property of the environment (`env.rbx.yml`) -- the same place every other
+        language decision in rbx comes from -- not of which solutions the setter
+        happened to write. Deriving it from the accepted solutions instead made a
+        problem with a single C++ solution a C++-only problem, which is a contest-wide
+        policy decision taken by accident. Every language emitted here has a
+        `scripts/<lang>/` dir in the package and a `TLOVERRIDE` in `conf`, so MOJ can
+        compile, run and time all of them.
+
+        Under `--calibrate` the limits are MOJ's to measure, and it measures them from
+        `sols/good`: a whitelisted language with no accepted solution falls back to
+        `TL[default]`, the tightest measured limit. That is the one case where the
+        whitelist outruns what the package can justify, and
+        `_report_submission_languages` says so out loud.
 
         A probe package overrides all of that. Its whitelist is *authored* -- every
-        language rbx may testrun -- rather than derived, because it ships only the
-        model solution and the API refuses a submission outside the whitelist, a
-        testrun included. Narrowing to the shipped languages would refuse every
-        testrun of a solution in another language, the slow and wrong ones included,
-        and the submission surface it protects does not exist on a private throwaway
-        problem nobody else submits to.
+        language rbx may testrun -- rather than derived, because the API refuses a
+        submission outside the whitelist, a testrun included, and a timing run must
+        never be refused over a language the whitelist failed to name.
 
         Sorted for a deterministic file, and normalized the way the server would.
         """
-        from rbx.box.code import find_language
-
         if self.probe is not None:
-            # `_report_submission_languages` is skipped on purpose: it warns that the
-            # whitelist *narrowed* to the accepted solutions' languages, which is
-            # exactly what did not happen here, and nobody submits to a probe package.
+            # `_report_submission_languages` is skipped on purpose: it is about what
+            # the setter's env enables for students, and nobody else submits to a
+            # throwaway probe package.
             allowed = sorted(
                 {
                     normalize_moj_language(language)
@@ -530,32 +533,21 @@ class MojPackager(BasePackager):
             self._warn_about_unscripted_languages(allowed)
             return allowed
 
-        languages = set()
-        for solution in package.get_solutions():
-            if solution.outcome != ExpectedOutcome.ACCEPTED:
-                continue
-            rbx_language = find_language(solution)
-            moj_language = get_moj_language_from_rbx_language(rbx_language.name)
-            if moj_language is None:
-                console.console.print(
-                    f'[warning]{solution.href()} is written in '
-                    f'[item]{rbx_language.name}[/item], which maps to no MOJ language, '
-                    'so it will not be listed in the allowed submission '
-                    'languages.[/warning]'
-                )
-                continue
-            languages.add(moj_language)
-
-        allowed = sorted(languages)
+        allowed = sorted(
+            {
+                normalize_moj_language(language)
+                for language in get_emitted_moj_languages()
+            }
+        )
         self._report_submission_languages(allowed)
         return allowed
 
     def _warn_about_unscripted_languages(self, allowed: List[str]) -> None:
         """Warn about a probe whitelisting a language the package ships no scripts for.
 
-        On the real path this cannot happen: the whitelist is derived from the
-        accepted solutions, and a solution's language necessarily has a
-        `scripts/<lang>/` dir. An authored whitelist loses that for free, and the
+        On the real path this cannot happen: the whitelist *is* the emitted
+        languages, so every entry has a `scripts/<lang>/` dir by construction. An
+        authored whitelist loses that for free, and the
         failure is quiet in a bad way -- MOJ accepts the submission (it is on the
         whitelist) and then runs it under its own `lang/<lang>` scripts, which rbx
         never validated, with no signal on this side at all.
@@ -584,13 +576,19 @@ class MojPackager(BasePackager):
         )
 
     def _report_submission_languages(self, allowed: List[str]) -> None:
-        """Say out loud which languages students may submit in, and which were left
-        out for lack of an accepted solution.
+        """Say out loud which languages students may submit in.
 
-        This whitelist is *derived*, not authored, and it is a real restriction -- the
-        MOJ API rejects submissions outside it. A setter who ships only a C++ solution
-        gets a C++-only problem even though the package carries scripts for every
-        configured language, so that consequence must never be silent.
+        The whitelist is a real restriction -- the MOJ API rejects submissions outside
+        it -- and it comes from `env.rbx.yml`, so a setter working in an environment
+        trimmed down to C++ gets a C++-only problem. That consequence must never be
+        silent, and the fix lives somewhere the message has to point at.
+
+        Under `--calibrate` a second line names the whitelisted languages with no
+        accepted solution. MOJ calibrates a limit per language from `sols/good`, so
+        those fall back to `TL[default]` -- the *tightest* measured limit, which on a
+        typical problem is the C++ one, and no Python submission survives it. The
+        pinned modes emit a `TLOVERRIDE` for every emitted language, so there is
+        nothing to warn about there.
         """
         if not allowed:
             # `_write_solutions` fails right after this with a precise error.
@@ -598,23 +596,43 @@ class MojPackager(BasePackager):
 
         console.console.print(
             'MOJ will accept submissions in: '
-            f'[item]{"[/item], [item]".join(allowed)}[/item].'
+            f'[item]{"[/item], [item]".join(allowed)}[/item] '
+            '(the languages declared in [item]env.rbx.yml[/item]).'
         )
 
-        skipped = sorted(
-            language
-            for language in get_emitted_moj_languages()
-            if language not in allowed
+        if not isinstance(self.timing_mode, JudgeCalibrated):
+            return
+
+        uncalibrated = sorted(
+            set(allowed) - self._languages_with_an_accepted_solution()
         )
-        if not skipped:
+        if not uncalibrated:
             return
         console.console.print(
-            f'[warning]Not enabling [item]{"[/item], [item]".join(skipped)}[/item]: '
-            'no [item]ACCEPTED[/item] solution in those languages.[/warning]\n'
-            '[warning]MOJ takes the submission whitelist from the languages with an '
-            'accepted solution -- they are the ones it has seen solved and can time. '
-            'Add an accepted solution in a language to enable it.[/warning]'
+            f'[warning]No [item]ACCEPTED[/item] solution in [item]'
+            f'{"[/item], [item]".join(uncalibrated)}[/item], and this package lets MOJ '
+            'calibrate the time limits.[/warning]\n'
+            '[warning]MOJ measures a limit per language from the accepted solutions '
+            'the package ships, so those languages are judged under the tightest '
+            'measured limit. Add an accepted solution in them, or pin the limits with '
+            '[item]rbx time -p moj[/item].[/warning]'
         )
+
+    def _languages_with_an_accepted_solution(self) -> Set[str]:
+        """The MOJ ids MOJ can calibrate a time limit for: those of the accepted
+        solutions this package ships in `sols/good`."""
+        from rbx.box.code import find_language
+
+        languages = set()
+        for solution in package.get_solutions():
+            if solution.outcome != ExpectedOutcome.ACCEPTED:
+                continue
+            moj_language = get_moj_language_from_rbx_language(
+                find_language(solution).name
+            )
+            if moj_language is not None:
+                languages.add(moj_language)
+        return languages
 
     def _write_moj_meta(self, into_path: pathlib.Path) -> None:
         """Write `.moj-meta.json`.

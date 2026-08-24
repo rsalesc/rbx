@@ -1439,13 +1439,15 @@ def _probe_pin(ctx: RunContext) -> ProbePinned:
 def _testrun_languages(ctx: RunContext) -> Tuple[str, ...]:
     """The MOJ ids to whitelist for submission, in `.moj-meta.json`.
 
-    Every language rbx **may testrun**, and emphatically *not* just the accepted
-    ones. The API rejects a submission outside the whitelist, a testrun included,
-    so a whitelist derived from the accepted solutions (which is the right rule
-    for a real problem, and what `MojPackager` does off the probe path) would
-    refuse every testrun of a slow or wrong solution: those are never ACCEPTED by
-    construction. Nothing is protected by narrowing it here -- a private `rbxt-`
-    problem has no submission surface to protect.
+    Every language rbx **may testrun**: what this run is about to submit, said
+    out loud, rather than inherited from the setter's `env.rbx.yml` (what
+    `MojPackager` derives the whitelist from off the probe path). The API rejects
+    a submission outside the whitelist, a testrun included, so the one property
+    that matters here is covering every solution this run will send -- and a
+    package whose `.moj-meta.json` is written from what the run itself needs
+    cannot be broken by a later change to how the real path derives its own.
+    Nothing is protected by narrowing it either: a private `rbxt-` problem has no
+    submission surface to protect.
 
     So it is the whole package's solutions, not this batch's. That matters since
     `rbx time` split into two phases: the estimation phase tracks only the

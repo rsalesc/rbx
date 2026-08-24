@@ -115,12 +115,20 @@ Two constraints come from MOJ's side, and {{rbx}} checks both before packaging:
 ## Submission languages
 
 MOJ keeps a whitelist of the languages a problem accepts, and {{rbx}} derives it from the
-languages that have an **accepted solution** -- the ones you've actually shown to solve the
-problem.
+languages your environment declares in `env.rbx.yml` -- the same ones it ships compile and run
+scripts for in the package. Packaging prints the list, so you always see what a student may
+submit.
 
-So if you only ship a C++ solution, you get a C++-only problem. That's never silent: packaging
-prints the languages it enabled, and warns by name about every other language your environment
-declares. The fix is to add an accepted solution in that language.
+To take a language off the whitelist, remove it from `env.rbx.yml`. You don't need an accepted
+solution in a language to enable it: the time limits are pinned from the `moj` limits profile,
+which covers every language your environment declares.
+
+The exception is [`--calibrate`](#letting-moj-calibrate-instead), where MOJ
+measures the limits itself -- from the accepted solutions the package ships. A whitelisted
+language with no accepted solution then falls back to the *tightest* limit MOJ measured,
+usually the C++ one, which no Python submission is going to survive. Packaging warns by name
+when that's the case; the fixes are an accepted solution in that language, or pinning the
+limits with `rbx time -p moj`.
 
 ## Checkers
 

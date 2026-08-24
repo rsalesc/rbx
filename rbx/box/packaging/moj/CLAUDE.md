@@ -402,43 +402,47 @@ So the packager writes the content fields it can know and omits the rest:
 | Field | Emitted? | Why |
 |---|---|---|
 | `display_title` | always | Required and never empty. Resolved with `naming.get_problem_title(...)`, the same helper BOCA uses — statement title override, then the package title, then `pkg.name`, with an actionable error when a package has several titles and no statement to disambiguate. |
-| `languages` | when non-empty | The languages with an **accepted solution** — see below. |
+| `languages` | when non-empty | The languages **`env.rbx.yml` declares** — see below. |
 | `collections` | never | rbx has no notion of them; absent keeps the server's. |
 | `public`, `public_at`, `owner`, `gitea` | never | Server-owned and ignored from a tar. `public` is additionally **fail-closed** in `gen-problem-json.sh` (absent = private); emitting it is how an unpublished problem leaks into an index served to anonymous users. |
 
-**Why `languages` comes from `sols/good`.** It is the whitelist of submission
-languages, and the API rejects anything outside it. MOJ measures a time limit per
-language from the accepted solutions, and mojtools' guide is explicit: put a good
-solution in every language you want to enable. (With pinned limits a language without
-an accepted solution would still be *judgeable* -- it falls back to
-`TLOVERRIDE[default]` -- but it is one nothing has ever been shown to solve,
-so the whitelist deliberately stays keyed to the accepted solutions.) Deriving the list from the emitted
-`scripts/<lang>/` dirs instead would key it off the setter's `env.rbx.yml`, which says
-nothing about who may submit what — and would silently *narrow* the default (absent =
-all languages) to whatever the preset happens to declare.
+**Why `languages` comes from `env.rbx.yml`** (issue #761). It is the whitelist of
+submission languages — the API rejects anything outside it — so it answers "what may a
+student write this in", and that is an environment-wide policy, not a property of which
+solutions this problem happens to ship. It is exactly `get_emitted_moj_languages()`, so
+every whitelisted language has a `scripts/<lang>/` dir *and* a `TLOVERRIDE` in `conf`:
+MOJ can compile, run and time all of them.
+
+It used to be the languages with an **accepted solution**, on mojtools' guidance that a
+language without a good solution never gets a calibrated time limit. Pinning made that
+reasoning obsolete — `_fixed_time_limits` emits a `TLOVERRIDE` per *emitted* language —
+and left a bad failure mode standing: a problem whose setter wrote one C++ solution
+silently became a C++-only problem, which is a contest-wide decision nobody took on
+purpose.
 
 Ids are normalized the way the server does: lowercased, `py2`/`py3` folded to `py`,
 deduplicated, and sorted so the file is deterministic.
 
-**The narrowing is reported, never silent.** The package ships `scripts/<lang>/` for
-every language the env declares, but the whitelist is derived from accepted solutions,
-so a setter who ships only a C++ solution gets a C++-only problem. Packaging therefore
-prints the enabled set and warns by name about every emitted language left out —
-"no **ACCEPTED** solution in those languages" — with the fix (add an accepted solution
-in that language). See `_report_submission_languages`.
+**The one case the whitelist outruns is `--calibrate`**, where the limits are MOJ's to
+measure and it measures them from `sols/good`. A whitelisted language with no accepted
+solution then falls back to `TL[default]` — the *tightest* measured limit, typically the
+C++ one, which no Python submission survives. So `_report_submission_languages` prints
+the enabled set always, and under `JudgeCalibrated` adds a warning naming those
+languages, with both fixes (an accepted solution in them, or `rbx time -p moj`). Under
+the pinned modes there is nothing to warn about.
 
-**A probe package inverts this.** `ProbePackage(submission_languages=[...])` is set
-when the package exists for rbx to *measure* timings on the judge rather than to be
-judged (the MOJ runner). It then ships **only the model solution** — `moj testrun`
-sends the timed source in the request body, so the rest never have to be there, and
-`calibreitor.sh` needs exactly one `sols/good` — and whitelists **every language rbx
-may testrun** instead of the shipped ones. That is not a nicety: the API rejects a
-submission outside the whitelist, a testrun included, so an accepted-solutions
-whitelist would collapse to the model solution's language and refuse every testrun in
-another one, the slow and wrong solutions included (never ACCEPTED by construction).
-The narrowing report is skipped with it — nothing narrowed, and nobody else submits to
-a throwaway `rbxt-` problem. The two axes are separate constructor arguments because
-"what limits" and "what is in the package / who may submit" are genuinely orthogonal.
+**A probe package still authors its own.** `ProbePackage(submission_languages=[...])` is
+set when the package exists for rbx to *measure* timings on the judge rather than to be
+judged (the MOJ runner). It ships **only the model solution** — `moj testrun` sends the
+timed source in the request body, so the rest never have to be there, and
+`calibreitor.sh` needs exactly one `sols/good` — and whitelists **every language rbx may
+testrun**, which is a property of the run rather than of the env. The report is skipped
+with it: it is about what the setter's env enables for students, and nobody else submits
+to a throwaway `rbxt-` problem. A language it whitelists that the package emits no
+scripts for gets `_warn_about_unscripted_languages` instead — a case the derived path
+cannot reach, since there the two lists are the same one. The two axes are separate
+constructor arguments because "what limits" and "what is in the package / who may
+submit" are genuinely orthogonal.
 
 ## The probe package
 
