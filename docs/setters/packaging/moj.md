@@ -90,11 +90,6 @@ A few things to keep in mind:
   externalization produces) is rasterized to PNG for you. That needs `pdftoppm`, from poppler; a
   statement with PDF figures and no poppler installed refuses to package, naming the figures.
 
-!!! warning "No math in sample explanations"
-    MOJ renders sample explanations without math support, so `$x$` inside an explanation reaches
-    the student literally. Nothing in the package can fix it -- {{rbx}} just warns you when an
-    explanation contains math.
-
 ## Test groups and scoring
 
 Test groups are supported, and translate into MOJ's own scoring file for problems that score by
