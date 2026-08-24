@@ -1,5 +1,6 @@
 """Assembling `docs/enunciado.md` and `docs/notes/<sample>.md` for MOJ."""
 
+import base64
 import pathlib
 
 import pytest
@@ -107,6 +108,159 @@ def test_a_note_carrying_math_ships_without_a_warning(capsys):
     notes = statement.build_notes({0: 'The answer is $x + y$.'})
     assert '$x + y$' in notes['sample001']
     assert capsys.readouterr().out == ''
+
+
+# A 1x1 PNG, so an inlined payload is a real image rather than invented bytes.
+PNG_BYTES = base64.b64decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmM'
+    'IQAAAABJRU5ErkJggg=='
+)
+
+FIGURE_BLOCKS = {
+    'legend': 'See it:\n\n\\includegraphics{assets/fig.png}',
+    'input': 'A single line.',
+    'output': 'A single line.',
+}
+
+
+@pytest.fixture
+def docs_with_figure(tmp_path: pathlib.Path) -> pathlib.Path:
+    """A materialized `docs/` holding the one figure the blocks below cite."""
+    docs = tmp_path / 'docs'
+    (docs / 'assets').mkdir(parents=True)
+    (docs / 'assets' / 'fig.png').write_bytes(PNG_BYTES)
+    return docs
+
+
+@pytest.fixture
+def inlining(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(statement, 'INLINE_IMAGES_AS_BASE64', True)
+
+
+@pytest.fixture
+def shipping_files(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(statement, 'INLINE_IMAGES_AS_BASE64', False)
+
+
+def test_the_default_is_to_inline(docs_with_figure: pathlib.Path):
+    """Pinned rather than left implicit: which mode a package gets is the whole
+    point of the switch, and every other test here sets it explicitly."""
+    doc = statement.build_enunciado(
+        FIGURE_BLOCKS, language='pt-br', docs_root=docs_with_figure
+    )
+    assert 'data:image/png;base64,' in doc
+
+
+def test_shipping_files_keeps_the_reference_pointing_at_the_file(
+    shipping_files,
+    docs_with_figure: pathlib.Path,
+):
+    """The image travels as its own file and the document cites it, which is the
+    shape render-statement.sh's --resource-path exists for."""
+    doc = statement.build_enunciado(
+        FIGURE_BLOCKS, language='pt-br', docs_root=docs_with_figure
+    )
+    assert '(assets/fig.png)' in doc
+    assert 'data:image/png;base64,' not in doc
+
+
+def test_inlining_carries_the_figure_inside_the_document(
+    inlining, docs_with_figure: pathlib.Path
+):
+    doc = statement.build_enunciado(
+        FIGURE_BLOCKS, language='pt-br', docs_root=docs_with_figure
+    )
+    assert f'data:image/png;base64,{base64.b64encode(PNG_BYTES).decode()}' in doc
+    assert '(assets/fig.png)' not in doc
+
+
+def test_inlining_carries_a_note_figure_too(inlining, docs_with_figure: pathlib.Path):
+    notes = statement.build_notes(
+        {0: 'Look:\n\n\\includegraphics{assets/fig.png}'},
+        docs_root=docs_with_figure,
+    )
+    assert 'data:image/png;base64,' in notes['sample001']
+
+
+def test_inlining_without_a_docs_root_leaves_the_references_alone(inlining):
+    """Nothing on disk to read, so rewriting could only cite files the caller is
+    not shipping."""
+    doc = statement.build_enunciado(FIGURE_BLOCKS, language='pt-br')
+    assert '(assets/fig.png)' in doc
+
+
+def test_inlining_leaves_a_reference_it_cannot_resolve(
+    inlining, docs_with_figure: pathlib.Path
+):
+    """A missing file, an absolute URL: not this rewrite's to fix, and MOJ's own
+    renderer complains about the first in the same words either way."""
+    doc = statement.build_enunciado(
+        {
+            'legend': (
+                '\\includegraphics{assets/missing.png}\n\n'
+                '\\includegraphics{https://example.com/f.png}'
+            ),
+        },
+        language='pt-br',
+        docs_root=docs_with_figure,
+    )
+    assert '(assets/missing.png)' in doc
+    assert '(https://example.com/f.png)' in doc
+
+
+def test_discarding_inlined_assets_removes_the_files_and_their_dirs(
+    inlining, tmp_path: pathlib.Path
+):
+    (tmp_path / 'docs' / 'assets').mkdir(parents=True)
+    (tmp_path / 'docs' / 'assets' / 'fig.png').write_bytes(PNG_BYTES)
+    (tmp_path / 'docs' / 'enunciado.md').write_text('kept\n')
+    bundle = export.StatementBundle(
+        blocks={},
+        explanations={},
+        assets=[
+            export.BundledAsset(
+                asset=export.ResolvedAsset(
+                    scope=export.AssetScope.STATEMENT,
+                    source=tmp_path / 'docs' / 'assets' / 'fig.png',
+                    rel=pathlib.PurePosixPath('fig.png'),
+                ),
+                dest=pathlib.PurePosixPath('docs/assets/fig.png'),
+            )
+        ],
+        remaps={},
+    )
+
+    statement.discard_inlined_assets(bundle, tmp_path)
+
+    assert not (tmp_path / 'docs' / 'assets').exists()
+    assert (tmp_path / 'docs' / 'enunciado.md').is_file()
+
+
+def test_discarding_is_a_no_op_when_the_files_are_what_ships(
+    shipping_files,
+    tmp_path: pathlib.Path,
+):
+    (tmp_path / 'docs' / 'assets').mkdir(parents=True)
+    (tmp_path / 'docs' / 'assets' / 'fig.png').write_bytes(PNG_BYTES)
+    bundle = export.StatementBundle(
+        blocks={},
+        explanations={},
+        assets=[
+            export.BundledAsset(
+                asset=export.ResolvedAsset(
+                    scope=export.AssetScope.STATEMENT,
+                    source=tmp_path / 'docs' / 'assets' / 'fig.png',
+                    rel=pathlib.PurePosixPath('fig.png'),
+                ),
+                dest=pathlib.PurePosixPath('docs/assets/fig.png'),
+            )
+        ],
+        remaps={},
+    )
+
+    statement.discard_inlined_assets(bundle, tmp_path)
+
+    assert (tmp_path / 'docs' / 'assets' / 'fig.png').is_file()
 
 
 def test_layout_uses_docs_as_the_remap_base_for_both_slots():

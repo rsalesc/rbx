@@ -26,7 +26,7 @@ changed its Markdown writer, not that the expectation was wrong.
 
 import json
 import re
-from typing import Any
+from typing import Any, Callable, Optional
 
 from rbx import tooling
 
@@ -40,33 +40,47 @@ class MojGateError(ValueError):
     """
 
 
-def _clear_image_alts(node: Any) -> None:
-    """Empty the alt inlines of every ``Image`` in a pandoc AST, in place.
+def _fix_images(node: Any, rewrite_url: Optional[Callable[[str], str]]) -> None:
+    """Normalize every ``Image`` in a pandoc AST, in place.
 
-    A pandoc ``Image`` is ``{'t': 'Image', 'c': [attr, [inlines], [url, title]]}``
-    and the alt inlines are that middle element.
+    A pandoc ``Image`` is ``{'t': 'Image', 'c': [attr, [inlines], [url, title]]}``:
+    the alt inlines are that middle element, and the url is the first of the last.
+    The alt is always cleared; ``rewrite_url``, when given, replaces the url --
+    which is how a consumer that ships no image files at all (MOJ, inlining
+    base64) gets one.
     """
     if isinstance(node, list):
         for child in node:
-            _clear_image_alts(child)
+            _fix_images(child, rewrite_url)
         return
     if not isinstance(node, dict):
         return
     if node.get('t') == 'Image' and isinstance(node.get('c'), list):
         node['c'][1] = []
+        if rewrite_url is not None:
+            target = node['c'][2]
+            target[0] = rewrite_url(target[0])
         return
     for value in node.values():
-        _clear_image_alts(value)
+        _fix_images(value, rewrite_url)
 
 
-def tex_to_markdown(tex: str) -> str:
-    """Convert one Polygon-TeX block to Markdown."""
+def tex_to_markdown(
+    tex: str, *, rewrite_image_url: Optional[Callable[[str], str]] = None
+) -> str:
+    """Convert one Polygon-TeX block to Markdown.
+
+    ``rewrite_image_url`` maps each image reference to what the document should
+    cite instead. It runs on the AST rather than over the emitted Markdown so a
+    replacement may be arbitrary text -- a multi-kilobyte ``data:`` URI included,
+    which pandoc's writer then escapes and wraps correctly on its own.
+    """
     import pypandoc
 
     tooling.PANDOC.ensure()
 
     ast = json.loads(pypandoc.convert_text(tex, 'json', format='latex'))
-    _clear_image_alts(ast)
+    _fix_images(ast, rewrite_image_url)
     return pypandoc.convert_text(json.dumps(ast), 'markdown', format='json')
 
 

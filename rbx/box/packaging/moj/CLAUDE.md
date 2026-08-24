@@ -386,6 +386,38 @@ for `asset_roots[SAMPLE]`, where many files land in the directory).
 Note names come from `naming.testcase_name(..., is_sample=True)` rather than a
 hand-spelled `sample%03d`, so a note can never stop pairing with its test.
 
+### Figures: shipped as files, or inlined as base64
+
+`statement.INLINE_IMAGES_AS_BASE64` picks between the two shapes. A **code-level
+switch**, deliberately not a schema field: both produce a valid package, MOJ shows
+the reader the same statement either way, and nothing about a problem says which
+one it wants.
+
+`True` (the default) rewrites each reference to a `data:` URI carrying the file's
+bytes and ships no image files at all (`statement_assets.base64_inliner` /
+`discard_assets`, driven by `statement.discard_inlined_assets`), so the statement
+renders identically wherever pandoc runs — no resource path, no files. That is why
+it is the default: it removes the one thing about a MOJ statement that depends on
+files landing where the renderer expects them. It costs ~4/3 the size, carries a
+twice-cited figure twice, and makes the raw Markdown unreadable by a human.
+
+`False` ships `docs/assets/fig.png` and leaves the document citing
+`![](assets/fig.png)` — the shape mojtools was built around, since
+`render-statement.sh` passes `--resource-path=<pkg>/docs` precisely so pandoc can
+find them, and it is the *renderer* that base64-embeds each figure into the HTML a
+student reads. The files stay inspectable in the tarball and a figure cited twice
+travels once.
+
+Two ordering facts the switch depends on. The rewrite runs on **pandoc's AST**
+(`markdown_export.tex_to_markdown(..., rewrite_image_url=...)`), not over the
+emitted Markdown, so a multi-kilobyte replacement is escaped and wrapped by
+pandoc's own writer rather than by a regex. And it reads the **materialized**
+figure, so `build_enunciado`/`build_notes` are called after `materialize` and
+`rasterize_pdf_assets` — a TikZ figure is inlined as the rasterized PNG, never the
+PDF the statement was authored against. Their `docs_root` is `docs/` for the body
+*and* for the notes, for the same reason the remap base is (below); without it the
+references are left alone whatever the switch says.
+
 ### PDF figures need poppler
 
 MOJ renders to HTML and base64-embeds every image, so an `<img src="fig.pdf">` is

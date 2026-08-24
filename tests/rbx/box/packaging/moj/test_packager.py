@@ -7,6 +7,7 @@ import subprocess
 import pytest
 import typer
 
+from rbx.box.packaging.moj import statement as moj_statement
 from rbx.box.packaging.moj.packager import JudgeCalibrated, MojPackager
 from rbx.box.schema import ScoreType, TaskType
 from rbx.box.statements.schema import ConversionType, StatementType
@@ -687,6 +688,10 @@ def test_points_problems_emit_a_score_file(testing_pkg, tmp_path):
 
 
 def test_package_writes_a_real_enunciado(testing_pkg, tmp_path, monkeypatch):
+    # Pinned to the shipping-files mode, which is what makes the DERIVED REFERENCE
+    # observable: inlining replaces it with the figure's bytes, so a wrong remap
+    # would show up only as a figure that failed to inline.
+    monkeypatch.setattr(moj_statement, 'INLINE_IMAGES_AS_BASE64', False)
     minimal_package(testing_pkg)
     with_statements(testing_pkg, monkeypatch, PT_BLOCKS)
 
@@ -705,7 +710,37 @@ def test_package_writes_a_real_enunciado(testing_pkg, tmp_path, monkeypatch):
     assert (into_path / 'docs' / 'assets' / 'fig.png').exists()
 
 
+def test_package_inlines_the_figures_and_ships_no_asset_files(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """The default. The figure travels inside the documents, so the files the
+    references used to point at are not in the tarball at all."""
+    minimal_package(testing_pkg)
+    with_statements(
+        testing_pkg,
+        monkeypatch,
+        PT_BLOCKS,
+        explanations={0: 'Veja \\includegraphics{diagram}.'},
+    )
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+
+    text = (into_path / 'docs' / 'enunciado.md').read_text()
+    note = (into_path / 'docs' / 'notes' / 'sample001.md').read_text()
+    assert 'data:image/png;base64,' in text
+    assert 'data:image/png;base64,' in note
+    assert '](assets/' not in text
+    assert '](samples/' not in note
+    assert not (into_path / 'docs' / 'assets').exists()
+    assert not (into_path / 'docs' / 'samples').exists()
+
+
 def test_package_writes_sample_notes_by_test_name(testing_pkg, tmp_path, monkeypatch):
+    # See the note in test_package_writes_a_real_enunciado: the reference this
+    # asserts on is what inlining replaces.
+    monkeypatch.setattr(moj_statement, 'INLINE_IMAGES_AS_BASE64', False)
     minimal_package(testing_pkg)
     with_statements(
         testing_pkg,
