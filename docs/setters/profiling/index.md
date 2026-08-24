@@ -242,7 +242,7 @@ $ rbx time -p moj --runner moj
 ```
 
 `rbx run` takes the same flag — see [Running on the judge
-itself](/setters/running/#running-on-the-judge-itself). Each command uploads to a problem
+itself](/setters/running/remote/). Each command uploads to a problem
 of its own (`…-run` for `rbx run`, `…-slow` for the phase below), so alternating between
 them never costs a re-upload.
 

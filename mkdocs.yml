@@ -24,6 +24,7 @@ nav:
           - "Stress testing": "setters/stress-testing.md"
       - "Running":
           - "setters/running/index.md"
+          - "On the judge itself": "setters/running/remote.md"
       - "Grading":
           - "setters/grading/index.md"
           - "Checkers": "setters/grading/checkers.md"

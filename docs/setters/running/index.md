@@ -52,34 +52,31 @@ Inspect the results of a run with `rbx ui`:
 
 {{ asciinema("ui-navigation") }}
 
-## Running on the judge itself
+## Failing fast
 
-`rbx run` runs the solutions in the sandbox on your machine. `--runner` is the other
-way: run them **on the judge park**, through the judge's own CLI, and read the verdicts
-and timings the judge produced.
+`--fail-fast` (`--ff`) stops a solution at its **first non-accepted verdict**, instead of
+running it through the whole testset.
 
 ```bash
-# Run every solution on MOJ instead of locally
+rbx run --fail-fast
+```
+
+It is a shortcut for quick experimentation, and its report must not be trusted to validate a
+problem: the testcases that never ran are reported as **failed**, not as unmeasured, and the
+timing summary is omitted entirely, since a solution that stopped early was only timed on the
+testcases that ran.
+
+## Running on the judge itself
+
+`--runner` runs the solutions **on the judge park** rather than in the sandbox on your machine,
+and reports the verdicts and timings the judge produced.
+
+```bash
 rbx run --runner moj
 ```
 
-The setup is the same one `rbx time --runner moj` uses — you must be logged in to the
-[`moj` CLI](https://github.com/cd-moj/moj-cli), and {{rbx}} uploads a throwaway problem
-of its own rather than touching one you published. See [Measuring on the judge
-itself](/setters/profiling/#measuring-on-the-judge-itself) for the whole story, including
-what a judge cannot report back.
-
-Two things are specific to `rbx run`:
-
-- The judge enforces **the same time limits your local run would**: the ones from the limits
-  profile in effect, per language group.
-- `--fail-fast` is honoured by the judge: it stops a solution at its first non-accepted
-  verdict, and the testcases it never reached are reported as skipped, as they are
-  locally. Toggling the flag changes the uploaded package, so the first run after a
-  toggle pays for an upload and a calibration.
-
-`--no-check` is **refused** on a remote runner: the judge always judges with the packaged
-checker, so there is no run it could do that means "do not check".
+See [Running on the judge itself](/setters/running/remote/) for why you would, what the setup
+needs, and what a judge cannot report back.
 
 ## Sharing a report
 
