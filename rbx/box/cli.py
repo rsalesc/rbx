@@ -35,6 +35,7 @@ from rbx.box import (
     timing,
     timing_config,
     validators,
+    visualization,
 )
 from rbx.box.contest import contest_state
 from rbx.box.contest import main as contest
@@ -139,6 +140,13 @@ app.add_typer(
     help='Manage the rbx editor extension (sub-command).',
     rich_help_panel='Misc',
 )
+app.add_typer(
+    visualization.app,
+    name='visualize, viz',
+    cls=annotations.AliasGroup,
+    help='Visualize a single testcase (sub-command).',
+    rich_help_panel='Management',
+)
 
 
 def version_callback(value: bool) -> None:
@@ -178,12 +186,58 @@ def _revalidate_cache(cache_path: pathlib.Path, name: str) -> bool:
     return cleared
 
 
+def _is_readonly_command(ctx: typer.Context) -> bool:
+    """Whether the invoked command promised not to touch the package cache.
+
+    Only `rbx visualize` so far. It exists to render one artifact for a testcase
+    the user pointed at, and an editor drives it from a click -- so clearing the
+    cache (and with it the build tree) underneath that click is the one outcome
+    it must never have.
+    """
+    invoked = ctx.invoked_subcommand or ''
+    # Sub-apps are registered under their alias list ('visualize, viz'), and
+    # which spelling arrives here depends on how the group resolved it.
+    aliases = {alias.strip() for alias in invoked.split(',')}
+    return bool(aliases & {'visualize', 'viz'})
+
+
+def _refuse_incompatible_cache() -> None:
+    """Exit rather than clear a cache written by an incompatible rbx.
+
+    Clearing is right for a build the user asked for and wrong for a read-only
+    command: the cost lands as a surprise full rebuild, triggered by something
+    that was supposed to only look at a file.
+    """
+    if not cd.is_problem_package():
+        return
+    fingerprint_file = package.get_problem_cache_path() / 'fingerprint'
+    if not fingerprint_file.is_file():
+        # Nothing built yet, so there is no cache to lose.
+        return
+    if fingerprint_file.read_text().strip() == global_package.get_cache_fingerprint():
+        return
+
+    console.stderr_console.print(
+        '[error]This [item]rbx[/item] uses a different cache format than the one '
+        'that built this package.[/error]'
+    )
+    console.stderr_console.print(
+        '[error]Refusing, because touching the cache would clear it and force a '
+        'full rebuild.[/error]'
+    )
+    console.stderr_console.print(
+        'Run [item]rbx build[/item] with this [item]rbx[/item] if that is what you want.'
+    )
+    raise typer.Exit(visualization.EXIT_CACHE_SKEW)
+
+
 @app.callback()
 @annotations.docs("""
     The `rbx` CLI is the main entry point for all operations. It provides a set of
     commands to manage problems, contests, and the environment.
 """)
 def main(
+    ctx: typer.Context,
     cache: Annotated[
         grading_context.CacheLevel,
         typer.Option(
@@ -247,12 +301,20 @@ def main(
     contest_state.apply_cli_selection(contest_id)
 
     presets.check_active_preset_compatibility()
-    if cd.is_problem_package() and _revalidate_cache(
-        package.get_problem_cache_path(), 'Cache'
-    ):
-        # A cache from another rbx version leaves stale build artifacts behind.
-        _clean_build_dirs()
-    _revalidate_cache(global_package.get_global_cache_dir_path(), 'Global cache')
+
+    # A read-only command refuses rather than clears -- see `_refuse_incompatible_cache`.
+    # This has to happen here, ahead of both revalidations: they run in this
+    # callback, so a guard inside the sub-command itself would always be too
+    # late, and would find the cache (and the build tree) already gone.
+    if _is_readonly_command(ctx):
+        _refuse_incompatible_cache()
+    else:
+        if cd.is_problem_package() and _revalidate_cache(
+            package.get_problem_cache_path(), 'Cache'
+        ):
+            # A cache from another rbx version leaves stale build artifacts behind.
+            _clean_build_dirs()
+        _revalidate_cache(global_package.get_global_cache_dir_path(), 'Global cache')
 
     state.STATE.run_through_cli = True
     state.STATE.sanitized = sanitized

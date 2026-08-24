@@ -161,6 +161,21 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
+  /**
+   * Whether this path is a visualization, and so says nothing about a run.
+   *
+   * `rbx.visualizeSolutionOutput` passes `--dest` under the build directory,
+   * which nothing here watches, so the extension's own visualizations are
+   * already invisible to this. A *hand-typed* `rbx visualize output` has no
+   * `--dest` and lands beside the run artifact instead, i.e. inside
+   * `.rbx/runs/<i>/<group>/output_visualization/` -- and that would invalidate
+   * the run view and redraw the tree for a file that carries no verdict, no
+   * timing and no progress.
+   */
+  const isVisualizationArtifact = (fsPath: string): boolean =>
+    fsPath.includes(`${path.sep}output_visualization${path.sep}`) ||
+    fsPath.includes(`${path.sep}visualization${path.sep}`);
+
   // Artifacts land incrementally as evaluations resolve, which is what gives
   // the view live progress without any streaming protocol: each new `.eval`
   // fills in one testcase. Refreshes are debounced because a run drops many
@@ -169,6 +184,9 @@ export function activate(context: vscode.ExtensionContext): void {
   let timer: NodeJS.Timeout | undefined;
 
   const touched = (uri: vscode.Uri) => {
+    if (isVisualizationArtifact(uri.fsPath)) {
+      return;
+    }
     const root = packageRootOf(uri.fsPath);
     if (root === undefined) {
       return;

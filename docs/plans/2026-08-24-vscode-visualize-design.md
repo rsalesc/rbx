@@ -1,7 +1,7 @@
 # On-demand visualizers in the VS Code extension
 
 Date: 2026-08-24
-Status: design
+Status: implemented
 
 ## Goal
 
@@ -18,7 +18,7 @@ flag reaches it. Today the only way to see one is to launch the TUI.
 | Trigger | Visualizer | Inputs | Artifact |
 |---|---|---|---|
 | Testset view, a testcase | input visualizer | `<build>/tests/<g>/<stem>.in` (+ `.out`) | `<build>/tests/<g>/visualization/<stem>.<ext>` |
-| Run view, a (solution, testcase) | solution visualizer | `.in`, solution `.out`, expected `.out` | `.rbx/runs/<i>/<g>/output_visualization/<stem>.<ext>` |
+| Run view, a (solution, testcase) | solution visualizer | `.in`, solution `.out`, expected `.out` | `<build>/visualizations/runs/<i>/<g>/<stem>.<ext>` (D7) |
 
 Behaviour matches the TUI: `-i` is passed, exit 42 means "ran interactively,
 produced no file", and the run is wrapped in `CacheLevel.CACHE_COMPILATION` so
@@ -63,6 +63,14 @@ anything**, and on mismatch refuses rather than clearing (D3, exit 3).
 
 The guard lives in Python, not in the extension, so it cannot be bypassed and so
 it protects a hand-typed invocation too.
+
+**It has to live in the root app callback, not in the sub-command.** The
+clear-on-mismatch happens in `cli.main()`, which Typer runs *before* any
+sub-command -- so the first implementation of this guard, inside
+`rbx/box/visualization.py`, never fired: by the time it ran, the cache and the
+build tree were already gone. It is `cli._refuse_incompatible_cache`, reached
+through `cli._is_readonly_command`, and `visualization.py` only owns the exit
+code. Caught by running it, not by reading it.
 
 ## D2. `rbx visualize`, addressed by explicit paths
 
@@ -128,7 +136,12 @@ Visualizers are declared at two levels, not one:
 | Level | Fields |
 |---|---|
 | `Package` (`schema.py:1331,1336`) | `visualizer`, `solutionVisualizer` |
+| `TestcaseGroup` | inherited from `TestcaseSubgroup` |
 | `TestcaseSubgroup` (`schema.py:567,573`) | `visualizer`, `solutionVisualizer` -- *"has priority over the visualizer specified in the package"* |
+
+Three levels, not two: `TestcaseGroup` extends `TestcaseSubgroup`, so a group
+declares the same fields. `testcase_extractors.py:368-374` folds the whole chain
+into each entry, innermost winning.
 
 **The TUI reaches only the two package-level ones.** `run_ui_*_visualizer_for_testcase`
 reads `pkg.visualizer` directly, so a subgroup that declares its own visualizer
@@ -141,7 +154,11 @@ Explicit-path addressing can still resolve it: `entry.metadata.copied_to.inputPa
 generation entry and uses `entry.visualizer or pkg.visualizer`, falling back to
 package level when no entry matches (a scratch input).
 
-The TUI is routed through the same resolution, fixing its gap in one place.
+The TUI is routed through the same resolution, fixing its gap in one place:
+`resolve_visualizers_for_input` in `visualizers.py` is what both call.
+
+Verified end to end on a two-group package: the group declaring its own
+visualizer got it, the group that did not got the package's.
 
 ## D5. Locating `rbx`
 
@@ -194,24 +211,50 @@ than symlinks ([design](2026-08-24-visualization-symlink-design.md)).
 
 Exit 42 is silent: it is success.
 
-## D7. Three fixes this uncovers
+## D7. Where the artifact lands, and why the watcher never sees it
 
-Not optional -- the feature does not work without the first.
+Left to itself, `run_solution_visualizer_for_testcase` writes beside the output
+it visualizes -- so a solution's output visualization would land in
+`.rbx/runs/<i>/<g>/output_visualization/`. That is inside the cache directory,
+which the extension watches with `**/.rbx/**` to follow a run live. **Every
+visualize click would invalidate the run view** and redraw the tree for an
+artifact that carries no verdict, no timing and no progress.
 
-1. **`localResourceRoots` must include the cache directory.**
-   `visualizationPanel.ts:110` allows only `<root>/build`, with a comment
-   asserting that is "where everything a visualizer writes lands". That is false
-   for solution-output visualizations, which land under
-   `.rbx/runs/<i>/<g>/output_visualization/`. The webview would refuse to load
-   the one artifact this design exists to produce.
+So the command grows `--dest`, a destination *stem* (the visualizer owns the
+extension, and the final path comes back on stdout), and the extension passes
+one under the build directory:
 
-2. **`'build'` is hardcoded** in `visualizationPanel.ts:111` and
-   `testsetPanel.ts:174`, while everywhere else the build directory comes from
-   `resolveBuildDir()`. Any preset that renames `buildDir` already breaks the
-   gallery today; this design makes it load-bearing.
+```
+<build>/visualizations/runs/<solutionIndex>/<group>/<stem>.<ext>
+```
 
-3. **The `.rbx` watcher must ignore `output_visualization/**`**, or every
-   visualize click invalidates the run view and churns the tree.
+Nothing watches the build tree except `**/testset.yml`, so this costs **zero
+watcher events** rather than events that then have to be filtered out -- which
+is why it beats the obvious alternative of teaching the watcher to ignore
+`output_visualization/**`. It is also why input visualizations cause no churn
+today: they already live there.
+
+The solution index is in the path because two solutions have different outputs
+for the same testcase and would otherwise overwrite each other.
+
+The watcher filter is kept anyway, as cheap insurance for a *hand-typed*
+`rbx visualize output`, which has no `--dest` and does land in the cache.
+
+### Two fixes this uncovers
+
+Not optional -- the first blocks the feature outright.
+
+1. **`localResourceRoots` hardcodes `'build'`** in `visualizationPanel.ts:111`
+   and `testsetPanel.ts:174`, while everywhere else the build directory comes
+   from `resolveBuildDir()`. Any preset renaming `buildDir` already breaks the
+   gallery today; putting artifacts under the build directory makes it
+   load-bearing. Both now resolve through `buildPath(packageLayout(root))`.
+
+   Note that keeping artifacts out of `.rbx/` also means the resource root does
+   **not** need widening into the cache directory, which an earlier draft of
+   this design called for. Narrower, not wider.
+
+2. **The `.rbx` watcher ignores visualization directories**, per above.
 
 ## D8. Errors
 
@@ -229,11 +272,16 @@ tied to a user gesture, not to a file.
 
 Follows the existing split -- no test may import `vscode`.
 
-- `src/rbx/visualizeRun.ts`, pure: the resolution ladder, argv construction, and
-  exit-code interpretation, under `node --test`.
-- The spawn wrapper stays thin and untested.
-- Python: one test per exit path (0, 42, 3, 1) in
-  `tests/rbx/box/test_visualizers.py`, plus a subgroup-override test pinning D4.
+- `src/rbx/visualizeRun.ts` (argv, exit codes, stdout parsing, destinations) and
+  `src/rbx/executable.ts` (the resolution ladder), pure, under `node --test`.
+  The stdout parser is pinned against the **real bytes** rbx emits --
+  `<path>\n\x1b[?25h ` -- because rbx restores the cursor as it exits even when
+  nothing rendered a spinner, and a parser that trusted "stdout is the path"
+  hands the panel a filename with an escape glued to it.
+- The spawn wrapper (`src/visualize.ts`) stays thin and untested.
+- Python: `resolve_visualizers_for_input` in `tests/rbx/box/test_visualizers.py`,
+  covering the override, the no-entry fallback and the separate solution
+  visualizer.
 
 ## Non-goals
 

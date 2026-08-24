@@ -26,6 +26,8 @@ import { RunViewProvider } from './runView';
 import { TestcasePanes } from './testcasePanes';
 import { TestsetPanelRequest, TestsetViewProvider } from './testsetView';
 import { openVisualization, openVisualizationExternally } from './visualizationPanel';
+import { runVisualizer } from './visualize';
+import { solutionVisualizationDest, testcaseInputPath } from './rbx/visualizeRun';
 
 /** `sols/wa.cpp/main/1-gen-000` -- the display prefix shared by a testcase's tabs. */
 function labelPrefix(node: TestcaseNode): string {
@@ -409,6 +411,68 @@ export function registerCommands(
       });
     });
   }
+
+  // The two on-demand visualizers -- `v` and `V` in `rbx ui`.
+  //
+  // These are the only commands in the extension that *run* rbx rather than
+  // reading what it left behind (design D1 of the visualize design). The pair
+  // above opens a visualization `rbx build --visualize` already wrote; these
+  // produce one now, which is the only way to reach a solution's output, since
+  // no build flag visualizes those.
+  register('rbx.visualizeTest', async (node) => {
+    // Reachable from both views: the input is the same file either way, and it
+    // is what selects which visualizer applies.
+    if (isBuiltTestcase(node)) {
+      await runVisualizer(
+        context,
+        node.pkg.root,
+        {
+          kind: 'input',
+          inputPath: testcaseInputPath(node.pkg, node.group, node.stem),
+        },
+        `${node.group}/${node.stem} (input)`,
+      );
+      return;
+    }
+    if (isTestcase(node)) {
+      await runVisualizer(
+        context,
+        node.pkg.root,
+        { kind: 'input', inputPath: node.testcase.inputPath },
+        `${node.group.name}/${node.testcase.stem} (input)`,
+      );
+    }
+  });
+
+  register('rbx.visualizeSolutionOutput', async (node) => {
+    // Run view only: there is no solution, and so no output, in the Tests view.
+    if (!isTestcase(node)) {
+      vscode.window.showInformationMessage(
+        'Visualizing an output needs a solution -- open a testcase under one in the Run view.',
+      );
+      return;
+    }
+    await runVisualizer(
+      context,
+      node.pkg.root,
+      {
+        kind: 'output',
+        inputPath: node.testcase.inputPath,
+        outputPath: node.testcase.outputPath,
+        answerPath: node.testcase.answerPath,
+        // Written under the build directory rather than beside the run
+        // artifact, so the `.rbx` watcher never sees it -- see
+        // `solutionVisualizationDest`.
+        dest: solutionVisualizationDest(
+          node.pkg,
+          node.run.solution.index,
+          node.group.name,
+          node.testcase.stem,
+        ),
+      },
+      `${node.run.solution.path}/${node.group.name}/${node.testcase.stem} (output)`,
+    );
+  });
 
   // Not a row command: it acts on the visualization panel that has focus, which
   // is why it takes no node and why its `when` clause is `activeWebviewPanelId`.

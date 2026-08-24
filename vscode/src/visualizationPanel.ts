@@ -21,6 +21,7 @@
 import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
 
+import { buildPath, packageLayout } from './rbx/layout';
 import {
   Visualization,
   isFramedVisualization,
@@ -107,8 +108,13 @@ export class VisualizationPanel {
         // directory, where everything a visualizer writes lands. It bounds what
         // the document may pull in; the workspace root would put every file in
         // the repository one crafted path away from being served into a webview.
+        //
+        // Resolved rather than hardcoded to `build`: `Environment.buildDir` is
+        // a preset setting, and a preset that renames it left this root pointing
+        // at a directory that does not exist, so every visualization was blocked
+        // with nothing on screen to say why.
         localResourceRoots: [
-          vscode.Uri.joinPath(vscode.Uri.file(visualization.root), 'build'),
+          vscode.Uri.file(buildPath(packageLayout(visualization.root))),
         ],
         // A visualization can be an expensive page -- a canvas replay, a big DOM
         // -- and there is no host-side model to rebuild it from, so hiding the
