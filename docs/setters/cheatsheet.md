@@ -475,17 +475,172 @@ unitTests:
 
 ## `contest.rbx.yml`
 
+A contest is a roster of problems plus the chrome that wraps them. The problems keep living in
+their own folders, each with its own `problem.rbx.yml`; the contest file only says which ones are
+in, in which order, and how the joined book is built. The [Contest CLI](#contest-cli) table above
+lists the commands that act on it, and the [contest reference](reference/contest/index.md) has the
+full field list.
+
+### Name the contest
+
+```yaml
+name: "my-contest"  # (1)!
+titles:             # (2)!
+  en: "My Contest 2026"
+  pt: "Meu Contest 2026"
+```
+
+1. The only required field. It has to be a valid package name, so no spaces.
+
+2. The human-readable title, per language, keyed by lowercase ISO 639-1 code. Statements read it
+    as `\VAR{contest.title}`, already picked for the language being built.
+
 ### Add a new problem
 
 ```yaml
 problems:
-  - short_name: "A"  # Letter of the problem
-    path: "problem_folder"
-    color: "ff0000"  # Optional
-    aliases: ["apple", "prob-a"]  # Optional; use any of these or short_name in e.g. rbx on <name> run
-# A problem can also be selected by its own `name` or by its folder basename.
-# See the contest reference for the full selector syntax.
+  - short_name: "A"             # (1)!
+    path: "problem_folder"      # (2)!
+    color: "ff0000"             # (3)!
+    colorName: "red"            # (4)!
+    aliases: ["apple", "prob-a"] # (5)!
 ```
+
+1. Letter of the problem: uppercase letters, optionally followed by digits (`A`, `B`, `A1`).
+    The order of this list is the order of the contest.
+
+2. Path to the problem, relative to the contest folder. Defaults to `./{short_name}/`, so a
+    problem living in `A/` needs no `path` at all.
+
+3. Optional. A hex color or an [X11 color name](https://en.wikipedia.org/wiki/X11_color_names),
+    used for balloons and in statements.
+
+4. Optional. The name to print for that color, when {{rbx}} cannot infer one from `color` itself.
+
+5. Optional. Extra names this problem answers to, as in `rbx contest on apple run`. Aliases must
+    be unique across the contest, case-insensitively.
+
+A problem can also be selected by the `name` it declares in its own `problem.rbx.yml`, or by the
+basename of its folder. See [selecting problems](reference/contest/index.md#selecting-problems)
+for the full selector syntax, including ranges and exclusions.
+
+### Add a contest statement
+
+Contest statements are keyed by `name`, and each one owns the templates used to render the
+problems inside it. See [contest statements](statements/contest.md).
+
+```yaml
+statements:
+  - name: main-en                                  # (1)!
+    language: en
+    file: "statements/contest-en.rbx.tex"          # (2)!
+    standaloneProblemTemplate: "statements/problem-standalone.rbx.tex" # (3)!
+    contestProblemTemplate: "statements/problem-in-contest.rbx.tex"    # (4)!
+    params: { show_limits: true }                  # (5)!
+```
+
+1. Required, and unique within the contest. It names the output PDF and is what you pass to
+    `rbx contest statements build main-en`.
+
+2. The joining document, the one that iterates over the problems.
+
+3. Template used when a problem is built on its own, with `rbx statements build`.
+
+4. Template used for the problem fragment that gets imported into the contest book.
+
+5. Free-form values handed to both templates as `params.*`.
+
+#### Reuse another statement with `extends`
+
+```yaml
+statements:
+  - name: main-en
+    language: en
+    file: "statements/contest-en.rbx.tex"
+    standaloneProblemTemplate: "statements/problem-standalone.rbx.tex"
+    contestProblemTemplate: "statements/problem-in-contest.rbx.tex"
+  - name: main-pt
+    language: pt
+    extends: main-en                       # (1)!
+    file: "statements/contest-pt.rbx.tex"  # (2)!
+```
+
+1. Contest statements extend **by `name`**, not by language. `main-pt` inherits the build recipe
+    -- `type`, `params`, `assets` and both templates -- and keeps its own identity.
+
+2. Everything not spelled out here is inherited.
+
+### Add a tutorial (editorial)
+
+`tutorials` is a list parallel to `statements`, with the same fields, built by
+`rbx contest tutorials build`. See [tutorials](statements/tutorials.md).
+
+```yaml
+tutorials:
+  - name: editorial-en
+    language: en
+    file: "statements/editorial-sheet.rbx.tex"                   # (1)!
+    contestProblemTemplate: "statements/editorial-fragment.rbx.tex" # (2)!
+```
+
+1. The joining document for the editorial book.
+
+2. Optional, like `standaloneProblemTemplate`. Leave both out and {{rbx}} falls back to the
+    bundled default editorial chrome.
+
+### Add an infosheet or a cover page
+
+Pages that are not problems -- an infosheet, an instruction sheet -- are `documents`. They are
+built alongside the statements by `rbx contest statements build`, and never join on problems.
+
+```yaml
+documents:
+  - name: infosheet-en
+    language: en
+    file: "statements/infosheet-en.jinja.tex"
+    type: jinja-tex  # (1)!
+```
+
+1. Required here, and never one of the joining `rbx-*` types. A document still receives the
+    `problems` list, but metadata-only: enough for a limits table, not for a full statement.
+
+### Add variables shared by every statement
+
+```yaml
+vars:
+  year: 2026
+  date: "July 29, 2026"
+  location: "Porto, Portugal"
+```
+
+Contest variables sit one level down from the problem's own, so a template reaches them as
+`\VAR{contest.vars.year}` while plain `\VAR{vars.year}` still means the problem's. See
+[template context](statements/context.md).
+
+### Split the contest into variants
+
+To ship a Div. 1 and a Div. 2 out of the same folder, turn `contest.rbx.yml` into a dispatcher and
+put each real contest in a sibling file.
+
+=== "contest.rbx.yml"
+    ```yaml
+    use_variants: true  # (1)!
+    ```
+
+=== "contest.div2.rbx.yml"
+    ```yaml
+    name: "my-contest-div2"  # (2)!
+    problems:
+      - short_name: "A"
+        path: "../easy-problem"
+    ```
+
+1. A sentinel: with `use_variants` on, no other field may be set in this file. You can also skip
+    it and keep a real contest here, in which case that one is the default and the siblings are
+    extra variants.
+
+2. Each `contest.<id>.rbx.yml` is a full contest. Select one with `rbx -C div2 ...` or
+    `RBX_CONTEST=div2`, and scaffold one with `rbx contest add_variant div2`.
 
 ## `env.rbx.yml`
 
