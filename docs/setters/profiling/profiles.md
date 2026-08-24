@@ -100,6 +100,26 @@ At problem level a missing profile is an error. At contest level the problems th
 skipped with a warning, so one unprofiled problem does not stop the build. See [Building
 statements](../statements/index.md#building).
 
+The flag sets the **active** profile, and `problem.limits` in the template follows it — which is
+what you want when the same statement is built once per judge. A statement can also name a
+profile itself, through `problem.profiles`:
+
+```latex
+Time limit: \VAR{problem.limits.timeLimit} ms          %# (1)!
+Time limit on the judge: \VAR{problem.profiles.boca.timeLimit} ms   %# (2)!
+```
+
+1. Whichever profile the build is running under, so this line changes with `-p`.
+2. Always the `boca` profile, whatever `-p` said. Every profile in `.limits/` is reachable this
+   way, keyed by name.
+
+Reach for the second form when one document has to state a limit that is not the one it is being
+built against — an editorial quoting the contest's limit, or a handout comparing two judges.
+Naming a profile that does not exist is an error at render time, so a statement cannot quietly
+print nothing.
+
+The [template context](../statements/context.md) page has the rest of the `problem` namespace.
+
 ## Profiles and packaging
 
 Each packager looks for a profile named after itself, which is how a package gets the limits
