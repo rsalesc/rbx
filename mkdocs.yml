@@ -15,6 +15,7 @@ nav:
           - "Stress-testing your solutions": "setters/stress-testing-walkthrough.md"
       - "Delivering a contest":
           - "Scaffolding a contest": "setters/contest-scaffolding-walkthrough.md"
+          - "Profiling time limits": "setters/contest-profiling-walkthrough.md"
           - "Packaging a problem": "setters/packaging-walkthrough.md"
   - "Feature Guide":
       - "Variables": "setters/variables.md"

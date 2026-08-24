@@ -1,0 +1,32 @@
+name: sum-of-n
+timeLimit: 1000
+memoryLimit: 256
+
+checker:
+  path: 'wcmp.cpp'
+
+validator:
+  path: 'validator.cpp'
+
+solutions:
+  - path: 'sols/main.cpp'
+    outcome: ACCEPTED
+  - path: 'sols/wa-*.*'
+    outcome: WRONG_ANSWER
+
+testcases:
+  - name: samples
+    testcaseGlob: tests/samples/*.in
+  - name: testplan
+    generatorScript:
+      path: 'tests/testplan.txt'
+
+# Constraints, shared with the validator and with stress-test expressions
+# through `<A.max>`.
+vars:
+  N:
+    min: 1
+    max: 1000
+  A:
+    min: 1
+    max: 1000000000

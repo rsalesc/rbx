@@ -1,0 +1,28 @@
+---
+# yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Preset.json
+#
+# The profiling recordings turn on what the environment configures -- the
+# ratios, and the language groups that give py and java a limit of their own.
+# Carrying an environment here rather than leaning on the installed default
+# keeps those recordings showing the same thing on every machine.
+#
+# Only testlib is declared: the default checker includes it, and nothing here
+# uses jngen or tgen. Carrying fewer libraries keeps the fixture cheaper to
+# materialize.
+#
+# It sits at the contest root rather than in each problem: `find_local_preset`
+# walks up from wherever it is invoked, so every problem under `problems/`
+# resolves this one copy.
+name: "summer-cup-timing"
+description: "Environment for the contest profiling recordings."
+min_version: "1.1.0"
+uri: "rsalesc/rbx/casts/fixtures/summer-cup/.local.rbx"
+env: "env.rbx.yml"
+libraries:
+  problem:
+    - name: "testlib"
+      source: "MikeMirzayanov/testlib"
+      path: "testlib.h"
+      version: "latest"
+      dest: "testlib.h"
+      always_include: true
