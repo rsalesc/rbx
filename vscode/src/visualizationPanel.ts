@@ -7,21 +7,18 @@
  * to find the affordance that renders it -- if the extension that provides one
  * is even installed.
  *
- * So HTML, and only HTML, is framed here instead, in a webview whose iframe
- * points at the file through `asWebviewUri`. That is the same seam the testset
- * gallery already relies on -- `frame-src ${webview.cspSource}` over
- * `localResourceRoots` limited to the package's build directory -- and this file
- * is that one gallery cell, alone, at full size.
+ * So HTML, and only HTML, is shown here instead -- as the panel's *own*
+ * document. Not framed: a webview resource URI cannot be the `src` of an
+ * `<iframe>` at all, for the reason webview/visualizationDocument.ts sets out.
+ * That is a limitation of the resource protocol rather than of this panel, and
+ * it is the same one that leaves the testset gallery's HTML cells blank.
  *
- * The panel is deliberately dumb: no client script, no messages, no model. Its
- * one action -- open this in a real browser -- is an editor-title button rather
- * than markup, so it is a native affordance, needs no `script-src`, and costs
- * the visualization no vertical space.
- *
- * The parts worth testing live away from `vscode`: which files to frame in
- * rbx/visualization.ts, and the document itself -- CSP included -- in
- * webview/visualizationShell.ts.
+ * The panel stays deliberately dumb: no client script of its own, no messages,
+ * no model. Its one action -- open this in a real browser -- is an editor-title
+ * button rather than markup, so it is a native affordance and costs the
+ * visualization no vertical space.
  */
+import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
 
 import {
@@ -29,7 +26,10 @@ import {
   isFramedVisualization,
   visualizationTitle,
 } from './rbx/visualization';
-import { visualizationShell } from './webview/visualizationShell';
+import {
+  visualizationDocument,
+  visualizationErrorDocument,
+} from './webview/visualizationDocument';
 
 export { Visualization } from './rbx/visualization';
 
@@ -58,21 +58,11 @@ export class VisualizationPanel {
    */
   private static focused?: VisualizationPanel;
 
-  /**
-   * Bumped per render and hung off the iframe's query.
-   *
-   * The webview resource URI for a rebuilt visualization is byte-identical to
-   * the one before it, so without this an explicit re-open would redraw the
-   * cached page -- exactly the case the panel exists to serve: run
-   * `rbx build --visualize`, look again.
-   */
-  private static generation = 0;
-
   private constructor(
     private readonly panel: vscode.WebviewPanel,
     private visualization: Visualization,
   ) {
-    this.render();
+    void this.render();
     panel.onDidChangeViewState(() => {
       if (panel.active) {
         VisualizationPanel.focused = this;
@@ -95,9 +85,11 @@ export class VisualizationPanel {
     if (existing !== undefined) {
       existing.visualization = visualization;
       existing.panel.title = visualizationTitle(visualization);
-      // Re-render rather than merely reveal: an open is the reader asking to see
-      // the file as it is *now*, and it may have been rebuilt since.
-      existing.render();
+      // Re-read rather than merely reveal: an open is the reader asking to see
+      // the file as it is *now*, and it may have been rebuilt since. Reading it
+      // again is also all the cache-busting this needs -- the document *is* the
+      // file's bytes, so a rebuilt visualization is a different document.
+      void existing.render();
       existing.panel.reveal(existing.panel.viewColumn);
       return;
     }
@@ -106,23 +98,21 @@ export class VisualizationPanel {
       visualizationTitle(visualization),
       vscode.ViewColumn.Active,
       {
-        // The shell itself has no script and its CSP grants it none. This is
-        // for the *framed* document: the sandbox VS Code puts on a webview
-        // omits `allow-scripts` when this is off, and sandbox flags are
-        // inherited by nested frames -- so without it an interactive
-        // visualization would load with its own JavaScript dead. The testset
-        // gallery frames HTML on the same terms.
+        // The visualization *is* this document, so these are its own scripts --
+        // an interactive one would otherwise load dead. It is code a generator
+        // in this package already ran locally during the build, at the same
+        // trust level as the rest of the package.
         enableScripts: true,
         // One root, the same one the testset panel uses: the package's build
-        // directory, where everything a visualizer writes lands. The workspace
-        // root would put every file in the repository one crafted path away from
-        // being served into a webview.
+        // directory, where everything a visualizer writes lands. It bounds what
+        // the document may pull in; the workspace root would put every file in
+        // the repository one crafted path away from being served into a webview.
         localResourceRoots: [
           vscode.Uri.joinPath(vscode.Uri.file(visualization.root), 'build'),
         ],
         // A visualization can be an expensive page -- a canvas replay, a big DOM
-        // -- and unlike the gallery there is no host-side model to rebuild it
-        // from, so hiding the tab must not throw it away.
+        // -- and there is no host-side model to rebuild it from, so hiding the
+        // tab must not throw it away.
         retainContextWhenHidden: true,
       },
     );
@@ -138,17 +128,18 @@ export class VisualizationPanel {
     return VisualizationPanel.focused?.visualization.filePath;
   }
 
-  private render(): void {
-    VisualizationPanel.generation += 1;
-    const source = this.panel.webview
-      .asWebviewUri(vscode.Uri.file(this.visualization.filePath))
-      .with({ query: `rbx=${VisualizationPanel.generation}` })
-      .toString();
-    this.panel.webview.html = visualizationShell(
-      source,
-      this.panel.webview.cspSource,
-      visualizationTitle(this.visualization),
-    );
+  private async render(): Promise<void> {
+    const { filePath } = this.visualization;
+    let html: string;
+    try {
+      html = visualizationDocument(await fs.readFile(filePath, 'utf8'));
+    } catch (error) {
+      // A blank panel is the one outcome worth ruling out: it is what this bug
+      // looked like, and it tells the reader nothing about what went wrong.
+      const reason = error instanceof Error ? error.message : String(error);
+      html = visualizationErrorDocument(`Could not read ${filePath}: ${reason}`);
+    }
+    this.panel.webview.html = html;
   }
 }
 
@@ -169,7 +160,7 @@ export async function openVisualization(
   }
   // Anything else: let the editor decide. It has a viewer for the image formats
   // a visualizer realistically emits, and where it has none, its "no editor for
-  // this file" prompt is a better answer than a blank iframe.
+  // this file" prompt is a better answer than a blank panel.
   await vscode.commands.executeCommand(
     'vscode.open',
     vscode.Uri.file(visualization.filePath),
@@ -180,8 +171,8 @@ export async function openVisualization(
  * Hand the visualization to the OS -- which for an `.html` file is the default
  * browser, with its devtools, its zoom and its own fonts.
  *
- * The framed panel is a convenience, not a replacement: a visualization heavy
- * enough to want profiling wants a real browser, and this is the door to it.
+ * The panel is a convenience, not a replacement: a visualization heavy enough to
+ * want profiling wants a real browser, and this is the door to it.
  */
 export async function openVisualizationExternally(filePath?: string): Promise<void> {
   const target = filePath ?? VisualizationPanel.activeFile();

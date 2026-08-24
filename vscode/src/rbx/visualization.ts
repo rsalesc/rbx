@@ -2,7 +2,7 @@
  * What a visualization is, and which ones the editor shows badly.
  *
  * Away from `vscode` so `node --test` can hold that judgement to account. The
- * document the panel wraps one in is webview/visualizationShell.ts, and the
+ * document the panel shows one as is webview/visualizationDocument.ts, and the
  * host half -- the panel itself -- is visualizationPanel.ts.
  */
 import * as path from 'path';
@@ -18,12 +18,12 @@ export interface Visualization {
 }
 
 /**
- * Whether this file is one the editor renders badly enough to be worth framing.
+ * Whether this file is one the editor renders badly enough to take over.
  *
  * Only HTML. `Visualizer.extension` is a free string, so a visualization may be
  * an SVG, a PNG or something with no viewer at all -- and of those three, the
  * first two already open in a real preview. Taking them over would trade a
- * native, zoomable, theme-aware viewer for a bare iframe.
+ * native, zoomable, theme-aware viewer for a plain webview.
  */
 export function isFramedVisualization(filePath: string): boolean {
   const extension = path.extname(filePath).toLowerCase();
