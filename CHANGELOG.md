@@ -1,3 +1,9 @@
+## 1.2.2 (2026-08-24)
+
+### Fix
+
+- **vscode**: honor the preset's buildDir instead of assuming build/ (#743)
+
 ## 1.2.1 (2026-08-24)
 
 ### Feat
