@@ -1,15 +1,14 @@
 # rbx for VS Code
 
-The rbx extension puts everything {{rbx}} writes to disk inside your editor: the
-verdicts of the last run, the diff of what a solution printed against what it
-should have printed, the tests your generators produced, and what
-`problem.rbx.yml` declares about each solution.
+`rbx ui` is one way to inspect a run and the testset it ran against. The rbx
+extension is another, for when the editor is where you already are: it reads
+the same files from the same package, and shows them in the sidebar next to the
+solution you are editing.
 
-The motivation is simple: `rbx run` prints a table, and a table is where the
-answer *stops*. The moment a solution fails you want the input that broke it,
-the checker's own message, and the source file open side by side -- three
-things that live in three different places under `.rbx/`, and that you were
-finding by hand.
+Which one you want is mostly a matter of where you work. The TUI runs anywhere
+a terminal does, and does not care which editor you use; the extension gives
+you VS Code's own diff, its editors and its Problems panel, and it does not
+take over the terminal you are typing `rbx` into.
 
 !!! note "It never runs rbx for you"
     Execution stays in the terminal. You type `rbx run`; the extension watches
@@ -87,10 +86,9 @@ diff, <kbd>alt+2</kbd> for stderr, <kbd>alt+3</kbd> for the run log, mirroring
 `rbx ui`'s `1`/`2`/`3`. The choice is sticky, so arrowing down a group keeps
 reading the same channel.
 
-Both are real editors rather than a webview, because testcases are large: you
-get highlighting, find, go-to-line, and VS Code's own diff -- including its
-`diffEditor.*` settings and its **More Actions** menu for switching between
-side-by-side and inline.
+Both panes are ordinary editors, so a large input still gets highlighting, find
+and go-to-line, and the diff is VS Code's own -- its `diffEditor.*` settings and
+its **More Actions** menu decide how it renders.
 
 The panes are laid out once, the first time a testcase is opened, and then left
 alone; afterwards the extension finds its own panes and reuses whichever groups
@@ -111,10 +109,9 @@ checker messages without opening a single editor.
 ## Compilation findings
 
 A solution that did not compile never ran, and {{rbx}} leaves it out of the run
-entirely. The extension gives it a place to be seen: a **Compilation Findings**
-panel with one row per solution the compile phase had something to say about,
-badged red the moment one failed to compile and yellow while everything merely
-warned.
+entirely. Under the tree, a **Compilation Findings** panel keeps one row per
+solution the compile phase had something to say about, badged red the moment one
+failed to compile and yellow while everything merely warned.
 
 ![Compilation findings](vscode/compilation-findings.png)
 
@@ -146,23 +143,20 @@ which follows whatever the sidebar has selected:
 
 ### Seeing a testcase
 
-A [visualizer](../setters/testset/visualizers.md) turns a raw testcase into
-something you can actually look at -- a picture of the graph, of the points, of
-the grid -- and this is the view where looking at it costs nothing. Select a
-testcase and its card offers one **visualization** button per picture your
-package produced: `input` for the testcase itself, `answer` for the one drawn
+If your package declares a
+[visualizer](../setters/testset/visualizers.md), the pictures `rbx build
+--visualize` produced are opened from here, the way <kbd>v</kbd> opens them in
+`rbx ui`. Select a testcase and its card offers one **visualization** button per
+picture that exists: `input` for the testcase itself, `answer` for the one drawn
 [from the expected
 answer](../setters/testset/visualizers.md#input-vs-solution-visualizers), and
 `gallery` for the whole group at once, in the panel.
 
 ![An HTML visualization beside the Tests view](vscode/visualization.png)
 
-An image opens in an editor tab, and an interactive HTML one opens in VS Code's
-own browser -- live, right beside the list you picked it from, so arrowing down
-a group is a way to *watch* your testset rather than read it.
-
-Run `rbx build --visualize` to fill them in; a testcase with no picture simply
-has no button.
+An image opens in an editor tab; an interactive HTML one opens in VS Code's own
+browser, beside the list you picked it from, rather than in whatever program
+your desktop associates with the file.
 
 ## While you are editing
 
