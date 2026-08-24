@@ -142,3 +142,123 @@ def test_a_legacy_asciinema_org_id_gets_the_loop_pause_too():
 
     assert 'rbxCast(' in html
     assert '}, 3000);' in html
+
+
+# --- The preset tree ----------------------------------------------------------
+#
+# `first-steps.md` used to print a hand-transcribed picture of the default
+# preset. It went on showing a `documents/` folder for several releases after
+# statements v2 renamed it to `statement/`, because nothing read the page. These
+# tests are what reads it now. See
+# docs/plans/2026-08-24-walkthrough-audit-design.md.
+
+
+def _mkdocs_extra():
+    """The `extra:` block, which annotation prose expands `{{...}}` against."""
+    import yaml
+
+    class Loader(yaml.SafeLoader):
+        pass
+
+    # mkdocs.yml carries `!!python/name:` tags for the emoji extensions. They
+    # are irrelevant here, but SafeLoader refuses to parse the file with them.
+    Loader.add_multi_constructor(
+        'tag:yaml.org,2002:python/name', lambda loader, suffix, node: suffix
+    )
+
+    root = pathlib.Path(__file__).resolve().parents[2]
+    return yaml.load((root / 'mkdocs.yml').read_text(), Loader=Loader)['extra']
+
+
+def _preset_tree():
+    env = _Env()
+    env.variables = _mkdocs_extra()
+    define_env(env)
+    return env.macros['preset_tree']
+
+
+def _tracked_preset_paths():
+    from main import _tracked_preset_files
+
+    return {str(p) for p in _tracked_preset_files()}
+
+
+def test_the_first_steps_tree_is_rendered_rather_than_transcribed():
+    root = pathlib.Path(__file__).resolve().parents[2]
+    page = (root / 'docs' / 'setters' / 'first-steps.md').read_text()
+
+    assert '{{ preset_tree() }}' in page
+    # A hand-written copy would drift again the moment the preset moved. An
+    # annotated tree line is the tell -- the page draws other trees (the `build`
+    # layout), but only the preset's carries `# (n)!` markers.
+    assert not re.search(r'^\s*[├└]── .*# \(\d+\)!', page, re.M), (
+        'first-steps.md has regrown a hand-written preset tree; render it with '
+        '{{ preset_tree() }} instead'
+    )
+
+
+def test_every_file_the_preset_ships_shows_up_in_the_tree():
+    rendered = _preset_tree()()
+
+    for path in _tracked_preset_paths():
+        assert pathlib.Path(path).name in rendered, (
+            f'the preset ships {path}, but the first-steps tree does not show it'
+        )
+
+
+def test_the_tree_shows_the_layout_the_preset_actually_ships():
+    # The fence only. The prose below it mentions `icpc.sty` on purpose, to say
+    # that a problem is not where you will find it.
+    tree = _preset_tree()().split('```')[1]
+
+    assert 'statement' in tree
+    # The regression this whole mechanism exists to prevent.
+    assert 'documents' not in tree
+    # Statement chrome belongs to the contest under statements v2, so a problem
+    # ships neither of these.
+    assert 'icpc.sty' not in tree
+    assert 'template.rbx.tex' not in tree
+
+
+def test_an_annotation_for_a_path_the_preset_dropped_is_an_error():
+    import main
+
+    tracked = _tracked_preset_paths()
+    assert 'statement/statement.rbx.tex' in tracked
+    assert 'documents/statement.rbx.tex' not in tracked, (
+        'the check below only means anything while `documents/` is gone'
+    )
+
+    original = main.PRESET_TREE_ANNOTATIONS
+    try:
+        main.PRESET_TREE_ANNOTATIONS = 'docs/_data/preset-tree.yml'
+        # Sanity: the committed annotations all point at paths that exist.
+        _preset_tree()()
+    finally:
+        main.PRESET_TREE_ANNOTATIONS = original
+
+
+def test_annotations_resolve_the_mkdocs_variables_they_use():
+    rendered = _preset_tree()()
+
+    # `{{testlib}}` and friends would otherwise reach the reader as literal
+    # text: mkdocs-macros renders a page once and never re-scans macro output.
+    assert '{{' not in rendered
+    assert 'codeforces.com/testlib' in rendered
+
+
+def test_numbering_is_derived_from_the_walk_and_stays_aligned():
+    rendered = _preset_tree()()
+
+    markers = re.findall(r'# \((\d+)\)!', rendered)
+    assert markers == [str(i) for i in range(1, len(markers) + 1)]
+
+    # Every marker in the tree has a list item to match, and every item's
+    # continuation lines are indented to the same column regardless of whether
+    # the number is one or two digits.
+    for n in markers:
+        item = re.search(rf'^{n}\.( +)', rendered, re.M)
+        assert item is not None, f'tree marker ({n}) has no annotation below it'
+        # Text starts at column 4 whether the number is one digit or two, so a
+        # continuation line indented by 4 stays inside its list item.
+        assert item.end() - item.start() == 4

@@ -1,0 +1,89 @@
+# Annotations for the default preset's problem tree, rendered into
+# docs/setters/first-steps.md by the `preset_tree()` macro in main.py.
+#
+# Keyed by path, relative to rbx/resources/presets/default/problem. The macro
+# walks the preset and numbers the entries it finds prose for, so adding a file
+# to the preset renumbers the list instead of silently shifting it. A key that
+# no longer exists in the preset is an error, not a no-op -- that is the check
+# that would have caught `documents/` becoming `statement/`.
+#
+# A path with no entry here still appears in the tree, just without a number.
+# `{{...}}` placeholders are resolved against `extra` in mkdocs.yml.
+
+problem.rbx.yml: |
+  The {{YAML}} configuration file for this problem.
+
+rbx.h: |
+  A small header that lets your {{testlib}} programs read the variables
+  declared in `problem.rbx.yml`, through `getVar`. See
+  [Generators and rbx.h](/generators-and-rbx-h) if a compiler ever fails to
+  find it.
+
+validator.cpp: |
+  A {{testlib}} validator that checks whether the generated tests are
+  in the correct format.
+
+wcmp.cpp: |
+  A built-in {{testlib}} checker that compares tokens of the participant's output
+  and the judge's output.
+
+sols: |
+  Solutions to the problem, correct and incorrect alike.
+
+sols/main.cpp: |
+  The single solution shipped by the preset: a correct, {{tags.accepted}} solution.
+
+  !!! note
+      `problem.rbx.yml` already declares outcome patterns for other prefixes
+      (`ac-*`, `wa-*`, `tle-*`, ...), so you can add more solutions later just by
+      dropping in a file with the matching prefix.
+
+statement: |
+  Everything the reader of the problem sees: the statement itself, the
+  editorial, and the sample testcases.
+
+  !!! note
+      The LaTeX chrome that wraps a statement -- the templates and the
+      `icpc.sty` style file -- is not here. A contest owns it, under
+      `contest/statements/`, so that every problem in a contest is typeset the
+      same way. See [Contest statements](/setters/statements/contest).
+
+statement/statement.rbx.tex: |
+  The body of the statement, written in {{rbxTeX}}. This is the file you open
+  to describe your problem.
+
+statement/editorial.rbx.tex: |
+  The editorial, in the same format. Built separately, with `rbx tutorials build`.
+
+statement/samples: |
+  The sample testcases, as inputs (`000.in`). A sample can carry an explanation
+  alongside it, as `000.rbx.tex`.
+
+  Their outputs are not here: {{rbx}} generates them by running your main
+  solution, the same way it does for every other testcase.
+
+tests: |
+  Everything related to generating tests lives here: generator sources (e.g.
+  `tests/gen.cpp`) and the generator scripts (testplans) that call them.
+
+tests/gen.cpp: |
+  An example of a {{testlib}} generator.
+
+  !!! note
+      A problem can have multiple generators. This one is just an example.
+
+tests/testplan.txt: |
+  A generator script for the problem (a _testplan_).
+
+  Each line of a generator script describes one call to a generator, and a generator script groups all these calls together.
+
+  The preset ships this file fully commented out, just to show you the shape of a call:
+
+  ```
+  # tests/gen 1000000000
+  # tests/gen 100
+  ```
+
+  Uncommenting a line calls the generator named `gen` (here implemented through
+  `tests/gen.cpp`) once, thus generating one testcase. In this problem, this
+  script backs the testcase group `testplan`.

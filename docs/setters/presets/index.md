@@ -296,14 +296,11 @@ env: "env.rbx.yml"
 tracking:
   problem:
     - path: ".gitignore"
-    - path: "documents/icpc.sty"
-    - path: "documents/template.rbx.tex"
   contest:
+    # The contest owns the statement chrome, so the shared LaTeX style is
+    # tracked here rather than in the problem.
     - path: ".gitignore"
-    - path: "documents/icpc.sty"
-    - path: "documents/template.rbx.tex"
-    - path: "documents/contest.rbx.tex"
-      symlink: true
+    - path: "statements/icpc.sty"
 
 ```
 
@@ -341,15 +338,15 @@ the following structure:
 
 ```bash
 contest/
-├── documents/
+├── statements/
 │   └── icpc.sty -> ../../common_icpc.sty
 problem/
-└── documents/
+└── statements/
     └── icpc.sty -> ../../common_icpc.sty
 └── common_icpc.sty
 ```
 
-In this case, you can track both `contest/documents/icpc.sty` and `problem/documents/icpc.sty` (no need for the `symlink: true` flag), and {{rbx}} creates the symlink to `common_icpc.sty` for you.
+In this case, you can track both `contest/statements/icpc.sty` and `problem/statements/icpc.sty` (no need for the `symlink: true` flag), and {{rbx}} creates the symlink to `common_icpc.sty` for you.
 
 Use this to share a common file between the contest and the problem packages.
 

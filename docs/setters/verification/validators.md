@@ -269,7 +269,7 @@ validator:
   path: 'validator.cpp'
 testcases:
   - name: samples
-    testcaseGlob: documents/samples/*.in
+    testcaseGlob: statement/samples/*.in
   - name: general
     generatorScript:
       path: testplan/general.txt
@@ -297,7 +297,7 @@ that is to override, in the group itself, the variables the validator already re
         max: 1000
     testcases:
       - name: samples
-        testcaseGlob: documents/samples/*.in
+        testcaseGlob: statement/samples/*.in
       - name: small
         score: 30
         vars:

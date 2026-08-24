@@ -26,68 +26,11 @@ pick one from the registry. Choosing the default preset clones it and materializ
 
 This is how the directory structure of the pre-initialized problem preset will look like:
 
-```bash
-test
-├── problem.rbx.yml # (1)!
-├── validator.cpp # (2)!
-├── wcmp.cpp # (3)!
-├── documents # (4)!
-│   ├── statement.rbx.tex
-│   ├── icpc.sty
-│   ├── template.rbx.tex
-│   └── samples
-│       ├── 000.in
-│       ├── 000.rbx.tex
-│       └── 001.in
-├── tests # (5)!
-│   ├── testplan.txt # (6)!
-│   └── gen.cpp # (7)!
-└── sols
-    └── main.cpp # (8)!
-```
+{{ preset_tree() }}
 
-1.  The {{YAML}} configuration file for this problem.
-
-2.  A {{testlib}} validator that checks whether the generated tests are
-    in the correct format.
-
-3.  A built-in {{testlib}} checker that compares tokens of the participant's output
-    and the judge's output.
-
-4.  All statement-related assets, including the legend of the problem itself
-    but also the tex templates, the `icpc.sty` style file and the sample testcases
-    (`documents/samples/`). Samples can carry an explanation alongside them
-    (e.g. `000.rbx.tex`).
-
-5.  Everything related to generating tests lives here: generator sources (e.g.
-    `tests/gen.cpp`) and the generator scripts (testplans) that call them.
-
-6.  A generator script for the problem (a _testplan_).
-
-    Each line of a generator script describes one call to a generator, and a generator script groups all these calls together.
-
-    The preset ships this file fully commented out, just to show you the shape of a call:
-
-    ```
-    # tests/gen 1000000000
-    # tests/gen 100
-    ```
-
-    Uncommenting a line calls the generator named `gen` (here implemented through
-    `tests/gen.cpp`) once, thus generating one testcase. In this problem, this
-    script backs the testcase group `testplan`.
-
-7.  An example of a {{testlib}} generator.
-
-    !!! note
-        A problem can have multiple generators. This one is just an example.
-
-8.  The single solution shipped by the preset: a correct, {{tags.accepted}} solution.
-
-    !!! note
-        `problem.rbx.yml` already declares outcome patterns for other prefixes
-        (`ac-*`, `wa-*`, `tle-*`, ...), so you can add more solutions later just by
-        dropping in a file with the matching prefix.
+The `testlib.h`, `jngen.h` and `tgen.h` you saw being materialized above sit alongside these,
+but they are libraries {{rbx}} fetched rather than files the preset ships, so they are not
+listed here.
 
 ## Build
 
@@ -95,13 +38,13 @@ Let's skip the configuration of the problem for a second, and just build and run
 
 ```{.bash .no-copy}
 $ rbx build
-$ ls build
+$ tree build
 build
-│   └── tests
-│       ├── samples
-│       │   └── ...
-│       └── testplan
-│           └── ...
+└── tests
+    ├── samples
+    │   └── ...
+    └── testplan
+        └── ...
 ```
 
 You can notice it created several folders inside a `tests` directory, each of which contains the tests for a specific testgroup. For this preset in particular, we have two testsets: `samples` and `testplan`.
@@ -154,6 +97,7 @@ We can develop the following {{tags.accepted}} solution (rewriting `sols/main.cp
 === "sols/main.cpp"
     ```c++
     #include <bits/stdc++.h>
+    using namespace std;
 
     int32_t main() {
         int n;
@@ -173,6 +117,7 @@ We can develop the following {{tags.accepted}} solution (rewriting `sols/main.cp
 === "sols/wa-overflow.cpp"
     ```c++
     #include <bits/stdc++.h>
+    using namespace std;
 
     int32_t main() {
         int n;
@@ -204,11 +149,13 @@ You can find the full list of expected outcomes [here][rbx.box.schema.ExpectedOu
 
 ### Write the validator
 
-The new input limits have to be updated in the `problems.rbx.yml`. The `vars` sections should look like this:
+The new input limits have to be updated in `problem.rbx.yml`. The `vars` section should look
+like this — the preset already declares `N`, so `A` is the one you add:
 
-=== "validator.cpp"
+=== "problem.rbx.yml"
     ```yaml
     vars:
+      author: "John Doe" # (1)!
       N:
         min: 1
         max: 1000000000
@@ -216,6 +163,9 @@ The new input limits have to be updated in the `problems.rbx.yml`. The `vars` se
         min: 1
         max: 1000000000
     ```
+
+    1.  Shipped by the preset, and read by the editorial. Leave it in place (with
+        your own name) rather than replacing the whole block.
 
 The {{testlib}} validator is implemented by `validator.cpp` and will look like this:
 
@@ -236,7 +186,7 @@ The {{testlib}} validator is implemented by `validator.cpp` and will look like t
       int MIN_A = getVar<int>("A.min");
       int MAX_A = getVar<int>("A.max");
 
-      int n = inf.readInt(1, MAX_N, "N");
+      int n = inf.readInt(MIN_N, MAX_N, "N");
       inf.readEoln();
       for (int i = 0; i < n; i++) {
         if (i) inf.readSpace();
@@ -247,7 +197,7 @@ The {{testlib}} validator is implemented by `validator.cpp` and will look like t
     }
     ```
 
-    1.  `getVar` reads a variable defined in `problem.rbx.yaml` that is accessible
+    1.  `getVar` reads a variable defined in `problem.rbx.yml` that is accessible
         in the validator. It allows you to change the constraints of the problem,
         and instantly replicate the change in validators and statements.
 
@@ -273,7 +223,7 @@ dynamic generator script (here shown as `tests/testplan.py`).
         registerGen(argc, argv, 1); // (1)!
 
         int n = rnd.next(1, opt<int>(1));
-        cout << endl;
+        cout << n << endl;
         for (int i = 0; i < n; i++) {
             if (i) cout << " ";
             cout << rnd.next(1, opt<int>(2));
@@ -323,7 +273,7 @@ dynamic generator script (here shown as `tests/testplan.py`).
 
     testcases:
     - name: 'samples'
-        testcaseGlob: 'documents/samples/*.in'
+        testcaseGlob: 'statement/samples/*.in'
     - name: 'testplan'  # (1)!
         generatorScript:
             path: 'tests/testplan.txt'  # or 'tests/testplan.py', in case you want to use a dynamic generator
@@ -345,11 +295,11 @@ Of course, last but not least, we have to update the statement of our problem. {
 has its own statement format, called {{rbxTeX}}. The format itself is simple, but the ecosystem
 behind it is complex and provides a lot of flexibility for setters.
 
-For now, you just need to know the body and meat of the statement is written at `documents/statement.rbx.tex`.
+For now, you just need to know the body and meat of the statement is written at `statement/statement.rbx.tex`.
 If you open it, you will find something like the following:
 
 
-=== "documents/statement.rbx.tex"
+=== "statement/statement.rbx.tex"
     ```tex
     %- block legend
     Given two integers $A$ and $B$, determine the value of $A + B$.
@@ -357,7 +307,7 @@ If you open it, you will find something like the following:
 
     %- block input
     The input is a single line containing two integers $A$ and $B$
-    ($1 \leq A, B \leq \VAR{N.max | sci}$). % (1)!
+    ($1 \leq A, B \leq \VAR{vars.N.max | sci}$). % (1)!
     %- endblock
 
     %- block output
@@ -383,7 +333,7 @@ these blocks will be pieced together to form the final statement.
 
 Let's change each corresponding block to match our new problem description.
 
-=== "documents/statement.rbx.tex"
+=== "statement/statement.rbx.tex"
     ```tex
     %- block legend
     Given $N$ integers, print their sum.
@@ -391,8 +341,8 @@ Let's change each corresponding block to match our new problem description.
 
     %- block input
     The input has a single line containing $N$ 
-    ($1 \leq N \leq \VAR{N.max | sci}$) numbers. 
-    These numbers range from 1 to $\VAR{A.max | sci}$.
+    ($1 \leq N \leq \VAR{vars.N.max | sci}$) numbers. 
+    These numbers range from 1 to $\VAR{vars.A.max | sci}$.
     %- endblock
 
     %- block output
@@ -415,17 +365,19 @@ section on the sidebar.
 
     ---
 
-    Want to grade solutions without comparing tokens? Check out our guide on how to add a custom checker.
+    Continue the track: mutate this problem into one with many valid answers, and grade it
+    with a checker that verifies the property instead of the tokens.
 
-    [:octicons-arrow-right-24: Checkers](/setters/grading/checkers)
+    [:octicons-arrow-right-24: Adding a custom checker](/setters/custom-checker-walkthrough)
 
 -   :fontawesome-solid-rocket: **Package and ship your problem**
 
     ---
 
-    Want to package your problem for a judge? Check out our guide on how to package your problem.
+    Want to package your problem for a judge? Walk through profiling a time limit, building
+    the package and uploading it.
 
-    [:octicons-arrow-right-24: Packaging](/setters/packaging)
+    [:octicons-arrow-right-24: Packaging a problem](/setters/packaging-walkthrough)
 
 -   :fontawesome-solid-shuffle: **Stress test**
 
