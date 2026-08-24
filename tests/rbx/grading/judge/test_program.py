@@ -818,3 +818,23 @@ class TestMaxrssCorrection:
         assert result.exitcode == 0
         assert ProgramCode.ML not in result.program_codes
         assert result.memory_used < 64 * 1024 * 1024
+
+    def test_a_real_offender_is_still_caught_under_a_fat_parent(self, testdata_path):
+        """The other side of it: no false negatives in the band we cannot measure.
+
+        A program peaking at 96 MB is over its 32 MB limit and under the parent's
+        150 MB, which is exactly where ru_maxrss carries no information about the
+        child. The RSS sampler has to catch it before it exits.
+        """
+        script = testdata_path / 'steps_run_test' / 'memory_heavy.py'
+        ballast = bytearray(150 * 1024 * 1024)
+        try:
+            for i in range(0, len(ballast), 4096):
+                ballast[i] = 1
+
+            params = ProgramParams(memory_limit=32)
+            result = Program([sys.executable, str(script), '96'], params).wait()
+        finally:
+            del ballast
+
+        assert ProgramCode.ML in result.program_codes

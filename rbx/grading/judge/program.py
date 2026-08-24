@@ -16,6 +16,16 @@ from rbx.utils import PathOrStr
 
 FileLike = Union[PathOrStr, IO[bytes], int]
 
+# How often the alarm thread samples the child's RSS. Where ru_maxrss cannot be
+# trusted (see `maxrss_inherits_parent`) this sampling is the only measurement
+# of a program that stays under the parent's footprint, so it has to be fine
+# enough to catch a program that allocates and exits in a few hundred
+# milliseconds. A sample costs a few microseconds.
+RSS_SAMPLE_INTERVAL = 0.02
+# CPU time is read on its own, coarser cadence -- it is compared against a limit
+# in seconds and needs no such resolution.
+CPU_CHECK_INTERVAL = 0.3
+
 
 def _maybe_close_files(files):
     for fobj in files:
@@ -316,16 +326,20 @@ class Program:
             self._sample_rss(process)
         except psutil.Error:
             return
-        while not self._stop_alarm_handler.wait(0.3):
+        elapsed_since_cpu_check = 0.0
+        while not self._stop_alarm_handler.wait(RSS_SAMPLE_INTERVAL):
             try:
                 if process.create_time() != create_time:
                     return
-                if self.params.time_limit is not None:
-                    times = process.cpu_times()
-                    cpu_time = times.user + times.system
-                    if cpu_time > self.params.time_limit:
-                        self._alarm_msg = 'timelimit'
-                        self._kill_process()
+                elapsed_since_cpu_check += RSS_SAMPLE_INTERVAL
+                if elapsed_since_cpu_check >= CPU_CHECK_INTERVAL:
+                    elapsed_since_cpu_check = 0.0
+                    if self.params.time_limit is not None:
+                        times = process.cpu_times()
+                        cpu_time = times.user + times.system
+                        if cpu_time > self.params.time_limit:
+                            self._alarm_msg = 'timelimit'
+                            self._kill_process()
                 memory_used = self._sample_rss(process)
                 if (
                     self.params.memory_limit is not None
