@@ -890,12 +890,17 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
         self, sandbox: SandboxBase, cleandir: pathlib.Path
     ):
         """On macOS, a missing C/C++ compiler points the user at the macOS guide."""
+        # The name has to be unresolvable everywhere yet still read as C/C++:
+        # detection is substring-based on the executable, so the `g++` prefix
+        # picks the CXX branch. A real version like `g++-14` resolves on any
+        # machine that has GCC installed -- CI does -- and the compiler then
+        # fails on the missing source instead of never being found.
         artifacts = GradingArtifacts(root=cleandir)
         params = SandboxParams()
         with patch('rbx.grading.steps.sys.platform', 'darwin'):
             with pytest.raises(steps.CompilationError) as exc_info:
                 await steps.compile(
-                    ['g++-14 src.cpp -o exe'],
+                    ['g++-not-a-real-compiler-xyz src.cpp -o exe'],
                     params,
                     sandbox,
                     artifacts,
@@ -914,7 +919,7 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
         with patch('rbx.grading.steps.sys.platform', 'linux'):
             with pytest.raises(steps.CompilationError) as exc_info:
                 await steps.compile(
-                    ['g++-14 src.cpp -o exe'],
+                    ['g++-not-a-real-compiler-xyz src.cpp -o exe'],
                     params,
                     sandbox,
                     artifacts,

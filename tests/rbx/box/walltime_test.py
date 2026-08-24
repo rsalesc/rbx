@@ -121,10 +121,10 @@ def test_compute_walltime_uses_active_environment(
     testing_pkg: testing_package.TestingPackage,
 ):
     # The default preset environment has wallTimeMultiplier=2.0 and
-    # wallTimeIncrement=1000ms, so wall = 2 * cpu_tl + 1000 for languages
+    # wallTimeIncrement=500ms, so wall = 2 * cpu_tl + 500 for languages
     # without a per-language override (cpp, and the env default).
-    assert compute_walltime(1000, 'cpp') == 3000
-    assert compute_walltime(1000, None) == 3000
+    assert compute_walltime(1000, 'cpp') == 2500
+    assert compute_walltime(1000, None) == 2500
     # Slow languages add a larger per-language increment in the preset:
     # py +2000ms, java/kt +3000ms.
     assert compute_walltime(1000, 'py') == 4000

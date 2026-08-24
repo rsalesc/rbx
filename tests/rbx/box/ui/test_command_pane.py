@@ -116,7 +116,7 @@ async def test_scrollbar_does_not_narrow_the_terminal_mid_command():
     # printed until the next genuine resize is then one column too wide, and
     # that resize re-folds it one short -- spilling a trailing character onto a
     # line of its own. Reserving the gutter keeps the width constant instead.
-    app = rbxCommandApp([CommandEntry(argv=_OVERFLOW, name='a')])
+    app = rbxCommandApp([CommandEntry(argvs=[_OVERFLOW], name='a')])
     async with app.run_test(size=(150, 40)) as pilot:
         await _wait_for_commands(app, pilot, panes_expected=1)
         pane = app.query_one(CommandPane)
