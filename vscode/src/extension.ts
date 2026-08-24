@@ -17,21 +17,23 @@ import { registerDecorations } from './decorations';
 import { registerDiagnostics } from './diagnostics';
 import { initLog, log } from './log';
 import { CONTEST_FILE_GLOB, CONTEST_MANIFEST, isContestVariantFile } from './rbx/contest';
-import { CACHE_DIR, PROBLEM_MANIFEST } from './rbx/layout';
+import { BUILD_DIR, CACHE_DIR, PROBLEM_MANIFEST, TESTSET_MANIFEST } from './rbx/layout';
 import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
 import { registerSolutionLens } from './solutionLens';
 import { registerSolutionStatus } from './solutionStatus';
+import { TestsetPanel } from './testsetPanel';
+import { TestsetViewProvider } from './testsetView';
 
 /**
- * Map a changed path back to the package it belongs to.
+ * Map a changed cache path back to the package it belongs to.
  *
  * Events arrive either as `<pkg>/.rbx/runs/...` during a run, or as the bare
  * `<pkg>/.rbx` when the whole cache directory goes away -- `rbx clean` rmtree's
  * it in one call, and the watcher reports the top removed directory rather than
  * each descendant. Both spellings must resolve to the package root.
  */
-function packageRootOf(fsPath: string): string | undefined {
+function cacheRootOf(fsPath: string): string | undefined {
   const suffix = `${path.sep}${CACHE_DIR}`;
   if (fsPath.endsWith(suffix)) {
     return fsPath.slice(0, -suffix.length);
@@ -39,6 +41,24 @@ function packageRootOf(fsPath: string): string | undefined {
   const marker = `${suffix}${path.sep}`;
   const index = fsPath.indexOf(marker);
   return index === -1 ? undefined : fsPath.slice(0, index);
+}
+
+/**
+ * Map any watched path back to the package it belongs to.
+ *
+ * Two spellings reach the debounce: run artifacts under `.rbx`, and the testset
+ * manifest `rbx build` writes at `<pkg>/build/testset.yml`. They feed the same
+ * pending set because they invalidate the same store -- a package is reloaded
+ * whole, and which of its two producers moved is not a distinction the reload
+ * makes.
+ */
+function packageRootOf(fsPath: string): string | undefined {
+  const cached = cacheRootOf(fsPath);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const suffix = `${path.sep}${BUILD_DIR}${path.sep}${TESTSET_MANIFEST}`;
+  return fsPath.endsWith(suffix) ? fsPath.slice(0, -suffix.length) : undefined;
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -50,6 +70,16 @@ export function activate(context: vscode.ExtensionContext): void {
   // would land each of them on a root the other opened.
   const active = new ActiveProblem(data, context.workspaceState);
   const view = new RunViewProvider(data, active, context.extensionUri);
+  // The Tests view shares `data` and `active` with the Run view rather than
+  // discovering the workspace a second time: the two are two readings of one
+  // package, and a second `ActiveProblem` would let them drift onto different
+  // problems in the same window.
+  const testset = new TestsetViewProvider(data, active, context.extensionUri, (request) => {
+    const root = active.selected();
+    if (root !== undefined) {
+      TestsetPanel.show(context, data, root, request);
+    }
+  });
   const declared = new DeclaredIndex(data);
   context.subscriptions.push(declared);
   registerDecorations(context, declared);
@@ -61,13 +91,46 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(RunViewProvider.viewType, view),
+    vscode.window.registerWebviewViewProvider(TestsetViewProvider.viewType, testset),
     vscode.workspace.registerFileSystemProvider(SCHEME, new ArtifactFileSystemProvider(), {
       isReadonly: true,
       isCaseSensitive: true,
     }),
   );
 
-  registerCommands(context, view, data, active);
+  registerCommands(context, view, data, active, testset);
+
+  // The panel follows the sidebar's highlight, so arrowing the list scrolls the
+  // gallery to the testcase being read. `reveal` is a no-op when no panel is
+  // open, which is the common case and deliberately costs nothing.
+  context.subscriptions.push(
+    testset.onDidChangeSelection((selection) => {
+      if (selection.testId !== undefined) {
+        TestsetPanel.reveal(selection.testId);
+      }
+    }),
+  );
+
+  // A click in the gallery has to land on the same commands a click in the
+  // sidebar does. The panel does not own those commands and must not reach for
+  // them, so it names an intent and this routes it: a testcase through the
+  // sidebar's node (which is what the command signature expects), a file the
+  // editor is left to interpret -- `Visualizer.extension` is a free string.
+  context.subscriptions.push(
+    TestsetPanel.onDidRequestOpen((request) => {
+      if (request.kind === 'file') {
+        void vscode.commands.executeCommand(
+          'vscode.open',
+          vscode.Uri.file(request.filePath),
+        );
+        return;
+      }
+      const node = testset.nodeById(`${request.group}::${request.stem}`);
+      if (node !== undefined) {
+        void vscode.commands.executeCommand('rbx.openBuiltTestcase', node);
+      }
+    }),
+  );
 
   // Artifacts land incrementally as evaluations resolve, which is what gives
   // the view live progress without any streaming protocol: each new `.eval`
@@ -109,10 +172,17 @@ export function activate(context: vscode.ExtensionContext): void {
   watch(`**/${CACHE_DIR}/**`);
   watch(`**/${CACHE_DIR}`);
 
-  // A third glob, for a different question: the two above ask *what changed*,
-  // this one asks *what is running*. `skeleton.yml` is written when a run
-  // starts (rbx/box/solutions.py:746 -- "A new skeleton is what marks a new
-  // run"), so following it makes the view track the problem currently running:
+  // A third: the testset manifest, which `rbx build` writes last (design D2).
+  // Written last is what lets this be a single glob rather than a heuristic
+  // about when a build has settled -- when it lands, everything it names is
+  // already on disk. It joins the same debounce as the artifacts above, so a
+  // build finishing while a run is in flight still costs one reload.
+  watch(`**/${BUILD_DIR}/${TESTSET_MANIFEST}`);
+
+  // A fourth glob, for a different question: the three above ask *what
+  // changed*, this one asks *what is running*. `skeleton.yml` is written when
+  // a run starts (rbx/box/solutions.py:746 -- "A new skeleton is what marks a
+  // new run"), so following it makes the view track the problem being run:
   // `rbx contest each run` walks the view through the contest in step with the
   // run itself.
   //

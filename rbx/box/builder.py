@@ -1,4 +1,4 @@
-from typing import Optional, Set
+from typing import List, Optional, Set
 
 from rbx import console, utils
 from rbx.box import environment, package
@@ -13,7 +13,9 @@ from rbx.box.solutions import (
     run_solutions,
 )
 from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
+from rbx.box.testset_manifest import write_manifest_or_warn
 from rbx.box.validators import (
+    TestcaseValidationInfo,
     check_output_from_entries,
     has_validation_errors,
     print_validation_report,
@@ -33,6 +35,10 @@ async def build(
     is_statement: bool = False,
 ) -> bool:
     no_main_solution_report = False
+    # None, not [], when the build did not validate: the manifest omits its
+    # `validation` key entirely rather than publishing an empty coverage table
+    # that would read as "nothing is covered".
+    input_validation_infos: Optional[List[TestcaseValidationInfo]] = None
     if output is None:
         output = package.get_main_solution() is not None
         no_main_solution_report = not output
@@ -56,6 +62,7 @@ async def build(
                 s,
                 groups=groups,
             )
+            input_validation_infos = infos
             print_validation_report(infos)
 
         if has_validation_errors(infos):
@@ -120,6 +127,11 @@ async def build(
         console.console.print(
             '[warning]No main solution found, skipping generating samples for the statement.[/warning]'
         )
+
+    # Last, on purpose: a reader that sees the manifest may assume everything it
+    # names -- inputs, outputs, visualizations -- has already landed, which is
+    # what lets its watcher be a single glob instead of a settling heuristic.
+    write_manifest_or_warn(entries, input_validation_infos)
 
     return True
 

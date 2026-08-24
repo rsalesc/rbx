@@ -18,7 +18,8 @@
   ],
   "activationEvents": [
     "workspaceContains:**/problem.rbx.yml",
-    "onView:rbx.run"
+    "onView:rbx.run",
+    "onView:rbx.testset"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -37,6 +38,12 @@
           "id": "rbx.run",
           "type": "webview",
           "name": "Run",
+          "contextualTitle": "rbx"
+        },
+        {
+          "id": "rbx.testset",
+          "type": "webview",
+          "name": "Tests",
           "contextualTitle": "rbx"
         }
       ]
@@ -132,18 +139,60 @@
         "command": "rbx.openCopiedFrom",
         "title": "Open Copied-From Testcase",
         "category": "rbx"
+      },
+      {
+        "command": "rbx.openBuiltTestcase",
+        "title": "Open Testcase",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.openTestVisualization",
+        "title": "Open Input Visualization",
+        "category": "rbx",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "rbx.openTestAnswerVisualization",
+        "title": "Open Answer Visualization",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.copyTestPath",
+        "title": "Copy Test Input Path",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.revealTestInExplorer",
+        "title": "Reveal Test in Explorer",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.openTestsetPanel",
+        "title": "Open Testset Panel",
+        "category": "rbx",
+        "icon": "$(window)"
+      },
+      {
+        "command": "rbx.openTestsetCoverage",
+        "title": "Show Constraint Coverage",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.openTestsetStats",
+        "title": "Show Testset Stats",
+        "category": "rbx"
       }
     ],
     "menus": {
       "view/title": [
         {
           "command": "rbx.selectProblem",
-          "when": "view == rbx.run",
+          "when": "view == rbx.run || view == rbx.testset",
           "group": "navigation@1"
         },
         {
           "command": "rbx.refresh",
-          "when": "view == rbx.run",
+          "when": "view == rbx.run || view == rbx.testset",
           "group": "navigation@2"
         }
       ],
@@ -212,6 +261,61 @@
           "command": "rbx.showLog",
           "when": "webviewSection == 'rbx.testcase'",
           "group": "2_compare@4"
+        },
+        {
+          "command": "rbx.openBuiltTestcase",
+          "when": "webviewSection == 'rbx.testsetTestcase'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "rbx.openTestVisualization",
+          "when": "webviewSection == 'rbx.testsetTestcase'",
+          "group": "navigation@2"
+        },
+        {
+          "command": "rbx.openTestAnswerVisualization",
+          "when": "webviewSection == 'rbx.testsetTestcase'",
+          "group": "navigation@3"
+        },
+        {
+          "command": "rbx.openGeneratorScript",
+          "when": "webviewSection == 'rbx.testsetTestcase'",
+          "group": "provenance@1"
+        },
+        {
+          "command": "rbx.openCopiedFrom",
+          "when": "webviewSection == 'rbx.testsetTestcase'",
+          "group": "provenance@2"
+        },
+        {
+          "command": "rbx.openTestsetPanel",
+          "when": "webviewSection == 'rbx.testsetTestcase'",
+          "group": "panel@1"
+        },
+        {
+          "command": "rbx.copyTestPath",
+          "when": "webviewSection == 'rbx.testsetTestcase'",
+          "group": "copy@1"
+        },
+        {
+          "command": "rbx.revealTestInExplorer",
+          "when": "webviewSection == 'rbx.testsetTestcase'",
+          "group": "copy@2"
+        },
+        {
+          "command": "rbx.openTestsetPanel",
+          "when": "webviewSection == 'rbx.testsetGroup'",
+          "group": "panel@1"
+        },
+        {
+          "command": "rbx.openTestsetCoverage",
+          "when": "webviewSection == 'rbx.testsetGroup'",
+          "group": "panel@2"
+        },
+        {
+          "command": "rbx.openTestsetStats",
+          "when": "webviewSection == 'rbx.testsetGroup'",
+          "group": "panel@3"
         }
       ]
     },

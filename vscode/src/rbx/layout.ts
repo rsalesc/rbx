@@ -11,6 +11,7 @@
  *   <pkg>/problem.rbx.yml
  *   <pkg>/build/tests/<group>/<stem>.in     generated input      (symlink)
  *   <pkg>/build/tests/<group>/<stem>.out    expected answer      (symlink)
+ *   <pkg>/build/testset.yml                 TestsetManifest
  *   <pkg>/.rbx/runs/skeleton.yml            SolutionReportSkeleton
  *   <pkg>/.rbx/runs/<i>/<group>/<stem>.eval Evaluation
  *   <pkg>/.rbx/runs/<i>/<group>/<stem>.out  solution stdout      (symlink)
@@ -30,6 +31,14 @@ import * as path from 'path';
 export const PROBLEM_MANIFEST = 'problem.rbx.yml';
 export const CACHE_DIR = '.rbx';
 export const BUILD_DIR = 'build';
+/**
+ * The manifest `rbx build` writes last, describing the testset it just built.
+ *
+ * It sits under `build/` rather than `.rbx/` on purpose (design D2): a fresh
+ * build rewrites `build/tests` and this file together, so the two cannot drift,
+ * and `rbx clean` -- which wipes `.rbx` -- can never orphan it.
+ */
+export const TESTSET_MANIFEST = 'testset.yml';
 
 /** Artifact suffixes, as they appear on disk. */
 export const enum Ext {
@@ -102,6 +111,17 @@ export function testsDir(pkg: PackageLayout): string {
 }
 
 /**
+ * The testset manifest, written last by `rbx build`.
+ *
+ * Written last is what the reader leans on: a manifest on disk means every test
+ * and visualization it names has already landed, so the watcher can be a single
+ * glob rather than a heuristic about when a build has settled.
+ */
+export function testsetPath(pkg: PackageLayout): string {
+  return path.join(pkg.root, BUILD_DIR, TESTSET_MANIFEST);
+}
+
+/**
  * Directory holding one solution's artifacts.
  *
  * `SolutionSkeleton.runs_dir` records an absolute path to the same place, but we
@@ -162,4 +182,16 @@ export function packageFilePath(pkg: PackageLayout, relative: string): string {
   }
   const segments = relative.split(/[\\/]+/).filter((segment) => segment !== '');
   return path.join(pkg.root, ...segments);
+}
+
+/**
+ * Absolute path to a file the testset manifest named, e.g. a visualization.
+ *
+ * A named seam onto `packageFilePath` rather than a call to it: the manifest's
+ * paths being package-relative is a fact about the manifest, and this is the
+ * one module allowed to know it. Consumers of `testset.ts` ask for a path and
+ * never learn what the recorded string was relative to.
+ */
+export function testsetFilePath(pkg: PackageLayout, relative: string): string {
+  return packageFilePath(pkg, relative);
 }

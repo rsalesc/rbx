@@ -1,0 +1,339 @@
+/*
+ * The `rbx: Testset` panel's look.
+ *
+ * Its own stylesheet rather than an extension of style.css, because the two
+ * surfaces have opposite constraints: the sidebar is ~300px and every rule
+ * there is about shedding channels to fit, while this one is an editor tab with
+ * the full window to spend on a grid and two wide tables. Sharing a file would
+ * mean every sidebar breakpoint had to be read twice, once for a width it never
+ * sees.
+ *
+ * What is shared is the vocabulary, not the rules: a hue is still a role that
+ * resolves to a `--vscode-*` variable and never a literal colour, so the panel
+ * follows the user's theme and keeps working in a high-contrast one.
+ */
+
+@font-face {
+  /* esbuild copies codicon.ttf next to this stylesheet, as it does for style.css. */
+  font-family: 'codicon';
+  src: url('codicon.ttf') format('truetype');
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+}
+
+.codicon {
+  font-family: 'codicon';
+  font-size: 16px;
+  line-height: 1;
+  display: inline-block;
+  text-align: center;
+  user-select: none;
+}
+
+.hue-green { color: var(--vscode-charts-green); }
+.hue-red { color: var(--vscode-charts-red); }
+.hue-yellow { color: var(--vscode-charts-yellow); }
+.hue-blue { color: var(--vscode-charts-blue); }
+.hue-purple { color: var(--vscode-charts-purple); }
+.hue-orange { color: var(--vscode-charts-orange); }
+.hue-dim { color: var(--vscode-descriptionForeground); }
+.hue-neutral { color: var(--vscode-foreground); }
+
+/* `#panel` scrolls, not the document: the client saves and restores
+   `panel.scrollTop`, which is forever 0 if the body is the scrolling box. */
+#panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 16px 24px;
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 0;
+  background: var(--vscode-editor-background);
+  border-bottom: 1px solid var(--vscode-panel-border, transparent);
+}
+
+.tabs-spacer {
+  flex: 1;
+}
+
+.tab {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--vscode-foreground);
+  background: none;
+  border: none;
+  border-bottom: 1px solid transparent;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.tab:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.tab-current {
+  border-bottom-color: var(--vscode-focusBorder);
+}
+
+.group-picker {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--vscode-dropdown-foreground);
+  background: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border, transparent);
+  padding: 2px 4px;
+}
+
+.group-picker:disabled {
+  /* Disabled and not hidden: a control that vanishes between tabs reads as a
+     bug, and the reader has to rediscover where the group filter went. */
+  opacity: 0.5;
+}
+
+.tab-body {
+  padding-top: 12px;
+}
+
+.empty,
+.note {
+  color: var(--vscode-descriptionForeground);
+  max-width: 70ch;
+  line-height: 1.5;
+}
+
+code {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.95em;
+}
+
+/*
+ * The gallery: as many columns as fit, each at least 180px. `auto-fill` rather
+ * than `auto-fit` so a testset with two visualizations does not stretch them
+ * across a 2000px editor.
+ */
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.cell {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--vscode-panel-border, transparent);
+  cursor: pointer;
+}
+
+.cell:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.cell:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+/* The reveal wash, and the only background fill in this file beyond hover and
+   selection -- same scarcity rule as the sidebar's. */
+.cell-revealed {
+  background: var(--vscode-list-activeSelectionBackground);
+}
+
+.cell-image,
+.cell-frame,
+.cell-missing,
+.cell-open {
+  /* A fixed box for every cell whatever it holds, so the captions line up in a
+     row and the grid does not reflow as lazy images land. */
+  height: 140px;
+  width: 100%;
+  background: var(--vscode-editorWidget-background);
+}
+
+.cell-image {
+  object-fit: contain;
+}
+
+.cell-frame {
+  border: none;
+}
+
+.cell-missing,
+.cell-open {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--vscode-descriptionForeground);
+  border: 1px dashed var(--vscode-panel-border, transparent);
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  text-align: center;
+  padding: 4px;
+}
+
+.cell-open:hover {
+  color: var(--vscode-foreground);
+}
+
+.cell-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9em;
+  min-width: 0;
+}
+
+/* Only the stem is allowed to shrink: the badge is the shorter string and the
+   one that stops being useful the moment it is clipped. */
+.cell-stem {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Every cell carries one of these, so the badge is read as a value in a column
+   rather than as an exception flagged on some cells. Bordered rather than
+   filled: a solid chip on every cell of a dense grid competes with the pictures
+   the grid exists to show. */
+.cell-channel {
+  flex: 0 0 auto;
+  font-size: 0.85em;
+  line-height: 1.4;
+  padding: 0 5px;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  opacity: 0.85;
+}
+
+.cell-channel-input {
+  color: var(--vscode-charts-blue);
+}
+
+.cell-channel-output {
+  color: var(--vscode-charts-purple);
+}
+
+/* Revealed by hovering or focusing the cell. The caption is the one place a
+   second action can live without covering the picture. */
+.cell-testcase {
+  flex: 0 0 auto;
+  padding: 0 2px;
+  border: none;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.cell:hover .cell-testcase,
+.cell:focus-within .cell-testcase,
+.cell-testcase:focus-visible {
+  visibility: visible;
+}
+
+.cell-testcase:hover {
+  color: var(--vscode-foreground);
+}
+
+.rollup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rollup-warn {
+  color: var(--vscode-charts-yellow);
+}
+
+.rollup-clear {
+  color: var(--vscode-charts-green);
+}
+
+/* Wide content scrolls inside its own box; the panel body never scrolls
+   sideways under the sticky tab strip. */
+.table-scroll {
+  overflow-x: auto;
+}
+
+table {
+  border-collapse: collapse;
+  white-space: nowrap;
+}
+
+th,
+td {
+  padding: 4px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--vscode-panel-border, transparent);
+}
+
+thead th {
+  color: var(--vscode-descriptionForeground);
+  font-weight: normal;
+}
+
+tbody th {
+  font-weight: normal;
+}
+
+td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cell-none {
+  color: var(--vscode-descriptionForeground);
+}
+
+.tick + .tick {
+  margin-left: 2px;
+}
+
+.cell-value {
+  margin-left: 8px;
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--vscode-editor-font-family);
+}
+
+.totals th,
+.totals td {
+  border-top: 1px solid var(--vscode-panel-border, transparent);
+  font-weight: 600;
+}
+
+.chip {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--vscode-panel-border, transparent);
+  color: var(--vscode-descriptionForeground);
+}

@@ -12,20 +12,60 @@ import * as vscode from 'vscode';
 
 import { ActiveProblem } from './activeProblem';
 import { artifactUri, firstExisting } from './artifactFs';
-import { solutionSourcePath } from './rbx/layout';
+import { TestcaseEntry } from './rbx/model';
+import { Ext, solutionSourcePath, testArtifactPath, testsetFilePath } from './rbx/layout';
 import { RunNode, TestcaseNode } from './rbx/nodes';
 import { Channel, LABELS, labelPrefix as displayPrefix } from './rbx/panes';
+import {
+  TestsetNode,
+  TestsetTestcaseNode,
+  testsetNodeId,
+} from './rbx/testsetViewModel';
 import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
 import { TestcasePanes } from './testcasePanes';
+import { TestsetPanelRequest, TestsetViewProvider } from './testsetView';
 
 /** `sols/wa.cpp/main/1-gen-000` -- the display prefix shared by a testcase's tabs. */
 function labelPrefix(node: TestcaseNode): string {
   return displayPrefix(node.run.solution.path, node.group.name, node.testcase.stem);
 }
 
-function isTestcase(node: RunNode | undefined): node is TestcaseNode {
+function isTestcase(node: Node | undefined): node is TestcaseNode {
   return node?.kind === 'testcase';
+}
+
+/**
+ * Everything a command in this file can be invoked on.
+ *
+ * Two views, two node shapes, one set of commands wherever the two views ask
+ * for the same thing. `rbx.openGeneratorScript` and `rbx.openCopiedFrom` are
+ * exactly that case: where a testcase came from is the same fact whether it was
+ * reached through a run or through a build, and a second pair of commands would
+ * be a second pair to keep in step.
+ */
+type Node = RunNode | TestsetNode;
+
+function isBuiltTestcase(node: Node | undefined): node is TestsetTestcaseNode {
+  return node?.kind === 'testsetTestcase';
+}
+
+/**
+ * The `GenerationTestcaseEntry` behind a row, from either view, with the
+ * package it belongs to.
+ *
+ * The manifest dumps the entries the skeleton embeds verbatim (design D2), so
+ * the two views hold the very same record and the commands below need nothing
+ * else to tell them apart.
+ */
+function provenance(node: Node | undefined): { root: string; entry: TestcaseEntry } | undefined {
+  if (isTestcase(node)) {
+    return { root: node.pkg.root, entry: node.testcase.entry };
+  }
+  if (isBuiltTestcase(node)) {
+    return { root: node.pkg.root, entry: node.entry };
+  }
+  return undefined;
 }
 
 async function openArtifact(
@@ -84,6 +124,10 @@ export function registerCommands(
   view: RunViewProvider,
   data: RunDataProvider,
   active: ActiveProblem,
+  // Optional so the extension can be wired up without the Tests view; the
+  // commands it owns then report that there is nothing to act on rather than
+  // failing to register, which would leave dead entries in the palette.
+  testset?: TestsetViewProvider,
 ): void {
   /**
    * The seam where two invocation paths arrive in two shapes.
@@ -93,15 +137,21 @@ export function registerCommands(
    * menu item never does: VS Code invokes the command with the row's
    * `data-vscode-context` object, so all that arrives is the id inside it.
    */
-  const resolve = (arg: unknown): RunNode | undefined => {
+  const resolve = (arg: unknown): Node | undefined => {
     if (typeof arg === 'object' && arg !== null && 'kind' in arg) {
-      return arg as RunNode;
+      return arg as Node;
     }
     const id = (arg as { rbxNodeId?: unknown } | undefined)?.rbxNodeId;
-    return typeof id === 'string' ? view.nodeById(id) : undefined;
+    if (typeof id !== 'string') {
+      return undefined;
+    }
+    // The Run view first, because its ids are rooted at the package and cannot
+    // collide with a bare group name. A row from either view resolves through
+    // the map its own host rebuilt on the last post.
+    return view.nodeById(id) ?? testset?.nodeById(id);
   };
 
-  const register = (id: string, handler: (node: RunNode | undefined) => unknown) => {
+  const register = (id: string, handler: (node: Node | undefined) => unknown) => {
     context.subscriptions.push(
       vscode.commands.registerCommand(id, (arg: unknown) => handler(resolve(arg))),
     );
@@ -278,17 +328,15 @@ export function registerCommands(
   }
 
   register('rbx.openGeneratorScript', async (node) => {
-    if (!isTestcase(node)) {
-      return;
-    }
-    const entry = node.testcase.entry;
-    if (entry.generatorScript === undefined) {
+    const source = provenance(node);
+    const entry = source?.entry;
+    if (source === undefined || entry?.generatorScript === undefined) {
       return;
     }
     // Relative to the package, the way rbx records every other path in the
     // skeleton; `generatorScript` is a script in the package, not an artifact.
     await openSource(
-      path.resolve(node.pkg.root, entry.generatorScript),
+      path.resolve(source.root, entry.generatorScript),
       entry.generatorScript,
       // rbx counts a script's lines from 1, the editor from 0.
       Math.max(0, (entry.generatorScriptLine ?? 1) - 1),
@@ -296,18 +344,114 @@ export function registerCommands(
   });
 
   register('rbx.openCopiedFrom', async (node) => {
-    if (!isTestcase(node)) {
-      return;
-    }
-    const copiedFrom = node.testcase.entry.copiedFrom;
-    if (copiedFrom === undefined) {
+    const source = provenance(node);
+    const copiedFrom = source?.entry.copiedFrom;
+    if (source === undefined || copiedFrom === undefined) {
       return;
     }
     // The manual testcase the setter wrote, so it opens as itself on `file:`
     // rather than through the read-only `rbx:` scheme: rbx did not generate it
     // and fixing a bad manual test means editing it.
-    await openSource(path.resolve(node.pkg.root, copiedFrom), copiedFrom, 0);
+    await openSource(path.resolve(source.root, copiedFrom), copiedFrom, 0);
   });
+
+  // --- The Tests view -------------------------------------------------------
+  //
+  // A built testcase is not a run of one: there is no output, no stderr and no
+  // log, so nothing here is a channel. What it has instead is provenance, an
+  // answer beside its input, and -- when a visualizer ran -- a picture.
+
+  register('rbx.openBuiltTestcase', async (node) => {
+    if (!isBuiltTestcase(node)) {
+      return;
+    }
+    await panes.openBuilt(node.pkg, node.group, node.stem);
+  });
+
+  // One registration per channel, following the run view's channel commands:
+  // these reach the palette, and "rbx: Open Answer Visualization" is something
+  // a user can find by typing what they want.
+  const visualizationChannels: readonly (readonly [
+    string,
+    'input' | 'output',
+    string,
+  ])[] = [
+    ['rbx.openTestVisualization', 'input', 'input'],
+    ['rbx.openTestAnswerVisualization', 'output', 'answer'],
+  ];
+  for (const [id, channel, name] of visualizationChannels) {
+    register(id, async (node) => {
+      if (!isBuiltTestcase(node)) {
+        return;
+      }
+      const relative = node.test?.visualization?.[channel];
+      if (relative === undefined) {
+        vscode.window.showInformationMessage(
+          `No ${name} visualization was built for this testcase.`,
+        );
+        return;
+      }
+      const realPath = await firstExisting([testsetFilePath(node.pkg, relative)]);
+      if (realPath === undefined) {
+        vscode.window.showInformationMessage(
+          `No file at ${relative}. Run \`rbx build --visualize\` again to rebuild the visualizations.`,
+        );
+        return;
+      }
+      // `vscode.open` rather than `openTextDocument`: `Visualizer.extension` is
+      // a free string, so this may be an SVG the editor previews, an HTML page
+      // or something it has no viewer for -- and letting the editor decide is
+      // the only answer that is right for all three.
+      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(realPath));
+    });
+  }
+
+  register('rbx.copyTestPath', async (node) => {
+    if (!isBuiltTestcase(node)) {
+      return;
+    }
+    await vscode.env.clipboard.writeText(
+      testArtifactPath(node.pkg, node.group, node.stem, Ext.Input),
+    );
+  });
+
+  register('rbx.revealTestInExplorer', async (node) => {
+    if (!isBuiltTestcase(node)) {
+      return;
+    }
+    await vscode.commands.executeCommand(
+      'revealInExplorer',
+      vscode.Uri.file(testArtifactPath(node.pkg, node.group, node.stem, Ext.Input)),
+    );
+  });
+
+  // One registration per tab rather than one command asking which: these are
+  // palette entries, and "rbx: Show Constraint Coverage" is something a user can
+  // find by typing what they want. The same argument the channel commands make.
+  const tabs: readonly (readonly [string, TestsetPanelRequest['tab']])[] = [
+    ['rbx.openTestsetPanel', 'gallery'],
+    ['rbx.openTestsetCoverage', 'coverage'],
+    ['rbx.openTestsetStats', 'stats'],
+  ];
+  for (const [id, tab] of tabs) {
+    register(id, (node) => {
+      if (testset === undefined) {
+        vscode.window.showInformationMessage('The rbx Tests view is not available.');
+        return;
+      }
+      // A row when the ask came from one, and the current selection when it came
+      // from the palette -- where there is no row to name and the view is
+      // already showing what the user means.
+      const selection = testset.selection();
+      const nodeId =
+        node?.kind === 'testsetGroup' || node?.kind === 'testsetTestcase'
+          ? testsetNodeId(node)
+          : // A testcase names itself; a group's row id *is* its name, which is
+            // the whole of what a coverage or stats tab needs to open on.
+            (selection?.testId ?? selection?.group);
+      testset.requestPanel(tab, nodeId);
+    });
+  }
 
   register('rbx.copyPath', async (node) => {
     if (!isTestcase(node)) {

@@ -94,6 +94,26 @@ def _merge_hit_bounds(hit_bounds: Iterable[HitBounds]) -> HitBounds:
     return res
 
 
+def merge_hit_bounds_per_group(
+    infos: Iterable[TestcaseValidationInfo],
+) -> Dict[str, HitBounds]:
+    """Per-group hit bounds of every testcase a validator accepted.
+
+    A failed testcase contributes nothing: its bounds were never reported, and
+    an interactive validation has no testcase to attribute them to.
+
+    Shared with the testset manifest so the coverage a reader outside rbx sees
+    is the same one `print_validation_report` renders.
+    """
+    res: Dict[str, HitBounds] = {}
+    for info in infos:
+        if not info.ok or info.testcase is None:
+            continue
+        group = info.testcase.group
+        res[group] = _merge_hit_bounds([res.get(group, {}), info.hit_bounds])
+    return res
+
+
 def _has_group_specific_bounds() -> bool:
     """Whether the bounds a validator enforces can differ between groups.
 
@@ -518,27 +538,20 @@ def print_validation_report(
         )
     else:
         console.console.rule('[status]Validation report[/status]', style='status')
-    hit_bounds_per_group: Dict[Optional[str], HitBounds] = {}
     for info in infos:
-        if not info.ok:
-            console.console.print(
-                f'[error]Testcase {info.href()} failed verification on {validator_mode_str} {info.validator.href()}:[/error]'
-            )
-            if info.generation_metadata is not None:
-                metadata_markup = get_generation_metadata_markup(
-                    info.generation_metadata
-                )
-                console.console.print(metadata_markup)
-            console.console.print(info.message)
+        if info.ok:
             continue
-
-        if info.testcase is None:
-            continue
-        if info.testcase.group not in hit_bounds_per_group:
-            hit_bounds_per_group[info.testcase.group] = {}
-        hit_bounds_per_group[info.testcase.group] = _merge_hit_bounds(
-            [hit_bounds_per_group[info.testcase.group], info.hit_bounds]
+        console.console.print(
+            f'[error]Testcase {info.href()} failed verification on {validator_mode_str} {info.validator.href()}:[/error]'
         )
+        if info.generation_metadata is not None:
+            metadata_markup = get_generation_metadata_markup(info.generation_metadata)
+            console.console.print(metadata_markup)
+        console.console.print(info.message)
+
+    hit_bounds_per_group: Dict[Optional[str], HitBounds] = dict(
+        merge_hit_bounds_per_group(infos)
+    )
 
     if not hit_bounds_per_group or output_validation:
         console.console.print()

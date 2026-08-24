@@ -18,6 +18,7 @@ import {
   skeletonPath,
   solutionSourcePath,
   testArtifactPath,
+  testsetPath,
 } from './layout';
 import {
   CompilationEntry,
@@ -32,6 +33,7 @@ import {
   parseSkeleton,
 } from './model';
 import { GroupReport, SolutionReport, parseReport } from './report';
+import { Testset, parseTestset } from './testset';
 
 /** One (solution, testcase) pair, with wherever its artifacts live. */
 export interface TestcaseRun {
@@ -179,11 +181,13 @@ async function loadSolutionRun(
  */
 export class ArtifactStore {
   private cached?: Promise<PackageRun | undefined>;
+  private cachedTestset?: Promise<Testset | undefined>;
 
   constructor(private readonly pkg: PackageLayout) {}
 
   invalidate(): void {
     this.cached = undefined;
+    this.cachedTestset = undefined;
   }
 
   load(): Promise<PackageRun | undefined> {
@@ -191,6 +195,24 @@ export class ArtifactStore {
       this.cached = this.read();
     }
     return this.cached;
+  }
+
+  /**
+   * The testset the last `rbx build` published, or undefined if there is none.
+   *
+   * Cached beside the run rather than in a store of its own: the two describe
+   * the same package and are invalidated by the same watcher tick, so keeping
+   * them together is what stops the Run and Tests views ever disagreeing about
+   * which package is being shown.
+   *
+   * A missing manifest is not an error -- it is what a package that has never
+   * been built looks like, and the view renders it as empty.
+   */
+  testset(): Promise<Testset | undefined> {
+    if (this.cachedTestset === undefined) {
+      this.cachedTestset = readYamlFile(testsetPath(this.pkg)).then(parseTestset);
+    }
+    return this.cachedTestset;
   }
 
   private async read(): Promise<PackageRun | undefined> {
