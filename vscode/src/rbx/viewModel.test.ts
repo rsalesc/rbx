@@ -45,6 +45,7 @@ function groupReport(over: Partial<GroupReport> = {}): GroupReport {
     maxScore: 0,
     runUnderDoubleTl: false,
     doubleTlVerdicts: [],
+    sanitizerWarnings: false,
     unexpectedNoTleVerdicts: [],
     ...over,
   };
@@ -71,6 +72,7 @@ function solutionReport(over: Partial<SolutionReport> = {}): SolutionReport {
     failedGroups: [],
     runUnderDoubleTl: false,
     doubleTlVerdicts: [],
+    sanitizerWarnings: false,
     groups: [],
     ...over,
   };

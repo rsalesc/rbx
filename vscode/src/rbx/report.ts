@@ -33,6 +33,8 @@ export interface GroupReport {
   readonly runUnderDoubleTl: boolean;
   /** This group alone finished within double TL, but with these verdicts. */
   readonly doubleTlVerdicts: readonly string[];
+  /** Whether anything in this group tripped a sanitizer -- see `SolutionReport`. */
+  readonly sanitizerWarnings: boolean;
   /**
    * The verdicts a soft TLE hid in this group that no expectation accepts.
    *
@@ -87,6 +89,18 @@ export interface SolutionReport {
    * from a run with nothing to say -- and that is the safe direction.
    */
   readonly doubleTlVerdicts: readonly string[];
+  /**
+   * Whether any of this solution's runs tripped a sanitizer.
+   *
+   * The other field here describing a run that passed, and the same shape of
+   * news as `runUnderDoubleTl`: an ACCEPTED solution with an ASAN or UBSAN
+   * finding has `status: OK` and `matchesExpectation` true, so every channel
+   * that answers "did the declaration hold" says this solution is fine.
+   *
+   * False on an rbx that predates the field, which is indistinguishable from a
+   * run that tripped nothing -- and that is the safe direction.
+   */
+  readonly sanitizerWarnings: boolean;
   readonly groups: readonly GroupReport[];
 }
 
@@ -110,6 +124,7 @@ function parseGroup(raw: Wire): GroupReport | undefined {
     maxMemory: asNumber(field(raw, 'maxMemory')),
     runUnderDoubleTl: asBoolean(field(raw, 'runUnderDoubleTl')) ?? false,
     doubleTlVerdicts: parseOutcomes(field(raw, 'doubleTlVerdicts')),
+    sanitizerWarnings: asBoolean(field(raw, 'sanitizerWarnings')) ?? false,
     unexpectedNoTleVerdicts: parseOutcomes(field(raw, 'unexpectedNoTleVerdicts')),
   };
 }
@@ -171,6 +186,7 @@ function parseSolution(raw: Wire): SolutionReport | undefined {
     expectedScore: parseScoreRange(field(raw, 'expectedScore')),
     runUnderDoubleTl: asBoolean(field(raw, 'runUnderDoubleTl')) ?? false,
     doubleTlVerdicts: parseOutcomes(field(raw, 'doubleTlVerdicts')),
+    sanitizerWarnings: asBoolean(field(raw, 'sanitizerWarnings')) ?? false,
     groups,
   };
 }
