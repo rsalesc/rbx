@@ -158,6 +158,12 @@
         "category": "rbx"
       },
       {
+        "command": "rbx.openVisualizationExternally",
+        "title": "Open Visualization in External Browser",
+        "category": "rbx",
+        "icon": "$(link-external)"
+      },
+      {
         "command": "rbx.copyTestPath",
         "title": "Copy Test Input Path",
         "category": "rbx"
@@ -185,6 +191,19 @@
       }
     ],
     "menus": {
+      "editor/title": [
+        {
+          "command": "rbx.openVisualizationExternally",
+          "when": "activeWebviewPanelId == 'rbx.visualization'",
+          "group": "navigation@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "rbx.openVisualizationExternally",
+          "when": "activeWebviewPanelId == 'rbx.visualization'"
+        }
+      ],
       "view/title": [
         {
           "command": "rbx.selectProblem",
