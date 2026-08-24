@@ -17,6 +17,7 @@ from rbx.box.yaml_validation import load_yaml_model
 YAML_NAME = 'contest.rbx.yml'
 PROBLEM_YAML_NAME = 'problem.rbx.yml'
 VARIANT_GLOB = 'contest.*.rbx.yml'
+VARIANT_BUILD_DIRNAME = 'variants'
 
 
 def discover_contest_variants(
@@ -209,9 +210,57 @@ def find_contest(
     return found.parent
 
 
+def get_selected_variant_id(root: pathlib.Path = pathlib.Path()) -> Optional[str]:
+    """The id of the resolved contest variant, or None for the canonical.
+
+    Resolves through `find_contest_yaml` so it can never disagree with the rest
+    of the codebase about which contest is selected, then reads the id straight
+    off the resolved filename: `contest.rbx.yml` is the canonical (None),
+    `contest.<id>.rbx.yml` is variant `<id>`. Ids were already validated at
+    discovery time by `discover_contest_variants`.
+
+    Dies like every other contest accessor when no contest resolves -- notably
+    a dispatcher with no selection.
+    """
+    yaml_path = find_contest_yaml(root)
+    if yaml_path is None:
+        _die_no_contest(root)
+    if yaml_path.name == YAML_NAME:
+        return None
+    return yaml_path.name[len('contest.') : -len('.rbx.yml')]
+
+
+@functools.cache
+def get_contest_root_build_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
+    """The contest's build root, shared by every variant.
+
+    Resolves through `find_contest_root`, which needs no variant selection, so
+    this works in an unselected dispatcher -- unlike `get_contest_build_path`.
+    Use it for operations that are deliberately variant-agnostic (`rbx clean`).
+    """
+    contest_root = find_contest_root(root)
+    if contest_root is None:
+        _die_no_contest(root)
+    return contest_root / environment.get_build_dir()
+
+
+# NOTE: cached on `root` alone while depending on the selection contextvar via
+# `get_selected_variant_id`, the same caveat `find_contest_yaml` documents above.
+# Production resolves the selection once at the CLI callback boundary; tests must
+# `cache_clear()` when manipulating the contextvar.
 @functools.cache
 def get_contest_build_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
-    return find_contest(root) / environment.get_build_dir()
+    """The build path for the *selected* contest variant.
+
+    Variants share one contest directory, so the canonical keeps the bare build
+    root while every other variant nests under `build/variants/<id>/`. Without
+    that, two variants overwrite each other's statements and packages.
+    """
+    build_path = get_contest_root_build_path(root)
+    variant_id = get_selected_variant_id(root)
+    if variant_id is None:
+        return build_path
+    return build_path / VARIANT_BUILD_DIRNAME / variant_id
 
 
 @functools.cache

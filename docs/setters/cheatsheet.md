@@ -640,7 +640,8 @@ put each real contest in a sibling file.
     extra variants.
 
 2. Each `contest.<id>.rbx.yml` is a full contest. Select one with `rbx -C div2 ...` or
-    `RBX_CONTEST=div2`, and scaffold one with `rbx contest add_variant div2`.
+    `RBX_CONTEST=div2`, and scaffold one with `rbx contest add_variant div2`. A selected
+    variant builds into `build/variants/div2/`; the default contest builds into `build/`.
 
 ## `env.rbx.yml`
 

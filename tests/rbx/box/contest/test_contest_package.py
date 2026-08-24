@@ -300,15 +300,61 @@ class TestFindContestYamlVariantAware:
             cp_module.find_contest_yaml.cache_clear()
 
 
+class TestSelectedVariantId:
+    @pytest.fixture(autouse=True)
+    def _clear_caches(self):
+        cp_module.find_contest_yaml.cache_clear()
+        yield
+        cp_module.find_contest_yaml.cache_clear()
+
+    def test_canonical_returns_none(self, tmp_path: pathlib.Path):
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+
+        assert cp_module.get_selected_variant_id(tmp_path) is None
+
+    def test_sibling_of_real_contest_returns_id(self, tmp_path: pathlib.Path):
+        from rbx.box.contest.contest_state import selected_variant_id_var
+
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+        (tmp_path / 'contest.div2.rbx.yml').write_text('name: div2-c\n')
+
+        token = selected_variant_id_var.set('div2')
+        try:
+            assert cp_module.get_selected_variant_id(tmp_path) == 'div2'
+        finally:
+            selected_variant_id_var.reset(token)
+
+    def test_dispatcher_with_selection_returns_id(self, tmp_path: pathlib.Path):
+        from rbx.box.contest.contest_state import selected_variant_id_var
+
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-c\n')
+
+        token = selected_variant_id_var.set('div1')
+        try:
+            assert cp_module.get_selected_variant_id(tmp_path) == 'div1'
+        finally:
+            selected_variant_id_var.reset(token)
+
+    def test_dispatcher_without_selection_dies(self, tmp_path: pathlib.Path):
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-c\n')
+
+        with pytest.raises(typer.Exit):
+            cp_module.get_selected_variant_id(tmp_path)
+
+
 class TestContestBuildPaths:
     @pytest.fixture(autouse=True)
     def _clear_caches(self):
         cp_module.find_contest_yaml.cache_clear()
         cp_module.get_contest_build_path.cache_clear()
+        cp_module.get_contest_root_build_path.cache_clear()
         cp_module.get_contest_statements_build_path.cache_clear()
         yield
         cp_module.find_contest_yaml.cache_clear()
         cp_module.get_contest_build_path.cache_clear()
+        cp_module.get_contest_root_build_path.cache_clear()
         cp_module.get_contest_statements_build_path.cache_clear()
 
     def test_build_path_uses_default_build_dir(self, tmp_path: pathlib.Path):
@@ -351,6 +397,82 @@ class TestContestBuildPaths:
             result = build_contest_statements.get_statement_build_dir(statement)
 
         assert result == tmp_path / 'build' / 'statements' / 'main'
+
+    def test_sibling_variant_nests_under_variants(self, tmp_path: pathlib.Path):
+        from rbx.box.contest.contest_state import selected_variant_id_var
+
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+        (tmp_path / 'contest.div2.rbx.yml').write_text('name: div2-c\n')
+
+        token = selected_variant_id_var.set('div2')
+        try:
+            assert (
+                cp_module.get_contest_build_path(tmp_path)
+                == tmp_path / 'build' / 'variants' / 'div2'
+            )
+            assert (
+                cp_module.get_contest_statements_build_path(tmp_path)
+                == tmp_path / 'build' / 'variants' / 'div2' / 'statements'
+            )
+        finally:
+            selected_variant_id_var.reset(token)
+
+    def test_dispatcher_variant_nests_under_variants(self, tmp_path: pathlib.Path):
+        from rbx.box.contest.contest_state import selected_variant_id_var
+
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-c\n')
+
+        token = selected_variant_id_var.set('div1')
+        try:
+            assert (
+                cp_module.get_contest_build_path(tmp_path)
+                == tmp_path / 'build' / 'variants' / 'div1'
+            )
+        finally:
+            selected_variant_id_var.reset(token)
+
+    def test_variant_honors_custom_build_dir(self, tmp_path: pathlib.Path):
+        from unittest import mock
+
+        from rbx.box.contest.contest_state import selected_variant_id_var
+
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+        (tmp_path / 'contest.div2.rbx.yml').write_text('name: div2-c\n')
+
+        token = selected_variant_id_var.set('div2')
+        try:
+            with mock.patch.object(
+                cp_module.environment, 'get_build_dir', return_value=pathlib.Path('out')
+            ):
+                cp_module.get_contest_build_path.cache_clear()
+                cp_module.get_contest_root_build_path.cache_clear()
+                assert (
+                    cp_module.get_contest_build_path(tmp_path)
+                    == tmp_path / 'out' / 'variants' / 'div2'
+                )
+        finally:
+            selected_variant_id_var.reset(token)
+
+    def test_root_build_path_ignores_selection(self, tmp_path: pathlib.Path):
+        from rbx.box.contest.contest_state import selected_variant_id_var
+
+        (tmp_path / 'contest.rbx.yml').write_text('name: my-contest\n')
+        (tmp_path / 'contest.div2.rbx.yml').write_text('name: div2-c\n')
+
+        token = selected_variant_id_var.set('div2')
+        try:
+            assert cp_module.get_contest_root_build_path(tmp_path) == tmp_path / 'build'
+        finally:
+            selected_variant_id_var.reset(token)
+
+    def test_root_build_path_works_without_selection_in_dispatcher(
+        self, tmp_path: pathlib.Path
+    ):
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-c\n')
+
+        assert cp_module.get_contest_root_build_path(tmp_path) == tmp_path / 'build'
 
 
 class TestFindContestPackageOrDieDispatcher:

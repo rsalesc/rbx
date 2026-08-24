@@ -358,6 +358,14 @@ class E2EScenarioItem(pytest.Item):
                 # `_isolate_global_state` fixture in tests/rbx/conftest.py.
                 with _scenario_patches(self.scenario), _snapshot_e2e_contextvars():
                     for step in self.scenario.steps:
+                        # Every step models a separate `rbx` invocation, which
+                        # in production is a separate process with empty caches.
+                        # Steps share one process here, so cwd-dependent caches
+                        # must be dropped between them -- otherwise a step that
+                        # changes what a cache key resolves to (notably `-C <id>`
+                        # selecting another contest variant) silently reuses the
+                        # previous step's answer.
+                        testing_utils.clear_all_functools_cache()
                         run_step(self.path, self.scenario.name, step, pkg_dir)
             finally:
                 polygon_capture.reset_capture_dir()

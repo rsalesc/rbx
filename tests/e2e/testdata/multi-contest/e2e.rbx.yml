@@ -172,3 +172,20 @@ scenarios:
         expect:
           stdout_contains:
             - 'Invalid variant id'
+
+  - name: contest-package-per-variant-does-not-collide
+    description: >-
+      Packaging two variants in a row leaves both packages on disk, each under
+      its own build/variants/<id>/ subtree, instead of the second overwriting
+      the first.
+    markers: [slow]
+    steps:
+      - cmd: -C div1 contest package pkg
+        expect:
+          files_exist:
+            - build/variants/div1/contest.zip
+      - cmd: -C div2 contest package pkg
+        expect:
+          files_exist:
+            - build/variants/div1/contest.zip
+            - build/variants/div2/contest.zip
