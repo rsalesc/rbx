@@ -11,9 +11,11 @@ import asyncio
 import sys
 from typing import List
 
+import pytest
 from textual.geometry import Offset
 from textual.selection import Selection
 
+from rbx.box.ui import clipboard
 from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
 from rbx.box.ui.command_app import CommandEntry, rbxCommandApp
 
@@ -48,19 +50,19 @@ async def _focus_pane(app, pilot, pane) -> None:
     await pilot.pause()
 
 
-def _capture_clipboard(app) -> List[str]:
-    """Record what the app copies, instead of poking at its private state."""
-    copied: List[str] = []
-    app.copy_to_clipboard = copied.append  # type: ignore[method-assign]
-    return copied
+@pytest.fixture
+def copied(monkeypatch) -> List[str]:
+    """Record what the pane copies, at the seam the clipboard is written from."""
+    writes: List[str] = []
+    monkeypatch.setattr(clipboard, 'copy', lambda app, text: writes.append(text))
+    return writes
 
 
-async def test_ctrl_y_copies_the_whole_output_when_nothing_is_selected():
+async def test_ctrl_y_copies_the_whole_output_when_nothing_is_selected(copied):
     app = _make_app('alpha', 'beta', 'gamma')
     async with app.run_test(size=(150, 40)) as pilot:
         (pane,) = await _running_app(pilot, app)
         await _focus_pane(app, pilot, pane)
-        copied = _capture_clipboard(app)
 
         await pilot.press('ctrl+y')
         await pilot.pause()
@@ -68,12 +70,11 @@ async def test_ctrl_y_copies_the_whole_output_when_nothing_is_selected():
         assert copied == ['alpha\nbeta\ngamma']
 
 
-async def test_ctrl_y_still_copies_only_the_selection():
+async def test_ctrl_y_still_copies_only_the_selection(copied):
     app = _make_app('alpha', 'beta', 'gamma')
     async with app.run_test(size=(150, 40)) as pilot:
         (pane,) = await _running_app(pilot, app)
         await _focus_pane(app, pilot, pane)
-        copied = _capture_clipboard(app)
 
         pane.screen.selections = {pane: Selection(Offset(0, 1), Offset(4, 1))}
         await pilot.pause()
@@ -83,12 +84,11 @@ async def test_ctrl_y_still_copies_only_the_selection():
         assert copied == ['beta']
 
 
-async def test_ctrl_y_copies_a_wrapped_line_unwrapped():
+async def test_ctrl_y_copies_a_wrapped_line_unwrapped(copied):
     app = _make_app(_LONG_LINE)
     async with app.run_test(size=(150, 40)) as pilot:
         (pane,) = await _running_app(pilot, app)
         await _focus_pane(app, pilot, pane)
-        copied = _capture_clipboard(app)
         # The line really is folded across several rows.
         assert len(pane.state.scrollback_buffer.folded_lines) > 1
 
@@ -98,7 +98,7 @@ async def test_ctrl_y_copies_a_wrapped_line_unwrapped():
         assert copied == [_LONG_LINE]
 
 
-async def test_ctrl_v_enters_visual_mode_and_shows_a_cursor():
+async def test_ctrl_v_enters_visual_mode_and_shows_a_cursor(copied):
     app = _make_app('alpha', 'beta', 'gamma')
     async with app.run_test(size=(150, 40)) as pilot:
         (pane,) = await _running_app(pilot, app)
@@ -113,7 +113,7 @@ async def test_ctrl_v_enters_visual_mode_and_shows_a_cursor():
         assert pane.screen.selections[pane] == Selection(Offset(0, 0), Offset(1, 0))
 
 
-async def test_visual_mode_keys_do_not_reach_the_process():
+async def test_visual_mode_keys_do_not_reach_the_process(copied):
     app = rbxCommandApp(
         [
             CommandEntry(
@@ -147,7 +147,7 @@ async def test_visual_mode_keys_do_not_reach_the_process():
         assert 'j' not in text
 
 
-async def test_hjkl_and_arrows_both_move_the_cursor():
+async def test_hjkl_and_arrows_both_move_the_cursor(copied):
     app = _make_app('alpha', 'beta', 'gamma')
     async with app.run_test(size=(150, 40)) as pilot:
         (pane,) = await _running_app(pilot, app)
@@ -171,12 +171,11 @@ async def test_hjkl_and_arrows_both_move_the_cursor():
         assert pane.select_cursor == Offset(0, 0)
 
 
-async def test_charwise_selection_to_the_end_copies_the_tail():
+async def test_charwise_selection_to_the_end_copies_the_tail(copied):
     app = _make_app('alpha', 'beta', 'gamma')
     async with app.run_test(size=(150, 40)) as pilot:
         (pane,) = await _running_app(pilot, app)
         await _focus_pane(app, pilot, pane)
-        copied = _capture_clipboard(app)
 
         await pilot.press('ctrl+v', 'j', 'v', 'G', '$', 'y')
         await pilot.pause()
@@ -186,12 +185,11 @@ async def test_charwise_selection_to_the_end_copies_the_tail():
         assert not pane.screen.selections
 
 
-async def test_linewise_selection_copies_the_unwrapped_logical_line():
+async def test_linewise_selection_copies_the_unwrapped_logical_line(copied):
     app = _make_app('alpha', _LONG_LINE, 'gamma')
     async with app.run_test(size=(150, 40)) as pilot:
         (pane,) = await _running_app(pilot, app)
         await _focus_pane(app, pilot, pane)
-        copied = _capture_clipboard(app)
 
         await pilot.press('ctrl+v', 'j', 'V', 'y')
         await pilot.pause()
@@ -199,7 +197,7 @@ async def test_linewise_selection_copies_the_unwrapped_logical_line():
         assert copied == [_LONG_LINE]
 
 
-async def test_moving_past_the_viewport_scrolls_the_pane():
+async def test_moving_past_the_viewport_scrolls_the_pane(copied):
     # One-liner on purpose: the sub-command Select renders the command string as
     # its label, so a multi-line `python -c` would grow it until the pane collapses.
     app = rbxCommandApp(
@@ -238,12 +236,11 @@ async def test_moving_past_the_viewport_scrolls_the_pane():
         assert pane.select_cursor.y == len(pane.state.scrollback_buffer.lines) - 1
 
 
-async def test_escape_leaves_visual_mode_without_copying():
+async def test_escape_leaves_visual_mode_without_copying(copied):
     app = _make_app('alpha', 'beta', 'gamma')
     async with app.run_test(size=(150, 40)) as pilot:
         (pane,) = await _running_app(pilot, app)
         await _focus_pane(app, pilot, pane)
-        copied = _capture_clipboard(app)
 
         await pilot.press('ctrl+v', 'v', 'j', 'escape')
         await pilot.pause()
@@ -253,12 +250,11 @@ async def test_escape_leaves_visual_mode_without_copying():
         assert copied == []
 
 
-async def test_y_without_an_anchor_copies_the_cursor_line():
+async def test_y_without_an_anchor_copies_the_cursor_line(copied):
     app = _make_app('alpha', 'beta', 'gamma')
     async with app.run_test(size=(150, 40)) as pilot:
         (pane,) = await _running_app(pilot, app)
         await _focus_pane(app, pilot, pane)
-        copied = _capture_clipboard(app)
 
         await pilot.press('ctrl+v', 'j', 'y')
         await pilot.pause()

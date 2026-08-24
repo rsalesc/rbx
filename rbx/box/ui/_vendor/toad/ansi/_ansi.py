@@ -9,6 +9,7 @@ from functools import lru_cache
 from typing import Awaitable, Callable, Iterable, Literal, Mapping, NamedTuple
 
 import rich.repr
+from rich.cells import cell_len, get_character_cell_size
 
 from textual import events
 from textual.color import Color
@@ -31,6 +32,71 @@ from rbx.box.ui._vendor.toad.ansi._stream_parser import (
 )
 
 from rbx.box.ui._vendor.toad.dec import CHARSET_MAP
+
+
+def cell_to_index(text: str, cell: int) -> tuple[int, int]:
+    """Convert a cell column into an index into `text`.
+
+    Lines are stored as *characters*, but the terminal positions its cursor in
+    *cells* -- and a CJK ideograph or an emoji is one character wide and two
+    cells wide. Taking a cell column for an index writes at the wrong place, and
+    pads the difference with spaces that were never in the output.
+
+    A column landing on the right half of a wide character resolves to that
+    character: it is the cell the terminal would clobber.
+
+    Args:
+        text: Text to index into.
+        cell: Cell column.
+
+    Returns:
+        A pair of the index and the cells left over past the end of `text`
+        (non-zero only when the column sits beyond the last character).
+    """
+    width = 0
+    for index, character in enumerate(text):
+        size = get_character_cell_size(character)
+        if width + size > cell:
+            return index, 0
+        width += size
+    return len(text), max(0, cell - width)
+
+
+def cell_span(text: str, cells: int) -> int:
+    """How many characters of `text` cover `cells` columns.
+
+    Rounds up: a column falling inside a wide character covers the whole of it,
+    the way a terminal blanks a wide character it half-overwrites. Used to size
+    what an overwrite or an erase consumes.
+
+    Args:
+        text: Text to measure.
+        cells: Number of cells to cover.
+
+    Returns:
+        A number of characters, at most `len(text)`.
+    """
+    if cells <= 0:
+        return 0
+    width = 0
+    for index, character in enumerate(text):
+        width += get_character_cell_size(character)
+        if width >= cells:
+            return index + 1
+    return len(text)
+
+
+def index_to_cell(text: str, index: int) -> int:
+    """Convert an index into `text` into the cell column it renders at.
+
+    Args:
+        text: Text the index refers to.
+        index: Index within the text.
+
+    Returns:
+        Cell column.
+    """
+    return cell_len(text[:index])
 
 
 def character_range(start: int, end: int) -> frozenset:
@@ -794,7 +860,11 @@ class Buffer:
     cursor_line: int = 0
     """Folded line index."""
     cursor_offset: int = 0
-    """Folded line offset."""
+    """Cell column within the folded line.
+
+    Cells, not characters -- that is the space the terminal moves its cursor in.
+    Use `cell_to_index` before indexing a line with it.
+    """
     max_line_width: int = 0
     """The longest line in the buffer."""
     updates: int = 0
@@ -836,7 +906,9 @@ class Buffer:
         position = 0
         for folded_line_offset, folded_line in enumerate(line.folds):
             if folded_line_offset == cursor_line_offset:
-                position += self.cursor_offset
+                position += cell_to_index(
+                    folded_line.content.plain, self.cursor_offset
+                )[0]
                 break
             position += len(folded_line.content)
 
@@ -869,12 +941,14 @@ class Buffer:
                 and cursor_line_offset < position + line_length
             ):
                 self.cursor_line = fold_line_start + fold_offset
-                self.cursor_offset = cursor_line_offset - position
+                self.cursor_offset = index_to_cell(
+                    fold.content.plain, cursor_line_offset - position
+                )
                 break
             position += line_length
         else:
             self.cursor_line = fold_line_start + len(line.folds) - 1
-            self.cursor_offset = len(line.folds[-1].content)
+            self.cursor_offset = line.folds[-1].content.cell_length
 
     def update_line(self, line_no: int) -> None:
         """Record an updated line.
@@ -1165,7 +1239,9 @@ class TerminalState:
             for fold in reversed(line.folds):
                 if cursor_offset >= fold.offset:
                     fold_cursor_line += fold.line_offset
-                    fold_cursor_offset = cursor_offset - fold.offset
+                    fold_cursor_offset = index_to_cell(
+                        fold.content.plain, cursor_offset - fold.offset
+                    )
                     break
 
             buffer.cursor_line = fold_cursor_line
@@ -1215,8 +1291,17 @@ class TerminalState:
         # Return deltas accumulated during write
         return (scrollback_updates, alternate_updates)
 
-    def get_cursor_line_offset(self, buffer: Buffer) -> int:
-        """The cursor offset within the un-folded lines."""
+    def get_cursor_position(self, buffer: Buffer) -> tuple[int, int]:
+        """Where the cursor sits within the un-folded line.
+
+        Args:
+            buffer: Buffer to read the cursor from.
+
+        Returns:
+            A pair of the character index within the unfolded line, and the
+            number of cells the cursor sits *past* the end of the line -- what a
+            caller has to pad before it can write there.
+        """
         cursor_folded_line = buffer.folded_lines[buffer.cursor_line]
         cursor_line_offset = cursor_folded_line.line_offset
         line_no = cursor_folded_line.line_no
@@ -1224,10 +1309,12 @@ class TerminalState:
         position = 0
         for folded_line_offset, folded_line in enumerate(line.folds):
             if folded_line_offset == cursor_line_offset:
-                position += buffer.cursor_offset
-                break
+                index, pad = cell_to_index(
+                    folded_line.content.plain, buffer.cursor_offset
+                )
+                return position + index, pad
             position += len(folded_line.content)
-        return position
+        return position, 0
 
     def clear_buffer(self, clear: ClearType) -> None:
         buffer = self.buffer
@@ -1299,19 +1386,19 @@ class TerminalState:
                 )
 
     @classmethod
-    def _expand_content(cls, content: Content, offset: int, style: Style) -> Content:
-        """Expand content to be at least as long as a given offset.
+    def _expand_content(cls, content: Content, pad_cells: int, style: Style) -> Content:
+        """Pad content so the cursor's cell column falls within it.
 
         Args:
             content: Content to expand.
-            offset: Offset within the content.
+            pad_cells: Cells to pad with, as reported by `get_cursor_position`.
             style: Style of padding.
 
         Returns:
             New Content.
         """
-        if offset > len(content):
-            content += Content.blank(offset - len(content), style)
+        if pad_cells > 0:
+            content += Content.blank(pad_cells, style)
         return content
 
     async def _handle_ansi_command(self, ansi_command: ANSICommand) -> None:
@@ -1336,22 +1423,29 @@ class TerminalState:
                 line_no = folded_line.line_no
                 line = buffer.lines[line_no]
 
-                cursor_line_offset = self.get_cursor_line_offset(buffer)
+                cursor_line_offset, pad_cells = self.get_cursor_position(buffer)
                 line_content = line.content
-                if cursor_line_offset > len(line_content):
+                if pad_cells:
                     line_content = self._expand_content(
-                        line_content, cursor_line_offset, line.style
+                        line_content, pad_cells, line.style
                     )
+                    cursor_line_offset += pad_cells
                 content = Content.styled(
                     self.dec_state.translate(text),
                     self.style,
                     strip_control_codes=False,
                 )
                 if self.replace_mode:
+                    # Overwriting covers as many *cells* as the new content
+                    # occupies, so a two-cell character replaces two columns
+                    # rather than two characters.
+                    overwritten = cell_span(
+                        line_content.plain[cursor_line_offset:], content.cell_length
+                    )
                     updated_line = Content.assemble(
                         line_content[:cursor_line_offset],
                         content,
-                        line_content[cursor_line_offset + len(content) :],
+                        line_content[cursor_line_offset + overwritten :],
                         strip_control_codes=False,
                     )
                 else:
@@ -1408,18 +1502,33 @@ class TerminalState:
                     line.style = self.style
 
                 if clear_range is not None:
-                    cursor_line_offset = self.get_cursor_line_offset(buffer)
+                    cursor_line_offset, pad_cells = self.get_cursor_position(buffer)
 
                     line_content = line.content
-                    if cursor_line_offset > len(line.content):
+                    if pad_cells:
                         line_content = self._expand_content(
-                            line.content, cursor_line_offset, line.style
+                            line.content, pad_cells, line.style
                         )
+                        cursor_line_offset += pad_cells
 
                     # Start and end replace are *inclusive*
-                    clear_start, clear_end = ansi_command.get_clear_offsets(
-                        cursor_line_offset, len(line_content)
-                    )
+                    if ansi_command.relative:
+                        # DCH and ECH count cells from the cursor, so the span
+                        # has to be measured in cells before it can index a line.
+                        tail = line_content.plain[cursor_line_offset:]
+                        start_cells, end_cells = clear_range
+                        clear_start = cursor_line_offset + cell_to_index(
+                            tail, start_cells or 0
+                        )[0]
+                        clear_end = (
+                            cursor_line_offset
+                            + cell_span(tail, (end_cells or 0) + 1)
+                            - 1
+                        )
+                    else:
+                        clear_start, clear_end = ansi_command.get_clear_offsets(
+                            cursor_line_offset, len(line_content)
+                        )
 
                     before_clear = line_content[:clear_start]
                     after_clear = line_content[clear_end + 1 :]
@@ -1433,8 +1542,12 @@ class TerminalState:
                         )
                         self.update_line(buffer, folded_line.line_no, updated_line)
                     else:
-                        # Range is replaced with spaces
-                        blank_width = clear_end - clear_start + 1
+                        # Range is replaced with spaces -- as many as the cleared
+                        # text occupied on screen, so the columns after it stay
+                        # where they were.
+                        blank_width = cell_len(
+                            line_content.plain[clear_start : clear_end + 1]
+                        )
 
                         updated_line = Content.assemble(
                             before_clear,
