@@ -1,0 +1,15 @@
+fixture: sum-problem
+title: Stopping at the first bad verdict
+setup:
+  # Built beforehand so the cast is about the run, not about the build.
+  - rbx build
+instructions:
+  - rbx run --fail-fast
+expect_contains:
+  # The accepted solution still goes through the whole testset, and the wrong
+  # one stops. If either half stops being true, the recording fails here.
+  - sols/main.cpp
+  - sols/wa-overflow.cpp
+  # The skipped-testcase glyph -- the whole point of the recording.
+  - "⊘"
+  - --fail-fast

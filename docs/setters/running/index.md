@@ -61,6 +61,8 @@ running it through the whole testset.
 rbx run --fail-fast
 ```
 
+{{ asciinema("fail-fast") }}
+
 It is a shortcut for quick experimentation, and its report must not be trusted to validate a
 problem: the testcases that never ran are reported as **failed**, not as unmeasured, and the
 timing summary is omitted entirely, since a solution that stopped early was only timed on the
