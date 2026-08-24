@@ -188,11 +188,11 @@ Any `\VAR{...}` value can be piped through a **filter** with `|`, as in
 LaTeX-aware ones you will reach for constantly:
 
 - **`sci`** renders a round integer in scientific notation:
-  `\VAR{vars.N.max | sci}` prints `1000000000` as `10^9`.
-- **`rsci`** is `sci` with the remainder kept: `\VAR{vars.MOD | rsci}` prints
+  `\VAR{N.max | sci}` prints `1000000000` as `10^9`.
+- **`rsci`** is `sci` with the remainder kept: `\VAR{MOD | rsci}` prints
   `1000000007` as `10^9 + 7`.
 - **`escape`** LaTeX-escapes a string (`_`, `%`, `&`, ...):
-  `\VAR{vars.author | escape}`.
+  `\VAR{author | escape}`.
 - **`parent`** takes a path's parent directory: `\VAR{sample.input | parent}`.
 - **`stem`** takes a path's filename without its extension:
   `\VAR{sample.input | stem}`.
@@ -216,7 +216,7 @@ So the whole table is a loop:
     {\sf Subtask} & {\sf Score} & {\sf Constraints} \\
     \hline
     %- for g in problem.groups
-    \VAR{g.name} & \VAR{g.score} & $N \le \VAR{g.vars.N.max}$ \\
+    \VAR{g.name} & \VAR{g.score} & $N \le \VAR{g.N.max}$ \\
     %- endfor
     \end{tabular}
     ```
@@ -244,8 +244,8 @@ So the whole table is a loop:
 The loop above prints `50` for `small` and `1000` for `large`. These are the
 **resolved** values, so a testgroup that overrides nothing still renders the
 package-level number, and you never have to restate a constraint you did not
-change. The [shorthand](writing.md#shorthand-for-vars) works here too:
-`\VAR{g.N.max}`.
+change. `\VAR{g.N.max}` reads that group's own vars, the same way `\VAR{N.max}`
+reads the package's.
 
 ## Import handles
 

@@ -128,14 +128,14 @@ Think about a breadth-first search.
 
 Here is where the statement stops being a text file. Any value from
 `problem.rbx.yml` can be interpolated with `\VAR{...}`, and your problem's
-`vars` live under `vars.*`:
+`vars` are in scope by name:
 
 === "statements/statement.rbx.tex"
 
     ```latex
     %- block input
     The first line contains two integers $N$ and $M$
-    ($\VAR{vars.N.min} \le N \le \VAR{vars.N.max}$).
+    ($\VAR{N.min} \le N \le \VAR{N.max}$).
     %- endblock
     ```
 
@@ -158,7 +158,7 @@ Large bounds read better in scientific notation, and the `sci` **filter** does
 that for you:
 
 ```latex
-$\VAR{vars.N.min} \le N \le \VAR{vars.N.max | sci}$   %# 1000000000 renders as 10^9
+$\VAR{N.min} \le N \le \VAR{N.max | sci}$   %# 1000000000 renders as 10^9
 ```
 
 `sci` is one of a handful of LaTeX-aware filters {{rbx}} registers on top of the
@@ -169,24 +169,22 @@ standard {{Jinja2}} ones. [Template context](context.md#filters) lists them all.
     goes out of sync. If a number appears in both the statement and the
     validator, it belongs in `vars`.
 
-### Shorthand for vars
+### Spelling out the namespace
 
-Writing `vars.` in front of every constraint gets old fast in a section that
-mentions a dozen of them. So the keys of a `vars` block are **also** available
-directly in the namespace that holds it. Both spellings always work:
+`\VAR{N.max}` is the short spelling. The keys of a `vars` block are exposed
+both directly and under the namespace that holds them, so every constraint has
+a longer form that names where it came from. Both always work:
 
-| Long form | Shorthand |
+| Shorthand | Long form |
 |---|---|
-| `\VAR{vars.N.max}` | `\VAR{N.max}` |
-| `\VAR{problem.vars.N.max}` | `\VAR{problem.N.max}` |
-| `\VAR{contest.vars.year}` | `\VAR{contest.year}` |
-| `\VAR{g.vars.N.max}` (for a group `g`) | `\VAR{g.N.max}` |
+| `\VAR{N.max}` | `\VAR{vars.N.max}` |
+| `\VAR{problem.N.max}` | `\VAR{problem.vars.N.max}` |
+| `\VAR{contest.year}` | `\VAR{contest.vars.year}` |
+| `\VAR{g.N.max}` (for a group `g`) | `\VAR{g.vars.N.max}` |
 
-So the constraints line above reads as:
-
-```latex title="statements/statement.rbx.tex"
-$\VAR{N.min} \le N \le \VAR{N.max}$
-```
+Prefer the short one. Reach for the long one when you want the reader of your
+template to see which namespace a value came from, which is mostly a
+[contest template](contest.md) concern.
 
 ## Branching and looping in a statement
 

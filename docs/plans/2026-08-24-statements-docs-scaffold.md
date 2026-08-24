@@ -72,7 +72,7 @@ Orientation page. Definition, the model, the commands, then the optional flags.
 | Writing the statement (blocks: legend, input, output) | happy path |
 | Blocks | model |
 | Printing constraints from `vars` | happy path |
-| Shorthand for vars | **extra** |
+| Spelling out the namespace | **extra** |
 | Branching and looping in a statement | **extra** |
 | Explaining a sample | **extra** |
 | Shipping images and other resources | **extra** |
