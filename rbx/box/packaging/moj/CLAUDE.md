@@ -386,6 +386,16 @@ converts with `pdftoppm -png -r 300 -singlefile` after `materialize`. A statemen
 with no PDF figure never probes for poppler; one that has them and no poppler
 **refuses to package**, naming the figures. SVG passes through untouched.
 
+## `author`
+
+MOJ hard-requires a non-empty `author` file. rbx has no first-class author field, so
+`_author()` reads the `author` package **var** -- the same one a statement renders as
+`\VAR{author}`, which is why it is a var rather than a new schema field: one place to
+say the name, and the package and the statement cannot drift. Any primitive is
+stringified (`vars` is untyped by design, and a name that parses as a number is still a
+name); an absent or blank-once-stripped var falls back to `Unknown`, since an empty
+`author: ""` must not travel through as an empty file that `validate-problem.sh` rejects.
+
 ## Out of scope
 
 - **Interactive.** `task_types()` is `[BATCH]`. MOJ's arbiter protocol (test in
