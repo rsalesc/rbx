@@ -35,13 +35,31 @@ export const CONTEST_FILE_GLOB = `${VARIANT_PREFIX.slice(0, -1)}*${VARIANT_SUFFI
  * `contest.div1.rbx.yml` and its stale letters would win.
  */
 export function isContestVariantFile(name: string): boolean {
-  return (
-    name.startsWith(VARIANT_PREFIX) &&
-    name.endsWith(VARIANT_SUFFIX) &&
+  return contestVariantId(name) !== undefined;
+}
+
+/**
+ * The variant id `name` carries, or undefined for the canonical file.
+ *
+ * The inverse of `isContestVariantFile`, and the only definition of the two:
+ * a name that yields no id is not a variant file, so the two answers can never
+ * disagree about a `contest.div1.bak.rbx.yml`.
+ *
+ * Undefined also comes back for a name that is not a contest file at all. The
+ * caller has already found the file by that point -- `contestFiles` builds the
+ * list itself -- so "not a variant" and "not ours" want the same handling.
+ */
+export function contestVariantId(name: string): string | undefined {
+  if (
+    !name.startsWith(VARIANT_PREFIX) ||
+    !name.endsWith(VARIANT_SUFFIX) ||
     // The affixes overlap on the canonical name itself, whose id is empty.
-    name !== CONTEST_MANIFEST &&
-    VARIANT_ID.test(name.slice(VARIANT_PREFIX.length, -VARIANT_SUFFIX.length))
-  );
+    name === CONTEST_MANIFEST
+  ) {
+    return undefined;
+  }
+  const id = name.slice(VARIANT_PREFIX.length, -VARIANT_SUFFIX.length);
+  return VARIANT_ID.test(id) ? id : undefined;
 }
 
 /** One problem as its contest declares it. */
@@ -139,6 +157,15 @@ export interface ProblemIdentity {
   readonly color?: string;
   readonly order: number;
   /**
+   * The variant file that named this problem, or undefined for the canonical.
+   *
+   * `order` is counted per contest file, so it only orders a problem among the
+   * others from the same file; this is the rest of that key. It is also what
+   * lets the selector head a variant's block with the id the user passes to
+   * `-C`, which is the only place the extension ever says a variant's name.
+   */
+  readonly variantId?: string;
+  /**
    * The contest root that named this problem, for grouping.
    *
    * Carried rather than re-derived from the package root: a contest is free to
@@ -159,6 +186,7 @@ export interface ProblemIdentity {
 export function problemIdentities(
   contestRoot: string,
   contest: ParsedContest,
+  variantId?: string,
 ): Map<string, ProblemIdentity> {
   const identities = new Map<string, ProblemIdentity>();
   for (const problem of contest.problems) {
@@ -171,6 +199,10 @@ export function problemIdentities(
         shortName: problem.shortName,
         color: problem.color,
         order: problem.order,
+        // Spread rather than set outright: the field is optional, and a
+        // canonical identity carrying an explicit `variantId: undefined` would
+        // not deep-equal one that never had the key.
+        ...(variantId === undefined ? {} : { variantId }),
         contestRoot,
       });
     }

@@ -89,3 +89,30 @@ test('scans one contest once for every package under it', async () => {
     },
   );
 });
+
+test('names the variant each letter came from', async () => {
+  // The selector heads a variant's block with this id, so it has to survive the
+  // merge -- and the canonical, which wins the root it shares with div1, has to
+  // come back with none.
+  await withTree(
+    {
+      'contest.rbx.yml': 'problems:\n  - short_name: A\n    path: shared\n',
+      'contest.div1.rbx.yml': 'problems:\n  - short_name: Z\n    path: shared\n',
+      'contest.div2.rbx.yml': 'problems:\n  - short_name: B\n    path: only2\n',
+    },
+    async (root) => {
+      const index = await indexContests([path.join(root, 'shared'), path.join(root, 'only2')]);
+      assert.deepStrictEqual(
+        [...index].map(([key, identity]) => [
+          path.relative(root, key),
+          identity.shortName,
+          identity.variantId,
+        ]),
+        [
+          ['shared', 'A', undefined],
+          ['only2', 'B', 'div2'],
+        ],
+      );
+    },
+  );
+});

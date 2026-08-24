@@ -12,6 +12,7 @@ import * as path from 'path';
 import {
   CONTEST_MANIFEST,
   ProblemIdentity,
+  contestVariantId,
   isContestVariantFile,
   parseContest,
   problemIdentities,
@@ -85,7 +86,14 @@ export async function indexContests(
     scanned.add(contestRoot);
     for (const file of await contestFiles(contestRoot)) {
       const contest = parseContest(await readYamlFile(file));
-      const identities = problemIdentities(contestRoot, contest);
+      // The id comes from the filename rather than the parsed contest: a
+      // variant file does not name itself, and `contestFiles` has just sorted
+      // these by that very name.
+      const identities = problemIdentities(
+        contestRoot,
+        contest,
+        contestVariantId(path.basename(file)),
+      );
       for (const [key, identity] of identities) {
         // First file to name a root wins; canonical is read first.
         if (!index.has(key)) {
