@@ -1,0 +1,61 @@
+fixture: summer-cup
+title: Profiling one problem of a contest for the judge
+width: 100
+timeout: 300s
+# The last frame is the profile itself, and a player only holds three seconds
+# on it before looping. A file worth reading line by line wants a little more.
+end_pause: 3s
+setup:
+  # The pinned environment declares testlib, and the bundled wcmp checker
+  # includes it. Materializing it here keeps the recording about profiling
+  # rather than about a missing header.
+  - cd problems/gardens && rbx download testlib
+  # `rbx time` builds and runs on its own; doing it once up front keeps the
+  # recording about the profiling flow rather than about compilation.
+  - cd problems/gardens && rbx build
+instructions:
+  # Every instruction runs on its own pty rooted at the fixture, so a bare `cd`
+  # would not survive into the next one -- each of these carries its own, the
+  # way casts/contest-scaffold.yml does.
+  - !Interactive
+    command: cd problems/gardens && rbx time -p boca
+    keys:
+      # Read the current limits table and the strategy prompt...
+      - 4s
+      # ...then take the highlighted option, `estimate`, which is the default.
+      - '^M'
+      # This one dwell covers two things, and cannot be split: rbx runs both
+      # accepted solutions before it draws the language-group picker, so the
+      # picker only appears about four and a half seconds in. The rest is what
+      # the reader gets to study it with. Confirming takes the default
+      # bucketing -- cpp and py estimated from their own timings, java and kt
+      # derived from cpp.
+      - 11s
+      - '^M'
+      # No `x8` anywhere above. The other `rbx time` recordings fast-forward
+      # the timing runs because on their fixture those runs take a minute;
+      # here the whole estimation -- both accepted solutions, the upper-bound
+      # check against sols/quadratic.cpp, and the table it settles on -- is
+      # over in six seconds, and speeding that up would blur the run reports
+      # rather than spare the reader anything.
+      #
+      # A trailing dwell only holds while the command is still running, so the
+      # pause that lets the final table be read is the `!Wait` below.
+      - 10s
+  - !Wait 5s
+  - !Clear
+  # The payoff frame: the profile is a plain file. It runs to seventy lines of
+  # per-group detail, so this shows the head of it -- the limit, the modifier
+  # each language ships with, and the ratios it was estimated under.
+  - !Command
+    command: cd problems/gardens && head -18 .limits/boca.yml
+    height: 24
+expect_contains:
+  # The prompt that opens the flow, the per-language table it settles on, the
+  # upper-bound check that follows, and the file it writes with the ratios it
+  # was estimated under.
+  - Select how you want to define the time limits
+  - Time limits (boca)
+  - confirmed too slow
+  - .limits/boca.yml
+  - acToTimeLimit
