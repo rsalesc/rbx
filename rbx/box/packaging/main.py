@@ -214,7 +214,7 @@ async def moj(
             reference_only=reference_only,
             into_dir=directory,
         )
-        await upload_package(problem_id, directory, calibrate=calibrate)
+        await upload_package(problem_id, directory)
 
 
 @app.command('pkg', help='Build a package for PKG.')

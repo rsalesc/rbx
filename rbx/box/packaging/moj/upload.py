@@ -100,10 +100,14 @@ async def resolve_problem_id(basename: str) -> str:
     return problem_id
 
 
-async def upload_package(
-    problem_id: str, directory: pathlib.Path, calibrate: bool
-) -> None:
-    """Upload the built tree, and optionally queue a calibration.
+async def upload_package(problem_id: str, directory: pathlib.Path) -> None:
+    """Upload the built tree and queue the calibration that follows it.
+
+    **Always both**, whatever settled the time limits. mojtools refuses to judge a
+    package with no `tl` file, and calibration is what writes one -- so an uploaded
+    package nobody calibrates is a package nobody can submit to, pinned limits
+    included. `--calibrate` decides whether the numbers calibration measures survive
+    `TLOVERRIDE`, not whether calibration runs.
 
     The **directory**, never the `.zip` beside it: `moj upload` tars what it is
     given, and an unzipped tree arrives with the judge's per-language scripts no
@@ -124,10 +128,9 @@ async def upload_package(
         f'[success]Package uploaded to [item]{problem_id}[/item]![/success]'
     )
 
-    if calibrate:
-        await cli.calibrate(problem_id)
-        console.console.print(
-            f'[status]Calibration queued for [item]{problem_id}[/item]. It runs on '
-            f'the judge; check on it with [item]moj check {problem_id}[/item].'
-            f'[/status]'
-        )
+    await cli.calibrate(problem_id)
+    console.console.print(
+        f'[status]Calibration queued for [item]{problem_id}[/item]. It runs on '
+        f'the judge; check on it with [item]moj check {problem_id}[/item].'
+        f'[/status]'
+    )
