@@ -12,9 +12,7 @@ take over the terminal you are typing `rbx` into.
 
 !!! note "It never runs rbx for you"
     Execution stays in the terminal. You type `rbx run`; the extension watches
-    the package and renders whatever lands there. Every {{rbx}} invocation has
-    side effects on the package cache and could race a run already in flight,
-    so the extension is a reader and nothing else.
+    the package and renders whatever lands there.
 
 ## Installing
 
@@ -81,19 +79,6 @@ panes**: the input, and the output diffed against the expected answer.
 
 ![A testcase, input above and diff below](vscode/testcase-panes.png)
 
-The second pane is a channel, and it switches: <kbd>alt+1</kbd> for the output
-diff, <kbd>alt+2</kbd> for stderr, <kbd>alt+3</kbd> for the run log, mirroring
-`rbx ui`'s `1`/`2`/`3`. The choice is sticky, so arrowing down a group keeps
-reading the same channel.
-
-Both panes are ordinary editors, so a large input still gets highlighting, find
-and go-to-line, and the diff is VS Code's own -- its `diffEditor.*` settings and
-its **More Actions** menu decide how it renders.
-
-The panes are laid out once, the first time a testcase is opened, and then left
-alone; afterwards the extension finds its own panes and reuses whichever groups
-they are sitting in. Drag them where you want them and they stay there.
-
 Under the tree, a card describes the selected testcase and carries the two facts
 its row cannot fit:
 
@@ -103,8 +88,14 @@ its row cannot fit:
   the testcase it was copied from, with the ones that point at a real file
   opening it.
 
-The card fills on *selection*, so a whole failing group can be scanned for
-checker messages without opening a single editor.
+The card's `out`, `err` and `log` buttons pick what the second pane shows: the
+output against the expected answer, what the solution wrote to stderr, or the
+run log for that testcase. The choice is sticky, so arrowing down a group keeps
+reading the same channel.
+
+The panes are laid out once, the first time a testcase is opened, and then left
+alone; afterwards the extension finds its own panes and reuses whichever groups
+they are sitting in. Drag them where you want them and they stay there.
 
 ## Compilation findings
 
@@ -119,20 +110,16 @@ A row with warnings expands into one line per warning -- its line and its flag,
 `22 · -Wshadow` -- and clicking one goes to that line in the source. A row that
 failed to compile opens the compiler output verbatim.
 
-The same findings are published as **diagnostics**, so they reach the Problems
-panel, the editor's own gutter and <kbd>F8</kbd> without the sidebar being open
-at all.
-
 ## Browsing the testset
 
-The run view is about what a solution *did*. The **Tests** view, beside it, is
-about what `rbx build` *made*: the groups, their testcases, and where each one
-came from.
+The **Tests** view lists what `rbx build` produced: the groups, their testcases,
+and where each one came from. Selecting a testcase opens its input and expected
+answer, and its card names the validator that accepted it and the generator that
+wrote it.
 
 ![The Tests view](vscode/tests-view.png)
 
-Everything that wants more width than a sidebar has gets a panel of its own,
-which follows whatever the sidebar has selected:
+A panel opens beside it, following whatever the sidebar has selected, with:
 
 - a **visualization gallery**, when your package declares a visualizer;
 - **constraint coverage** -- which of your validator's bounds the testset
@@ -141,13 +128,13 @@ which follows whatever the sidebar has selected:
 
 ![Constraint coverage](vscode/testset-coverage.png)
 
-### Seeing a testcase
+### Visualizations
 
-If your package declares a
-[visualizer](../setters/testset/visualizers.md), the pictures `rbx build
---visualize` produced are opened from here, the way <kbd>v</kbd> opens them in
-`rbx ui`. Select a testcase and its card offers one **visualization** button per
-picture that exists: `input` for the testcase itself, `answer` for the one drawn
+If your package declares a [visualizer](../setters/testset/visualizers.md), the
+pictures `rbx build --visualize` produced are opened from here, the way
+<kbd>v</kbd> opens them in `rbx ui`. Select a testcase and its card offers one
+**visualization** button per picture that exists: `input` for the testcase
+itself, `answer` for the one drawn
 [from the expected
 answer](../setters/testset/visualizers.md#input-vs-solution-visualizers), and
 `gallery` for the whole group at once, in the panel.
@@ -157,6 +144,11 @@ answer](../setters/testset/visualizers.md#input-vs-solution-visualizers), and
 An image opens in an editor tab; an interactive HTML one opens in VS Code's own
 browser, beside the list you picked it from, rather than in whatever program
 your desktop associates with the file.
+
+!!! warning "Solution outputs are not visualized here"
+    These are the pictures {{rbx}} draws from a testcase and its expected
+    answer. Visualizing what a *solution* printed is not available in the
+    extension yet -- use `rbx ui` for that.
 
 ## Settings
 
@@ -168,7 +160,3 @@ Every surface above can be turned off or adjusted on its own. Search for
 | `rbx.compilationDiagnostics` | `true` | Report compiler warnings and failures in the Problems panel |
 | `rbx.solutionLabel` | `trimmed` | How much of a solution's path the run view shows: `full`, `trimmed` or `basename` |
 | `rbx.testcaseLayout` | `below` | Where the second testcase pane is *first* placed: `below` or `beside` |
-
-For the keyboard, everything these views do is also a command: `rbx: Select
-Problem`, `rbx: Reveal Problem in Explorer`, `rbx: Show Constraint Coverage` and
-the rest, all under the `rbx:` prefix in the command palette.

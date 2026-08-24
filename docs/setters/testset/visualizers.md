@@ -164,5 +164,5 @@ This will generate input visualizations for all testcases and store them in the 
 
 ### In VS Code
 
-Once they are on disk, the [rbx extension](../../tools/vscode.md#seeing-a-testcase) opens them from
+Once they are on disk, the [rbx extension](../../tools/vscode.md#visualizations) opens them from
 the testcase list -- one button per picture, and a gallery of the whole group.
