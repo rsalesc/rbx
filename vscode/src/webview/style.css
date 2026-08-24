@@ -68,12 +68,24 @@ body {
 
 /* No `position: sticky` on the header or the filter: they are flex items that
    never scroll, because the only scrolling box in the view is `#tree`. */
+/* A column of lines, not a single row: the counts are the reason the strip
+   exists and keep the top line to themselves, and a notice -- which is about
+   the run rather than about any solution in it -- takes the line below instead
+   of competing with them for a sidebar's width. Either line may be absent, so
+   neither may reserve space. */
 .header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border, transparent);
+}
+
+.header-line {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--vscode-panel-border, transparent);
+  min-width: 0;
 }
 
 .header-count {
@@ -95,13 +107,21 @@ body {
   color: var(--vscode-charts-yellow);
 }
 
-/* A notice is a sentence, not a count, and it is not an alarm either -- the
-   run is a different kind of run rather than a wrong one. It keeps
-   `header-count`'s truncation and yields its width before the counts do, so a
-   narrow sidebar clips the sentence and not the number of misses. */
-.header-notice {
-  flex: 0 1 auto;
+/* The notice line is secondary to the counts above it and is not an alarm --
+   the run is a different kind of run rather than a wrong one -- so it is drawn
+   in the description colour the rest of the view uses for asides. */
+.header-notices {
   color: var(--vscode-descriptionForeground);
+}
+
+/* Each label truncates on its own rather than the line truncating as a whole,
+   so a narrow sidebar shortens both notices instead of dropping the second
+   one off the end. */
+.header-notice {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .header button {

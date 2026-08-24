@@ -349,6 +349,21 @@ export interface FindingWarning {
  */
 export interface FindingRow {
   readonly id: string;
+  /**
+   * Which phase this row is about.
+   *
+   * The panel started as the compile phase's alone, and `sanitizer` is the one
+   * row in it that is not: the solution compiled, ran, and tripped a sanitizer
+   * while doing so. It is here because the panel is where a reader goes to ask
+   * "what did this run have to say about my solutions, as a list" -- the tree
+   * answers per solution, and a fact spread over three testcases in two groups
+   * is exactly the thing a list summarises better than a tree.
+   *
+   * It decides what the row can offer: a sanitizer row has no compiler output
+   * to open, and clicking it goes to the source rather than to a log that says
+   * nothing about it.
+   */
+  readonly kind: 'compilation' | 'sanitizer';
   readonly label: string;
   readonly labelTitle?: string;
   readonly labelHue?: Hue;
@@ -361,6 +376,8 @@ export interface FindingRow {
   readonly warnings: readonly FindingWarning[];
   /** The `webviewSection` a context menu keys on. */
   readonly section: string;
+  /** What clicking the row itself does, when it has nothing to expand. */
+  readonly primaryCommand: string;
 }
 
 export interface Findings {
@@ -1077,7 +1094,69 @@ function findingRow(node: FindingNode, label: string): FindingRow {
       title: warning.msg,
     })),
     section: 'rbx.finding',
+    kind: 'compilation',
+    // A row that failed to compile has nothing to expand, so clicking it goes
+    // where the answer is -- the compiler's own output.
+    primaryCommand: 'rbx.openCompileLog',
   };
+}
+
+/**
+ * One row per solution that tripped a sanitizer, however often it did.
+ *
+ * `report.sanitizerWarnings` decides whether the row exists -- rbx's answer,
+ * pooled over the evaluations it actually ran. The count beside it is a tally
+ * of the testcase rows this view already draws, the way `histogram` counts
+ * outcomes: no expectation is matched to reach it, and nothing decides anything
+ * that rbx has not already decided.
+ *
+ * A count and not a list. Which testcases tripped is in the tree, marked row by
+ * row; repeating them here would make the panel a second tree, and the reason
+ * the row is in the panel at all is that a list is the shorter answer.
+ */
+function sanitizerRows(
+  view: PackageRunView,
+  labels: ReadonlyMap<string, string>,
+): FindingRow[] {
+  const rows: FindingRow[] = [];
+  for (const run of view.run?.solutions ?? []) {
+    if (run.report?.sanitizerWarnings !== true) {
+      continue;
+    }
+    const path = run.solution.path;
+    const declared = declaredExpectation(run.solution.expectedOutcome);
+    const count = run.groups
+      .flatMap((group) => group.testcases)
+      .filter((testcase) => testcase.evaluation?.sanitizerWarnings === true).length;
+    rows.push({
+      // The solution's own id, because the row is about that solution: every
+      // action it offers acts on it, and the host resolves the id it already
+      // knows without a node kind invented to carry this row.
+      id: `${view.pkg.root}::${run.solution.index}`,
+      kind: 'sanitizer',
+      label: labels.get(path) ?? path,
+      labelHue: declared?.hue,
+      labelBold: declared?.bold ?? false,
+      // Never an error: the solution compiled, ran and answered. What it did
+      // along the way is a warning, and the panel is not opened for it.
+      severity: 'warning',
+      // `0` only if an `.eval` was caught half-written -- rbx said it happened,
+      // and saying so without a number beats not saying it.
+      summary: count === 0 ? 'sanitized' : `${count} sanitized`,
+      reason:
+        count === 0
+          ? 'This solution tripped a sanitizer. See its testcases\u2019 stderr.'
+          : `${count === 1 ? '1 testcase' : `${count} testcases`} tripped a sanitizer. `
+            + 'They are marked in the tree; see their stderr for what it found.',
+      // Nothing to expand: the testcases are the tree's business.
+      warnings: [],
+      section: 'rbx.solution',
+      // No compiler output to open -- this row is about what the solution did
+      // when it ran, and the log of its compile has nothing to say about it.
+      primaryCommand: 'rbx.openSolution',
+    });
+  }
+  return rows;
 }
 
 /**
@@ -1091,15 +1170,23 @@ function buildFindings(
   view: PackageRunView,
   labels: ReadonlyMap<string, string>,
 ): Findings | undefined {
-  const rows = findingNodes(view)
-    .filter((node): node is FindingNode => node.kind === 'finding')
-    .map((node) => {
-      const path = node.finding.entry.path;
-      return findingRow(node, labels.get(path) ?? path);
-    });
+  const rows = [
+    ...findingNodes(view)
+      .filter((node): node is FindingNode => node.kind === 'finding')
+      .map((node) => {
+        const path = node.finding.entry.path;
+        return findingRow(node, labels.get(path) ?? path);
+      }),
+    // After the compile phase's own rows, because they are about the phase that
+    // comes first and a solution that never compiled never reached a sanitizer.
+    ...sanitizerRows(view, labels),
+  ];
   if (rows.length === 0) {
     return undefined;
   }
+  // Compilation alone: a sanitizer finding is a warning by construction -- the
+  // solution ran and answered -- and the panel opens by itself only for the
+  // solutions that are not there to answer at all.
   const errors = rows.some((row) => row.severity === 'error');
   return {
     rows,

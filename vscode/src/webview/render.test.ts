@@ -882,10 +882,12 @@ function findingRow(over: Partial<FindingRow> & Pick<FindingRow, 'id'>): Finding
   return {
     label: over.id,
     labelBold: false,
+    kind: 'compilation',
     severity: 'warning',
     summary: '1 warn',
     warnings: [],
     section: 'rbx.finding',
+    primaryCommand: 'rbx.openCompileLog',
     ...over,
   };
 }
@@ -948,6 +950,51 @@ test('the badge reddens when something failed to compile', () => {
   );
   assert.ok(html.includes('findings-badge hue-red'));
   assert.ok(html.includes('>2<'));
+});
+
+const SANITIZER_FINDING = findingRow({
+  id: 'sol0',
+  kind: 'sanitizer',
+  label: 'sanitizer.cpp',
+  labelHue: 'green',
+  labelBold: true,
+  summary: '3 sanitized',
+  reason: '3 testcases tripped a sanitizer.',
+  section: 'rbx.solution',
+  primaryCommand: 'rbx.openSolution',
+});
+
+test('a sanitizer row offers the source but no compiler output', () => {
+  // The solution compiled like any other, so its log says nothing about what
+  // this row reports -- and a button that opens an unremarkable log is worse
+  // than no button.
+  const html = renderFindings(
+    withFindings([SANITIZER_FINDING]),
+    state({ findingsOpen: true }),
+  );
+  assert.ok(html.includes('data-action="source"'));
+  assert.ok(!html.includes('data-action="log"'));
+});
+
+test('a compile finding keeps both of its buttons', () => {
+  const html = renderFindings(withFindings([WARNED_FINDING]), state({ findingsOpen: true }));
+  assert.ok(html.includes('data-action="source"'));
+  assert.ok(html.includes('data-action="log"'));
+});
+
+test('a sanitizer row says how many testcases tripped, and expands into nothing', () => {
+  const html = renderFindings(
+    withFindings([SANITIZER_FINDING]),
+    state({ findingsOpen: true }),
+  );
+  assert.ok(html.includes('3 sanitized'));
+  assert.ok(html.includes('finding-sanitizer'));
+  // Which testcases tripped is the tree's business; the panel is the short
+  // answer, so there is nothing under this row to open. (The panel's own
+  // header keeps its `aria-expanded`, so the row is what gets looked at.)
+  const rowHtml = html.slice(html.indexOf('finding-row'));
+  assert.ok(!rowHtml.includes('aria-expanded'), rowHtml);
+  assert.ok(!html.includes('finding-warnings'));
 });
 
 test('severity is carried by the row, and the label keeps the declaration', () => {
@@ -1130,8 +1177,10 @@ test('the strip appears for a notice on a run with nothing else to say', () => {
   // The run every counter reads clean on, which is exactly when the strip used
   // to render nothing at all.
   const html = renderHeader(model([MAIN], [{ kind: 'sanitized-run' }]), state());
-  assert.ok(html.includes('time limits were dropped'));
+  assert.ok(html.includes('no time limit'));
   assert.ok(!html.includes('did not match'));
+  // And no empty line above it where the counts would have gone.
+  assert.ok(!html.includes('<div class="header-line"></div>'));
 });
 
 test('a narrowed sanitized run says the list is short', () => {
@@ -1139,5 +1188,29 @@ test('a narrowed sanitized run says the list is short', () => {
     model([MAIN], [{ kind: 'sanitized-run' }, { kind: 'accepted-only' }]),
     state(),
   );
-  assert.ok(html.includes('Only ACCEPTED solutions were run.'));
+  assert.ok(html.includes('ACCEPTED only'));
+});
+
+test('the notices take the line below the counts, not a place beside them', () => {
+  const html = renderHeader(model([MAIN, MISLABELED], [{ kind: 'sanitized-run' }]), state());
+  const counts = html.indexOf('did not match');
+  const notices = html.indexOf('header-notices');
+  assert.ok(counts !== -1 && notices !== -1);
+  // Two lines, the counts first: the strip's own reason for existing stays on
+  // top when a notice joins it.
+  assert.ok(counts < notices, html);
+  assert.strictEqual(html.match(/class="header-line/g)?.length, 2);
+});
+
+test('a notice carries the sentence its label had to drop', () => {
+  const html = renderHeader(model([MAIN], [{ kind: 'sanitized-run' }]), state());
+  assert.ok(html.includes('not measured against the limit this problem declares'));
+});
+
+test('two notices share one icon rather than reading as two alarms', () => {
+  const html = renderHeader(
+    model([MAIN], [{ kind: 'sanitized-run' }, { kind: 'accepted-only' }]),
+    state(),
+  );
+  assert.strictEqual(html.match(/codicon-info/g)?.length, 1);
 });

@@ -1058,6 +1058,49 @@ test('a solution that failed to compile is reported though it is in no row', () 
   assert.strictEqual(findings.rows[0].summary, 'CE');
 });
 
+test('a solution that tripped a sanitizer gets a row of its own in the panel', () => {
+  // Not a compile finding, and in the panel anyway: the tree answers per
+  // solution, and the panel is where a reader asks what this run had to say
+  // about the package as a list.
+  const model = buildViewModel(view([SANITIZED]));
+  const findings = model.findings;
+  assert.ok(findings !== undefined);
+  assert.strictEqual(findings.rows.length, 1);
+  const row = findings.rows[0];
+  assert.strictEqual(row.kind, 'sanitizer');
+  assert.strictEqual(row.label, 'main.cpp');
+  // The count is the testcases that tripped, not the groups and not the whole
+  // testset: one in `edge`-like `big`, two more nowhere.
+  assert.strictEqual(row.summary, '1 sanitized');
+  // Never an error: the solution compiled, ran and answered.
+  assert.strictEqual(row.severity, 'warning');
+  assert.strictEqual(findings.errors, false);
+  // Nothing to expand, and its own click goes to the source rather than to a
+  // compile log that says nothing about it.
+  assert.deepStrictEqual(row.warnings, []);
+  assert.strictEqual(row.primaryCommand, 'rbx.openSolution');
+  // The solution's own id, so every action resolves to the node the host
+  // already knows.
+  assert.strictEqual(row.id, '/w/a::0');
+});
+
+test('a run whose sanitizer never fired carries no panel', () => {
+  assert.strictEqual(buildViewModel(view([MAIN])).findings, undefined);
+});
+
+test('a sanitizer row joins the compile findings rather than replacing them', () => {
+  const model = buildViewModel(
+    view([SANITIZED], [finding('sols/broken.cpp', { status: 'FAILED' })]),
+  );
+  const kinds = model.findings?.rows.map((row) => row.kind);
+  // The compile phase first: a solution that never compiled never reached a
+  // sanitizer.
+  assert.deepStrictEqual(kinds, ['compilation', 'sanitizer']);
+  assert.strictEqual(model.findings?.badge, 2);
+  // Still opened by the compile error alone.
+  assert.strictEqual(model.findings?.errors, true);
+});
+
 test('the badge counts rows and reddens as soon as one failed to compile', () => {
   const model = buildViewModel(
     view(
