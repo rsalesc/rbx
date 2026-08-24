@@ -62,9 +62,10 @@ rbx time -p boca
 
 {{ asciinema("contest-time-profile") }}
 
-The command opens on a strategy prompt, asking how you want the limit defined. The
-highlighted default, `estimate`, is the one we want: measure the accepted solutions and
-apply the rules the environment configures.
+The command opens on the limits `gardens` carries today -- `1000 ms`, straight out of its
+`problem.rbx.yml` -- and then asks how you want the new limit defined. The highlighted
+default is the one we want: measure the accepted solutions and apply the rules the
+environment configures.
 
 Then the run goes quiet for a while. {{rbx}} is timing both accepted solutions before it
 has anything to bucket, so the **language-group screen only appears once the run reports
@@ -74,12 +75,13 @@ The screen that follows asks how to group the languages. Take the default here -
 ++enter++ accepts it -- and read the table it settles on. `gardens` lands on a `timeLimit`
 of `100`, and the `java, kt` row reads `×2.0 of cpp` against a count of zero solutions:
 that limit came from a rule in the environment rather than from anything measured, because
-`gardens` has no Java solution to measure. The `(base)` row and the `*` footnote in the
-same table belong to that machinery too, and the screen doesn't explain either.
+`gardens` has no Java solution to measure. The `(base)` row above it is the limit for
+anything the groups don't cover, and the `*` marks the leftover pool -- the table prints a
+footnote saying so.
 
 !!! info
-    Bucketing, the leftover pool, the `(base)` row and forcing a group's limit relative to
-    another are all taught in [Language groups](/setters/profiling/language-groups). The
+    Bucketing, the leftover pool and forcing a group's limit relative to another are all
+    taught in [Language groups](/setters/profiling/language-groups). The
     strategy menu is in [Estimating a time limit](/setters/profiling/estimating), and the
     arithmetic that turned the timings into `100` is in
     [How the limit is computed](/setters/profiling/computing).
@@ -166,13 +168,11 @@ work.
 - **A failure in one problem doesn't stop the others.** Every problem runs; the ones that
   broke are the ones with a red mark when it's over.
 
-Now open `A` and compare it against `B`. `chocolate` declares no solution as too slow, so
+The pane is still on `A`, so compare it against `B`. `chocolate` declares no solution as too slow, so
 there is no upper bound to derive and no upper bound to check -- its report simply ends
 after the limits table, with no "confirmed too slow" line. That absence is the *healthy*
-outcome for a problem shaped like that, not a step that failed silently. And a solution
-count of `0` on a derived row like `java, kt` is normal for the same reason: the count is
-how many solutions were timed in that group, and a group whose limit came from a multiplier
-had none.
+outcome for a problem shaped like that, not a step that failed silently -- worth knowing,
+because the ratios it prints still recite the upper-bound rule that, here, nothing triggers.
 
 Three files exist now, one per problem:
 
@@ -195,7 +195,8 @@ place. Two or more and you get the sidebar again.
 !!! tip
     `-k` (`--keep-going`) keeps a problem's chain running after one of its commands fails.
     It belongs to `rbx on` and `rbx each`, not to `time`, so it has to come **before** the
-    problem selector: `rbx on -k A,C time -p boca --auto`.
+    command it wraps -- and before the problem selector too, on `rbx on`:
+    `rbx on -k A,C time -p boca --auto`.
 
 ## Verify under the limits you just wrote
 

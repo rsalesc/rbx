@@ -15,7 +15,8 @@ expected outcomes match. If you're starting from scratch, follow the
     You create it by profiling the problem against the judge's hardware, which is what
     [Profiling time limits](/setters/contest-profiling-walkthrough) walks you through.
     If you haven't done that yet, start there and come back once `.limits/boca.yml` is
-    in place.
+    in place. Working on a single problem rather than a contest? Then `rbx time -p boca`
+    is the whole of it -- see [Profiling](/setters/profiling).
 
 ## Overview
 
