@@ -246,7 +246,6 @@ from unittest import mock
 from rbx.box.packaging.moj.upload import resolve_problem_id
 
 
-@pytest.mark.asyncio
 async def test_resolve_warns_when_uploading_to_the_personal_org(capsys):
     with (
         mock.patch('rbx.box.packaging.moj.upload.cli.whoami', return_value='alice'),
@@ -260,7 +259,6 @@ async def test_resolve_warns_when_uploading_to_the_personal_org(capsys):
     assert 'personal org' in capsys.readouterr().out
 
 
-@pytest.mark.asyncio
 async def test_resolve_does_not_warn_when_an_org_is_configured(capsys):
     with (
         mock.patch('rbx.box.packaging.moj.upload.cli.whoami', return_value='alice'),
@@ -451,7 +449,6 @@ def test_moj_command_takes_an_upload_flag():
 In `test_upload.py`, drive the real stub binary so the argv assertion comes from a process that was actually spawned. Reuse the `_stub_moj` helper from `tests/rbx/box/runners/moj/test_cli.py` — copy it, or lift it into a shared conftest and import it from both.
 
 ```python
-@pytest.mark.asyncio
 async def test_upload_shells_out_to_moj_upload(monkeypatch, tmp_path):
     log = _stub_moj(monkeypatch, tmp_path, 'exit 0')
     directory = tmp_path / 'package'
@@ -462,7 +459,6 @@ async def test_upload_shells_out_to_moj_upload(monkeypatch, tmp_path):
     assert log.read_text().split() == ['upload', 'unicamp#a-aplusb', str(directory)]
 
 
-@pytest.mark.asyncio
 async def test_upload_queues_a_calibration_when_asked(monkeypatch, tmp_path):
     log = _stub_moj(monkeypatch, tmp_path, 'exit 0')
     directory = tmp_path / 'package'
