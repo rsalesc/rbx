@@ -21,6 +21,7 @@ class TestcaseRenderingData:
     stderr_path: Optional[pathlib.Path] = None
     interaction_path: Optional[pathlib.Path] = None
     log_path: Optional[pathlib.Path] = None
+    checker_stderr_path: Optional[pathlib.Path] = None
     rich_content: Optional[str] = None
 
     @classmethod
@@ -31,6 +32,10 @@ class TestcaseRenderingData:
             stderr_path=path.with_suffix('.err'),
             log_path=path.with_suffix('.log'),
             interaction_path=path.with_suffix('.pio'),
+            # Only present when the run was asked to keep it
+            # (`--keep-checker-stderr`); `FileLog` renders a missing path as an
+            # empty box, which is what an unasked-for artifact should look like.
+            checker_stderr_path=path.with_suffix('.checker.err'),
         )
 
 
@@ -46,6 +51,7 @@ class TestBoxWidget(Widget, can_focus=False):
         stderr: FileLog
         log: FileLog
         interaction: InteractionBox
+        checker_stderr: FileLog
 
     def logs(self) -> Logs:
         return self.Logs(
@@ -53,6 +59,7 @@ class TestBoxWidget(Widget, can_focus=False):
             stderr=self.query_one('#test-box-stderr', FileLog),
             log=self.query_one('#test-box-log', FileLog),
             interaction=self.query_one('#test-box-interaction', InteractionBox),
+            checker_stderr=self.query_one('#test-box-checker-stderr', FileLog),
         )
 
     def compose(self) -> ComposeResult:
@@ -62,6 +69,7 @@ class TestBoxWidget(Widget, can_focus=False):
                 yield FileLog(id='test-box-stderr')
                 yield FileLog(id='test-box-log')
                 yield InteractionBox(id='test-box-interaction')
+                yield FileLog(id='test-box-checker-stderr')
             yield RichLogBox(id='test-box-metadata')
 
     def on_mount(self):
@@ -70,6 +78,7 @@ class TestBoxWidget(Widget, can_focus=False):
         logs.stderr.border_title = 'Stderr'
         logs.log.border_title = 'Log'
         logs.interaction.border_title = 'Interaction'
+        logs.checker_stderr.border_title = 'Checker stderr'
         metadata = self.query_one('#test-box-metadata', RichLogBox)
         metadata.display = False
         metadata.border_title = 'Metadata'
@@ -86,6 +95,7 @@ class TestBoxWidget(Widget, can_focus=False):
         logs.stderr.path = data.stderr_path
         logs.log.path = data.log_path
         logs.interaction.path = data.interaction_path
+        logs.checker_stderr.path = data.checker_stderr_path
         metadata = self.query_one('#test-box-metadata', RichLogBox)
         metadata.clear()
         if data.rich_content is not None:
@@ -107,6 +117,9 @@ class TestBoxWidget(Widget, can_focus=False):
 
     def show_interaction(self):
         self.query_one(ContentSwitcher).current = 'test-box-interaction'
+
+    def show_checker_stderr(self):
+        self.query_one(ContentSwitcher).current = 'test-box-checker-stderr'
 
     def toggle_metadata(self):
         metadata = self.query_one('#test-box-metadata', RichLogBox)

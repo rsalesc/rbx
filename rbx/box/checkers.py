@@ -268,6 +268,7 @@ async def _check(
     testcase: Testcase,
     program_output: pathlib.Path,
     skip_run_log: bool = False,
+    checker_stderr_path: Optional[pathlib.Path] = None,
 ) -> CheckerResult:
     if not skip_run_log:
         result = _check_pre_output(run_log)
@@ -314,6 +315,16 @@ async def _check(
     )
     message = await package.get_digest_as_string(error.value) or ''
 
+    # Everything the checker printed, before `process_checker_run_log` narrows
+    # it to the last line. Only persisted when a caller asked for it, since most
+    # runs never read it. An empty message writes nothing: an empty file would
+    # say exactly what its absence already says. A message that was captured but
+    # whose blob has since been evicted from the store arrives here as `''` too,
+    # and is skipped for the same reason rather than raising.
+    if checker_stderr_path is not None and message:
+        checker_stderr_path.parent.mkdir(parents=True, exist_ok=True)
+        checker_stderr_path.write_text(message)
+
     processed_checker_result = process_checker_run_log(checker_run_log, message)
     if processed_checker_result.outcome == Outcome.INTERNAL_ERROR:
         console.console.print(
@@ -358,9 +369,21 @@ async def check(
     testcase: Testcase,
     program_output: pathlib.Path,
     skip_run_log: bool = False,
+    checker_stderr_path: Optional[pathlib.Path] = None,
 ) -> CheckerResult:
+    """Judge `program_output` with the compiled checker.
+
+    ``checker_stderr_path``, when given, is where the checker's *full* stderr is
+    persisted. ``CheckerResult.message`` keeps its last-line semantics either
+    way, so nothing downstream changes shape when the sink is on.
+    """
     result = await _check(
-        checker_digest, run_log, testcase, program_output, skip_run_log
+        checker_digest,
+        run_log,
+        testcase,
+        program_output,
+        skip_run_log,
+        checker_stderr_path=checker_stderr_path,
     )
     result.sanitizer_warnings = _check_sanitizer_warnings(run_log)
     return result
@@ -374,6 +397,7 @@ async def check_communication(
     testcase: Testcase,
     program_output: pathlib.Path,
     skip_run_log: bool = False,
+    checker_stderr_path: Optional[pathlib.Path] = None,
 ) -> CheckerResult:
     def _extra_check_and_sanitize(result: CheckerResult) -> CheckerResult:
         result.sanitizer_warnings = _check_sanitizer_warnings(run_log)
@@ -459,7 +483,12 @@ async def check_communication(
     # 6. Now actually check the output with a checker.
     if checker_digest is not None:
         result = await check(
-            checker_digest, run_log, testcase, program_output, skip_run_log
+            checker_digest,
+            run_log,
+            testcase,
+            program_output,
+            skip_run_log,
+            checker_stderr_path=checker_stderr_path,
         )
 
     return _extra_check_and_sanitize(result)

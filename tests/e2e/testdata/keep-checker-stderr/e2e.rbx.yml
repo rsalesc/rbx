@@ -1,0 +1,27 @@
+scenarios:
+  # Without the flag, nothing changes: the checker's diagnostics are dropped and
+  # no `.checker.err` is written anywhere.
+  - name: absent-by-default
+    steps:
+      - cmd: build
+      - cmd: run -v4
+        expect:
+          files_absent:
+            - "**/*.checker.err"
+          solutions:
+            sols/main.cpp: ac
+            sols/wrong.cpp: wa
+
+  # With it, every testcase keeps the whole stderr -- including the lines the
+  # checker printed *before* its verdict line, which is the only place they
+  # survive.
+  - name: keeps-full-stderr
+    steps:
+      - cmd: build
+      - cmd: run --keep-checker-stderr -v4
+        expect:
+          files_exist:
+            - "**/*.checker.err"
+          solutions:
+            sols/main.cpp: ac
+            sols/wrong.cpp: wa

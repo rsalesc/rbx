@@ -1,0 +1,26 @@
+name: keep-checker-stderr
+timeLimit: 1000
+memoryLimit: 256
+
+checker:
+  path: checker/checker.cpp
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+  - path: sols/wrong.cpp
+    outcome: wa
+
+testcases:
+  - name: main
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 1 2
+          - name: gen
+            args: 3 4

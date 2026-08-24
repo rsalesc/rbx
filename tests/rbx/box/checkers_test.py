@@ -25,6 +25,8 @@ INTERESTING_CHECKERS = [
     'checkers/checker.cpp',
     'checkers/checker-fl.cpp',
     'checkers/checker-crash.cpp',
+    'checkers/checker-verbose.cpp',
+    'checkers/checker-silent.cpp',
 ]
 
 
@@ -905,3 +907,81 @@ def test_process_checker_run_log_falls_back_when_no_sandbox_message() -> None:
     result = checkers.process_checker_run_log(run_log, message='')
     assert result.outcome == Outcome.INTERNAL_ERROR
     assert result.message == 'sandbox failed to run checker'
+
+
+# Persisting the checker's full stderr (`--keep-checker-stderr`).
+async def test_check_writes_full_checker_stderr_to_sink(
+    checker_digest_dict: Dict[str, str],
+    testcase: Testcase,
+    program_output: pathlib.Path,
+    run_log: RunLog,
+    tmp_path: pathlib.Path,
+) -> None:
+    assert testcase.outputPath
+    testcase.outputPath.write_text('123\n')
+    program_output.write_text('456\n')
+    sink = tmp_path / 'checker.err'
+
+    result = await checkers.check(
+        checker_digest_dict['checkers/checker-verbose.cpp'],
+        run_log,
+        testcase,
+        program_output,
+        checker_stderr_path=sink,
+    )
+
+    assert result.outcome == Outcome.WRONG_ANSWER
+    # The result keeps its last-line semantics...
+    assert result.message == 'wrong answer verdict line'
+    # ...while the sink holds everything the checker printed.
+    contents = sink.read_text()
+    assert 'diagnostic line 1' in contents
+    assert 'diagnostic line 2' in contents
+    assert 'verdict line' in contents
+
+
+async def test_check_does_not_write_checker_stderr_without_sink(
+    checker_digest_dict: Dict[str, str],
+    testcase: Testcase,
+    program_output: pathlib.Path,
+    run_log: RunLog,
+    tmp_path: pathlib.Path,
+) -> None:
+    assert testcase.outputPath
+    testcase.outputPath.write_text('123\n')
+    program_output.write_text('456\n')
+
+    await checkers.check(
+        checker_digest_dict['checkers/checker-verbose.cpp'],
+        run_log,
+        testcase,
+        program_output,
+    )
+
+    assert not list(tmp_path.iterdir())
+
+
+async def test_check_skips_checker_stderr_file_when_checker_said_nothing(
+    checker_digest_dict: Dict[str, str],
+    testcase: Testcase,
+    program_output: pathlib.Path,
+    run_log: RunLog,
+    tmp_path: pathlib.Path,
+) -> None:
+    assert testcase.outputPath
+    testcase.outputPath.write_text('123\n')
+    program_output.write_text('123\n')
+    sink = tmp_path / 'checker.err'
+
+    result = await checkers.check(
+        checker_digest_dict['checkers/checker-silent.cpp'],
+        run_log,
+        testcase,
+        program_output,
+        checker_stderr_path=sink,
+    )
+
+    assert result.outcome == Outcome.ACCEPTED
+    # An empty file would read as "the checker was run and said nothing", which
+    # is exactly what its absence already says -- without the clutter.
+    assert not sink.exists()

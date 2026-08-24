@@ -81,6 +81,36 @@ def write_evaluation(eval: Evaluation, output_path: pathlib.Path) -> str:
     return rendered
 
 
+def _prepare_checker_stderr_path(
+    output_path: pathlib.Path, keep_checker_stderr: bool
+) -> Optional[pathlib.Path]:
+    """Where this run should persist the checker's full stderr, if anywhere.
+
+    The file is dropped up front rather than overwritten, so a `.checker.err`
+    that survives the run is always this run's -- never a leftover from a
+    previous one whose checker happened to be chattier, and never one left
+    behind by a run that never reached the checker at all.
+    """
+    if not keep_checker_stderr:
+        return None
+    checker_error_path = output_path.with_suffix('.checker.err')
+    checker_error_path.unlink(missing_ok=True)
+    return checker_error_path
+
+
+def _resolve_checker_stderr_path(
+    checker_error_path: Optional[pathlib.Path],
+) -> Optional[pathlib.Path]:
+    """The path to record on the log, or `None` if nothing was written there.
+
+    A checker that printed nothing leaves no file, and pointing the log at a
+    path that does not exist would only send readers chasing it.
+    """
+    if checker_error_path is None or not checker_error_path.is_file():
+        return None
+    return checker_error_path.absolute()
+
+
 def _check_stderr(solution: CodeItem, stderr_path: pathlib.Path):
     # The stderr file is absent when the program failed to even start (e.g. a
     # missing interpreter/runtime), in which case there is no stderr to inspect.
@@ -134,6 +164,7 @@ async def run_solution_on_testcase(
     capture_pipes: Optional[bool] = None,
     line_capture: bool = False,
     merge_stderr: bool = False,
+    keep_checker_stderr: bool = False,
     nruns: int = 0,
     filestem: Optional[str] = None,
     is_stress: bool = False,
@@ -158,6 +189,7 @@ async def run_solution_on_testcase(
             is_stress=is_stress,
             line_capture=line_capture,
             merge_stderr=merge_stderr,
+            keep_checker_stderr=keep_checker_stderr,
         )
 
     async def run_fn(retry_index: int) -> Evaluation:
@@ -176,6 +208,10 @@ async def run_solution_on_testcase(
         error_path = output_path.with_suffix('.err')
         log_path = output_path.with_suffix('.log')
         output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        checker_error_path = _prepare_checker_stderr_path(
+            output_path, keep_checker_stderr
+        )
 
         # When interleaving is requested, tee stdout/stderr into a merged '.pio'
         # file in true write order; the clean stdout/stderr files are unaffected.
@@ -203,6 +239,7 @@ async def run_solution_on_testcase(
                     run_log,
                     testcase,
                     program_output=output_path,
+                    checker_stderr_path=checker_error_path,
                 )
         else:
             checker_result = checkers.check_with_no_output(run_log)
@@ -221,6 +258,9 @@ async def run_solution_on_testcase(
                 stdout_absolute_path=output_path.absolute(),
                 stderr_absolute_path=error_path.absolute(),
                 log_absolute_path=log_path.absolute(),
+                checker_stderr_absolute_path=_resolve_checker_stderr_path(
+                    checker_error_path
+                ),
             ),
         )
 
@@ -282,6 +322,7 @@ async def _run_communication_solution_on_testcase(
     capture_pipes: Optional[bool] = None,
     line_capture: bool = False,
     merge_stderr: bool = False,
+    keep_checker_stderr: bool = False,
     nruns: int = 0,
     filestem: Optional[str] = None,
     is_stress: bool = False,
@@ -323,6 +364,11 @@ async def _run_communication_solution_on_testcase(
         interactor_error_path = output_path.with_suffix('.int.err')
         log_path = output_path.with_suffix('.log')
         output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Sits next to the interactor's own `.int.err`, which is always kept.
+        checker_error_path = _prepare_checker_stderr_path(
+            output_path, keep_checker_stderr
+        )
 
         interactor_capture_path = (
             output_path.with_suffix('.pin') if capture_pipes else None
@@ -390,6 +436,7 @@ async def _run_communication_solution_on_testcase(
             interactor_error_path,
             testcase,
             output_path,
+            checker_stderr_path=checker_error_path,
         )
 
         _check_stderr(solution, solution_error_path)
@@ -406,6 +453,9 @@ async def _run_communication_solution_on_testcase(
                 stdout_absolute_path=output_path.absolute(),
                 stderr_absolute_path=solution_error_path.absolute(),
                 log_absolute_path=log_path.absolute(),
+                checker_stderr_absolute_path=_resolve_checker_stderr_path(
+                    checker_error_path
+                ),
             ),
         )
 
