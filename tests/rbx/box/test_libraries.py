@@ -57,6 +57,14 @@ def test_add_always_include_dedups_existing(tmp_path, monkeypatch):
             src=tmp_path / 'mylib.h', dest=steps.INTERNAL_DIR / 'mylib.h'
         )
     )
+    # The preset declares no testlib, so the builtin is implied alongside
+    # `mylib`. Seed it too, or it is a genuinely new input and `added` says so
+    # -- which would be about the fallback rather than about deduping.
+    artifacts.inputs.append(
+        steps.GradingFileInput(
+            src=tmp_path / 'testlib.h', dest=steps.INTERNAL_DIR / 'testlib.h'
+        )
+    )
     added = libraries.add_always_include_libraries(artifacts)
 
     assert added is False  # already present => not added again
@@ -74,6 +82,53 @@ def test_no_preset_still_declares_testlib(tmp_path, monkeypatch):
     libraries.get_declared_libraries.cache_clear()
 
     assert [lib.name for lib in libraries.get_always_include_libraries()] == ['testlib']
+
+
+def test_preset_declaring_no_libraries_still_declares_testlib(tmp_path, monkeypatch):
+    """Having a preset at all must not cost the package testlib.
+
+    Only the bundled presets are known to declare it; a hand-written one that
+    lists no libraries used to return an empty set, which left the builtin
+    checkers compiling against an unresolvable `#include "testlib.h"`.
+    """
+    _write_preset(tmp_path, 'min_version: "1.0.0"\n')
+    monkeypatch.chdir(tmp_path)
+    libraries.get_declared_libraries.cache_clear()
+
+    assert [lib.name for lib in libraries.get_always_include_libraries()] == ['testlib']
+
+
+def test_preset_declaring_its_own_testlib_keeps_it(tmp_path, monkeypatch):
+    """A preset that pins its own testlib keeps it, and gets it only once.
+
+    The builtin is a fallback for a preset that never mentioned testlib, not an
+    extra copy competing with one that did -- so a setter's pinned version is
+    still what the checkers compile against.
+    """
+    _write_preset(
+        tmp_path,
+        'libraries:\n'
+        '  problem:\n'
+        '    - name: my-testlib\n'
+        '      source: x\n'
+        '      path: vendor/testlib.h\n'
+        '      dest: vendor/testlib.h\n'
+        '      always_include: true\n',
+    )
+    (tmp_path / 'vendor').mkdir()
+    (tmp_path / 'vendor' / 'testlib.h').write_text("// the preset's own testlib")
+    monkeypatch.chdir(tmp_path)
+    libraries.get_declared_libraries.cache_clear()
+
+    artifacts = steps.GradingArtifacts()
+    libraries.add_always_include_libraries(artifacts)
+
+    assert [lib.name for lib in libraries.get_always_include_libraries()] == [
+        'my-testlib'
+    ]
+    injected = [i for i in artifacts.inputs if str(i.dest) == '__internal__/testlib.h']
+    assert len(injected) == 1
+    assert injected[0].src == pathlib.Path('vendor/testlib.h')
 
 
 def test_no_preset_falls_back_to_the_bundled_testlib(tmp_path, monkeypatch):
