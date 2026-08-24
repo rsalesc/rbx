@@ -3,20 +3,16 @@
 #include <vector>
 using namespace std;
 
-// Declared too slow, but it is not: it sorts a few extra times and is still
-// far inside the bound the time limit demands of a rejected solution. Swapped
-// in by the `time-upper-bound-violation` recording so the check has something
-// to catch. Not part of the package.
+// Declared too slow, and it is nothing of the kind: this is the accepted
+// two-pointer solution under another name. Swapped in by the
+// `time-upper-bound-violation` recording so the check has a real violation to
+// report. Not part of the package, and nothing else reads it.
 int main() {
     int n, k;
     scanf("%d %d", &n, &k);
     vector<int> a(n);
     for (int i = 0; i < n; i++) {
         scanf("%d", &a[i]);
-    }
-    for (int round = 0; round < 4; round++) {
-        sort(a.begin(), a.end());
-        reverse(a.begin(), a.end());
     }
     sort(a.begin(), a.end());
 
