@@ -488,12 +488,11 @@ def test_a_probe_package_refuses_a_halt_bit_mojtools_has_no_name_for():
 def test_probe_package_whitelists_languages_it_ships_no_solution_for(
     testing_pkg, tmp_path
 ):
-    # THE bug this mode exists to avoid. `.moj-meta.json`'s `languages` is the
-    # whitelist the MOJ API enforces on every submission, a testrun included. A probe
-    # package ships only the C++ model solution, so deriving the whitelist from the
-    # ACCEPTED solutions -- right for a real problem -- would collapse it to `cpp` and
-    # every testrun of a Python or Java solution would be refused. In phase 2 that
-    # includes the slow and wrong solutions, which are never accepted by construction.
+    # `.moj-meta.json`'s `languages` is the whitelist the MOJ API enforces on every
+    # submission, a testrun included, and a probe package ships only the C++ model
+    # solution. So the whitelist is authored from what the run is about to submit --
+    # never from what the package happens to carry, which would collapse it to `cpp`
+    # and refuse every testrun of a Python or Java solution.
     _package_with_every_solution_kind(testing_pkg)
 
     into_path = run_packager(
@@ -607,13 +606,10 @@ def test_the_estimation_phase_report_names_the_accepted_solutions(
     )
 
 
-def test_probe_package_does_not_warn_about_a_narrowed_whitelist(
-    testing_pkg, tmp_path, capsys
-):
-    # The warning tells a setter their problem became single-language because they
-    # shipped one accepted solution. A probe package is rbx's own throwaway `rbxt-`
-    # problem, nobody submits to it, and its whitelist is authored rather than
-    # derived -- there is no narrowing to report.
+def test_probe_package_does_not_report_its_whitelist(testing_pkg, tmp_path, capsys):
+    # The report tells a setter which languages their students may submit in. A probe
+    # package is rbx's own throwaway `rbxt-` problem, nobody else submits to it, and
+    # its whitelist is authored rather than derived -- there is nothing to report.
     _package_with_every_solution_kind(testing_pkg)
 
     run_packager(
@@ -625,13 +621,14 @@ def test_probe_package_does_not_warn_about_a_narrowed_whitelist(
     )
 
     out = ' '.join(capsys.readouterr().out.split())
-    assert 'no ACCEPTED solution' not in out
     assert 'MOJ will accept submissions in' not in out
 
 
-def test_a_real_package_still_derives_the_whitelist_from_accepted_solutions(
+def test_a_real_package_derives_the_whitelist_from_the_environment(
     testing_pkg, tmp_path
 ):
+    # The probe's authored whitelist is the exception; a package a setter builds takes
+    # every language `env.rbx.yml` declares, whatever it happens to ship solutions in.
     _package_with_every_solution_kind(testing_pkg)
 
     into_path = run_packager(
@@ -639,7 +636,7 @@ def test_a_real_package_still_derives_the_whitelist_from_accepted_solutions(
     )
 
     meta = json.loads((into_path / '.moj-meta.json').read_text())
-    assert meta['languages'] == ['cpp', 'py']
+    assert meta['languages'] == ['c', 'cpp', 'java', 'kt', 'py']
 
 
 # -- a probe must be buildable without a statement build ---------------------
