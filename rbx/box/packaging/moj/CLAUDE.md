@@ -307,6 +307,16 @@ Java and Kotlin build a **manifest jar** so `run.sh` is just `java -jar`. This f
 `lang/java/compile.sh`, which elects the main class by grepping for `main` and falling
 back to `ls *.class` — locale-dependent once javac emits nested `Main$X.class`.
 
+**Java sources are renamed to their public type inside the jail**, by
+`scripts/java/compile.sh`, before javac runs. javac is the only party that requires the
+two to agree: rbx names a solution file after the *solution*
+(`vinicius_fastIO.java` holding `public class Main`) and MOJ reads the name only to pick
+the language, so the mismatch is expected and would otherwise be a hard compile error —
+on a packaged solution during calibration, and equally on a contestant's submission
+whose file name is not their class. Doing it in the jail rather than at package time is
+what keeps both cases covered, and avoids the collision a host-side rename would create
+the moment two solutions both declare `public class Main`.
+
 ## Statements (`statement.py`, `statement_assets.py`)
 
 `statement_export_params()` forces externalize+demacro exactly as

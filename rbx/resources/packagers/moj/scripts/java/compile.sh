@@ -8,6 +8,29 @@ cd /tmp/rwdir
 
 SRC=$(ls *.java 2>/dev/null | head -1)
 [[ -n "$SRC" ]] || exit 1
+
+# javac is the only party here that insists a source file be named after the public
+# type it declares. Neither rbx nor MOJ does: rbx names a solution file after the
+# solution (`vinicius_fastIO.java` holding `public class Main`), and MOJ reads the
+# name only to pick the language. Left alone, that mismatch is a hard compile error --
+# for a packaged solution during calibration, and equally for a contestant who
+# submitted a file whose name is not their class. So rename each source to the type it
+# declares before javac ever sees it.
+#
+# Only a `public` declaration starting a line counts, which is the shape javac accepts
+# anyway; a `public class` inside a comment or a string virtually never starts one.
+for src in *.java; do
+  klass=$(sed -n -E \
+    's/^[[:space:]]*public[[:space:]]+([a-z]+[[:space:]]+)*(class|interface|enum|record)[[:space:]]+([A-Za-z_$][A-Za-z0-9_$]*).*/\3/p' \
+    "$src" | head -1)
+  [[ -n "$klass" ]] || continue
+  [[ "$klass.java" != "$src" ]] || continue
+  # A name already taken is a conflict only javac can explain; leave it to say so.
+  [[ -e "$klass.java" ]] && continue
+  mv -f "$src" "$klass.java" || exit 1
+  [[ "$SRC" == "$src" ]] && SRC="$klass.java"
+done
+
 klass=$(basename "$SRC" .java)
 [[ -n "$klass" ]] || klass=Main
 

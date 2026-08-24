@@ -1305,9 +1305,9 @@ class MojPackager(BasePackager):
                     f'[error]Cannot package for MOJ: {solution.href()} and '
                     f'[item]{written[tag][basename]}[/item] would both be written to '
                     f'[item]sols/{tag}/{basename}[/item].[/error]\n'
-                    '[error]MOJ derives the language from the file name, and Java '
-                    'requires it to match the public class, so rbx will not rename '
-                    'them. Give one of them a different file name.[/error]'
+                    '[error]MOJ derives the language from the file name, so rbx ships '
+                    'each solution under its own name rather than renaming them. Give '
+                    'one of them a different file name.[/error]'
                 )
                 raise typer.Exit(1)
             written[tag][basename] = solution.path
