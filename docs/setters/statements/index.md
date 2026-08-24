@@ -303,12 +303,44 @@ the `--partial` escape hatch.
 
 ## Where to go next
 
-From here, pick the guide that matches what you are doing:
+From here, pick the guide that matches what you are doing.
 
-- **[Writing statements](writing.md)** for the source side: blocks, variables,
-  samples and images.
-- **[Template context](context.md)** for the values in scope while rendering.
-- **[Contest statements](contest.md)** for the two problem templates, the join
-  and the `documents`.
-- **[Tutorials](tutorials.md)** for editorials, which are the same model in a
-  separate list.
+<div class="grid cards" markdown>
+
+-   :fontawesome-solid-pen: **Write your statement**
+
+    ---
+
+    The source side, {{rbxtex}}-first: blocks, constraints pulled from `vars`,
+    sample explanations and images.
+
+    [:octicons-arrow-right-24: Writing statements](/setters/statements/writing)
+
+-   :fontawesome-solid-code: **Look up what's in scope**
+
+    ---
+
+    Every value a statement or a template can reach: the `params`, `vars`,
+    `problem` and `contest` namespaces, the per-sample handles and the filters.
+
+    [:octicons-arrow-right-24: Template context](/setters/statements/context)
+
+-   :fontawesome-solid-file-pdf: **Build the contest book**
+
+    ---
+
+    The two problem templates, the `(language, variant)` join, and the cover
+    pages and infosheets that never join a problem.
+
+    [:octicons-arrow-right-24: Contest statements](/setters/statements/contest)
+
+-   :fontawesome-solid-lightbulb: **Write the editorial**
+
+    ---
+
+    Tutorials are the same model in a separate list. Here is what carries over
+    and the one thing that doesn't.
+
+    [:octicons-arrow-right-24: Tutorials](/setters/statements/tutorials)
+
+</div>
