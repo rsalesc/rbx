@@ -29,6 +29,16 @@ Only the files required for the `CommandPane` terminal widget are included:
   `virtual_size` on a write, so a resize that reflows the buffer with nothing written
   afterwards -- a command that already finished -- leaves the extents describing the old
   fold count and an anchored terminal scrolls past the end of its own output.
+- `ansi/_ansi.py`, `widgets/terminal.py`: the cursor is positioned in **cells**, while lines
+  are stored as **characters** -- and a CJK ideograph or an emoji is one character and two
+  cells wide. Upstream uses `cursor_offset` directly as an index, so any program that
+  positions the cursor by column on a line holding wide characters (a `\r` redraw, a
+  progress bar, `ESC[nG`) lands at the wrong place: the gap gets padded with spaces that
+  were never printed, or a character that was printed gets eaten. `cell_to_index`,
+  `cell_span` and `index_to_cell` convert between the two spaces, and `Buffer.cursor`,
+  `Buffer.update_cursor`, `TerminalState.get_cursor_position` (replacing
+  `get_cursor_line_offset`), content writes, `ECH`/`DCH`, `_reflow` and the cursor
+  rendering all go through them. `cursor_offset` is now documented as a cell column.
 - `command_pane.py`: `CommandPane` takes an optional `get_fallback_dimensions` callable,
   used when its own region is zero-sized (a hidden pane), and exposes
   `refresh_terminal_size()` so an owner can re-apply the size to a pane that gets no

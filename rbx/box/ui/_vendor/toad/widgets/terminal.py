@@ -384,9 +384,13 @@ Tap escape *twice* to exit.
             and state.show_cursor
             and buffer.cursor_line == y - buffer_offset
         ):
-            if buffer.cursor_offset >= len(line):
-                line = line.pad_right(buffer.cursor_offset - len(line) + 1)
-            line_cursor_offset = buffer.cursor_offset
+            # The cursor is a cell column; the line is indexed by character.
+            line_cursor_offset, pad_cells = ansi.cell_to_index(
+                line.plain, buffer.cursor_offset
+            )
+            if pad_cells or line_cursor_offset >= len(line):
+                line = line.pad_right(pad_cells + 1)
+                line_cursor_offset += pad_cells
             line = line.stylize(
                 self.CURSOR_STYLE, line_cursor_offset, line_cursor_offset + 1
             )
