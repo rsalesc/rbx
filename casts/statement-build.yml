@@ -1,0 +1,13 @@
+fixture: statement-contest
+title: Building a problem statement
+width: 100
+height: 30
+
+instructions:
+  - cd A && rbx statements build
+  - !Wait 3s
+
+expect_contains:
+  - built successfully
+  - statement-en.pdf
+  - statement-pt.pdf

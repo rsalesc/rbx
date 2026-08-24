@@ -1,0 +1,32 @@
+---
+name: "sample-contest"
+titles:
+  en: "Sample Contest"
+  pt: "Contest de Exemplo"
+
+problems:
+  - short_name: "A"
+  - short_name: "B"
+
+# Task sheets, one per language, built with `rbx contest st b`.
+statements:
+  - name: "main-en"
+    language: "en"
+    file: "statements/problem-sheet.rbx.tex"
+    standaloneProblemTemplate: "statements/problem.rbx.tex"
+    contestProblemTemplate: "statements/problem-fragment.rbx.tex"
+  - name: "main-pt"
+    language: "pt"
+    extends: "main-en"
+    file: "statements/problem-sheet.rbx.tex"
+
+# Information sheet: a per-problem limits table (never joins problems).
+documents:
+  - name: "info-en"
+    language: "en"
+    file: "statements/info.jinja.tex"
+    type: "JinjaTeX"
+
+vars:
+  year: 2026
+  date: "2026-08-24"

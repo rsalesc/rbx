@@ -1,0 +1,43 @@
+name: graph-path
+timeLimit: 1000
+memoryLimit: 256
+
+titles:
+  en: "Graph path"
+  pt: "Caminho no grafo"
+
+vars:
+  N:
+    min: 2
+    max: 1000
+
+validator:
+  path: 'validator.cpp'
+
+checker:
+  path: 'checker.cpp'
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+
+testcases:
+  - name: samples
+    testcaseGlob: tests/samples/*.in
+  - name: main
+    generatorScript:
+      path: tests/main.txt
+
+
+statements:
+  - language: en
+    file: statement/statement-en.rbx.tex
+    params:
+      show_limits: true
+  - language: pt
+    extends: en
+    file: statement/statement-pt.rbx.tex

@@ -1,0 +1,12 @@
+%% Shared editorial body (title + solution), included by the standalone and
+%% in-contest editorial templates.
+\includeProblem
+%- if problem.short_name is defined
+	[\VAR{problem.short_name}]
+%- endif
+{\VAR{problem.title | escape}}{
+	\subsection*{\strSolution}
+	%- if problem.blocks.legend is defined
+		\VAR{problem.blocks.legend}
+	%- endif
+}

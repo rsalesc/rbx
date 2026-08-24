@@ -249,13 +249,114 @@ Reach for these — they are the connective tissue that makes the voice recogniz
 
 ---
 
-## 10. DO / DON'T checklist
+## 10. Page architecture (feature-guide register)
+
+Every hand-written feature guide is built from the same skeleton. Follow it.
+
+```
+# <Feature>
+
+<definition sentence>
+<frustration paragraph: the concrete pain this feature removes>
+<what we'll cover, in reading order>
+
+## Motivational problem            <- one running example for the whole page
+## <the happy path, 2-4 sections>  <- the 80% case, built up incrementally
+## <extra feature>                 <- each optional capability, one ## each
+## <extra feature>
+## <pointer onward>
+```
+
+**The running example is the page's spine.** `verification/validators.md` opens
+with "Motivational problem" (a connected-graph problem) and every snippet down
+the page is that same problem, growing. `grading/checkers.md`,
+`custom-checker-walkthrough.md` and `stress-testing.md` do the same. A page that
+switches example between sections makes the reader re-orient each time.
+
+Where a page can reuse *another* page's running example, it should. The
+statement guide writes the statement for the very graph problem the validator
+guide validated, so the reader watches one package come together across the
+guide instead of meeting a new toy problem per page.
+
+**Build the happy path up, don't lay it out flat.** The validator page shows a
+validator with hard-coded bounds, then the same validator reading `vars`, then
+the same validator checking connectivity, using `hl_lines` to point at what
+moved. Three passes over one artifact teach more than one finished artifact.
+
+### Extra features get their own `##`, at the end
+
+This is the rule most easily broken and the most valuable. Anything that is not
+part of the 80% path is a **dedicated section, below the happy path**, never a
+parenthesis inside it.
+
+Look at how the hand-written pages end:
+
+| Page | Happy path | Dedicated extras |
+| --- | --- | --- |
+| `running/index.md` | running solutions on the testset | *Running on the judge itself*, *Sharing a report*, *Running tests with custom inputs* |
+| `stress-testing.md` | defining and running a stress test | *Saving a stress test*, *Fuzzing inputs*, *Finding slowest tests*, *Other applications* |
+| `verification/validators.md` | a testlib validator | *Using custom validators*, *Defining additional validators*, *Varying constraints per test group* |
+| `presets/index.md` | creating and using a preset | *Libraries*, *The preset registry*, *Sharing a preset publicly*, *Sharing a preset privately* |
+
+A reader on the happy path can stop at the first extra section and still have a
+working mental model. A reader who came for one flag finds it in the table of
+contents instead of by scanning prose. And when the feature grows a new flag,
+there is an obvious place to put it.
+
+Signs you are sprinkling instead of sectioning: a "note that you can also ..."
+clause, a flag introduced mid-paragraph, or a second YAML key bolted onto a
+snippet that was illustrating something else.
+
+### Naming sections
+
+Sentence case, and name the reader's action rather than the bare noun.
+"Printing constraints from vars" over "Variables". "Sharing a report" over
+"The share flag". Honest questions are also in register ("Why a preset?", "Why
+rbxTeX"). Never Title Case, never "&".
+
+## 11. Recordings
+
+Every feature guide except the statements one had a cast before this guide was
+written, and the pattern is consistent:
+
+- **One cast per command worth watching**, placed immediately after the snippet
+  that introduces the command, never as decoration.
+- The prose says what the command does; the cast shows the output. Don't
+  transcribe the terminal output into prose as well.
+- A cast inside a `!!! tip` is the idiom for a side command the reader can reach
+  for later, as the validators page does with `rbx validate`.
+- Casts are generated artifacts. Add a fixture and a spec under `casts/`, and
+  read `casts/README.md` first.
+
+## 12. Reconciling with the scaffold-docs prose rules
+
+The `scaffold-docs` skill carries a Strunk-and-White prose rubric. It agrees
+with this guide about cutting filler (*just*, *simply*, *actually*, *really*),
+about banning hype adjectives (*powerful*, *seamless*, *effortless*), and about
+never closing a section with a victory lap ("And that's it!", "Now you're ready
+to ..."). Apply all of that.
+
+Two of its rules bend to the house voice:
+
+- **Opinions stay.** The rubric says "do not inject opinion"; this project's
+  docs are openly opinionated, and "we strongly recommend" is the maintainer's
+  main steering device. Keep it.
+- **Em dashes are rationed, not banned.** The hand-written pages use them
+  sparingly. Agent-written prose reaches for one every other sentence, which is
+  the actual tell. When you find one, rewrite the sentence rather than swapping
+  in a comma.
+
+---
+
+## 13. DO / DON'T checklist
 
 **DO**
 - DO open a concept page with a one-sentence definition, then a "why you should care" motivation grounded in a concrete frustration.
 - DO introduce a concept before you use it — define a term at first use, or defer it (with a forward link) to the page that owns it. Never forward-reference a mechanism the reader hasn't met.
 - DO reuse the *"X is a concept introduced by testlib to …"* formula for testlib-derived features.
 - DO establish a single running "Motivational problem" and teach the whole page against it.
+- DO give every optional capability its own `##` section, below the happy path, instead of sprinkling it through the main narrative (see section 10).
+- DO add a cast for any command worth watching, right after the snippet that introduces it.
 - DO write section headings in **sentence case**, favoring gerunds ("Defining …", "Writing …") and honest questions ("Why a preset?", "What about the outputs?").
 - DO address the reader as **"you"** for their actions and use **"let's"/"we'll"** for the shared walkthrough.
 - DO be openly opinionated — "we strongly recommend", "we highly recommend", and occasionally a blunt "**Please**".

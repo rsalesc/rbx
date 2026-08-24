@@ -1,0 +1,15 @@
+fixture: statement-contest
+title: Building the contest book
+width: 100
+height: 30
+
+instructions:
+  - rbx contest statements build
+  - !Wait 3s
+
+expect_contains:
+  - Building statement for problem
+  - Built statements
+  - main-en.pdf
+  - main-pt.pdf
+  - info-en.pdf
