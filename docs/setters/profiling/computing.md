@@ -114,5 +114,6 @@ wall limit derived too tightly from the CPU limit produces time-limit verdicts t
 to do with the solution.
 
 {{rbx}} derives it from the CPU limit as `a * x + b`, set environment-wide and overridable per
-language, both when judging locally and when packaging for {{boca}}. The [Environment
+language. It applies when judging locally and when packaging, so a package carries the same
+allowance you tested against. The [Environment
 reference](../reference/environment/#wall-time-limits) has the fields.

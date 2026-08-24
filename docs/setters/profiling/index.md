@@ -5,8 +5,8 @@ those measurements into a time limit for the problem.
 
 Picking that number by hand is guessing. Too generous and the quadratic solution you wrote the
 problem to reject sneaks through; too tight and a correct solution in Python fails on a judge
-whose machine is slower than yours. And it is not one number: the same problem gets a different
-answer on your laptop, on {{boca}}, and on the judge park the contest actually runs on.
+whose machine is slower than yours. And it is not one number: the same problem deserves a
+different answer on your laptop and on each judge it ships to.
 
 {{rbx}} measures instead. You run one command, it times your solutions, applies the rules your
 environment configures, and writes the result to a **limits profile** — a file you can keep one
@@ -71,8 +71,8 @@ rbx time -p boca   # (1)!
 rbx run -p boca
 ```
 
-1. The {{boca}} packager **requires** a profile called `boca`, and refuses to package without
-   one. See [Profiles and packaging](profiles.md#profiles-and-packaging).
+1. A packager looks for the profile named after it, so this is the one `rbx package boca` will
+   use. See [Profiles and packaging](profiles.md#profiles-and-packaging).
 
 ## Where to go next
 

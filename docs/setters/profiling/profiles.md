@@ -5,8 +5,8 @@ memory limit, and any per-language adjustments to them. Profiles live in `.limit
 named, so a problem can carry several at once.
 
 They exist because one problem does not have one time limit. The judge park the contest runs on
-is not your laptop, and {{boca}} is neither. Keeping the limits *out* of `problem.rbx.yml` and
-in a file per target lets you tune each one without the others moving.
+is not your laptop, and the judge you package for is neither. Keeping the limits *out* of
+`problem.rbx.yml` and in a file per target lets you tune each one without the others moving.
 
 ## What a profile is
 
@@ -22,8 +22,8 @@ my-problem/
 ```
 
 1. The default. `rbx run` uses this one unless told otherwise.
-2. What the {{boca}} packager looks for. The name is not a convention you chose — see
-   [Profiles and packaging](#profiles-and-packaging).
+2. Named for a packager rather than for you — see [Profiles and
+   packaging](#profiles-and-packaging).
 
 Estimate one, and read it back:
 
@@ -112,8 +112,8 @@ rbx package boca
 
 !!! warning
 
-    The {{boca}} packager **requires** the `boca` profile. Without it the packager stops and
-    tells you to run `rbx time -p boca` first, rather than shipping a package with limits
+    A packager whose judge enforces limits **requires** its profile. Without one it stops and
+    names the command that would create it, rather than shipping a package with limits
     measured for something else.
 
 ## Inheriting from the package
