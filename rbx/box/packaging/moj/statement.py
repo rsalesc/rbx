@@ -16,7 +16,7 @@ facts worth carrying in your head:
 """
 
 import pathlib
-from typing import Dict, Mapping, Optional
+from typing import Callable, Dict, Mapping, Optional
 
 import typer
 
@@ -43,6 +43,57 @@ _HEADINGS = {
 # MOJ is a Brazilian judge and its own tooling is Portuguese, so an
 # unrecognized language falls back to it rather than to English.
 _DEFAULT_HEADING_LANGUAGE = 'pt'
+
+# How the statement's figures travel to MOJ. A code-level switch on purpose: both
+# shapes are valid packages, MOJ shows the reader the same statement either way,
+# and nothing about a problem says which one it wants -- so this is a decision
+# about the packager, not a knob for `problem.rbx.yml`.
+#
+# `False` (the default) ships the image files beside the documents and leaves the
+# references pointing at them:
+#
+#     docs/enunciado.md      ![](assets/fig.png)
+#     docs/assets/fig.png
+#
+# which is the shape mojtools was built around -- `render-statement.sh` passes
+# `--resource-path=<pkg>/docs` precisely so pandoc can find them, and it is the
+# renderer, not rbx, that base64-embeds each figure into the HTML a student
+# reads. Keeping the files also keeps them inspectable in the tarball, keeps the
+# Markdown readable in MOJ's editor, and lets one figure cited twice be sent once.
+#
+# `True` inlines each figure into the document as a `data:` URI and ships no
+# image files at all. The statement then renders identically anywhere pandoc runs
+# -- with no resource path, in a preview, pasted somewhere else entirely -- which
+# is what makes it worth having: it removes the one thing about a MOJ statement
+# that depends on files landing where the renderer expects them. The cost is
+# blunt: base64 is ~4/3 the size, a figure cited from both the body and a note is
+# carried twice, and the raw Markdown stops being readable by a human.
+INLINE_IMAGES_AS_BASE64 = False
+
+
+def _image_rewriter(
+    docs_root: Optional[pathlib.Path],
+) -> Optional[Callable[[str], str]]:
+    """The image-reference rewrite these documents need, if any.
+
+    ``None`` -- the untouched references -- whenever the packager is shipping the
+    files, and also whenever the caller passed no ``docs_root``: inlining reads
+    the *materialized* figures, so a caller with no directory to read them from
+    could only be handed a document citing images it never shipped.
+    """
+    if not INLINE_IMAGES_AS_BASE64 or docs_root is None:
+        return None
+    return statement_assets.base64_inliner(docs_root)
+
+
+def discard_inlined_assets(bundle: export.StatementBundle, root: pathlib.Path) -> None:
+    """Drop the materialized asset files once the documents carry them inline.
+
+    A no-op in the shipping-files mode, so the packager may call it
+    unconditionally and this module stays the only place that reads the switch.
+    """
+    if INLINE_IMAGES_AS_BASE64:
+        statement_assets.discard_assets(bundle, root)
 
 
 def _headings(language: Optional[str]) -> Dict[str, str]:
@@ -133,12 +184,16 @@ def moj_layout() -> statement_assets.RasterizingLayout:
     )
 
 
-def _convert(blocks: Mapping[str, str], name: str) -> str:
+def _convert(
+    blocks: Mapping[str, str],
+    name: str,
+    rewrite_image_url: Optional[Callable[[str], str]] = None,
+) -> str:
     """Convert one block to Markdown and check it against MOJ's gate."""
     content = (blocks.get(name) or '').strip()
     if not content:
         return ''
-    markdown = tex_to_markdown(content).strip()
+    markdown = tex_to_markdown(content, rewrite_image_url=rewrite_image_url).strip()
     check_moj_gate(markdown, block_name=name)
     return markdown
 
@@ -148,24 +203,32 @@ def build_enunciado(
     *,
     language: Optional[str],
     title: Optional[str] = None,
+    docs_root: Optional[pathlib.Path] = None,
 ) -> str:
     """Render `docs/enunciado.md` from a bundle's blocks.
 
     `title` is accepted and deliberately unused: it documents that the caller's
     title has a home (`display_title` in `.moj-meta.json`) and that this
     document is not it.
+
+    `docs_root` is the materialized `docs/` the body's image references resolve
+    against, and is what `INLINE_IMAGES_AS_BASE64` needs to read the figures.
+    Optional so a caller with no package on disk -- a test converting blocks, a
+    statement with no images -- keeps working; without it the references are left
+    as the bundle wrote them whatever the switch says.
     """
     del title  # See the docstring: MOJ injects the <h1> from display_title.
 
     headings = _headings(language)
-    parts = [_convert(blocks, 'legend')]
+    rewrite = _image_rewriter(docs_root)
+    parts = [_convert(blocks, 'legend', rewrite)]
 
     # Emitted unconditionally, empty block or not: these two headings ARE the
     # release gate, grepped out of the raw file by validate-problem.sh.
-    parts.append(f'## {headings["input"]}\n\n{_convert(blocks, "input")}')
-    parts.append(f'## {headings["output"]}\n\n{_convert(blocks, "output")}')
+    parts.append(f'## {headings["input"]}\n\n{_convert(blocks, "input", rewrite)}')
+    parts.append(f'## {headings["output"]}\n\n{_convert(blocks, "output", rewrite)}')
 
-    notes = _convert(blocks, 'notes')
+    notes = _convert(blocks, 'notes', rewrite)
     if notes:
         parts.append(f'## {headings["notes"]}\n\n{notes}')
 
@@ -186,15 +249,25 @@ def sample_note_name(index: int) -> str:
     )
 
 
-def build_notes(explanations: Mapping[int, str]) -> Dict[str, str]:
-    """Render each sample explanation, keyed by the sample's test name."""
+def build_notes(
+    explanations: Mapping[int, str],
+    *,
+    docs_root: Optional[pathlib.Path] = None,
+) -> Dict[str, str]:
+    """Render each sample explanation, keyed by the sample's test name.
+
+    `docs_root` is `docs/`, exactly as in `build_enunciado` -- a note's images
+    resolve against it and not against `docs/notes/`, where the file itself
+    lands; see `moj_layout`.
+    """
     notes: Dict[str, str] = {}
+    rewrite = _image_rewriter(docs_root)
     for index in sorted(explanations):
         content = (explanations[index] or '').strip()
         if not content:
             continue
         name = sample_note_name(index)
-        markdown = tex_to_markdown(content).strip()
+        markdown = tex_to_markdown(content, rewrite_image_url=rewrite).strip()
         check_moj_gate(markdown, block_name=f'explanation for {name}')
         notes[name] = markdown + '\n'
     return notes

@@ -15,10 +15,11 @@ The conversion is split in two, and the split is load-bearing:
 - ``rasterize_pdf_assets`` does the actual conversion, after materialization.
 """
 
+import base64
 import dataclasses
 import pathlib
 import subprocess
-from typing import List
+from typing import Callable, List
 
 import typer
 
@@ -126,6 +127,91 @@ def rasterize_pdf_assets(bundle: export.StatementBundle, root: pathlib.Path) -> 
         # Shipping it would mean a broken <img> in the rendered statement.
         if dest != produced and dest.is_file():
             dest.unlink()
+
+
+# --- Base64 inlining -------------------------------------------------------
+#
+# The alternative to shipping the image files beside the documents: the
+# statement carries every figure inside itself, as a `data:` URI, and
+# `docs/assets` (and friends) are not written at all. Which one a package gets
+# is `statement.INLINE_IMAGES_AS_BASE64`; the argument for each is there.
+
+
+# The suffixes a statement figure can reach MOJ with, mapped to the MIME type the
+# data URI must declare. Spelled out rather than read off `mimetypes`, whose table
+# is platform- and registry-dependent (`.svg` in particular is routinely missing
+# on a bare container) -- the set is small and closed anyway, since PDFs have
+# already been rasterized by the time inlining runs.
+_MIME_TYPES = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+    '.webp': 'image/webp',
+    '.bmp': 'image/bmp',
+    '.tif': 'image/tiff',
+    '.tiff': 'image/tiff',
+}
+
+_DEFAULT_MIME_TYPE = 'application/octet-stream'
+
+
+def data_uri(path: pathlib.Path) -> str:
+    """The ``data:`` URI carrying ``path``'s bytes."""
+    mime = _MIME_TYPES.get(path.suffix.lower(), _DEFAULT_MIME_TYPE)
+    payload = base64.b64encode(path.read_bytes()).decode('ascii')
+    return f'data:{mime};base64,{payload}'
+
+
+def base64_inliner(base: pathlib.Path) -> Callable[[str], str]:
+    """A ``rewrite_image_url`` that replaces a reference with the file's own bytes.
+
+    ``base`` is the directory the document's references resolve against -- for
+    every MOJ document the materialized ``docs/``, since that is what
+    ``gen-problem-json.sh`` hands pandoc as ``--resource-path``. So this must run
+    AFTER ``materialize`` and ``rasterize_pdf_assets``: what it reads is the
+    placed file, which for a TikZ figure is the rasterized PNG rather than the
+    PDF the statement was authored against.
+
+    A reference that does not name a file under ``base`` is left exactly as it
+    is -- an absolute URL, an already-inlined ``data:`` URI, a path that escapes
+    ``base`` -- rather than being reported: none of them is this function's to
+    rewrite, and a broken local reference is already MOJ's renderer's to
+    complain about, in the same words it would have used without inlining.
+    """
+
+    def rewrite(url: str) -> str:
+        if not url or '://' in url or url.startswith('data:'):
+            return url
+        target = base / url
+        if not target.is_file():
+            return url
+        return data_uri(target)
+
+    return rewrite
+
+
+def discard_assets(bundle: export.StatementBundle, root: pathlib.Path) -> None:
+    """Remove every materialized asset under ``root``, and the dirs left empty.
+
+    The other half of inlining: the bytes now live inside the documents, so the
+    files beside them are dead weight in the tarball. Only the destinations the
+    bundle itself chose are removed, and a directory goes only if it comes out
+    empty, so nothing else the packager wrote is in the blast radius.
+    """
+    directories = set()
+    for bundled in bundle.assets:
+        dest = root / bundled.dest
+        if dest.is_file():
+            dest.unlink()
+        directories.add(dest.parent)
+
+    # Deepest first, so a parent emptied by its own children also goes.
+    for directory in sorted(directories, key=lambda d: len(d.parts), reverse=True):
+        while directory != root and directory.is_dir() and not any(directory.iterdir()):
+            directory.rmdir()
+            directory = directory.parent
 
 
 def _fail(bundled: export.BundledAsset, result: subprocess.CompletedProcess) -> None:

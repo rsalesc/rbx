@@ -721,10 +721,14 @@ class MojPackager(BasePackager):
         rasterize_pdf_assets(bundle, into_path)
 
         try:
+            # `docs_root` is what an inlining build reads the figures out of, so
+            # both calls come after materialize + rasterize above.
             body = moj_statement.build_enunciado(
-                bundle.blocks, language=main_statement.language
+                bundle.blocks,
+                language=main_statement.language,
+                docs_root=docs_path,
             )
-            notes = moj_statement.build_notes(bundle.explanations)
+            notes = moj_statement.build_notes(bundle.explanations, docs_root=docs_path)
         except MojGateError as e:
             console.console.print(
                 f'[error]Cannot package this statement for MOJ.[/error]\n'
@@ -737,6 +741,10 @@ class MojPackager(BasePackager):
             note_path = into_path / moj_statement.note_path(name)
             note_path.parent.mkdir(parents=True, exist_ok=True)
             note_path.write_text(content)
+
+        # Last, and only in the inlining mode: the documents that were just
+        # written carry the figures themselves, so the files are dead weight.
+        moj_statement.discard_inlined_assets(bundle, into_path)
 
     def _write_conf(self, into_path: pathlib.Path) -> None:
         pkg = package.find_problem_package_or_die()
