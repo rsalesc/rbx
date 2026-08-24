@@ -559,6 +559,30 @@ npm run watch      # esbuild, incremental
 Then press <kbd>F5</kbd> to launch an Extension Development Host, and open a
 folder containing a `problem.rbx.yml`.
 
+From any terminal, `./run-extension.sh` in the repository root does the same
+without the editor being the one you launch from -- it bundles the extension
+and starts a development host on it:
+
+```bash
+./run-extension.sh                     # this checkout, in VS Code
+./run-extension.sh -e cursor           # ... in Cursor
+./run-extension.sh -e code -e cursor   # ... in both at once
+```
+
+Run it from a problem directory and the host opens that problem. It takes the
+worktree, branch or pull request URL `./activate-venv.sh` takes, in the same
+way, so the branch you are reviewing runs in one command:
+
+```bash
+./run-extension.sh https://github.com/rsalesc/rbx/pull/723 -e cursor
+```
+
+It always builds first, since a development host pointed at a checkout that was
+never bundled only fails later, inside the editor, as a failed activation. Pass
+`--no-build` when `npm run watch` is already doing that for you, `--clean` to
+disable your other extensions in the host, and `--print` to see the command
+instead of running it.
+
 ```bash
 npm run typecheck  # tsc --noEmit
 npm test           # node --test, over esbuild-compiled sources
