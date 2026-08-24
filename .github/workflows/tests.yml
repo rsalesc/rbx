@@ -50,7 +50,7 @@ jobs:
           distribution: "zulu"
           java-version: "21"
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y libasan8
+        run: sudo apt-get update && sudo apt-get install -y libasan8 pandoc
       - uses: jdx/mise-action@v2
         with:
           version: 2024.12.14 # [default: latest] mise version to install

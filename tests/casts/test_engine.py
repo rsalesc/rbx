@@ -320,6 +320,13 @@ def test_a_speed_token_scales_only_the_keys_that_follow_it(tmp_path: pathlib.Pat
                     )
                 ],
                 type_speed='0ms',
+                # Nothing is echoed after the last dwell -- Linux's line
+                # discipline does not echo the EOF character, and macOS's
+                # `^D` echo is the only reason this used to measure anything
+                # there. A cast's duration is its last event, so without an
+                # `end_pause` to close it out both recordings would end at the
+                # typed command and every dwell would be invisible.
+                end_pause='10ms',
                 # Before the token is understood it is typed at `cat`, whose
                 # next `^D` then flushes that text instead of closing the
                 # stream -- so an unimplemented feature hangs. Fail fast.
@@ -337,6 +344,7 @@ def test_a_speed_token_scales_only_the_keys_that_follow_it(tmp_path: pathlib.Pat
                     )
                 ],
                 type_speed='0ms',
+                end_pause='10ms',
             ),
             tmp_path,
         )
