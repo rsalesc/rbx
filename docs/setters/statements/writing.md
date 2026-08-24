@@ -188,24 +188,6 @@ So the constraints line above reads as:
 $\VAR{N.min} \le N \le \VAR{N.max}$
 ```
 
-### Reserved variable names
-
-Because vars share a namespace with {{rbx}}'s own template names, a **top-level**
-var may not be named after one of them. Using one of these names in `vars` is an
-error when the package loads:
-
-```
-blocks, contest, deps, extraValidators, generatorScript, generators, groups,
-import_dir, import_file, keyed_languages, lang, languages, limits,
-model_solution, name, outputValidators, params, problem, problems, profiles,
-samples, score, short_name, solutionVisualizer, subgroups, testcaseGlob,
-testcases, title, validator, vars, visualizer
-```
-
-Only the top-level name matters, so nesting one level down is always a valid
-fix: `score` is rejected, `points.score` is fine and reads as
-`\VAR{points.score}`.
-
 ## Branching and looping in a statement
 
 Everything in an {{rbxtex}} file is LaTeX-flavored {{Jinja2}}, so you get more

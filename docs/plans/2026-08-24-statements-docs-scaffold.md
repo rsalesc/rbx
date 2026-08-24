@@ -34,9 +34,10 @@ validator enforces.
    the main narrative any more.
 3. **Casts.** The statements pages were the only feature guide with no terminal
    recording. `rbx st b` and `rbx contest st b` now get one each.
-4. **Facts added from `main`** that the first pass predated: the `vars` shorthand
-   and its reserved names, per-testgroup vars in a subtasks table, and
-   `--partial`.
+4. **Facts added from `main`** that the first pass predated: the `vars` shorthand,
+   per-testgroup vars in a subtasks table, and `--partial`. The reserved-name
+   list that ships with the shorthand was left out on purpose: it is an obscure
+   load-time error, not something a setter needs while writing a statement.
 5. **Prose pass** against `scaffold-docs/references/prose-style.md`: filler words
    cut, closing victory laps cut, em dashes rationed, hype removed. House voice
    (`docs/plans/docs-writing-style-guide.md`) wins wherever the two conflict.
@@ -72,7 +73,6 @@ Orientation page. Definition, the model, the commands, then the optional flags.
 | Blocks | model |
 | Printing constraints from `vars` | happy path |
 | Shorthand for vars | **extra** |
-| Reserved variable names | **extra** |
 | Branching and looping in a statement | **extra** |
 | Explaining a sample | **extra** |
 | Shipping images and other resources | **extra** |
