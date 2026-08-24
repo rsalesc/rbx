@@ -3,27 +3,32 @@
 Every value a statement prints, and every value the [template](contest.md) that
 wraps it reaches for, comes from one of a handful of **namespaces** exposed to
 `\VAR{...}` and to the `%- ...` {{Jinja2}} statements. This page is the
-reference for what lives in each one, and for why they stay separate.
+reference for what lives in each one.
 
-## Why the namespaces don't merge
+## Where a value comes from
 
-Here is the pain this design spares you. Older versions of {{rbx}} collapsed
-everything into one merged `vars`: your problem's data, the template's knobs,
-the contest's metadata. That is convenient right up until two of those sources
-want the same key. One of them silently wins, and you are left debugging a
-statement that prints the wrong number with no way to tell which source produced
-it.
+Three namespaces carry almost everything you will print, and each answers a
+different question:
 
-So they no longer merge. `params`, `vars` and `contest` are **three distinct
-namespaces**, each source keeps its own name, and nothing is copied between
-them. Reaching a value means knowing which namespace it belongs to:
+- **`params`** holds the presentation knobs of the statement entry being
+  rendered.
+- **`vars`** holds the package's data: the problem's `vars` in a problem
+  render, the contest's in a contest join.
+- **`contest`** holds the contest's metadata, with the contest's own variables
+  one level down, under `contest.vars`.
+
+Each namespace keeps its own names, so a key in one never shadows a key in
+another. Reaching a value means knowing which namespace it belongs to:
 
 ```latex
 \VAR{params.show_limits}   %# the statement's own param
 \VAR{vars.author}          %# a problem/package var
 \VAR{contest.title}        %# contest metadata
-\VAR{contest.vars.year}    %# a contest var, dotted and separate
+\VAR{contest.vars.year}    %# a contest var
 ```
+
+That costs you a prefix, and it buys a statement whose numbers you can trace: a
+value prints wrong, and the namespace in front of it says which file to open.
 
 The exact set of top-level names depends on **what is being rendered**:
 
@@ -82,18 +87,16 @@ is a presentation knob:
     ```
 
 Notice that `author` and `show_limits` sit in the *same* `problem.rbx.yml`, and
-the template reaches them as `vars.author` and `params.show_limits`, never as
-one flattened blob.
+the template reaches each one under the namespace that owns it: `vars.author`
+and `params.show_limits`.
 
-`contest` is a separate, dotted namespace, and it is never folded into the
-top-level `vars`. A contest variable is `\VAR{contest.vars.year}`; the contest
-title is `\VAR{contest.title}`. Top-level `vars` still means the *problem's*
-vars in a problem render, so in a single render these two point at
-different values:
+The contest's variables sit one level down, under `contest.vars`, while
+top-level `vars` means the *problem's* vars in a problem render. So these two
+point at different values in a single render:
 
 ```latex
 \VAR{vars.author}        %# the problem's var
-\VAR{contest.vars.year}  %# a contest var, never merged into vars
+\VAR{contest.vars.year}  %# a contest var
 ```
 
 ## The `problem` namespace
