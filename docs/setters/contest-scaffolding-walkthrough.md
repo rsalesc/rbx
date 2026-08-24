@@ -252,14 +252,14 @@ a judge can serve.
 
 <div class="grid cards" markdown>
 
--   :fontawesome-solid-rocket: **Package and ship a problem**
+-   :fontawesome-solid-clock: **Measure the limits for real**
 
     ---
 
-    Continue the track: profile a time limit for the judge's hardware, build a package and
-    upload it.
+    Continue the track: replace every guessed time limit in that summary table with one
+    measured for the judge, across the whole contest.
 
-    [:octicons-arrow-right-24: Packaging a problem](/setters/packaging-walkthrough)
+    [:octicons-arrow-right-24: Profiling time limits](/setters/contest-profiling-walkthrough)
 
 -   :fontawesome-solid-file-lines: **Build the task sheet**
 
