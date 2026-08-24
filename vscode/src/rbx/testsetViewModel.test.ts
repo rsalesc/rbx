@@ -339,3 +339,57 @@ test('every testcase row opens the two panes, and no group row opens anything', 
     );
   }
 });
+
+
+/** TESTSET with `main/0`'s extras replaced, which is the row these two ask about. */
+function withMainTest(over: Partial<TestsetTest>): Testset {
+  return {
+    ...TESTSET,
+    tests: TESTSET.tests.map((t) =>
+      t.group === 'main' && t.index === 0 ? testFor(over) : t,
+    ),
+  };
+}
+
+test('the card offers both visualization channels, not just the input one', () => {
+  // The card carried `visualization.input` alone, so a package declaring a
+  // `solutionVisualizer` showed two pictures in the panel while the card could
+  // reach only one of them.
+  const card = rowById(
+    buildTestsetViewModel(
+      withMainTest({
+        visualization: {
+          input: 'build/tests/main/visualization/1-gen-000.svg',
+          output: 'build/tests/main/output_visualization/1-gen-000.svg',
+        },
+      }),
+    ).rows,
+    'main::1-gen-000',
+  ).card;
+  assert.strictEqual(card?.visualization, 'build/tests/main/visualization/1-gen-000.svg');
+  assert.strictEqual(
+    card?.answerVisualization,
+    'build/tests/main/output_visualization/1-gen-000.svg',
+  );
+});
+
+test('an answer visualization alone still marks the row as visualized', () => {
+  // The mark says a picture exists; which channel it is belongs to the card.
+  const row = rowById(
+    buildTestsetViewModel(
+      withMainTest({
+        visualization: { output: 'build/tests/main/output_visualization/1-gen-000.svg' },
+      }),
+    ).rows,
+    'main::1-gen-000',
+  );
+  assert.deepStrictEqual(
+    row.flags.map((flag) => flag.kind),
+    ['visualization'],
+  );
+  assert.strictEqual(row.card?.visualization, undefined);
+  assert.strictEqual(
+    row.card?.answerVisualization,
+    'build/tests/main/output_visualization/1-gen-000.svg',
+  );
+});

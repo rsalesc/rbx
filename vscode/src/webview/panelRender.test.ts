@@ -15,6 +15,7 @@ import {
   renderPanel,
   renderStats,
   renderTabs,
+  visibleCells,
 } from './panelRender';
 
 // Fixtures are written as view models rather than built from a `Testset`: the
@@ -26,6 +27,7 @@ function cell(over: Partial<GalleryCell> & Pick<GalleryCell, 'id'>): GalleryCell
     group: 'main',
     stem: '000',
     channel: 'input',
+    channelName: 'input',
     path: 'build/tests/main/visualization/000.svg',
     kind: 'image',
     label: '000',
@@ -53,8 +55,79 @@ test('an image cell is a lazy img, and its caption names the testcase', () => {
   );
   assert.match(html, /<figure class="cell" data-id="main::000::input"/);
   assert.match(html, /<img class="cell-image" loading="lazy" src="https:\/\/webview\/000.svg"/);
-  assert.match(html, /<figcaption class="cell-label">000<\/figcaption>/);
+  assert.match(html, /<span class="cell-stem">000<\/span>/);
   assert.ok(!html.includes('<iframe'), 'an image must not be framed');
+});
+
+test('a cell activates its own picture, not the testcase behind it', () => {
+  // The bug this pins: the cell posted `openTestcase`, so clicking a picture
+  // opened two text editors and never the picture.
+  const html = renderGallery(
+    model({ gallery: { cells: [cell({ id: 'main::000::input' })], withoutVisualization: 0 } }),
+    GALLERY_STATE,
+    { 'main::000::input': 'https://webview/000.svg' },
+  );
+  assert.match(html, /<figure class="cell"[^>]*data-open="main::000::input"/);
+  // The testcase is still reachable, but as its own named affordance.
+  assert.match(html, /<button class="cell-testcase" data-testcase="main::000::input"/);
+});
+
+test('every cell says which channel it is, including the input ones', () => {
+  const html = renderGallery(
+    model({
+      gallery: {
+        cells: [
+          cell({ id: 'main::000::input' }),
+          cell({
+            id: 'main::000::output',
+            channel: 'output',
+            channelName: 'answer',
+            path: 'build/tests/main/output_visualization/000.svg',
+          }),
+        ],
+        withoutVisualization: 0,
+      },
+    }),
+    GALLERY_STATE,
+    {},
+  );
+  // Marking only the odd one out is what made the grid unreadable: an input
+  // cell was defined by the absence of a badge.
+  assert.match(html, /<span class="cell-channel cell-channel-input">input<\/span>/);
+  assert.match(html, /<span class="cell-channel cell-channel-output">answer<\/span>/);
+});
+
+test('the channel filter narrows the gallery to one series', () => {
+  const cells = [
+    cell({ id: 'main::000::input' }),
+    cell({ id: 'main::000::output', channel: 'output', channelName: 'answer' }),
+  ];
+  const gallery = { cells, withoutVisualization: 0 };
+  assert.equal(visibleCells(gallery, undefined, undefined).length, 2);
+  assert.equal(visibleCells(gallery, undefined, 'output').length, 1);
+  assert.equal(visibleCells(gallery, undefined, 'output')[0].channel, 'output');
+  // Still ANDs with the group filter rather than replacing it.
+  assert.equal(visibleCells(gallery, 'other', 'output').length, 0);
+});
+
+test('the channel picker is offered only when both channels exist', () => {
+  const onlyInput = model({
+    gallery: { cells: [cell({ id: 'main::000::input' })], withoutVisualization: 0 },
+  });
+  assert.ok(
+    !renderTabs(onlyInput, GALLERY_STATE).includes('id="channel"'),
+    'a picker whose every setting shows the same cells is noise',
+  );
+  const both = model({
+    gallery: {
+      cells: [
+        cell({ id: 'main::000::input' }),
+        cell({ id: 'main::000::output', channel: 'output', channelName: 'answer' }),
+      ],
+      withoutVisualization: 0,
+    },
+  });
+  assert.match(renderTabs(both, GALLERY_STATE), /<select id="channel"/);
 });
 
 test('an html cell is framed with an empty sandbox, and never scripted', () => {

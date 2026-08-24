@@ -16,7 +16,12 @@
  * values reach `model.ts`, which imports Node's `path` and cannot be bundled
  * for a browser. The same rule holds in panelRender.ts.
  */
-import type { PanelTab, PanelUiState, PanelViewModel } from '../rbx/panelViewModel';
+import type {
+  PanelTab,
+  PanelUiState,
+  PanelViewModel,
+  VisualizationChannel,
+} from '../rbx/panelViewModel';
 import { type PanelAssets, renderPanel } from './panelRender';
 
 interface VsCodeApi {
@@ -28,6 +33,7 @@ interface VsCodeApi {
 interface PersistedState {
   readonly tab: PanelTab;
   readonly group?: string;
+  readonly channel?: VisualizationChannel;
   readonly scrollTop: number;
 }
 
@@ -41,16 +47,17 @@ let model: PanelViewModel | undefined;
 let assets: PanelAssets = {};
 let tab: PanelTab = persisted?.tab ?? 'gallery';
 let group: string | undefined = persisted?.group;
+let channel: VisualizationChannel | undefined = persisted?.channel;
 let pendingScrollTop: number | undefined = persisted?.scrollTop;
 
 const panel = document.getElementById('panel') as HTMLElement;
 
 function state(): PanelUiState {
-  return { tab, group };
+  return { tab, group, channel };
 }
 
 function save(): void {
-  vscode.setState({ tab, group, scrollTop: panel.scrollTop });
+  vscode.setState({ tab, group, channel, scrollTop: panel.scrollTop });
 }
 
 function draw(): void {
@@ -80,17 +87,20 @@ panel.addEventListener('click', (event) => {
     draw();
     return;
   }
-  const open = target?.closest('[data-open]') as HTMLElement | null;
-  if (open !== null && open !== undefined) {
-    // The "open in editor" affordance on a visualization the panel refuses to
-    // guess at. A distinct message from a cell click: this one is about the
-    // file, not about the testcase it belongs to.
-    vscode.postMessage({ type: 'openFile', id: open.dataset.open });
+  // Checked before `[data-open]`, because the button lives inside the cell and
+  // the cell now carries `data-open` too -- the inner, more specific intent has
+  // to win the `closest` race.
+  const testcase = target?.closest('[data-testcase]') as HTMLElement | null;
+  if (testcase !== null && testcase !== undefined) {
+    vscode.postMessage({ type: 'openTestcase', id: testcase.dataset.testcase });
     return;
   }
-  const cell = target?.closest('.cell') as HTMLElement | null;
-  if (cell !== null && cell !== undefined) {
-    vscode.postMessage({ type: 'openTestcase', id: cell.dataset.id });
+  const open = target?.closest('[data-open]') as HTMLElement | null;
+  if (open !== null && open !== undefined) {
+    // Activating a picture opens that picture. It used to open the *testcase*,
+    // which is a different file and a surprising answer to clicking an image;
+    // the testcase now has its own button in the caption.
+    vscode.postMessage({ type: 'openFile', id: open.dataset.open });
   }
 });
 
@@ -105,12 +115,20 @@ panel.addEventListener('keydown', (event) => {
   const cell = (event.target as HTMLElement | null)?.closest('.cell') as HTMLElement | null;
   if (cell !== null && cell !== undefined) {
     event.preventDefault();
-    vscode.postMessage({ type: 'openTestcase', id: cell.dataset.id });
+    // Matches the click: the keyboard must not reach a different file than the
+    // pointer does on the same cell.
+    vscode.postMessage({ type: 'openFile', id: cell.dataset.open });
   }
 });
 
 panel.addEventListener('change', (event) => {
   const picker = event.target as HTMLSelectElement | null;
+  if (picker?.id === 'channel') {
+    channel = picker.value === '' ? undefined : (picker.value as VisualizationChannel);
+    save();
+    draw();
+    return;
+  }
   if (picker?.id !== 'group') {
     return;
   }
@@ -153,6 +171,12 @@ window.addEventListener('message', (event: MessageEvent) => {
     const cell = model?.gallery.cells.find((candidate) => candidate.id === message.cellId);
     if (cell !== undefined && cell.group !== group && group !== undefined) {
       group = cell.group;
+    }
+    // A channel filter that hides what was just asked for turns a reveal into
+    // nothing happening, which reads as the panel ignoring the sidebar. The
+    // ask wins over the filter.
+    if (cell !== undefined && channel !== undefined && cell.channel !== channel) {
+      channel = undefined;
     }
     draw();
     const element = document.querySelector(`.cell[data-id="${CSS.escape(message.cellId)}"]`);

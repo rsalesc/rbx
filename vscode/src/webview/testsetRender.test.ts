@@ -217,6 +217,42 @@ test('the card describes the selected testcase and nothing else', () => {
   assert.ok(html.includes('data-action="panel:gallery"'), html);
 });
 
+test('the card offers a button per visualization channel that exists', () => {
+  // An unqualified `visualization` button was wrong twice over on a package
+  // with both channels: it named neither, and it opened only the input one.
+  const both = {
+    ...CASE,
+    card: {
+      ...CASE.card!,
+      visualization: 'build/tests/main/visualization/1-gen-000.svg',
+      answerVisualization: 'build/tests/main/output_visualization/1-gen-000.svg',
+    },
+  };
+  const html = renderTestsetCard({ ...TREE, rows: [both] }, state({ selected: both.id }));
+  assert.ok(html.includes('data-action="rbx.openTestVisualization"'), html);
+  assert.ok(html.includes('data-action="rbx.openTestAnswerVisualization"'), html);
+  assert.ok(html.includes('>input</button>'), html);
+  assert.ok(html.includes('>answer</button>'), html);
+});
+
+test('a testcase with only an answer visualization still gets its button', () => {
+  const answerOnly = {
+    ...CASE,
+    card: {
+      ...CASE.card!,
+      visualization: undefined,
+      answerVisualization: 'build/tests/main/output_visualization/1-gen-000.svg',
+    },
+  };
+  const html = renderTestsetCard(
+    { ...TREE, rows: [answerOnly] },
+    state({ selected: answerOnly.id }),
+  );
+  assert.ok(html.includes('data-action="rbx.openTestAnswerVisualization"'), html);
+  // And no dead button for the channel that produced nothing.
+  assert.ok(!html.includes('data-action="rbx.openTestVisualization"'), html);
+});
+
 test('a rejected testcase card carries the validator and its sentence', () => {
   const html = renderTestsetCard(TREE, state({ selected: REJECTED.id }));
   assert.ok(html.includes('<div class="card-validation hue-red">'), html);

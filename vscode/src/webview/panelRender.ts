@@ -30,14 +30,21 @@ import type {
   PanelUiState,
   PanelViewModel,
   Stats,
+  VisualizationChannel,
 } from '../rbx/panelViewModel';
 import { escapeAttr, escapeHtml } from './render';
 
-/** The cells of one group, or every cell when no group is picked. */
-export function visibleCells(gallery: Gallery, group?: string): readonly GalleryCell[] {
-  return group === undefined
-    ? gallery.cells
-    : gallery.cells.filter((cell) => cell.group === group);
+/** The cells the current group and channel filters leave standing. */
+export function visibleCells(
+  gallery: Gallery,
+  group?: string,
+  channel?: VisualizationChannel,
+): readonly GalleryCell[] {
+  return gallery.cells.filter(
+    (cell) =>
+      (group === undefined || cell.group === group) &&
+      (channel === undefined || cell.channel === channel),
+  );
 }
 
 /**
@@ -48,6 +55,13 @@ export function visibleCells(gallery: Gallery, group?: string): readonly Gallery
  * "checked, and not there".
  */
 export type PanelAssets = Readonly<Record<string, string>>;
+
+/** The channel filter's settings. The empty value is "both". */
+const CHANNEL_OPTIONS: readonly { readonly value: string; readonly label: string }[] = [
+  { value: '', label: 'Input + answer' },
+  { value: 'input', label: 'Input only' },
+  { value: 'output', label: 'Answer only' },
+];
 
 const TABS: readonly { readonly id: PanelUiState['tab']; readonly label: string }[] = [
   { id: 'gallery', label: 'Visualizations' },
@@ -86,9 +100,25 @@ export function renderTabs(model: PanelViewModel, state: PanelUiState): string {
     )
     .join('');
   const disabled = state.tab === 'gallery' ? '' : ' disabled';
+  // Only offered when the package actually produced both kinds. A picker whose
+  // every setting shows the same cells is noise, and on a package with one
+  // visualizer that is exactly what it would be.
+  const channels = new Set(model.gallery.cells.map((cell) => cell.channel));
+  const channelPicker =
+    channels.size < 2
+      ? ''
+      : `<select id="channel" class="group-picker" aria-label="Visualization"${disabled}>` +
+        CHANNEL_OPTIONS.map(
+          ({ value, label }) =>
+            `<option value="${escapeAttr(value)}"` +
+            `${value === (state.channel ?? '') ? ' selected' : ''}>` +
+            `${escapeHtml(label)}</option>`,
+        ).join('') +
+        `</select>`;
   return (
     `<div class="tabs" role="tablist">${tabs}` +
     `<span class="tabs-spacer"></span>` +
+    channelPicker +
     `<select id="group" class="group-picker" aria-label="Group"${disabled}>${options}</select>` +
     `</div>`
   );
@@ -137,7 +167,7 @@ export function renderGallery(
   state: PanelUiState,
   assets: PanelAssets,
 ): string {
-  const cells = visibleCells(model.gallery, state.group);
+  const cells = visibleCells(model.gallery, state.group, state.channel);
   if (cells.length === 0) {
     const scope = state.group === undefined ? 'this testset' : `group ${state.group}`;
     return (
@@ -147,15 +177,27 @@ export function renderGallery(
   }
   const figures = cells
     .map((cell) => {
-      // The whole cell is clickable and the caption states which testcase it
-      // is, so a gallery scanned at a glance still answers "which test is
-      // this" without a hover.
-      const channel = cell.channel === 'output' ? ' <span class="cell-channel">out</span>' : '';
+      // The badge is on EVERY cell, never only on the odd one out. Marking just
+      // the output cells left the input ones defined by the absence of a mark,
+      // which is unreadable in a grid: a reader has to know the scheme before
+      // the grid can tell them anything. Both channels say their own name.
+      const badge =
+        `<span class="cell-channel cell-channel-${escapeAttr(cell.channel)}">` +
+        `${escapeHtml(cell.channelName)}</span>`;
+      // Clicking the picture opens the picture. The cell is a visualization, so
+      // that is what activating it has to do; opening the testcase behind it is
+      // a second, named affordance rather than the thing a click secretly does.
       return (
         `<figure class="cell" data-id="${escapeAttr(cell.id)}" tabindex="0" ` +
+        `data-open="${escapeAttr(cell.id)}" ` +
+        `title="${escapeAttr(cell.path)}" ` +
         `data-group="${escapeAttr(cell.group)}">` +
         `${galleryFigure(cell, assets)}` +
-        `<figcaption class="cell-label">${escapeHtml(cell.label)}${channel}</figcaption>` +
+        `<figcaption class="cell-label">` +
+        `<span class="cell-stem">${escapeHtml(cell.label)}</span>${badge}` +
+        `<button class="cell-testcase" data-testcase="${escapeAttr(cell.id)}" ` +
+        `title="Open the testcase this visualizes">${codicon('go-to-file')}</button>` +
+        `</figcaption>` +
         `</figure>`
       );
     })

@@ -401,12 +401,25 @@ export function renderTestsetCard(
   if (card === undefined) {
     return '';
   }
-  const visualization =
+  // One button per picture that exists, named for the channel it opens. A
+  // single unqualified `visualization` button was wrong twice over on a package
+  // with both: it named neither, and it could reach only the input one.
+  const buttons = [
     card.visualization === undefined
       ? ''
+      : '<button class="card-channel" data-action="rbx.openTestVisualization" ' +
+        `title="${escapeAttr(card.visualization)}">input</button>`,
+    card.answerVisualization === undefined
+      ? ''
+      : '<button class="card-channel" data-action="rbx.openTestAnswerVisualization" ' +
+        `title="${escapeAttr(card.answerVisualization)}">answer</button>`,
+  ].join('');
+  const visualization =
+    buttons === ''
+      ? ''
       : '<div class="card-channels">' +
-        '<button class="card-channel" data-action="rbx.openTestVisualization" ' +
-        `title="${escapeAttr(card.visualization)}">visualization</button>` +
+        '<span class="card-channels-label">visualization</span>' +
+        buttons +
         '<button class="card-channel" data-action="panel:gallery" ' +
         'title="Show this group in the Testset panel">gallery</button>' +
         '</div>';

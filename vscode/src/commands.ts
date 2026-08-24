@@ -368,28 +368,43 @@ export function registerCommands(
     await panes.openBuilt(node.pkg, node.group, node.stem);
   });
 
-  register('rbx.openTestVisualization', async (node) => {
-    if (!isBuiltTestcase(node)) {
-      return;
-    }
-    const relative = node.test?.visualization?.input;
-    if (relative === undefined) {
-      vscode.window.showInformationMessage('No visualization was built for this testcase.');
-      return;
-    }
-    const realPath = await firstExisting([testsetFilePath(node.pkg, relative)]);
-    if (realPath === undefined) {
-      vscode.window.showInformationMessage(
-        `No file at ${relative}. Run \`rbx build\` again to rebuild the visualizations.`,
-      );
-      return;
-    }
-    // `vscode.open` rather than `openTextDocument`: `Visualizer.extension` is a
-    // free string, so this may be an SVG the editor previews, an HTML page or
-    // something it has no viewer for -- and letting the editor decide is the
-    // only answer that is right for all three.
-    await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(realPath));
-  });
+  // One registration per channel, following the run view's channel commands:
+  // these reach the palette, and "rbx: Open Answer Visualization" is something
+  // a user can find by typing what they want.
+  const visualizationChannels: readonly (readonly [
+    string,
+    'input' | 'output',
+    string,
+  ])[] = [
+    ['rbx.openTestVisualization', 'input', 'input'],
+    ['rbx.openTestAnswerVisualization', 'output', 'answer'],
+  ];
+  for (const [id, channel, name] of visualizationChannels) {
+    register(id, async (node) => {
+      if (!isBuiltTestcase(node)) {
+        return;
+      }
+      const relative = node.test?.visualization?.[channel];
+      if (relative === undefined) {
+        vscode.window.showInformationMessage(
+          `No ${name} visualization was built for this testcase.`,
+        );
+        return;
+      }
+      const realPath = await firstExisting([testsetFilePath(node.pkg, relative)]);
+      if (realPath === undefined) {
+        vscode.window.showInformationMessage(
+          `No file at ${relative}. Run \`rbx build --visualize\` again to rebuild the visualizations.`,
+        );
+        return;
+      }
+      // `vscode.open` rather than `openTextDocument`: `Visualizer.extension` is
+      // a free string, so this may be an SVG the editor previews, an HTML page
+      // or something it has no viewer for -- and letting the editor decide is
+      // the only answer that is right for all three.
+      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(realPath));
+    });
+  }
 
   register('rbx.copyTestPath', async (node) => {
     if (!isBuiltTestcase(node)) {

@@ -119,6 +119,17 @@ export interface TestsetCard {
    * where a picture is worth opening. The card offers the jump.
    */
   readonly visualization?: string;
+  /**
+   * The answer visualization, when a `solutionVisualizer` drew one.
+   *
+   * The card used to carry the input channel alone, on the grounds that
+   * solution-output visualizers belong to the Run view. That conflated two
+   * different files: the Run view's business is a *solution's* output, while
+   * this one is the reference answer the build itself produced, sitting in the
+   * same testset the card describes. Offering one and silently dropping the
+   * other left the panel showing two pictures the card could only reach one of.
+   */
+  readonly answerVisualization?: string;
 }
 
 export interface TestsetRow {
@@ -411,16 +422,18 @@ function testcaseCard(group: string, testcase: TestsetTestcase): TestsetCard {
     origins: cardOrigins(testcase.entry),
     values: cardValues(testcase.test),
     validation: validationCard(testcase.test),
-    // The input channel only. A solution-output visualizer belongs to the Run
-    // view, where the output it visualizes lives (design, Non-goals).
     visualization: testcase.test?.visualization?.input,
+    answerVisualization: testcase.test?.visualization?.output,
   };
 }
 
 function testcaseRow(group: string, testcase: TestsetTestcase): TestsetRow {
   const test = testcase.test;
   const failed = test?.validation?.ok === false;
-  const visualized = test?.visualization?.input !== undefined;
+  // Either channel counts: the mark says a picture exists, and which one it
+  // is belongs to the card, not to a one-glyph flag.
+  const visualized =
+    test?.visualization?.input !== undefined || test?.visualization?.output !== undefined;
   return {
     id: `${group}::${testcase.stem}`,
     parentId: group,

@@ -91,6 +91,16 @@ export interface GalleryCell {
   readonly group: string;
   readonly stem: string;
   readonly channel: VisualizationChannel;
+  /**
+   * What the channel is *called* on screen: `input` or `answer`.
+   *
+   * Named here rather than in the renderer because it is a meaning decision,
+   * and because `output` is the wrong word for a reader: the solution
+   * visualizer draws the reference *answer*, which is what the testcase panes
+   * already call it (`answer.out`). Two vocabularies for one file is how a
+   * reader ends up believing there are two files.
+   */
+  readonly channelName: string;
   /** Package-relative, exactly as the manifest recorded it. */
   readonly path: string;
   readonly kind: VisualizationKind;
@@ -202,6 +212,15 @@ export interface PanelUiState {
   readonly tab: PanelTab;
   /** Undefined shows every group at once. */
   readonly group?: string;
+  /**
+   * Which visualization channel the gallery shows. Undefined shows both.
+   *
+   * A package declaring both an input and a solution visualizer produces two
+   * cells per testcase, and interleaved they are hard to read as two series
+   * however well each is labelled. The filter is what lets the gallery be
+   * scanned as one series at a time.
+   */
+  readonly channel?: VisualizationChannel;
 }
 
 export const EMPTY_PANEL_MODEL: PanelViewModel = {
@@ -266,6 +285,7 @@ function buildGallery(testcases: readonly TestsetTestcase[]): Gallery {
         group,
         stem: testcase.stem,
         channel,
+        channelName: channel === 'input' ? 'input' : 'answer',
         path: filePath,
         kind: visualizationKind(filePath),
         label: testcase.stem,

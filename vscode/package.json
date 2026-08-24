@@ -147,9 +147,14 @@
       },
       {
         "command": "rbx.openTestVisualization",
-        "title": "Open Visualization",
+        "title": "Open Input Visualization",
         "category": "rbx",
         "icon": "$(graph)"
+      },
+      {
+        "command": "rbx.openTestAnswerVisualization",
+        "title": "Open Answer Visualization",
+        "category": "rbx"
       },
       {
         "command": "rbx.copyTestPath",
@@ -266,6 +271,11 @@
           "command": "rbx.openTestVisualization",
           "when": "webviewSection == 'rbx.testsetTestcase'",
           "group": "navigation@2"
+        },
+        {
+          "command": "rbx.openTestAnswerVisualization",
+          "when": "webviewSection == 'rbx.testsetTestcase'",
+          "group": "navigation@3"
         },
         {
           "command": "rbx.openGeneratorScript",
