@@ -1589,6 +1589,7 @@ async def compute_time_limits(
     share: Optional[str] = None,
     skip_slow: bool = False,
     runner: Optional['SolutionRunner'] = None,
+    dry: bool = False,
 ):
     if package.get_main_solution() is None:
         # An error, not a warning: with no accepted solution nothing bounds the
@@ -1629,12 +1630,21 @@ async def compute_time_limits(
         return None
 
     limits_path = package.get_limits_file(profile)
-    console.console.print(
-        f'[success]Writing the following timing profile to [item]{href(limits_path)}[/item].[/success]'
-    )
     limits = estimated_tl.to_limits()
-    limits_path.parent.mkdir(parents=True, exist_ok=True)
-    limits_path.write_text(utils.model_to_yaml(limits))
+    if dry:
+        # The estimation itself already ran in full -- exercising it is the
+        # whole point of a dry run -- so the profile it produced is still worth
+        # printing. Only the write is skipped.
+        console.console.print(
+            f'[warning]Dry run: not writing the timing profile to '
+            f'[item]{href(limits_path)}[/item].[/warning]'
+        )
+    else:
+        console.console.print(
+            f'[success]Writing the following timing profile to [item]{href(limits_path)}[/item].[/success]'
+        )
+        limits_path.parent.mkdir(parents=True, exist_ok=True)
+        limits_path.write_text(utils.model_to_yaml(limits))
 
     limits_info.render_limits_table(limits, title=f'Time limits ({profile})')
 
@@ -1656,9 +1666,15 @@ async def compute_time_limits(
     return estimated_tl
 
 
-def inherit_time_limits(profile: str = 'local'):
+def inherit_time_limits(profile: str = 'local', dry: bool = False):
     limits_path = package.get_limits_file(profile)
     limits = schema.LimitsProfile(inheritFromPackage=True)
+    if dry:
+        console.console.print(
+            f'[warning]Dry run: not writing the timing profile to '
+            f'[item]{href(limits_path)}[/item].[/warning]'
+        )
+        return
     limits_path.parent.mkdir(parents=True, exist_ok=True)
     limits_path.write_text(utils.model_to_yaml(limits))
 
@@ -1667,9 +1683,15 @@ def inherit_time_limits(profile: str = 'local'):
     )
 
 
-def set_time_limit(timelimit: int, profile: str = 'local'):
+def set_time_limit(timelimit: int, profile: str = 'local', dry: bool = False):
     limits = schema.LimitsProfile(timeLimit=timelimit)
     limits_path = package.get_limits_file(profile)
+    if dry:
+        console.console.print(
+            f'[warning]Dry run: not writing the timing profile to '
+            f'[item]{href(limits_path)}[/item].[/warning]'
+        )
+        return
     limits_path.parent.mkdir(parents=True, exist_ok=True)
     limits_path.write_text(utils.model_to_yaml(limits))
 
@@ -1678,7 +1700,7 @@ def set_time_limit(timelimit: int, profile: str = 'local'):
     )
 
 
-def integrate(profile: str = 'local'):
+def integrate(profile: str = 'local', dry: bool = False):
     limits_profile = limits_info.get_saved_limits_profile(profile)
     if limits_profile is None:
         console.console.print(
@@ -1712,6 +1734,14 @@ def integrate(profile: str = 'local'):
 
     dest_yml = package.find_problem_yaml()
     assert dest_yml is not None
+    if dry:
+        # `--integrate` writes the package, not the profile, but a dry run
+        # promises nothing reaches the disk -- so this write is skipped too.
+        console.console.print(
+            f'[warning]Dry run: not integrating limits profile [item]{profile}[/item] '
+            f'into the package.[/warning]'
+        )
+        return
     utils.save_ruyaml(dest_yml, ru, pkg)
 
     console.console.print(

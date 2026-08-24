@@ -807,6 +807,12 @@ async def time(
         help='Skip checking the estimated limit against the solutions expected to '
         'be too slow. The limit is written with its upper bound unchecked.',
     ),
+    dry: bool = typer.Option(
+        False,
+        '--dry',
+        help='Run the whole estimation but write nothing to the disk: the limits '
+        'profile is printed instead of saved.',
+    ),
 ):
     if share is not None and share not in ('png', 'text'):
         console.console.print(
@@ -834,7 +840,7 @@ async def time(
     )
     console.console.print()
     if integrate:
-        timing.integrate(profile)
+        timing.integrate(profile, dry=dry)
         return
 
     if auto:
@@ -881,7 +887,7 @@ async def time(
     formula: Optional[str] = None
 
     if choice == 'inherit':
-        timing.inherit_time_limits(profile=profile)
+        timing.inherit_time_limits(profile=profile, dry=dry)
         return
     elif choice == 'custom':
         timelimit = await questionary.text(
@@ -893,7 +899,7 @@ async def time(
                 '[error]No custom time limit provided. Exiting.[/error]'
             )
             raise typer.Exit(1)
-        timing.set_time_limit(int(timelimit), profile=profile)
+        timing.set_time_limit(int(timelimit), profile=profile, dry=dry)
         return
 
     if choice == 'estimate_custom':
@@ -928,6 +934,7 @@ async def time(
         share=share,
         skip_slow=skip_slow,
         runner=solution_runner,
+        dry=dry,
     )
     if estimated is None:
         # Every failure of the estimation -- an unsatisfiable range, a solution
