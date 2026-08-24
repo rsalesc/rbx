@@ -38,7 +38,10 @@ from rbx.box import (
 )
 from rbx.box.contest import contest_state
 from rbx.box.contest import main as contest
-from rbx.box.contest.contest_package import find_contest_yaml, get_contest_build_path
+from rbx.box.contest.contest_package import (
+    find_contest_yaml,
+    get_contest_root_build_path,
+)
 from rbx.box.environment import VerificationLevel, get_app_environment_path
 from rbx.box.generation_schema import get_parsed_entry
 from rbx.box.header import generate_header
@@ -1734,7 +1737,10 @@ def _clean_build_dirs():
     if cd.is_problem_package():
         _clean_dir(package.get_build_path())
     if cd.is_contest_package():
-        _clean_dir(get_contest_build_path())
+        # Deliberately unscoped: clean wipes every variant's subtree, so its
+        # blast radius does not depend on whether -C was passed. It also works
+        # in an unselected dispatcher, where the scoped accessor would die.
+        _clean_dir(get_contest_root_build_path())
 
 
 @cd.within_closest_package
