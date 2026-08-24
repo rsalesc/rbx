@@ -66,6 +66,15 @@ class RunGroupReport(BaseModel):
     # have to guess.
     runUnderDoubleTl: bool = False
     doubleTlVerdicts: List[Outcome] = []
+    # Whether anything in this group tripped a sanitizer.
+    #
+    # Derived from the group's evaluations rather than read off its
+    # `GroupOutcomeReport`, which has no such field -- and safely so: this is an
+    # OR over a boolean already on disk, not an `ExpectedOutcome.match` like the
+    # two lists above it. Published per group for the same reason they are: the
+    # console names the groups a warning came from, and a client with only the
+    # aggregate would have to guess.
+    sanitizerWarnings: bool = False
     # The verdicts a soft TLE hid in this group that no expectation accepts.
     #
     # Under `-v4` a solution is judged at 2x its time limit and reported TLE the
@@ -137,6 +146,19 @@ class RunSolutionReport(BaseModel):
     # A sorted list rather than a set: YAML has no set, and the console sorts
     # these for display anyway.
     doubleTlVerdicts: List[Outcome] = []
+    # Whether any of this solution's runs tripped a sanitizer.
+    #
+    # Published for the reason the double-TL facts above are: it is a warning
+    # about a run that otherwise *passed*. An ACCEPTED solution with an ASAN or
+    # UBSAN finding has `status: OK` and `matchesExpectation: true`, so a client
+    # reading only those draws a clean row for a solution rbx is printing a
+    # WARNING about in the terminal.
+    #
+    # Read off the aggregate rbx already computes for that warning rather than
+    # re-pooled here: rbx pools over the evaluations it actually ran, and a
+    # subset run or a `--fail-fast` abort leaves that set and the one a client
+    # finds on disk disagreeing.
+    sanitizerWarnings: bool = False
     groups: List[RunGroupReport] = []
 
 
@@ -228,6 +250,9 @@ def build_solution_report(
                 doubleTlVerdicts=_sorted_outcomes(
                     per_group.doubleTlVerdicts if per_group else set()
                 ),
+                sanitizerWarnings=any(
+                    eval.result.sanitizer_warnings for eval in group_evals
+                ),
                 unexpectedNoTleVerdicts=_sorted_outcomes(
                     _no_tle_verdicts_in(group_evals)
                     & (
@@ -258,6 +283,7 @@ def build_solution_report(
         expectedScore=report.expectedScore,
         runUnderDoubleTl=report.runUnderDoubleTl,
         doubleTlVerdicts=_sorted_outcomes(report.doubleTlVerdicts),
+        sanitizerWarnings=report.sanitizerWarnings,
         groups=groups,
     )
 
