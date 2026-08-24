@@ -1,0 +1,74 @@
+fixture: summer-cup
+title: Profiling every problem of a contest at once
+# `rbx each` runs the contest inside one command app: a sidebar listing the
+# problems on the left, the selected problem's output on the right. The sidebar
+# takes about forty columns, so the pane needs a wide terminal before its
+# report is worth reading at all.
+width: 140
+height: 45
+timeout: 900s
+# The last frame -- three ticks and one problem's finished report -- is the
+# whole point of the recording, and a player only holds three seconds on it.
+# The app also takes a couple of seconds to tear down after `q`, which lands on
+# that same frame, so a short hold on top of that is enough.
+end_pause: 2s
+setup:
+  # All three problems, chocolate included. It declares no checker, so rbx
+  # falls back to the bundled wcmp.cpp, which includes testlib.h. The checker
+  # is only compiled once solutions actually run, so `rbx build` never trips on
+  # the missing header and `rbx time` does -- skip a problem here and its tab
+  # goes red on screen.
+  - cd problems/chocolate && rbx download testlib
+  - cd problems/gardens && rbx download testlib
+  - cd problems/sum-of-n && rbx download testlib
+  # Build each problem up front, the way casts/contest-time-profile.yml does,
+  # so the recording is about the sweep rather than about three compilations.
+  - cd problems/chocolate && rbx build
+  - cd problems/gardens && rbx build
+  - cd problems/sum-of-n && rbx build
+instructions:
+  - !Interactive
+    command: rbx each time -p boca --auto
+    keys:
+      # The app opens on A with the sidebar already listing all three problems,
+      # and the pane showing the limits A currently carries.
+      - 3s
+      # `--auto` answers both questions `rbx time` would otherwise ask -- the
+      # strategy menu and the language-group picker -- so nothing from here on
+      # waits on the reader, only on three problems' worth of timing runs. Those
+      # take a good twenty seconds even with the packages built, so they are
+      # fast-forwarded -- at x4 rather than x8, which flicks past A's own report
+      # too fast to read. The pane stays on A throughout: the selection does not follow the
+      # sweep, so B and C announce themselves only by their sidebar marks
+      # turning from a ring into a tick.
+      #
+      # The dwell is the sweep's own length plus a little, because nothing here
+      # can wait for the app to finish: too short and the keys below land
+      # mid-problem, too long and the cast sits on a screen that stopped
+      # changing -- the pane freezes as soon as A is done, so only the sidebar
+      # is still moving by then. Slack is the only waste, and at x4 a second of
+      # it costs a quarter of one.
+      - x4
+      - 26s
+      - x1
+      # Down-arrow to B. Nothing was lost while the pane sat on A -- each
+      # problem keeps its own scrollback, already scrolled to the end of its
+      # run -- and B is the one problem here with a solution declared too slow,
+      # so its report is the only one that ends on the upper-bound check.
+      #
+      # `keys` documents single characters and caret escapes, but a key is
+      # written to the pty as bytes, so a literal escape sequence works.
+      - "\x1b[B"
+      - 3s
+      # The app does not exit when the sweep ends, it just sits there, and a
+      # recording's keys have to leave the program exited.
+      - q
+expect_contains:
+  # The three problems the sidebar lists, the table B settles on, the check
+  # that follows it, and the per-problem file the sweep exists to write.
+  - chocolate
+  - gardens
+  - sum-of-n
+  - Time limits (boca)
+  - confirmed too slow
+  - .limits/boca.yml
