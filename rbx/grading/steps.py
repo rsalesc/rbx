@@ -313,6 +313,11 @@ class TestcaseLog(RunLog):
     stderr_absolute_path: Optional[pathlib.Path] = None
     log_absolute_path: Optional[pathlib.Path] = None
     eval_absolute_path: Optional[pathlib.Path] = None
+    # The checker's *full* stderr, kept only when the run asked for it
+    # (`--keep-checker-stderr`). `None` -- the overwhelmingly common case -- is
+    # dropped from the serialized `.eval`/`.log`, so a run without the flag
+    # writes exactly the bytes it always did.
+    checker_stderr_absolute_path: Optional[pathlib.Path] = None
 
 
 class CheckerResult(BaseModel):

@@ -303,6 +303,12 @@ class SolutionReportSkeleton(BaseModel):
     # serving a stale merged capture (irun only caches with an explicit
     # --testcase).
     merge_stderr: bool = False
+    # When set (`--keep-checker-stderr`), each testcase also keeps the checker's
+    # full stderr as a `.checker.err` artifact. Rides on the skeleton for the
+    # same reason `merge_stderr` does: it decides what a run writes to disk, so a
+    # cached skeleton must never serve a run that was asked for the artifact as
+    # though it had one.
+    keep_checker_stderr: bool = False
 
     def get_solution_limits(self, solution: Solution) -> Limits:
         return _resolve_solution_limits(solution, self.limits, self.verification)
@@ -714,6 +720,7 @@ async def _get_report_skeleton(
     timelimit_override: Optional[TimelimitOverride] = None,
     progress: Optional[StatusProgress] = None,
     sanitized: bool = False,
+    keep_checker_stderr: bool = False,
 ) -> SolutionReportSkeleton:
     pkg = package.find_problem_package_or_die()
 
@@ -788,6 +795,7 @@ async def _get_report_skeleton(
         compilation=compilation,
         verification=verification,
         capture_pipes=should_capture_pipes(package.get_interactor_or_nil()),
+        keep_checker_stderr=keep_checker_stderr,
     )
 
     skeleton_file = runs_dir / 'skeleton.yml'
@@ -1042,6 +1050,7 @@ async def run_solutions(
     abort_on: Optional[AbortPredicate] = None,
     runner: Optional['SolutionRunner'] = None,
     purpose: Optional['RunPurpose'] = None,
+    keep_checker_stderr: bool = False,
 ) -> RunSolutionResult:
     # Imported here, not at module scope: `runners.local` imports this module
     # back -- for `run_solution_on_testcase` and for `SolutionSkeleton` -- so an
@@ -1062,12 +1071,24 @@ async def run_solutions(
     # says should cost nothing and fail by name.
     _check_capabilities(runner, nruns=nruns, sanitized=sanitized, check=check)
 
+    # A warning rather than a refusal: unlike a dropped sanitizer or a dropped
+    # repeat, a missing `.checker.err` does not change what the report says --
+    # it only leaves a debugging aid unwritten. Said out loud all the same, so
+    # the setter goes looking for the file knowing it will not be there.
+    if keep_checker_stderr and not runner.caps.captures_artifacts:
+        console.console.print(
+            f'[warning]Runner [item]{runner.name}[/item] writes no per-testcase '
+            f'artifacts, so [item]--keep-checker-stderr[/item] has no effect on '
+            f'this run.[/warning]'
+        )
+
     skeleton = await _get_report_skeleton(
         progress=progress,
         tracked_solutions=tracked_solutions,
         verification=verification,
         timelimit_override=timelimit_override,
         sanitized=sanitized,
+        keep_checker_stderr=keep_checker_stderr,
     )
 
     checker_digest, interactor_digest = await _compile_checking_digests(check)
@@ -1279,6 +1300,7 @@ async def _run_interactive_solutions(
                 verification=verification,
                 capture_pipes=skeleton.capture_pipes,
                 merge_stderr=skeleton.merge_stderr,
+                keep_checker_stderr=skeleton.keep_checker_stderr,
             )
 
         yield EvaluationItem(
@@ -1307,6 +1329,7 @@ async def _get_interactive_skeleton(
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
     merge_stderr: bool = False,
+    keep_checker_stderr: bool = False,
 ) -> SolutionReportSkeleton:
     solutions, compiled_solutions, _, _ = await _get_compiled_solutions_for_skeleton(
         tracked_solutions,
@@ -1341,6 +1364,7 @@ async def _get_interactive_skeleton(
         compiled_solutions=compiled_solutions,
         capture_pipes=should_capture_pipes(package.get_interactor_or_nil()),
         merge_stderr=merge_stderr,
+        keep_checker_stderr=keep_checker_stderr,
     )
 
     skeleton_file = irun_dir / 'skeleton.yml'
@@ -1359,6 +1383,7 @@ async def run_and_print_interactive_solutions(
     custom_output: bool = False,
     print: bool = False,
     merge_stderr: bool = False,
+    keep_checker_stderr: bool = False,
     sanitized: bool = False,
     validate: bool = True,
     visualize: bool = False,
@@ -1402,6 +1427,7 @@ async def run_and_print_interactive_solutions(
             progress=progress,
             check=check,
             merge_stderr=merge_stderr,
+            keep_checker_stderr=keep_checker_stderr,
         )
         items = _run_interactive_solutions(
             entry,
@@ -1467,6 +1493,7 @@ async def run_and_print_interactive_solutions(
 
             if eval.log.stderr_absolute_path is not None:
                 print_stderr_section(eval.log.stderr_absolute_path)
+            _print_checker_stderr_hint(eval)
         elif stdout_path is not None:
             if stdout_path.with_suffix('.pout').is_file():
                 stdout_path = stdout_path.with_suffix('.pout')
@@ -1484,7 +1511,23 @@ async def run_and_print_interactive_solutions(
                 console.console.print(
                     f'[status]Stderr:[/status] {href(package.relpath(eval.log.stderr_absolute_path))}'
                 )
+            _print_checker_stderr_hint(eval)
             console.console.print()
+
+
+def _print_checker_stderr_hint(eval: Evaluation) -> None:
+    """Point at the `.checker.err` artifact, when the run kept one.
+
+    Only the checker's *last* line reaches the verdict, so a chatty checker's
+    diagnostics are only reachable through this file -- and a file nobody is
+    told about is not much better than no file at all.
+    """
+    checker_stderr_path = eval.log.checker_stderr_absolute_path
+    if checker_stderr_path is None:
+        return
+    console.console.print(
+        f'[status]Checker stderr:[/status] {href(package.relpath(checker_stderr_path))}'
+    )
 
 
 def _get_solution_repr(sol: Solution) -> List[Tuple[str, str]]:
@@ -1864,6 +1907,8 @@ class SolutionOutcomeReport(BaseModel):
     evals: List[Evaluation]
     status: SolutionOutcomeStatus
     message: Optional[Tuple[GenerationTestcaseEntry, str]]
+    # `.checker.err` for the testcase `message` came from, when the run kept one.
+    messageCheckerStderr: Optional[pathlib.Path] = None
     expectedOutcome: ExpectedOutcome
     gotVerdicts: Set[Outcome]
     # Status of the pooled ``outcome`` layer on its own.
@@ -2020,6 +2065,14 @@ class SolutionOutcomeReport(BaseModel):
             if msg:
                 msg = get_truncated_message(msg)
                 res += f'\nMessage for {utils.escape_markup(str(entry))}: {utils.escape_markup(msg)}'
+            # Only the last line of the checker's stderr survives into `msg`, and
+            # it is truncated on top of that. When the run kept the whole thing,
+            # say where it is -- this is the only pointer to it.
+            if self.messageCheckerStderr is not None:
+                res += (
+                    f'\nChecker stderr: '
+                    f'{href(package.relpath(self.messageCheckerStderr))}'
+                )
         return res
 
 
@@ -2230,12 +2283,16 @@ def get_solution_outcome_report(
         else SolutionOutcomeStatus.UNEXPECTED_VERDICTS
     )
     message: Optional[Tuple[GenerationTestcaseEntry, str]] = None
+    # The `.checker.err` of the very testcase `message` was taken from, so the
+    # two always describe the same run of the same checker.
+    message_checker_stderr: Optional[pathlib.Path] = None
     for eval, entry in zip(evals, skeleton.entries):
         if eval.result.outcome in [
             Outcome.WRONG_ANSWER,
             Outcome.JUDGE_FAILED,
         ]:
             message = (entry, eval.result.message)
+            message_checker_stderr = eval.log.checker_stderr_absolute_path
             break
 
     evals_per_group = _get_evals_per_group(evals, skeleton)
@@ -2364,6 +2421,7 @@ def get_solution_outcome_report(
         status=status,
         pooledStatus=pooled_status,
         message=message,
+        messageCheckerStderr=message_checker_stderr,
         expectedOutcome=verdict_report.expected_outcome,
         gotVerdicts=verdict_report.got_verdicts,
         perGroup=per_group,

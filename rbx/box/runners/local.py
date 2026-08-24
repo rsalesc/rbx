@@ -72,6 +72,7 @@ class LocalRunner:
                     timelimit_override=solution_timelimit,
                     nruns=ctx.nruns,
                     capture_pipes=ctx.skeleton.capture_pipes,
+                    keep_checker_stderr=ctx.skeleton.keep_checker_stderr,
                 )
 
             res.append(Deferred(run_fn))

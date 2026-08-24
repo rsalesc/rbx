@@ -68,6 +68,32 @@ problem: the testcases that never ran are reported as **failed**, not as unmeasu
 timing summary is omitted entirely, since a solution that stopped early was only timed on the
 testcases that ran.
 
+## Reading what the checker said
+
+A checker's verdict line is only its **last** line. Everything it printed before that —
+differing tokens, a dump of the offending context, whatever debugging it does — is
+discarded, and even the line that survives is clipped when it is shown.
+
+`--keep-checker-stderr` keeps the whole thing. Every testcase then gets a `.checker.err`
+file next to its output, holding exactly what the checker wrote:
+
+```bash
+rbx run --keep-checker-stderr
+rbx irun sol.cpp -t samples/0 --keep-checker-stderr
+```
+
+The report prints the path of the file for the testcase whose message it shows, and the
+run explorer (`rbx ui`) opens it with `4`. Nothing else changes: the verdict, the
+message and every other artifact are exactly what they would have been without the flag.
+
+It is a debugging flag, not an everyday one — a `.checker.err` per testcase per solution
+adds up, and almost nobody reads them. Reach for it when a verdict surprises you.
+
+!!! tip
+    You do not have to decide up front. Checker runs are cached, so re-running the same
+    command *with* the flag after an unexpected verdict still writes the file — the
+    checker's output is already in the cache, and the re-run is a cache hit.
+
 ## Running on the judge itself
 
 `--runner` runs the solutions **on the judge park** rather than in the sandbox on your machine,
