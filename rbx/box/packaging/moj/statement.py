@@ -16,7 +16,6 @@ facts worth carrying in your head:
 """
 
 import pathlib
-import re
 from typing import Dict, Mapping, Optional
 
 import typer
@@ -173,11 +172,6 @@ def build_enunciado(
     return '\n\n'.join(part.strip() for part in parts if part.strip()) + '\n'
 
 
-# Rendered notes go through pandoc WITHOUT `--mathml` (`gen-problem-json.sh`),
-# unlike the body, so any math in one reaches the student as a literal `\(x\)`.
-_MATH = re.compile(r'\$[^$\n]+\$')
-
-
 def sample_note_name(index: int) -> str:
     """The test name a sample explanation pairs with.
 
@@ -202,14 +196,6 @@ def build_notes(explanations: Mapping[int, str]) -> Dict[str, str]:
         name = sample_note_name(index)
         markdown = tex_to_markdown(content).strip()
         check_moj_gate(markdown, block_name=f'explanation for {name}')
-        if _MATH.search(markdown):
-            console.console.print(
-                f'[warning]The explanation for [item]{name}[/item] contains math, '
-                'but MOJ renders sample notes without MathML (unlike the statement '
-                'body), so it will reach the student as literal '
-                '[item]\\(…\\)[/item].[/warning]\n'
-                '[warning]Rewrite it without math if that matters.[/warning]'
-            )
         notes[name] = markdown + '\n'
     return notes
 

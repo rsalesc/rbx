@@ -375,12 +375,6 @@ converts with `pdftoppm -png -r 300 -singlefile` after `materialize`. A statemen
 with no PDF figure never probes for poppler; one that has them and no poppler
 **refuses to package**, naming the figures. SVG passes through untouched.
 
-### Known limitation: no math in sample notes
-
-`gen-problem-json.sh` renders notes **without** `--mathml`, unlike the body, so
-math inside an explanation reaches the student as a literal `\(x\)`. Nothing in
-the package can fix it; rbx warns when a note contains math.
-
 ## Out of scope
 
 - **Interactive.** `task_types()` is `[BATCH]`. MOJ's arbiter protocol (test in

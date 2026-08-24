@@ -1,3 +1,18 @@
+## 1.2.3 (2026-08-24)
+
+### Feat
+
+- **moj**: derive the submission whitelist from env.rbx.yml (#761) (#764)
+- **vscode**: head each contest variant's block with its id (#763)
+- **vscode**: render HTML visualizations in a panel instead of as source (#756)
+- **moj**: add `--upload` to `rbx package moj` (#757)
+
+### Fix
+
+- **moj**: stop warning about math in sample explanations (#762) (#766)
+- **contest**: scope contest build output per variant (#758)
+- add moj-id to gitgnore in presetse
+
 ## 1.2.2 (2026-08-24)
 
 ### Fix
