@@ -234,7 +234,7 @@ export class TestsetViewProvider implements vscode.WebviewViewProvider {
     const pkg = selected === undefined ? undefined : packageLayout(selected);
     const testset = pkg === undefined ? undefined : await this.data.testset(pkg);
     this.nodes = new Map(
-      testsetNodes(pkg ?? { root: '' }, testset).map((node) => [testsetNodeId(node), node]),
+      testsetNodes(pkg ?? packageLayout(''), testset).map((node) => [testsetNodeId(node), node]),
     );
     const built = testset !== undefined;
     const posted = this.posted;

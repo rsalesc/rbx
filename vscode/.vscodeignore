@@ -5,3 +5,5 @@ esbuild.mjs
 tsconfig.json
 **/*.map
 **/*.ts
+out-test/**
+esbuild.test.mjs

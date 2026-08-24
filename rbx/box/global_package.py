@@ -12,7 +12,7 @@ from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.judge.sandboxes.stupid_sandbox import StupidSandbox
 from rbx.grading.judge.storage import FilesystemStorage, Storage
 
-CACHE_STEP_VERSION = 5
+CACHE_STEP_VERSION = 6
 
 # How long to wait for other rbx processes to let go of a cache before giving
 # up on wiping it.

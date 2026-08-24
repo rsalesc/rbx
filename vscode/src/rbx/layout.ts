@@ -9,9 +9,9 @@
  * Verified against rbx as of 2026-08-14 by materializing a real package:
  *
  *   <pkg>/problem.rbx.yml
- *   <pkg>/build/tests/<group>/<stem>.in     generated input      (symlink)
- *   <pkg>/build/tests/<group>/<stem>.out    expected answer      (symlink)
- *   <pkg>/build/testset.yml                 TestsetManifest
+ *   <pkg>/<build>/tests/<group>/<stem>.in   generated input      (symlink)
+ *   <pkg>/<build>/tests/<group>/<stem>.out  expected answer      (symlink)
+ *   <pkg>/<build>/testset.yml               TestsetManifest
  *   <pkg>/.rbx/runs/skeleton.yml            SolutionReportSkeleton
  *   <pkg>/.rbx/runs/<i>/<group>/<stem>.eval Evaluation
  *   <pkg>/.rbx/runs/<i>/<group>/<stem>.out  solution stdout      (symlink)
@@ -21,6 +21,10 @@
  * Note the expected answer is `.out`, not `.ans`, and the cache directory is
  * `.rbx`, not `.box` -- the v1 design doc is wrong on both counts.
  *
+ * `<build>` is not literally `build`: it is `Environment.buildDir`, which a
+ * preset may rename (see `environment.ts`). Only `packageLayout` resolves it;
+ * every path below is built from what the layout already carries.
+ *
  * The `.in`/`.out`/`.err` artifacts are symlinks into `.rbx/.storage/<sha1>`,
  * which is content-addressed. That is load-bearing for the watcher: artifact
  * content is never rewritten in place, so a path we have already read can be
@@ -28,22 +32,23 @@
  */
 import * as path from 'path';
 
+import { resolveBuildDir } from './environment';
+
 export const PROBLEM_MANIFEST = 'problem.rbx.yml';
 export const CACHE_DIR = '.rbx';
-export const BUILD_DIR = 'build';
 /**
  * The manifest `rbx build` writes last, describing the testset it just built.
  *
- * It sits under `build/` rather than `.rbx/` on purpose (design D2): a fresh
- * build rewrites `build/tests` and this file together, so the two cannot drift,
- * and `rbx clean` -- which wipes `.rbx` -- can never orphan it.
+ * It sits under the build directory rather than `.rbx/` on purpose (design D2):
+ * a fresh build rewrites `<build>/tests` and this file together, so the two
+ * cannot drift, and `rbx clean` -- which wipes `.rbx` -- can never orphan it.
  */
 export const TESTSET_MANIFEST = 'testset.yml';
 
 /** Artifact suffixes, as they appear on disk. */
 export const enum Ext {
   Input = '.in',
-  /** Both the expected answer (under build/tests) and solution stdout (under runs). */
+  /** Both the expected answer (under `<build>/tests`) and solution stdout (under runs). */
   Output = '.out',
   Stderr = '.err',
   Eval = '.eval',
@@ -55,10 +60,26 @@ export const enum Ext {
 export interface PackageLayout {
   /** Absolute path to the directory containing problem.rbx.yml. */
   readonly root: string;
+  /**
+   * Build directory, relative to `root`.
+   *
+   * Carried on the layout rather than read at every join: it comes from the
+   * active preset's environment (`environment.ts`), so it is a fact about the
+   * package, and resolving it once per package is what keeps a single view
+   * from mixing paths built before and after a preset edit.
+   */
+  readonly buildDir: string;
 }
 
-export function packageLayout(root: string): PackageLayout {
-  return { root };
+/**
+ * Describe a package rooted at `root`.
+ *
+ * `buildDir` is resolved from the active preset unless a caller names one,
+ * which only tests do -- everywhere else the answer is whatever rbx would use,
+ * and asking for it here is what stops each call site inventing a default.
+ */
+export function packageLayout(root: string, buildDir?: string): PackageLayout {
+  return { root, buildDir: buildDir ?? resolveBuildDir(root) };
 }
 
 export function manifestPath(pkg: PackageLayout): string {
@@ -107,7 +128,12 @@ export function compilationLogPath(pkg: PackageLayout, relative: string): string
  * exists nowhere.
  */
 export function testsDir(pkg: PackageLayout): string {
-  return path.join(pkg.root, BUILD_DIR, 'tests');
+  return path.join(buildPath(pkg), 'tests');
+}
+
+/** Absolute path to the package's build directory. */
+export function buildPath(pkg: PackageLayout): string {
+  return path.join(pkg.root, pkg.buildDir);
 }
 
 /**
@@ -118,7 +144,7 @@ export function testsDir(pkg: PackageLayout): string {
  * glob rather than a heuristic about when a build has settled.
  */
 export function testsetPath(pkg: PackageLayout): string {
-  return path.join(pkg.root, BUILD_DIR, TESTSET_MANIFEST);
+  return path.join(buildPath(pkg), TESTSET_MANIFEST);
 }
 
 /**

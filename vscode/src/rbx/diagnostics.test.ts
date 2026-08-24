@@ -7,7 +7,7 @@ import type { PackageRunView } from './nodes';
 import type { CompilationEntry } from './model';
 import type { CompilationFinding, PackageRun } from './store';
 
-const PKG: PackageLayout = { root: '/w/a' };
+const PKG: PackageLayout = { buildDir: 'build', root: '/w/a' };
 
 function finding(path: string, over: Partial<CompilationEntry> = {}): CompilationFinding {
   return {
@@ -135,7 +135,7 @@ test('every entry knows where the compiler output went', () => {
 
 test('findings from several packages are all reported', () => {
   const other: PackageRunView = {
-    pkg: { root: '/w/b' },
+    pkg: { buildDir: 'build', root: '/w/b' },
     run: {
       skeleton: {
       solutions: [],

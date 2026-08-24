@@ -19,7 +19,7 @@ import { Row, buildViewModel } from './viewModel';
 // declared INCORRECT that fails in the wrong places. Those three are what a
 // naive encoding folds into one red row.
 
-const PKG: PackageLayout = { root: '/w/a' };
+const PKG: PackageLayout = { buildDir: 'build', root: '/w/a' };
 
 function testcase(stem: string, outcome?: string, over: Partial<TestcaseRun> = {}): TestcaseRun {
   return {
