@@ -202,7 +202,7 @@ For many small cases, **test plans** avoid one file per test. See the
 
     Continue the track: hunt for inputs that break a solution your checker would otherwise pass.
 
-    [:octicons-arrow-right-24: Stress testing](/setters/stress-testing)
+    [:octicons-arrow-right-24: Stress-testing your solutions](/setters/stress-testing-walkthrough)
 
 -   :fontawesome-solid-not-equal: **Checker reference**
 

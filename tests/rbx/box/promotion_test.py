@@ -390,3 +390,48 @@ def test_create_manual_group_writes_folder_and_yaml(
     groups = package.get_test_groups_by_name()
     assert 'corner' in groups
     assert groups['corner'].testcaseGlob == 'tests/manual/corner/*.in'
+
+
+def test_create_script_group_writes_file_and_yaml(
+    testing_pkg: testing_package.TestingPackage,
+):
+    group = promotion.create_script_group(pathlib.Path('tests/corner'))
+
+    assert group.name == 'corner'
+    assert (testing_pkg.root / 'tests/corner.txt').is_file()
+
+    groups = package.get_test_groups_by_name()
+    assert 'corner' in groups
+    assert groups['corner'].generatorScript is not None
+
+
+def test_create_script_group_records_the_path_the_file_was_created_at(
+    testing_pkg: testing_package.TestingPackage,
+):
+    # `rbx stress` offers to save a finding into a new script, and the setter
+    # types a path like `tests/corner`. The group used to record only the
+    # basename, so `problem.rbx.yml` said `corner.txt` while the file lived at
+    # `tests/corner.txt`. `GeneratorScript.path` resolves from the package root,
+    # so the next `rbx build` failed with `Generator script not found` -- the
+    # bug the stress-testing walkthrough documented its way around.
+    group = promotion.create_script_group(pathlib.Path('tests/corner'))
+
+    assert group.generatorScript is not None
+    recorded = pathlib.Path(group.generatorScript.path)
+    assert recorded == pathlib.Path('tests/corner.txt')
+    assert (testing_pkg.root / recorded).is_file()
+
+    # And the same path survives the round trip through problem.rbx.yml.
+    reloaded = package.get_test_groups_by_name()['corner']
+    assert reloaded.generatorScript is not None
+    assert (testing_pkg.root / reloaded.generatorScript.path).is_file()
+
+
+def test_create_script_group_at_the_package_root_still_works(
+    testing_pkg: testing_package.TestingPackage,
+):
+    group = promotion.create_script_group(pathlib.Path('corner.txt'))
+
+    assert group.generatorScript is not None
+    assert pathlib.Path(group.generatorScript.path) == pathlib.Path('corner.txt')
+    assert (testing_pkg.root / 'corner.txt').is_file()

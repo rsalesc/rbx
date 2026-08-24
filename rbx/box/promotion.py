@@ -7,7 +7,7 @@ from rbx import utils
 from rbx.box import generator_script_handlers as gsh
 from rbx.box import package, package_utils
 from rbx.box.generation_schema import GenerationTestcaseEntry
-from rbx.box.schema import TestcaseGroup
+from rbx.box.schema import GeneratorScript, TestcaseGroup
 
 
 def manual_group_dir(group: TestcaseGroup) -> pathlib.Path:
@@ -204,6 +204,41 @@ def create_manual_group(name: str, glob: str) -> TestcaseGroup:
     package_utils.clear_package_cache()
 
     return TestcaseGroup(name=name, testcaseGlob=glob)
+
+
+def create_script_group(path: pathlib.Path) -> TestcaseGroup:
+    """Create a new ``.txt`` generator-script test group in ``problem.rbx.yml``.
+
+    The script-backed sibling of :func:`create_manual_group`: creates the file at
+    ``path``, appends a ``{'name', 'generatorScript'}`` entry to ``testcases``
+    (preserving comments via ruyaml), saves it, clears the package cache, and
+    returns the created ``TestcaseGroup``. The group takes the file's stem for
+    its name.
+
+    ``path`` is recorded as given. ``GeneratorScript.path`` is a ``CodeItem``
+    path resolved from the package root, so recording a bare basename for a file
+    created in a subdirectory leaves the group pointing at nothing.
+    """
+    path = path.with_suffix('.txt')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch()
+
+    name = path.stem
+    ru, problem_yml = package.get_ruyaml()
+    if 'testcases' not in problem_yml:
+        problem_yml['testcases'] = []
+    problem_yml['testcases'].append(
+        {
+            'name': name,
+            'generatorScript': {'path': str(path)},
+        }
+    )
+    dest = package.find_problem_yaml()
+    assert dest is not None
+    utils.save_ruyaml(dest, ru, problem_yml)
+    package_utils.clear_package_cache()
+
+    return TestcaseGroup(name=name, generatorScript=GeneratorScript(path=path))
 
 
 def script_format_by_path() -> Dict[pathlib.Path, str]:

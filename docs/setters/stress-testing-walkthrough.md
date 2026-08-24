@@ -71,9 +71,9 @@ A counterexample is only useful if it survives into your testset. Right after a 
 
 > Do you want to add the tests that were found to a test group?
 
-Answer **yes**. {{rbx}} then lists every test group backed by a `.txt` generator script,
-plus two extra options: `(create new script)` and `(skip)`. Choose `(create new script)`
-and name it `tests/corner.txt`.
+Answer **yes**. {{rbx}} then lists every test group it can add tests to, plus
+`(create new script)`, `(create new manual group)` and `(skip)`. Choose
+`(create new script)` and name it `tests/corner`.
 
 {{rbx}} appends the found generator call to that script, prefixed with a
 `# Obtained by running rbx stress ...` comment so you know where it came from, and adds a
@@ -85,7 +85,7 @@ new `corner` test group to `problem.rbx.yml`:
 
     testcases:
     - name: 'samples'
-        testcaseGlob: 'documents/samples/*.in'
+        testcaseGlob: 'statement/samples/*.in'
     - name: 'testplan'
         generatorScript:
             path: 'tests/testplan.txt'
@@ -94,8 +94,9 @@ new `corner` test group to `problem.rbx.yml`:
             path: 'tests/corner.txt'  # (2)!
     ```
 
-    1.  The new group `corner` is backed by the freshly created `tests/corner.txt`.
-    2.  The `path` is relative to the testplan root, so bare `corner.txt` here and the `tests/corner.txt` you typed are the same file.
+    1.  The new group `corner` takes its name from the script's filename.
+    2.  The path {{rbx}} records is the one you typed, resolved from the package
+        root -- the same anchoring every other `path` in `problem.rbx.yml` uses.
 
 === "tests/corner.txt"
     ```

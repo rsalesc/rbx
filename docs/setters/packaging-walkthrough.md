@@ -107,7 +107,7 @@ modifiers:
     You normally don't write `modifiers` by hand. When you run `rbx time`, the interactive
     [language groups](/setters/profiling/language-groups/) picker estimates a limit per group of
     languages and writes the per-language modifiers for you. You can also edit the profile
-    manually or through the TUI (`rbx ui` > **Edit limits profiles**).
+    manually or through the TUI (`rbx ui` > **Edit limits profiles (in development)**).
 
 ### Verify with the profile active
 
@@ -186,12 +186,15 @@ If you're working in a contest directory, you can package all problems at once:
 rbx each package boca
 ```
 
-Or target specific problems by letter:
+Or target specific problems. The selector takes short names, problem names, aliases and
+folders, comma-separated, plus ranges, globs and `!` exclusions:
 
 ```bash
-rbx on A package boca       # Only problem A
-rbx on A..C package boca    # Problems A through C
-rbx on A,C package boca     # Problems A and C
+rbx on A package boca          # Only problem A
+rbx on A..C package boca       # Problems A through C
+rbx on A,C package boca        # Problems A and C
+rbx on sum-of-n package boca   # By name or folder
+rbx on '*,!D' package boca     # Everything except D
 ```
 
 ## Step 3: Upload to BOCA {: #uploading }
