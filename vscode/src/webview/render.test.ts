@@ -783,6 +783,21 @@ test('the double-TL verdicts warning names the verdicts it found', () => {
   assert.ok(html.includes('Still finished in double TL, but failed with WA on big.'));
 });
 
+test('the sanitizer warning points at the stderr, the way the console does', () => {
+  const warned = row({
+    id: 'sol7',
+    kind: 'solution',
+    expandable: true,
+    warnings: [{ kind: 'sanitizer', verdicts: [], groups: ['big'] }],
+    detail: {
+      histogram: [],
+      warnings: [{ kind: 'sanitizer', verdicts: [], groups: ['big'] }],
+    },
+  });
+  const html = renderTree(model([warned]), state({ expanded: new Set(['sol7']) }));
+  assert.ok(html.includes("Sanitizer errors or warnings on big. See the testcase's stderr."));
+});
+
 test('a warning with no group attribution says nothing about groups', () => {
   const warned = row({
     id: 'sol5',

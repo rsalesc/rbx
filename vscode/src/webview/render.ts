@@ -123,6 +123,11 @@ function warningText(warning: RunWarning): string {
       const verdicts = warning.verdicts.map((verdict) => verdict.text).join(' ');
       return `Still finished in double TL, but failed with ${verdicts}${where}.`;
     }
+    case 'sanitizer':
+      // Pointed at the stderr the way the console's own warning is: the
+      // sanitizer's complaint is there in full, and nothing shorter than it
+      // says what was actually wrong.
+      return `Sanitizer errors or warnings${where}. See the testcase's stderr.`;
   }
 }
 

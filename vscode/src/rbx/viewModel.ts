@@ -131,7 +131,7 @@ export interface GroupMismatch {
  * Which run deserves a warning is rbx's decision, published in `report.yml`; the
  * only thing decided here is which words and which glyph carry it.
  */
-export type WarningKind = 'double-tl-passed' | 'double-tl-verdicts';
+export type WarningKind = 'double-tl-passed' | 'double-tl-verdicts' | 'sanitizer';
 
 export interface WarningVerdict {
   readonly text: string;
@@ -529,9 +529,11 @@ function haystack(
   // a TLE as well as the ones that got one -- which, on a solution declared
   // slow, are not the same rows. Deduplicated because on the common row the
   // two agree, and `sols/main.cpp ac ac` is a haystack that says nothing twice.
-  // `warning` and `double-tl` both filter to a warned row: the first is what a
-  // user scanning for anything wrong types, the second what someone who already
-  // knows what they are hunting types.
+  // `warning` filters to any warned row -- what a user scanning for anything
+  // wrong types -- and a token per kind serves someone who already knows what
+  // they are hunting. Per kind and not a fixed pair: a solution that only
+  // tripped a sanitizer used to answer to `double-tl`, which is a filter that
+  // lies. Duplicates cost nothing; the parts go through a `Set` below.
   const parts = [
     subject,
     verdict?.short,
@@ -540,7 +542,10 @@ function haystack(
     verdict?.under?.text,
     expectation?.label,
     mismatch ? 'mismatch' : undefined,
-    ...(warnings.length === 0 ? [] : ['warning', 'double-tl']),
+    ...(warnings.length === 0 ? [] : ['warning']),
+    ...warnings.map((warning) =>
+      warning.kind === 'sanitizer' ? 'sanitizer' : 'double-tl',
+    ),
     ...warnings.flatMap((warning) => warning.verdicts.map((verdict) => verdict.text)),
   ]
     .filter((part): part is string => part !== undefined)
@@ -655,6 +660,16 @@ function warningsOf(
         solution === undefined
           ? []
           : warnedGroups(solution, (group) => group.doubleTlVerdicts.length > 0),
+    });
+  }
+  if (report.sanitizerWarnings) {
+    warnings.push({
+      kind: 'sanitizer',
+      verdicts: [],
+      groups:
+        solution === undefined
+          ? []
+          : warnedGroups(solution, (group) => group.sanitizerWarnings),
     });
   }
   return warnings;

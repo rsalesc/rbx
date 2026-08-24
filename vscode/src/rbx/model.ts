@@ -11,7 +11,7 @@
  */
 import * as path from 'path';
 
-import { Wire, asArray, asNumber, asRecord, asString, field } from './wire';
+import { Wire, asArray, asBoolean, asNumber, asRecord, asString, field } from './wire';
 
 /** rbx.box.generation_schema.GenerationTestcaseEntry, as embedded in the skeleton. */
 export interface TestcaseEntry {
@@ -116,6 +116,15 @@ export interface Evaluation {
    * `GroupReport.unexpectedNoTleVerdicts`.
    */
   readonly noTleOutcome?: string;
+  /**
+   * Whether this run tripped a sanitizer.
+   *
+   * Unlike `noTleOutcome`, this needs no answer from rbx to be worth showing:
+   * it is a fact about this run alone rather than a verdict to be weighed
+   * against an expectation, so the row can carry it directly. It is also the
+   * only thing that says *which* stderr is worth opening.
+   */
+  readonly sanitizerWarnings?: boolean;
 }
 
 /**
@@ -260,6 +269,7 @@ export function parseEvaluation(raw: Wire): Evaluation | undefined {
     time: asNumber(field(raw, 'log', 'time')),
     memory: asNumber(field(raw, 'log', 'memory')),
     noTleOutcome: asString(field(raw, 'result', 'no_tle_outcome')),
+    sanitizerWarnings: asBoolean(field(raw, 'result', 'sanitizer_warnings')),
   };
 }
 

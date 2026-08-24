@@ -794,9 +794,72 @@ test('a warned solution is counted apart from a mismatched one', () => {
   assert.strictEqual(warned, 1);
 });
 
-test('a testcase is never warned: the fact is decided a layer above it', () => {
+test('a testcase carries no double-TL warning: that fact is decided a layer above it', () => {
   const { rows } = buildViewModel(view([BORDERLINE_SLOW]));
   assert.deepStrictEqual(rowById(rows, '/w/a::0::big::001').warnings, []);
+});
+
+// A solution that passed and still tripped a sanitizer. Every channel that
+// answers "did the declaration hold" says yes, which is the whole reason the
+// warning has to be a fourth one.
+const SANITIZED = solution(
+  0,
+  'sols/main.cpp',
+  'ACCEPTED',
+  [
+    group('small', [testcase('000', 'accepted')], groupReport({ name: 'small' })),
+    group(
+      'big',
+      [
+        testcase('001', 'accepted'),
+        testcase('002', 'accepted', { evaluation: { outcome: 'accepted', sanitizerWarnings: true } }),
+      ],
+      groupReport({ name: 'big', sanitizerWarnings: true }),
+    ),
+  ],
+  solutionReport({
+    sanitizerWarnings: true,
+    groups: [
+      groupReport({ name: 'small' }),
+      groupReport({ name: 'big', sanitizerWarnings: true }),
+    ],
+  }),
+);
+
+test('a solution that passed with a sanitizer finding is warned, not clean', () => {
+  const { rows, warned, mismatches } = buildViewModel(view([SANITIZED]));
+  const row = rowById(rows, '/w/a::0');
+
+  assert.strictEqual(row.gutter, 'warned');
+  assert.strictEqual(row.mismatch, false);
+  assert.deepStrictEqual(
+    row.warnings.map((warning) => warning.kind),
+    ['sanitizer'],
+  );
+  // Named, so the reader is not sent through every group looking for it.
+  assert.deepStrictEqual(row.warnings[0].groups, ['big']);
+  assert.strictEqual(warned, 1);
+  assert.strictEqual(mismatches, 0);
+});
+
+test('a group row carries the finding without repeating its own name', () => {
+  const { rows } = buildViewModel(view([SANITIZED]));
+  assert.deepStrictEqual(rowById(rows, '/w/a::0::small').warnings, []);
+  const big = rowById(rows, '/w/a::0::big');
+  assert.deepStrictEqual(
+    big.warnings.map((warning) => warning.kind),
+    ['sanitizer'],
+  );
+  assert.deepStrictEqual(big.warnings[0].groups, []);
+});
+
+test('a sanitizer warning does not answer to a double-tl filter', () => {
+  const { rows } = buildViewModel(view([SANITIZED]));
+  const search = rowById(rows, '/w/a::0').search;
+  assert.ok(search.includes('warning'));
+  assert.ok(search.includes('sanitizer'));
+  // The token used to be a fixed pair, so this row claimed a fact it never had.
+  assert.ok(!search.includes('double-tl'));
 });
 
 test('a warned row is reachable by filtering for it', () => {
