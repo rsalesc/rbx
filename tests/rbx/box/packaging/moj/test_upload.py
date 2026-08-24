@@ -104,23 +104,19 @@ async def test_resolve_does_not_warn_when_an_org_is_configured(capsys):
 # the argv a process really received. Nothing here touches the network.
 
 
-async def test_upload_shells_out_to_moj_upload(monkeypatch, tmp_path):
+async def test_upload_shells_out_to_moj_upload_and_queues_a_calibration(
+    monkeypatch, tmp_path
+):
     _stub_moj(monkeypatch, tmp_path, 'exit 0')
     directory = tmp_path / 'package'
     directory.mkdir()
 
-    await upload_package('unicamp#a-aplusb', directory, calibrate=False)
+    await upload_package('unicamp#a-aplusb', directory)
 
-    assert _stub_calls(tmp_path) == [['upload', 'unicamp#a-aplusb', str(directory)]]
-
-
-async def test_upload_queues_a_calibration_when_asked(monkeypatch, tmp_path):
-    _stub_moj(monkeypatch, tmp_path, 'exit 0')
-    directory = tmp_path / 'package'
-    directory.mkdir()
-
-    await upload_package('unicamp#a-aplusb', directory, calibrate=True)
-
+    # Both, whatever settled the limits: mojtools refuses to judge a package with no
+    # `tl` file, so a package nobody calibrates is a package nobody can submit to --
+    # pinned limits included. What `--calibrate` decides is whether the numbers
+    # calibration measures survive `TLOVERRIDE`, not whether it runs.
     calls = _stub_calls(tmp_path)
     assert calls == [
         ['upload', 'unicamp#a-aplusb', str(directory)],

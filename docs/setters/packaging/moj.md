@@ -173,9 +173,10 @@ extensions:
 
 The org itself is *not* created for you: uploading to an org that doesn't exist fails.
 
-Combining `-u` with `--calibrate` also queues the calibration right after the upload. It's a long
-server-side job and {{rbx}} doesn't wait for it -- check on it with `moj check <org>#<problem>`
-whenever you want.
+Uploading also queues the calibration right after it, whether or not you passed `--calibrate`:
+a package is only judgeable once a judge has calibrated it, so there's nothing to gain from
+uploading one and leaving it uncalibrated. It's a long server-side job and {{rbx}} doesn't wait
+for it -- check on it with `moj check <org>#<problem>` whenever you want.
 
 ## Iterating faster with a single solution
 
