@@ -6,13 +6,12 @@ created and managed through the CLI or the TUI.
 
 ## Why profile?
 
-Different judge systems (BOCA, Polygon, etc.) may run on different hardware with different performance
-characteristics. A time limit that works well on your local machine may be too tight or too generous
-on the actual judge. By creating separate profiles for each target system, you can fine-tune
-limits independently.
+Judge systems run on different hardware, so a time limit that fits your local machine may be
+too tight or too generous on BOCA or Polygon. One profile per target system lets you tune each
+independently.
 
-Even if you only target a single judge, profiling automates the tedious process of choosing a time limit
-that is generous enough for intended solutions but tight enough to reject slow ones.
+Even against a single judge, profiling picks a limit generous enough for the intended solutions
+and tight enough to reject the slow ones, instead of leaving you to guess.
 
 ## Quick start
 
@@ -40,16 +39,16 @@ solutions and applying the estimation strategy configured in the environment: ei
 
 1. **Displays current profile** -- If a profile already exists for the given name, its current limits are shown.
 2. **Strategy selection** -- You are prompted to choose how to define the time limit (unless `--auto` or `--strategy` is used).
-3. **Solution execution** -- For estimating strategies, the accepted solutions are run against all testcases, so that their true execution times can be measured. Every one of them is capped at [`inferenceTimeout`](#the-estimation-cap). The solutions expected to be too slow are *not* run here; see [Checking the upper bound](#checking-the-upper-bound).
+3. **Solution execution** -- The accepted solutions run against all testcases so their times can be measured, each capped at [`inferenceTimeout`](#the-estimation-cap). The solutions expected to be too slow are *not* run here. See [Checking the upper bound](#checking-the-upper-bound).
 4. **Time report** -- The fastest and slowest solution times are shown, along with per-language breakdowns if solutions in multiple languages exist.
 5. **Estimation** -- The ratios (or the formula) are applied to compute the estimated time limit.
-6. **Language groups** -- You are shown every environment language and can place each one into a group, so related languages (e.g. `c`/`cpp`, or `java`/`kotlin`) share a single estimated limit and unrepresented languages inherit a sensible limit instead of falling back to the base. See [Language groups](#language-groups).
-7. **Upper-bound check** -- Each solution expected to be too slow is run at the limit the estimate demands of it, to confirm it really is too slow. See [Checking the upper bound](#checking-the-upper-bound).
+6. **Language groups** -- You are shown every environment language and can place each one into a group, so related languages (e.g. `c`/`cpp`, or `java`/`kotlin`) share a single estimated limit and unrepresented languages inherit a represented sibling's limit instead of falling back to the base. See [Language groups](#language-groups).
+7. **Upper-bound check** -- Each solution expected to be too slow is run at the limit the estimate demands of it, to confirm it is too slow. See [Checking the upper bound](#checking-the-upper-bound).
 8. **Profile persistence** -- The result is written to `.limits/<profile>.yml`, together with the chosen grouping and what the check found.
 
-All the steps in one run, taking the recommended **Estimate** strategy and the default
-grouping — note the preview table updating as the languages are bucketed, and the strategy
-printed just above the limits that get written:
+All the steps in one run, with the recommended **Estimate** strategy and the default grouping.
+Note the preview table updating as the languages are bucketed, and the strategy printed above
+the limits that get written:
 
 {{ asciinema("time-estimate", speed=2) }}
 
@@ -94,8 +93,8 @@ rbx time --strategy=estimate_custom
 
 ### Multiple runs
 
-By default, each solution is run once per testcase. If you want more stable timing measurements (e.g., to
-reduce variance from system load), use `--runs` to run each solution multiple times:
+By default, each solution runs once per testcase. To reduce variance from system load, run each
+one several times with `--runs`:
 
 ```bash
 rbx time --runs=3
@@ -115,11 +114,10 @@ to be too slow are allowed:
 | `timeLimitToTle` | The time limit times this must still fit within the fastest solution expected to be too slow. Omit it to leave the limit unbounded from above. |
 | `timeResolution` | The time limit is rounded up to a multiple of this, in milliseconds. |
 
-Unlike a formula, the ratios bound the time limit from **both** sides, so a limit that would
-let a solution meant to time out pass is caught while estimating: when no limit satisfies the
-ratios, `rbx time` says which solution binds each side, writes nothing to the profile, and
-exits with a non-zero status — as it does for any estimation that produces no limit, so a
-pipeline running it notices.
+Unlike a formula, the ratios bound the time limit from **both** sides, so a limit that would let
+a solution meant to time out pass is caught while estimating. When no limit satisfies the ratios,
+`rbx time` names the solution binding each side, writes nothing to the profile, and exits
+non-zero. Any estimation that produces no limit exits the same way, so a pipeline notices.
 
 Configure them environment-wide in `env.rbx.yml`:
 
@@ -153,8 +151,8 @@ timing:
 
 An accepted solution that hits the cap is an error: its measured time is truncated, so it
 cannot bound the limit from below. Raise the cap, or speed the solution up. Either way the
-solution stops there -- its remaining testcases are skipped, since they would measure nothing
-usable.
+solution stops there, and its remaining testcases are skipped, since they would measure
+nothing usable.
 
 The cap does not apply to the solutions expected to be too slow. They are not measured at all;
 they are checked against the estimated limit instead, at a limit derived from it. Raising
@@ -203,11 +201,11 @@ exactly that bound answers it, without waiting to find out how slow it really is
 So once the limit is decided, `rbx time` runs each of those solutions at
 `timeLimitToTle × <the limit for its language>`, and reads the verdict:
 
-- It **runs out of time** -- confirmed. It respects the upper bound, and its remaining
-  testcases are skipped: one timeout settles the question.
-- It **finishes** -- the upper bound is violated, and now there is a real time to report it
+- It **runs out of time**: confirmed. It respects the upper bound, and its remaining
+  testcases are skipped, since one timeout settles the question.
+- It **finishes**: the upper bound is violated, and now there is a real time to report it
   with. `rbx` names the solution, what it took, and what the limit demands of it.
-- It **fails some other way** (a crash, a wrong answer) -- evidence of nothing either way, and
+- It **fails some other way** (a crash, a wrong answer): evidence of nothing either way, and
   an error. Fix it, or set `inference: false` to leave it out.
 
 A violation is not the end of the run. The language-group picker re-opens, this time knowing
@@ -215,7 +213,7 @@ what the check found, so its preview shows which groupings cannot work. From the
 regroup to satisfy the bound, press ++f++ to keep the limits anyway, or cancel. Nothing is
 written until you settle on one of the three.
 
-Where there is no picker to re-open -- `--auto`, or a problem with a single language -- the
+Where there is no picker to re-open (`--auto`, or a problem with a single language) the
 violation is reported, recorded in the profile under `upperValidation`, and the limit is
 written anyway.
 
@@ -234,8 +232,8 @@ Without `timeLimitToTle` there is no upper bound to check, so this phase does no
 ## Measuring on the judge itself
 
 `rbx time` measures where {{rbx}} runs, so the well-lit path is to run it *on* the judge
-machine. `--runner` is the other way: measure the solutions **on the judge park**, through
-the judge's own CLI, and feed the timings into the same estimation you would get locally.
+machine. `--runner` is the other way: it measures the solutions **on the judge park**, through
+the judge's own CLI, and feeds the timings into the same estimation you would get locally.
 
 MOJ is the first backend:
 
@@ -299,10 +297,9 @@ default formula, which is currently:
 ```
 
 That literal is read from `DEFAULT_TIMING_FORMULA` in `rbx/box/environment.py` when these docs
-are built, so it is always the formula {{rbx}} actually estimates with — the code is the
-authoritative source, not this page. Read it with the [variables](#variables) and
-[functions](#functions) below: the outer `step_up(..., 100)` rounds the estimate up to the
-nearest multiple of 100 ms.
+are built, so it is always the formula {{rbx}} estimates with. The code is the authoritative
+source, not this page. Read it with the [variables](#variables) and [functions](#functions)
+below: the outer `step_up(..., 100)` rounds the estimate up to the nearest multiple of 100 ms.
 
 ### Variables
 
@@ -373,7 +370,7 @@ step_up(fastest * 4, 100)
 By default, a single time limit is estimated from the pooled timings of all accepted solutions
 and applied to every language. This is a problem when your accepted solutions don't cover every
 language your contest accepts: a language with no solutions (say, Java in a problem solved only in
-C++ and Python) would simply inherit the base limit, which may be far too tight for it.
+C++ and Python) inherits the base limit, which may be far too tight for it.
 
 **Language groups** solve this. When you run `rbx time`, you are shown every environment language
 and can bucket related languages together. Each group gets its own estimated time limit from the
@@ -436,15 +433,14 @@ semantics.
 
 ## Wall time limits
 
-In addition to the CPU time limit estimated above, every solution is bounded by a **wall (real)
-time** limit. Slow languages (Java, Kotlin, Python) spend significant wall-clock time on JVM /
-interpreter startup before doing any real work, so a wall limit derived too tightly from the CPU
-limit produces spurious time-limit verdicts.
+Every solution is also bounded by a **wall (real) time** limit. Java, Kotlin and Python spend
+wall-clock time on JVM or interpreter startup before doing any work, so a wall limit derived too
+tightly from the CPU limit produces spurious time-limit verdicts.
 
-{{rbx}} computes the wall time limit from the CPU time limit with a configurable `a * x + b`
-formula (`wallTimeMultiplier` and `wallTimeIncrement`), configurable environment-wide and
-overridable per language. The same formula is used both when judging locally and when packaging
-for BOCA. See the [Environment reference](../reference/environment/#wall-time-limits) for details.
+{{rbx}} derives it from the CPU time limit with an `a * x + b` formula (`wallTimeMultiplier` and
+`wallTimeIncrement`), set environment-wide and overridable per language, both when judging
+locally and when packaging for BOCA. See the
+[Environment reference](../reference/environment/#wall-time-limits) for the details.
 
 ## Limits profiles
 
@@ -504,8 +500,8 @@ groups:
 
 ### Per-language modifiers
 
-The `modifiers` section allows you to override limits for specific languages. This is useful
-when your problem accepts solutions in multiple languages with very different performance characteristics.
+The `modifiers` section overrides limits for specific languages, which matters when your problem
+accepts solutions in languages with different performance characteristics.
 
 | Field | Description |
 | :--- | :--- |
@@ -585,8 +581,8 @@ rbx package boca
 
 ### Inheriting from the package
 
-If you want a profile to simply mirror the limits defined in `problem.rbx.yml`, you can create
-an inheriting profile:
+To make a profile mirror the limits defined in `problem.rbx.yml`, create an inheriting
+profile:
 
 ```bash
 rbx time --strategy=inherit -p polygon
@@ -605,8 +601,7 @@ rbx time --integrate -p local
 ```
 
 This copies `timeLimit`, `memoryLimit`, `outputLimit`, and any `modifiers` from the profile
-into your `problem.rbx.yml`. It is useful when you've fine-tuned limits in a profile and want
-to persist them as the package defaults.
+into your `problem.rbx.yml`.
 
 ## Editing profiles in the TUI
 
@@ -627,8 +622,8 @@ Select **"Edit limits profiles"** from the main menu to open the limits editor. 
 - **Delete** (<kbd>d</kbd> twice) -- Delete the selected profile.
 
 !!! tip
-    The TUI is especially handy for quickly tweaking per-language modifiers after an initial
-    `rbx time` estimation.
+    The TUI is the quickest way to tweak per-language modifiers after an initial `rbx time`
+    estimation.
 
 ## Manually editing profiles
 
@@ -650,5 +645,5 @@ You can globally scale all time limits by setting the `RBX_TIME_MULTIPLIER` envi
 RBX_TIME_MULTIPLIER=1.5 rbx run
 ```
 
-This multiplies all effective time limits by the given factor, which can be useful for running
-on slower hardware without changing any profile.
+This multiplies every effective time limit by the given factor, so you can run on slower
+hardware without touching a profile.

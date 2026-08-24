@@ -5,8 +5,8 @@
     through it yet, start there — we pick up right where it left off.
 
 In [First steps](first-steps.md) we built a problem that asks for the **sum of `N` integers**.
-That problem has a single correct answer, so {{rbx}}'s default checker — `wcmp`, which simply
-compares the participant's output token-by-token against the model answer — works perfectly.
+That problem has a single correct answer, so {{rbx}}'s default checker does the job: `wcmp`
+compares the participant's output token-by-token against the model answer.
 
 But not every problem has a unique answer. Let's mutate our problem into one that doesn't, and
 see why we need a **checker**.
@@ -20,7 +20,7 @@ Let's change the problem to:
 
 Now there are many correct answers. For `N = 10`, both `1 9` and `5 5` are valid. This breaks
 token comparison: if your solution prints `1 9` but the model solution printed `5 5`, `wcmp`
-would wrongly flag a {{tags.wrong_answer}} even though `1 9` is perfectly correct.
+would wrongly flag a {{tags.wrong_answer}} even though `1 9` is correct.
 
 We need a checker that *verifies the property* (`a + b = N`) instead of comparing strings.
 
@@ -55,9 +55,9 @@ filename prefix (`wa-`) tells {{rbx}} the expected outcome.
 
 !!! note "What about the validator, generator and statement?"
     Switching problems also means updating the input validator, the generator and the
-    statement. The mechanics are exactly what you learned in
-    [First steps](first-steps.md) — the input is now a single integer `N` — so we won't
-    re-walk them here and will keep the spotlight on the checker.
+    statement. The input is now a single integer `N`, and the mechanics are the ones from
+    [First steps](first-steps.md), so we keep the spotlight on the checker instead of
+    re-walking them.
 
 ## Writing the checker
 
@@ -102,19 +102,19 @@ the model answer.
         line arguments. Every checker starts with this call.
 
     2.  Reading with bounds is your first line of defense. `ouf.readInt(1, n - 1, "a")` reads an
-        integer named `a` and **automatically** fails with a {{tags.wrong_answer}} if it is
-        missing or outside `[1, n - 1]` — no extra code needed.
+        integer named `a` and fails with a {{tags.wrong_answer}} if it is missing or outside
+        `[1, n - 1]`, with no extra code.
 
     3.  `quitf(_wa, ...)` ends the checker with a {{tags.wrong_answer}} and a **custom message**.
-        Notice you can use `printf`-style format specifiers, so the report tells the setter
-        exactly what went wrong.
+        Notice you can use `printf`-style format specifiers, so the report says what went
+        wrong.
 
     4.  `quitf(_ok, ...)` ends the checker with an {{tags.accepted}} verdict.
 
 !!! tip "When you *do* need the model answer"
     Some problems (e.g. "find the **shortest** path") can only be checked by comparing against
-    the jury's solution via the `ans` stream. That's a more advanced pattern — see the
-    [Checkers](grading/checkers.md) feature guide for the full *output + answer* example.
+    the jury's solution via the `ans` stream. For that pattern, see the
+    [Checkers](grading/checkers.md) feature guide and its *output + answer* example.
 
 ### Wiring it into `problem.rbx.yml`
 
@@ -133,7 +133,7 @@ new file instead:
 Now run `rbx run` again. Two things change compared to step 1:
 
 - Your `main.cpp` passes on every test, even when it prints a different pair than the model
-  solution — the checker verifies the *property*, not the exact tokens.
+  solution, because the checker verifies the *property* rather than the tokens.
 - `wa-offbyone.cpp` fails, and instead of an opaque token diff you get the checker's custom
   message, e.g. `a + b = 11, expected 10`.
 
@@ -141,8 +141,8 @@ Now run `rbx run` again. Two things change compared to step 1:
 
 ## Testing the checker with `rbx unit`
 
-A buggy checker can silently let wrong solutions through (or reject correct ones). {{rbx}} lets
-you **unit test** your checker so you can trust it.
+A buggy checker can silently let wrong solutions through, or reject correct ones. {{rbx}} lets
+you **unit test** your checker before you rely on it.
 
 Declare the expected outcomes in `problem.rbx.yml`:
 
@@ -189,7 +189,7 @@ rbx unit
 
 {{ asciinema("unit-checker") }}
 
-For many small cases you can avoid one-file-per-test with **test plans** — see the
+For many small cases, **test plans** avoid one file per test. See the
 [Unit tests](verification/unit-tests.md) feature guide.
 
 ## Next steps

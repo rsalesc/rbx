@@ -5,7 +5,7 @@
     where `sols/main.cpp` is correct and `sols/wa-overflow.cpp` accumulates the sum into
     an `int32_t` that silently overflows.
 
-Our goal here is simple: ask {{rbx}} to find a **tiny** input that breaks `sols/wa-overflow.cpp`.
+Our goal: ask {{rbx}} to find a **tiny** input that breaks `sols/wa-overflow.cpp`.
 
 ## Describing the search
 
@@ -14,8 +14,8 @@ A stress test is described by two expressions:
 - a **generator expression**, which tells {{rbx}} how to keep producing random testcases, and
 - a **finder expression**, which describes the condition that makes a testcase a *match*.
 
-See [Stress testing](stress-testing.md) for the complete operator reference. Here we only
-need a couple of operators.
+See [Stress testing](stress-testing.md) for the complete operator reference. Here we
+need only a couple of operators.
 
 Our generator expression is:
 
@@ -30,8 +30,8 @@ tests/gen [1..5] <A.max> @
   different testcase.
 
 Why is such a small range enough? An `int32_t` overflows once the sum passes ~2.1×10⁹.
-With `A.max` up at ~10⁹, just a handful of large numbers already pushes the true sum past
-that line — which is exactly *why* the counterexample {{rbx}} finds comes out tiny.
+With `A.max` up at ~10⁹, a handful of large numbers already pushes the true sum past that
+line. That is why the counterexample comes out tiny.
 
 Our finder expression is:
 
@@ -60,9 +60,9 @@ match. You can tune both the number of findings and the timeout with `-n` and `-
 When a match is found, `rbx stress` prints a report and shows the exact generator call
 that produced the failing testcase, along with the input itself.
 
-It's a small input — just a few large numbers whose sum overflows `int32_t`, so
-`sols/wa-overflow.cpp` prints the wrong value while `sols/main.cpp` gets it right. That's
-the divergence {{rbx}} flagged as `INCORRECT`.
+It's a small input: a few large numbers whose sum overflows `int32_t`, so
+`sols/wa-overflow.cpp` prints the wrong value while `sols/main.cpp` gets it right. That
+divergence is what {{rbx}} flagged as `INCORRECT`.
 
 ## Making it stick
 
@@ -75,8 +75,8 @@ Answer **yes**. {{rbx}} then lists every test group backed by a `.txt` generator
 plus two extra options: `(create new script)` and `(skip)`. Choose `(create new script)`
 and name it `tests/corner.txt`.
 
-{{rbx}} appends the found generator call to that script — prefixed with a
-`# Obtained by running rbx stress ...` comment so you know where it came from — and adds a
+{{rbx}} appends the found generator call to that script, prefixed with a
+`# Obtained by running rbx stress ...` comment so you know where it came from, and adds a
 new `corner` test group to `problem.rbx.yml`:
 
 === "problem.rbx.yml"
@@ -113,8 +113,8 @@ Now run `rbx build`, and the counterexample is regenerated as a permanent test i
     here on.
 
 The same picker also lists your **manual** test groups, plus `(create new manual group)`.
-Choosing one saves each finding's actual failing input as a static `.in` file instead of a
-generator call — `rbx build` still fills in the `.out`.
+Choosing one saves each finding's failing input as a static `.in` file instead of a
+generator call, and `rbx build` still fills in the `.out`.
 
 !!! tip
     To freeze tests you *already* have, use [`rbx testcases promote`](/setters/reference/cli):
