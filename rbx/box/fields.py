@@ -92,6 +92,7 @@ RESERVED_STATEMENT_VAR_NAMES = frozenset(
         'subgroups',
         'testcaseGlob',
         'testcases',
+        'validateStatementFiles',
         'validator',
         'visualizer',
     ]
