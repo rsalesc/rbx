@@ -196,6 +196,7 @@ the playback, that is why: shorten it to a fragment that carries no markup.
 | `pair-problem` | Print any `a + b = N`, custom checker | custom-checker walkthrough |
 | `guessing-problem` | Interactive guessing game with a testlib interactor | `rbx ui` on an interactive run |
 | `statement-contest` | Two-problem contest with `en`/`pt` statements, both contest templates and an infosheet | both statement recordings |
+| `summer-cup` | Three-problem contest: A from `ab-problem` with nothing declared too slow, B from `timing-problem`, C from `sum-problem` | both contest profiling recordings |
 | `workspace` | Empty directory, not a package | `rbx create`, which needs somewhere to create *into* |
 
 `graph-problem` also carries `broken/validator-without-connectivity.cpp`: the
@@ -216,18 +217,23 @@ pages still carry, because the snippets as printed do not run:
   `ouf.readInt`, rejecting the `? X` format the same statement specifies. The
   fixture fixes both.
 
-`timing-problem` is the one fixture that carries **its own environment**, in
-`.local.rbx/`. Everything the profiling pages teach — the ratios, the
-upper-bound check they make possible, and the language groups that hand `java`
-a limit derived from `cpp` — is configured in `env.rbx.yml` and nowhere else, so
-a recording that leaned on the installed default environment would show
-whatever that machine happened to have. A problem cannot fill the gap on its
-own: `timing.multipliers` in `problem.rbx.yml` only *overrides* an environment
-that already sets them, and errors otherwise.
+`timing-problem` and `summer-cup` are the fixtures that carry **their own
+environment**, in `.local.rbx/`. Everything the profiling pages teach — the
+ratios, the upper-bound check they make possible, and the language groups that
+hand `java` a limit derived from `cpp` — is configured in `env.rbx.yml` and
+nowhere else, so a recording that leaned on the installed default environment
+would show whatever that machine happened to have. A problem cannot fill the gap
+on its own: `timing.multipliers` in `problem.rbx.yml` only *overrides* an
+environment that already sets them, and errors otherwise.
 
-That environment declares `testlib`, so the fixture needs it materialized
-before the default checker will compile. Each timing recording does it in a
-hidden setup step:
+`summer-cup`'s copy is byte-identical to `timing-problem`'s, and it sits at the
+**contest root** rather than once per problem. Preset lookup walks *up* from the
+current directory (`find_local_preset` in `rbx/box/presets/__init__.py`), so all
+three nested problems resolve the one copy above them.
+
+That environment declares `testlib`, so a fixture carrying it needs it
+materialized before the default checker will compile. Each recording does it in
+a hidden setup step:
 
 ```yaml
 setup:
@@ -236,6 +242,13 @@ setup:
 
 It comes from rbx's library cache once warm; a cold cache makes that step reach
 the network.
+
+In `summer-cup` that step has to be repeated for **every** problem, `chocolate`
+included — the one problem there deliberately too dull to profile. It declares
+no checker, so rbx falls back to the bundled `wcmp.cpp`, which includes
+`testlib.h`, and the checker is compiled only when solutions actually run.
+`rbx build` therefore never trips on the missing header and `rbx time` does:
+skip a problem in setup and its tab goes red halfway through the recording.
 
 `timing-problem` also carries `broken/mislabeled.cpp`: a solution declared too
 slow that is nothing of the kind, swapped in by the
