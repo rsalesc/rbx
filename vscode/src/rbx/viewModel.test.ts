@@ -853,6 +853,32 @@ test('a group row carries the finding without repeating its own name', () => {
   assert.deepStrictEqual(big.warnings[0].groups, []);
 });
 
+test('a sanitized testcase carries the mark, so the reader knows which stderr', () => {
+  const { rows } = buildViewModel(view([SANITIZED]));
+  assert.strictEqual(rowById(rows, '/w/a::0::big::001').gutter, 'none');
+  const marked = rowById(rows, '/w/a::0::big::002');
+  assert.strictEqual(marked.gutter, 'warned');
+  assert.deepStrictEqual(
+    marked.warnings.map((warning) => warning.kind),
+    ['sanitizer'],
+  );
+  assert.ok(marked.search.includes('sanitizer'));
+});
+
+test('a marked testcase is not counted as a warned solution', () => {
+  // The strip counts solutions. A run whose solution row is clean must not be
+  // reported as warned because a testcase row underneath carries a mark.
+  const testcaseOnly = solution(0, 'sols/main.cpp', 'ACCEPTED', [
+    group('main', [
+      testcase('000', 'accepted', {
+        evaluation: { outcome: 'accepted', sanitizerWarnings: true },
+      }),
+    ]),
+  ]);
+  const { warned } = buildViewModel(view([testcaseOnly]));
+  assert.strictEqual(warned, 0);
+});
+
 test('a sanitizer warning does not answer to a double-tl filter', () => {
   const { rows } = buildViewModel(view([SANITIZED]));
   const search = rowById(rows, '/w/a::0').search;

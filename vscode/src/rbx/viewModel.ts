@@ -913,14 +913,24 @@ function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row 
   const { testcase } = node;
   const evaluation = testcase.evaluation;
   const verdict = chip(evaluation?.outcome, hiddenVerdict(testcase, node.group.report));
+  // A double-TL fact is decided over a whole group or a whole solution, never
+  // over one testcase: a single soft TLE says nothing until it is weighed
+  // against the expectation the layer above it declared. A sanitizer finding
+  // needed no such weighing -- it is exactly a fact about this run -- and this
+  // is the only row that can say *which* stderr is worth opening.
+  const warnings: RunWarning[] =
+    evaluation?.sanitizerWarnings === true
+      ? [{ kind: 'sanitizer', verdicts: [], groups: [] }]
+      : [];
   return {
     id: nodeId(node),
     parentId,
     depth,
     kind: 'testcase',
-    // A testcase declares no expectation of its own; only the solution and, via
-    // `outcomePerGroup`, the group do.
-    gutter: 'none',
+    // A testcase declares no expectation of its own -- only the solution and,
+    // via `outcomePerGroup`, the group do -- so nothing here is ever `met` or
+    // `missed`. `warned` is the one thing a testcase row has to say alone.
+    gutter: warnings.length > 0 ? 'warned' : 'none',
     label: testcase.stem,
     labelBold: false,
     // The checker's message is deliberately left off the *row*. It is a
@@ -933,15 +943,18 @@ function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row 
       span(formatMemory(evaluation?.memory), 'dim', 'memory'),
     ]),
     verdict,
-    // A double-TL fact is decided over a whole group or a whole solution, never
-    // over one testcase: a single soft TLE says nothing until it is weighed
-    // against the expectation the layer above it declared.
-    warnings: [],
+    warnings,
     mismatch: false,
     expandable: false,
     defaultExpanded: false,
     card: testcaseCard(node),
-    search: haystack(`${node.group.name}/${testcase.stem}`, verdict, false),
+    search: haystack(
+      `${node.group.name}/${testcase.stem}`,
+      verdict,
+      false,
+      undefined,
+      warnings,
+    ),
     section: 'rbx.testcase',
     // Two panes, not one file. Which channel the second pane opens on is the
     // opener's state rather than the row's -- it is sticky across testcases, so
