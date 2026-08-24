@@ -138,6 +138,9 @@ def _maybe_check_integrity(output: GradingFileOutput, integrity_digest: str):
         # Only makes sense if the file EXISTS and IS A SYMLINK pointing to an
         # EXISTING storage file.
         # If the storage file ceases to exist, we can simply evict from the cache.
+        # An output that opted out of symlinking (`symlink=False`) is a copy and
+        # is deliberately not checked here: this guards a storage blob changing
+        # under a link, and a copy has no link to change under it.
         return
     if output.digest is None:
         return
@@ -277,14 +280,24 @@ async def _copy_hashed_files(artifact_list: List[GradingArtifacts], cacher: File
                 continue
             assert output.digest.value is not None
             if (
-                path_to_symlink := await cacher.path_for_symlink(output.digest.value)
-            ) is not None:
+                output.symlink
+                and (
+                    path_to_symlink := await cacher.path_for_symlink(
+                        output.digest.value
+                    )
+                )
+                is not None
+            ):
                 # Use a symlink to the file in the persistent cache, if available.
                 output.dest.unlink(missing_ok=True)
                 output.dest.parent.mkdir(parents=True, exist_ok=True)
                 output.dest.symlink_to(path_to_symlink)
             else:
-                # Otherwise, copy it.
+                # Otherwise, copy it. This is also how an output that opted out
+                # of symlinking is materialized, so it has to stand on its own:
+                # the destination directory may not exist yet.
+                output.dest.unlink(missing_ok=True)
+                output.dest.parent.mkdir(parents=True, exist_ok=True)
                 with await cacher.get_file(output.digest.value) as fobj:
                     with output.dest.open('wb') as f:
                         copyfileobj(fobj, f, maxlen=output.maxlen)

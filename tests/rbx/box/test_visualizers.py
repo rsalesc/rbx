@@ -178,6 +178,9 @@ async def test_run_visualizer_passes_sandbox_args_and_outputs(mock_run_item):
     assert len(outputs) == 1
     assert outputs[0].src == pathlib.Path('visualization.svg')
     assert outputs[0].dest == pathlib.Path('visualization/test.svg')
+    # Not a symlink: whatever opens a visualization types it by the extension
+    # of the file the path resolves to, and a storage blob has none.
+    assert outputs[0].symlink is False
 
     # Single input: host input file mapped onto sandbox `input.txt`.
     inputs = kwargs['inputs']
