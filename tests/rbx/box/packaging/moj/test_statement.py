@@ -101,13 +101,12 @@ def test_explanations_are_converted_to_markdown():
     assert '**bold**' in notes['sample001']
 
 
-def test_a_note_carrying_math_warns_but_ships(capsys):
-    """gen-problem-json.sh renders notes WITHOUT --mathml, unlike the body, so
-    math reaches the student as a literal \\(x\\). Nothing in the package can fix
-    it."""
+def test_a_note_carrying_math_ships_without_a_warning(capsys):
+    """MOJ supports math in sample notes, so a note carrying it is shipped
+    as-is and says nothing."""
     notes = statement.build_notes({0: 'The answer is $x + y$.'})
-    assert notes
-    assert 'math' in capsys.readouterr().out.lower()
+    assert '$x + y$' in notes['sample001']
+    assert capsys.readouterr().out == ''
 
 
 def test_layout_uses_docs_as_the_remap_base_for_both_slots():
