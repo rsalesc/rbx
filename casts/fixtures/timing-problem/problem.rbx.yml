@@ -1,0 +1,33 @@
+name: pair-sums
+timeLimit: 1000
+memoryLimit: 256
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+  # A second accepted solution in another language: without it there is only
+  # one language to estimate for, and a per-language limit has nothing to say.
+  - path: sols/main.py
+    outcome: ac
+  - path: sols/quadratic.cpp
+    outcome: tle
+
+testcases:
+  - name: samples
+    testcaseGlob: tests/samples/*.in
+  - name: main
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 200000 200000 1
+          - name: gen
+            args: 200000 200000 2
+          # Every value the same, so the answer is the largest it can be and
+          # the two-pointer walk takes its longest path.
+          - name: gen
+            args: 200000 2 3

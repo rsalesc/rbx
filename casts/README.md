@@ -189,7 +189,8 @@ the playback, that is why: shorten it to a fragment that carries no markup.
 
 | Fixture | Shape | Used by |
 | --- | --- | --- |
-| `ab-problem` | A + B, one correct and one overflowing solution | build, run, irun, ui, BOCA packaging, `rbx time` |
+| `ab-problem` | A + B, one correct and one overflowing solution | build, run, irun, ui, BOCA packaging |
+| `timing-problem` | Count pairs summing to K: an accepted C++ and Python solution, and a quadratic one that is genuinely too slow | every `rbx time` recording |
 | `graph-problem` | Connected-graph input, path checker, validator and checker unit tests | `rbx unit`, `rbx validate`, verification levels, build caching |
 | `sum-problem` | Sum of N integers, `wa-overflow.cpp`, `vars.A.max` | both `rbx stress` recordings |
 | `pair-problem` | Print any `a + b = N`, custom checker | custom-checker walkthrough |
@@ -214,6 +215,32 @@ pages still carry, because the snippets as printed do not run:
   that opens by reading `N` deadlocks. It also reads the guess with
   `ouf.readInt`, rejecting the `? X` format the same statement specifies. The
   fixture fixes both.
+
+`timing-problem` is the one fixture that carries **its own environment**, in
+`.local.rbx/`. Everything the profiling pages teach — the ratios, the
+upper-bound check they make possible, and the language groups that hand `java`
+a limit derived from `cpp` — is configured in `env.rbx.yml` and nowhere else, so
+a recording that leaned on the installed default environment would show
+whatever that machine happened to have. A problem cannot fill the gap on its
+own: `timing.multipliers` in `problem.rbx.yml` only *overrides* an environment
+that already sets them, and errors otherwise.
+
+That environment declares `testlib`, so the fixture needs it materialized
+before the default checker will compile. Each timing recording does it in a
+hidden setup step:
+
+```yaml
+setup:
+  - rbx download testlib
+```
+
+It comes from rbx's library cache once warm; a cold cache makes that step reach
+the network.
+
+`timing-problem` also carries `broken/mislabeled.cpp`: a solution declared too
+slow that is nothing of the kind, swapped in by the
+`time-upper-bound-violation` setup so that recording can show the upper-bound
+check catching one. It is not part of the package and nothing else reads it.
 
 ## Re-record on an idle machine
 
