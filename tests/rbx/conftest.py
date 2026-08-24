@@ -76,6 +76,39 @@ def rich_no_markup(monkeysession):
 
 
 @pytest.fixture(autouse=True, scope='session')
+def skip_when_an_external_tool_is_missing(monkeysession):
+    """Turn a missing external binary into a skip, everywhere except CI.
+
+    `ExternalTool.ensure()` exits 1 with an install hint, which is right for a
+    setter but useless in a test run: the suite reports 34 identical
+    `click.exceptions.Exit: 1` failures that look like broken conversions rather
+    than an absent `pandoc`. Skipping says what is actually wrong, and only for
+    the tests that really reach the tool -- the check happens at the call site,
+    so a module whose other tests never touch it still runs them.
+
+    CI is exempt on purpose. There the tool *is* installed (see
+    `.github/workflows/tests.yml`), so a missing one is a regression in the
+    workflow, and a silent skip is exactly how that would go unnoticed.
+    """
+    if os.environ.get('CI'):
+        return
+
+    from rbx.tooling import ExternalTool
+
+    ensure = ExternalTool.ensure
+
+    def ensure_or_skip(self: ExternalTool) -> None:
+        if not self.is_available():
+            pytest.skip(
+                f'{self.executable} is not installed, and this test needs it '
+                f'for {self.purpose}.'
+            )
+        ensure(self)
+
+    monkeysession.setattr(ExternalTool, 'ensure', ensure_or_skip)
+
+
+@pytest.fixture(autouse=True, scope='session')
 def mock_app_path(monkeysession, tmp_path_factory):
     app_path = tmp_path_factory.mktemp('app')
     monkeysession.setattr('rbx.utils.get_app_path', lambda: app_path)

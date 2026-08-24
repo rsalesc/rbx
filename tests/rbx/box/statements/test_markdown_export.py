@@ -6,15 +6,46 @@ HTML the way MOJ renders it, so a diff here means pandoc changed, not that the
 expectation was aspirational.
 """
 
+import os
 import pathlib
 
 import pytest
 
+from rbx import tooling
 from rbx.box.statements import markdown_export
 
 TESTDATA = pathlib.Path(__file__).parent / 'testdata' / 'markdown_export'
 
 CASES = sorted(path.stem for path in TESTDATA.glob('*.tex'))
+
+# The pandoc whose Markdown writer these goldens record. CI installs exactly
+# this one; keep the two in step (`.github/workflows/tests.yml`).
+PANDOC_GOLDEN = '3.7.0.2'
+
+
+@pytest.fixture
+def golden_pandoc():
+    """Skip when the installed pandoc is not the one the goldens record.
+
+    The writer changes between releases -- 3.1.3 pads list markers to
+    `-   item` and falls back to a simple table where 3.7 writes an aligned
+    grid one -- so on another version these cases fail for a reason that has
+    nothing to do with the setter's change, and the diff is pandoc's.
+
+    CI is exempt: it installs `PANDOC_GOLDEN` on purpose, so a mismatch there
+    means the workflow drifted from this constant and must be seen.
+    """
+    if os.environ.get('CI') or not tooling.PANDOC.is_available():
+        return
+
+    import pypandoc
+
+    version = pypandoc.get_pandoc_version()
+    if version != PANDOC_GOLDEN:
+        pytest.skip(
+            f'these goldens record pandoc {PANDOC_GOLDEN}, but pandoc {version} '
+            f'is installed, and its Markdown writer differs.'
+        )
 
 
 def test_there_are_goldens():
@@ -22,7 +53,7 @@ def test_there_are_goldens():
 
 
 @pytest.mark.parametrize('case', CASES)
-def test_tex_converts_to_the_golden_markdown(case):
+def test_tex_converts_to_the_golden_markdown(case, golden_pandoc):
     tex = (TESTDATA / f'{case}.tex').read_text()
     expected = (TESTDATA / f'{case}.md').read_text()
     assert markdown_export.tex_to_markdown(tex) == expected
