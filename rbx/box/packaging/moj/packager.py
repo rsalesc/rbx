@@ -10,7 +10,6 @@ import typer
 
 from rbx import console, utils
 from rbx.box import environment, header, limits_info, package, timing_config
-from rbx.box import naming as box_naming
 from rbx.box.dependencies import graph as deps_graph
 from rbx.box.dependencies.amalgamation import AmalgamationError, amalgamate
 from rbx.box.dependencies.scanner import DependencyKind
@@ -457,42 +456,17 @@ class MojPackager(BasePackager):
     # -- metadata -------------------------------------------------------------
 
     def _get_main_statement(self) -> Optional[Statement]:
-        """The single statement this package ships.
+        """The single statement this package ships; `--language` picks it.
 
-        MOJ holds one statement per problem, so this is the one choice that
-        matters: the body and `display_title` both resolve from it, and they must
-        never come from different languages. `--language` picks it; without one,
-        the topmost declared statement wins, as everywhere else in rbx.
+        Shared with `rbx tooling moj summary`, which reports the title a MOJ
+        upload would carry without building anything -- see
+        `moj_statement.get_main_statement`.
         """
-        pkg = package.find_problem_package_or_die()
-        if not pkg.expanded_statements:
-            return None
-        if self.main_language is None:
-            return pkg.expanded_statements[0]
-        for statement in pkg.expanded_statements:
-            if statement.language == self.main_language:
-                return statement
-        available = '[/item], [item]'.join(
-            sorted({statement.language for statement in pkg.expanded_statements})
-        )
-        console.console.print(
-            f'[error]No statement in language [item]{self.main_language}[/item].'
-            f'[/error]\n[error]This problem has statements in: '
-            f'[item]{available}[/item].[/error]'
-        )
-        raise typer.Exit(1)
+        return moj_statement.get_main_statement(self.main_language)
 
     def _display_title(self) -> str:
-        """MOJ's `display_title`, resolved through the shared naming helper.
-
-        `naming.get_problem_title` is what BOCA uses: it honors a statement's own
-        `title` override, falls back to the package title and then to the package
-        name, and raises an actionable error when a package has several titles and no
-        statement to disambiguate them.
-        """
-        statement = self._get_main_statement()
-        language = statement.language if statement is not None else None
-        return box_naming.get_problem_title(language, statement, fallback_to_title=True)
+        """MOJ's `display_title`, resolved from `_get_main_statement`."""
+        return moj_statement.get_display_title(self.main_language)
 
     def _submission_languages(self) -> List[str]:
         """The MOJ ids to allow submissions in: the languages the environment

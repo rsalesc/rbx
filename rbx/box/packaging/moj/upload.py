@@ -8,7 +8,7 @@ through rbx and the session `moj login` established is reused.
 
 import pathlib
 import re
-from typing import Optional
+from typing import Optional, Tuple
 
 from rbx import console
 from rbx.box import environment
@@ -24,13 +24,14 @@ _ORG_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$')
 _SLUG_RE = re.compile(r'^[a-z0-9][a-z0-9._-]{1,80}$')
 
 
-def build_problem_id(login: str, org: Optional[str], basename: str) -> str:
+def build_problem_id(org: str, basename: str) -> str:
     """The `<org>#<slug>` this package uploads to.
 
     Pure on purpose: everything that needs a loaded package or a live CLI lives
-    in `resolve_problem_id`, so the naming rules can be tested on their own.
+    in `resolve_org` / `resolve_problem_id`, so the naming rules can be tested on
+    their own.
     """
-    resolved_org = org or login
+    resolved_org = org
     if not _ORG_RE.match(resolved_org):
         raise MojCliError(
             f'`{resolved_org}` is not a valid MOJ org: an org is 2-64 characters '
@@ -57,9 +58,23 @@ def build_problem_id(login: str, org: Optional[str], basename: str) -> str:
     return f'{resolved_org}#{slug}'
 
 
-def _configured_org() -> Optional[str]:
+def configured_org() -> Optional[str]:
     """`extensions.moj.org` from `env.rbx.yml`, if it is set."""
     return environment.get_extension_or_default('moj', MojExtension).org
+
+
+async def resolve_org() -> Tuple[str, bool]:
+    """The org every problem id lands under, and whether it is the personal one.
+
+    Falling back to the login is what makes an unconfigured package uploadable at
+    all, and the `moj whoami` that reads it is paid for **only** in that case: a
+    package with `extensions.moj.org` set knows its ids offline, which is what
+    lets `rbx tooling moj summary` list a whole contest without a live session.
+    """
+    org = configured_org()
+    if org is not None:
+        return org, False
+    return await cli.whoami(), True
 
 
 async def resolve_problem_id(basename: str) -> str:
@@ -68,11 +83,10 @@ async def resolve_problem_id(basename: str) -> str:
     `basename` is the packager's own `package_basename()`, so the id on the
     server matches the artifact name on disk.
     """
-    login = await cli.whoami()
-    org = _configured_org()
-    problem_id = build_problem_id(login, org, basename)
+    org, is_personal = await resolve_org()
+    problem_id = build_problem_id(org, basename)
 
-    if org is None:
+    if is_personal:
         # Not an error -- uploading under your own login is a perfectly good way
         # to try the flow -- but it is invisible to everyone else, and finding
         # that out from a co-setter is worse than hearing it here.

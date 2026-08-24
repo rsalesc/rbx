@@ -18,9 +18,15 @@ facts worth carrying in your head:
 import pathlib
 from typing import Dict, Mapping, Optional
 
+import typer
+
+from rbx import console
+from rbx.box import naming as box_naming
+from rbx.box import package
 from rbx.box.packaging.moj import naming, statement_assets
 from rbx.box.statements import export
 from rbx.box.statements.markdown_export import check_moj_gate, tex_to_markdown
+from rbx.box.statements.schema import Statement
 
 # The group rbx reserves for samples. Sample test names ignore it (they are
 # `sample%03d`), but `naming.testcase_name` still wants a group.
@@ -47,6 +53,50 @@ def _headings(language: Optional[str]) -> Dict[str, str]:
     """
     subtag = (language or '').split('-')[0].lower()
     return _HEADINGS.get(subtag, _HEADINGS[_DEFAULT_HEADING_LANGUAGE])
+
+
+def get_main_statement(main_language: Optional[str] = None) -> Optional[Statement]:
+    """The single statement a MOJ package ships.
+
+    MOJ holds one statement per problem, so this is the one choice that matters:
+    the body and `display_title` both resolve from it, and they must never come
+    from different languages. `main_language` picks it; without one, the topmost
+    declared statement wins, as everywhere else in rbx.
+    """
+    pkg = package.find_problem_package_or_die()
+    if not pkg.expanded_statements:
+        return None
+    if main_language is None:
+        return pkg.expanded_statements[0]
+    for statement in pkg.expanded_statements:
+        if statement.language == main_language:
+            return statement
+    available = '[/item], [item]'.join(
+        sorted({statement.language for statement in pkg.expanded_statements})
+    )
+    console.console.print(
+        f'[error]No statement in language [item]{main_language}[/item].'
+        f'[/error]\n[error]This problem has statements in: '
+        f'[item]{available}[/item].[/error]'
+    )
+    raise typer.Exit(1)
+
+
+def get_display_title(main_language: Optional[str] = None) -> str:
+    """MOJ's `display_title`, resolved through the shared naming helper.
+
+    `naming.get_problem_title` is what BOCA uses: it honors a statement's own
+    `title` override, falls back to the package title and then to the package
+    name, and raises an actionable error when a package has several titles and no
+    statement to disambiguate them.
+
+    The statement it resolves against is `get_main_statement`'s, so anything
+    reporting what a MOJ upload would be titled -- the packager, `rbx tooling moj
+    summary` -- agrees with the package that eventually gets built.
+    """
+    statement = get_main_statement(main_language)
+    language = statement.language if statement is not None else None
+    return box_naming.get_problem_title(language, statement, fallback_to_title=True)
 
 
 def moj_layout() -> statement_assets.RasterizingLayout:

@@ -4,6 +4,7 @@ import pytest
 
 from rbx.box.packaging.moj.upload import (
     build_problem_id,
+    resolve_org,
     resolve_problem_id,
     upload_package,
 )
@@ -11,35 +12,31 @@ from rbx.box.runners.moj.cli import MojCliError
 from tests.rbx.box.runners.moj.test_cli import _stub_calls, _stub_moj
 
 
-def test_uses_the_configured_org():
-    assert build_problem_id('alice', 'unicamp', 'a-aplusb') == 'unicamp#a-aplusb'
-
-
-def test_falls_back_to_the_login_when_no_org_is_configured():
-    assert build_problem_id('alice', None, 'a-aplusb') == 'alice#a-aplusb'
+def test_builds_the_id_from_the_org_and_the_basename():
+    assert build_problem_id('unicamp', 'a-aplusb') == 'unicamp#a-aplusb'
 
 
 def test_lowercases_the_slug():
     # rbx allows uppercase in a problem name and contest short names ARE
     # uppercase letters, but MOJ slugs are lowercase-only.
-    assert build_problem_id('alice', None, 'A-APlusB') == 'alice#a-aplusb'
+    assert build_problem_id('alice', 'A-APlusB') == 'alice#a-aplusb'
 
 
 def test_rejects_a_slug_that_is_not_a_legal_moj_slug():
     with pytest.raises(MojCliError, match='problem name'):
-        build_problem_id('alice', None, 'a+b')
+        build_problem_id('alice', 'a+b')
 
 
 def test_rejects_an_illegal_org():
     with pytest.raises(MojCliError, match='org'):
-        build_problem_id('alice', 'not an org', 'aplusb')
+        build_problem_id('not an org', 'aplusb')
 
 
 def test_refuses_a_slug_that_looks_like_an_rbx_timing_problem():
     # `rbxt-` marks a throwaway problem `rbx time --runner moj` created and may
     # overwrite. A real package must never land on an id that looks like one.
     with pytest.raises(MojCliError, match='rbxt-'):
-        build_problem_id('alice', None, 'rbxt-aplusb')
+        build_problem_id('alice', 'rbxt-aplusb')
 
 
 # -- Resolving against the live CLI. -------------------------------------------
@@ -50,13 +47,34 @@ def test_refuses_a_slug_that_looks_like_an_rbx_timing_problem():
 # straddle the break.
 
 
+async def test_resolve_org_uses_the_configured_org_without_a_session():
+    # No `whoami` patch on purpose: a configured org must resolve without ever
+    # reaching the CLI, which is what lets `rbx tooling moj summary` list a
+    # contest's ids while logged out.
+    with mock.patch(
+        'rbx.box.packaging.moj.upload.configured_org', return_value='unicamp'
+    ):
+        assert await resolve_org() == ('unicamp', False)
+
+
+async def test_resolve_org_falls_back_to_the_login():
+    with (
+        mock.patch(
+            'rbx.box.packaging.moj.upload.cli.whoami',
+            new=mock.AsyncMock(return_value='alice'),
+        ),
+        mock.patch('rbx.box.packaging.moj.upload.configured_org', return_value=None),
+    ):
+        assert await resolve_org() == ('alice', True)
+
+
 async def test_resolve_warns_when_uploading_to_the_personal_org(capsys):
     with (
         mock.patch(
             'rbx.box.packaging.moj.upload.cli.whoami',
             new=mock.AsyncMock(return_value='alice'),
         ),
-        mock.patch('rbx.box.packaging.moj.upload._configured_org', return_value=None),
+        mock.patch('rbx.box.packaging.moj.upload.configured_org', return_value=None),
     ):
         problem_id = await resolve_problem_id('a-aplusb')
 
@@ -71,7 +89,7 @@ async def test_resolve_does_not_warn_when_an_org_is_configured(capsys):
             new=mock.AsyncMock(return_value='alice'),
         ),
         mock.patch(
-            'rbx.box.packaging.moj.upload._configured_org', return_value='unicamp'
+            'rbx.box.packaging.moj.upload.configured_org', return_value='unicamp'
         ),
     ):
         problem_id = await resolve_problem_id('a-aplusb')
