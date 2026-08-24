@@ -25,6 +25,7 @@ import { registerSolutionLens } from './solutionLens';
 import { registerSolutionStatus } from './solutionStatus';
 import { TestsetPanel } from './testsetPanel';
 import { TestsetViewProvider } from './testsetView';
+import { openVisualization } from './visualizationPanel';
 
 /**
  * Map a changed cache path back to the package it belongs to.
@@ -138,18 +139,19 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  // A click in the gallery has to land on the same commands a click in the
-  // sidebar does. The panel does not own those commands and must not reach for
-  // them, so it names an intent and this routes it: a testcase through the
-  // sidebar's node (which is what the command signature expects), a file the
-  // editor is left to interpret -- `Visualizer.extension` is a free string.
+  // A click in the gallery has to land where a click in the sidebar does. The
+  // panel does not own those commands and must not reach for them, so it names
+  // an intent and this routes it: a testcase through the sidebar's node (which
+  // is what the command signature expects), a file through the same opener the
+  // Tests view's visualization commands use.
   context.subscriptions.push(
     TestsetPanel.onDidRequestOpen((request) => {
       if (request.kind === 'file') {
-        void vscode.commands.executeCommand(
-          'vscode.open',
-          vscode.Uri.file(request.filePath),
-        );
+        void openVisualization(context, {
+          root: request.root,
+          filePath: request.filePath,
+          label: `${request.group}/${request.stem}`,
+        });
         return;
       }
       const node = testset.nodeById(`${request.group}::${request.stem}`);

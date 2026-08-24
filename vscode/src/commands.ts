@@ -25,6 +25,7 @@ import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
 import { TestcasePanes } from './testcasePanes';
 import { TestsetPanelRequest, TestsetViewProvider } from './testsetView';
+import { openVisualization, openVisualizationExternally } from './visualizationPanel';
 
 /** `sols/wa.cpp/main/1-gen-000` -- the display prefix shared by a testcase's tabs. */
 function labelPrefix(node: TestcaseNode): string {
@@ -398,13 +399,26 @@ export function registerCommands(
         );
         return;
       }
-      // `vscode.open` rather than `openTextDocument`: `Visualizer.extension` is
-      // a free string, so this may be an SVG the editor previews, an HTML page
-      // or something it has no viewer for -- and letting the editor decide is
-      // the only answer that is right for all three.
-      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(realPath));
+      // `Visualizer.extension` is a free string, so this may be an SVG, an HTML
+      // page or something with no viewer at all. `openVisualization` owns that
+      // fork: HTML gets framed in a panel, everything else goes to the editor.
+      await openVisualization(context, {
+        root: node.pkg.root,
+        filePath: realPath,
+        label: `${node.group}/${node.stem} (${name})`,
+      });
     });
   }
+
+  // Not a row command: it acts on the visualization panel that has focus, which
+  // is why it takes no node and why its `when` clause is `activeWebviewPanelId`.
+  // Registered directly rather than through `register`, whose whole job is to
+  // resolve an argument this command does not take.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('rbx.openVisualizationExternally', () =>
+      openVisualizationExternally(),
+    ),
+  );
 
   register('rbx.copyTestPath', async (node) => {
     if (!isBuiltTestcase(node)) {

@@ -164,7 +164,7 @@ code {
 }
 
 .cell-image,
-.cell-frame,
+.cell-html,
 .cell-missing,
 .cell-open {
   /* A fixed box for every cell whatever it holds, so the captions line up in a
@@ -178,10 +178,7 @@ code {
   object-fit: contain;
 }
 
-.cell-frame {
-  border: none;
-}
-
+.cell-html,
 .cell-missing,
 .cell-open {
   display: flex;
@@ -198,6 +195,19 @@ code {
   padding: 4px;
 }
 
+/* Solid, where the other two placards are dashed: a dashed box says "nothing
+   here", and an HTML visualization is a real file that renders -- just not in a
+   140px cell. The bigger glyph is doing the same work the picture does in an
+   image cell, which is to say what this is at a glance. */
+.cell-html {
+  border-style: solid;
+}
+
+.cell-html .codicon {
+  font-size: 24px;
+}
+
+.cell-html:hover,
 .cell-open:hover {
   color: var(--vscode-foreground);
 }
