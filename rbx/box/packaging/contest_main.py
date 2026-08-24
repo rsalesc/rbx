@@ -116,6 +116,17 @@ async def polygon(
     )
 
 
+class BocaContestPackager(ContestZipper):
+    def __init__(self, **kwargs):
+        super().__init__('boca-contest', zip_inner=True, **kwargs)
+
+    # `name()` is read off the class, never off an instance, so this override
+    # has to be a classmethod like every other packager's.
+    @classmethod
+    def name(cls) -> str:
+        return 'boca'
+
+
 @app.command('boca', help='Build a contest package for BOCA.')
 @contest_package.within_contest
 @syncer.sync
@@ -123,13 +134,6 @@ async def boca(
     verification: environment.VerificationParam,
 ):
     from rbx.box.packaging.boca.packager import BocaPackager
-
-    class BocaContestPackager(ContestZipper):
-        def __init__(self, **kwargs):
-            super().__init__('boca-contest', zip_inner=True, **kwargs)
-
-        def name(self) -> str:
-            return 'boca'
 
     await run_contest_packager(
         BocaContestPackager, BocaPackager, verification=verification

@@ -1,0 +1,38 @@
+fixture: summer-cup
+title: Packaging a whole contest into one bundle
+# The command reports one problem at a time, and each report is a BOCA limits
+# table -- four columns wide before it is worth reading.
+width: 110
+height: 32
+timeout: 900s
+# The last frame is the path the bundle landed at, which is the whole point of
+# the recording, and the player only holds three seconds on it.
+end_pause: 2s
+setup:
+  # Every problem here compiles a testlib checker: `chocolate` and `gardens`
+  # declare none and fall back to the bundled `wcmp.cpp`, `sum-of-n` ships its
+  # own. None of them build without the header.
+  - cd problems/chocolate && rbx download testlib
+  - cd problems/gardens && rbx download testlib
+  - cd problems/sum-of-n && rbx download testlib
+  # The BOCA packager refuses to run without a `boca` limits profile per
+  # problem. The docs get those from `rbx each time -p boca --auto` a step
+  # earlier; here they are a prerequisite of the recording rather than part of
+  # what it teaches, so they are hidden. `-a` skips the interactive prompts.
+  - cd problems/chocolate && rbx time -p boca -a
+  - cd problems/gardens && rbx time -p boca -a
+  - cd problems/sum-of-n && rbx time -p boca -a
+instructions:
+  # One command, three problem builds behind it -- generation, validation and
+  # every solution run at the default verification level. It plays at real
+  # speed: the setup above leaves the grading cache warm, so the whole sweep
+  # takes under twenty seconds, and every one of those seconds is a per-problem
+  # report the reader is meant to watch scroll past.
+  - rbx contest package boca
+expect_contains:
+  # The per-problem stage announcing itself, the limits table each problem
+  # settles on, and the bundle the command exists to write.
+  - Processing problem
+  - BOCA time limits
+  - Packaging contest for
+  - boca-contest.zip
