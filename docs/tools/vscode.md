@@ -158,33 +158,16 @@ An image opens in an editor tab; an interactive HTML one opens in VS Code's own
 browser, beside the list you picked it from, rather than in whatever program
 your desktop associates with the file.
 
-## While you are editing
-
-A declaration is a promise a solution makes before any run exists, and the
-extension shows it away from the views too. Every file `problem.rbx.yml` names
-is **badged in the Explorer** -- solutions with the outcome they were declared
-to have, in the glyph and colour `rbx run` already prints, everything else with
-two neutral letters naming its role. And with a solution open, the same
-declaration is spelled out in words on a **CodeLens** above line one and in the
-**language status area**, which survives scrolling and can be pinned: the pooled
-`outcome`, then every `outcomePerGroup` override, then the expected `score`.
-
 ## Settings
 
-Every surface above can be turned off on its own.
+Every surface above can be turned off or adjusted on its own. Search for
+`@ext:rsalesc.rbx-vscode` in VS Code's settings to see all of them, these included.
 
 | Setting | Default | Does |
 |---|---|---|
-| `rbx.decorateExplorer` | `true` | Badge declared files in the Explorer and on editor tabs |
-| `rbx.solutionCodeLens` | `true` | Show a solution's declaration above its first line |
-| `rbx.solutionStatus` | `true` | Show it in the language status area |
 | `rbx.compilationDiagnostics` | `true` | Report compiler warnings and failures in the Problems panel |
 | `rbx.solutionLabel` | `trimmed` | How much of a solution's path the run view shows: `full`, `trimmed` or `basename` |
 | `rbx.testcaseLayout` | `below` | Where the second testcase pane is *first* placed: `below` or `beside` |
-
-The badge colours are contributed as `rbx.expected*` and default to the theme's
-own chart colours, so a colour theme can restyle them and the run view and the
-Explorer will still agree.
 
 For the keyboard, everything these views do is also a command: `rbx: Select
 Problem`, `rbx: Reveal Problem in Explorer`, `rbx: Show Constraint Coverage` and
