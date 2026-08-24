@@ -1,0 +1,75 @@
+fixture: workspace
+title: Scaffolding a contest with rbx contest
+# Three preset installs happen here -- one for the contest, one per problem --
+# and each reaches the network. The budget is per-instruction, so every
+# interactive step below has to cover its own round trip.
+timeout: 600s
+instructions:
+  - !Interactive
+    command: rbx contest create
+    keys:
+      - 2s
+      # `rbx contest create` prompts for the path first. The page introduces
+      # exactly this one, and the tree below it is titled `summer-cup`.
+      - 'contests/summer-cup'
+      - '^M'
+      - 3s
+      # With no active preset, rbx offers the registry. Take the highlighted
+      # entry -- the default preset the rest of the page describes.
+      - '^M'
+      # Cloning the preset reaches the network. Generous on purpose, and it has
+      # to come before anything else: the prompts that follow are only printed
+      # once the clone lands.
+      - 60s
+  - !Wait 2s
+  # The page renames the contest right after creating it, so the summary at the
+  # end of this cast has to agree with the page's `contest.rbx.yml`. Editing a
+  # YAML file on screen teaches nothing, so this one happens off camera.
+  - !Command
+    command: >-
+      python3 -c "import pathlib;p=pathlib.Path('contests/summer-cup/contest.rbx.yml');p.write_text(p.read_text().replace('new-contest','summer-cup').replace('New contest','Summer Cup 2026'))"
+    hidden: true
+  - !Clear
+  # Two problems, added the way the page adds them: both prompts answered on
+  # the command line, so the reader sees the invocation the page prints.
+  #
+  # Every instruction runs on its own pty rooted at the fixture, so a bare `cd`
+  # would not survive into the next one -- each of these carries its own, the
+  # way casts/statement-build.yml does.
+  #
+  # Both are interactive: the default preset declares an `interactive` problem
+  # variant, so `rbx contest add` asks which template to use, exactly as
+  # `rbx create` does. Taking the highlighted entry picks the canonical one.
+  # (`--variant default` would answer it on the command line, but the page
+  # prints the plain form and the cast should show the plain form running.)
+  - !Interactive
+    command: cd contests/summer-cup && rbx contest add --path problems/chocolate --short-name A
+    keys:
+      - 3s
+      - '^M'
+      # Materializing testlib, jngen and tgen reaches the network.
+      - x8
+      - 60s
+      - x1
+  - !Wait 2s
+  - !Interactive
+    command: cd contests/summer-cup && rbx contest add --path problems/gardens --short-name B
+    keys:
+      - 3s
+      - '^M'
+      - x8
+      - 60s
+      - x1
+  - !Wait 2s
+  - !Clear
+  # The payoff frame: the contest as rbx sees it. The page describes this table
+  # right after the recording, so it is the last thing left on screen.
+  - cd contests/summer-cup && rbx contest summary
+expect_contains:
+  - Where should the contest be created
+  - Installing preset from
+  - added to contest
+  # From the summary table: its title, and both problems we just added.
+  - 'Contest: summer-cup'
+  - chocolate
+  - gardens

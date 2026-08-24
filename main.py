@@ -33,14 +33,24 @@ PRESET_TREE_ANNOTATIONS = 'docs/_data/preset-tree.yml'
 # reader watches being created is the folder the tree describes.
 PRESET_TREE_ROOT_NAME = 'sum-of-n'
 
+# The contest half of the same preset -- what `rbx contest create` lays down,
+# and what the contest-scaffolding tree is a picture of.
+PRESET_CONTEST_DIR = 'rbx/resources/presets/default/contest'
+
+CONTEST_TREE_ANNOTATIONS = 'docs/_data/contest-preset-tree.yml'
+
+# Matches the contest created in casts/contest-scaffold.yml, for the same
+# reason PRESET_TREE_ROOT_NAME matches casts/create-problem.yml.
+CONTEST_TREE_ROOT_NAME = 'summer-cup'
+
 # `{{ var }}` / `{{ a.b }}` inside annotation prose. mkdocs-macros renders a
 # page once and does not re-scan what a macro returned, so these would reach
 # the reader as literal text unless the macro resolves them itself.
 _VAR = re.compile(r'\{\{\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\}\}')
 
 
-def _tracked_preset_files() -> list[pathlib.Path]:
-    """Preset files as git knows them, relative to the preset problem dir.
+def _tracked_preset_files(preset_dir: str) -> list[pathlib.Path]:
+    """Preset files as git knows them, relative to `preset_dir`.
 
     Deliberately not a filesystem walk. A preset directory that has ever been
     built in place carries `.box/`, `build/` and `.limits/` alongside the files
@@ -48,13 +58,13 @@ def _tracked_preset_files() -> list[pathlib.Path]:
     page. What the preset *ships* is exactly what is committed.
     """
     out = subprocess.run(
-        ['git', 'ls-files', '-z', PRESET_PROBLEM_DIR],
+        ['git', 'ls-files', '-z', preset_dir],
         cwd=_ROOT,
         capture_output=True,
         text=True,
         check=True,
     ).stdout
-    prefix = PRESET_PROBLEM_DIR + '/'
+    prefix = preset_dir + '/'
     return sorted(
         pathlib.Path(line[len(prefix) :])
         for line in out.split('\0')
@@ -145,9 +155,10 @@ def define_env(env):
 
         return _VAR.sub(lookup, text)
 
-    @env.macro
-    def preset_tree() -> str:
-        """The default preset's problem layout, walked rather than transcribed.
+    def _render_preset_tree(
+        preset_dir: str, annotations_path: str, root_name: str
+    ) -> str:
+        """One half of the default preset, walked rather than transcribed.
 
         The tree this replaces was hand-copied once and then drifted: it went on
         showing a `documents/` folder for several releases after statements v2
@@ -160,21 +171,21 @@ def define_env(env):
         gained a file near the top would slide every annotation down one row
         without failing anything.
         """
-        annotations = yaml.safe_load((_ROOT / PRESET_TREE_ANNOTATIONS).read_text())
+        annotations = yaml.safe_load((_ROOT / annotations_path).read_text())
 
-        paths = _tracked_preset_files()
+        paths = _tracked_preset_files(preset_dir)
         known = {str(p) for p in paths} | {
             str(parent) for p in paths for parent in p.parents if str(parent) != '.'
         }
         stale = sorted(set(annotations) - known)
         if stale:
             raise KeyError(
-                f'{PRESET_TREE_ANNOTATIONS} annotates {stale}, which the preset at '
-                f'{PRESET_PROBLEM_DIR} no longer ships. Drop the entries, or point '
+                f'{annotations_path} annotates {stale}, which the preset at '
+                f'{preset_dir} no longer ships. Drop the entries, or point '
                 'them at the paths that replaced them.'
             )
 
-        rendered = [PRESET_TREE_ROOT_NAME]
+        rendered = [root_name]
         notes: list[str] = []
         for line, path in _tree_lines(paths):
             prose = annotations.get(path)
@@ -192,6 +203,20 @@ def define_env(env):
             for i, prose in enumerate(notes, start=1)
         )
         return f'```bash\n{body}\n```\n\n{items}\n'
+
+    @env.macro
+    def preset_tree() -> str:
+        """What `rbx create` lays down -- the first-steps tree."""
+        return _render_preset_tree(
+            PRESET_PROBLEM_DIR, PRESET_TREE_ANNOTATIONS, PRESET_TREE_ROOT_NAME
+        )
+
+    @env.macro
+    def contest_preset_tree() -> str:
+        """What `rbx contest create` lays down -- the contest-scaffolding tree."""
+        return _render_preset_tree(
+            PRESET_CONTEST_DIR, CONTEST_TREE_ANNOTATIONS, CONTEST_TREE_ROOT_NAME
+        )
 
     @env.macro
     def asciinema(id: str, idleness: float = 1, speed: float = 1, pause: float = 3):
