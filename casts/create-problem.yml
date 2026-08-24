@@ -1,6 +1,9 @@
 fixture: workspace
 title: Creating a problem with rbx create
-timeout: 300s
+# The clone, the variant prompt and the library materialization all happen
+# inside the one interactive instruction, and each recording's budget is
+# per-command, so this has to cover the whole network round trip.
+timeout: 600s
 instructions:
   - !Interactive
     command: rbx create
@@ -14,18 +17,33 @@ instructions:
       # With no active preset, rbx offers the registry. Take the highlighted
       # entry -- the default preset the rest of the page assumes.
       - '^M'
-      # Cloning the preset and materializing testlib, jngen and tgen reaches
-      # the network, so this wait is generous on purpose.
+      # Cloning the preset reaches the network, so this wait is generous on
+      # purpose. It has to come before the next key: the template prompt below
+      # is only printed once the clone lands.
+      - 45s
+      # The default preset declares an `interactive` problem variant, so rbx
+      # asks which template to use. Take the highlighted entry again -- that is
+      # `default`, the canonical batch template this page walks through.
+      - '^M'
+      # Materializing testlib, jngen and tgen reaches the network too.
       - 45s
   - !Wait 2s
-# Deliberately no `ls` of the new folder: the page prints its own annotated
-# tree, and the two disagree today (the preset ships `statement/`, the tree
-# says `documents/`). Showing both would put the contradiction on screen, so
-# the recording stops at the creation flow, which is what it is here to teach.
+  - !Clear
+  # The page prints an annotated tree right below this recording. That tree is
+  # walked out of the preset by the `preset_tree()` macro, so the two cannot
+  # disagree any more and the folder can finally be shown. The `.h` files are
+  # the libraries materialized above, not preset files -- which is why the tree
+  # does not list them.
+  - ls -R sum-of-n
 expect_contains:
   - What should the problem be named?
   - Which preset do you want to use?
+  # Added when the default preset gained its `interactive` problem variant.
+  - Which problem template do you want to use?
   - Installing preset from
   # Just `Materialized library`: the library name that follows is styled
   # separately, so the longer phrase never matches (see casts/README.md).
   - Materialized library
+  # The layout the tree on the page describes.
+  - statement
+  - testplan.txt

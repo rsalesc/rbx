@@ -261,10 +261,6 @@ timed against load, not against `rbx`.
   GitHub and materializes its libraries, so this is the one recording that
   cannot be re-made offline. It is pinned in practice by the tool tag rbx
   checks out (the installed version), not by the spec.
-- **`create-problem` does not `ls` the problem it just made**, even though the
-  page prints an annotated tree right below it. The tree says `documents/`
-  while the preset ships `statement/`, so showing both would put the
-  contradiction on screen. Once the page and the preset agree, add the `ls`.
 - **The BOCA upload recording** (`boca.md`, `packaging-walkthrough.md`) is still
   hosted on asciinema.org. `rbx package boca -u` uploads to a live BOCA server,
   and the pipeline has no way to stand one up. `record-check` reports these two
@@ -278,11 +274,11 @@ timed against load, not against `rbx`.
     other recording. It remains the one embed that needs the network to play,
     and the only one whose bytes are not in this repository.
 - **`stress-walkthrough` stops at the save confirmation** rather than going on
-  to `rbx build`. Choosing `(create new script)` and typing `tests/corner`
-  creates the file at `tests/corner.txt` but writes `path: corner.txt` into
-  `problem.rbx.yml`, and the path is resolved from the package root — so the
-  next build fails with `Generator script not found`. That is an rbx bug, not a
-  recording one.
+  to `rbx build`. It no longer has to: the bug that made that build fail
+  (`(create new script)` recorded a bare `corner.txt` for a file created at
+  `tests/corner.txt`, and the path resolves from the package root) is fixed.
+  Extending this recording through `rbx build` is now a matter of recording
+  time rather than of putting something broken on screen.
 
 ## How recording works
 
