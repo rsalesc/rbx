@@ -128,10 +128,6 @@ cancel. Nothing is written until you pick one.
 Where there is no picker to reopen — under `--auto`, or in a problem with a single language —
 the violation is reported and recorded in the profile, and the limit is written anyway.
 
-Re-checking after a regroup is cheap. A solution that timed out at some limit also times out at
-any lower one, and a solution that finished is answered by arithmetic, so only the solutions
-whose bound went *up* are run again.
-
 ## Skipping the upper-bound check
 
 ```bash
@@ -162,18 +158,8 @@ rbx time --share png    # or: --share text
 Captures the run report and the limits table and copies it to your clipboard, for pasting into
 wherever the argument about a time limit is happening.
 
-## Flags
+## Every flag
 
-| Flag | Short | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `--profile` | `-p` | `local` | Profile to write. |
-| `--auto` | `-a` | `false` | Take the configured strategy and every prompt's default. |
-| `--strategy` | `-s` | _(asks)_ | `estimate`, `inherit`, `estimate_custom` or `custom`. |
-| `--integrate` | `-i` | `false` | Also write the limits into `problem.rbx.yml`. |
-| `--runs` | `-r` | `0` | Runs per solution; `0` takes the environment's default. |
-| `--detailed` | `-d` | `false` | Print per-testcase results as tables. |
-| `--check` | | `true` | Build outputs and run the checker while estimating. |
-| `--validate` | | `true` | Validate inputs and outputs while estimating. |
-| `--skip-slow` | | `false` | Stop after the estimate, leaving the upper bound unchecked. |
-| `--share` | | | Copy the report to the clipboard: `png` or `text`. |
-| `--runner` | | `local` | Where to run the solutions being timed. See [On the judge itself](remote.md). |
+The sections above cover the flags worth explaining. For the exhaustive list, with its short
+forms and defaults, see [`rbx time` in the CLI reference](../reference/cli.md#time-t) — it is
+generated from the command itself, so it cannot fall behind.

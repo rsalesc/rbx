@@ -14,8 +14,8 @@ of per judge you ship to.
 
 ## Motivational problem
 
-Everything in this section is the same problem, growing. It asks for the number of pairs of
-values in a list that add up to `K`:
+Every page in this section teaches against one problem, so you never have to re-orient. It asks
+for the number of pairs of values in a list that add up to `K`, and it is solved three ways:
 
 ```yaml title="problem.rbx.yml"
 solutions:
@@ -48,6 +48,13 @@ It builds the problem, times the accepted solutions, asks you how to bucket the 
 then checks the limit it arrived at against the solutions you said were too slow:
 
 {{ asciinema("time-estimate") }}
+
+!!! note "Don't worry about following all of that yet"
+
+    That is the whole mechanism at once, and it is not meant to be readable on a first pass.
+    Every part of it — the prompt, the bucketing screen, the arithmetic behind the numbers, and
+    the check at the end — gets a page of its own below. Read this as *what the command does*,
+    and come back once you have met the pieces.
 
 The table at the end is the answer. `cpp` gets `100 ms` from its own measurements, `py` gets
 `200 ms` from its own, and `java` — which nothing solves — gets `×2.0 of cpp`, because the

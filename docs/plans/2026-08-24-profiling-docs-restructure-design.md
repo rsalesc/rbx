@@ -4,7 +4,7 @@
 **Scope:** the **Feature Guide → Profiling** section, plus two additions to the cast pipeline
 (`casts/`, `scripts/casts/`) and one new rule in the docs writing-style guide.
 **Style authority:** [`docs/plans/docs-writing-style-guide.md`](docs-writing-style-guide.md).
-**Pipeline authority:** [`casts/README.md`](../../casts/README.md) and
+**Pipeline authority:** `casts/README.md` and
 [`docs/plans/2026-08-08-asciinema-recording-pipeline-design.md`](2026-08-08-asciinema-recording-pipeline-design.md).
 
 ## 1. Motivation

@@ -16,7 +16,7 @@ with `pymdownx.snippets` and `mkdocs-macros`, asciicast v2, a vendored asciinema
 
 **Design:** [`2026-08-24-profiling-docs-restructure-design.md`](2026-08-24-profiling-docs-restructure-design.md).
 Read it before starting. Read [`docs/plans/docs-writing-style-guide.md`](docs-writing-style-guide.md)
-before writing any prose, and [`casts/README.md`](../../casts/README.md) before touching a cast.
+before writing any prose, and `casts/README.md` before touching a cast.
 
 **Commit convention:** this repo enforces Conventional Commits via commitizen. Use the
 `/commit` skill, or follow `.claude/skills/commit.md`. Never `git add -A`.

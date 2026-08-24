@@ -16,14 +16,13 @@ Each profile is a YAML file under `.limits/`, named after the target it describe
 my-problem/
 ├── problem.rbx.yml
 └── .limits/
-    ├── local.yml      # (1)!
-    ├── boca.yml       # (2)!
+    ├── local.yml      # the default: what `rbx run` uses
+    ├── boca.yml       # named for a packager, not for you
     └── polygon.yml
 ```
 
-1. The default. `rbx run` uses this one unless told otherwise.
-2. Named for a packager rather than for you — see [Profiles and
-   packaging](#profiles-and-packaging).
+`local` is the one you get when you ask for nothing. The other two are named after packagers,
+which is not a convention you chose — see [Profiles and packaging](#profiles-and-packaging).
 
 Estimate one, and read it back:
 
@@ -82,10 +81,6 @@ rbx -p boca run          # (1)!
 
 `rbx run` fails if the profile does not exist, rather than falling back to something you did not
 ask for.
-
-!!! note
-
-    `rbx irun` takes only the long `--profile`. Its `-p` is already `--print`.
 
 ## Building statements against a profile
 
@@ -160,19 +155,7 @@ rbx time --integrate -p local
 This copies the time, memory and output limits and any modifiers from the profile into
 `problem.rbx.yml`.
 
-## Editing a profile by hand
-
-Profiles are plain YAML, so an editor works. Point it at the schema for completion and
-validation:
-
-```yaml title=".limits/local.yml"
-# yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/LimitsProfile.json
-```
-
-There is also a profile editor in the {{rbx}} TUI, reachable from `rbx ui`. It is marked *in
-development*, so prefer the file or `rbx time` for anything you intend to keep.
-
-## Scaling every limit at once
+## Scaling every limit locally
 
 `RBX_TIME_MULTIPLIER` multiplies every effective time limit, without editing a profile:
 

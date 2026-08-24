@@ -27,7 +27,7 @@ MOJ is the only backend today.
 
 <!-- TODO(record): rbx time --runner moj cast -- needs a live moj login, so it cannot be recorded from CI or from a machine without judge access -->
 
---8<-- "_partials/moj-backend.md"
+{% include "_partials/moj-backend.md" %}
 
 ## The two phases, and the two uploads
 

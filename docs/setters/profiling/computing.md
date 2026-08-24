@@ -28,6 +28,24 @@ timing:
    the limit unbounded from above — and see the consequence below.
 3. Round the result up to a multiple of `100 ms`, so limits come out as round numbers.
 
+Read together, the two ratios squeeze the limit from both ends. Everything {{rbx}} is looking
+for is in one inequality:
+
+```text
+acToTimeLimit × (slowest accepted)  ≤  time limit  ≤  (fastest too-slow) ÷ timeLimitToTle
+```
+
+Our problem, with the ratios above and the timings from the recording — the Python solution is
+the slowest that has to pass, and the quadratic one is the fastest that has to fail:
+
+```text
+        2.0 × 100 ms                ≤    200 ms    ≤        300 ms ÷ 1.5
+              200 ms                ≤    200 ms    ≤        200 ms
+```
+
+`200 ms` is the only limit that satisfies both, and it is what gets written. Widen either ratio
+and the window opens; tighten both far enough and it closes.
+
 The reason to prefer ratios is the second one. A formula only knows about the solutions that
 should pass, so it can happily produce a limit generous enough for the solution you wrote the
 problem to reject. Ratios are checked against **both** sides, and a limit that would let a

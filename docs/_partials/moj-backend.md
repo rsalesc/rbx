@@ -7,6 +7,11 @@
   genuinely differs between the two commands -- which throwaway problem each
   uploads to, and how many uploads a run costs -- stays in the page that owns
   the command, not in this file.
+
+  Pulled in by mkdocs-macros' own include (via its `include_dir`) rather than
+  by pymdownx.snippets: snippets inline the file during Markdown rendering,
+  long after macros have run, so the project macros used below would reach the
+  page as literal text.
 -->
 
 You must be logged in to the [`moj` CLI](https://github.com/cd-moj/moj-cli) — {{rbx}} reuses

@@ -37,7 +37,7 @@ and [`rbx time --runner moj`](/setters/profiling/remote/) share all of it.
 
 ### What it needs, and what it cannot tell you
 
---8<-- "_partials/moj-backend.md"
+{% include "_partials/moj-backend.md" %}
 
 The problem `rbx run` uploads to is named `<your-login>#rbxt-<problem-id>-run`.
 
