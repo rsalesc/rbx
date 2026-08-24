@@ -486,6 +486,84 @@ def test_refuses_a_package_without_an_accepted_solution(testing_pkg, tmp_path):
         run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
 
 
+def test_main_solution_only_ships_just_the_model_solution(
+    testing_pkg, tmp_path, capsys
+):
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.add_solution('other.cpp', outcome='accepted').write_text(
+        'int main(){return 0;}\n'
+    )
+    testing_pkg.add_solution('wrong.cpp', outcome='wrong-answer').write_text(WRONG_SOL)
+    testing_pkg.add_solution('slow.cpp', outcome='time-limit-exceeded').write_text(
+        SLOW_SOL
+    )
+    testing_pkg.save()
+
+    root = (
+        run_packager(
+            testing_pkg,
+            tmp_path,
+            build_entries(tmp_path, ['samples']),
+            main_solution_only=True,
+        )
+        / 'sols'
+    )
+
+    # `calibreitor.sh` needs exactly one `sols/good`, and nothing else runs.
+    assert [path.name for path in (root / 'good').iterdir()] == ['sol.cpp']
+    assert not (root / 'wrong').exists()
+    assert not (root / 'slow').exists()
+
+    # And the setter is told, because calibration is what would have checked the
+    # verdicts of everything just dropped.
+    out = ' '.join(capsys.readouterr().out.split())
+    assert '--main-solution-only' in out
+
+
+def test_main_solution_only_still_refuses_a_package_without_an_accepted_solution(
+    testing_pkg, tmp_path
+):
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('wrong.cpp', outcome='wrong-answer').write_text(WRONG_SOL)
+    testing_pkg.save()
+
+    with pytest.raises(typer.Exit):
+        run_packager(
+            testing_pkg,
+            tmp_path,
+            build_entries(tmp_path, ['samples']),
+            main_solution_only=True,
+        )
+
+
+def test_main_solution_only_warns_about_the_languages_it_drops(
+    testing_pkg, tmp_path, capsys
+):
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.add_solution('sol.py', outcome='accepted').write_text('print(1)\n')
+    testing_pkg.save()
+
+    run_packager(
+        testing_pkg,
+        tmp_path,
+        build_entries(tmp_path, ['samples']),
+        pin_limits=False,
+        timing_mode=JudgeCalibrated(),
+        main_solution_only=True,
+    )
+
+    out = ' '.join(capsys.readouterr().out.split())
+    assert 'No ACCEPTED solution in' in out
+    assert 'py' in out
+    # The fix here is dropping the flag, not writing a solution that already exists.
+    assert 'Drop --main-solution-only' in out
+
+
 def test_solutions_are_amalgamated(testing_pkg, tmp_path):
     testing_pkg.add_file('lib.h').write_text('#pragma once\nint k(){return 1;}\n')
     testing_pkg.add_file('check.cpp').write_text(CHECKER)

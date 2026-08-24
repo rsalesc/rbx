@@ -88,6 +88,7 @@ def run_packager(
     pin_limits: bool = True,
     timing_mode: Optional[TimingMode] = None,
     probe: Optional[ProbePackage] = None,
+    main_solution_only: bool = False,
 ) -> pathlib.Path:
     # Packaging needs the time limits settled one way or the other, so the default
     # profile is written here for the tests that are about something else. The tests
@@ -106,6 +107,7 @@ def run_packager(
         main_language=main_language,
         timing_mode=timing_mode,
         probe=probe,
+        main_solution_only=main_solution_only,
     ).package(build_path, into_path, [])
     return into_path
 
