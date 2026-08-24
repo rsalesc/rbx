@@ -36,6 +36,7 @@ from textual import events
 from textual.geometry import Offset
 from textual.selection import Selection
 
+from rbx.box.ui import clipboard
 from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
 
 _WORD_RE = re.compile(r'\w+|[^\w\s]')
@@ -176,7 +177,7 @@ class TerminalSelectMixin:
         if self._select_was_anchored:
             self._anchor_released = False
         if text:
-            self.app.copy_to_clipboard(text)
+            clipboard.copy(self.app, text)
 
     def _publish_selection(self) -> None:
         cursor = self._select_cursor
@@ -338,7 +339,7 @@ class TerminalSelectMixin:
         if not text:
             self.app.notify('Nothing to copy.', severity='warning')
             return
-        self.app.copy_to_clipboard(text)
+        clipboard.copy(self.app, text)
         count = len(text.split('\n'))
         self.app.notify(f'Copied {count} line{"" if count == 1 else "s"}.')
 
@@ -353,7 +354,7 @@ class TerminalSelectMixin:
             event.prevent_default()
             selected = self.screen.get_selected_text()
             if selected:
-                self.app.copy_to_clipboard(selected)
+                clipboard.copy(self.app, selected)
                 self.screen.clear_selection()
             else:
                 self.copy_all()

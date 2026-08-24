@@ -13,6 +13,7 @@ import sys
 
 import pytest
 
+from rbx.box.ui import clipboard
 from rbx.box.ui._vendor.toad.ansi import cell_span, cell_to_index, index_to_cell
 from rbx.box.ui._vendor.toad.ansi._ansi import TerminalState
 from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
@@ -136,7 +137,7 @@ async def test_a_line_of_wide_characters_survives_a_redraw():
 # --- what actually reaches the clipboard ------------------------------------
 
 
-async def test_ctrl_y_copies_redrawn_unicode_output_verbatim():
+async def test_ctrl_y_copies_redrawn_unicode_output_verbatim(monkeypatch):
     body = (
         'import sys\n'
         f'for frame in ["\\u280b {_WIDE} lendo", "\\u2714 {_WIDE} pronto"]:\n'
@@ -160,7 +161,7 @@ async def test_ctrl_y_copies_redrawn_unicode_output_verbatim():
         app.set_focus(pane)
         await pilot.pause()
         copied: list[str] = []
-        app.copy_to_clipboard = copied.append  # type: ignore[method-assign]
+        monkeypatch.setattr(clipboard, 'copy', lambda app, text: copied.append(text))
 
         await pilot.press('ctrl+y')
         await pilot.pause()
