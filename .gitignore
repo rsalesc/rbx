@@ -172,5 +172,10 @@ build_log.txt
 agents/
 
 .worktrees/
+# The VS Code extension is an npm project; hatchling only honours the *root*
+# .gitignore when excluding files from the sdist, so vscode/.gitignore's own
+# entry is not enough to keep node_modules out of a release.
+node_modules/
+
 # Built by `mise run vscode:vsix`, shipped in the wheel via hatch artifacts.
 rbx/resources/vscode/
