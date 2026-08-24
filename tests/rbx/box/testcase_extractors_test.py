@@ -1710,6 +1710,54 @@ class TestComplexScenarios:
             'package_output_validator.cpp'
         )
 
+    async def test_run_testcase_visitor_propagates_validate_statement_files(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """The group-level validateStatementFiles flag reaches the group and its subgroups."""
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+
+        testing_pkg.add_testgroup_with_subgroups(
+            'main',
+            [
+                {'name': 'sub1', 'generators': [{'name': 'gen1', 'args': 'arg1'}]},
+                {'name': 'sub2', 'generators': [{'name': 'gen1', 'args': 'arg2'}]},
+            ],
+        )
+        testing_pkg.yml.testcases[0].validateStatementFiles = True
+        testing_pkg.save()
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        await run_testcase_visitor(CollectingVisitor())
+
+        assert len(visited_entries) == 2
+        assert all(entry.validate_statement_files for entry in visited_entries)
+
+    async def test_run_testcase_visitor_validate_statement_files_defaults_off(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """validateStatementFiles is off unless the group opts in."""
+        testing_pkg.add_generator('gen1', src='generators/gen-id.cpp')
+        testing_pkg.add_testgroup_with_generators(
+            'main',
+            [{'name': 'gen1', 'args': 'arg1'}],
+        )
+
+        visited_entries = []
+
+        class CollectingVisitor(TestcaseVisitor):
+            async def visit(self, entry):
+                visited_entries.append(entry)
+
+        await run_testcase_visitor(CollectingVisitor())
+
+        assert len(visited_entries) == 1
+        assert visited_entries[0].validate_statement_files is False
+
     async def test_run_testcase_visitor_with_subgroup_output_validators(
         self, testing_pkg: testing_package.TestingPackage
     ):

@@ -263,6 +263,42 @@ Let's look at the file tree above, and assume we have a testcase glob for sample
   - 02.ans  # This will override the answer both in the statement AND in the testset.
 ```
 
+#### Outputs that aren't answers
+
+An `.out` file still has to be a *correct* answer: {{rbx}} runs the checker over it when
+you build with validation on, so a typo there fails the build instead of shipping.
+
+Sometimes that's not what you want -- the output you'd like to show is deliberately not a
+checkable answer (an abridged listing, a hand-written illustration of the format). Name
+the file `.out.statement` instead of `.out` and {{rbx}} takes it at face value: it goes
+into the statement, and neither the checker nor the output validators ever see it. The
+same works on the input side with `.in.statement`, which replaces the input shown in the
+statement without touching the test that is actually judged.
+
+```bash
+- tests/
+  - 01.in
+  - 01.in.statement   # Shown in the statement; 01.in is what gets judged.
+  - 01.out.statement  # Shown in the statement; never checked.
+```
+
+Taking a file at face value is a real risk, though: nothing catches a `.out.statement`
+whose format drifts away from what the problem actually specifies. Set
+`validateStatementFiles` on the group to get the format guarantee back without the
+checker:
+
+```yaml
+testcases:
+  - name: "samples"
+    testcaseGlob: "tests/*.in"
+    validateStatementFiles: true
+```
+
+With this on, the group's validators run over every `.in.statement` file and its output
+validators run over every `.out.statement` file. The checker still stays out of it --
+skipping it is the whole point of the extension. This is mostly worth setting on
+`samples`, which is where `.statement` files usually live.
+
 #### What about interactive problems?
 
 For interactive problems, you can create a `.interaction` file in the very same path (and with the very same name) as the `.in` files you've manually defined.
