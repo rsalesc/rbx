@@ -27,7 +27,6 @@ from rbx.box import (
     global_package,
     limits_info,
     package,
-    package_utils,
     presets,
     setter_config,
     sharing,
@@ -46,7 +45,7 @@ from rbx.box.header import generate_header
 from rbx.box.packaging import main as packaging
 from rbx.box.runners import registry as runners_registry
 from rbx.box.runners.base import RunPurpose
-from rbx.box.schema import ExpectedOutcome, GeneratorScript, TestcaseGroup
+from rbx.box.schema import ExpectedOutcome
 from rbx.box.solutions import (
     fail_fast_abort_predicate,
     get_exact_matching_solutions,
@@ -1400,28 +1399,9 @@ async def stress(
             new_script_name = await questionary.text(
                 'Enter the name of the new .txt generatorScript file: '
             ).ask_async()
-            new_script_path = pathlib.Path(new_script_name).with_suffix('.txt')
-            new_script_path.parent.mkdir(parents=True, exist_ok=True)
-            new_script_path.touch()
-
-            # Temporarily create a new testgroup with the new script.
-            testgroup = new_script_path.stem
-            groups_by_name[testgroup] = TestcaseGroup(
-                name=testgroup, generatorScript=GeneratorScript(path=new_script_path)
-            )
-            ru, problem_yml = package.get_ruyaml()
-            if 'testcases' not in problem_yml:
-                problem_yml['testcases'] = []
-            problem_yml['testcases'].append(
-                {
-                    'name': testgroup,
-                    'generatorScript': {'path': new_script_path.name},
-                }
-            )
-            dest = package.find_problem_yaml()
-            assert dest is not None
-            utils.save_ruyaml(dest, ru, problem_yml)
-            package_utils.clear_package_cache()
+            group = promotion.create_script_group(pathlib.Path(new_script_name))
+            testgroup = group.name
+            groups_by_name[testgroup] = group
 
         if testgroup not in groups_by_name:
             break
