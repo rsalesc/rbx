@@ -1,3 +1,10 @@
+## 1.2.1 (2026-08-24)
+
+### Feat
+
+- **vscode**: give the extension an rbx-logo icon (#742)
+- **timing**: add --dry to rbx time to rehearse without writing (#740)
+
 ## 1.2.0 (2026-08-24)
 
 ### BREAKING CHANGE
