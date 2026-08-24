@@ -158,9 +158,21 @@ class FileCacher:
             logger.debug('File %s not in cache, downloading from database.', digest)
 
             if (symlink := await self.backend.path_for_symlink(digest)) is not None:
-                cache_file_path.unlink(missing_ok=True)
-                cache_file_path.symlink_to(symlink)
-                return cache_file_path.open('rb') if not cache_only else None
+                # Same hazard the download path below guards against, plus one
+                # more: `self.lock` is an asyncio lock, so it only serializes
+                # callers on a single event loop. Two loops can be inside this
+                # branch for the same digest at once. Unlinking and re-linking
+                # in place leaves a window in which cache_file_path does not
+                # exist, and the racing loop's open() raises FileNotFoundError.
+                # Stage the link under a private name and move it in atomically
+                # so the entry is never observably missing.
+                temp_link_path = self.temp_dir / f'_link{os.urandom(8).hex()}'
+                temp_link_path.symlink_to(symlink)
+                fd = temp_link_path.open('rb') if not cache_only else None
+                # temp_dir lives inside file_dir, so this rename stays on one
+                # filesystem and is atomic by POSIX requirement.
+                temp_link_path.replace(cache_file_path)
+                return fd
 
             ftmp_handle, temp_file_path = tempfile.mkstemp(
                 dir=self.temp_dir, text=False
