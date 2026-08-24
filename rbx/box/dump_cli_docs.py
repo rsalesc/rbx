@@ -1,10 +1,10 @@
 import pathlib
+import re
 import sys
 from enum import Enum
-from typing import Dict, List, Union, get_args, get_origin, get_type_hints
+from typing import List, Tuple, Union, get_args, get_origin, get_type_hints
 
 import mkdocs_gen_files
-import yaml
 from click import Argument, Choice, Command, Group, Option
 from typer.main import get_command
 
@@ -15,20 +15,13 @@ if script_dir in sys.path:
     sys.path.remove(script_dir)
 
 # Import the main app
+from rbx import annotations  # noqa: E402
 from rbx.box.cli import app as main_app  # noqa: E402
+from rbx.box.completion.generate import help_panel  # noqa: E402
 
-# Path to custom explanations
-EXPLANATIONS_PATH = pathlib.Path('docs/setters/reference/cli_explanations.yaml')
-
-
-def load_explanations() -> Dict[str, str]:
-    if not EXPLANATIONS_PATH.exists():
-        return {}
-    with open(EXPLANATIONS_PATH, 'r') as f:
-        return yaml.safe_load(f) or {}
-
-
-EXPLANATIONS = load_explanations()
+# Title Typer/Click gives to commands that declare no `rich_help_panel`. It is
+# always rendered first in `--help`, and we mirror that here.
+DEFAULT_PANEL = 'Commands'
 
 
 def unwrap_type(tp):
@@ -56,21 +49,89 @@ def get_enum_link(tp) -> Union[str, None]:
     return None
 
 
+def primary_name(name: str) -> str:
+    """`'build, b'` -> `'build'`."""
+    return name.split(',')[0].strip()
+
+
+def display_name(name: str) -> str:
+    """`'build, b'` -> `'build (b)'`."""
+    parts = [p.strip() for p in name.split(',')]
+    if len(parts) == 1:
+        return parts[0]
+    return f'{parts[0]} ({", ".join(parts[1:])})'
+
+
+def anchor_for(lineage: List[str]) -> str:
+    """A stable, unique anchor built from the full command path.
+
+    Leaf names repeat all over the tree (five commands are called `build`), so
+    anchoring on the leaf alone yields `#build-b_3`-style ids that shift
+    whenever a command is added. The full path is unique by construction.
+    """
+    slug = '-'.join(primary_name(part) for part in lineage)
+    return re.sub(r'[^a-z0-9]+', '-', slug.lower()).strip('-')
+
+
+def short_help(command: Command) -> str:
+    help_text = command.short_help or command.help or ''
+    # Only the first paragraph, on a single line: this goes inside a table cell.
+    first = help_text.strip().split('\n\n')[0]
+    return ' '.join(first.split()) or '-'
+
+
+def group_children(
+    group: Group,
+) -> List[Tuple[str, List[Tuple[str, Command]]]]:
+    """Bucket a group's visible subcommands the way `--help` does.
+
+    Panels come out in order of first appearance (with the default panel first,
+    as Typer renders it) and commands are alphabetical within each panel.
+    """
+    order: List[str] = []
+    buckets: dict = {}
+    for name, command in group.commands.items():
+        if command.hidden:
+            continue
+        panel = help_panel(command) or DEFAULT_PANEL
+        if panel not in buckets:
+            buckets[panel] = []
+            order.append(panel)
+        buckets[panel].append((name, command))
+
+    if DEFAULT_PANEL in buckets:
+        order.remove(DEFAULT_PANEL)
+        order.insert(0, DEFAULT_PANEL)
+
+    for panel in order:
+        buckets[panel].sort(key=lambda entry: primary_name(entry[0]))
+
+    return [(panel, buckets[panel]) for panel in order]
+
+
 class DocsGenerator:
     def __init__(self):
         self.content = []
         self.seen_enums = set()
 
-    def get_full_command_path(self, lineage: List[str]) -> str:
-        return ' '.join(lineage)
+    def render_index_table(
+        self, entries: List[Tuple[str, Command]], lineage: List[str]
+    ) -> None:
+        """A `--help`-like table of commands, linking to their sections."""
+        if not entries:
+            return
+        self.content.append('| Command | Description |')
+        self.content.append('| :--- | :--- |')
+        for name, command in entries:
+            child_lineage = lineage + [name]
+            path = ' '.join(primary_name(part) for part in child_lineage)
+            link = f'[`{path}`](#{anchor_for(child_lineage)})'
+            self.content.append(f'| {link} | {short_help(command)} |')
+        self.content.append('')
 
     def render_command(self, command: Command, lineage: List[str]) -> str:
-        """Renders a single command to Markdown."""
-
-        # Construct normalized path for explanation lookup
-        # Normalize each part of lineage: "build, b" -> "build"
-        normalized_lineage = [part.split(',')[0].strip() for part in lineage]
-        full_path_normalized = ' '.join(normalized_lineage)
+        """Renders a single command's prose, usage, arguments and options."""
+        normalized_lineage = [primary_name(part) for part in lineage]
 
         hints = {}
         if command.callback:
@@ -79,17 +140,15 @@ class DocsGenerator:
             except Exception:
                 pass
 
-        # Header
         output = []
 
-        # Fallback to normalized path string if get_command_help isn't updated?
-        # Actually get_command_help expects string. We can update it or just call dict directly
-        # since we did normalization here.
-        # Let's just use EXPLANATIONS directly since we normalized it here correctly.
-        custom_help = EXPLANATIONS.get(full_path_normalized)
-
-        if custom_help:
-            output.append(custom_help)
+        # The docs-only explanation attached with `@annotations.docs`, if any;
+        # otherwise the terminal help.
+        explanation = (
+            annotations.get_docs(command.callback) if command.callback else None
+        )
+        if explanation:
+            output.append(explanation)
             output.append('')
         elif command.help:
             output.append(command.help)
@@ -176,33 +235,37 @@ class DocsGenerator:
 
         return '\n'.join(output)
 
-    def process_command(self, command: Command, lineage: List[str]):
-        name = lineage[-1]
-        # Format name for display: "list, ls" -> "list (ls)"
-        parts = [p.strip() for p in name.split(',')]
-        primary_name = parts[0]
-        aliases = parts[1:]
-
-        display_name = primary_name
-        if aliases:
-            display_name += f' ({", ".join(aliases)})'
-
-        # Section header
-        level = min(len(lineage), 6)  # h1, h2, h3...
-
-        # If it's the root 'rbx', we use h1
-        # If 'rbx build', h2
-        # etc.
-
-        self.content.append(f'{"#" * level} {display_name}\n')
+    def process_command(self, command: Command, lineage: List[str], level: int):
+        self.content.append(
+            f'{"#" * level} {display_name(lineage[-1])} {{ #{anchor_for(lineage)} }}\n'
+        )
         self.content.append(self.render_command(command, lineage))
+
+        if not isinstance(command, Group):
+            self.content.append('\n---\n')
+            return
+
+        panels = group_children(command)
+        # Only surface panel headings where the CLI itself has more than one:
+        # a single (usually default) panel adds a level of nesting for nothing.
+        titled = len(panels) > 1
+
+        if not titled:
+            for _, entries in panels:
+                self.render_index_table(entries, lineage)
         self.content.append('\n---\n')
 
-        if isinstance(command, Group):
-            for sub_name, sub_cmd in command.commands.items():
-                if sub_cmd.hidden:
-                    continue
-                self.process_command(sub_cmd, lineage + [sub_name])
+        for panel, entries in panels:
+            child_level = level + 1
+            if titled:
+                self.content.append(
+                    f'{"#" * (level + 1)} {panel} '
+                    f'{{ #{anchor_for(lineage + [panel])} }}\n'
+                )
+                self.render_index_table(entries, lineage)
+                child_level = level + 2
+            for name, child in entries:
+                self.process_command(child, lineage + [name], min(child_level, 6))
 
     def render_enums(self):
         if not self.seen_enums:
@@ -230,7 +293,7 @@ def generate():
     # typer sometimes names it 'main' or similar depending on function name
 
     generator = DocsGenerator()
-    generator.process_command(main_cmd, ['rbx'])
+    generator.process_command(main_cmd, ['rbx'], level=1)
     generator.render_enums()
 
     # Write to file

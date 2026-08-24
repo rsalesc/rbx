@@ -1,3 +1,4 @@
+import inspect
 import re
 from typing import Any, Dict, List, Optional
 
@@ -150,3 +151,33 @@ class AliasGroup(typer.core.TyperGroup):
             if cmd.name and default_name in self._CMD_SPLIT_P.split(cmd.name):
                 return cmd.name
         return default_name
+
+
+def docs(text: str):
+    """Attach a long-form, docs-site-only explanation to a CLI command.
+
+    Terminal help stays the short one-liner passed to `help=`; the docs
+    generator (`rbx/box/dump_cli_docs.py`) renders this Markdown instead,
+    as the command's prose section. Apply it right below `@app.command`:
+
+    ```python
+    @app.command('build, b', help='Build all tests for the problem.')
+    @annotations.docs('''
+        Builds the problem package.
+
+        ...
+    ''')
+    def build(): ...
+    ```
+    """
+
+    def decorator(fn):
+        fn.__rbx_docs__ = inspect.cleandoc(text)
+        return fn
+
+    return decorator
+
+
+def get_docs(obj: Any) -> Optional[str]:
+    """Return the explanation attached by `docs`, if any."""
+    return getattr(obj, '__rbx_docs__', None)

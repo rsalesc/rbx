@@ -147,7 +147,7 @@ def _param_spec(param: click.Parameter) -> Dict[str, Any]:
     return spec
 
 
-def _panel(cmd: click.Command) -> Optional[str]:
+def help_panel(cmd: click.Command) -> Optional[str]:
     """Return the rich help panel as a plain ``Optional[str]``.
 
     Typer's click conversion can leave ``rich_help_panel`` as a
@@ -190,7 +190,7 @@ def build_spec(cmd: click.Command, name: Optional[str] = None) -> Dict[str, Any]
     node: Dict[str, Any] = {
         'name': name if name is not None else (cmd.name or ''),
         'help': cmd.get_short_help_str() or None,
-        'panel': _panel(cmd),
+        'panel': help_panel(cmd),
         'is_group': isinstance(cmd, click.Group),
         'params': params,
     }
