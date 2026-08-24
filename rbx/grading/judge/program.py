@@ -131,6 +131,65 @@ def get_memory_usage(ru: resource.struct_rusage) -> int:
     return (ru.ru_maxrss + ru.ru_ixrss + ru.ru_idrss + ru.ru_isrss) * 1024
 
 
+def maxrss_inherits_parent() -> bool:
+    """Whether a child's ru_maxrss is contaminated by the parent's memory.
+
+    On Linux, a forked child starts out with its `mm->hiwater_rss` seeded from
+    the parent's current RSS, and `execve` folds that high-water mark into the
+    new process' accounting -- so the `ru_maxrss` reported by `os.wait4()` is
+    really `max(parent_rss_at_fork, child_peak)`. A trivial program forked from
+    a fat parent is charged the parent's whole footprint.
+
+    Darwin resets the high-water mark at exec, so the value is the child's alone.
+    """
+    return sys.platform != 'darwin'
+
+
+def is_own_rss(rss: int, rss_baseline: int) -> bool:
+    """Whether an RSS sample reflects the child rather than the inherited parent.
+
+    A sample taken before the child has exec'd still shows the parent's
+    copy-on-write footprint, so anything at or above the baseline is not
+    trustworthy as the child's own -- those are the cases `ru_maxrss` measures
+    exactly anyway.
+    """
+    return not maxrss_inherits_parent() or rss < rss_baseline
+
+
+def get_child_memory_usage(
+    ru: resource.struct_rusage, rss_baseline: int, sampled_peak: int
+) -> int:
+    """Peak memory of a child, in bytes, with the parent's share removed.
+
+    Where `ru_maxrss` is `max(parent_rss_at_fork, child_peak)` (see
+    `maxrss_inherits_parent`), a value above the baseline can only have come
+    from the child, so it is the peak, exactly. A value at or below the baseline
+    tells us nothing beyond that bound, and the peak sampled from the child
+    itself is used instead -- a lower bound, but one that is never inflated by
+    whatever the parent happened to be holding.
+
+    Args:
+        ru: Resource usage statistics from os.wait4() or similar
+        rss_baseline: RSS of the parent right before forking, in bytes
+        sampled_peak: Peak RSS observed on the child itself, in bytes
+
+    Returns:
+        int: Peak memory usage of the child, in bytes
+    """
+    memory_used = get_memory_usage(ru)
+    if maxrss_inherits_parent() and memory_used <= rss_baseline:
+        return sampled_peak
+    return memory_used
+
+
+def get_self_rss() -> int:
+    """Current RSS of this process, in bytes, or 0 if it cannot be read."""
+    try:
+        return psutil.Process().memory_info().rss
+    except psutil.Error:
+        return 0
+
+
 def get_cpu_time(ru: resource.struct_rusage) -> float:
     """Get CPU time in seconds from resource usage statistics.
 
@@ -208,6 +267,11 @@ class Program:
         self._stop_wall_handler = threading.Event()
         self._stop_alarm_handler = threading.Event()
         self._alarm_msg = ''
+        # RSS of this process right before forking, and the peak RSS sampled
+        # from the child itself. Both are needed to undo the ru_maxrss
+        # contamination described in `maxrss_inherits_parent`.
+        self._rss_baseline = 0
+        self._peak_rss = 0
 
         self._run()
 
@@ -236,13 +300,21 @@ class Program:
         self._alarm_msg = 'wall timelimit'
         self._kill_process()
 
+    def _sample_rss(self, process: psutil.Process) -> int:
+        """Sample the child's own RSS, keeping track of its peak."""
+        rss = process.memory_info().rss
+        if is_own_rss(rss, self._rss_baseline):
+            self._peak_rss = max(self._peak_rss, rss)
+        return rss
+
     def _handle_alarm(self):
         # Pin the child by (pid, create_time) so a poll after PID reuse
         # cannot read another process's stats and trigger a false MLE/TLE.
         try:
             process = psutil.Process(self.pid)
             create_time = process.create_time()
-        except psutil.NoSuchProcess:
+            self._sample_rss(process)
+        except psutil.Error:
             return
         while not self._stop_alarm_handler.wait(0.3):
             try:
@@ -254,17 +326,20 @@ class Program:
                     if cpu_time > self.params.time_limit:
                         self._alarm_msg = 'timelimit'
                         self._kill_process()
-                if self.params.memory_limit is not None:
-                    memory_info = process.memory_info()
-                    memory_used = memory_info.rss
-                    if memory_used > self.params.memory_limit * 1024 * 1024:
-                        self._alarm_msg = 'memorylimit'
-                        self._kill_process()
+                memory_used = self._sample_rss(process)
+                if (
+                    self.params.memory_limit is not None
+                    and memory_used > self.params.memory_limit * 1024 * 1024
+                ):
+                    self._alarm_msg = 'memorylimit'
+                    self._kill_process()
             except psutil.NoSuchProcess:
                 return
 
     def _run(self):
         self._files = self.params.io.get_file_objects()
+        if maxrss_inherits_parent():
+            self._rss_baseline = get_self_rss()
         try:
             self.popen = subprocess.Popen(
                 self.command,
@@ -303,7 +378,7 @@ class Program:
         wall_time = monotonic() - self.start_time
         _maybe_close_files(self._files)
         cpu_time = get_cpu_time(ru)
-        memory_used = get_memory_usage(ru)
+        memory_used = get_child_memory_usage(ru, self._rss_baseline, self._peak_rss)
         file_sizes = get_file_sizes(self.params.io)
         exitcode = os.waitstatus_to_exitcode(exitstatus)
         killing_signal = None
