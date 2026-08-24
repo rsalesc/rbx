@@ -16,6 +16,12 @@
  * Pure by design, like nodes.ts: no `vscode` import, so `node --test` can hold
  * the whole thing to account.
  */
+import {
+  DeclaredVisualizers,
+  NO_VISUALIZERS,
+  VisualizerDeclarations,
+  resolveDeclaredVisualizers,
+} from './declaredVisualizers';
 import { ExpectationDisplay, expectationDisplay } from './expectation';
 import { Hue, hueOfScore, hueOfThemeColor } from './hue';
 import { Skeleton, TestcaseEntry } from './model';
@@ -262,6 +268,14 @@ export interface TestcaseCard {
    */
   readonly checker?: string;
   readonly origins: readonly CardOrigin[];
+  /**
+   * Which visualizers `problem.rbx.yml` declares for this testcase.
+   *
+   * These buttons *run* rbx rather than opening something already on disk, so
+   * they are drawn only where a visualizer is actually declared: a button whose
+   * only possible outcome is "No visualizer declared" is worse than no button.
+   */
+  readonly visualizers: DeclaredVisualizers;
 }
 
 export interface Row {
@@ -964,7 +978,10 @@ function cardOrigins(entry: TestcaseEntry): CardOrigin[] {
   return origins;
 }
 
-function testcaseCard(node: TestcaseNode): TestcaseCard {
+function testcaseCard(
+  node: TestcaseNode,
+  declarations: VisualizerDeclarations | undefined,
+): TestcaseCard {
   return {
     title: `${node.group.name}/${node.testcase.stem}`,
     // Empty is treated as absent: a checker that returns no message and one
@@ -975,10 +992,21 @@ function testcaseCard(node: TestcaseNode): TestcaseCard {
         ? undefined
         : node.testcase.evaluation?.message,
     origins: cardOrigins(node.testcase.entry),
+    // Resolved against the testcase's own subgroup, so a group that declares
+    // its own visualizer gets the buttons and its siblings do not.
+    visualizers:
+      declarations === undefined
+        ? NO_VISUALIZERS
+        : resolveDeclaredVisualizers(declarations, node.testcase.entry.subgroup),
   };
 }
 
-function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row {
+function testcaseRow(
+  node: TestcaseNode,
+  depth: number,
+  parentId: string | undefined,
+  declarations: VisualizerDeclarations | undefined,
+): Row {
   const { testcase } = node;
   const evaluation = testcase.evaluation;
   const verdict = chip(evaluation?.outcome, hiddenVerdict(testcase, node.group.report));
@@ -1016,7 +1044,7 @@ function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row 
     mismatch: false,
     expandable: false,
     defaultExpanded: false,
-    card: testcaseCard(node),
+    card: testcaseCard(node, declarations),
     search: haystack(
       `${node.group.name}/${testcase.stem}`,
       verdict,
@@ -1203,6 +1231,10 @@ function buildFindings(
 export function buildViewModel(
   view: PackageRunView,
   style: SolutionLabelStyle = DEFAULT_SOLUTION_LABEL_STYLE,
+  // What `problem.rbx.yml` declares, for the lazy visualize buttons. Optional
+  // so a caller with no manifest in hand still builds a model -- the buttons
+  // simply do not appear, and the context menu still reaches the commands.
+  declarations?: VisualizerDeclarations,
 ): RunViewModel {
   const nodes = flattenNodes(view);
   // Over the selected package's paths alone, which is what the label styles
@@ -1228,7 +1260,7 @@ export function buildViewModel(
         case 'group':
           return groupRow(node, depth, parentId);
         case 'testcase':
-          return testcaseRow(node, depth, parentId);
+          return testcaseRow(node, depth, parentId, declarations);
       }
     })();
     rows.push(row);

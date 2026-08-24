@@ -962,6 +962,30 @@ body {
   background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
 }
 
+/*
+ * A button that *runs* a visualizer rather than opening a file already on disk.
+ *
+ * Same box, same size, same position -- only the border and the label colour
+ * move, so a card whose channel becomes built after a rebuild does not reflow.
+ * Dashed reads as "not there yet", which is exactly the difference: pressing
+ * this compiles a visualizer and runs it in a sandbox, and takes as long as
+ * that does.
+ *
+ * Both properties come from theme tokens, so this stays legible in light, dark
+ * and high-contrast without a second rule.
+ */
+.card-channel.lazy {
+  border-style: dashed;
+  border-color: var(--vscode-button-border, var(--vscode-descriptionForeground));
+  color: var(--vscode-textLink-foreground, var(--vscode-foreground));
+  background: transparent;
+}
+
+.card-channel.lazy:hover {
+  background: var(--vscode-list-hoverBackground);
+  border-color: var(--vscode-textLink-activeForeground, var(--vscode-focusBorder));
+}
+
 .card-channel:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;

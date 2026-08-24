@@ -195,6 +195,11 @@
         "category": "rbx"
       },
       {
+        "command": "rbx.visualizeTestAnswer",
+        "title": "Visualize Expected Answer",
+        "category": "rbx"
+      },
+      {
         "command": "rbx.visualizeSolutionOutput",
         "title": "Visualize Solution's Output",
         "category": "rbx"
@@ -361,6 +366,11 @@
           "command": "rbx.visualizeSolutionOutput",
           "when": "webviewSection == 'rbx.testcase'",
           "group": "4_visualize@2"
+        },
+        {
+          "command": "rbx.visualizeTestAnswer",
+          "when": "webviewSection == 'rbx.testsetTestcase'",
+          "group": "navigation@5"
         }
       ]
     },

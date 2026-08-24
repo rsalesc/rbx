@@ -170,9 +170,15 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     const style = asSolutionLabelStyle(
       vscode.workspace.getConfiguration('rbx').get('solutionLabel'),
     );
+    // Read alongside the run rather than cached here: the store invalidates
+    // both on the same watcher tick, so the buttons cannot describe a manifest
+    // the rest of the card does not.
+    const visualizers =
+      selected === undefined ? undefined : await this.data.visualizers(packageLayout(selected));
     await this.view?.webview.postMessage({
       type: 'state',
-      model: view === undefined ? EMPTY_MODEL : buildViewModel(view, style),
+      model:
+        view === undefined ? EMPTY_MODEL : buildViewModel(view, style, visualizers),
       problems: this.active.problems(),
       selected,
     });

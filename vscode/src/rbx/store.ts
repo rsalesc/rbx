@@ -13,6 +13,7 @@ import {
   Ext,
   PackageLayout,
   compilationLogPath,
+  manifestPath,
   reportPath,
   runArtifactPath,
   skeletonPath,
@@ -20,6 +21,10 @@ import {
   testArtifactPath,
   testsetPath,
 } from './layout';
+import {
+  VisualizerDeclarations,
+  parseVisualizerDeclarations,
+} from './declaredVisualizers';
 import {
   CompilationEntry,
   Evaluation,
@@ -182,12 +187,14 @@ async function loadSolutionRun(
 export class ArtifactStore {
   private cached?: Promise<PackageRun | undefined>;
   private cachedTestset?: Promise<Testset | undefined>;
+  private cachedVisualizers?: Promise<VisualizerDeclarations | undefined>;
 
   constructor(private readonly pkg: PackageLayout) {}
 
   invalidate(): void {
     this.cached = undefined;
     this.cachedTestset = undefined;
+    this.cachedVisualizers = undefined;
   }
 
   load(): Promise<PackageRun | undefined> {
@@ -213,6 +220,25 @@ export class ArtifactStore {
       this.cachedTestset = readYamlFile(testsetPath(this.pkg)).then(parseTestset);
     }
     return this.cachedTestset;
+  }
+
+  /**
+   * What `problem.rbx.yml` declares about visualizers.
+   *
+   * Cached beside the testset, and invalidated by the same watcher tick, for
+   * the same reason: the Run and Tests views must never disagree about which
+   * buttons a testcase gets. The manifest watcher already invalidates the
+   * store, so an edit that adds a visualizer shows up without a rebuild --
+   * which is the whole reason this is read from the manifest rather than from
+   * the build's testset manifest.
+   */
+  visualizers(): Promise<VisualizerDeclarations | undefined> {
+    if (this.cachedVisualizers === undefined) {
+      this.cachedVisualizers = readYamlFile(manifestPath(this.pkg)).then((raw) =>
+        raw === undefined ? undefined : parseVisualizerDeclarations(raw),
+      );
+    }
+    return this.cachedVisualizers;
   }
 
   private async read(): Promise<PackageRun | undefined> {

@@ -17,6 +17,12 @@
  *
  * Pure by design: no `vscode` import and no DOM.
  */
+import {
+  DeclaredVisualizers,
+  NO_VISUALIZERS,
+  VisualizerDeclarations,
+  resolveDeclaredVisualizers,
+} from './declaredVisualizers';
 import { Hue } from './hue';
 import { PackageLayout } from './layout';
 import { TestcaseEntry } from './model';
@@ -130,6 +136,16 @@ export interface TestsetCard {
    * other left the panel showing two pictures the card could only reach one of.
    */
   readonly answerVisualization?: string;
+  /**
+   * Which visualizers are declared but have *not* been built.
+   *
+   * A channel appears here only when the build produced no picture for it and
+   * `problem.rbx.yml` declares a visualizer that could. So a package built with
+   * `--visualize` keeps the buttons it always had -- they open a file, and are
+   * instant -- and the lazy button appears exactly where the static one cannot.
+   * Both are never offered for the same channel.
+   */
+  readonly lazyVisualizers: DeclaredVisualizers;
 }
 
 export interface TestsetRow {
@@ -416,18 +432,38 @@ function cardValues(test: TestsetTest | undefined): TestsetValue[] {
   return values;
 }
 
-function testcaseCard(group: string, testcase: TestsetTestcase): TestsetCard {
+function testcaseCard(
+  group: string,
+  testcase: TestsetTestcase,
+  declarations: VisualizerDeclarations | undefined,
+): TestsetCard {
+  const visualization = testcase.test?.visualization?.input;
+  const answerVisualization = testcase.test?.visualization?.output;
+  const declared =
+    declarations === undefined
+      ? NO_VISUALIZERS
+      : resolveDeclaredVisualizers(declarations, testcase.entry.subgroup);
   return {
     title: `${group}/${testcase.stem}`,
     origins: cardOrigins(testcase.entry),
     values: cardValues(testcase.test),
     validation: validationCard(testcase.test),
-    visualization: testcase.test?.visualization?.input,
-    answerVisualization: testcase.test?.visualization?.output,
+    visualization,
+    answerVisualization,
+    // Only where the build left a gap. A channel that was built is reached by
+    // opening the file, which costs nothing and cannot fail.
+    lazyVisualizers: {
+      input: visualization === undefined && declared.input,
+      output: answerVisualization === undefined && declared.output,
+    },
   };
 }
 
-function testcaseRow(group: string, testcase: TestsetTestcase): TestsetRow {
+function testcaseRow(
+  group: string,
+  testcase: TestsetTestcase,
+  declarations: VisualizerDeclarations | undefined,
+): TestsetRow {
   const test = testcase.test;
   const failed = test?.validation?.ok === false;
   // Either channel counts: the mark says a picture exists, and which one it
@@ -451,7 +487,7 @@ function testcaseRow(group: string, testcase: TestsetTestcase): TestsetRow {
     ],
     expandable: false,
     defaultExpanded: false,
-    card: testcaseCard(group, testcase),
+    card: testcaseCard(group, testcase, declarations),
     search: haystack([
       `${group}/${testcase.stem}`,
       testcase.stem,
@@ -545,6 +581,13 @@ export interface TestsetViewOptions {
   readonly builtAt?: number;
   /** Injected so the header is a pure function of its inputs under test. */
   readonly now?: number;
+  /**
+   * What `problem.rbx.yml` declares, for the lazy visualize buttons.
+   *
+   * Optional: without it the card falls back to the built visualizations alone,
+   * which is exactly the behaviour this view had before.
+   */
+  readonly visualizers?: VisualizerDeclarations;
 }
 
 export function buildTestsetViewModel(
@@ -570,7 +613,7 @@ export function buildTestsetViewModel(
     );
     for (const testcase of testcases) {
       tests += 1;
-      rows.push(testcaseRow(group, testcase));
+      rows.push(testcaseRow(group, testcase, options.visualizers));
     }
   }
   return {

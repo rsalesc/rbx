@@ -444,6 +444,29 @@ export function registerCommands(
     }
   });
 
+  // The Tests view's answer channel, which is *not* the Run view's output.
+  //
+  // Here the file being visualized is the expected answer the build produced,
+  // not any solution's output -- so this deliberately passes no `--dest` and
+  // lets rbx write where `rbx build --visualize` would have. Run it once and
+  // the next build reports it as built, at which point the static button takes
+  // over and this one stops being offered.
+  register('rbx.visualizeTestAnswer', async (node) => {
+    if (!isBuiltTestcase(node)) {
+      return;
+    }
+    await runVisualizer(
+      context,
+      node.pkg.root,
+      {
+        kind: 'output',
+        inputPath: testcaseInputPath(node.pkg, node.group, node.stem),
+        outputPath: testArtifactPath(node.pkg, node.group, node.stem, Ext.Output),
+      },
+      `${node.group}/${node.stem} (answer)`,
+    );
+  });
+
   register('rbx.visualizeSolutionOutput', async (node) => {
     // Run view only: there is no solution, and so no output, in the Tests view.
     if (!isTestcase(node)) {
