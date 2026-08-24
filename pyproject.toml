@@ -23,7 +23,7 @@ dependencies = [
   "pydantic>=2.11.7",
   "rich>=13.9.4",
   "pyyaml>=6.0.1",
-  "requests>=2.32.3",
+  "requests>=2.34.0",  # <2.34 warns on chardet>=6 via its compat check
   "latexbuild>=0.2.2",
   "pydantic-xml[lxml]>=2.11.0",
   "more-itertools>=10.5.0",
