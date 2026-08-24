@@ -64,22 +64,10 @@ verification level table.
 
 ### Packaging an entire contest
 
-If you're working in a contest directory, you can package all problems at once:
-
-```bash
-rbx each package boca
-```
-
-Or target specific problems. The selector takes short names, problem names, aliases and
-folders, comma-separated, plus ranges, globs and `!` exclusions:
-
-```bash
-rbx on A package boca          # Only problem A
-rbx on A..C package boca       # Problems A through C
-rbx on A,C package boca        # Problems A and C
-rbx on sum-of-n package boca   # By name or folder
-rbx on '*,!D' package boca     # Everything except D
-```
+If you're working in a contest directory, `rbx each package boca` packages every problem
+at once, and `rbx on <selector> package boca` packages a subset of them. Both are the
+subject of the next step,
+[Packaging the whole contest](/setters/contest-packaging-walkthrough).
 
 ## Step 2: Upload to BOCA {: #uploading }
 
@@ -125,21 +113,6 @@ BOCA_JUDGE_PASSWORD="judge_password"
     upload will fail. Also make sure the correct contest is **activated** on the BOCA
     server before running the command.
 
-#### Upload an entire contest
-
-You can combine the upload flag with the contest-level commands:
-
-```bash
-# Upload all problems
-rbx each package boca -u
-
-# Upload only problem A
-rbx on A package boca -u
-
-# Upload problems A through C
-rbx on A..C package boca -u
-```
-
 ### Option B: Manual upload {: #manual-upload }
 
 If you prefer not to configure credentials, or if your BOCA instance isn't reachable
@@ -166,6 +139,15 @@ from your machine, you can upload the package manually:
 ## Next steps
 
 <div class="grid cards" markdown>
+
+-   :fontawesome-solid-boxes-stacked: **Ship the whole set**
+
+    ---
+
+    Continue the track: package and upload every problem in the contest, and re-ship the
+    one that changed.
+
+    [:octicons-arrow-right-24: Packaging the whole contest](/setters/contest-packaging-walkthrough)
 
 -   :fontawesome-solid-clock: **Fine-tune your limits**
 

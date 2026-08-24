@@ -17,6 +17,7 @@ nav:
           - "Scaffolding a contest": "setters/contest-scaffolding-walkthrough.md"
           - "Profiling time limits": "setters/contest-profiling-walkthrough.md"
           - "Packaging a problem": "setters/packaging-walkthrough.md"
+          - "Packaging the whole contest": "setters/contest-packaging-walkthrough.md"
   - "Feature Guide":
       - "Variables": "setters/variables.md"
       - "Testset":
