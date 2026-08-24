@@ -1,3 +1,82 @@
+## 1.2.0 (2026-08-24)
+
+### BREAKING CHANGE
+
+- `rbx on A-C` no longer selects a range; write `A..C`.
+- `rbx package moj` now emits the mojtools format and no
+longer accepts `--for-boca`; interactive (COMMUNICATION) problems can no
+longer be packaged for MOJ, since MOJ's arbiter protocol is unlike a testlib
+interactor and needs its own design.
+
+### Feat
+
+- **vscode**: surface sanitizer warnings in the run view (#734)
+- **checkers**: add --keep-checker-stderr to persist full checker output (#737)
+- **testset**: validate statement-only testcase files on demand (#733)
+- **vscode**: add a Tests view for the built testset (#727)
+- **vscode**: run the extension under development from any terminal (#729)
+- **ui**: copy all output and select it with the keyboard in the command pane (#723)
+- **contest**: select problems by name and folder in `rbx on` (#721)
+- **vscode**: ship the editor extension and add rbx vscode install (#712)
+- **contest**: queue several commands per problem in `each` and `on` (#708)
+- **cli**: let `rbx run`/`irun` pick a limits profile too (#710)
+- **runners**: let `rbx run` pick a custom runner too (#702) (#704)
+- **timing**: warn when a derived limit denies a group's own solutions (#701)
+- **runners**: let a backend say what it is doing on the solution header (#698)
+- **run**: draw a solution as one live block with a wall clock (#697)
+- **runners**: measure time limits on the MOJ judge park (#692)
+- **timing**: split rbx time into estimation and validation phases (#696)
+- **timing**: pull inferenceTimeout up to the timing level (#694) (#695)
+- **vscode**: open a testcase into two panes with a detail card (#691)
+- **vscode**: show one problem at a time in the run view (#690)
+- **vscode**: surface compilation findings in the run view and Problems panel (#688)
+- **vscode**: open a solution's source from the run view (#684)
+- **packaging**: pin MOJ time limits with TLOVERRIDE (#685)
+- **vscode**: say what a solution is declared to do while you edit it (#683)
+- **vscode**: warn about double TL in the run view (#678)
+- **vscode**: badge declared solutions and roles in the explorer (#682)
+- **packaging**: pin MOJ time limits from the moj limits profile (#665)
+- **vscode**: colour the score the way the console colours it (#675)
+- **vscode**: let a setting choose how much of a solution path a row shows (#674)
+- **vscode**: replace the run tree with a webview (#672)
+- **vscode**: give each verdict its own icon in the run view (#664)
+- **vscode**: summarize run tree nodes, and move the verdict logic into rbx (#25) (#651)
+- **run**: add a --fail-fast/--ff flag to rbx run (#648)
+- **vscode**: add the extension skeleton and run tree (#25) (#650)
+- **timing**: abort a solution once it hits the inference timeout (#647)
+- **packaging**: build markdown statements for the MOJ packager (#642)
+- **timing**: infer time limits from Kattis-like ratios (#643)
+- **packaging**: add a moj-next packager (#637)
+
+### Fix
+
+- **visualizers**: write visualizations as real files, not symlinks (#738)
+- **libraries**: keep testlib when a preset declares no libraries (#735)
+- **grading**: stop charging sandboxed programs the parent's memory (#726)
+- **ui**: keep copied pane output byte-for-byte (UTF-8 clipboard + cell-correct cursor) (#728)
+- clear six root causes behind the CI test failures (#719)
+- **statements**: isolate statement build failures (#705) (#711)
+- **ui**: reserve the command pane's scrollbar gutter (#707)
+- **ui**: size hidden command panes so their output is not mangled (#706)
+- **cache**: make cache directories safe to share between processes (#703)
+- **validators**: report hit bounds for samples-only packages (#686)
+- **vscode**: tell the two declaration layers apart in the run view (#673)
+- **cache**: validate every hashed output in is_artifact_ok (#662)
+- **solutions**: use a valid rich color for the OLE verdict (#638)
+
+### Refactor
+
+- **moj**: stop announcing testrun cache hits (#709)
+- **statements**: extract a reusable statement export bundle (#640)
+- **packaging**: replace the moj packager with the moj-next one (#641)
+
+### Perf
+
+- **run**: memoize the saved limits profile on file contents (#663)
+- **run**: cut warm run-phase overhead by ~27% (#655)
+- **cache**: stop re-deriving what a cache hit already knows (#654)
+- **tests**: cut the tests/rbx suite from 196s to 60s (#649)
+
 ## 1.1.0 (2026-08-12)
 
 ### BREAKING CHANGE
