@@ -614,7 +614,10 @@ async def run(
             'and the environment default time limit will be used instead.[/warning]'
         )
 
-    if sanitized and tracked_solutions is None:
+    # Recorded on the skeleton, not only printed: a client showing this run
+    # cannot otherwise tell a list rbx shortened from the whole solution set.
+    only_accepted = sanitized and tracked_solutions is None
+    if only_accepted:
         console.console.print(
             '[warning]Sanitizers are running, and no solutions were specified to run. Will only run [item]ACCEPTED[/item] solutions.'
         )
@@ -630,6 +633,7 @@ async def run(
             check=check,
             verification=VerificationLevel(verification),
             sanitized=sanitized,
+            only_accepted=only_accepted,
             abort_on=fail_fast_abort_predicate if fail_fast else None,
             runner=solution_runner,
             # Said explicitly even though it is the default: this is the purpose
@@ -1063,7 +1067,10 @@ async def irun(
             console.console.print('[error]No solutions selected. Exiting.[/error]')
             raise typer.Exit(1)
 
-    if sanitized and tracked_solutions is None:
+    # Recorded on the skeleton, not only printed: a client showing this run
+    # cannot otherwise tell a list rbx shortened from the whole solution set.
+    only_accepted = sanitized and tracked_solutions is None
+    if only_accepted:
         console.console.print(
             '[warning]Sanitizers are running, and no solutions were specified to run. Will only run [item]ACCEPTED[/item] solutions.'
         )
@@ -1086,6 +1093,7 @@ async def irun(
             print=print,
             merge_stderr=merge_stderr,
             sanitized=sanitized,
+            only_accepted=only_accepted,
             validate=validate,
             visualize=visualize,
         )

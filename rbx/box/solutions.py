@@ -303,6 +303,25 @@ class SolutionReportSkeleton(BaseModel):
     # serving a stale merged capture (irun only caches with an explicit
     # --testcase).
     merge_stderr: bool = False
+    # Whether this run was sanitized (`rbx run -s`).
+    #
+    # A run-mode fact rather than a per-solution one, and it rides the skeleton
+    # beside `verification` and `merge_stderr` for the same reason: the skeleton
+    # is written when the run starts, so a client can say what kind of run it is
+    # showing while the solutions are still going.
+    #
+    # It matters because a sanitized run drops the problem's time limit for the
+    # environment default, which makes every time a client shows a measurement
+    # against a limit the package never declared.
+    sanitized: bool = False
+    # Whether rbx narrowed this run to the ACCEPTED solutions on its own, which
+    # it does for a sanitized run that named no solutions.
+    #
+    # Set only for that narrowing, never for a subset the user asked for: naming
+    # solutions on the command line is a deliberate act and needs no warning,
+    # while a client showing a silently shortened list has no way to tell the
+    # reader that the rest were never run.
+    only_accepted: bool = False
 
     def get_solution_limits(self, solution: Solution) -> Limits:
         return _resolve_solution_limits(solution, self.limits, self.verification)
@@ -714,6 +733,7 @@ async def _get_report_skeleton(
     timelimit_override: Optional[TimelimitOverride] = None,
     progress: Optional[StatusProgress] = None,
     sanitized: bool = False,
+    only_accepted: bool = False,
 ) -> SolutionReportSkeleton:
     pkg = package.find_problem_package_or_die()
 
@@ -788,6 +808,8 @@ async def _get_report_skeleton(
         compilation=compilation,
         verification=verification,
         capture_pipes=should_capture_pipes(package.get_interactor_or_nil()),
+        sanitized=sanitized,
+        only_accepted=only_accepted,
     )
 
     skeleton_file = runs_dir / 'skeleton.yml'
@@ -1038,6 +1060,7 @@ async def run_solutions(
     check: bool = True,
     timelimit_override: Optional[TimelimitOverride] = None,
     sanitized: bool = False,
+    only_accepted: bool = False,
     nruns: int = 0,
     abort_on: Optional[AbortPredicate] = None,
     runner: Optional['SolutionRunner'] = None,
@@ -1068,6 +1091,7 @@ async def run_solutions(
         verification=verification,
         timelimit_override=timelimit_override,
         sanitized=sanitized,
+        only_accepted=only_accepted,
     )
 
     checker_digest, interactor_digest = await _compile_checking_digests(check)
@@ -1304,6 +1328,7 @@ async def _get_interactive_skeleton(
     tracked_solutions: Optional[Iterable[str]] = None,
     progress: Optional[StatusProgress] = None,
     sanitized: bool = False,
+    only_accepted: bool = False,
     verification: VerificationLevel = VerificationLevel.NONE,
     check: bool = True,
     merge_stderr: bool = False,
@@ -1341,6 +1366,8 @@ async def _get_interactive_skeleton(
         compiled_solutions=compiled_solutions,
         capture_pipes=should_capture_pipes(package.get_interactor_or_nil()),
         merge_stderr=merge_stderr,
+        sanitized=sanitized,
+        only_accepted=only_accepted,
     )
 
     skeleton_file = irun_dir / 'skeleton.yml'
@@ -1360,6 +1387,7 @@ async def run_and_print_interactive_solutions(
     print: bool = False,
     merge_stderr: bool = False,
     sanitized: bool = False,
+    only_accepted: bool = False,
     validate: bool = True,
     visualize: bool = False,
 ):
@@ -1399,6 +1427,7 @@ async def run_and_print_interactive_solutions(
             tracked_solutions=tracked_solutions,
             verification=verification,
             sanitized=sanitized,
+            only_accepted=only_accepted,
             progress=progress,
             check=check,
             merge_stderr=merge_stderr,
