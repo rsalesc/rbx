@@ -213,6 +213,32 @@ Nothing is built and nothing is sent to the judge. You don't even need to be log
 as `extensions.moj.org` is set: reading your login is the one thing a session is needed for, and
 that only happens when no org is configured.
 
+### Copying the list out
+
+Add `--porcelain` when the list is going somewhere else -- a message to a co-setter, a
+spreadsheet, a shell loop. You get one tab-separated line per problem, no table and no colors:
+
+```bash
+rbx tooling moj summary --porcelain
+```
+
+```
+A	A Plus B	your-org#a-aplusb	#ff0000	red
+B	Chocolate	your-org#b-choco	#0000ff	blue
+```
+
+The fields are the table's columns in order: short name, title, MOJ problem, color and color
+name. A problem with no color still has the two (empty) fields, so `cut -f3` reads the ids of
+every problem no matter how the contest is configured:
+
+```bash
+rbx tooling moj summary --porcelain | cut -f3
+```
+
+Warnings go to stderr in this mode, and a problem that couldn't be read is reported there
+instead of taking a line -- so whatever consumes the output never sees a problem pointing at an
+empty id.
+
 ## Troubleshooting
 
 ### My problem has a tight `outputLimit`, but MOJ doesn't enforce it

@@ -3045,6 +3045,17 @@ SPEC = {
                                     },
                                 },
                                 {
+                                    'help': 'Print one tab-separated line per '
+                                    'problem instead of a table, and '
+                                    'send every warning to stderr. '
+                                    'Meant for copying and for scripts.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--porcelain'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
                                     'help': 'Show this message and exit.',
                                     'kind': 'option',
                                     'multiple': False,

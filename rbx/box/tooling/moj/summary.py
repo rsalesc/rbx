@@ -53,14 +53,20 @@ def summarize_problem(
 
 
 async def collect_moj_summary(
-    contest: Contest, main_language: Optional[str] = None
+    contest: Contest,
+    main_language: Optional[str] = None,
+    diagnostics_to_stderr: bool = False,
 ) -> List[MojProblemSummary]:
+    # Under `--porcelain` every diagnostic moves to stderr, so a caller can
+    # consume stdout as data without filtering a warning out of it first.
+    diagnostics = console.stderr_console if diagnostics_to_stderr else console.console
+
     org, is_personal = await upload.resolve_org()
     if is_personal:
         # The same warning `rbx package moj --upload` gives, and for the same
         # reason: every id below is invisible to everyone but you, and hearing
         # that from a co-setter is worse than hearing it here.
-        console.console.print(
+        diagnostics.print(
             f'[warning]No `extensions.moj.org` is set, so these problems would go '
             f'to the [item]{org}[/item] org -- your private personal org, which '
             f'nobody else can see.[/warning]\n'
@@ -80,7 +86,7 @@ async def collect_moj_summary(
             # this adds the one thing they cannot know: which problem it was
             # about. Reported and skipped rather than fatal -- one unreadable
             # problem should not hide the ids of every other one.
-            console.console.print(
+            diagnostics.print(
                 f'[error]Failed to summarize problem '
                 f'[item]{problem.short_name}[/item].[/error]'
             )
@@ -120,6 +126,55 @@ def render_moj_summary(contest: Contest, entries: List[MojProblemSummary]) -> Ta
     return table
 
 
-async def print_moj_summary(contest: Contest, main_language: Optional[str] = None):
-    entries = await collect_moj_summary(contest, main_language=main_language)
+def render_moj_summary_porcelain(entries: List[MojProblemSummary]) -> str:
+    """The same rows as tab-separated fields, for copying and for scripts.
+
+    One line per problem, no header and no styling:
+
+    ```
+    A<TAB>A Plus B<TAB>your-org#a-aplusb<TAB>#ff0000<TAB>red
+    ```
+
+    The fields are short name, title, MOJ problem, color and color name, in the
+    column order of the table. A problem with no color contributes two empty
+    fields rather than fewer, so the line always has five.
+
+    A problem that could not be read gets **no line at all**: it is reported on
+    stderr instead. A line naming it with an empty id would be read by whatever
+    consumes this as a problem that uploads to nothing.
+    """
+    lines = []
+    for entry in entries:
+        if entry.error is not None:
+            continue
+        lines.append(
+            '\t'.join(
+                [
+                    entry.short_name,
+                    entry.title or '',
+                    entry.problem_id or '',
+                    entry.color or '',
+                    entry.color_name or '',
+                ]
+            )
+        )
+    return '\n'.join(lines)
+
+
+async def print_moj_summary(
+    contest: Contest,
+    main_language: Optional[str] = None,
+    porcelain: bool = False,
+):
+    entries = await collect_moj_summary(
+        contest, main_language=main_language, diagnostics_to_stderr=porcelain
+    )
+    if porcelain:
+        # Written with `print`, not through rich: the console wraps at the
+        # terminal width and would fold a long id onto a second line, which is
+        # exactly what a copied or piped line must not do.
+        text = render_moj_summary_porcelain(entries)
+        if text:
+            print(text)
+        return
     console.console.print(render_moj_summary(contest, entries))

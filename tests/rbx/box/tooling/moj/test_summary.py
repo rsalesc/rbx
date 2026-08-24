@@ -198,10 +198,112 @@ class TestRenderMojSummary:
         assert 'unicamp#a-aplusb' in text
         assert 'red' in text
 
-    def test_marks_a_problem_that_could_not_be_read(self):
+    def test_marks_a_problem_that_could_not_be_read_in_the_table(self):
         text = self._render(
             [summary.MojProblemSummary(short_name='B', error='boom')],
         )
 
         assert 'B' in text
         assert 'failed' in text
+
+
+class TestRenderMojSummaryPorcelain:
+    def _entry(self, short_name, **kwargs):
+        return summary.MojProblemSummary(short_name=short_name, **kwargs)
+
+    def test_renders_one_tab_separated_line_per_problem(self):
+        text = summary.render_moj_summary_porcelain(
+            [
+                self._entry(
+                    'A',
+                    title='Sum of Two',
+                    problem_id='unicamp#a-aplusb',
+                    color='#ff0000',
+                    color_name='red',
+                ),
+                self._entry(
+                    'B',
+                    title='Chocolate',
+                    problem_id='unicamp#b-choco',
+                    color='#0000ff',
+                    color_name='blue',
+                ),
+            ]
+        )
+
+        assert text.splitlines() == [
+            'A\tSum of Two\tunicamp#a-aplusb\t#ff0000\tred',
+            'B\tChocolate\tunicamp#b-choco\t#0000ff\tblue',
+        ]
+
+    def test_a_problem_without_a_color_keeps_its_empty_fields(self):
+        # Five fields on every line, so a `cut -f3` reads the id regardless of
+        # which problems configure a color.
+        text = summary.render_moj_summary_porcelain(
+            [self._entry('A', title='Sum of Two', problem_id='unicamp#a-aplusb')]
+        )
+
+        assert text == 'A\tSum of Two\tunicamp#a-aplusb\t\t'
+        assert text.count('\t') == 4
+
+    def test_carries_no_styling(self):
+        text = summary.render_moj_summary_porcelain(
+            [
+                self._entry(
+                    'A',
+                    title='Sum of Two',
+                    problem_id='unicamp#a-aplusb',
+                    color='#ff0000',
+                    color_name='red',
+                )
+            ]
+        )
+
+        assert '●' not in text
+        assert '[' not in text
+
+    def test_omits_a_problem_that_could_not_be_read(self):
+        # Unlike the table, which marks it: a line naming the problem with an
+        # empty id would be consumed as a problem that uploads to nothing. The
+        # failure is reported on stderr instead.
+        text = summary.render_moj_summary_porcelain(
+            [
+                self._entry('A', title='Sum of Two', problem_id='unicamp#a-aplusb'),
+                self._entry('B', error='boom'),
+            ]
+        )
+
+        assert text.splitlines() == ['A\tSum of Two\tunicamp#a-aplusb\t\t']
+
+    def test_renders_nothing_for_a_contest_with_no_problems(self):
+        assert summary.render_moj_summary_porcelain([]) == ''
+
+
+class TestPrintMojSummary:
+    def _patch_org(self, org, is_personal):
+        return mock.patch(
+            'rbx.box.tooling.moj.summary.upload.resolve_org',
+            new=mock.AsyncMock(return_value=(org, is_personal)),
+        )
+
+    async def test_porcelain_leaves_stdout_as_pure_data(self, testing_pkg, capsys):
+        # The warning is what would break a `| cut -f3`, so it has to be on
+        # stderr while stdout carries the lines and nothing else.
+        contest = _contest(ContestProblem(short_name='A', path=pathlib.Path('.')))
+
+        with self._patch_org('alice', True):
+            await summary.print_moj_summary(contest, porcelain=True)
+
+        captured = capsys.readouterr()
+        assert captured.out == 'A\ttest-problem\talice#test-problem\t\t\n'
+        assert 'personal' in captured.err
+
+    async def test_prints_the_table_by_default(self, testing_pkg, capsys):
+        contest = _contest(ContestProblem(short_name='A', path=pathlib.Path('.')))
+
+        with self._patch_org('unicamp', False):
+            await summary.print_moj_summary(contest)
+
+        out = capsys.readouterr().out
+        assert 'MOJ upload summary' in out
+        assert 'unicamp#test-problem' in out

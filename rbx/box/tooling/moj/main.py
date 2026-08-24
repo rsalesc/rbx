@@ -28,8 +28,16 @@ async def summary_cmd(
         'which is the one `rbx package moj` would upload.',
         autocompletion=annotations._adapt('language'),  # noqa: SLF001
     ),
+    porcelain: bool = typer.Option(
+        False,
+        '--porcelain',
+        help='Print one tab-separated line per problem instead of a table, and '
+        'send every warning to stderr. Meant for copying and for scripts.',
+    ),
 ):
     from rbx.box.tooling.moj import summary
 
     contest = find_contest_package_or_die()
-    await summary.print_moj_summary(contest, main_language=language)
+    await summary.print_moj_summary(
+        contest, main_language=language, porcelain=porcelain
+    )
