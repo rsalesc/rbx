@@ -47,6 +47,9 @@ _AFTER_COMMAND_SECONDS = 0.6
 
 _DURATION = re.compile(r'^(\d+(?:\.\d+)?)\s*(us|ms|s)$')
 _CONTROL = re.compile(r'^\^([A-Za-z@\[\]\\^_])$')
+# A key that changes how fast the cast plays from here on, rather than a key
+# the program is meant to receive. `x8` is eight times, `x1` back to real time.
+_SPEED_TOKEN = re.compile(r'^x(\d+(?:\.\d+)?)$')
 
 
 class RecordingError(RuntimeError):
@@ -255,6 +258,12 @@ class Engine:
         long compute can be watched at a rate worth watching without losing a
         frame of it. It scales *measured* time only -- the typing animation is
         synthesized at `type_speed` and keeps its authored pace.
+
+        An `x<factor>` entry in `keys` changes that rate part-way through, and
+        holds until the next such entry or the end of the command (`x1` puts it
+        back). One interactive command can therefore hold a dwell worth reading
+        and a compute worth skipping: `rbx time` is exactly that shape, and
+        `speed` alone cannot tell its two kinds of pause apart.
         """
         started = time.monotonic()
         pending = list(keys)
@@ -291,6 +300,15 @@ class Engine:
 
             if pending and now >= next_key_at:
                 key = pending.pop(0)
+                token = _SPEED_TOKEN.match(key)
+                if token is not None:
+                    # Steers the recording rather than the program, so it costs
+                    # no time and is never written to the pty. Settle the clock
+                    # under the old rate first, or the tail of the window that
+                    # just ended would be billed at the new one.
+                    sync()
+                    scale = float(token.group(1))
+                    continue
                 try:
                     wait = parse_duration(key)
                 except ValueError:

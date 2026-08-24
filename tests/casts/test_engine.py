@@ -306,6 +306,67 @@ def test_speed_leaves_the_typing_animation_alone(tmp_path: pathlib.Path):
     assert _duration(raw) >= 0.4
 
 
+def test_a_speed_token_scales_only_the_keys_that_follow_it(tmp_path: pathlib.Path):
+    # `rbx time` is one interactive command: the dwell that lets a reader take
+    # in the prompt and the dwell that waits out the compute must be paced
+    # differently, and only a mid-command switch can do that.
+    paced = _duration(
+        _run(
+            _spec(
+                instructions=[
+                    Tagged(
+                        'Interactive',
+                        {'command': 'cat', 'keys': ['1s', 'x10', '1s', '^D']},
+                    )
+                ],
+                type_speed='0ms',
+                # Before the token is understood it is typed at `cat`, whose
+                # next `^D` then flushes that text instead of closing the
+                # stream -- so an unimplemented feature hangs. Fail fast.
+                timeout='20s',
+            ),
+            tmp_path,
+        )
+    )
+    flat = _duration(
+        _run(
+            _spec(
+                instructions=[
+                    Tagged(
+                        'Interactive', {'command': 'cat', 'keys': ['1s', '1s', '^D']}
+                    )
+                ],
+                type_speed='0ms',
+            ),
+            tmp_path,
+        )
+    )
+
+    # The second second plays in a tenth of the time; the first is untouched.
+    assert flat - paced == pytest.approx(0.9, abs=0.3)
+
+
+def test_a_speed_token_is_not_typed_into_the_command(tmp_path: pathlib.Path):
+    # The token steers the recording, so it must never reach the program: a
+    # literal `x10` would land in the middle of whatever was being typed.
+    raw = _run(
+        _spec(
+            instructions=[
+                Tagged(
+                    'Interactive',
+                    {'command': 'cat', 'keys': ['hi', 'x10', '^M', '^D']},
+                )
+            ],
+            timeout='20s',
+        ),
+        tmp_path,
+    )
+
+    # `cat` echoes what it is fed, so a token that leaked through would show
+    # up twice over -- once as the keystroke, once in the echoed line.
+    assert 'x10' not in cast_text(raw)
+
+
 def test_a_non_positive_speed_is_rejected(tmp_path: pathlib.Path):
     with pytest.raises(RecordingError, match='speed'):
         _run(
