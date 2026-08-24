@@ -176,6 +176,10 @@ def _revalidate_cache(cache_path: pathlib.Path, name: str) -> bool:
 
 
 @app.callback()
+@annotations.docs("""
+    The `rbx` CLI is the main entry point for all operations. It provides a set of
+    commands to manage problems, contests, and the environment.
+""")
 def main(
     cache: Annotated[
         grading_context.CacheLevel,
@@ -295,6 +299,22 @@ def ui():
         'allow_interspersed_args': False,
     },
 )
+@annotations.docs("""
+    Runs a command in the context of one problem (or a set of problems) of a contest.
+
+    Problems can be selected by short name, alias, a comma-separated list (`A,C`), a
+    range (`A-C`) or `*`.
+
+    Like [`rbx each`](#rbx-each), commands can be chained with `::`:
+
+    ```bash
+    rbx on A-C build :: run -s
+    ```
+
+    A single command on a single problem runs directly in your terminal; anything
+    else opens the TUI. Since flags after the problem selector belong to the chained
+    commands, `-k`/`--keep-going` has to come first: `rbx on -k A build :: run`.
+""")
 def on(
     ctx: typer.Context,
     problems: Annotated[
@@ -318,6 +338,22 @@ def on(
         'allow_interspersed_args': False,
     },
 )
+@annotations.docs("""
+    Runs a command for each problem in the contest, in a TUI with one tab per problem.
+
+    Chain several commands with `::` to queue them all at once, in order:
+
+    ```bash
+    rbx each build :: package build
+    ```
+
+    Each problem runs its whole chain before the next problem starts. If a command in
+    a chain fails, the rest of that problem's chain is skipped -- pass
+    `-k`/`--keep-going` to run it anyway. Other problems are unaffected either way.
+
+    Commands you type into the TUI later are queued too, but they always run, even
+    after a failure.
+""")
 def each(ctx: typer.Context, keep_going: bool = contest.KEEP_GOING_OPTION) -> None:
     contest.each(ctx, keep_going=keep_going)
 
@@ -354,6 +390,16 @@ def edit():
 @app.command(
     'build, b', rich_help_panel='Deploying', help='Build all tests for the problem.'
 )
+@annotations.docs("""
+    Builds the problem package.
+
+    This command compiles all generators, validators, and checkers. Then it generates
+    inputs using the generator script and validates them with the validator. Finally,
+    it generates the outputs using the main solution.
+
+    It is recommended to run this command before packaging the problem to ensure
+    everything is up-to-date.
+""")
 @package.within_problem
 @syncer.sync
 async def build(
@@ -398,6 +444,15 @@ def _set_timing_profile(profile: Optional[str]) -> None:
     rich_help_panel='Testing',
     help='Build and run solution(s).',
 )
+@annotations.docs("""
+    Runs solutions against the testcases.
+
+    This is the primary way to test your solutions. You can run all solutions, a
+    specific set of solutions, or only accepted solutions.
+
+    You can also filter which testcases to run against, by using the `--outcome` flag
+    to only confirm that solutions match a certain expected outcome (e.g. TLE, WA).
+""")
 @package.within_problem
 @syncer.sync
 async def run(
@@ -1084,6 +1139,15 @@ def create(
     rich_help_panel='Testing',
     help='Run a stress test.',
 )
+@annotations.docs("""
+    Runs stress testing on the current problem.
+
+    Stress testing allows you to find counter-examples where your solution fails (or
+    where two solutions differ).
+
+    You usually provide a generator command (with random seed) and a reference
+    solution (or validator/checker).
+""")
 @package.within_problem
 @syncer.sync
 async def stress(
