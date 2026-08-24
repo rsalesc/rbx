@@ -90,22 +90,6 @@ A few things to keep in mind:
   externalization produces) is rasterized to PNG for you. That needs `pdftoppm`, from poppler; a
   statement with PDF figures and no poppler installed refuses to package, naming the figures.
 
-## Author
-
-Every MOJ package carries an `author` file, and MOJ refuses one that is empty. {{rbx}} fills it
-from the `author` package variable:
-
-```yaml title="problem.rbx.yml"
-vars:
-  author: "Ada Lovelace"
-```
-
-It is the same variable your statement can render as `\VAR{author}`, so the name in the package
-and the name in the statement never drift apart.
-
-A problem that declares no such variable packages anyway, with a placeholder author of
-`Unknown` -- MOJ needs *something* there, and you can still fix it on the server.
-
 ## Test groups and scoring
 
 Test groups are supported, and translate into MOJ's own scoring file for problems that score by
