@@ -130,7 +130,7 @@ test('the channel picker is offered only when both channels exist', () => {
   assert.match(renderTabs(both, GALLERY_STATE), /<select id="channel"/);
 });
 
-test('an html cell is framed with an empty sandbox, and never scripted', () => {
+test('an html cell draws a placard that says HTML, and is never framed', () => {
   const html = renderGallery(
     model({
       gallery: {
@@ -141,8 +141,29 @@ test('an html cell is framed with an empty sandbox, and never scripted', () => {
     GALLERY_STATE,
     { x: 'https://webview/0.html' },
   );
-  assert.match(html, /<iframe class="cell-frame" sandbox="" loading="lazy"/);
-  assert.ok(!html.includes('allow-scripts'), 'a generated page gets no script execution');
+  assert.match(html, /<div class="cell-html"/);
+  assert.match(html, /codicon-file-code/);
+  assert.match(html, />HTML</);
+  // Two regressions in one: a resource URI cannot be navigated to, so a frame
+  // here is always blank -- and a click inside one never reaches the delegated
+  // handler on the panel, which left the cell unopenable.
+  assert.ok(!html.includes('<iframe'), 'an html cell must not be framed');
+  assert.ok(!html.includes('https://webview/0.html'), 'nothing loads the file here');
+});
+
+test('an html cell stays clickable, and opens the file rather than the testcase', () => {
+  const html = renderGallery(
+    model({
+      gallery: {
+        cells: [cell({ id: 'x', kind: 'html', path: 'build/v/0.html', extension: 'html' })],
+        withoutVisualization: 0,
+      },
+    }),
+    GALLERY_STATE,
+    { x: 'https://webview/0.html' },
+  );
+  // `data-open` is what the panel's delegated click handler looks for.
+  assert.match(html, /<figure class="cell" data-id="x" tabindex="0" data-open="x"/);
 });
 
 test('an unknown extension offers an editor, and says which extension', () => {

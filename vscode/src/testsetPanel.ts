@@ -295,11 +295,14 @@ export class TestsetPanel {
     const nonce = makeNonce();
     const asset = (...parts: string[]): vscode.Uri =>
       webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', ...parts));
-    // Same shape as the Run view's, plus the two directives a gallery needs:
-    // `img-src` for the visualizations, and `frame-src` for the `.html` ones,
-    // both restricted to `webview.cspSource` -- which resolves only what
-    // `localResourceRoots` allows, so the CSP and the roots above are one
-    // decision expressed twice.
+    // Same shape as the Run view's, plus the one directive a gallery needs:
+    // `img-src` for the visualizations, restricted to `webview.cspSource` --
+    // which resolves only what `localResourceRoots` allows, so the CSP and the
+    // roots above are one decision expressed twice.
+    //
+    // No `frame-src`: nothing here is framed any more. An HTML cell draws a
+    // placard and opens in its own panel, because a resource URI cannot be
+    // navigated to (webview/visualizationDocument.ts).
     //
     // `'unsafe-inline'` stays on styles only and is load-bearing for the same
     // reason it is there: `style` attributes are how a cell states its size.
@@ -308,7 +311,6 @@ export class TestsetPanel {
     const csp = [
       `default-src 'none'`,
       `img-src ${webview.cspSource} data:`,
-      `frame-src ${webview.cspSource}`,
       `style-src ${webview.cspSource} 'unsafe-inline'`,
       `font-src ${webview.cspSource}`,
       `script-src 'nonce-${nonce}'`,
