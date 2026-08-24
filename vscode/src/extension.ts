@@ -17,7 +17,8 @@ import { registerDecorations } from './decorations';
 import { registerDiagnostics } from './diagnostics';
 import { initLog, log } from './log';
 import { CONTEST_FILE_GLOB, CONTEST_MANIFEST, isContestVariantFile } from './rbx/contest';
-import { BUILD_DIR, CACHE_DIR, PROBLEM_MANIFEST, TESTSET_MANIFEST } from './rbx/layout';
+import { resetBuildDirs, resolveBuildDir } from './rbx/environment';
+import { CACHE_DIR, PROBLEM_MANIFEST, TESTSET_MANIFEST } from './rbx/layout';
 import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
 import { registerSolutionLens } from './solutionLens';
@@ -44,21 +45,47 @@ function cacheRootOf(fsPath: string): string | undefined {
 }
 
 /**
+ * The package a `testset.yml` belongs to, or undefined if it belongs to none.
+ *
+ * The build directory is named by the active preset and can be nested, so the
+ * manifest's own path does not say how far up the package root is. Rather than
+ * guess a depth, each ancestor is asked whether *its* build directory is the
+ * one this manifest sits in -- which is the same question `testsetPath` answers
+ * in the other direction, so the watcher and the reader cannot disagree.
+ *
+ * Bounded to a few levels because `buildDir` is a build directory, not an
+ * arbitrary path, and an unbounded walk would make every stray `testset.yml`
+ * in the workspace cost a preset lookup per ancestor.
+ */
+function testsetRootOf(fsPath: string): string | undefined {
+  if (path.basename(fsPath) !== TESTSET_MANIFEST) {
+    return undefined;
+  }
+  let dir = path.dirname(fsPath);
+  for (let depth = 0; depth < 4; depth++) {
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      return undefined;
+    }
+    if (path.join(parent, resolveBuildDir(parent)) === path.dirname(fsPath)) {
+      return parent;
+    }
+    dir = parent;
+  }
+  return undefined;
+}
+
+/**
  * Map any watched path back to the package it belongs to.
  *
  * Two spellings reach the debounce: run artifacts under `.rbx`, and the testset
- * manifest `rbx build` writes at `<pkg>/build/testset.yml`. They feed the same
+ * manifest `rbx build` writes at `<pkg>/<build>/testset.yml`. They feed the same
  * pending set because they invalidate the same store -- a package is reloaded
  * whole, and which of its two producers moved is not a distinction the reload
  * makes.
  */
 function packageRootOf(fsPath: string): string | undefined {
-  const cached = cacheRootOf(fsPath);
-  if (cached !== undefined) {
-    return cached;
-  }
-  const suffix = `${path.sep}${BUILD_DIR}${path.sep}${TESTSET_MANIFEST}`;
-  return fsPath.endsWith(suffix) ? fsPath.slice(0, -suffix.length) : undefined;
+  return cacheRootOf(fsPath) ?? testsetRootOf(fsPath);
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -177,7 +204,12 @@ export function activate(context: vscode.ExtensionContext): void {
   // about when a build has settled -- when it lands, everything it names is
   // already on disk. It joins the same debounce as the artifacts above, so a
   // build finishing while a run is in flight still costs one reload.
-  watch(`**/${BUILD_DIR}/${TESTSET_MANIFEST}`);
+  //
+  // The glob cannot name the build directory, because its name comes from the
+  // preset and differs per workspace; `packageRootOf` is what decides whether a
+  // given `testset.yml` is one of ours, and a stray one maps to no package and
+  // is dropped.
+  watch(`**/${TESTSET_MANIFEST}`);
 
   // A fourth glob, for a different question: the three above ask *what
   // changed*, this one asks *what is running*. `skeleton.yml` is written when
@@ -232,6 +264,29 @@ export function activate(context: vscode.ExtensionContext): void {
     manifests,
     vscode.workspace.onDidChangeWorkspaceFolders(rediscover),
   );
+
+  // The preset decides where the build directory is, so editing it moves every
+  // path the Tests view and the testcase panes are built from. Nothing else
+  // above notices: the packages are unchanged, only the name of a directory
+  // inside them, and a stale `PackageLayout` would keep pointing at the old one
+  // until the window was reloaded.
+  //
+  // Both spellings are watched for the same reason `findPresetDir` reads both:
+  // an installed preset lives in `.local.rbx/`, a preset under development is a
+  // checkout with a bare `preset.rbx.yml`. The environment file is named by the
+  // preset and so cannot be globbed by name -- watching the directory catches
+  // it whatever it is called.
+  const presets = vscode.workspace.createFileSystemWatcher(
+    `{**/preset.rbx.yml,**/.local.rbx/**}`,
+  );
+  const repoint = () => {
+    resetBuildDirs();
+    rediscover();
+  };
+  presets.onDidCreate(repoint);
+  presets.onDidChange(repoint);
+  presets.onDidDelete(repoint);
+  context.subscriptions.push(presets);
 
   // The dropdown's letters, order and colours come from `contest.rbx.yml`, and
   // nothing above watches it: renaming `A` to `B`, adding a colour, reordering

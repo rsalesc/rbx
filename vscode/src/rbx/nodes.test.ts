@@ -41,7 +41,7 @@ function run(solutions: readonly SolutionRun[]): PackageRun {
   };
 }
 
-const PKG: PackageLayout = { root: '/w/a' };
+const PKG: PackageLayout = { buildDir: 'build', root: '/w/a' };
 
 const ONE: PackageRunView = {
   pkg: PKG,
@@ -72,7 +72,7 @@ test('two packages laid out alike never share a row id', () => {
   // resolves a context-menu command through a map of ids, and the client keeps
   // a selection across a switch of problem. Two packages laid out identically
   // -- which is what a contest's problems are -- must not collide there.
-  const ids = (root: string): string[] => flattenNodes({ pkg: { root }, run: ONE.run }).map(nodeId);
+  const ids = (root: string): string[] => flattenNodes({ pkg: { buildDir: 'build', root }, run: ONE.run }).map(nodeId);
   const here = ids('/w/a');
   const there = ids('/w/b');
   assert.strictEqual(here.length, there.length);

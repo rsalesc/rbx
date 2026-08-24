@@ -309,7 +309,7 @@ test('a tests row naming an entry that is not there is ignored, not drawn', () =
 test('nodes and rows share one walk, so every row id resolves to a node', () => {
   const { rows } = buildTestsetViewModel(TESTSET);
   const nodes = new Map(
-    testsetNodes({ root: '/w/a' }, TESTSET).map((node) => [testsetNodeId(node), node]),
+    testsetNodes({ buildDir: 'build', root: '/w/a' }, TESTSET).map((node) => [testsetNodeId(node), node]),
   );
   assert.deepStrictEqual([...nodes.keys()], rows.map((row) => row.id));
   const node = nodes.get('main::1-gen-001');
@@ -322,7 +322,7 @@ test('nodes and rows share one walk, so every row id resolves to a node', () => 
 });
 
 test('no manifest is no nodes', () => {
-  assert.deepStrictEqual(testsetNodes({ root: '/w/a' }, undefined), []);
+  assert.deepStrictEqual(testsetNodes({ buildDir: 'build', root: '/w/a' }, undefined), []);
 });
 
 test('every testcase row opens the two panes, and no group row opens anything', () => {

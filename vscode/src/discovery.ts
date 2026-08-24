@@ -10,13 +10,19 @@ import * as vscode from 'vscode';
 
 import { PROBLEM_MANIFEST, PackageLayout, packageLayout } from './rbx/layout';
 
+// `**/build/**` is a guess, not a rule: the build directory is named by the
+// preset (see rbx/environment.ts) and may be called something else. It is only
+// here to keep the scan cheap -- rbx never writes a `problem.rbx.yml` into a
+// build directory, so nothing is lost when the guess misses.
 const EXCLUDE = '{**/node_modules/**,**/.git/**,**/.rbx/**,**/build/**}';
 
 export async function discoverPackages(): Promise<PackageLayout[]> {
   const matches = await vscode.workspace.findFiles(`**/${PROBLEM_MANIFEST}`, EXCLUDE);
   const roots = matches.map((uri) => path.dirname(uri.fsPath));
   const unique = Array.from(new Set(roots)).sort();
-  return unique.map(packageLayout);
+  // Wrapped rather than passed by reference: `packageLayout` takes an optional
+  // second argument, and `Array.map` would hand it the index.
+  return unique.map((root) => packageLayout(root));
 }
 
 /** Label for a package node: its directory name, or its path when ambiguous. */
