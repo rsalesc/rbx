@@ -152,7 +152,7 @@ def _stub_estimation(testing_pkg: testing_package.TestingPackage):
 def test_the_estimated_profile_is_not_written_when_dry():
     limits_path = package.get_limits_file('local')
 
-    estimated = asyncio.get_event_loop().run_until_complete(
+    estimated = asyncio.run(
         timing.compute_time_limits(check=False, detailed=False, dry=True)
     )
 
@@ -166,9 +166,7 @@ def test_the_estimated_profile_is_not_written_when_dry():
 def test_the_estimated_profile_is_written_when_not_dry():
     limits_path = package.get_limits_file('local')
 
-    estimated = asyncio.get_event_loop().run_until_complete(
-        timing.compute_time_limits(check=False, detailed=False)
-    )
+    estimated = asyncio.run(timing.compute_time_limits(check=False, detailed=False))
 
     assert estimated is not None
     assert limits_path.exists()
