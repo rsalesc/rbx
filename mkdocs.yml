@@ -147,7 +147,13 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
+  # `base_path` is what makes `--8<-- "_partials/x.md"` resolve the same way
+  # from every page, whatever directory it lives in. Without it snippets are
+  # looked up relative to the working directory and silently render as
+  # literal text.
+  - pymdownx.snippets:
+      base_path:
+        - docs
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid

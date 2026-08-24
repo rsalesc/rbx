@@ -25,40 +25,21 @@ in effect — the same ones your local run would use, per language group. Two th
   reject it.
 
 If what you want is a *time limit* rather than a verdict, reach for [`rbx time
---runner`](/setters/profiling/#measuring-on-the-judge-itself) instead: it feeds the same
-remote timings into the estimation.
-
-Whichever judge you run on, expect it to report **less** than the local sandbox does. A judge
-hands back a verdict, not the bytes your solution wrote, so some of what a local run shows you
-simply has no counterpart. {{rbx}} refuses by name whatever it cannot answer honestly on a
-given backend, before anything is uploaded, rather than quietly reporting less than you asked
-for.
+--runner`](/setters/profiling/remote/) instead: it feeds the same remote timings into the
+estimation.
 
 ## Running on MOJ
 
 MOJ is the only backend today, and everything below is specific to it. `rbx run --runner moj`
-and [`rbx time --runner moj`](/setters/profiling/#measuring-on-the-judge-itself) share all of
-it.
+and [`rbx time --runner moj`](/setters/profiling/remote/) share all of it.
 
 <!-- TODO(record): rbx run --runner moj cast -- needs a live moj login, so it cannot be recorded from CI or from a machine without judge access -->
 
-### What it needs
+### What it needs, and what it cannot tell you
 
-You must be logged in to the [`moj` CLI](https://github.com/cd-moj/moj-cli) — {{rbx}} reuses
-its session and never handles your credentials.
+--8<-- "_partials/moj-backend.md"
 
-{{rbx}} uploads a **throwaway problem** of its own, named `<your-login>#rbxt-<problem-id>-run`
-and derived from the id recorded in a committed `.moj-id`, so two setters on the same package
-reach the same one. It never touches a problem it did not create: a package already bound to a
-real MOJ problem is refused by name rather than overwritten.
-
-### What MOJ cannot tell you
-
-- **No memory usage**, no `.out`/`.err` artifacts, and a verdict code rather than the checker's
-  own message.
-- `--runs` greater than one, a sanitizer, and interactive (`communication`) problems are
-  **refused by name** — each would produce a report answering a different question than the one
-  you asked.
+The problem `rbx run` uploads to is named `<your-login>#rbxt-<problem-id>-run`.
 
 [Failing fast](/setters/running/#failing-fast) does work, because MOJ enforces it itself: it
 stops a solution at its first non-accepted verdict, and the testcases it never reached come
