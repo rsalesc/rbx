@@ -486,7 +486,7 @@ def test_refuses_a_package_without_an_accepted_solution(testing_pkg, tmp_path):
         run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
 
 
-def test_main_solution_only_ships_just_the_model_solution(
+def test_reference_only_ships_just_the_reference_solution(
     testing_pkg, tmp_path, capsys
 ):
     testing_pkg.add_file('check.cpp').write_text(CHECKER)
@@ -506,7 +506,7 @@ def test_main_solution_only_ships_just_the_model_solution(
             testing_pkg,
             tmp_path,
             build_entries(tmp_path, ['samples']),
-            main_solution_only=True,
+            reference_only=True,
         )
         / 'sols'
     )
@@ -519,10 +519,10 @@ def test_main_solution_only_ships_just_the_model_solution(
     # And the setter is told, because calibration is what would have checked the
     # verdicts of everything just dropped.
     out = ' '.join(capsys.readouterr().out.split())
-    assert '--main-solution-only' in out
+    assert '--reference-only' in out
 
 
-def test_main_solution_only_still_refuses_a_package_without_an_accepted_solution(
+def test_reference_only_still_refuses_a_package_without_an_accepted_solution(
     testing_pkg, tmp_path
 ):
     testing_pkg.add_file('check.cpp').write_text(CHECKER)
@@ -535,11 +535,11 @@ def test_main_solution_only_still_refuses_a_package_without_an_accepted_solution
             testing_pkg,
             tmp_path,
             build_entries(tmp_path, ['samples']),
-            main_solution_only=True,
+            reference_only=True,
         )
 
 
-def test_main_solution_only_warns_about_the_languages_it_drops(
+def test_reference_only_warns_about_the_languages_it_drops(
     testing_pkg, tmp_path, capsys
 ):
     testing_pkg.add_file('check.cpp').write_text(CHECKER)
@@ -554,14 +554,14 @@ def test_main_solution_only_warns_about_the_languages_it_drops(
         build_entries(tmp_path, ['samples']),
         pin_limits=False,
         timing_mode=JudgeCalibrated(),
-        main_solution_only=True,
+        reference_only=True,
     )
 
     out = ' '.join(capsys.readouterr().out.split())
     assert 'No ACCEPTED solution in' in out
     assert 'py' in out
     # The fix here is dropping the flag, not writing a solution that already exists.
-    assert 'Drop --main-solution-only' in out
+    assert 'Drop --reference-only' in out
 
 
 def test_solutions_are_amalgamated(testing_pkg, tmp_path):

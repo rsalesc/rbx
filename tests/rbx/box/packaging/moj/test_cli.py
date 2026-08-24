@@ -48,9 +48,10 @@ def test_moj_command_has_no_legacy_boca_flag():
     assert '--for-boca' not in result.output
 
 
-def test_moj_command_takes_a_main_solution_only_flag():
+def test_moj_command_takes_a_reference_only_flag():
     # Calibration runs every solution the package ships, so dropping all but the
     # model one is the knob that makes an upload cheap to iterate on.
     result = CliRunner().invoke(app, ['moj', '--help'])
     assert result.exit_code == 0
-    assert '--main-solution-only' in _plain(result.output)
+    assert '--reference-only' in _plain(result.output)
+    assert '-ro' in _plain(result.output)

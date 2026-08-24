@@ -184,10 +184,11 @@ then the rest to check they get the verdict you declared. On a problem with a do
 that's the slowest part of an upload, and it's paid again on every re-upload.
 
 While you're still iterating -- fixing a statement, re-cutting the tests, re-uploading over and
-over -- `--main-solution-only` ships just the main solution and drops the rest:
+over -- `--reference-only` (or `-ro`) ships just the reference solution, your main one, and
+drops the rest:
 
 ```bash
-rbx package moj -u --main-solution-only
+rbx package moj -u -ro
 ```
 
 Calibration then has exactly one solution to run, which is the minimum MOJ accepts. Everything

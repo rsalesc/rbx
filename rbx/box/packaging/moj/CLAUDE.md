@@ -284,7 +284,7 @@ and then `pass`, `slow`, `wrong` (verification only, and skipped entirely under
 `sols/good` among the solution dirs, so a draft never forces a recalibration either.
 Shipping drafts is about not losing them, not about getting them executed.
 
-**`rbx package moj --main-solution-only` ships only the model solution** (`main_solution_only`,
+**`rbx package moj --reference-only` / `-ro` ships only the model solution** (`reference_only`,
 read in `_solutions_to_ship` beside the probe case). Calibration runs everything the package
 ships — `sols/good` to measure, then `pass`/`slow`/`wrong` to verify — so on a problem with many
 solutions it is the bulk of an upload, paid again on every re-upload. The flag exists to make
@@ -434,7 +434,7 @@ solution then falls back to `TL[default]` — the *tightest* measured limit, typ
 C++ one, which no Python submission survives. So `_report_submission_languages` prints
 the enabled set always, and under `JudgeCalibrated` adds a warning naming those
 languages, with both fixes (an accepted solution in them, or `rbx time -p moj`) — or,
-under `--main-solution-only`, dropping the flag, which is what took their accepted
+under `--reference-only`, dropping the flag, which is what took their accepted
 solution out of the package. Under the pinned modes there is nothing to warn about.
 
 **A probe package still authors its own.** `ProbePackage(submission_languages=[...])` is

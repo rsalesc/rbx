@@ -376,7 +376,7 @@ class MojPackager(BasePackager):
         main_language: Optional[str] = None,
         timing_mode: TimingMode = DEFAULT_TIMING_MODE,
         probe: Optional[ProbePackage] = None,
-        main_solution_only: bool = False,
+        reference_only: bool = False,
     ):
         super().__init__(testcase_entries)
         # A MOJ package holds ONE statement, so the language is chosen here and
@@ -391,9 +391,9 @@ class MojPackager(BasePackager):
         self.probe = probe
         # Ship only the model solution, dropping the rest. A probe package does this
         # by construction; a setter asks for it with `rbx package moj
-        # --main-solution-only`, to keep the calibration MOJ runs on upload short.
+        # --reference-only`, to keep the calibration MOJ runs on upload short.
         # See `_solutions_to_ship`.
-        self.main_solution_only = main_solution_only
+        self.reference_only = reference_only
 
         # The two axes are separate arguments because they are separate questions --
         # but of their product only one cell is legal. A probe pinned from the profile
@@ -596,9 +596,9 @@ class MojPackager(BasePackager):
             'the package ships, so those languages are judged under the tightest '
             'measured limit. '
             + (
-                'Drop [item]--main-solution-only[/item], which is why this package '
+                'Drop [item]--reference-only[/item], which is why this package '
                 'ships no accepted solution in them, '
-                if self.main_solution_only
+                if self.reference_only
                 else 'Add an accepted solution in them, '
             )
             + 'or pin the limits with [item]rbx time -p moj[/item].[/warning]'
@@ -609,7 +609,7 @@ class MojPackager(BasePackager):
         solutions this package ships in `sols/good`.
 
         The solutions *shipped*, not the ones declared -- under
-        `--main-solution-only` every language but the model solution's loses its
+        `--reference-only` every language but the model solution's loses its
         measured limit, which is precisely what the caller is warned about."""
         from rbx.box.code import find_language
 
@@ -1264,7 +1264,7 @@ class MojPackager(BasePackager):
         - A probe package. `moj testrun` sends the source of the solution being timed
           in the request body, so the timed solutions never have to be in the package
           at all, and `calibreitor.sh` needs exactly one `sols/good` to succeed.
-        - `--main-solution-only`. Calibration runs every solution the package ships --
+        - `--reference-only`. Calibration runs every solution the package ships --
           `sols/good` to measure the limits, then the rest to check their verdicts --
           so on a problem with many solutions it is the slowest part of an upload.
           Dropping all but the model solution is what makes an upload iterated on
@@ -1273,7 +1273,7 @@ class MojPackager(BasePackager):
 
         Both keep the single `sols/good` `calibreitor.sh` cannot do without.
         """
-        if self.probe is None and not self.main_solution_only:
+        if self.probe is None and not self.reference_only:
             return package.get_solutions()
         main_solution = package.get_main_solution()
         # An empty list rather than an error: `_write_solutions` already reports a
@@ -1281,12 +1281,12 @@ class MojPackager(BasePackager):
         return [main_solution] if main_solution is not None else []
 
     def _write_solutions(self, into_path: pathlib.Path) -> None:
-        if self.main_solution_only and self.probe is None:
+        if self.reference_only and self.probe is None:
             # Loud, because the dropped solutions are the ones calibration would have
             # checked the verdicts of: this package is for iterating on an upload, not
             # for handing to students.
             console.console.print(
-                '[warning]Shipping only the model solution: [item]--main-solution-only'
+                '[warning]Shipping only the reference solution: [item]--reference-only'
                 '[/item] is set.[/warning]\n'
                 '[warning]MOJ runs every solution the package ships when it '
                 'calibrates, so this is much faster -- but nothing verifies the '
