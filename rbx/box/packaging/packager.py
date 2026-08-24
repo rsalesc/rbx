@@ -1,4 +1,5 @@
 import collections
+import contextlib
 import dataclasses
 import pathlib
 import shutil
@@ -73,7 +74,11 @@ class BasePackager(ABC):
             res.add(statement.language)
         return list(res)
 
-    def package_basename(self):
+    @classmethod
+    def package_basename(cls):
+        # A classmethod because `rbx package moj --upload` resolves the remote
+        # problem id from this *before* the build, and so before there is an
+        # instance. It never used `self`.
         pkg = package.find_problem_package_or_die()
         shortname = naming.get_problem_shortname_or_require()
         if shortname is not None:
@@ -210,6 +215,7 @@ async def run_packager(
     verification: environment.VerificationParam,
     samples_only: bool = False,
     skip_packaging: bool = False,
+    into_dir: Optional[pathlib.Path] = None,
     **kwargs,
 ) -> Optional[pathlib.Path]:
     from rbx.box import builder
@@ -273,12 +279,16 @@ async def run_packager(
     if skip_packaging:
         return None
     console.console.print(f'Packaging problem for [item]{packager.name()}[/item]...')
-    with (
-        tempfile.TemporaryDirectory() as td,
-        limits_info.use_profile(packager_cls.name()),
-    ):
+    with contextlib.ExitStack() as stack:
+        # `into_dir` lets a caller keep the built *tree*, not just the archive:
+        # `moj upload` uploads the directory, and the zip beside it cannot stand
+        # in for the tree because unzipping drops the 0o755 bits the judge's
+        # per-language scripts need.
+        if into_dir is None:
+            into_dir = pathlib.Path(stack.enter_context(tempfile.TemporaryDirectory()))
+        stack.enter_context(limits_info.use_profile(packager_cls.name()))
         result_path = packager.package(
-            package.get_build_path(), pathlib.Path(td), built_statements
+            package.get_build_path(), into_dir, built_statements
         )
 
     console.console.print(

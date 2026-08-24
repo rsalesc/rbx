@@ -30,6 +30,19 @@ MojLanguage = typing.Literal[
 ]
 
 
+class MojExtension(RejectsRemovedFields):
+    """Environment-level extensions for MOJ packaging."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    org: typing.Optional[str] = Field(
+        default=None,
+        description='The MOJ org to upload the package to, as `<org>#<problem>`. '
+        'Leave unset to upload under your own login, which is a private personal '
+        'org nobody else can see.',
+    )
+
+
 class MojLanguageExtension(RejectsRemovedFields):
     """Language-level extensions for MOJ packaging.
 

@@ -1927,6 +1927,14 @@ SPEC = {
                             },
                         },
                         {
+                            'help': 'If set, will upload the package to MOJ.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--upload', '-u'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
                             'help': 'If set, will build the statement in the given '
                             'language. Leave unset if you want to use the '
                             'language of the topmost statement.',
