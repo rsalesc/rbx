@@ -43,8 +43,33 @@ interface ContestedEntry {
   readonly root: string;
   readonly label: string;
   readonly color?: string;
-  readonly group: string;
+  /** Orders the groups and decides where one ends; never shown. */
+  readonly groupKey: string;
+  /** What the `<optgroup>` heading reads; never ordered by. */
+  readonly groupLabel: string;
   readonly order: number;
+}
+
+/**
+ * The two halves of a group: what sorts it, and what it reads as.
+ *
+ * One string used to do both, back when a group was a contest root and its
+ * heading was that root's basename. A variant's heading now names the variant
+ * too, and the id sorts differently from the text around it, so the sort key
+ * has to stay the raw pair.
+ */
+function groupOf(identity: ProblemIdentity): { key: string; label: string } {
+  const base = path.basename(identity.contestRoot);
+  return identity.variantId === undefined
+    ? // The canonical's empty id sorts before every valid one (they must start
+      // with a letter), which is what puts its block first without a special
+      // case. The separator keeps `/a` + `bc` from keying the same as `/ab` +
+      // `c`, neither of which can contain it.
+      { key: `${identity.contestRoot}\u0000`, label: base }
+    : {
+        key: `${identity.contestRoot}\u0000${identity.variantId}`,
+        label: `${base} (${identity.variantId})`,
+      };
 }
 
 /** A package no contest named: nothing orders it but its own path. */
@@ -67,12 +92,21 @@ function compare(a: string, b: string): number {
 }
 
 /**
- * Order two contests the way their headings read.
+ * Order two groups the way their headings read.
  *
- * By basename first, because that is the whole of what the `<optgroup>` shows:
- * ordering by the full root would print `beta` above `alpha` for `/z/alpha` and
- * `/a/beta`. The full root then settles two contests in same-named directories,
- * whose headings collide anyway but must at least not shuffle.
+ * By the key's last segment first, because that is the contest directory's own
+ * name -- what heads the `<optgroup>` -- with the variant id after the NUL:
+ * ordering by the whole key would print `beta` above `alpha` for `/z/alpha` and
+ * `/a/beta`. Since the NUL sorts below every character a name may hold, this
+ * one comparison orders by contest name and then by variant, which is what puts
+ * `c` before `c2` and the canonical `c` before `c (div2)` alike.
+ *
+ * The whole key then settles two contests in same-named directories, whose
+ * headings collide anyway but must at least not shuffle.
+ *
+ * Variants sort among themselves by id, which is the filename order
+ * `contestFiles` merged in, so the blocks read in the order first-wins
+ * resolved them.
  */
 function compareGroups(a: string, b: string): number {
   return compare(path.basename(a), path.basename(b)) || compare(a, b);
@@ -95,6 +129,10 @@ export function problemChoices(
       // name says which problem it actually is. A package that declares no
       // name keeps the bare letter rather than growing an empty separator.
       const declared = name(root);
+      // The contest file that named the problem, not the problem's parent: a
+      // contest may nest its problems, so the root's parent directory is
+      // neither the contest's name nor unique across contests.
+      const group = groupOf(identity);
       contested.push({
         root,
         label:
@@ -102,26 +140,23 @@ export function problemChoices(
             ? identity.shortName
             : `${identity.shortName}${NAME_SEPARATOR}${declared}`,
         color: identity.color,
-        // The contest that named the problem, not the problem's parent: a
-        // contest may nest its problems, and the intermediate directory is
-        // neither the contest's name nor unique across contests.
-        group: identity.contestRoot,
+        groupKey: group.key,
+        groupLabel: group.label,
         order: identity.order,
       });
     }
   }
 
   contested.sort((a, b) => {
-    const group = compareGroups(a.group, b.group);
+    const group = compareGroups(a.groupKey, b.groupKey);
     if (group !== 0) {
       return group;
     }
-    // `order` is counted per contest file, and `indexContests` merges a
-    // dispatcher's variants (`contest.div1.rbx.yml`, `contest.div2.rbx.yml`)
-    // into one index, so two problems in the same group really can both claim
-    // order 1. Falling through to the label and then the root keeps the
-    // dropdown from reshuffling with whatever order discovery happened to
-    // yield -- these tie-breaks are not redundant.
+    // A group is one contest file and `order` is counted per file, so within a
+    // group it decides outright -- a dispatcher's variants no longer share one.
+    // The tie-breaks stay for the file that names one directory twice, where
+    // `problemIdentities` keeps the first block's letter but the second entry
+    // still counted an order of its own.
     return a.order - b.order || compare(a.label, b.label) || compare(a.root, b.root);
   });
   loose.sort((a, b) => compare(a.root, b.root));
@@ -131,7 +166,7 @@ export function problemChoices(
   // count as a group of their own even though they render without a heading --
   // a contest sitting flush against a run of bare folder names is the case a
   // heading most needs to explain.
-  const groups = new Set(contested.map((entry) => entry.group));
+  const groups = new Set(contested.map((entry) => entry.groupKey));
   const grouped = groups.size + (loose.length > 0 ? 1 : 0) > 1;
 
   // Mapped per array rather than over the concatenation: only a contested
@@ -144,7 +179,7 @@ export function problemChoices(
       root: entry.root,
       label: entry.label,
       color: entry.color,
-      group: grouped ? path.basename(entry.group) : undefined,
+      group: grouped ? entry.groupLabel : undefined,
     })),
     ...loose.map((entry) => ({
       root: entry.root,

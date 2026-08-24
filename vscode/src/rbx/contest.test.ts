@@ -3,7 +3,9 @@ import { test } from 'node:test';
 import { parse as parseYaml } from 'yaml';
 
 import {
+  CONTEST_MANIFEST,
   ParsedContest,
+  contestVariantId,
   isContestVariantFile,
   parseContest,
   problemIdentities,
@@ -188,4 +190,46 @@ problems:
     parsed.problems.map((p) => p.shortName),
     ['B'],
   );
+});
+
+test('reads the id out of a variant file name, and none out of the canonical', () => {
+  assert.strictEqual(contestVariantId('contest.div1.rbx.yml'), 'div1');
+  assert.strictEqual(contestVariantId('contest.d-i_v2.rbx.yml'), 'd-i_v2');
+  // The canonical file is not a variant of itself, however the affixes overlap.
+  assert.strictEqual(contestVariantId(CONTEST_MANIFEST), undefined);
+  // Same rejections as `isContestVariantFile`, which is defined in its terms.
+  assert.strictEqual(contestVariantId('contest.div1.bak.rbx.yml'), undefined);
+  assert.strictEqual(contestVariantId('contest.1div.rbx.yml'), undefined);
+  assert.strictEqual(contestVariantId('problem.rbx.yml'), undefined);
+});
+
+test('stamps the variant id on every identity that file names', () => {
+  const identities = problemIdentities(
+    '/c',
+    contest(`
+problems:
+  - short_name: A
+  - short_name: B
+`),
+    'div2',
+  );
+  assert.deepStrictEqual(
+    [...identities.values()].map((identity) => [identity.shortName, identity.variantId]),
+    [
+      ['A', 'div2'],
+      ['B', 'div2'],
+    ],
+  );
+});
+
+test('a canonical identity carries no variant key at all', () => {
+  // Absent, not present-and-undefined: the field is optional, and callers
+  // compare whole identities.
+  const identities = problemIdentities('/c', contest('problems:\n  - short_name: A\n'));
+  assert.deepStrictEqual(identities.get('/c/A'), {
+    shortName: 'A',
+    color: undefined,
+    order: 0,
+    contestRoot: '/c',
+  });
 });

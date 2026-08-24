@@ -239,3 +239,126 @@ test('a contest that names nothing usable costs its packages their letters only'
     ]);
   }
 });
+
+/** An identity a variant file named, rather than the canonical contest. */
+const variant = (
+  shortName: string,
+  order: number,
+  variantId: string,
+  contestRoot = '/c',
+) => ({
+  shortName,
+  order,
+  color: undefined,
+  variantId,
+  contestRoot,
+});
+
+test('names the variant in the heading, and heads the canonical bare', () => {
+  const choices = problemChoices(
+    ['/c/A', '/c/X'],
+    new Map([
+      ['/c/A', identity('A', 0)],
+      ['/c/X', variant('A', 0, 'div2')],
+    ]),
+    () => '',
+  );
+  assert.deepStrictEqual(
+    choices.map((c) => [c.label, c.group]),
+    [
+      ['A', 'c'],
+      ['A', 'c (div2)'],
+    ],
+  );
+});
+
+test('keeps each variant whole instead of interleaving them by letter', () => {
+  // The case the union used to jumble: two disjoint divisions whose letters
+  // both start at A and whose `order` both start at 0. Sorting on order alone
+  // would read A, A, B, B with nothing saying which division either A is.
+  const choices = problemChoices(
+    ['/c/1a', '/c/1b', '/c/2a', '/c/2b'],
+    new Map([
+      ['/c/1a', variant('A', 0, 'div1')],
+      ['/c/1b', variant('B', 1, 'div1')],
+      ['/c/2a', variant('A', 0, 'div2')],
+      ['/c/2b', variant('B', 1, 'div2')],
+    ]),
+    () => '',
+  );
+  assert.deepStrictEqual(
+    choices.map((c) => `${c.group}/${c.label}`),
+    ['c (div1)/A', 'c (div1)/B', 'c (div2)/A', 'c (div2)/B'],
+  );
+});
+
+test('puts the canonical block ahead of every variant', () => {
+  // Not alphabetical luck: `canonical` would sort after `beta` on the heading
+  // text, and the canonical block still has to come first.
+  const choices = problemChoices(
+    ['/c/z', '/c/b'],
+    new Map([
+      ['/c/b', variant('A', 0, 'beta')],
+      ['/c/z', identity('Z', 0)],
+    ]),
+    () => '',
+  );
+  assert.deepStrictEqual(
+    choices.map((c) => c.group),
+    ['c', 'c (beta)'],
+  );
+});
+
+test('leaves a lone variant unheaded, like any single group', () => {
+  // A dispatcher with one variant has nothing to distinguish it from, so the
+  // heading would be chrome naming the only thing on offer.
+  const choices = problemChoices(
+    ['/c/A', '/c/B'],
+    new Map([
+      ['/c/A', variant('A', 0, 'div1')],
+      ['/c/B', variant('B', 1, 'div1')],
+    ]),
+    () => '',
+  );
+  assert.deepStrictEqual(
+    choices.map((c) => c.group),
+    [undefined, undefined],
+  );
+});
+
+test('two contests in same-named directories keep their variants apart', () => {
+  // The headings collide -- they always have, and `renderSelector` merges them
+  // -- but the sort key is the full root, so neither contest's block is split
+  // in half by the other's.
+  const choices = problemChoices(
+    ['/x/c/A', '/y/c/A'],
+    new Map([
+      ['/x/c/A', variant('A', 0, 'div1', '/x/c')],
+      ['/y/c/A', variant('A', 0, 'div1', '/y/c')],
+    ]),
+    () => '',
+  );
+  assert.deepStrictEqual(
+    choices.map((c) => c.root),
+    ['/x/c/A', '/y/c/A'],
+  );
+});
+
+test('orders a contest ahead of a longer-named one, variants and all', () => {
+  // The NUL in the group key is what makes this work: comparing `c (div2)`
+  // against `c2` as plain text would put the variant last, splitting `c` in
+  // half around a contest that has no business between its blocks.
+  const choices = problemChoices(
+    ['/r/c2/A', '/r/c/A', '/r/c/B'],
+    new Map([
+      ['/r/c2/A', identity('A', 0, undefined, '/r/c2')],
+      ['/r/c/A', identity('A', 0, undefined, '/r/c')],
+      ['/r/c/B', variant('B', 0, 'div2', '/r/c')],
+    ]),
+    () => '',
+  );
+  assert.deepStrictEqual(
+    choices.map((c) => c.group),
+    ['c', 'c (div2)', 'c2'],
+  );
+});

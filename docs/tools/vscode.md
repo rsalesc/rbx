@@ -72,6 +72,12 @@ naming problems by their contest letter and colour. It follows the problem that
 is *running*, so `rbx contest each run` walks the view along with it. The
 dropdown is hidden entirely when the workspace holds a single package.
 
+A contest split into variants gets one block per variant, headed by the variant
+id. The extension never learns which variant you passed to `-C`, so it offers
+all of them at once: the canonical contest's problems first, then each variant's
+under its own heading. Two divisions that both start at `A` stay apart, and the
+heading says which `A` you are about to open.
+
 ## Opening a testcase
 
 <kbd>Enter</kbd> on a testcase -- or a click on it -- opens **two editor
