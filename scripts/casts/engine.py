@@ -247,12 +247,20 @@ class Engine:
         session: _Session,
         capture: bool,
         keys: Sequence[str] = (),
+        speed: float = 1.0,
     ) -> None:
-        """Pump one command to completion, recording output as it arrives."""
+        """Pump one command to completion, recording output as it arrives.
+
+        `speed` divides the time this command contributes to the cast, so a
+        long compute can be watched at a rate worth watching without losing a
+        frame of it. It scales *measured* time only -- the typing animation is
+        synthesized at `type_speed` and keeps its authored pace.
+        """
         started = time.monotonic()
         pending = list(keys)
         next_key_at = started + self.type_speed
         tick = started
+        scale = speed
 
         def emit(data: bytes) -> None:
             if capture:
@@ -268,7 +276,7 @@ class Engine:
             """
             nonlocal tick
             moment = time.monotonic()
-            self.cast.advance(moment - tick)
+            self.cast.advance((moment - tick) / scale)
             tick = moment
 
         while True:
@@ -312,7 +320,13 @@ class Engine:
 
         session.close()
 
-    def _run(self, command: str, capture: bool, keys: Sequence[str] = ()) -> None:
+    def _run(
+        self,
+        command: str,
+        capture: bool,
+        keys: Sequence[str] = (),
+        speed: float = 1.0,
+    ) -> None:
         session = _Session(
             command,
             cwd=self.workdir,
@@ -320,7 +334,7 @@ class Engine:
             rows=self.spec.height,
             cols=self.spec.width,
         )
-        self._drain(session, capture=capture, keys=keys)
+        self._drain(session, capture=capture, keys=keys, speed=speed)
 
     # -- instruction dispatch --------------------------------------------
 
@@ -336,10 +350,17 @@ class Engine:
             if isinstance(value, str):
                 self._command(value, hidden=False)
             else:
-                self._command(value['command'], hidden=bool(value.get('hidden')))
+                self._command(
+                    value['command'],
+                    hidden=bool(value.get('hidden')),
+                    speed=self._speed_of(value),
+                )
         elif tag == 'Interactive':
             self._command(
-                value['command'], hidden=False, keys=[str(k) for k in value['keys']]
+                value['command'],
+                hidden=False,
+                keys=[str(k) for k in value['keys']],
+                speed=self._speed_of(value),
             )
         elif tag == 'Wait':
             self.cast.advance(parse_duration(value))
@@ -350,7 +371,21 @@ class Engine:
         else:
             raise RecordingError(f'unknown instruction tag: !{tag}')
 
-    def _command(self, command: str, hidden: bool, keys: Sequence[str] = ()) -> None:
+    def _speed_of(self, value: Dict[str, Any]) -> float:
+        speed = float(value.get('speed', 1))
+        if speed <= 0:
+            raise RecordingError(
+                f'recording `{self.spec.name}`: speed must be positive, got {speed:g}'
+            )
+        return speed
+
+    def _command(
+        self,
+        command: str,
+        hidden: bool,
+        keys: Sequence[str] = (),
+        speed: float = 1.0,
+    ) -> None:
         if hidden:
             # Setup work still runs for real; it just is not shown.
             clock = self.cast.clock
@@ -358,7 +393,7 @@ class Engine:
             self.cast.clock = clock
             return
         self._type_command(command)
-        self._run(command, capture=True, keys=keys)
+        self._run(command, capture=True, keys=keys, speed=speed)
         self.cast.advance(_AFTER_COMMAND_SECONDS)
 
     def run(self) -> str:

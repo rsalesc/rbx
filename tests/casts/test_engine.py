@@ -257,3 +257,58 @@ def test_build_env_drops_ambient_overrides_that_would_change_the_recording():
 
     assert 'NO_COLOR' not in env
     assert 'RBX_CONTEST' not in env
+
+
+# -- fast-forward ---------------------------------------------------------
+
+
+def test_speed_compresses_a_commands_elapsed_time(tmp_path: pathlib.Path):
+    # The cast clock advances by real elapsed time, so a slow command costs its
+    # full duration in playback. `speed` scales that window down without
+    # dropping a single frame.
+    # The command has to print *after* sleeping: a cast's duration comes from
+    # its last event, so a silent sleep would leave the clock unmeasured.
+    slow = _duration(
+        _run(
+            _spec(instructions=[Tagged('Command', {'command': 'sleep 1; echo done'})]),
+            tmp_path,
+        )
+    )
+    fast = _duration(
+        _run(
+            _spec(
+                instructions=[
+                    Tagged('Command', {'command': 'sleep 1; echo done', 'speed': 4})
+                ]
+            ),
+            tmp_path,
+        )
+    )
+
+    assert slow >= 1.0
+    # Only the measured second is scaled: the typing animation and the pause
+    # after a command are authored, not measured, so they are a fixed floor
+    # under both runs. A 1s sleep at 4x saves the 0.75s that separates them.
+    assert slow - fast == pytest.approx(0.75, abs=0.3)
+
+
+def test_speed_leaves_the_typing_animation_alone(tmp_path: pathlib.Path):
+    # Typing is synthesized at `type_speed`, not measured, so compressing a
+    # command must not make its own name scroll past unreadably.
+    raw = _run(
+        _spec(
+            instructions=[Tagged('Command', {'command': 'true', 'speed': 10})],
+            type_speed='100ms',
+        ),
+        tmp_path,
+    )
+
+    assert _duration(raw) >= 0.4
+
+
+def test_a_non_positive_speed_is_rejected(tmp_path: pathlib.Path):
+    with pytest.raises(RecordingError, match='speed'):
+        _run(
+            _spec(instructions=[Tagged('Command', {'command': 'true', 'speed': 0})]),
+            tmp_path,
+        )
