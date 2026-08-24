@@ -197,6 +197,16 @@ class CastBuilder:
     def marker(self, label: str) -> None:
         self.events.append((round(self.clock, 6), 'm', label))
 
+    def resize(self, cols: int, rows: int) -> None:
+        """Tell the player the terminal changed size from here on.
+
+        The header carries one size for the whole recording, so an instruction
+        recorded in a smaller terminal would otherwise be drawn into the full
+        frame. An `r` event is how asciicast v2 says the rest of the cast is a
+        different shape.
+        """
+        self.events.append((round(self.clock, 6), 'r', f'{cols}x{rows}'))
+
     def hold(self, seconds: float) -> None:
         """Extend the cast without changing what is on screen.
 
@@ -344,13 +354,18 @@ class Engine:
         capture: bool,
         keys: Sequence[str] = (),
         speed: float = 1.0,
+        size: Optional[Tuple[int, int]] = None,
     ) -> None:
+        cols, rows = size or (self.spec.width, self.spec.height)
         session = _Session(
             command,
+            # The pty is sized before the command starts, and COLUMNS/LINES go
+            # with it: Rich reads them, so a resized instruction reflows rather
+            # than being clipped.
+            env={**self.env, 'COLUMNS': str(cols), 'LINES': str(rows)},
             cwd=self.workdir,
-            env=self.env,
-            rows=self.spec.height,
-            cols=self.spec.width,
+            rows=rows,
+            cols=cols,
         )
         self._drain(session, capture=capture, keys=keys, speed=speed)
 
@@ -372,6 +387,7 @@ class Engine:
                     value['command'],
                     hidden=bool(value.get('hidden')),
                     speed=self._speed_of(value),
+                    size=self._size_of(value),
                 )
         elif tag == 'Interactive':
             self._command(
@@ -379,6 +395,7 @@ class Engine:
                 hidden=False,
                 keys=[str(k) for k in value['keys']],
                 speed=self._speed_of(value),
+                size=self._size_of(value),
             )
         elif tag == 'Wait':
             self.cast.advance(parse_duration(value))
@@ -397,12 +414,26 @@ class Engine:
             )
         return speed
 
+    def _size_of(self, value: Dict[str, Any]) -> Optional[Tuple[int, int]]:
+        """The terminal this instruction wants, or None to keep the spec's."""
+        cols = int(value.get('width', self.spec.width))
+        rows = int(value.get('height', self.spec.height))
+        if cols <= 0 or rows <= 0:
+            raise RecordingError(
+                f'recording `{self.spec.name}`: width and height must be '
+                f'positive, got {cols}x{rows}'
+            )
+        if (cols, rows) == (self.spec.width, self.spec.height):
+            return None
+        return cols, rows
+
     def _command(
         self,
         command: str,
         hidden: bool,
         keys: Sequence[str] = (),
         speed: float = 1.0,
+        size: Optional[Tuple[int, int]] = None,
     ) -> None:
         if hidden:
             # Setup work still runs for real; it just is not shown.
@@ -410,9 +441,15 @@ class Engine:
             self._run(command, capture=False)
             self.cast.clock = clock
             return
+        if size is not None:
+            self.cast.resize(*size)
         self._type_command(command)
-        self._run(command, capture=True, keys=keys, speed=speed)
+        self._run(command, capture=True, keys=keys, speed=speed, size=size)
         self.cast.advance(_AFTER_COMMAND_SECONDS)
+        if size is not None:
+            # Back to the spec's size, or every later instruction would inherit
+            # a crop that was only meant for this one.
+            self.cast.resize(self.spec.width, self.spec.height)
 
     def run(self) -> str:
         for command in self.spec.setup:

@@ -367,6 +367,56 @@ def test_a_speed_token_is_not_typed_into_the_command(tmp_path: pathlib.Path):
     assert 'x10' not in cast_text(raw)
 
 
+# -- cropping the view ----------------------------------------------------
+
+
+def test_an_instruction_can_run_in_a_smaller_terminal(tmp_path: pathlib.Path):
+    # Each instruction gets its own pty, so a narrower view is a genuinely
+    # narrower terminal rather than a crop applied after the fact -- which is
+    # why rbx's own output reflows into it instead of being clipped.
+    raw = _run(
+        _spec(
+            instructions=[Tagged('Command', {'command': 'echo $COLUMNS', 'width': 40})],
+            width=100,
+        ),
+        tmp_path,
+    )
+
+    assert '40' in cast_text(raw)
+
+
+def test_a_resized_instruction_emits_a_resize_event(tmp_path: pathlib.Path):
+    # A cast header carries one size; the player follows `r` events for the
+    # rest. Without one the smaller output would be drawn into the full frame.
+    raw = _run(
+        _spec(
+            instructions=[
+                Tagged('Command', {'command': 'true', 'width': 40, 'height': 10})
+            ],
+            width=100,
+            height=30,
+        ),
+        tmp_path,
+    )
+
+    events = [json.loads(line) for line in raw.splitlines()[1:] if line.strip()]
+    resizes = [event for event in events if event[1] == 'r']
+
+    assert resizes[0][2] == '40x10'
+    # ...and it goes back, so the next instruction is not left cropped.
+    assert resizes[-1][2] == '100x30'
+
+
+def test_an_unresized_instruction_emits_no_resize_event(tmp_path: pathlib.Path):
+    # Every existing cast must keep byte-for-byte to what it recorded before,
+    # so a spec that asks for nothing gets nothing.
+    raw = _run(_spec(instructions=['echo hi']), tmp_path)
+
+    events = [json.loads(line) for line in raw.splitlines()[1:] if line.strip()]
+
+    assert [event for event in events if event[1] == 'r'] == []
+
+
 def test_a_non_positive_speed_is_rejected(tmp_path: pathlib.Path):
     with pytest.raises(RecordingError, match='speed'):
         _run(
