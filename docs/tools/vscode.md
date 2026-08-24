@@ -126,8 +126,6 @@ The same findings are published as **diagnostics**, so they reach the Problems
 panel, the editor's own gutter and <kbd>F8</kbd> without the sidebar being open
 at all.
 
-![The same findings in the Problems panel](vscode/problems-panel.png)
-
 ## Browsing the testset
 
 The run view is about what a solution *did*. The **Tests** view, beside it, is
@@ -149,25 +147,13 @@ which follows whatever the sidebar has selected:
 ## While you are editing
 
 A declaration is a promise a solution makes before any run exists, and the
-extension shows it wherever the solution appears.
-
-**In the Explorer**, every file `problem.rbx.yml` names is badged: solutions
-with the outcome they were declared to have, in the glyph and colour `rbx run`
-already prints (`✓` accepted, `⧖` slow, `✗` failing), and everything else with
-two neutral letters naming its role -- `Gn` generator, `Vl` validator, `Ck`
-checker, `Vz` visualizer, `St` statement.
-
-![Explorer badges](vscode/explorer-badges.png)
-
-**With the solution open**, the same declaration is spelled out in words on a
-CodeLens above line one, and in the language status area, which survives
-scrolling and can be pinned:
-
-![The declaration on a CodeLens](vscode/codelens.png)
-
-Both read the pooled `outcome` first, then every `outcomePerGroup` override in
-the order it was written, then the expected `score` -- the three claims {{rbx}}
-checks separately when it decides whether a solution held its promise.
+extension shows it away from the views too. Every file `problem.rbx.yml` names
+is **badged in the Explorer** -- solutions with the outcome they were declared
+to have, in the glyph and colour `rbx run` already prints, everything else with
+two neutral letters naming its role. And with a solution open, the same
+declaration is spelled out in words on a **CodeLens** above line one and in the
+**language status area**, which survives scrolling and can be pinned: the pooled
+`outcome`, then every `outcomePerGroup` override, then the expected `score`.
 
 ## Settings
 
