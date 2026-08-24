@@ -144,45 +144,34 @@ git commit -m "docs(casts): add the summer-cup contest fixture"
 This is the verification item [#439] asks for, and section 5 of the page cannot be written
 until it is answered. Do it before writing any prose.
 
-**Step 1: Run the sweep against the fixture**
+**DONE — it works.** Verified 2026-08-24 against the Task 1 fixture. Findings below are
+established fact; the rest of the plan depends on them.
 
-```bash
-cd casts/fixtures/summer-cup && uv run rbx each time -p boca --auto
-```
+1. **`rbx time -p boca --auto` is fully unattended in one problem.** It skips the strategy
+   menu (`rbx/box/cli.py:840` forces `strategy = 'estimate'` under `--auto`) *and* the
+   language-group picker (`rbx/box/timing.py:849` returns an empty pick under `--auto`, so
+   the environment's own partition stands).
+2. **`rbx each time -p boca --auto` works end to end.** One tab per problem, all three runs
+   complete with zero input, all three `.limits/boca.yml` written. ~50 s wall on a warm
+   fixture. No affordance issue needed.
+3. **The sweep leaves the TUI open when it finishes.** Nothing exits on its own; `q` quits.
+   The page must say so, and any cast driving it must end with `q` — `casts/README.md`
+   requires keys to leave the program exited or the instruction hits its timeout.
+4. **A failed tab does not block the others.** The queue is sequential per terminal, but one
+   problem erroring out leaves the rest to finish.
+5. **`rbx on` has two shapes.** `rbx on A,C time -p boca --auto` (two problems) opens the
+   command app; `rbx on B time -p boca --auto` (one problem, one command) takes the
+   plain-terminal fast path at `rbx/box/contest/main.py:508` with no TUI at all.
+6. **Every problem needs `rbx download testlib` before `rbx time`, `chocolate` included.**
+   It declares no checker, so rbx falls back to the bundled `wcmp.cpp`, which includes
+   `testlib.h`; the checker is compiled only when solutions actually run, so `rbx build`
+   never trips on it and `rbx time` does. Getting this wrong shows A red in the payoff frame.
+7. **Filming:** record at **≥140 columns**. The sidebar eats ~38 columns and the time-limits
+   table wraps inside the remaining pane regardless, so the unwrapped-table shot belongs to
+   the single-problem cast, not the sweep.
 
-`rbx each` queues one command per problem into the TUI command app
-(`rbx/box/contest/main.py:447`), and `rbx time` is interactive, so the two composing is not
-obvious. `--auto` is what should make it unattended.
-
-**Step 2: Judge the outcome**
-
-Expected on success: three tabs, each finishing with a limits table, and three profiles
-written:
-
-```bash
-ls casts/fixtures/summer-cup/problems/*/.limits/boca.yml
-```
-
-**Step 3a: If it works**
-
-Record what the run actually looked like (does `--auto` still stop on the language-group
-picker? does a failure in one problem block the rest?) in a scratch note — section 5 of the
-page describes exactly this, and guessing is how a walkthrough goes stale.
-
-**Step 3b: If it does not work**
-
-Do not paper over it. File an affordance issue against the repo describing precisely what
-fails, link it from [#439], and note in the plan that section 5 falls back to per-problem
-`rbx on <letter> time -p boca` while saying so plainly on the page. Then continue — the rest
-of the page is unaffected.
-
-**Step 4: Clean up**
-
-```bash
-rm -rf casts/fixtures/summer-cup/problems/*/.limits
-```
-
-The fixture ships without profiles; the casts create them on camera.
+The fixture ships without profiles; the casts create them on camera. If a run leaves any
+behind, `rm -rf casts/fixtures/summer-cup/problems/*/.limits` before committing.
 
 ---
 
@@ -200,11 +189,12 @@ differences: it runs inside the contest, and it asks for a named profile.
 ```yaml title="casts/contest-time-profile.yml"
 fixture: summer-cup
 title: Profiling one problem of a contest for the judge
+width: 100
 timeout: 300s
 setup:
-  # The pinned environment declares testlib, and the default checker includes
-  # it. Materializing it here keeps the recording about profiling rather than
-  # about a missing header.
+  # The pinned environment declares testlib, and the bundled wcmp checker
+  # includes it. Materializing it here keeps the recording about profiling
+  # rather than about a missing header.
   - cd problems/gardens && rbx download testlib
   - cd problems/gardens && rbx build
 instructions:
@@ -275,36 +265,49 @@ git commit -m "docs(casts): record profiling one problem of a contest"
 
 **Step 1: Write the spec**
 
-Shape it against what Task 2 actually observed — if `--auto` still prompts somewhere, the
-keys have to answer it.
+Shaped against what Task 2 actually observed: `--auto` never prompts, the app sits idle when
+the sweep finishes, and `q` is what exits it.
 
 ```yaml title="casts/contest-time-sweep.yml"
 fixture: summer-cup
 title: Profiling every problem of a contest at once
-timeout: 600s
+# The sidebar eats ~38 columns, so the pane needs the rest to show a table.
+width: 140
+height: 45
+timeout: 900s
 setup:
+  # ALL THREE problems, chocolate included: it declares no checker, so rbx
+  # falls back to the bundled wcmp.cpp, which includes testlib.h. `rbx build`
+  # never compiles the checker; `rbx time` does. Skip one and its tab goes red.
+  - cd problems/chocolate && rbx download testlib
   - cd problems/gardens && rbx download testlib
+  - cd problems/sum-of-n && rbx download testlib
 instructions:
   - !Interactive
     command: rbx each time -p boca --auto
     keys:
       - 3s        # the command app opens, one tab per problem
-      - x8        # three problems' worth of timing runs
-      - 120s
+      - x8        # three problems' worth of timing runs, ~50s warm
+      - 90s
       - x1
-      - 4s
+      - 5s        # rest on the payoff frame: three ticks and a Done badge
+      - q         # nothing exits on its own; the keys must leave it exited
   - !Wait 2s
   - !Clear
   - ls problems/*/.limits
   - !Wait 3s
 expect_contains:
-  # Adjust to what the command app actually prints -- match one uninterrupted
-  # run of plain text, since Rich splits styled phrases with escape sequences.
+  # Match one uninterrupted run of plain text -- Rich splits styled phrases
+  # with escape sequences, so a longer phrase that is plainly on screen may
+  # still never match.
   - chocolate
   - gardens
   - sum-of-n
   - boca.yml
 ```
+
+The warm-up matters for pacing as well as correctness: `rbx download testlib` is hidden in
+`setup`, so the recording opens on the sweep itself rather than on three library fetches.
 
 **Step 2: Record, watch, adjust**
 
