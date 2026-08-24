@@ -21,12 +21,33 @@ BUILTIN_TESTLIB = Library(
 )
 
 
+def _is_testlib(lib: Library) -> bool:
+    """Whether this library is the one `#include "testlib.h"` resolves to.
+
+    Compares the name the header is injected under, which is what decides the
+    include -- a preset is free to keep its testlib at any `path`/`dest`.
+    """
+    include_as = lib.include_as or pathlib.Path((lib.path or lib.dest).name)
+    return include_as.name == BUILTIN_TESTLIB.dest.name
+
+
 @functools.cache
 def get_declared_libraries() -> List[Library]:
     """Libraries declared by the active preset for the current package kind.
 
-    Falls back to just [[BUILTIN_TESTLIB]] when the package was not created from
-    a preset. Cwd-dependent and cached, so it is registered in
+    Falls back to [[BUILTIN_TESTLIB]] whenever nothing declared supplies
+    testlib -- for a package with no preset, and equally for one whose preset
+    simply never declared it. Only the bundled presets are known to declare it;
+    a hand-written one that does not would otherwise leave rbx's own builtin
+    checkers with an unresolvable `#include "testlib.h"`, since they live
+    outside the package root where the dependency scanner does not reach.
+
+    A preset that *does* declare testlib keeps it, unmaterialized included: it
+    is listed first, so `add_always_include_libraries` takes it and skips this
+    fallback, and a package out of sync with its preset still says so rather
+    than quietly compiling against rbx's copy.
+
+    Cwd-dependent and cached, so it is registered in
     `rbx.testing_utils.clear_all_functools_cache`.
     """
     from rbx.box import presets
@@ -34,10 +55,12 @@ def get_declared_libraries() -> List[Library]:
     preset = presets.get_active_preset_or_null()
     if preset is None:
         return [BUILTIN_TESTLIB]
-    libs = (
+    libs = list(
         preset.libraries.contest if presets.is_contest() else preset.libraries.problem
     )
-    return list(libs)
+    if not any(_is_testlib(lib) for lib in libs):
+        libs.append(BUILTIN_TESTLIB)
+    return libs
 
 
 def _builtin_fallback(lib: Library) -> Optional[pathlib.Path]:
