@@ -28,7 +28,13 @@ const extension = await esbuild.context({
 // through `acquireVsCodeApi`.
 const webview = await esbuild.context({
   ...shared,
-  entryPoints: ['src/webview/main.ts', 'src/webview/style.css'],
+  entryPoints: [
+    'src/webview/main.ts',
+    'src/webview/testsetMain.ts',
+    'src/webview/panelMain.ts',
+    'src/webview/style.css',
+    'src/webview/panelStyle.css',
+  ],
   format: 'iife',
   platform: 'browser',
   target: 'es2020',

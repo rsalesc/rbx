@@ -937,3 +937,153 @@ body {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
+
+/*
+ * The Tests view.
+ *
+ * Everything above is shared: `.row`, `.label`, `.meta`, `.hue-*`, the header,
+ * the filter, the card. What follows is only what the two views genuinely do
+ * differently -- a testset row has no gutter, no declaration and no verdict, and
+ * it has two marks the run view has nowhere to put.
+ */
+
+/* Four columns where the run view has six. The twisty takes the run view's
+   gutter position, so a label in either view starts at the same x and the two
+   lists in one container read as one tool. */
+.testset-row {
+  grid-template-columns: 16px 1fr auto auto;
+}
+
+/* The marks: a visualization the build produced, and a validator that said no.
+   Reserved on every row, empty or not, so a warning is found by scanning down
+   the column rather than by reading the rows -- the argument the gutter makes
+   on the other side of a run row. */
+.flags {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  min-width: 16px;
+}
+
+.flags .codicon {
+  font-size: 13px;
+}
+
+/* Quieter than the warning beside it. A visualization is something the row
+   *has*; a rejected test is something wrong with it, and at equal weight the
+   commoner mark wins the glance. */
+.flag-visualization {
+  opacity: 0.75;
+}
+
+/* The strip above the tree. Unlike the run view's, it is always there once a
+   manifest is: it states the size of the testset rather than reporting that
+   something is wrong. */
+.testset-header {
+  gap: 8px;
+}
+
+.header-summary {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-foreground);
+}
+
+/* The manifest's mtime, and *only* that. It is a cue about which build is on
+   screen and makes no claim about whether it is current -- hence the dim
+   treatment of an aside rather than the weight of a warning. */
+.header-built {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground);
+}
+
+#open-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--vscode-icon-foreground);
+  cursor: pointer;
+}
+
+#open-panel:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+/* What the validator said, on the card because the row's mark can only say
+   *that* something is wrong. Drawn for a pass as well as a failure: a group
+   with a validator and a group without one both leave the mark column empty,
+   and this line is where that difference becomes visible. */
+.card-validation {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.9em;
+}
+
+.card-validation .codicon {
+  font-size: 13px;
+}
+
+.card-validator {
+  font-family: var(--vscode-editor-font-family);
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The validator's own sentence -- free-form, as long as the package's validator
+   felt like being, and so the one thing in this view allowed to wrap. */
+.card-message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--vscode-foreground);
+}
+
+/*
+ * The Tests view's responsive ladder.
+ *
+ * The same mechanism and the same order-by-what-would-be-missed as the run
+ * view's, over this view's own channels:
+ *
+ *   1. the input size -- a figure worth having and never the reason a row is
+ *                        being looked for.
+ *   2. the test count -- wanted more often, but a group is opened to see its
+ *                        tests, and opening it counts them.
+ *   3. the score      -- never. On a points problem it is what the group is
+ *                        *for*, and it is the cheapest thing on the row.
+ *
+ * The meta line is built in this order upstream, so hiding always removes a
+ * suffix and the `::before` separators leave with the spans they precede. A
+ * test in testsetRender.test.ts pins the breakpoints in descending order, and
+ * pins that no breakpoint ever names the score.
+ */
+
+/* 1. The input size. */
+@container (max-width: 260px) {
+  .span-size {
+    display: none;
+  }
+}
+
+/* 2. The test count. */
+@container (max-width: 200px) {
+  .span-count {
+    display: none;
+  }
+}

@@ -21,6 +21,7 @@
 import * as vscode from 'vscode';
 
 import { SCHEME, artifactUri, firstExisting } from './artifactFs';
+import { PackageLayout } from './rbx/layout';
 import { TestcaseNode } from './rbx/nodes';
 import {
   Artifact,
@@ -28,6 +29,9 @@ import {
   DiffArtifact,
   PaneKind,
   asTestcaseLayout,
+  builtAnswerArtifact,
+  builtInputArtifact,
+  builtLabelPrefix,
   channelArtifact,
   inputArtifact,
   isDiff,
@@ -108,6 +112,47 @@ export class TestcasePanes {
     if (channel !== undefined) {
       this.channel = channel;
     }
+    const columns = await this.columns();
+    await this.showArtifact(
+      inputArtifact(node.testcase),
+      labelPrefix(node.run.solution.path, node.group.name, node.testcase.stem),
+      columns.input,
+    );
+    await this.showChannel(node, columns.channel);
+  }
+
+  /**
+   * Open a *built* testcase: its input, and the expected answer beside it.
+   *
+   * The Tests view's opener. A testcase that has never been run has no output,
+   * no stderr and no log, so the second pane holds the answer and there is no
+   * channel to switch. Everything else is shared with `open` on purpose -- the
+   * same pane-finding, so a built testcase lands in the groups the user already
+   * arranged, and the same `preview: true`, so arrowing down the testset list
+   * replaces the documents in place instead of piling up tabs.
+   */
+  async openBuilt(pkg: PackageLayout, group: string, stem: string): Promise<void> {
+    // The panes are no longer showing a run, so a later channel switch has
+    // nothing to act on. Cleared rather than left standing: `alt+2` on a built
+    // testcase would otherwise drag both panes back to whichever run testcase
+    // was open before, which is not a place the user asked to go.
+    this.current = undefined;
+    const columns = await this.columns();
+    const prefix = builtLabelPrefix(group, stem);
+    await this.showArtifact(builtInputArtifact(pkg, group, stem), prefix, columns.input);
+    await this.showArtifact(builtAnswerArtifact(pkg, group, stem), prefix, columns.channel);
+  }
+
+  /**
+   * Which groups the two panes go in, seeding a layout only if neither exists.
+   *
+   * This is what keeps a dragged pane where it was put, and it is why both
+   * openers go through it rather than opening editors of their own.
+   */
+  private async columns(): Promise<{
+    input: vscode.ViewColumn;
+    channel: vscode.ViewColumn;
+  }> {
     let inputColumn = findPane('input');
     let channelColumn = findPane('channel');
     if (inputColumn === undefined && channelColumn === undefined) {
@@ -132,12 +177,10 @@ export class TestcasePanes {
     // One pane open and not the other -- the user closed one -- puts the
     // missing one beside its surviving sibling rather than re-imposing a
     // layout over an arrangement they are evidently still using.
-    await this.showArtifact(
-      inputArtifact(node.testcase),
-      labelPrefix(node.run.solution.path, node.group.name, node.testcase.stem),
-      inputColumn ?? vscode.ViewColumn.Beside,
-    );
-    await this.showChannel(node, channelColumn ?? vscode.ViewColumn.Beside);
+    return {
+      input: inputColumn ?? vscode.ViewColumn.Beside,
+      channel: channelColumn ?? vscode.ViewColumn.Beside,
+    };
   }
 
   /**

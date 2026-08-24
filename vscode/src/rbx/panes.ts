@@ -12,6 +12,7 @@
  * for the case where there are none. See
  * `docs/plans/2026-08-21-vscode-testcase-detail-design.md`.
  */
+import { Ext, PackageLayout, testArtifactPath } from './layout';
 import { TestcaseRun } from './store';
 
 /** What the second pane is showing. `out` is the diff, mirroring `rbx ui`. */
@@ -151,6 +152,54 @@ export function channelArtifact(
 
 export function isDiff(artifact: Artifact | DiffArtifact): artifact is DiffArtifact {
   return (artifact as DiffArtifact).left !== undefined;
+}
+
+/**
+ * The display prefix a *built* testcase's tabs share.
+ *
+ * `build/tests/main/1-gen-000`, which is where the two files actually are. A
+ * run testcase names the solution it belongs to, because there are as many
+ * copies of it as there are solutions; a built one belongs to the package, and
+ * saying so is what tells the two apart in a tab's tooltip.
+ */
+export function builtLabelPrefix(group: string, stem: string): string {
+  return `build/tests/${group}/${stem}`;
+}
+
+/**
+ * What a built testcase opens into: its input, and the answer beside it.
+ *
+ * A testcase that has never been run has no output, no stderr and no log, so
+ * there is no channel to choose and nothing sticky to remember -- the second
+ * pane holds the expected answer and that is the whole of it. It goes through
+ * the same two labels the run panes use, which is what lets `findPane` place it
+ * in the groups the user already arranged rather than laying the editor out
+ * again.
+ */
+export function builtInputArtifact(
+  pkg: PackageLayout,
+  group: string,
+  stem: string,
+): Artifact {
+  return {
+    paths: [testArtifactPath(pkg, group, stem, Ext.Input)],
+    label: LABELS.input,
+    missing: 'No input on disk for this testcase. Run `rbx build` first.',
+  };
+}
+
+export function builtAnswerArtifact(
+  pkg: PackageLayout,
+  group: string,
+  stem: string,
+): Artifact {
+  return {
+    paths: [testArtifactPath(pkg, group, stem, Ext.Output)],
+    label: LABELS.answer,
+    // Not an error: a problem with no model solution, or one built with
+    // `--no-solutions`, has inputs and no answers at all.
+    missing: 'No expected answer on disk for this testcase.',
+  };
 }
 
 /**

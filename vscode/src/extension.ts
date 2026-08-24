@@ -22,6 +22,8 @@ import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
 import { registerSolutionLens } from './solutionLens';
 import { registerSolutionStatus } from './solutionStatus';
+import { TestsetPanel } from './testsetPanel';
+import { TestsetViewProvider } from './testsetView';
 
 /**
  * Map a changed cache path back to the package it belongs to.
@@ -68,6 +70,16 @@ export function activate(context: vscode.ExtensionContext): void {
   // would land each of them on a root the other opened.
   const active = new ActiveProblem(data, context.workspaceState);
   const view = new RunViewProvider(data, active, context.extensionUri);
+  // The Tests view shares `data` and `active` with the Run view rather than
+  // discovering the workspace a second time: the two are two readings of one
+  // package, and a second `ActiveProblem` would let them drift onto different
+  // problems in the same window.
+  const testset = new TestsetViewProvider(data, active, context.extensionUri, (request) => {
+    const root = active.selected();
+    if (root !== undefined) {
+      TestsetPanel.show(context, data, root, request);
+    }
+  });
   const declared = new DeclaredIndex(data);
   context.subscriptions.push(declared);
   registerDecorations(context, declared);
@@ -79,13 +91,46 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(RunViewProvider.viewType, view),
+    vscode.window.registerWebviewViewProvider(TestsetViewProvider.viewType, testset),
     vscode.workspace.registerFileSystemProvider(SCHEME, new ArtifactFileSystemProvider(), {
       isReadonly: true,
       isCaseSensitive: true,
     }),
   );
 
-  registerCommands(context, view, data, active);
+  registerCommands(context, view, data, active, testset);
+
+  // The panel follows the sidebar's highlight, so arrowing the list scrolls the
+  // gallery to the testcase being read. `reveal` is a no-op when no panel is
+  // open, which is the common case and deliberately costs nothing.
+  context.subscriptions.push(
+    testset.onDidChangeSelection((selection) => {
+      if (selection.testId !== undefined) {
+        TestsetPanel.reveal(selection.testId);
+      }
+    }),
+  );
+
+  // A click in the gallery has to land on the same commands a click in the
+  // sidebar does. The panel does not own those commands and must not reach for
+  // them, so it names an intent and this routes it: a testcase through the
+  // sidebar's node (which is what the command signature expects), a file the
+  // editor is left to interpret -- `Visualizer.extension` is a free string.
+  context.subscriptions.push(
+    TestsetPanel.onDidRequestOpen((request) => {
+      if (request.kind === 'file') {
+        void vscode.commands.executeCommand(
+          'vscode.open',
+          vscode.Uri.file(request.filePath),
+        );
+        return;
+      }
+      const node = testset.nodeById(`${request.group}::${request.stem}`);
+      if (node !== undefined) {
+        void vscode.commands.executeCommand('rbx.openBuiltTestcase', node);
+      }
+    }),
+  );
 
   // Artifacts land incrementally as evaluations resolve, which is what gives
   // the view live progress without any streaming protocol: each new `.eval`

@@ -13,6 +13,7 @@ import { log } from './log';
 import { PackageLayout } from './rbx/layout';
 import { PackageRunView } from './rbx/nodes';
 import { ArtifactStore, PackageRun } from './rbx/store';
+import { Testset } from './rbx/testset';
 
 export class RunDataProvider {
   private readonly changed = new vscode.EventEmitter<void>();
@@ -98,6 +99,19 @@ export class RunDataProvider {
    */
   report(pkg: PackageLayout): Promise<PackageRun | undefined> {
     return this.storeFor(pkg).load();
+  }
+
+  /**
+   * Whatever testset the last `rbx build` published for one package.
+   *
+   * Through the same store as `report`, which is the whole point: the run and
+   * the testset describe one package and are dropped by one watcher tick, so
+   * the Run and Tests views cannot end up disagreeing about which package they
+   * are showing. A missing manifest is not an error -- it is what a package
+   * that has never been built looks like.
+   */
+  testset(pkg: PackageLayout): Promise<Testset | undefined> {
+    return this.storeFor(pkg).testset();
   }
 
   /**
