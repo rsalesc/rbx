@@ -124,6 +124,11 @@ them through the contest `file`, and writes
 **`name`** rather than its language. It builds the contest
 [`documents`](#cover-pages-and-infosheets) in the same run.
 
+When you select a contest variant with `-C <id>`, the book nests under
+`build/variants/<id>/` instead, so building one variant never overwrites
+another's. The default contest keeps the bare `build/` path. The heading over
+the build summary names the variant it just built.
+
 <!--termynal-->
 ```bash
 # Build the contest book (joins problems) and its documents.
@@ -142,6 +147,13 @@ $ rbx contest st b -p icpc
 To build a single problem instead, run `rbx st b` from inside the problem
 directory. It picks up the same contest's `standaloneProblemTemplate` and writes
 `build/statement-<lang>[-<variant>][-<profile>].pdf`.
+
+!!! warning "Problem artifacts are not variant-scoped yet"
+    A problem's own `build/` directory is shared across every contest variant. A
+    statement built there picks up the selected contest's chrome and the
+    problem's letter in that contest, but always lands on the same path -- so
+    switching variants overwrites it. Rebuild after switching. Tracked as
+    [#753](https://github.com/rsalesc/rbx/issues/753).
 
 ## Declaring a contest statement
 
