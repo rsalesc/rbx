@@ -6,6 +6,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header
 
 from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
+from rbx.box.ui.terminal_select import SelectableCommandPane
 
 
 class CommandScreen(Screen):
@@ -19,7 +20,7 @@ class CommandScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Footer()
-        yield CommandPane()
+        yield SelectableCommandPane()
 
     def on_mount(self):
         pane = self.query_one(CommandPane)

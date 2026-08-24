@@ -24,12 +24,14 @@ from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
 from rbx.box.ui.main import rbxBaseApp
 from rbx.box.ui.screens.tab_selector import TabSelectorModal
 from rbx.box.ui.task_queue import Task, TaskQueue
+from rbx.box.ui.terminal_select import SelectableCommandPane
 from rbx.box.ui.widgets.menu import Menu, MenuItem
 
 _ESCAPE_TAP_DURATION = 0.4
+_FOCUSED_SUBTITLE = '[b]esc×2[/b] exit  [b]ctrl+v[/b] select  [b]ctrl+y[/b] copy all'
 
 
-class _AppCommandPane(CommandPane):
+class _AppCommandPane(SelectableCommandPane):
     """CommandPane that redirects focus to sidebar on blur (double-escape)."""
 
     def on_resize(self, event: events.Resize) -> None:
@@ -50,24 +52,18 @@ class _AppCommandPane(CommandPane):
     def on_blur(self) -> None:
         self.border_subtitle = '[b]tab[/b] to focus'
 
+    def on_focus(self) -> None:
+        self.border_subtitle = _FOCUSED_SUBTITLE
+
     def selection_updated(self, selection: Selection | None) -> None:
         super().selection_updated(selection)
+        if self.in_select_mode:
+            # The select mode owns the subtitle while it is on.
+            return
         if self.has_focus and selection is not None:
             self.border_subtitle = '[b]ctrl+y[/b] copy selection'
         elif self.has_focus:
-            self.border_subtitle = 'Tap [b]esc[/b] [i]twice[/i] to exit'
-
-    async def on_key(self, event: events.Key) -> None:
-        if event.key == 'ctrl+y':
-            selected = self.screen.get_selected_text()
-            if selected:
-                self.app.copy_to_clipboard(selected)
-                self.screen.clear_selection()
-                self.border_subtitle = 'Tap [b]esc[/b] [i]twice[/i] to exit'
-                event.stop()
-                event.prevent_default()
-                return
-        await super().on_key(event)
+            self.border_subtitle = _FOCUSED_SUBTITLE
 
 
 class ShellInput(Input):
@@ -172,8 +168,19 @@ class HelpModal(ModalScreen[None]):
             yield Label(
                 '[b]Terminal[/b]\n'
                 '  [b]esc\u00d72[/b]        Return to sidebar\n'
-                '  [b]ctrl+y[/b]      Copy selected text\n'
+                '  [b]ctrl+y[/b]      Copy the selection, or all output\n'
+                '  [b]ctrl+v[/b]      Enter select mode\n'
                 '  (all other keys go to the running process)',
+                markup=True,
+            )
+            yield Label(
+                '[b]Select mode[/b] ([b]ctrl+v[/b])\n'
+                '  [b]hjkl[/b] / arrows  Move the cursor\n'
+                '  [b]0 ^ $ w b[/b]     Line start / first word / end / word\n'
+                '  [b]gg G[/b]          Top / bottom  ([b]ctrl+d ctrl+u[/b] half page)\n'
+                '  [b]v[/b] / [b]V[/b]           Select by character / by line\n'
+                '  [b]y[/b]             Copy and exit ([b]y[/b] alone yanks the line)\n'
+                '  [b]esc[/b]           Exit without copying',
                 markup=True,
             )
             yield Label(

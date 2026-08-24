@@ -122,6 +122,48 @@ finished left the scroll extents stale and the anchored view scrolled past the r
 the output -- the tail (e.g. a time-limits table) looked eaten. `update_size()` now calls
 `_update_virtual_size()`. Both are covered by `tests/rbx/box/ui/test_command_pane.py`.
 
+## Pane copying & keyboard selection (`terminal_select.py`)
+
+`TerminalSelectMixin` gives a `CommandPane` two things the mouse could not (#717):
+`ctrl+y` copies the selection **or**, when there is none, the whole buffer; `ctrl+v`
+opens a vim-style visual mode (`hjkl`/arrows, `0 ^ $ w b`, `gg G`, `ctrl+d/u`, `v`/`V`,
+`y` copy, `esc` cancel). `SelectableCommandPane` is the mixin over `CommandPane`;
+`_AppCommandPane` (`command_app.py`) and `CommandScreen` (`screens/command.py`) both use
+it. The vendored `toad` tree is untouched.
+
+Three facts hold it up:
+
+- **Keys are intercepted ahead of `Terminal.on_key`**, which forwards *everything* to the
+  pty. That interception is the only reason the mode can work while a command runs; the
+  same trick is what the old `ctrl+y` branch used. Nothing in select mode reaches the
+  child.
+- **State is logical, never viewport.** The cursor and anchor are `Offset(column,
+  line_no)` into `Buffer.lines` (the *unfolded* lines), so a wrapped line copies back as
+  the program wrote it, appended output cannot shift a live selection, and a resize
+  reflows every folded row without disturbing it. `Buffer.line_to_fold` /
+  `Buffer.folded_lines` convert to rows when the view has to scroll. `Selection(None,
+  None)` over the same space is the whole of copy-all.
+- **Rendering is Textual's.** The mode assigns `screen.selections = {pane: selection}` and
+  `Terminal._render_line` highlights from it, so `get_selected_text()` works unchanged.
+  With no anchor yet the mode publishes a *one-cell* selection -- that highlight **is** the
+  cursor, since the pty cursor sits wherever the command left it.
+
+Two traps worth keeping:
+
+- `scroll_to` defaults to `immediate=False`, which defers the scroll until after the next
+  refresh; the cursor is then drawn off-screen for a frame and headless tests never scroll
+  at all. Auto-scroll passes `immediate=True`.
+- The mode releases the pane's scroll anchor on entry (and restores it on exit), or a
+  still-printing command drags the view off the cursor.
+
+`Terminal.finalize()` is never called anywhere in rbx, so panes stay focusable and
+`allow_select` reduces to "not on the alternate screen" -- which is what `can_select()`
+gates on. A full-screen child TUI therefore keeps `ctrl+v` for itself.
+
+Tests: `tests/rbx/box/ui/test_command_pane_select.py`. Note the fixtures use **one-line**
+commands: the sub-command `Select` renders the command string as its label, so a
+multi-line `python -c` grows the label until the pane is squeezed to zero height.
+
 ## Keybindings
 
 Vim navigation lives in `vim_nav.py` (`VimNavMixin`, mixed into `rbxBaseApp` in `main.py`, ahead of `App` in the MRO). It registers app-level `h/j/k/l` bindings that dispatch to the focused widget's existing `cursor_*` action, falling back to `scroll_*`: `j`/`k` move down/up everywhere; `h`/`l` move left/right only where horizontal movement exists (e.g. `DataTable` cells, scroll viewers). `check_action` disables the keys while an `Input`/`TextArea` is focused, so typing is never hijacked. The mixin subclasses `DOMNode` so Textual merges its `BINDINGS`.
