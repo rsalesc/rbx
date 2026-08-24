@@ -1,0 +1,7 @@
+# Boundary sizes first, so -v1 reports every constraint as hit.
+gen 2 1
+gen 1000 2000
+# Then a spread of random connected graphs.
+gen 10 15
+gen 50 100
+gen 200 400

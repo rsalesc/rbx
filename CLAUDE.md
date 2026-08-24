@@ -56,6 +56,10 @@ uv run rbx
 - Ruff rules enabled: `E4`, `E7`, `E9`, `F`, `B`, `I`, `TID`, `SLF`
 - Pre-commit hooks run ruff check/format and commitizen (conventional commits)
 
+## Documentation
+
+The docs site (`docs/`, built with mkdocs) is written in a specific, consistent voice. When writing or editing any user-facing docs, follow the [documentation writing-style guide](docs/plans/docs-writing-style-guide.md) — it captures the tone, structure, and conventions (notably: introduce a concept before you use it; never forward-reference a mechanism the reader hasn't met).
+
 ## Git Commits
 
 **You MUST use the `/commit` skill when creating commits.** This project enforces [Conventional Commits](https://www.conventionalcommits.org/) via commitizen (`cz_conventional_commits`). The pre-commit hook will reject non-compliant messages. See [`.claude/skills/commit.md`](.claude/skills/commit.md) for the full workflow and allowed commit types.

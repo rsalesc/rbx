@@ -137,6 +137,7 @@ the playback, that is why: shorten it to a fragment that carries no markup.
 | `sum-problem` | Sum of N integers, `wa-overflow.cpp`, `vars.A.max` | both `rbx stress` recordings |
 | `pair-problem` | Print any `a + b = N`, custom checker | custom-checker walkthrough |
 | `guessing-problem` | Interactive guessing game with a testlib interactor | `rbx ui` on an interactive run |
+| `statement-contest` | Two-problem contest with `en`/`pt` statements, both contest templates and an infosheet | both statement recordings |
 | `workspace` | Empty directory, not a package | `rbx create`, which needs somewhere to create *into* |
 
 `graph-problem` also carries `broken/validator-without-connectivity.cpp`: the
