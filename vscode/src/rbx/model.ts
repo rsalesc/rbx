@@ -94,6 +94,19 @@ export interface Skeleton {
    * an rbx too old to write the field, which reads the same way on purpose.
    */
   readonly compilation: readonly CompilationEntry[];
+  /**
+   * Whether the run was sanitized (`rbx run -s`), which drops the problem's
+   * time limit for the environment default. Every time in the view is then a
+   * measurement against a limit the package never declared.
+   */
+  readonly sanitized: boolean;
+  /**
+   * Whether rbx narrowed the run to the ACCEPTED solutions on its own, which
+   * it does for a sanitized run that named no solutions. The view then shows a
+   * subset of the package's solutions with nothing saying why the rest are
+   * missing.
+   */
+  readonly onlyAccepted: boolean;
 }
 
 export interface Evaluation {
@@ -209,7 +222,15 @@ export function parseSkeleton(raw: Wire): Skeleton | undefined {
     }
   }
 
-  return { solutions, entries, groups, compilation: parseCompilation(root) };
+  return {
+    solutions,
+    entries,
+    groups,
+    compilation: parseCompilation(root),
+    // snake_case on the wire: `skeleton.yml` is a dump of the Pydantic model.
+    sanitized: asBoolean(root.sanitized) ?? false,
+    onlyAccepted: asBoolean(root.only_accepted) ?? false,
+  };
 }
 
 function parseWarning(raw: Wire): CompilationWarning | undefined {

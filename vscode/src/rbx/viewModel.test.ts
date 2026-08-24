@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import type { PackageLayout } from './layout';
 import type { PackageRunView } from './nodes';
 import type { GroupReport, SolutionReport } from './report';
-import type { CompilationEntry } from './model';
+import type { CompilationEntry, Skeleton } from './model';
 import type {
   CompilationFinding,
   GroupRun,
@@ -91,9 +91,18 @@ function solution(
 function run(
   solutions: readonly SolutionRun[],
   findings: readonly CompilationFinding[] = [],
+  skeleton: Partial<Skeleton> = {},
 ): PackageRun {
   return {
-    skeleton: { solutions: [], entries: [], groups: [], compilation: [] },
+    skeleton: {
+      solutions: [],
+      entries: [],
+      groups: [],
+      compilation: [],
+      sanitized: false,
+      onlyAccepted: false,
+      ...skeleton,
+    },
     solutions,
     findings,
   };
@@ -102,8 +111,9 @@ function run(
 function view(
   solutions: readonly SolutionRun[],
   findings: readonly CompilationFinding[] = [],
+  skeleton: Partial<Skeleton> = {},
 ): PackageRunView {
-  return { pkg: PKG, run: run(solutions, findings) };
+  return { pkg: PKG, run: run(solutions, findings, skeleton) };
 }
 
 function finding(

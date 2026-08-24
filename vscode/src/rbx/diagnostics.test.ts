@@ -26,7 +26,14 @@ function finding(path: string, over: Partial<CompilationEntry> = {}): Compilatio
 
 function view(findings: readonly CompilationFinding[]): PackageRunView {
   const run: PackageRun = {
-    skeleton: { solutions: [], entries: [], groups: [], compilation: [] },
+    skeleton: {
+      solutions: [],
+      entries: [],
+      groups: [],
+      compilation: [],
+      sanitized: false,
+      onlyAccepted: false,
+    },
     solutions: [],
     findings,
   };
@@ -130,7 +137,14 @@ test('findings from several packages are all reported', () => {
   const other: PackageRunView = {
     pkg: { root: '/w/b' },
     run: {
-      skeleton: { solutions: [], entries: [], groups: [], compilation: [] },
+      skeleton: {
+      solutions: [],
+      entries: [],
+      groups: [],
+      compilation: [],
+      sanitized: false,
+      onlyAccepted: false,
+    },
       solutions: [],
       findings: [
         {

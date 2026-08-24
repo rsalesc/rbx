@@ -166,3 +166,18 @@ test('an evaluation that tripped nothing leaves the flag alone', () => {
   const evaluation = parseEvaluation({ result: { outcome: 'accepted' }, log: {} });
   assert.strictEqual(evaluation?.sanitizerWarnings, undefined);
 });
+
+
+test('a sanitized run is read off the skeleton', () => {
+  const skeleton = parseSkeleton({ ...MINIMAL, sanitized: true, only_accepted: true });
+  assert.strictEqual(skeleton?.sanitized, true);
+  assert.strictEqual(skeleton?.onlyAccepted, true);
+});
+
+test('an ordinary run says so by omission', () => {
+  // Which is also what a skeleton written by an rbx predating the fields says,
+  // and the two must read the same.
+  const skeleton = parseSkeleton(MINIMAL);
+  assert.strictEqual(skeleton?.sanitized, false);
+  assert.strictEqual(skeleton?.onlyAccepted, false);
+});
