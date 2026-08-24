@@ -137,11 +137,26 @@ def inlining(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(statement, 'INLINE_IMAGES_AS_BASE64', True)
 
 
+@pytest.fixture
+def shipping_files(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(statement, 'INLINE_IMAGES_AS_BASE64', False)
+
+
+def test_the_default_is_to_inline(docs_with_figure: pathlib.Path):
+    """Pinned rather than left implicit: which mode a package gets is the whole
+    point of the switch, and every other test here sets it explicitly."""
+    doc = statement.build_enunciado(
+        FIGURE_BLOCKS, language='pt-br', docs_root=docs_with_figure
+    )
+    assert 'data:image/png;base64,' in doc
+
+
 def test_shipping_files_keeps_the_reference_pointing_at_the_file(
+    shipping_files,
     docs_with_figure: pathlib.Path,
 ):
-    """The default: the image travels as its own file and the document cites it,
-    which is the shape render-statement.sh's --resource-path exists for."""
+    """The image travels as its own file and the document cites it, which is the
+    shape render-statement.sh's --resource-path exists for."""
     doc = statement.build_enunciado(
         FIGURE_BLOCKS, language='pt-br', docs_root=docs_with_figure
     )
@@ -222,6 +237,7 @@ def test_discarding_inlined_assets_removes_the_files_and_their_dirs(
 
 
 def test_discarding_is_a_no_op_when_the_files_are_what_ships(
+    shipping_files,
     tmp_path: pathlib.Path,
 ):
     (tmp_path / 'docs' / 'assets').mkdir(parents=True)

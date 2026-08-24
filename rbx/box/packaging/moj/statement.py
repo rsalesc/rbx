@@ -49,8 +49,20 @@ _DEFAULT_HEADING_LANGUAGE = 'pt'
 # and nothing about a problem says which one it wants -- so this is a decision
 # about the packager, not a knob for `problem.rbx.yml`.
 #
-# `False` (the default) ships the image files beside the documents and leaves the
-# references pointing at them:
+# `True` (the default) inlines each figure into the document as a `data:` URI and
+# ships no image files at all:
+#
+#     docs/enunciado.md      ![](data:image/png;base64,iVBORw0KGgo…)
+#
+# The statement then renders identically anywhere pandoc runs -- with no resource
+# path, in a preview, pasted somewhere else entirely -- which is what makes it the
+# default: it removes the one thing about a MOJ statement that depends on files
+# landing where the renderer expects them. The cost is blunt: base64 is ~4/3 the
+# size, a figure cited from both the body and a note is carried twice, and the raw
+# Markdown stops being readable by a human.
+#
+# `False` ships the image files beside the documents and leaves the references
+# pointing at them:
 #
 #     docs/enunciado.md      ![](assets/fig.png)
 #     docs/assets/fig.png
@@ -60,15 +72,7 @@ _DEFAULT_HEADING_LANGUAGE = 'pt'
 # renderer, not rbx, that base64-embeds each figure into the HTML a student
 # reads. Keeping the files also keeps them inspectable in the tarball, keeps the
 # Markdown readable in MOJ's editor, and lets one figure cited twice be sent once.
-#
-# `True` inlines each figure into the document as a `data:` URI and ships no
-# image files at all. The statement then renders identically anywhere pandoc runs
-# -- with no resource path, in a preview, pasted somewhere else entirely -- which
-# is what makes it worth having: it removes the one thing about a MOJ statement
-# that depends on files landing where the renderer expects them. The cost is
-# blunt: base64 is ~4/3 the size, a figure cited from both the body and a note is
-# carried twice, and the raw Markdown stops being readable by a human.
-INLINE_IMAGES_AS_BASE64 = False
+INLINE_IMAGES_AS_BASE64 = True
 
 
 def _image_rewriter(

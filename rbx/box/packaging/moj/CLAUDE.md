@@ -393,19 +393,20 @@ switch**, deliberately not a schema field: both produce a valid package, MOJ sho
 the reader the same statement either way, and nothing about a problem says which
 one it wants.
 
-`False` (the default) ships `docs/assets/fig.png` and leaves the document citing
+`True` (the default) rewrites each reference to a `data:` URI carrying the file's
+bytes and ships no image files at all (`statement_assets.base64_inliner` /
+`discard_assets`, driven by `statement.discard_inlined_assets`), so the statement
+renders identically wherever pandoc runs — no resource path, no files. That is why
+it is the default: it removes the one thing about a MOJ statement that depends on
+files landing where the renderer expects them. It costs ~4/3 the size, carries a
+twice-cited figure twice, and makes the raw Markdown unreadable by a human.
+
+`False` ships `docs/assets/fig.png` and leaves the document citing
 `![](assets/fig.png)` — the shape mojtools was built around, since
 `render-statement.sh` passes `--resource-path=<pkg>/docs` precisely so pandoc can
 find them, and it is the *renderer* that base64-embeds each figure into the HTML a
 student reads. The files stay inspectable in the tarball and a figure cited twice
 travels once.
-
-`True` rewrites each reference to a `data:` URI carrying the file's bytes and ships
-no image files at all (`statement_assets.base64_inliner` /
-`discard_assets`, driven by `statement.discard_inlined_assets`), so the statement
-renders identically wherever pandoc runs — no resource path, no files. It costs
-~4/3 the size, carries a twice-cited figure twice, and makes the raw Markdown
-unreadable by a human.
 
 Two ordering facts the switch depends on. The rewrite runs on **pandoc's AST**
 (`markdown_export.tex_to_markdown(..., rewrite_image_url=...)`), not over the
