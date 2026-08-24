@@ -144,6 +144,26 @@ which follows whatever the sidebar has selected:
 
 ![Constraint coverage](vscode/testset-coverage.png)
 
+### Seeing a testcase
+
+A [visualizer](../setters/testset/visualizers.md) turns a raw testcase into
+something you can actually look at -- a picture of the graph, of the points, of
+the grid -- and this is the view where looking at it costs nothing. Select a
+testcase and its card offers one **visualization** button per picture your
+package produced: `input` for the testcase itself, `answer` for the one drawn
+[from the expected
+answer](../setters/testset/visualizers.md#input-vs-solution-visualizers), and
+`gallery` for the whole group at once, in the panel.
+
+![An HTML visualization beside the Tests view](vscode/visualization.png)
+
+An image opens in an editor tab, and an interactive HTML one opens in VS Code's
+own browser -- live, right beside the list you picked it from, so arrowing down
+a group is a way to *watch* your testset rather than read it.
+
+Run `rbx build --visualize` to fill them in; a testcase with no picture simply
+has no button.
+
 ## While you are editing
 
 A declaration is a promise a solution makes before any run exists, and the
