@@ -1,6 +1,6 @@
-"""Tests for contest_utils (match_problem, get_problems_of_interest) with short_name and aliases."""
+"""Tests for contest_utils: command chaining, and selector wiring for `rbx on`."""
 
-from typing import Optional
+import pathlib
 from unittest.mock import patch
 
 import pytest
@@ -9,78 +9,75 @@ from rbx.box.contest.contest_utils import (
     EmptyCommandError,
     build_command_argvs,
     get_problems_of_interest,
-    match_problem,
     split_commands,
 )
+from rbx.box.contest.problem_selector import ProblemSelectorError
 from rbx.box.contest.schema import Contest, ContestProblem
 
+CONTEST = Contest(
+    name='Test',
+    problems=[
+        ContestProblem(short_name='A', aliases=['apple'], path=pathlib.Path('probs/a')),
+        ContestProblem(short_name='B'),
+        ContestProblem(short_name='C', aliases=['choco', 'cake']),
+    ],
+)
 
-def _p(short_name: str, aliases: Optional[list[str]] = None) -> ContestProblem:
-    return ContestProblem(short_name=short_name, aliases=aliases or [])
+
+@pytest.fixture
+def contest(tmp_path):
+    """A contest on disk, so problem names are read from real package files."""
+    (tmp_path / 'probs' / 'a').mkdir(parents=True)
+    (tmp_path / 'probs' / 'a' / 'problem.rbx.yml').write_text('name: knapsack\n')
+    with (
+        patch(
+            'rbx.box.contest.contest_utils.contest_package.find_contest_package_or_die',
+            return_value=CONTEST,
+        ),
+        patch(
+            'rbx.box.contest.contest_utils.contest_package.find_contest',
+            return_value=tmp_path,
+        ),
+    ):
+        yield
 
 
-class TestMatchProblem:
-    def test_wildcard_matches_all(self):
-        assert match_problem('*', _p('A')) is True
-        assert match_problem('*', _p('B', ['choco'])) is True
-
-    def test_range_matches_by_short_name_only(self):
-        assert match_problem('A-C', _p('B')) is True
-        assert match_problem('A-C', _p('A')) is True
-        assert match_problem('A-C', _p('C')) is True
-        assert match_problem('A-C', _p('D')) is False
-        # Range does not match by alias
-        assert match_problem('A-C', _p('D', ['choco'])) is False
-
-    def test_comma_list_matches_short_name(self):
-        assert match_problem('A,B,C', _p('B')) is True
-        assert match_problem('A, B , C', _p('B')) is True
-        assert match_problem('A,B', _p('C')) is False
-
-    def test_comma_list_matches_alias(self):
-        assert match_problem('choco,other', _p('A', ['choco'])) is True
-        assert match_problem('choco', _p('A', ['choco'])) is True
-        assert match_problem('A,choco', _p('A', ['choco'])) is True
-        assert match_problem('other', _p('A', ['choco'])) is False
-
-    def test_comma_list_case_insensitive(self):
-        assert match_problem('CHOCO', _p('A', ['choco'])) is True
-        assert match_problem('Choco', _p('A', ['choco'])) is True
-        assert match_problem('a', _p('A')) is True
+def _short_names(selector: str):
+    return [p.short_name for p in get_problems_of_interest(selector)]
 
 
 class TestGetProblemsOfInterest:
-    @patch('rbx.box.contest.contest_utils.contest_package.find_contest_package_or_die')
-    def test_returns_problems_matching_short_name_or_alias(self, mock_find):
-        contest = Contest(
-            name='Test',
-            problems=[
-                ContestProblem(short_name='A', aliases=['apple']),
-                ContestProblem(short_name='B', aliases=[]),
-                ContestProblem(short_name='C', aliases=['choco', 'cake']),
-            ],
-        )
-        mock_find.return_value = contest
+    def test_short_name(self, contest):
+        assert _short_names('A') == ['A']
 
-        assert len(get_problems_of_interest('A')) == 1
-        assert get_problems_of_interest('A')[0].short_name == 'A'
+    def test_alias(self, contest):
+        assert _short_names('choco') == ['C']
 
-        assert len(get_problems_of_interest('apple')) == 1
-        assert get_problems_of_interest('apple')[0].short_name == 'A'
+    def test_problem_name_read_from_the_problem_package(self, contest):
+        assert _short_names('knapsack') == ['A']
 
-        assert len(get_problems_of_interest('choco')) == 1
-        assert get_problems_of_interest('choco')[0].short_name == 'C'
+    def test_folder_basename(self, contest):
+        assert _short_names('a') == ['A']
 
-        two = get_problems_of_interest('A,B')
-        assert len(two) == 2
-        assert {p.short_name for p in two} == {'A', 'B'}
+    def test_comma_list(self, contest):
+        assert _short_names('apple,C') == ['A', 'C']
 
-        two_by_alias = get_problems_of_interest('apple,C')
-        assert len(two_by_alias) == 2
-        assert {p.short_name for p in two_by_alias} == {'A', 'C'}
+    def test_range(self, contest):
+        assert _short_names('A..B') == ['A', 'B']
 
-        all_three = get_problems_of_interest('*')
-        assert len(all_three) == 3
+    def test_wildcard(self, contest):
+        assert _short_names('*') == ['A', 'B', 'C']
+
+    def test_exclusion(self, contest):
+        assert _short_names('*,!B') == ['A', 'C']
+
+    def test_unmatched_selector_raises(self, contest):
+        with pytest.raises(ProblemSelectorError):
+            get_problems_of_interest('nope')
+
+    def test_a_problem_without_a_package_file_is_still_selectable(self, contest):
+        # B has no problem.rbx.yml on disk; the name tier just finds nothing.
+        assert _short_names('B') == ['B']
 
 
 class TestSplitCommands:

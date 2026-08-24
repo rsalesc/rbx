@@ -65,7 +65,9 @@ Below you can find a list of common {{rbx}} commands. You can read more about ea
 | Build each problem in the contest               | `rbx contest each build`              |
 | Package each problem in the contest             | `rbx contest each package boca`       |
 | Build problem A in the contest                  | `rbx contest on A build`              |
-| Build problems A to C in the contest            | `rbx contest on A-C build`            |
+| Build a problem by name, alias or folder        | `rbx contest on knapsack build`       |
+| Build problems A to C in the contest            | `rbx contest on A..C build`           |
+| Build every problem but C                       | `rbx contest on '*,!C' build`         |
 
 ## `problem.rbx.yml`
 
@@ -412,4 +414,6 @@ problems:
     path: "problem_folder"
     color: "ff0000"  # Optional
     aliases: ["apple", "prob-a"]  # Optional; use any of these or short_name in e.g. rbx on <name> run
+# A problem can also be selected by its own `name` or by its folder basename.
+# See the contest reference for the full selector syntax.
 ```

@@ -83,7 +83,7 @@ rbx each package boca -u
 rbx on A package boca -u
 
 # Will upload problems A to C
-rbx on A-C package boca -u
+rbx on A..C package boca -u
 
 # Will upload problems A and C
 rbx on A,C package boca -u

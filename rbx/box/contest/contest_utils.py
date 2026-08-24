@@ -1,7 +1,9 @@
+import pathlib
 from typing import List, Optional, Tuple
 
 from rbx.box import environment, package
-from rbx.box.contest import contest_package
+from rbx.box.completion import peek
+from rbx.box.contest import contest_package, problem_selector
 from rbx.box.contest.schema import ContestProblem
 
 SHELL_NAMES = frozenset({'bash', 'zsh', 'fish', 'sh', 'dash', 'ksh', 'csh', 'tcsh'})
@@ -84,26 +86,23 @@ def build_command_argvs(
     return [argv for argv, _ in built], built[0][1]
 
 
-def match_problem(problems: str, contest_problem: ContestProblem) -> bool:
-    short_name = contest_problem.short_name.lower()
-    problems_lower = problems.lower()
-    if problems_lower == '*':
-        return True
-    if '-' in problems_lower:
-        start, end = problems_lower.split('-')
-        return start <= short_name <= end
-    problem_set = set(p.strip().lower() for p in problems_lower.split(','))
-    return bool(problem_set & contest_problem.all_identifiers())
+def _problem_name(root: pathlib.Path, contest_problem: ContestProblem) -> Optional[str]:
+    """The `name` a problem declares in its own package, if it declares one.
+
+    Read with the tolerant peek helper rather than a full package load: the
+    selector only needs one string, and a problem that does not parse should
+    fail when it is built, not when a sibling is selected.
+    """
+    name = peek.peek(root / contest_problem.get_path() / 'problem.rbx.yml').get('name')
+    return name if isinstance(name, str) else None
 
 
 def get_problems_of_interest(problems: str) -> List[ContestProblem]:
     contest = contest_package.find_contest_package_or_die()
-    problems_of_interest = []
-
-    for p in contest.problems:
-        if match_problem(problems, p):
-            problems_of_interest.append(p)
-    return problems_of_interest
+    root = contest_package.find_contest()
+    return problem_selector.resolve_selector(
+        problems, contest.problems, lambda p: _problem_name(root, p)
+    )
 
 
 def clear_all_caches():
