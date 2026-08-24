@@ -40,6 +40,19 @@ archives the source at `users/<login>/submissions/<id>.<ext>` (`FLOW.md`). The `
 parameter is the submission's epoch and is **optional** -- format validation passes
 without it -- but MOJ's own front-end always sends it, so rbx does too.
 
+### A pending submission has no source yet
+
+Found by the end-to-end run, not by reading: the daemon archives the source at **step 5**
+of judging, *after* it has a verdict. Ask for a submission still showing
+`Not Answered Yet` and the server answers `404 source_notfound` -- byte for byte the reply
+for an id that does not exist, about a submission rbx has just listed from the same
+server.
+
+So the listing row carries its verdict, and rbx refuses a pending download by name rather
+than passing that 404 on. The pending vocabulary is `moj-comp`'s own `_watch_verdict` set
+(`Not Answered Yet`, `On queue`, `Running`, empty), matched case-insensitively because
+that loop lists `On queue` and `on queue` both.
+
 ### Who may read a submission
 
 Roles are a login suffix **inside a contest**: `.admin`, `.judge`, `.cjudge` (chief),
@@ -174,3 +187,26 @@ length, shorthand with and without `MOJ_CONTEST`). HTTP mocked with `mock.patch`
 
 No live-API test in the suite, matching how the rest of the MOJ integration is tested; a
 manual end-to-end run against `treino` gates the work instead.
+
+### What the live run confirmed (2026-08-24)
+
+Against `treino`, as `rsalesc` (a plain competitor there):
+
+| Path | Result |
+|---|---|
+| `moj contest --json -c treino whoami` | the raw `/auth/status` JSON, role flags included |
+| no session for a contest | rbx's own `moj-contest login <cid>` message |
+| `/contest/allsubmissions` as a non-judge | `403 judge_required`, surfaced with MOJ's wording |
+| well-formed id, no such submission | reported by rbx before the download is attempted |
+| malformed id | refused locally, no request made |
+| `MOJ_CONTEST` shorthand | resolves, end to end through `rbx download remote` |
+| pending submission | "still judging", not MOJ's `404` |
+| **judged submission** | **downloaded byte-identical, named `<subid>.cpp`** |
+
+The success path was verified by submitting a throwaway to `rsalesc#rbxt-3b302f1b` -- one
+of rbx's own private, disposable problems -- and downloading it back. Note the history row
+spells the language `CPP`, uppercase, which is why the extension is derived through
+`normalize_moj_language` rather than used as it arrives.
+
+Still unverified: the judge listing (`/contest/allsubmissions` with a judge account) and
+therefore a download of *someone else's* submission. No judge account was available.

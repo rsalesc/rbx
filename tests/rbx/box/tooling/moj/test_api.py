@@ -138,7 +138,7 @@ def test_parses_the_seven_field_own_history_form():
     line = f'1755000000:ana:A:cpp:Accepted:1755000000:{_SUB}'
 
     assert api.parse_submission_line(line) == api.SubmissionRow(
-        subid=_SUB, lang='cpp', epoch=1755000000
+        subid=_SUB, lang='cpp', epoch=1755000000, verdict='Accepted'
     )
 
 
@@ -310,3 +310,48 @@ def test_moj_host_is_sent_when_set(monkeypatch: pytest.MonkeyPatch, get_calls):
     api.list_submissions('sbc2026', 'tok', any_submission=False)
 
     assert calls[0]['headers']['Host'] == 'moj.local'
+
+
+def test_the_verdict_is_read_off_the_line():
+    line = f'1755000000:ana:A:cpp:Wrong Answer:1755000000:{_SUB}'
+
+    row = api.parse_submission_line(line)
+
+    assert row is not None
+    assert row.verdict == 'Wrong Answer'
+    assert not row.is_pending
+
+
+def test_a_colon_bearing_verdict_is_kept_whole():
+    line = f'1755000000:ana:A:java:Judge Error: No_Servers:1755000000:{_SUB}:Ana:U'
+
+    row = api.parse_submission_line(line)
+
+    assert row is not None
+    assert row.verdict == 'Judge Error: No_Servers'
+
+
+@pytest.mark.parametrize(
+    'verdict', ['Not Answered Yet', 'On queue', 'on queue', 'Running', '']
+)
+def test_a_submission_still_being_judged_is_pending(verdict: str):
+    """Observed live: a fresh submission sits at `Not Answered Yet`.
+
+    Its source is not archived until the judging daemon has a verdict, so this
+    is what stands between a setter and a `404` that reads as "no such id".
+    """
+    line = f'1755000000:ana:A:cpp:{verdict}:1755000000:{_SUB}'
+
+    row = api.parse_submission_line(line)
+
+    assert row is not None
+    assert row.is_pending
+
+
+def test_an_accepted_submission_is_not_pending():
+    line = f'1755000000:ana:A:cpp:Accepted:1755000000:{_SUB}'
+
+    row = api.parse_submission_line(line)
+
+    assert row is not None
+    assert not row.is_pending

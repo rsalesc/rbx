@@ -184,6 +184,16 @@ class MojExpander(Expander):
                 )
             )
 
+        if row.is_pending:
+            # The judging daemon archives the source only once it has a verdict,
+            # so downloading now would answer `404 source_notfound` -- the same
+            # reply as for an id that does not exist, about one just listed.
+            raise MojCliError(
+                f'MOJ is still judging submission `{subid}` (`{row.verdict}`).\n'
+                f'Its source is only downloadable once it has a verdict; try '
+                f'again in a moment.'
+            )
+
         source = api.download_source(contest, token, row)
 
         # MOJ sends no filename with the source, so one is built. The extension

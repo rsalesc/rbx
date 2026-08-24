@@ -474,7 +474,9 @@ class TestMojExpander:
     def test_expand_downloads_the_source_under_the_right_extension(
         self, testing_pkg: testing_package.TestingPackage, monkeypatch
     ):
-        row = api.SubmissionRow(subid=_SUB, lang='cpp', epoch=1755000000)
+        row = api.SubmissionRow(
+            subid=_SUB, lang='cpp', epoch=1755000000, verdict='Accepted'
+        )
         monkeypatch.setattr(
             remote.cli, 'contest_whoami', lambda c: self._who(is_judge=True)
         )
@@ -502,7 +504,9 @@ class TestMojExpander:
         which one can be asked at all.
         """
         seen = {}
-        row = api.SubmissionRow(subid=_SUB, lang='cpp', epoch=1755000000)
+        row = api.SubmissionRow(
+            subid=_SUB, lang='cpp', epoch=1755000000, verdict='Accepted'
+        )
 
         def fake_list(contest, token, any_submission):
             seen['any'] = any_submission
@@ -523,7 +527,9 @@ class TestMojExpander:
         self, testing_pkg: testing_package.TestingPackage, monkeypatch
     ):
         seen = {}
-        row = api.SubmissionRow(subid=_SUB, lang='cpp', epoch=1755000000)
+        row = api.SubmissionRow(
+            subid=_SUB, lang='cpp', epoch=1755000000, verdict='Accepted'
+        )
 
         def fake_list(contest, token, any_submission):
             seen['any'] = any_submission
@@ -568,7 +574,9 @@ class TestMojExpander:
         self, testing_pkg: testing_package.TestingPackage, monkeypatch
     ):
         """What MOJ's web UI names the download, when rbx claims no such language."""
-        row = api.SubmissionRow(subid=_SUB, lang='Kt', epoch=1755000000)
+        row = api.SubmissionRow(
+            subid=_SUB, lang='Kt', epoch=1755000000, verdict='Accepted'
+        )
         monkeypatch.setattr(
             remote.cli, 'contest_whoami', lambda c: self._who(is_judge=True)
         )
@@ -591,3 +599,37 @@ class TestMojExpander:
     def test_the_download_needs_review(self):
         """Third-party code entering the package, exactly as with BOCA."""
         assert remote.MojExpander().needs_review()
+
+    def test_a_submission_still_being_judged_is_not_downloaded(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        """Observed live on 2026-08-24, and the reason this check exists.
+
+        MOJ archives the source only after the judging daemon produces a verdict,
+        so asking for a pending one gets `404 source_notfound` -- byte for byte
+        the reply for an id that does not exist, about a submission rbx has just
+        listed. Saying "still judging" is the difference between waiting a moment
+        and hunting for a wrong id.
+        """
+        downloaded = []
+        row = api.SubmissionRow(
+            subid=_SUB, lang='cpp', epoch=1755000000, verdict='Not Answered Yet'
+        )
+        monkeypatch.setattr(
+            remote.cli, 'contest_whoami', lambda c: self._who(is_judge=True)
+        )
+        monkeypatch.setattr(remote.api, 'read_token', lambda c: 'tok')
+        monkeypatch.setattr(
+            remote.api, 'list_submissions', lambda c, t, any_submission: {_SUB: row}
+        )
+        monkeypatch.setattr(
+            remote.api,
+            'download_source',
+            lambda c, t, r: downloaded.append(r) or 'x\n',
+        )
+
+        with pytest.raises(MojCliError) as exc_info:
+            remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        assert 'still judging' in str(exc_info.value)
+        assert not downloaded

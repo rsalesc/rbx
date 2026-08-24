@@ -42,12 +42,33 @@ TREINO = 'treino'
 _TIMEOUT_S = 30
 
 
+# The verdicts that mean the judge has not finished. Taken from `moj-comp`'s own
+# `_watch_verdict`, which polls until the verdict leaves this set, and matched
+# case-insensitively because it lists `On queue` and `on queue` both.
+#
+# An empty verdict counts: the same loop treats it as still in flight.
+PENDING_VERDICTS = frozenset({'', 'not answered yet', 'on queue', 'running', 'judging'})
+
+
 class SubmissionRow(BaseModel):
     """One line of a MOJ history listing, reduced to what a download needs."""
 
     subid: str
     lang: str
     epoch: int
+    verdict: str = ''
+
+    @property
+    def is_pending(self) -> bool:
+        """Whether the judge is still working on this submission.
+
+        Worth knowing before a download, because the source is archived by the
+        judging daemon *after* it produces a verdict (`FLOW.md`, step 5). Ask for
+        a pending submission's source and MOJ answers `404 source_notfound` --
+        the same reply it gives for an id that does not exist, about one that
+        plainly does and that rbx has just listed.
+        """
+        return self.verdict.strip().lower() in PENDING_VERDICTS
 
 
 def config_dir() -> pathlib.Path:
@@ -162,11 +183,18 @@ def parse_submission_line(line: str) -> Optional[SubmissionRow]:
     match = _ROW_RE.search(line)
     if match is None:
         return None
-    fields = line.split(':')
-    if len(fields) < 4:
+
+    # Everything before the anchored pair is `tempo:user:probid:lang:verdict`,
+    # and the verdict is whatever is left once the four fixed fields are taken --
+    # which is how a verdict carrying colons survives being read.
+    fields = line[: match.start()].split(':')
+    if len(fields) < 5:
         return None
     return SubmissionRow(
-        subid=match.group(2), lang=fields[3], epoch=int(match.group(1))
+        subid=match.group(2),
+        lang=fields[3],
+        epoch=int(match.group(1)),
+        verdict=':'.join(fields[4:]),
     )
 
 
