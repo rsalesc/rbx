@@ -11,7 +11,7 @@
  */
 import * as path from 'path';
 
-import { Wire, asArray, asNumber, asRecord, asString, field } from './wire';
+import { Wire, asArray, asBoolean, asNumber, asRecord, asString, field } from './wire';
 
 /** rbx.box.generation_schema.GenerationTestcaseEntry, as embedded in the skeleton. */
 export interface TestcaseEntry {
@@ -94,6 +94,19 @@ export interface Skeleton {
    * an rbx too old to write the field, which reads the same way on purpose.
    */
   readonly compilation: readonly CompilationEntry[];
+  /**
+   * Whether the run was sanitized (`rbx run -s`), which drops the problem's
+   * time limit for the environment default. Every time in the view is then a
+   * measurement against a limit the package never declared.
+   */
+  readonly sanitized: boolean;
+  /**
+   * Whether rbx narrowed the run to the ACCEPTED solutions on its own, which
+   * it does for a sanitized run that named no solutions. The view then shows a
+   * subset of the package's solutions with nothing saying why the rest are
+   * missing.
+   */
+  readonly onlyAccepted: boolean;
 }
 
 export interface Evaluation {
@@ -116,6 +129,15 @@ export interface Evaluation {
    * `GroupReport.unexpectedNoTleVerdicts`.
    */
   readonly noTleOutcome?: string;
+  /**
+   * Whether this run tripped a sanitizer.
+   *
+   * Unlike `noTleOutcome`, this needs no answer from rbx to be worth showing:
+   * it is a fact about this run alone rather than a verdict to be weighed
+   * against an expectation, so the row can carry it directly. It is also the
+   * only thing that says *which* stderr is worth opening.
+   */
+  readonly sanitizerWarnings?: boolean;
 }
 
 /**
@@ -200,7 +222,15 @@ export function parseSkeleton(raw: Wire): Skeleton | undefined {
     }
   }
 
-  return { solutions, entries, groups, compilation: parseCompilation(root) };
+  return {
+    solutions,
+    entries,
+    groups,
+    compilation: parseCompilation(root),
+    // snake_case on the wire: `skeleton.yml` is a dump of the Pydantic model.
+    sanitized: asBoolean(root.sanitized) ?? false,
+    onlyAccepted: asBoolean(root.only_accepted) ?? false,
+  };
 }
 
 function parseWarning(raw: Wire): CompilationWarning | undefined {
@@ -260,6 +290,7 @@ export function parseEvaluation(raw: Wire): Evaluation | undefined {
     time: asNumber(field(raw, 'log', 'time')),
     memory: asNumber(field(raw, 'log', 'memory')),
     noTleOutcome: asString(field(raw, 'result', 'no_tle_outcome')),
+    sanitizerWarnings: asBoolean(field(raw, 'result', 'sanitizer_warnings')),
   };
 }
 

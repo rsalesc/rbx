@@ -24,6 +24,7 @@ import type {
   Mismatched,
   Row,
   RunViewModel,
+  RunNotice,
   RunWarning,
   ScoreMismatch,
   SolutionDetail,
@@ -123,6 +124,50 @@ function warningText(warning: RunWarning): string {
       const verdicts = warning.verdicts.map((verdict) => verdict.text).join(' ');
       return `Still finished in double TL, but failed with ${verdicts}${where}.`;
     }
+    case 'sanitizer':
+      // Pointed at the stderr the way the console's own warning is: the
+      // sanitizer's complaint is there in full, and nothing shorter than it
+      // says what was actually wrong.
+      return `Sanitizer errors or warnings${where}. See the testcase's stderr.`;
+  }
+}
+
+/**
+ * What kind of run this is, when it is not an ordinary one.
+ *
+ * Two spellings, because the strip is a sidebar-width bar and the reason a
+ * notice matters does not fit in one: the label is what the bar can afford, and
+ * `noticeTitle` is the sentence that explains it, on hover. Writing only the
+ * sentence made the notices the largest thing in the view, standing above the
+ * counts that are the reason the strip exists at all.
+ *
+ * In the strip rather than a bar of its own: the strip is already where a
+ * reader looks for "is there anything I should know before reading these
+ * rows", and a second bar would push the tree down on every sanitized run.
+ * Which notices a run gets is rbx's decision -- see `RunNotice`.
+ */
+function noticeText(notice: RunNotice): string {
+  switch (notice.kind) {
+    case 'sanitized-run':
+      return 'sanitized \u2014 no time limit';
+    case 'accepted-only':
+      return 'ACCEPTED only';
+  }
+}
+
+/** The whole of what a notice means, for the tooltip the label cannot hold. */
+function noticeTitle(notice: RunNotice): string {
+  switch (notice.kind) {
+    case 'sanitized-run':
+      return (
+        'This run was sanitized, so the time limit was dropped for the environment ' +
+        'default. The times below are not measured against the limit this problem declares.'
+      );
+    case 'accepted-only':
+      return (
+        'No solutions were named, so a sanitized run judged only the ones declared ' +
+        'ACCEPTED. This package\u2019s other solutions were never run.'
+      );
   }
 }
 
@@ -655,7 +700,10 @@ export function renderTree(model: RunViewModel, state: UiState): string {
  * filter box therefore cannot live here -- see `renderFilter`.
  */
 export function renderHeader(model: RunViewModel, _state: UiState): string {
-  if (model.mismatches === 0 && model.warned === 0) {
+  // Notices count as something to say: a sanitized run is exactly the run that
+  // trips neither counter, and the strip returning nothing there is what left
+  // its dropped time limit unsaid.
+  if (model.mismatches === 0 && model.warned === 0 && model.notices.length === 0) {
     return '';
   }
   const solutions = model.rows.filter((row) => row.kind === 'solution').length;
@@ -669,15 +717,31 @@ export function renderHeader(model: RunViewModel, _state: UiState): string {
     (model.warned === 0
       ? ''
       : `<span class="header-count header-warned">${codicon('warning')}${model.warned} warned</span>`);
-  return (
-    '<div class="header">' +
-    counts +
-    // Only when there is a mismatch to walk to: the button steps through the
-    // `mismatch` rows, and offering it on a run that has none is a control that
-    // does nothing.
-    (model.mismatches === 0 ? '' : '<button id="next-mismatch">next ›</button>') +
-    '</div>'
-  );
+  // One `info` for the line rather than one per notice: they are facts about
+  // the same run, and a column of icons down a two-item line reads as two
+  // separate alarms. `info`, not `warning` -- the run is not wrong, it is a
+  // different kind of run.
+  const notices =
+    model.notices.length === 0
+      ? ''
+      : `<div class="header-line header-notices">${codicon('info')}` +
+        model.notices
+          .map(
+            (notice) =>
+              `<span class="header-notice" title="${escapeAttr(noticeTitle(notice))}">` +
+              `${escapeHtml(noticeText(notice))}</span>`,
+          )
+          .join(SEPARATOR) +
+        '</div>';
+  // Only when there is a mismatch to walk to: the button steps through the
+  // `mismatch` rows, and offering it on a run that has none is a control that
+  // does nothing.
+  const button = model.mismatches === 0 ? '' : `<button id="next-mismatch">next ›</button>`;
+  // The counts keep the top line to themselves and the notices take the one
+  // below, so a notice never competes for width with the number of misses --
+  // and a run with only notices draws no empty line above them.
+  const top = counts === '' ? '' : `<div class="header-line">${counts}${button}</div>`;
+  return '<div class="header">' + top + notices + '</div>';
 }
 
 /**
@@ -750,15 +814,22 @@ export function renderSelector(problems: readonly ProblemChoice[], selected?: st
   );
 }
 
-/** The two buttons every finding row carries, on the right of its summary. */
+/** The buttons a finding row carries, on the right of its summary. */
 function findingActions(row: FindingRow): string {
   // Buttons, not just a row-wide click: the row already has a meaning when
   // clicked (open the log, or expand), and "take me to the source" is a second
   // destination that would otherwise have nowhere to be asked for.
+  //
+  // The log button is the compile phase's alone. A sanitizer row's solution
+  // compiled like any other, so its compiler output says nothing about what
+  // the row is reporting, and a button that opens an unremarkable log is worse
+  // than no button.
   return (
     '<span class="finding-actions">' +
     `<button class="finding-action" data-action="source" title="Open ${escapeAttr(row.label)}">${codicon('go-to-file')}</button>` +
-    `<button class="finding-action" data-action="log" title="Open compiler output">${codicon('output')}</button>` +
+    (row.kind === 'compilation'
+      ? `<button class="finding-action" data-action="log" title="Open compiler output">${codicon('output')}</button>`
+      : '') +
     '</span>'
   );
 }
@@ -800,7 +871,7 @@ function findingRowHtml(row: FindingRow, expanded: boolean): string {
     ? `<button class="finding-twisty codicon codicon-${expanded ? 'chevron-down' : 'chevron-right'}" aria-expanded="${expanded}" title="Show warnings"></button>`
     : '<span class="finding-twisty"></span>';
   return (
-    `<div class="finding-row severity-${row.severity}" ` +
+    `<div class="finding-row severity-${row.severity} finding-${row.kind}" ` +
     `data-id="${escapeAttr(row.id)}" ` +
     `data-vscode-context='${escapeAttr(
       JSON.stringify({

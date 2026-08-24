@@ -28,7 +28,14 @@ function solution(index: number, groups: readonly GroupRun[]): SolutionRun {
 
 function run(solutions: readonly SolutionRun[]): PackageRun {
   return {
-    skeleton: { solutions: [], entries: [], groups: [], compilation: [] },
+    skeleton: {
+      solutions: [],
+      entries: [],
+      groups: [],
+      compilation: [],
+      sanitized: false,
+      onlyAccepted: false,
+    },
     solutions,
     findings: [],
   };

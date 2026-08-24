@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { test } from 'node:test';
 
-import { parseSkeleton } from './model';
+import { parseEvaluation, parseSkeleton } from './model';
 
 // The extension and the installed `rbx-cp` drift independently, so every one of
 // these is about a skeleton this extension is the wrong age for. None of them
@@ -148,4 +148,36 @@ test('a testcase entry written by an rbx that records no script reads clean', ()
   assert.strictEqual(entry?.copiedFrom, 'tests/manual/01.in');
   assert.strictEqual(entry?.generatorScript, undefined);
   assert.strictEqual(entry?.generatorScriptLine, undefined);
+});
+
+
+test('an evaluation carries the sanitizer flag off its own .eval', () => {
+  // The one warning a testcase row can raise on its own account: no
+  // expectation has to be matched to know a sanitizer fired here.
+  const evaluation = parseEvaluation({
+    result: { outcome: 'accepted', sanitizer_warnings: true },
+    log: { time: 0.01 },
+  });
+  assert.strictEqual(evaluation?.outcome, 'accepted');
+  assert.strictEqual(evaluation?.sanitizerWarnings, true);
+});
+
+test('an evaluation that tripped nothing leaves the flag alone', () => {
+  const evaluation = parseEvaluation({ result: { outcome: 'accepted' }, log: {} });
+  assert.strictEqual(evaluation?.sanitizerWarnings, undefined);
+});
+
+
+test('a sanitized run is read off the skeleton', () => {
+  const skeleton = parseSkeleton({ ...MINIMAL, sanitized: true, only_accepted: true });
+  assert.strictEqual(skeleton?.sanitized, true);
+  assert.strictEqual(skeleton?.onlyAccepted, true);
+});
+
+test('an ordinary run says so by omission', () => {
+  // Which is also what a skeleton written by an rbx predating the fields says,
+  // and the two must read the same.
+  const skeleton = parseSkeleton(MINIMAL);
+  assert.strictEqual(skeleton?.sanitized, false);
+  assert.strictEqual(skeleton?.onlyAccepted, false);
 });

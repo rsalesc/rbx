@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import type { PackageLayout } from './layout';
 import type { PackageRunView } from './nodes';
 import type { GroupReport, SolutionReport } from './report';
-import type { CompilationEntry } from './model';
+import type { CompilationEntry, Skeleton } from './model';
 import type {
   CompilationFinding,
   GroupRun,
@@ -45,6 +45,7 @@ function groupReport(over: Partial<GroupReport> = {}): GroupReport {
     maxScore: 0,
     runUnderDoubleTl: false,
     doubleTlVerdicts: [],
+    sanitizerWarnings: false,
     unexpectedNoTleVerdicts: [],
     ...over,
   };
@@ -71,6 +72,7 @@ function solutionReport(over: Partial<SolutionReport> = {}): SolutionReport {
     failedGroups: [],
     runUnderDoubleTl: false,
     doubleTlVerdicts: [],
+    sanitizerWarnings: false,
     groups: [],
     ...over,
   };
@@ -89,9 +91,18 @@ function solution(
 function run(
   solutions: readonly SolutionRun[],
   findings: readonly CompilationFinding[] = [],
+  skeleton: Partial<Skeleton> = {},
 ): PackageRun {
   return {
-    skeleton: { solutions: [], entries: [], groups: [], compilation: [] },
+    skeleton: {
+      solutions: [],
+      entries: [],
+      groups: [],
+      compilation: [],
+      sanitized: false,
+      onlyAccepted: false,
+      ...skeleton,
+    },
     solutions,
     findings,
   };
@@ -100,8 +111,9 @@ function run(
 function view(
   solutions: readonly SolutionRun[],
   findings: readonly CompilationFinding[] = [],
+  skeleton: Partial<Skeleton> = {},
 ): PackageRunView {
-  return { pkg: PKG, run: run(solutions, findings) };
+  return { pkg: PKG, run: run(solutions, findings, skeleton) };
 }
 
 function finding(
@@ -792,9 +804,98 @@ test('a warned solution is counted apart from a mismatched one', () => {
   assert.strictEqual(warned, 1);
 });
 
-test('a testcase is never warned: the fact is decided a layer above it', () => {
+test('a testcase carries no double-TL warning: that fact is decided a layer above it', () => {
   const { rows } = buildViewModel(view([BORDERLINE_SLOW]));
   assert.deepStrictEqual(rowById(rows, '/w/a::0::big::001').warnings, []);
+});
+
+// A solution that passed and still tripped a sanitizer. Every channel that
+// answers "did the declaration hold" says yes, which is the whole reason the
+// warning has to be a fourth one.
+const SANITIZED = solution(
+  0,
+  'sols/main.cpp',
+  'ACCEPTED',
+  [
+    group('small', [testcase('000', 'accepted')], groupReport({ name: 'small' })),
+    group(
+      'big',
+      [
+        testcase('001', 'accepted'),
+        testcase('002', 'accepted', { evaluation: { outcome: 'accepted', sanitizerWarnings: true } }),
+      ],
+      groupReport({ name: 'big', sanitizerWarnings: true }),
+    ),
+  ],
+  solutionReport({
+    sanitizerWarnings: true,
+    groups: [
+      groupReport({ name: 'small' }),
+      groupReport({ name: 'big', sanitizerWarnings: true }),
+    ],
+  }),
+);
+
+test('a solution that passed with a sanitizer finding is warned, not clean', () => {
+  const { rows, warned, mismatches } = buildViewModel(view([SANITIZED]));
+  const row = rowById(rows, '/w/a::0');
+
+  assert.strictEqual(row.gutter, 'warned');
+  assert.strictEqual(row.mismatch, false);
+  assert.deepStrictEqual(
+    row.warnings.map((warning) => warning.kind),
+    ['sanitizer'],
+  );
+  // Named, so the reader is not sent through every group looking for it.
+  assert.deepStrictEqual(row.warnings[0].groups, ['big']);
+  assert.strictEqual(warned, 1);
+  assert.strictEqual(mismatches, 0);
+});
+
+test('a group row carries the finding without repeating its own name', () => {
+  const { rows } = buildViewModel(view([SANITIZED]));
+  assert.deepStrictEqual(rowById(rows, '/w/a::0::small').warnings, []);
+  const big = rowById(rows, '/w/a::0::big');
+  assert.deepStrictEqual(
+    big.warnings.map((warning) => warning.kind),
+    ['sanitizer'],
+  );
+  assert.deepStrictEqual(big.warnings[0].groups, []);
+});
+
+test('a sanitized testcase carries the mark, so the reader knows which stderr', () => {
+  const { rows } = buildViewModel(view([SANITIZED]));
+  assert.strictEqual(rowById(rows, '/w/a::0::big::001').gutter, 'none');
+  const marked = rowById(rows, '/w/a::0::big::002');
+  assert.strictEqual(marked.gutter, 'warned');
+  assert.deepStrictEqual(
+    marked.warnings.map((warning) => warning.kind),
+    ['sanitizer'],
+  );
+  assert.ok(marked.search.includes('sanitizer'));
+});
+
+test('a marked testcase is not counted as a warned solution', () => {
+  // The strip counts solutions. A run whose solution row is clean must not be
+  // reported as warned because a testcase row underneath carries a mark.
+  const testcaseOnly = solution(0, 'sols/main.cpp', 'ACCEPTED', [
+    group('main', [
+      testcase('000', 'accepted', {
+        evaluation: { outcome: 'accepted', sanitizerWarnings: true },
+      }),
+    ]),
+  ]);
+  const { warned } = buildViewModel(view([testcaseOnly]));
+  assert.strictEqual(warned, 0);
+});
+
+test('a sanitizer warning does not answer to a double-tl filter', () => {
+  const { rows } = buildViewModel(view([SANITIZED]));
+  const search = rowById(rows, '/w/a::0').search;
+  assert.ok(search.includes('warning'));
+  assert.ok(search.includes('sanitizer'));
+  // The token used to be a fixed pair, so this row claimed a fact it never had.
+  assert.ok(!search.includes('double-tl'));
 });
 
 test('a warned row is reachable by filtering for it', () => {
@@ -955,6 +1056,49 @@ test('a solution that failed to compile is reported though it is in no row', () 
   assert.strictEqual(findings.rows.length, 1);
   assert.strictEqual(findings.rows[0].severity, 'error');
   assert.strictEqual(findings.rows[0].summary, 'CE');
+});
+
+test('a solution that tripped a sanitizer gets a row of its own in the panel', () => {
+  // Not a compile finding, and in the panel anyway: the tree answers per
+  // solution, and the panel is where a reader asks what this run had to say
+  // about the package as a list.
+  const model = buildViewModel(view([SANITIZED]));
+  const findings = model.findings;
+  assert.ok(findings !== undefined);
+  assert.strictEqual(findings.rows.length, 1);
+  const row = findings.rows[0];
+  assert.strictEqual(row.kind, 'sanitizer');
+  assert.strictEqual(row.label, 'main.cpp');
+  // The count is the testcases that tripped, not the groups and not the whole
+  // testset: one in `edge`-like `big`, two more nowhere.
+  assert.strictEqual(row.summary, '1 sanitized');
+  // Never an error: the solution compiled, ran and answered.
+  assert.strictEqual(row.severity, 'warning');
+  assert.strictEqual(findings.errors, false);
+  // Nothing to expand, and its own click goes to the source rather than to a
+  // compile log that says nothing about it.
+  assert.deepStrictEqual(row.warnings, []);
+  assert.strictEqual(row.primaryCommand, 'rbx.openSolution');
+  // The solution's own id, so every action resolves to the node the host
+  // already knows.
+  assert.strictEqual(row.id, '/w/a::0');
+});
+
+test('a run whose sanitizer never fired carries no panel', () => {
+  assert.strictEqual(buildViewModel(view([MAIN])).findings, undefined);
+});
+
+test('a sanitizer row joins the compile findings rather than replacing them', () => {
+  const model = buildViewModel(
+    view([SANITIZED], [finding('sols/broken.cpp', { status: 'FAILED' })]),
+  );
+  const kinds = model.findings?.rows.map((row) => row.kind);
+  // The compile phase first: a solution that never compiled never reached a
+  // sanitizer.
+  assert.deepStrictEqual(kinds, ['compilation', 'sanitizer']);
+  assert.strictEqual(model.findings?.badge, 2);
+  // Still opened by the compile error alone.
+  assert.strictEqual(model.findings?.errors, true);
 });
 
 test('the badge counts rows and reddens as soon as one failed to compile', () => {
@@ -1180,4 +1324,29 @@ test('only testcases carry a card', () => {
   assert.strictEqual(rowById(rows, '/w/a::0').card, undefined);
   assert.strictEqual(rowById(rows, '/w/a::0::main').card, undefined);
   assert.notStrictEqual(rowById(rows, '/w/a::0::main::000').card, undefined);
+});
+
+
+test('a sanitized run carries its notices', () => {
+  const { notices } = buildViewModel(
+    view([MAIN], [], { sanitized: true, onlyAccepted: true }),
+  );
+  assert.deepStrictEqual(
+    notices.map((notice) => notice.kind),
+    ['sanitized-run', 'accepted-only'],
+  );
+});
+
+test('a sanitized run the user narrowed themselves says only the first', () => {
+  // Naming solutions on the command line is a deliberate act, so the shortened
+  // list is not news; the dropped time limit still is.
+  const { notices } = buildViewModel(view([MAIN], [], { sanitized: true }));
+  assert.deepStrictEqual(
+    notices.map((notice) => notice.kind),
+    ['sanitized-run'],
+  );
+});
+
+test('an ordinary run carries no notices', () => {
+  assert.deepStrictEqual(buildViewModel(view([MAIN])).notices, []);
 });

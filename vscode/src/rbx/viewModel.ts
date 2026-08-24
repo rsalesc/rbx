@@ -18,7 +18,7 @@
  */
 import { ExpectationDisplay, expectationDisplay } from './expectation';
 import { Hue, hueOfScore, hueOfThemeColor } from './hue';
-import { TestcaseEntry } from './model';
+import { Skeleton, TestcaseEntry } from './model';
 import {
   FindingNode,
   GroupNode,
@@ -131,7 +131,7 @@ export interface GroupMismatch {
  * Which run deserves a warning is rbx's decision, published in `report.yml`; the
  * only thing decided here is which words and which glyph carry it.
  */
-export type WarningKind = 'double-tl-passed' | 'double-tl-verdicts';
+export type WarningKind = 'double-tl-passed' | 'double-tl-verdicts' | 'sanitizer';
 
 export interface WarningVerdict {
   readonly text: string;
@@ -149,6 +149,20 @@ export interface RunWarning {
    * on a solution whose pooled layer raised the warning with no group doing so.
    */
   readonly groups: readonly string[];
+}
+
+/**
+ * A fact about the run itself rather than about any solution in it.
+ *
+ * Apart from `RunWarning` because no row owns one: a sanitized run affects
+ * every solution shown, and every solution it kept from being shown. Which
+ * notices a run gets is rbx's answer, published on the skeleton; only the words
+ * are decided here.
+ */
+export type NoticeKind = 'sanitized-run' | 'accepted-only';
+
+export interface RunNotice {
+  readonly kind: NoticeKind;
 }
 
 export interface Mismatched {
@@ -335,6 +349,21 @@ export interface FindingWarning {
  */
 export interface FindingRow {
   readonly id: string;
+  /**
+   * Which phase this row is about.
+   *
+   * The panel started as the compile phase's alone, and `sanitizer` is the one
+   * row in it that is not: the solution compiled, ran, and tripped a sanitizer
+   * while doing so. It is here because the panel is where a reader goes to ask
+   * "what did this run have to say about my solutions, as a list" -- the tree
+   * answers per solution, and a fact spread over three testcases in two groups
+   * is exactly the thing a list summarises better than a tree.
+   *
+   * It decides what the row can offer: a sanitizer row has no compiler output
+   * to open, and clicking it goes to the source rather than to a log that says
+   * nothing about it.
+   */
+  readonly kind: 'compilation' | 'sanitizer';
   readonly label: string;
   readonly labelTitle?: string;
   readonly labelHue?: Hue;
@@ -347,6 +376,8 @@ export interface FindingRow {
   readonly warnings: readonly FindingWarning[];
   /** The `webviewSection` a context menu keys on. */
   readonly section: string;
+  /** What clicking the row itself does, when it has nothing to expand. */
+  readonly primaryCommand: string;
 }
 
 export interface Findings {
@@ -380,6 +411,14 @@ export interface RunViewModel {
    * presence is itself the signal, exactly as the header strip's is.
    */
   readonly findings?: Findings;
+  /**
+   * What kind of run this is, when it is not an ordinary one -- see
+   * `RunNotice`. Usually empty.
+   *
+   * Required rather than optional, for the reason `Row.warnings` is: a model
+   * that forgot to answer the question would silently draw nothing.
+   */
+  readonly notices: readonly RunNotice[];
 }
 
 /**
@@ -389,7 +428,37 @@ export interface RunViewModel {
  * so there is no layout to invent one for. Shared by both halves so the client's
  * starting state and the host's answer for an empty workspace cannot drift.
  */
-export const EMPTY_MODEL: RunViewModel = { rows: [], mismatches: 0, warned: 0, empty: true };
+export const EMPTY_MODEL: RunViewModel = {
+  rows: [],
+  mismatches: 0,
+  warned: 0,
+  empty: true,
+  notices: [],
+};
+
+/**
+ * The notices a run's own mode earns it.
+ *
+ * Read off the skeleton, which rbx writes when the run *starts*, so the banner
+ * is up while the solutions are still going rather than arriving with the first
+ * finished one.
+ */
+function noticesOf(skeleton: Skeleton | undefined): RunNotice[] {
+  if (skeleton === undefined) {
+    return [];
+  }
+  const notices: RunNotice[] = [];
+  if (skeleton.sanitized) {
+    notices.push({ kind: 'sanitized-run' });
+  }
+  // Only the narrowing rbx did on its own. A user who named solutions asked for
+  // that subset and needs no banner about it, which is why rbx publishes the
+  // two facts apart.
+  if (skeleton.onlyAccepted) {
+    notices.push({ kind: 'accepted-only' });
+  }
+  return notices;
+}
 
 function chip(outcome: string | undefined, under?: WarningVerdict): VerdictChip {
   const { icon, color } = outcomeIcon(outcome);
@@ -529,9 +598,11 @@ function haystack(
   // a TLE as well as the ones that got one -- which, on a solution declared
   // slow, are not the same rows. Deduplicated because on the common row the
   // two agree, and `sols/main.cpp ac ac` is a haystack that says nothing twice.
-  // `warning` and `double-tl` both filter to a warned row: the first is what a
-  // user scanning for anything wrong types, the second what someone who already
-  // knows what they are hunting types.
+  // `warning` filters to any warned row -- what a user scanning for anything
+  // wrong types -- and a token per kind serves someone who already knows what
+  // they are hunting. Per kind and not a fixed pair: a solution that only
+  // tripped a sanitizer used to answer to `double-tl`, which is a filter that
+  // lies. Duplicates cost nothing; the parts go through a `Set` below.
   const parts = [
     subject,
     verdict?.short,
@@ -540,7 +611,10 @@ function haystack(
     verdict?.under?.text,
     expectation?.label,
     mismatch ? 'mismatch' : undefined,
-    ...(warnings.length === 0 ? [] : ['warning', 'double-tl']),
+    ...(warnings.length === 0 ? [] : ['warning']),
+    ...warnings.map((warning) =>
+      warning.kind === 'sanitizer' ? 'sanitizer' : 'double-tl',
+    ),
     ...warnings.flatMap((warning) => warning.verdicts.map((verdict) => verdict.text)),
   ]
     .filter((part): part is string => part !== undefined)
@@ -655,6 +729,16 @@ function warningsOf(
         solution === undefined
           ? []
           : warnedGroups(solution, (group) => group.doubleTlVerdicts.length > 0),
+    });
+  }
+  if (report.sanitizerWarnings) {
+    warnings.push({
+      kind: 'sanitizer',
+      verdicts: [],
+      groups:
+        solution === undefined
+          ? []
+          : warnedGroups(solution, (group) => group.sanitizerWarnings),
     });
   }
   return warnings;
@@ -898,14 +982,24 @@ function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row 
   const { testcase } = node;
   const evaluation = testcase.evaluation;
   const verdict = chip(evaluation?.outcome, hiddenVerdict(testcase, node.group.report));
+  // A double-TL fact is decided over a whole group or a whole solution, never
+  // over one testcase: a single soft TLE says nothing until it is weighed
+  // against the expectation the layer above it declared. A sanitizer finding
+  // needed no such weighing -- it is exactly a fact about this run -- and this
+  // is the only row that can say *which* stderr is worth opening.
+  const warnings: RunWarning[] =
+    evaluation?.sanitizerWarnings === true
+      ? [{ kind: 'sanitizer', verdicts: [], groups: [] }]
+      : [];
   return {
     id: nodeId(node),
     parentId,
     depth,
     kind: 'testcase',
-    // A testcase declares no expectation of its own; only the solution and, via
-    // `outcomePerGroup`, the group do.
-    gutter: 'none',
+    // A testcase declares no expectation of its own -- only the solution and,
+    // via `outcomePerGroup`, the group do -- so nothing here is ever `met` or
+    // `missed`. `warned` is the one thing a testcase row has to say alone.
+    gutter: warnings.length > 0 ? 'warned' : 'none',
     label: testcase.stem,
     labelBold: false,
     // The checker's message is deliberately left off the *row*. It is a
@@ -918,15 +1012,18 @@ function testcaseRow(node: TestcaseNode, depth: number, parentId?: string): Row 
       span(formatMemory(evaluation?.memory), 'dim', 'memory'),
     ]),
     verdict,
-    // A double-TL fact is decided over a whole group or a whole solution, never
-    // over one testcase: a single soft TLE says nothing until it is weighed
-    // against the expectation the layer above it declared.
-    warnings: [],
+    warnings,
     mismatch: false,
     expandable: false,
     defaultExpanded: false,
     card: testcaseCard(node),
-    search: haystack(`${node.group.name}/${testcase.stem}`, verdict, false),
+    search: haystack(
+      `${node.group.name}/${testcase.stem}`,
+      verdict,
+      false,
+      undefined,
+      warnings,
+    ),
     section: 'rbx.testcase',
     // Two panes, not one file. Which channel the second pane opens on is the
     // opener's state rather than the row's -- it is sticky across testcases, so
@@ -997,7 +1094,69 @@ function findingRow(node: FindingNode, label: string): FindingRow {
       title: warning.msg,
     })),
     section: 'rbx.finding',
+    kind: 'compilation',
+    // A row that failed to compile has nothing to expand, so clicking it goes
+    // where the answer is -- the compiler's own output.
+    primaryCommand: 'rbx.openCompileLog',
   };
+}
+
+/**
+ * One row per solution that tripped a sanitizer, however often it did.
+ *
+ * `report.sanitizerWarnings` decides whether the row exists -- rbx's answer,
+ * pooled over the evaluations it actually ran. The count beside it is a tally
+ * of the testcase rows this view already draws, the way `histogram` counts
+ * outcomes: no expectation is matched to reach it, and nothing decides anything
+ * that rbx has not already decided.
+ *
+ * A count and not a list. Which testcases tripped is in the tree, marked row by
+ * row; repeating them here would make the panel a second tree, and the reason
+ * the row is in the panel at all is that a list is the shorter answer.
+ */
+function sanitizerRows(
+  view: PackageRunView,
+  labels: ReadonlyMap<string, string>,
+): FindingRow[] {
+  const rows: FindingRow[] = [];
+  for (const run of view.run?.solutions ?? []) {
+    if (run.report?.sanitizerWarnings !== true) {
+      continue;
+    }
+    const path = run.solution.path;
+    const declared = declaredExpectation(run.solution.expectedOutcome);
+    const count = run.groups
+      .flatMap((group) => group.testcases)
+      .filter((testcase) => testcase.evaluation?.sanitizerWarnings === true).length;
+    rows.push({
+      // The solution's own id, because the row is about that solution: every
+      // action it offers acts on it, and the host resolves the id it already
+      // knows without a node kind invented to carry this row.
+      id: `${view.pkg.root}::${run.solution.index}`,
+      kind: 'sanitizer',
+      label: labels.get(path) ?? path,
+      labelHue: declared?.hue,
+      labelBold: declared?.bold ?? false,
+      // Never an error: the solution compiled, ran and answered. What it did
+      // along the way is a warning, and the panel is not opened for it.
+      severity: 'warning',
+      // `0` only if an `.eval` was caught half-written -- rbx said it happened,
+      // and saying so without a number beats not saying it.
+      summary: count === 0 ? 'sanitized' : `${count} sanitized`,
+      reason:
+        count === 0
+          ? 'This solution tripped a sanitizer. See its testcases\u2019 stderr.'
+          : `${count === 1 ? '1 testcase' : `${count} testcases`} tripped a sanitizer. `
+            + 'They are marked in the tree; see their stderr for what it found.',
+      // Nothing to expand: the testcases are the tree's business.
+      warnings: [],
+      section: 'rbx.solution',
+      // No compiler output to open -- this row is about what the solution did
+      // when it ran, and the log of its compile has nothing to say about it.
+      primaryCommand: 'rbx.openSolution',
+    });
+  }
+  return rows;
 }
 
 /**
@@ -1011,15 +1170,23 @@ function buildFindings(
   view: PackageRunView,
   labels: ReadonlyMap<string, string>,
 ): Findings | undefined {
-  const rows = findingNodes(view)
-    .filter((node): node is FindingNode => node.kind === 'finding')
-    .map((node) => {
-      const path = node.finding.entry.path;
-      return findingRow(node, labels.get(path) ?? path);
-    });
+  const rows = [
+    ...findingNodes(view)
+      .filter((node): node is FindingNode => node.kind === 'finding')
+      .map((node) => {
+        const path = node.finding.entry.path;
+        return findingRow(node, labels.get(path) ?? path);
+      }),
+    // After the compile phase's own rows, because they are about the phase that
+    // comes first and a solution that never compiled never reached a sanitizer.
+    ...sanitizerRows(view, labels),
+  ];
   if (rows.length === 0) {
     return undefined;
   }
+  // Compilation alone: a sanitizer finding is a warning by construction -- the
+  // solution ran and answered -- and the panel opens by itself only for the
+  // solutions that are not there to answer at all.
   const errors = rows.some((row) => row.severity === 'error');
   return {
     rows,
@@ -1083,5 +1250,6 @@ export function buildViewModel(
     // no solution rows at all, and it is precisely the run with most to say.
     empty: !rows.some((row) => row.kind === 'solution'),
     findings: buildFindings(view, labels),
+    notices: noticesOf(view.run?.skeleton),
   };
 }

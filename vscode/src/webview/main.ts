@@ -330,16 +330,18 @@ findings.addEventListener('click', (event) => {
     invokeOn('rbx.openCompileLog', id);
     return;
   }
-  // A row with warnings under it opens them; a row that failed to compile has
-  // nothing to expand, so clicking it goes where the answer is -- the compiler's
-  // own output.
+  // A row with warnings under it opens them; a row with nothing to expand goes
+  // where its own answer is -- the compiler's output for a compile finding, and
+  // the source itself for a sanitizer row, whose compile log says nothing about
+  // what it is reporting.
   const expandable =
     row !== null && row.querySelector('.finding-twisty[aria-expanded]') !== null;
   if (expandable) {
     controller.toggle(id);
     return;
   }
-  invokeOn('rbx.openCompileLog', id);
+  const found = model.findings?.rows.find((candidate) => candidate.id === id);
+  invokeOn(found?.primaryCommand ?? 'rbx.openCompileLog', id);
 });
 
 findings.addEventListener('keydown', (event) => {

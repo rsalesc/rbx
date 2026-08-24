@@ -149,6 +149,39 @@ test('a report predating the double-TL fields warns about nothing', () => {
   assert.deepStrictEqual(solution.groups[0].doubleTlVerdicts, []);
 });
 
+test('a sanitizer finding is read off the solution and off the group that raised it', () => {
+  const report = parseReport({
+    version: 1,
+    solutions: [
+      {
+        path: 'sols/main.cpp',
+        index: 0,
+        status: 'OK',
+        matchesExpectation: true,
+        sanitizerWarnings: true,
+        groups: [
+          { name: 'small', sanitizerWarnings: false },
+          { name: 'big', sanitizerWarnings: true },
+        ],
+      },
+    ],
+  });
+  const solution = report!.solutions[0];
+  assert.strictEqual(solution.sanitizerWarnings, true);
+  assert.strictEqual(solution.groups[0].sanitizerWarnings, false);
+  assert.strictEqual(solution.groups[1].sanitizerWarnings, true);
+});
+
+test('a report predating the sanitizer field warns about nothing', () => {
+  const report = parseReport({
+    version: 1,
+    solutions: [{ path: 's.cpp', index: 0, status: 'OK', groups: [{ name: 'g' }] }],
+  });
+  const solution = report!.solutions[0];
+  assert.strictEqual(solution.sanitizerWarnings, false);
+  assert.strictEqual(solution.groups[0].sanitizerWarnings, false);
+});
+
 test('an unusable entry in doubleTlVerdicts is dropped, not defaulted', () => {
   const report = parseReport({
     version: 1,

@@ -514,3 +514,69 @@ def test_a_group_that_hid_nothing_surfaces_nothing(
     assert entry.groups[0].unexpectedNoTleVerdicts == []
     assert entry.groups[1].name == 'big'
     assert entry.groups[1].unexpectedNoTleVerdicts == [Outcome.WRONG_ANSWER]
+
+
+def test_an_ordinary_run_is_not_marked_sanitized(tmp_path, mock_skeleton):
+    """The run-mode flags a client reads to know what kind of run it is showing.
+
+    Absent by default, so a skeleton written by an rbx that predates them --
+    and every ordinary run since -- reads as the ordinary run it was.
+    """
+    skeleton = mock_skeleton([])
+
+    assert not skeleton.sanitized
+    assert not skeleton.only_accepted
+
+
+def test_a_solution_with_a_sanitizer_finding_says_so(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    solution = Solution(path=tmp_path / 'main.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = mock_skeleton([solution], entries_per_group={'main': 2})
+    evals = [
+        make_evaluation(Outcome.ACCEPTED),
+        make_evaluation(Outcome.ACCEPTED, sanitizer_warnings=True),
+    ]
+
+    entry = build(solution, skeleton, evals)
+
+    # The whole point: the run passed, and the warning is the only channel
+    # saying otherwise.
+    assert entry.matchesExpectation
+    assert entry.outcome == Outcome.ACCEPTED
+    assert entry.sanitizerWarnings
+
+
+def test_a_clean_run_publishes_no_sanitizer_warning(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    solution = Solution(path=tmp_path / 'main.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = mock_skeleton([solution], entries_per_group={'main': 2})
+    evals = [make_evaluation(Outcome.ACCEPTED), make_evaluation(Outcome.ACCEPTED)]
+
+    entry = build(solution, skeleton, evals)
+
+    assert not entry.sanitizerWarnings
+    assert all(not group.sanitizerWarnings for group in entry.groups)
+
+
+def test_a_sanitizer_finding_is_attributed_to_its_group(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    solution = Solution(path=tmp_path / 'main.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = mock_skeleton([solution], entries_per_group={'small': 2, 'big': 2})
+    evals = [
+        make_evaluation(Outcome.ACCEPTED),
+        make_evaluation(Outcome.ACCEPTED),
+        make_evaluation(Outcome.ACCEPTED, sanitizer_warnings=True),
+        make_evaluation(Outcome.ACCEPTED),
+    ]
+
+    entry = build(solution, skeleton, evals)
+
+    groups = {group.name: group for group in entry.groups}
+    # Only the group that raised it, so the warning can say where to look
+    # instead of sending the reader through every group.
+    assert not groups['small'].sanitizerWarnings
+    assert groups['big'].sanitizerWarnings
+    assert entry.sanitizerWarnings
