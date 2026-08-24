@@ -16,7 +16,7 @@ rbx each package boca
 
 Both **batch** problems and **interactive** problems are supported.
 
-The BOCA packager uses the `boca` [limits profile](../profiling/index.md), so create it with
+The BOCA packager uses the `boca` [limits profile](../profiling/profiles.md), so create it with
 `rbx time -p boca` before packaging.
 
 ## Time limits

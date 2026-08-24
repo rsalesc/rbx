@@ -33,8 +33,10 @@ def test_the_default_formula_macro_serves_the_value_the_code_defines():
 
 
 def test_the_profiling_docs_do_not_restate_the_default_formula():
+    # The formula lives on the page that explains how a limit is computed; a
+    # page that spelled it out by hand would drift the moment the default did.
     root = pathlib.Path(__file__).resolve().parents[2]
-    page = (root / 'docs' / 'setters' / 'profiling' / 'index.md').read_text()
+    page = (root / 'docs' / 'setters' / 'profiling' / 'computing.md').read_text()
 
     assert '{{ default_timing_formula() }}' in page
 

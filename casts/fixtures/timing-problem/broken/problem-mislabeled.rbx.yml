@@ -1,0 +1,35 @@
+# The package as it is, plus a second solution declared too slow that is not.
+# Swapped over problem.rbx.yml by the `time-upper-bound-violation` recording so
+# the upper-bound check has both cases to report: one solution confirmed slow,
+# and one that beats the bound it was supposed to respect.
+name: pair-sums
+timeLimit: 1000
+memoryLimit: 256
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+  - path: sols/main.py
+    outcome: ac
+  - path: sols/quadratic.cpp
+    outcome: tle
+  - path: sols/mislabeled.cpp
+    outcome: tle
+
+testcases:
+  - name: samples
+    testcaseGlob: tests/samples/*.in
+  - name: main
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 200000 200000 1
+          - name: gen
+            args: 200000 200000 2
+          - name: gen
+            args: 200000 2 3

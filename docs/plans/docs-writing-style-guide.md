@@ -328,7 +328,42 @@ written, and the pattern is consistent:
 - Casts are generated artifacts. Add a fixture and a spec under `casts/`, and
   read `casts/README.md` first.
 
-## 12. Reconciling with the scaffold-docs prose rules
+## 12. Document the contract, not the implementation
+
+Write down the behaviour a setter can rely on. Reach for a specific number,
+field name or internal step only when the reader has to *act* on it; otherwise
+describe the guarantee and link to the reference or the schema, which are
+generated and cannot drift.
+
+The tell is a page that transcribes something the code owns. A hand-written
+copy of a field list is correct on the day it is written and wrong on the day
+someone adds a field, and a reader following a stale copy is worse off than one
+who was told nothing and followed the link.
+
+The precedent is the default timing formula. The profiling page does not spell
+it out:
+
+```markdown
+​```text
+{{ default_timing_formula() }}
+​```
+```
+
+The macro reads `DEFAULT_TIMING_FORMULA` out of `rbx/box/environment.py` when
+the docs are built, so the page cannot disagree with the tool. A test pins it
+there.
+
+Applied elsewhere, this is why the profiles page links to
+[`LimitsProfile`](/schemas/LimitsProfile.json) rather than reproducing its
+fields, and why it says a profile records where each group's number came from
+without listing what that record contains. The same restraint applies to
+anything marked *in development*: name it, say it is unstable, and stop.
+
+What this does **not** license is vagueness about things the reader must type —
+flags, file names, YAML keys and the values they take are the contract, and
+they belong on the page in full.
+
+## 13. Reconciling with the scaffold-docs prose rules
 
 The `scaffold-docs` skill carries a Strunk-and-White prose rubric. It agrees
 with this guide about cutting filler (*just*, *simply*, *actually*, *really*),
@@ -348,7 +383,7 @@ Two of its rules bend to the house voice:
 
 ---
 
-## 13. DO / DON'T checklist
+## 14. DO / DON'T checklist
 
 **DO**
 - DO open a concept page with a one-sentence definition, then a "why you should care" motivation grounded in a concrete frustration.
@@ -368,6 +403,7 @@ Two of its rules bend to the house voice:
 - DO point onward at the end of every section ("Read more about … in the [X] section.") and close narrative pages with "Next steps" grid cards.
 - DO use the project macros (`{{rbx}}`, `{{testlib}}`, `{{tags.accepted}}`, …) instead of hardcoding names.
 - DO be candid about limitations, flakiness, and pitfalls, naming the consequence.
+- DO document the contract and link to the generated reference or schema for exhaustive field lists (see section 12) — but spell out in full anything the reader has to type.
 
 **DON'T**
 - DON'T use Title Case headings, and DON'T write "&" — spell out "and".
@@ -381,6 +417,7 @@ Two of its rules bend to the house voice:
 - DON'T explain a whole code block in prose when annotations can carry it.
 - DON'T write "utilize/leverage/in order to"-style corporate register; DO say "use", "to", and use contractions.
 - DON'T hide caveats — surface them in a `warning`/`danger` box or an honest sentence.
+- DON'T transcribe what the code owns — a hand-copied field list, an internal sequence of steps, or a default value the tool can render. It is correct the day you write it and wrong the day someone changes it.
 
 ---
 

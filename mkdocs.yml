@@ -36,6 +36,11 @@ nav:
           - "Stress testing": "setters/stress-testing.md"
       - "Profiling":
           - "setters/profiling/index.md"
+          - "Limits profiles": "setters/profiling/profiles.md"
+          - "Estimating a time limit": "setters/profiling/estimating.md"
+          - "How the limit is computed": "setters/profiling/computing.md"
+          - "Language groups": "setters/profiling/language-groups.md"
+          - "On the judge itself": "setters/profiling/remote.md"
       - "Statements":
           - "Overview": "setters/statements/index.md"
           - "Writing statements": "setters/statements/writing.md"
@@ -94,7 +99,13 @@ theme:
     - toc.follow
 plugins:
   - search
-  - macros
+  # `include_dir` is what lets a page pull in `docs/_partials/*.md` with
+  # `{% include %}`. It has to be the macros plugin doing it rather than
+  # pymdownx.snippets: snippets inline the file during Markdown rendering,
+  # long after macros ran, so `{{rbx}}` inside a shared partial would reach
+  # the page as literal text.
+  - macros:
+      include_dir: docs
   - termynal
   - autorefs
   - gen-files:
@@ -147,6 +158,9 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
+  # Renders `++ctrl+s++` as keyboard keys. Without it the `++...++` spelling
+  # is left as literal text on the page.
+  - pymdownx.keys
   - pymdownx.snippets
   - pymdownx.superfences:
       custom_fences:

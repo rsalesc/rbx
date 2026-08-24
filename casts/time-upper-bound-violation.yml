@@ -1,0 +1,39 @@
+fixture: timing-problem
+title: The upper-bound check catching a solution that is not slow
+timeout: 300s
+setup:
+  - rbx download testlib
+  # A second solution declared too slow, which is in fact the accepted one
+  # under another name. The swap is what gives the check something to catch,
+  # and it teaches nothing, so it stays out of the cast.
+  - cp broken/mislabeled.cpp sols/mislabeled.cpp
+  - cp broken/problem-mislabeled.rbx.yml problem.rbx.yml
+  - rbx build
+instructions:
+  - !Interactive
+    command: rbx time
+    keys:
+      - 3s
+      - '^M'
+      # Timing the accepted solutions: kept, but not worth watching in full.
+      - x8
+      - 40s
+      - x1
+      # Take the default bucketing so the check runs...
+      - '^M'
+      # ...and it reopens the picker, this time knowing what it found. Read
+      # the flagged row, then keep the limits anyway with `f`.
+      - 12s
+      - f
+      - 6s
+expect_contains:
+  # The violation is the whole point: the solution is named, and so is what
+  # the check concluded about it.
+  - sols/mislabeled.cpp
+  - finished within the estimated limit
+  - upperValidation
+  # The other one still behaves, which is what makes the violation legible as
+  # one solution's problem rather than a broken run.
+  - sols/quadratic.cpp
+  - confirmed too slow
+  - Time limits (local)

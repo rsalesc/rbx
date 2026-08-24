@@ -1,7 +1,11 @@
-fixture: ab-problem
+fixture: timing-problem
 title: Estimating a time limit with rbx time
 timeout: 300s
 setup:
+  # The fixture's environment declares testlib, and the default checker
+  # includes it. Materializing it here keeps the recording about estimation
+  # rather than about a missing header.
+  - rbx download testlib
   # `rbx time` builds and runs on its own; doing it once up front keeps the
   # recording about the estimation flow rather than about compilation.
   - rbx build
@@ -14,17 +18,23 @@ instructions:
       # ...then take the highlighted option, `estimate`, which is the default
       # and the one the page documents first.
       - '^M'
-      # Building outputs and timing the accepted solution takes a while; the
-      # language-bucketing screen only appears afterwards.
-      - 45s
-      # Accept the default bucketing (everything pooled, py/java/kt derived
-      # from cpp) and let the profile be written.
+      # Timing both accepted solutions is the long part and the least
+      # interesting: every frame is kept, it just plays eight times over.
+      - x8
+      - 40s
+      - x1
+      # Accept the default bucketing -- cpp and py estimated from their own
+      # timings, java and kt derived from cpp -- and let the profile be
+      # written, then the upper-bound check runs.
       - '^M'
-      - 8s
+      - 12s
 expect_contains:
-  # The prompt that opens the flow, the formula it settles on, and the file it
-  # writes -- if any of the three changes shape, the recording is stale.
+  # The prompt that opens the flow, the per-language table it settles on, the
+  # derived limit for the language nothing solves, the upper-bound check that
+  # follows, and the file it writes. If any of the five changes shape, the
+  # page that embeds this is describing something else.
   - Select how you want to define the time limits
-  - step_up(max(fastest * 3, slowest * 1.5), 100)
-  - Time estimation
+  - Time limits (local)
+  - 2.0 of cpp
+  - confirmed too slow
   - .limits/local.yml

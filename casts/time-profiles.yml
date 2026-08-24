@@ -1,0 +1,36 @@
+fixture: timing-problem
+title: Creating a named limits profile and running against it
+timeout: 300s
+setup:
+  - rbx download testlib
+  - rbx build
+instructions:
+  # A profile of its own for the judge the problem ships to. `--auto` takes
+  # the configured strategy without prompting, which is the form worth showing
+  # once the interactive flow has been seen.
+  - !Command
+    command: rbx time -p boca --auto
+    speed: 8
+  - !Wait 3s
+  - !Clear
+  # The profile is a plain file, and short enough to read in a shorter window
+  # than the tables above needed.
+  - !Command
+    command: cat .limits/boca.yml
+    height: 22
+  - !Wait 4s
+  - !Clear
+  # Running against it: the limits come from the profile rather than from the
+  # package.
+  - !Command
+    command: rbx run -p boca
+    speed: 4
+expect_contains:
+  # The profile was written, read back with the per-language modifiers and the
+  # ratios it was estimated under, and then actually used by a run.
+  - .limits/boca.yml
+  - timeLimit
+  - modifiers
+  - acToTimeLimit
+  - sols/main.cpp
+  - Timing summary

@@ -229,7 +229,7 @@ re-opens the language-group picker, so the ratios can be satisfied by regrouping
 kept anyway. A problem may override any subset of the
 ratios under `timing.multipliers` in its `problem.rbx.yml`, and a solution may opt into (or
 out of) either side with its `inference` field — see the
-[Profiling](/setters/profiling#time-limit-ratios) guide.
+[Profiling](/setters/profiling/computing/#time-limit-ratios) guide.
 
 This is what the bundled default preset configures.
 

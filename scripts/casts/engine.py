@@ -47,6 +47,9 @@ _AFTER_COMMAND_SECONDS = 0.6
 
 _DURATION = re.compile(r'^(\d+(?:\.\d+)?)\s*(us|ms|s)$')
 _CONTROL = re.compile(r'^\^([A-Za-z@\[\]\\^_])$')
+# A key that changes how fast the cast plays from here on, rather than a key
+# the program is meant to receive. `x8` is eight times, `x1` back to real time.
+_SPEED_TOKEN = re.compile(r'^x(\d+(?:\.\d+)?)$')
 
 
 class RecordingError(RuntimeError):
@@ -194,6 +197,16 @@ class CastBuilder:
     def marker(self, label: str) -> None:
         self.events.append((round(self.clock, 6), 'm', label))
 
+    def resize(self, cols: int, rows: int) -> None:
+        """Tell the player the terminal changed size from here on.
+
+        The header carries one size for the whole recording, so an instruction
+        recorded in a smaller terminal would otherwise be drawn into the full
+        frame. An `r` event is how asciicast v2 says the rest of the cast is a
+        different shape.
+        """
+        self.events.append((round(self.clock, 6), 'r', f'{cols}x{rows}'))
+
     def hold(self, seconds: float) -> None:
         """Extend the cast without changing what is on screen.
 
@@ -247,12 +260,26 @@ class Engine:
         session: _Session,
         capture: bool,
         keys: Sequence[str] = (),
+        speed: float = 1.0,
     ) -> None:
-        """Pump one command to completion, recording output as it arrives."""
+        """Pump one command to completion, recording output as it arrives.
+
+        `speed` divides the time this command contributes to the cast, so a
+        long compute can be watched at a rate worth watching without losing a
+        frame of it. It scales *measured* time only -- the typing animation is
+        synthesized at `type_speed` and keeps its authored pace.
+
+        An `x<factor>` entry in `keys` changes that rate part-way through, and
+        holds until the next such entry or the end of the command (`x1` puts it
+        back). One interactive command can therefore hold a dwell worth reading
+        and a compute worth skipping: `rbx time` is exactly that shape, and
+        `speed` alone cannot tell its two kinds of pause apart.
+        """
         started = time.monotonic()
         pending = list(keys)
         next_key_at = started + self.type_speed
         tick = started
+        scale = speed
 
         def emit(data: bytes) -> None:
             if capture:
@@ -268,7 +295,7 @@ class Engine:
             """
             nonlocal tick
             moment = time.monotonic()
-            self.cast.advance(moment - tick)
+            self.cast.advance((moment - tick) / scale)
             tick = moment
 
         while True:
@@ -283,6 +310,15 @@ class Engine:
 
             if pending and now >= next_key_at:
                 key = pending.pop(0)
+                token = _SPEED_TOKEN.match(key)
+                if token is not None:
+                    # Steers the recording rather than the program, so it costs
+                    # no time and is never written to the pty. Settle the clock
+                    # under the old rate first, or the tail of the window that
+                    # just ended would be billed at the new one.
+                    sync()
+                    scale = float(token.group(1))
+                    continue
                 try:
                     wait = parse_duration(key)
                 except ValueError:
@@ -312,15 +348,26 @@ class Engine:
 
         session.close()
 
-    def _run(self, command: str, capture: bool, keys: Sequence[str] = ()) -> None:
+    def _run(
+        self,
+        command: str,
+        capture: bool,
+        keys: Sequence[str] = (),
+        speed: float = 1.0,
+        size: Optional[Tuple[int, int]] = None,
+    ) -> None:
+        cols, rows = size or (self.spec.width, self.spec.height)
         session = _Session(
             command,
+            # The pty is sized before the command starts, and COLUMNS/LINES go
+            # with it: Rich reads them, so a resized instruction reflows rather
+            # than being clipped.
+            env={**self.env, 'COLUMNS': str(cols), 'LINES': str(rows)},
             cwd=self.workdir,
-            env=self.env,
-            rows=self.spec.height,
-            cols=self.spec.width,
+            rows=rows,
+            cols=cols,
         )
-        self._drain(session, capture=capture, keys=keys)
+        self._drain(session, capture=capture, keys=keys, speed=speed)
 
     # -- instruction dispatch --------------------------------------------
 
@@ -336,10 +383,19 @@ class Engine:
             if isinstance(value, str):
                 self._command(value, hidden=False)
             else:
-                self._command(value['command'], hidden=bool(value.get('hidden')))
+                self._command(
+                    value['command'],
+                    hidden=bool(value.get('hidden')),
+                    speed=self._speed_of(value),
+                    size=self._size_of(value),
+                )
         elif tag == 'Interactive':
             self._command(
-                value['command'], hidden=False, keys=[str(k) for k in value['keys']]
+                value['command'],
+                hidden=False,
+                keys=[str(k) for k in value['keys']],
+                speed=self._speed_of(value),
+                size=self._size_of(value),
             )
         elif tag == 'Wait':
             self.cast.advance(parse_duration(value))
@@ -350,16 +406,50 @@ class Engine:
         else:
             raise RecordingError(f'unknown instruction tag: !{tag}')
 
-    def _command(self, command: str, hidden: bool, keys: Sequence[str] = ()) -> None:
+    def _speed_of(self, value: Dict[str, Any]) -> float:
+        speed = float(value.get('speed', 1))
+        if speed <= 0:
+            raise RecordingError(
+                f'recording `{self.spec.name}`: speed must be positive, got {speed:g}'
+            )
+        return speed
+
+    def _size_of(self, value: Dict[str, Any]) -> Optional[Tuple[int, int]]:
+        """The terminal this instruction wants, or None to keep the spec's."""
+        cols = int(value.get('width', self.spec.width))
+        rows = int(value.get('height', self.spec.height))
+        if cols <= 0 or rows <= 0:
+            raise RecordingError(
+                f'recording `{self.spec.name}`: width and height must be '
+                f'positive, got {cols}x{rows}'
+            )
+        if (cols, rows) == (self.spec.width, self.spec.height):
+            return None
+        return cols, rows
+
+    def _command(
+        self,
+        command: str,
+        hidden: bool,
+        keys: Sequence[str] = (),
+        speed: float = 1.0,
+        size: Optional[Tuple[int, int]] = None,
+    ) -> None:
         if hidden:
             # Setup work still runs for real; it just is not shown.
             clock = self.cast.clock
             self._run(command, capture=False)
             self.cast.clock = clock
             return
+        if size is not None:
+            self.cast.resize(*size)
         self._type_command(command)
-        self._run(command, capture=True, keys=keys)
+        self._run(command, capture=True, keys=keys, speed=speed, size=size)
         self.cast.advance(_AFTER_COMMAND_SECONDS)
+        if size is not None:
+            # Back to the spec's size, or every later instruction would inherit
+            # a crop that was only meant for this one.
+            self.cast.resize(self.spec.width, self.spec.height)
 
     def run(self) -> str:
         for command in self.spec.setup:

@@ -74,7 +74,7 @@ at `timeLimitToTle` times that limit to confirm it really is too slow. If one of
 them finishes, {{rbx}} says so and lets you regroup the languages, keep the limit
 anyway, or start over. You can tune the ratios (or switch
 to a formula) in `env.rbx.yml` -- see the
-[Profiling](/setters/profiling#time-limit-ratios) docs for details.
+[Profiling](/setters/profiling/computing/#time-limit-ratios) docs for details.
 
 ### Review the resulting profile
 
@@ -105,7 +105,7 @@ modifiers:
 
 !!! tip
     You normally don't write `modifiers` by hand. When you run `rbx time`, the interactive
-    [language groups](/setters/profiling#language-groups) picker estimates a limit per group of
+    [language groups](/setters/profiling/language-groups/) picker estimates a limit per group of
     languages and writes the per-language modifiers for you. You can also edit the profile
     manually or through the TUI (`rbx ui` > **Edit limits profiles**).
 

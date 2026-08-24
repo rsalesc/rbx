@@ -242,7 +242,7 @@ The flag works the same way on `rbx contest st b` and `rbx tut b`.
 The time limit printed in a statement is whichever limit the package carries. If
 you package the same problem for two judges with different limits, you want each
 PDF to say the right number. The `-p` / `--profile` flag renders the statement
-against a saved [limits profile](../profiling/index.md#limits-profiles):
+against a saved [limits profile](../profiling/profiles.md):
 
 ```bash
 rbx st b -p icpc
@@ -250,7 +250,7 @@ rbx st b -p icpc
 
 The profile name is appended to the output filename, so
 `build/statement-en-icpc.pdf` sits next to `build/statement-en.pdf` instead of
-overwriting it. See [Profiling](../profiling/index.md) for how profiles are
+overwriting it. See [Profiling](../profiling/profiles.md) for how profiles are
 estimated and saved.
 
 !!! warning

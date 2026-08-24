@@ -257,3 +257,169 @@ def test_build_env_drops_ambient_overrides_that_would_change_the_recording():
 
     assert 'NO_COLOR' not in env
     assert 'RBX_CONTEST' not in env
+
+
+# -- fast-forward ---------------------------------------------------------
+
+
+def test_speed_compresses_a_commands_elapsed_time(tmp_path: pathlib.Path):
+    # The cast clock advances by real elapsed time, so a slow command costs its
+    # full duration in playback. `speed` scales that window down without
+    # dropping a single frame.
+    # The command has to print *after* sleeping: a cast's duration comes from
+    # its last event, so a silent sleep would leave the clock unmeasured.
+    slow = _duration(
+        _run(
+            _spec(instructions=[Tagged('Command', {'command': 'sleep 1; echo done'})]),
+            tmp_path,
+        )
+    )
+    fast = _duration(
+        _run(
+            _spec(
+                instructions=[
+                    Tagged('Command', {'command': 'sleep 1; echo done', 'speed': 4})
+                ]
+            ),
+            tmp_path,
+        )
+    )
+
+    assert slow >= 1.0
+    # Only the measured second is scaled: the typing animation and the pause
+    # after a command are authored, not measured, so they are a fixed floor
+    # under both runs. A 1s sleep at 4x saves the 0.75s that separates them.
+    assert slow - fast == pytest.approx(0.75, abs=0.3)
+
+
+def test_speed_leaves_the_typing_animation_alone(tmp_path: pathlib.Path):
+    # Typing is synthesized at `type_speed`, not measured, so compressing a
+    # command must not make its own name scroll past unreadably.
+    raw = _run(
+        _spec(
+            instructions=[Tagged('Command', {'command': 'true', 'speed': 10})],
+            type_speed='100ms',
+        ),
+        tmp_path,
+    )
+
+    assert _duration(raw) >= 0.4
+
+
+def test_a_speed_token_scales_only_the_keys_that_follow_it(tmp_path: pathlib.Path):
+    # `rbx time` is one interactive command: the dwell that lets a reader take
+    # in the prompt and the dwell that waits out the compute must be paced
+    # differently, and only a mid-command switch can do that.
+    paced = _duration(
+        _run(
+            _spec(
+                instructions=[
+                    Tagged(
+                        'Interactive',
+                        {'command': 'cat', 'keys': ['1s', 'x10', '1s', '^D']},
+                    )
+                ],
+                type_speed='0ms',
+                # Before the token is understood it is typed at `cat`, whose
+                # next `^D` then flushes that text instead of closing the
+                # stream -- so an unimplemented feature hangs. Fail fast.
+                timeout='20s',
+            ),
+            tmp_path,
+        )
+    )
+    flat = _duration(
+        _run(
+            _spec(
+                instructions=[
+                    Tagged(
+                        'Interactive', {'command': 'cat', 'keys': ['1s', '1s', '^D']}
+                    )
+                ],
+                type_speed='0ms',
+            ),
+            tmp_path,
+        )
+    )
+
+    # The second second plays in a tenth of the time; the first is untouched.
+    assert flat - paced == pytest.approx(0.9, abs=0.3)
+
+
+def test_a_speed_token_is_not_typed_into_the_command(tmp_path: pathlib.Path):
+    # The token steers the recording, so it must never reach the program: a
+    # literal `x10` would land in the middle of whatever was being typed.
+    raw = _run(
+        _spec(
+            instructions=[
+                Tagged(
+                    'Interactive',
+                    {'command': 'cat', 'keys': ['hi', 'x10', '^M', '^D']},
+                )
+            ],
+            timeout='20s',
+        ),
+        tmp_path,
+    )
+
+    # `cat` echoes what it is fed, so a token that leaked through would show
+    # up twice over -- once as the keystroke, once in the echoed line.
+    assert 'x10' not in cast_text(raw)
+
+
+# -- cropping the view ----------------------------------------------------
+
+
+def test_an_instruction_can_run_in_a_smaller_terminal(tmp_path: pathlib.Path):
+    # Each instruction gets its own pty, so a narrower view is a genuinely
+    # narrower terminal rather than a crop applied after the fact -- which is
+    # why rbx's own output reflows into it instead of being clipped.
+    raw = _run(
+        _spec(
+            instructions=[Tagged('Command', {'command': 'echo $COLUMNS', 'width': 40})],
+            width=100,
+        ),
+        tmp_path,
+    )
+
+    assert '40' in cast_text(raw)
+
+
+def test_a_resized_instruction_emits_a_resize_event(tmp_path: pathlib.Path):
+    # A cast header carries one size; the player follows `r` events for the
+    # rest. Without one the smaller output would be drawn into the full frame.
+    raw = _run(
+        _spec(
+            instructions=[
+                Tagged('Command', {'command': 'true', 'width': 40, 'height': 10})
+            ],
+            width=100,
+            height=30,
+        ),
+        tmp_path,
+    )
+
+    events = [json.loads(line) for line in raw.splitlines()[1:] if line.strip()]
+    resizes = [event for event in events if event[1] == 'r']
+
+    assert resizes[0][2] == '40x10'
+    # ...and it goes back, so the next instruction is not left cropped.
+    assert resizes[-1][2] == '100x30'
+
+
+def test_an_unresized_instruction_emits_no_resize_event(tmp_path: pathlib.Path):
+    # Every existing cast must keep byte-for-byte to what it recorded before,
+    # so a spec that asks for nothing gets nothing.
+    raw = _run(_spec(instructions=['echo hi']), tmp_path)
+
+    events = [json.loads(line) for line in raw.splitlines()[1:] if line.strip()]
+
+    assert [event for event in events if event[1] == 'r'] == []
+
+
+def test_a_non_positive_speed_is_rejected(tmp_path: pathlib.Path):
+    with pytest.raises(RecordingError, match='speed'):
+        _run(
+            _spec(instructions=[Tagged('Command', {'command': 'true', 'speed': 0})]),
+            tmp_path,
+        )
