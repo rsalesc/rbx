@@ -95,6 +95,15 @@ body {
   color: var(--vscode-charts-yellow);
 }
 
+/* A notice is a sentence, not a count, and it is not an alarm either -- the
+   run is a different kind of run rather than a wrong one. It keeps
+   `header-count`'s truncation and yields its width before the counts do, so a
+   narrow sidebar clips the sentence and not the number of misses. */
+.header-notice {
+  flex: 0 1 auto;
+  color: var(--vscode-descriptionForeground);
+}
+
 .header button {
   font-family: inherit;
   font-size: inherit;

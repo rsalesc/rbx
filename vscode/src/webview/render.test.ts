@@ -40,13 +40,14 @@ function row(over: Partial<Row> & Pick<Row, 'id'>): Row {
   };
 }
 
-function model(rows: readonly Row[]): RunViewModel {
+function model(rows: readonly Row[], notices: RunViewModel['notices'] = []): RunViewModel {
   return {
     rows,
     mismatches: rows.filter((r) => r.kind === 'solution' && r.mismatch).length,
     warned: rows.filter((r) => r.kind === 'solution' && !r.mismatch && r.warnings.length > 0)
       .length,
     empty: !rows.some((r) => r.kind === 'solution'),
+    notices,
   };
 }
 
@@ -1122,4 +1123,21 @@ test('the card escapes what a checker wrote', () => {
   const html = renderCard(model([nasty]), state({ selected: CARD_CASE.id }));
   assert.ok(html.includes('&lt;b&gt;7&lt;/b&gt; &amp; got'));
   assert.ok(!html.includes('<b>7</b>'));
+});
+
+
+test('the strip appears for a notice on a run with nothing else to say', () => {
+  // The run every counter reads clean on, which is exactly when the strip used
+  // to render nothing at all.
+  const html = renderHeader(model([MAIN], [{ kind: 'sanitized-run' }]), state());
+  assert.ok(html.includes('time limits were dropped'));
+  assert.ok(!html.includes('did not match'));
+});
+
+test('a narrowed sanitized run says the list is short', () => {
+  const html = renderHeader(
+    model([MAIN], [{ kind: 'sanitized-run' }, { kind: 'accepted-only' }]),
+    state(),
+  );
+  assert.ok(html.includes('Only ACCEPTED solutions were run.'));
 });

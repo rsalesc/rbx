@@ -1282,3 +1282,28 @@ test('only testcases carry a card', () => {
   assert.strictEqual(rowById(rows, '/w/a::0::main').card, undefined);
   assert.notStrictEqual(rowById(rows, '/w/a::0::main::000').card, undefined);
 });
+
+
+test('a sanitized run carries its notices', () => {
+  const { notices } = buildViewModel(
+    view([MAIN], [], { sanitized: true, onlyAccepted: true }),
+  );
+  assert.deepStrictEqual(
+    notices.map((notice) => notice.kind),
+    ['sanitized-run', 'accepted-only'],
+  );
+});
+
+test('a sanitized run the user narrowed themselves says only the first', () => {
+  // Naming solutions on the command line is a deliberate act, so the shortened
+  // list is not news; the dropped time limit still is.
+  const { notices } = buildViewModel(view([MAIN], [], { sanitized: true }));
+  assert.deepStrictEqual(
+    notices.map((notice) => notice.kind),
+    ['sanitized-run'],
+  );
+});
+
+test('an ordinary run carries no notices', () => {
+  assert.deepStrictEqual(buildViewModel(view([MAIN])).notices, []);
+});

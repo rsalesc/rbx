@@ -24,6 +24,7 @@ import type {
   Mismatched,
   Row,
   RunViewModel,
+  RunNotice,
   RunWarning,
   ScoreMismatch,
   SolutionDetail,
@@ -128,6 +129,23 @@ function warningText(warning: RunWarning): string {
       // sanitizer's complaint is there in full, and nothing shorter than it
       // says what was actually wrong.
       return `Sanitizer errors or warnings${where}. See the testcase's stderr.`;
+  }
+}
+
+/**
+ * What kind of run this is, when it is not an ordinary one.
+ *
+ * In the strip rather than a bar of its own: the strip is already where a
+ * reader looks for "is there anything I should know before reading these
+ * rows", and a second bar above it would push the tree down on every sanitized
+ * run. Which notices a run gets is rbx's decision -- see `RunNotice`.
+ */
+function noticeText(notice: RunNotice): string {
+  switch (notice.kind) {
+    case 'sanitized-run':
+      return 'Sanitized run \u2014 time limits were dropped, so these timings are not comparable.';
+    case 'accepted-only':
+      return 'Only ACCEPTED solutions were run.';
   }
 }
 
@@ -660,7 +678,10 @@ export function renderTree(model: RunViewModel, state: UiState): string {
  * filter box therefore cannot live here -- see `renderFilter`.
  */
 export function renderHeader(model: RunViewModel, _state: UiState): string {
-  if (model.mismatches === 0 && model.warned === 0) {
+  // Notices count as something to say: a sanitized run is exactly the run that
+  // trips neither counter, and the strip returning nothing there is what left
+  // its dropped time limit unsaid.
+  if (model.mismatches === 0 && model.warned === 0 && model.notices.length === 0) {
     return '';
   }
   const solutions = model.rows.filter((row) => row.kind === 'solution').length;
@@ -674,9 +695,18 @@ export function renderHeader(model: RunViewModel, _state: UiState): string {
     (model.warned === 0
       ? ''
       : `<span class="header-count header-warned">${codicon('warning')}${model.warned} warned</span>`);
+  // `info`, not `warning`: the run is not wrong, it is a different kind of run.
+  const notices = model.notices
+    .map(
+      (notice) =>
+        `<span class="header-count header-notice" title="${escapeAttr(noticeText(notice))}">` +
+        `${codicon('info')}${escapeHtml(noticeText(notice))}</span>`,
+    )
+    .join('');
   return (
     '<div class="header">' +
     counts +
+    notices +
     // Only when there is a mismatch to walk to: the button steps through the
     // `mismatch` rows, and offering it on a run that has none is a control that
     // does nothing.

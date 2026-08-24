@@ -18,7 +18,7 @@
  */
 import { ExpectationDisplay, expectationDisplay } from './expectation';
 import { Hue, hueOfScore, hueOfThemeColor } from './hue';
-import { TestcaseEntry } from './model';
+import { Skeleton, TestcaseEntry } from './model';
 import {
   FindingNode,
   GroupNode,
@@ -149,6 +149,20 @@ export interface RunWarning {
    * on a solution whose pooled layer raised the warning with no group doing so.
    */
   readonly groups: readonly string[];
+}
+
+/**
+ * A fact about the run itself rather than about any solution in it.
+ *
+ * Apart from `RunWarning` because no row owns one: a sanitized run affects
+ * every solution shown, and every solution it kept from being shown. Which
+ * notices a run gets is rbx's answer, published on the skeleton; only the words
+ * are decided here.
+ */
+export type NoticeKind = 'sanitized-run' | 'accepted-only';
+
+export interface RunNotice {
+  readonly kind: NoticeKind;
 }
 
 export interface Mismatched {
@@ -380,6 +394,14 @@ export interface RunViewModel {
    * presence is itself the signal, exactly as the header strip's is.
    */
   readonly findings?: Findings;
+  /**
+   * What kind of run this is, when it is not an ordinary one -- see
+   * `RunNotice`. Usually empty.
+   *
+   * Required rather than optional, for the reason `Row.warnings` is: a model
+   * that forgot to answer the question would silently draw nothing.
+   */
+  readonly notices: readonly RunNotice[];
 }
 
 /**
@@ -389,7 +411,37 @@ export interface RunViewModel {
  * so there is no layout to invent one for. Shared by both halves so the client's
  * starting state and the host's answer for an empty workspace cannot drift.
  */
-export const EMPTY_MODEL: RunViewModel = { rows: [], mismatches: 0, warned: 0, empty: true };
+export const EMPTY_MODEL: RunViewModel = {
+  rows: [],
+  mismatches: 0,
+  warned: 0,
+  empty: true,
+  notices: [],
+};
+
+/**
+ * The notices a run's own mode earns it.
+ *
+ * Read off the skeleton, which rbx writes when the run *starts*, so the banner
+ * is up while the solutions are still going rather than arriving with the first
+ * finished one.
+ */
+function noticesOf(skeleton: Skeleton | undefined): RunNotice[] {
+  if (skeleton === undefined) {
+    return [];
+  }
+  const notices: RunNotice[] = [];
+  if (skeleton.sanitized) {
+    notices.push({ kind: 'sanitized-run' });
+  }
+  // Only the narrowing rbx did on its own. A user who named solutions asked for
+  // that subset and needs no banner about it, which is why rbx publishes the
+  // two facts apart.
+  if (skeleton.onlyAccepted) {
+    notices.push({ kind: 'accepted-only' });
+  }
+  return notices;
+}
 
 function chip(outcome: string | undefined, under?: WarningVerdict): VerdictChip {
   const { icon, color } = outcomeIcon(outcome);
@@ -1111,5 +1163,6 @@ export function buildViewModel(
     // no solution rows at all, and it is precisely the run with most to say.
     empty: !rows.some((row) => row.kind === 'solution'),
     findings: buildFindings(view, labels),
+    notices: noticesOf(view.run?.skeleton),
   };
 }
