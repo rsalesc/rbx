@@ -10,14 +10,6 @@ from rbx.box.testcase_schema import TestcaseEntry
 from rbx.grading.steps import CompilationError
 
 
-@pytest.fixture(autouse=True)
-def clear_visualizer_caches():
-    """Clear the alru_cache on compile_visualizers_for_entries between tests."""
-    visualizers.compile_visualizers_for_entries.cache_clear()
-    yield
-    visualizers.compile_visualizers_for_entries.cache_clear()
-
-
 @pytest.fixture
 def mock_compile_item():
     with patch('rbx.box.visualizers.compile_item', new_callable=AsyncMock) as mock:
@@ -382,3 +374,59 @@ async def test_run_visualizers_for_testcase_returns_input_path(mock_run_item):
     # Return is the host-side visualization path.
     assert result == pathlib.Path('visualization/test.svg')
     mock_run_item.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# run_visualizers_for_entries
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_visualizers_for_entries_runs_both_halves():
+    """`solutionVisualizer` is reachable from a build.
+
+    It was not: `run_visualizers_for_entries` drove only the input half, which
+    left `run_solution_visualizers_for_entries` dead code and every declared
+    `solutionVisualizer` compiled and then silently ignored. Asserting on the
+    two calls rather than on the files keeps this pinned to the omission.
+    """
+    entries = [_make_entry()]
+    compiled = {'vis.py': 'digest'}
+
+    with (
+        patch.object(
+            visualizers,
+            'compile_visualizers_for_entries',
+            AsyncMock(return_value=compiled),
+        ),
+        patch.object(
+            visualizers, 'run_input_visualizers_for_entries', AsyncMock()
+        ) as run_input,
+        patch.object(
+            visualizers, 'run_solution_visualizers_for_entries', AsyncMock()
+        ) as run_solution,
+    ):
+        await visualizers.run_visualizers_for_entries(entries)
+
+    run_input.assert_awaited_once()
+    run_solution.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_solution_visualizers_for_entries_skips_testcase_with_no_answer(
+    mock_run_item,
+):
+    """A build with no answers is a normal state, not a failure.
+
+    `--no-output`, or a package with no main solution, reaches the visualizers
+    with the inputs built and the answers absent. There is nothing to
+    visualize, and the alternative is an error printed per testcase.
+    """
+    output_visualizer = Visualizer(path=pathlib.Path('out_vis.py'), extension='png')
+    entries = [_make_entry(output_path=None, solution_visualizer=output_visualizer)]
+
+    await visualizers.run_solution_visualizers_for_entries(
+        entries, {'out_vis.py': 'digest'}
+    )
+
+    mock_run_item.assert_not_called()

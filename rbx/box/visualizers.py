@@ -2,7 +2,6 @@ import pathlib
 import shlex
 from typing import Dict, List, Optional
 
-import async_lru
 from pydantic import BaseModel
 
 from rbx import console, utils
@@ -122,7 +121,12 @@ async def compile_package_visualizers(
     return await compile_visualizers(visualizers, progress=progress)
 
 
-@async_lru.alru_cache(maxsize=None)
+# Deliberately uncached. This was `@async_lru.alru_cache`, which cannot work
+# here: the cache key is the argument tuple, `entries` is a list, and a list is
+# unhashable -- so every call raised `TypeError: cannot use 'tuple' as a dict
+# key`, and `rbx build --visualize` failed outright for any package declaring a
+# visualizer. Compilation is already memoized a level down, in `compile_item`,
+# so nothing is recompiled by dropping this.
 async def compile_visualizers_for_entries(
     entries: List[GenerationTestcaseEntry],
     progress: Optional[StatusProgress] = None,
@@ -463,6 +467,14 @@ async def run_solution_visualizers_for_entries(
         if visualizer is None:
             continue
 
+        # No answer, nothing to visualize. A build with `--no-output`, or one on
+        # a package with no main solution, reaches here with the inputs built
+        # and the answers absent; that is a normal state, not a failure, and
+        # `run_solution_visualizer_for_testcase` would raise for every testcase.
+        output_path = entry.metadata.copied_to.outputPath
+        if output_path is None or not output_path.is_file():
+            continue
+
         digest = compiled_visualizers.get(str(visualizer.path))
         if digest is None:
             continue
@@ -497,6 +509,15 @@ async def run_visualizers_for_entries(
         return
 
     await run_input_visualizers_for_entries(
+        entries, compiled_visualizers, progress=progress
+    )
+
+    # `solutionVisualizer` was declarable, compiled, and then never run: this
+    # call was missing, which left `run_solution_visualizers_for_entries` dead
+    # code and the whole output-visualization channel silently unreachable from
+    # `rbx build --visualize`. Runs after the inputs for the obvious reason --
+    # it reads the answers, which `build` has produced by the time it gets here.
+    await run_solution_visualizers_for_entries(
         entries, compiled_visualizers, progress=progress
     )
 
