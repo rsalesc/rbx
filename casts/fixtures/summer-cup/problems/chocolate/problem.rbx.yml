@@ -1,0 +1,27 @@
+name: chocolate
+timeLimit: 1000
+memoryLimit: 256
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+
+testcases:
+  - name: samples
+    testcaseGlob: tests/samples/*.in
+  - name: main
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 1 2
+          - name: gen
+            args: 100 -50
+          # A sum that overflows 32 bits, so the accepted solution is exercised
+          # over the range it really has to handle.
+          - name: gen
+            args: 2000000000 2000000000

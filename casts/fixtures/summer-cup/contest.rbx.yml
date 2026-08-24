@@ -1,0 +1,14 @@
+---
+name: "summer-cup"
+titles:
+  en: "Summer Cup 2026"
+
+# No statements: this fixture exists to be profiled, and statement chrome would
+# only add LaTeX that has to compile for no benefit.
+problems:
+  - short_name: "A"
+    path: "problems/chocolate"
+  - short_name: "B"
+    path: "problems/gardens"
+  - short_name: "C"
+    path: "problems/sum-of-n"
