@@ -76,9 +76,16 @@ Four decisions inside that shape:
 - **Per-entry extras ride in a parallel `tests` list**, not as new fields on
   `GenerationTestcaseEntry`. Extending that model would change `skeleton.yml`
   too, for the benefit of one consumer.
-- **Subset builds merge.** `rbx build --groups main` replaces only the groups it
-  built and leaves the rest of the manifest standing. Truncating would make a
-  partial build look like a one-group testset.
+- **Subset builds replace, never merge.** `generate_testcases` rmtree's the whole
+  of `build/tests` before it looks at the group filter (`generators.py:475`), so
+  after `rbx build --groups main` the other groups' testcases are genuinely gone
+  from disk -- a merged manifest would assert testcases that no longer exist.
+  The manifest always describes exactly what the build just produced; after a
+  subset build the testset really is only those groups.
+
+  > This corrects the first draft of this design, which specified a merge. The
+  > merge was written without knowing the wipe ignores the group filter, and
+  > would have made the manifest lie about the one thing it exists to report.
 - **Sizes are stamped at dump time**, so the extension never stats thousands of
   files to draw a list.
 
@@ -90,6 +97,12 @@ and `rbx clean`, which wipes `.rbx`, can never orphan it.
 header shows its mtime (`built 3m ago`) as an honest cue and makes no
 correctness claim -- a check would have to model which of the package's inputs
 feed which group, and be wrong in both directions.
+
+`rbx testcases` and `irun` both call `generate_standalone` into
+`build/tests/<group>/`, so between builds a single testcase can be refreshed
+without the manifest hearing about it. The next build wipes and rewrites both,
+so they cannot drift across a build. This is the stance above, not an exception
+to it.
 
 ## D3. The data layer, reusing the run's
 

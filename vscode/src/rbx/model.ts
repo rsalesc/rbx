@@ -138,7 +138,14 @@ export function entryStem(entry: TestcaseEntry): string {
   return String(entry.index).padStart(3, '0');
 }
 
-function parseTestcaseEntry(raw: Wire): TestcaseEntry | undefined {
+/**
+ * One `GenerationTestcaseEntry`, wherever rbx embedded it.
+ *
+ * Exported because `build/testset.yml` dumps the very same entries verbatim
+ * (design D2): the manifest keeps its extras in sibling keys precisely so this
+ * parser is reused rather than written a second time and left to drift.
+ */
+export function parseTestcaseEntry(raw: Wire): TestcaseEntry | undefined {
   const group = asString(field(raw, 'group_entry', 'group'));
   const index = asNumber(field(raw, 'group_entry', 'index'));
   if (group === undefined || index === undefined) {

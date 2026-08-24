@@ -17,21 +17,21 @@ import { registerDecorations } from './decorations';
 import { registerDiagnostics } from './diagnostics';
 import { initLog, log } from './log';
 import { CONTEST_FILE_GLOB, CONTEST_MANIFEST, isContestVariantFile } from './rbx/contest';
-import { CACHE_DIR, PROBLEM_MANIFEST } from './rbx/layout';
+import { BUILD_DIR, CACHE_DIR, PROBLEM_MANIFEST, TESTSET_MANIFEST } from './rbx/layout';
 import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
 import { registerSolutionLens } from './solutionLens';
 import { registerSolutionStatus } from './solutionStatus';
 
 /**
- * Map a changed path back to the package it belongs to.
+ * Map a changed cache path back to the package it belongs to.
  *
  * Events arrive either as `<pkg>/.rbx/runs/...` during a run, or as the bare
  * `<pkg>/.rbx` when the whole cache directory goes away -- `rbx clean` rmtree's
  * it in one call, and the watcher reports the top removed directory rather than
  * each descendant. Both spellings must resolve to the package root.
  */
-function packageRootOf(fsPath: string): string | undefined {
+function cacheRootOf(fsPath: string): string | undefined {
   const suffix = `${path.sep}${CACHE_DIR}`;
   if (fsPath.endsWith(suffix)) {
     return fsPath.slice(0, -suffix.length);
@@ -39,6 +39,24 @@ function packageRootOf(fsPath: string): string | undefined {
   const marker = `${suffix}${path.sep}`;
   const index = fsPath.indexOf(marker);
   return index === -1 ? undefined : fsPath.slice(0, index);
+}
+
+/**
+ * Map any watched path back to the package it belongs to.
+ *
+ * Two spellings reach the debounce: run artifacts under `.rbx`, and the testset
+ * manifest `rbx build` writes at `<pkg>/build/testset.yml`. They feed the same
+ * pending set because they invalidate the same store -- a package is reloaded
+ * whole, and which of its two producers moved is not a distinction the reload
+ * makes.
+ */
+function packageRootOf(fsPath: string): string | undefined {
+  const cached = cacheRootOf(fsPath);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const suffix = `${path.sep}${BUILD_DIR}${path.sep}${TESTSET_MANIFEST}`;
+  return fsPath.endsWith(suffix) ? fsPath.slice(0, -suffix.length) : undefined;
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -109,10 +127,17 @@ export function activate(context: vscode.ExtensionContext): void {
   watch(`**/${CACHE_DIR}/**`);
   watch(`**/${CACHE_DIR}`);
 
-  // A third glob, for a different question: the two above ask *what changed*,
-  // this one asks *what is running*. `skeleton.yml` is written when a run
-  // starts (rbx/box/solutions.py:746 -- "A new skeleton is what marks a new
-  // run"), so following it makes the view track the problem currently running:
+  // A third: the testset manifest, which `rbx build` writes last (design D2).
+  // Written last is what lets this be a single glob rather than a heuristic
+  // about when a build has settled -- when it lands, everything it names is
+  // already on disk. It joins the same debounce as the artifacts above, so a
+  // build finishing while a run is in flight still costs one reload.
+  watch(`**/${BUILD_DIR}/${TESTSET_MANIFEST}`);
+
+  // A fourth glob, for a different question: the three above ask *what
+  // changed*, this one asks *what is running*. `skeleton.yml` is written when
+  // a run starts (rbx/box/solutions.py:746 -- "A new skeleton is what marks a
+  // new run"), so following it makes the view track the problem being run:
   // `rbx contest each run` walks the view through the contest in step with the
   // run itself.
   //
