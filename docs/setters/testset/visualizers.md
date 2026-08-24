@@ -161,3 +161,8 @@ rbx build --visualize
 ```
 
 This will generate input visualizations for all testcases and store them in the build directory, typically under `build/tests/<testgroup>/visualization`.
+
+### In VS Code
+
+Once they are on disk, the [rbx extension](../../tools/vscode.md#visualizations) opens them from
+the testcase list -- one button per picture, and a gallery of the whole group.

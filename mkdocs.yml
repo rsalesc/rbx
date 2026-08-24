@@ -4,6 +4,13 @@ site_author: Roberto Sales
 site_url: https://rbx.rsalesc.dev/
 repo_url: https://github.com/rsalesc/rbx
 repo_name: rsalesc/rbx
+# `docs/plans/` is the design and plan archive. It is written for contributors,
+# read in the repository, and linked from nowhere on the site -- but it is by far
+# the largest thing in `docs/`, so building it dominated every `mkdocs serve`
+# rebuild and drowned the build log in macro errors from prose that was never
+# meant to be rendered (`{{ ... }}` inside code samples). Excluded outright.
+exclude_docs: |
+  plans/
 nav:
   - "intro/overview.md"
   - "intro/installation.md"
@@ -55,6 +62,8 @@ nav:
           - "Polygon": "setters/packaging/polygon.md"
       - "Presets":
           - "setters/presets/index.md"
+  - "Tools":
+      - "VS Code extension": "tools/vscode.md"
   - "Reference":
       - "CLI": "setters/reference/cli.md"
       - "Package":
