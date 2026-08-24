@@ -35,9 +35,10 @@ Below you can find a list of common {{rbx}} commands. You can read more about ea
 | Download {{tgen}} to the current folder            | `rbx download tgen`                                            |
 | Download a built-in {{testlib}} checker            | `rbx download checker wcmp.cpp`                                |
 | Build all statements                               | `rbx statements build`                                         |
-| Build a specific statement                         | `rbx statements build <name>`                                  |
-| Build statements for English                       | `rbx statements build -l en`                                   |
+| Build a specific variant                           | `rbx statements build <variant>`                               |
+| Build statements for English                       | `rbx statements build --languages en`                          |
 | Build statements against a timing profile          | `rbx statements build -p icpc`                                 |
+| Build all tutorials (editorials)                   | `rbx tutorials build`                                          |
 | Package problem for {{polygon}}                    | `rbx package polygon`                                          |
 | Package problem for {{boca}}                       | `rbx package boca`                                             |
 | Package problem for {{boca}} but only validate     | `rbx package boca -v1`                                         |
@@ -57,8 +58,9 @@ Below you can find a list of common {{rbx}} commands. You can read more about ea
 | Open the contest configuration in a text editor | `rbx contest edit`                    |
 | Build all statements                            | `rbx contest statements build`        |
 | Build a specific statement                      | `rbx contest statements build <name>` |
-| Build statements for English                    | `rbx contest statements build en`     |
+| Build statements for English                    | `rbx contest statements build --languages en` |
 | Build statements against a timing profile       | `rbx contest statements build -p icpc` |
+| Build all tutorials (editorials)                | `rbx contest tutorials build`         |
 | Package contest for {{polygon}}                 | `rbx contest package polygon`         |
 | Build each problem in the contest               | `rbx contest each build`              |
 | Package each problem in the contest             | `rbx contest each package boca`       |
@@ -292,72 +294,56 @@ vars:
 
 === "In statements"
     ```tex
-    The maximum value of N is \VAR{N.max | sci} % (1)!
+    The maximum value of N is \VAR{vars.N.max | sci} % (1)!
     ```
 
     1.   If `N.max` has lots of trailing zeroes, `sci` converts it to scientific notation.
 
 ### Add statements
 
+Problem statements are keyed by `(language, variant)` and have **no `name`**. See [writing statements](statements/writing.md).
+
 #### Add a {{rbxTeX}} statement
 
 ```yaml
 statements:
   # ...other statements
-  - name: 'statement-en'
-    title: "My problem"
-    path: "statement/statement.rbx.tex" # (1)!
-    type: rbxTeX
-    language: 'en'
-    configure:
-      - type: 'rbx-tex'
-        template: statement/template.rbx.tex' # (2)!
-    assets: ['statement/olymp.sty', 'statement/*.png'] # (3)!
+  - language: en
+    file: "statements/statement.rbx.tex" # (1)!
+    params: { show_limits: true }       # (2)!
+    assets: ['statements/*.png']         # (3)!
 ```
 
-1. Defines the path to the {{rbxTeX}} file, where the building blocks of the statement
-   will be defined.
+1. Path to the {{rbxTeX}} source, relative to the package root. `type` defaults to `rbx-tex`, so it's omitted.
 
-2. Defines how a {{rbxTeX}} file will be converted to a normal TeX file. Here, we link
-     the template where our {{rbxTeX}} sections such as *legend*, *input* and *output*
-     will be inserted into.
+2. Free-form values passed to the template as `params.*`.
 
-3. Defines assets that should be linked when the resulting statement is being compiled.
+3. Extra globs shipped alongside the statement on export (e.g. to {{polygon}}); files next to `file` are staged automatically.
 
-#### Extends other {{rbxTeX}} statements
+#### Reuse another statement with `extends`
 
 ```yaml
 statements:
-  - name: 'statement'
-    title: 'My problem'
-    path: "statement/statement.rbx.tex"
-    type: rbxTeX
-    language: 'en'
-    configure:
-      - type: 'rbx-tex'
-        template: statement/template.rbx.tex'
-    assets: ['statement/olymp.sty', 'statement/*.png']
-  - name: 'statement-pt'
-    title: 'Meu problema'
-    extends: 'statement' # (1)!
-    language: 'pt'
-    path: 'statement/statement-pt.rbx.tex' # (2)!
+  - language: en
+    file: "statements/statement.rbx.tex"
+    params: { show_limits: true }
+  - language: pt
+    extends: en                    # (1)!
+    params: { show_limits: false } # (2)!
 ```
 
-1. The `statement-pt` statement will inherit the properties of the `statement` statement, and override a subset of them.
+1. Reuses `en`'s `file`, `type`, `assets`, and `params`.
 
-2. The `statement-pt` statement will use a different {{rbxTeX}} file, since we need to rewrite the building blocks
-   of the statement in another language.
+2. `params` deep-merges, so `pt` overrides only `show_limits`.
 
 #### Add a PDF statement
 
 ```yaml
 statements:
   # ...other statements
-  - title: "My problem"
-    path: "statement/statement.pdf"
-    type: PDF
-    language: 'en'
+  - language: fr
+    file: "statements/statement.pdf"
+    type: pdf
 ```
 
 ### Add a stress test
