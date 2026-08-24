@@ -1,6 +1,6 @@
 # Command pane: copy-all and keyboard visual selection (#717)
 
-Status: design, approved 2026-08-24.
+Status: implemented 2026-08-24 (`rbx/box/ui/terminal_select.py`).
 
 ## Problem
 
@@ -187,3 +187,21 @@ the style of `test_command_pane.py`, asserting on `app._clipboard` and
 Search in output, extending a mouse selection with the keyboard, block/rectangular
 selection, copying with ANSI styling preserved, "copy the last command's output block",
 and persisting a selection across pane switches.
+
+## As built
+
+Four deltas from the design above, all found while implementing:
+
+- **`y` with no anchor yanks the cursor line**, `yy`-style, instead of copying nothing.
+  Pressing `ctrl+v` then `y` doing nothing at all read as a broken key.
+- **Auto-scroll passes `immediate=True`.** Textual's `scroll_to` otherwise defers the
+  scroll until after the next refresh, which leaves the cursor drawn off-screen for a
+  frame -- and never scrolls at all under `run_test`.
+- **`ctrl+c` also exits the mode**, alongside `esc` and `ctrl+v`. It cannot reach the
+  child process from inside the mode anyway, so swallowing it silently would be worse
+  than treating it as "get me out".
+- **`can_select()` gates on the alternate screen, not on `is_finalized`.**
+  `Terminal.finalize()` turns out never to be called anywhere in rbx, so `allow_select`
+  reduces to that one condition.
+
+The tab-expansion edge under "Known edges" is unchanged and still unaddressed.
