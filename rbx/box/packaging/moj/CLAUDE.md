@@ -317,6 +317,22 @@ whose file name is not their class. Doing it in the jail rather than at package 
 what keeps both cases covered, and avoids the collision a host-side rename would create
 the moment two solutions both declare `public class Main`.
 
+**The contestant's file name reaches these scripts raw, so quote every expansion of it.**
+The judge materializes the submission under the name it was sent with, and that name
+becomes `BIN` — which every `run.sh` reads back by `source`ing the `binfile.sh`
+build-and-test.sh writes. A team once submitted `l(1).cpp` (the mark a browser sticks on
+a repeated download, which they never chose) and got a Compilation Error for code that
+passed as `l.cpp`; mojtools then made this a gate, `check-quoting.sh`
+([cd-moj/mojtools@2be585e](https://github.com/cd-moj/mojtools/commit/2be585ee4741040c870408bee2caea7a58104937)).
+Of the three families it names, two are ours: `$BIN` in `run.sh`, and the `BIN=` line a
+`compile.sh` prints when that line *is* the submitted name (only `py`, which runs the
+source; the compiled languages name their artifact themselves and print a literal). The
+third — a `make` recipe handed to `/bin/sh` — cannot happen here: these templates invoke
+the compiler directly on a quoted `"$SRC"` rather than generating a Makefile the way
+mojtools' `lang/*/compile.sh` do. `binfile.sh` is upstream's to escape (`printf 'BIN=%q'`).
+`tests/rbx/box/packaging/moj/test_resources.py` is the gate for both families, and
+`test_hostile_filename.py` compiles and runs a submission under such a name end to end.
+
 ## Statements (`statement.py`, `statement_assets.py`)
 
 `statement_export_params()` forces externalize+demacro exactly as

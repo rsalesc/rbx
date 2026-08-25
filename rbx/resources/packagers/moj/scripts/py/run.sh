@@ -6,5 +6,9 @@ cd /tmp/dir
 # problem's limits into the jail. It defines BIN, MOJ_MEMLIMITMB and MOJ_STACKKB.
 source binfile.sh
 
-command -v pypy3 >/dev/null 2>&1 && exec pypy3 ./$BIN < /tmp/in > /tmp/out
-exec python3 ./$BIN < /tmp/in > /tmp/out
+# Quote every expansion of BIN: it carries the name the CONTESTANT submitted, which the
+# judge materializes verbatim -- `l(1).cpp`, the mark a browser sticks on a repeated
+# download, is a real report. Unquoted it reaches the shell raw and kills the run.
+
+command -v pypy3 >/dev/null 2>&1 && exec pypy3 ./"$BIN" < /tmp/in > /tmp/out
+exec python3 ./"$BIN" < /tmp/in > /tmp/out
