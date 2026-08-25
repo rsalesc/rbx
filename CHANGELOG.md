@@ -1,3 +1,18 @@
+## 1.3.0 (2026-08-25)
+
+### Fix
+
+- **moj**: quote the contestant's file name in the jail scripts (#780)
+
+### Perf
+
+- **cli**: register Typer commands lazily (#785)
+- **cli**: keep prompt_toolkit off the import path of every command (#784)
+- **cli**: defer the iso639 import out of module scope (#782)
+- **cli**: defer the BOCA scraper stack out of the CLI import path (#781)
+- **cli**: keep the symlink check off the startup path (#783)
+- **cli**: defer textual imports out of module scope (#779)
+
 ## 1.2.7 (2026-08-25)
 
 ### Feat
