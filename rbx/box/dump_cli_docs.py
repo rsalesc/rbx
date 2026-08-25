@@ -17,7 +17,10 @@ if script_dir in sys.path:
 # Import the main app
 from rbx import annotations  # noqa: E402
 from rbx.box.cli import app as main_app  # noqa: E402
-from rbx.box.completion.generate import help_panel  # noqa: E402
+from rbx.box.completion.generate import (  # noqa: E402
+    help_panel,
+    materialize_lazy_commands,
+)
 
 # Title Typer/Click gives to commands that declare no `rich_help_panel`. It is
 # always rendered first in `--help`, and we mirror that here.
@@ -88,6 +91,7 @@ def group_children(
     Panels come out in order of first appearance (with the default panel first,
     as Typer renders it) and commands are alphabetical within each panel.
     """
+    materialize_lazy_commands(group)
     order: List[str] = []
     buckets: dict = {}
     for name, command in group.commands.items():

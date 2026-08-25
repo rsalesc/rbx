@@ -83,8 +83,8 @@ def _invoke_run(runner: CliRunner, *args: str) -> Tuple[Any, _Invocation]:
 
     with (
         mock.patch('rbx.box.builder.build', _build_ok),
-        mock.patch('rbx.box.cli.run_solutions', run_solutions),
-        mock.patch('rbx.box.cli.print_run_report', print_run_report),
+        mock.patch('rbx.box.cli.commands.run.run_solutions', run_solutions),
+        mock.patch('rbx.box.cli.commands.run.print_run_report', print_run_report),
         mock.patch('rbx.box.sharing.capture_and_share', capture_and_share),
     ):
         result = runner.invoke(cli.app, ['run', *args])

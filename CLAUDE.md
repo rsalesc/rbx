@@ -87,9 +87,24 @@ To ship a fix to an already-released older version (e.g. patch `0.38.0` while `m
 
 ### Entry Point and CLI
 
-Entry point: `rbx/box/main.py:app` → delegates to **Typer** commands in `rbx/box/cli.py`.
+Entry point: `rbx/box/main.py:app` → delegates to the **Typer** app in `rbx/box/cli/__init__.py`.
 
 Key CLI commands: `rbx build`, `rbx run`, `rbx stress`, `rbx statements build`, `rbx package build`, `rbx create`, `rbx ui`.
+
+**Commands are registered lazily.** `rbx/box/cli/__init__.py` holds only the root
+callback and `ENTRIES`, a table of `LazyCommand` rows naming each subcommand's
+`'module:attr'`; the implementations live in `rbx/box/cli/commands/`, and each is
+imported only when that command is actually invoked. So `rbx --help` never pays for
+`rbx stress`, and adding a command costs no other command anything. Two rules follow:
+
+- **Keep `rbx/box/cli/__init__.py`'s import block light.** Whatever lands at its top
+  level is paid for by every invocation, `--help` and shell completion included.
+- **A new command needs a row in `ENTRIES`**, carrying the same `help=`,
+  `rich_help_panel=` and `hidden=` the module declares -- that copy is what renders
+  `--help` without importing. `tests/rbx/box/lazy_cli_test.py` pins the two together.
+
+Anything that walks the whole command tree (the docs generator, the completion spec
+generator) calls `materialize_lazy_commands` first. See `rbx/box/lazy_cli.py`.
 
 ### Core Data Flow
 
