@@ -1,3 +1,11 @@
+## 1.3.1 (2026-08-26)
+
+### Fix
+
+- **validators**: do not report hit bounds for partial builds (#790)
+- **moj**: diagnose a bash too old to run the CLI (#787)
+- **deps**: silence compiler warnings from the python scanner (#786)
+
 ## 1.3.0 (2026-08-25)
 
 ### Fix
