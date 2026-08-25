@@ -17,6 +17,8 @@ LAZY_MODULES = {
 # Modules that must not be loaded by `rbx.box.cli`, which every command pulls in.
 CLI_LAZY_MODULES = {
     'textual',
+    'questionary',
+    'prompt_toolkit',
     'iso639',
     # The BOCA scraping stack, reachable only through a `@boca/...` expansion.
     'bs4',

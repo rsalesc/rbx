@@ -105,12 +105,12 @@ class TestCollectExpansions:
                 prompt='Enter the problem name:',
             ),
         ]
-        with mock.patch('rbx.box.presets.questionary') as mock_q:
-            mock_q.text.return_value.ask.return_value = 'my-problem'
+        with mock.patch('questionary.text') as mock_text:
+            mock_text.return_value.ask.return_value = 'my-problem'
             result = _collect_expansions(expansions)
 
         assert result == [('__NAME__', 'my-problem', [])]
-        mock_q.text.assert_called_once_with('Enter the problem name:')
+        mock_text.assert_called_once_with('Enter the problem name:')
 
     def test_multiple_expansions(self):
         expansions = [
@@ -124,8 +124,8 @@ class TestCollectExpansions:
                 prompt='B?',
             ),
         ]
-        with mock.patch('rbx.box.presets.questionary') as mock_q:
-            mock_q.text.return_value.ask.side_effect = ['val_a', 'val_b']
+        with mock.patch('questionary.text') as mock_text:
+            mock_text.return_value.ask.side_effect = ['val_a', 'val_b']
             result = _collect_expansions(expansions)
 
         assert result == [

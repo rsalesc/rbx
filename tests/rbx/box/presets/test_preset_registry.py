@@ -1,4 +1,5 @@
 import pytest
+import questionary
 from pydantic import ValidationError
 
 from rbx.box.presets.registry_schema import PresetRegistry, RegistryPreset
@@ -145,9 +146,7 @@ class TestPicker:
             def ask(self_inner):
                 return 'default'
 
-        monkeypatch.setattr(
-            registry.questionary, 'select', lambda *a, **k: FakeSelect()
-        )
+        monkeypatch.setattr(questionary, 'select', lambda *a, **k: FakeSelect())
         chosen = registry.pick_preset()
         assert chosen is entry
 
@@ -169,8 +168,6 @@ class TestPicker:
             def ask(self_inner):
                 return None  # user hit Ctrl-C
 
-        monkeypatch.setattr(
-            registry.questionary, 'select', lambda *a, **k: FakeSelect()
-        )
+        monkeypatch.setattr(questionary, 'select', lambda *a, **k: FakeSelect())
         with pytest.raises(click.exceptions.Exit):
             registry.pick_preset()

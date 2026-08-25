@@ -1,7 +1,6 @@
 import pathlib
 from typing import Optional
 
-import questionary
 import ruyaml
 import typer
 
@@ -90,6 +89,8 @@ def find_in_registry(uri_or_name: str) -> Optional[RegistryPreset]:
 
 
 def pick_preset() -> RegistryPreset:
+    import questionary
+
     reg = get_merged_registry()
     if not reg.presets:
         console.console.print('[error]No presets available in the registry.[/error]')

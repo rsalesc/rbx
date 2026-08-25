@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import dataclasses
 import functools
 import math
@@ -8,7 +10,6 @@ import rich
 import rich.console
 import typer
 from ordered_set import OrderedSet
-from prompt_toolkit.formatted_text import ANSI
 from pydantic import BaseModel, Field
 
 from rbx import console, utils
@@ -41,6 +42,11 @@ from rbx.box.solutions import (
 from rbx.grading.steps import Outcome
 
 if TYPE_CHECKING:
+    # `ANSI` is annotation-only here; the render callbacks that build `ANSI`
+    # values import it locally, so an interactive-only dependency stays off the
+    # import path of every command.
+    from prompt_toolkit.formatted_text import ANSI
+
     # Only for the annotation -- the backend itself is resolved by the CLI and
     # handed down. `RunPurpose` above is a live import instead because it is a
     # *value* this module passes: `runners.base` only reaches back into
@@ -567,6 +573,8 @@ def build_preview_renderer(
     forced-relative specs) to an ``ANSI`` preview: the resolved limits table, or
     an inline error for invalid groupings. Pure -- reuses the already-collected
     timings, never re-runs solutions."""
+
+    from prompt_toolkit.formatted_text import ANSI
 
     @functools.lru_cache(maxsize=None)
     def _render(assignment_items: tuple, relative_items: tuple) -> ANSI:
