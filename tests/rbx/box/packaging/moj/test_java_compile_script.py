@@ -149,6 +149,19 @@ def test_helper_sources_are_renamed_too_without_stealing_the_entry_point(jail):
     assert _manifest(rwdir) == 'Main-Class: Main\n'
 
 
+def test_a_browser_mangled_file_name_is_renamed_like_any_other(jail):
+    # `OlaMundo(1).java` is what a browser hands back on a repeated download. mojtools
+    # excludes java from its hostile-name battery, since javac demands the file match
+    # the public type -- but the rename here happens before javac ever sees it, so the
+    # name that would be a legitimate Compilation Error upstream compiles fine.
+    proc, rwdir, out = jail({'OlaMundo(1).java': MAIN_CLASS})
+
+    assert proc.returncode == 0
+    assert 'BIN=prog.jar' in out
+    assert (rwdir / 'Main.java').read_text() == MAIN_CLASS
+    assert _manifest(rwdir) == 'Main-Class: Main\n'
+
+
 def test_a_real_compile_error_still_fails(jail):
     # Renaming must not paper over a source that simply does not compile.
     proc, _, out = jail({'sol.java': 'public class Main { SYNTAX_ERROR }\n'})
