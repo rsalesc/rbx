@@ -633,3 +633,183 @@ class TestMojExpander:
 
         assert 'still judging' in str(exc_info.value)
         assert not downloaded
+
+    # -- Reusing the listing. --------------------------------------------------
+
+    def _rows(self, *subids: str, verdict: str = 'Accepted'):
+        return {
+            subid: api.SubmissionRow(
+                subid=subid, lang='cpp', epoch=1755000000, verdict=verdict
+            )
+            for subid in subids
+        }
+
+    def _serve(self, monkeypatch, rows, who=None, source='x\n'):
+        """One fake MOJ, counting what each expansion actually asks of it."""
+        asked = {'listing': 0, 'whoami': 0, 'source': 0}
+
+        def fake_whoami(contest):
+            asked['whoami'] += 1
+            return who if who is not None else self._who(is_judge=True)
+
+        def fake_list(contest, token, any_submission):
+            asked['listing'] += 1
+            return dict(rows)
+
+        def fake_source(contest, token, row):
+            asked['source'] += 1
+            return source(row) if callable(source) else source
+
+        monkeypatch.setattr(remote.cli, 'contest_whoami', fake_whoami)
+        monkeypatch.setattr(remote.api, 'read_token', lambda c: 'tok')
+        monkeypatch.setattr(remote.api, 'list_submissions', fake_list)
+        monkeypatch.setattr(remote.api, 'download_source', fake_source)
+        return asked
+
+    def _listing_cache(self) -> pathlib.Path:
+        return (
+            package.get_problem_remote_dir()
+            / 'moj'
+            / 'sbc2026'
+            / remote.MojExpander.LISTING_CACHE_NAME
+        )
+
+    def test_a_listing_answers_every_submission_it_carries(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        """The whole listing is kept, not just the row that was asked for.
+
+        A fresh expander downloads the second one on purpose: what makes it free
+        is the file on disk, so it has to outlive the process that wrote it.
+        """
+        other = 'a' * 32
+        asked = self._serve(monkeypatch, self._rows(_SUB, other))
+
+        remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+        remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{other}'))
+
+        assert asked['listing'] == 1
+        assert asked['source'] == 2
+
+    def test_a_cached_row_costs_neither_a_listing_nor_a_subprocess(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        """`whoami` is a subprocess, and a settled row needs nothing it answers."""
+        asked = self._serve(monkeypatch, self._rows(_SUB))
+        remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+        before = dict(asked)
+
+        remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        assert asked['listing'] == before['listing']
+        assert asked['whoami'] == before['whoami']
+        assert asked['source'] == before['source'] + 1
+
+    def test_a_pending_row_is_never_served_from_the_cache(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        """Its verdict is still moving, and the source only exists once it stops."""
+        pending = self._serve(monkeypatch, self._rows(_SUB, verdict='On queue'))
+        with pytest.raises(MojCliError):
+            remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+        assert pending['listing'] == 1
+
+        judged = self._serve(monkeypatch, self._rows(_SUB))
+        result = remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        assert result is not None
+        assert judged['listing'] == 1
+
+    def test_a_submission_the_cache_does_not_carry_is_asked_for(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        """A miss is the whole reason the server still gets asked."""
+        other = 'a' * 32
+        first = self._serve(monkeypatch, self._rows(other))
+        remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{other}'))
+        assert first['listing'] == 1
+
+        second = self._serve(monkeypatch, self._rows(other, _SUB))
+        result = remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        assert result is not None
+        assert second['listing'] == 1
+
+    def test_a_miss_asks_the_server_once_per_run(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        """A second miss milliseconds later is not a different question."""
+        asked = self._serve(monkeypatch, self._rows('a' * 32))
+        expander = remote.MojExpander()
+
+        for _ in range(2):
+            with pytest.raises(MojCliError):
+                expander.expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        assert asked['listing'] == 1
+        assert asked['whoami'] == 1
+
+    def test_a_cached_row_that_no_longer_downloads_falls_back_to_the_listing(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        """The refusal MOJ gives here has no name; the listing path has one.
+
+        A source download that fails against a cached row says only `404
+        source_notfound` -- which is what MOJ answers for a submission that was
+        never yours as much as for one that never existed. So the row is dropped
+        and the question is put to the listing, which knows how to say it.
+        """
+        self._serve(monkeypatch, self._rows(_SUB))
+        remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        def refuse(row):
+            raise MojCliError('MOJ answered 404 for `/submission/source`.')
+
+        asked = self._serve(monkeypatch, {}, who=self._who('ana'), source=refuse)
+
+        with pytest.raises(MojCliError) as exc_info:
+            remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        message = str(exc_info.value)
+        assert 'has no submission' in message
+        assert 'ana' in message
+        assert asked['listing'] == 1
+        # And the row is gone, so the next run does not pay for it again.
+        assert _SUB not in self._listing_cache().read_text()
+
+    def test_an_unreadable_cache_reads_as_no_cache(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        """Half-written, older, corrupt -- all of it means "ask MOJ"."""
+        asked = self._serve(monkeypatch, self._rows(_SUB))
+        remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+        self._listing_cache().write_text('{"rows": {"broken')
+
+        result = remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        assert result is not None
+        assert asked['listing'] == 2
+
+    def test_a_row_that_failed_to_download_is_dropped_even_if_moj_is_down(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        """Otherwise a poisoned row costs a doomed request on every later run.
+
+        The listing that would have replaced it cannot be fetched either -- the
+        network is the thing that is broken -- so nothing else is going to take
+        the bad row out of the cache.
+        """
+        self._serve(monkeypatch, self._rows(_SUB))
+        remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+        assert _SUB in self._listing_cache().read_text()
+
+        def unreachable(*args, **kwargs):
+            raise MojCliError('Could not reach MOJ at `https://moj.example`.')
+
+        self._serve(monkeypatch, {}, source=unreachable)
+        monkeypatch.setattr(remote.api, 'list_submissions', unreachable)
+
+        with pytest.raises(MojCliError):
+            remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        assert _SUB not in self._listing_cache().read_text()

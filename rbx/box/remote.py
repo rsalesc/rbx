@@ -2,7 +2,7 @@ import os
 import pathlib
 import re
 from abc import ABC, abstractmethod
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 import typer
 
@@ -138,6 +138,21 @@ class MojExpander(Expander):
             )
         return contest, subid
 
+    # The listing cache, beside the sources it names, under the package's own
+    # `.remote/moj/<contest>/` -- so `rbx clean` wipes it with everything else and
+    # no state of MOJ's outlives the cache it belongs to. The name cannot collide
+    # with a downloaded source: those are always `<32 hex digits>.<ext>`.
+    LISTING_CACHE_NAME = 'listing.json'
+
+    def __init__(self) -> None:
+        # Per process, and this class is instantiated once into
+        # `REGISTERED_EXPANDERS`: several `@moj/...` references in one `rbx run`
+        # share a single listing and a single `moj contest whoami` subprocess
+        # between them, rather than paying for both once each.
+        self._listings: Dict[str, Dict[str, api.SubmissionRow]] = {}
+        self._refetched: Set[str] = set()
+        self._whoamis: Dict[str, cli.ContestWhoami] = {}
+
     def get_moj_folder(self, contest: str) -> pathlib.Path:
         return self.get_remote_path(pathlib.Path('moj') / contest)
 
@@ -148,23 +163,147 @@ class MojExpander(Expander):
         contest, subid = match
         return [str(self.get_moj_folder(contest) / subid) + '.*']
 
-    def expand(self, path: pathlib.Path) -> Optional[pathlib.Path]:
+    def _whoami(self, contest: str) -> cli.ContestWhoami:
+        """Who this machine is inside `contest`, asked at most once per process.
+
+        This is a *subprocess*, and the single most expensive thing an expansion
+        does -- which is why the fast path below skips it entirely and why the
+        slow path shares one answer across every reference in the same run.
+        """
+        if contest not in self._whoamis:
+            self._whoamis[contest] = cli.contest_whoami(contest)
+        return self._whoamis[contest]
+
+    def _listing_path(self, contest: str) -> pathlib.Path:
+        return self.get_moj_folder(contest) / self.LISTING_CACHE_NAME
+
+    def _read_listing(self, contest: str) -> Dict[str, api.SubmissionRow]:
+        """The last listing rbx read for this contest, or an empty one."""
+        if contest in self._listings:
+            return self._listings[contest]
+
+        rows: Dict[str, api.SubmissionRow] = {}
+        path = self._listing_path(contest)
+        if path.is_file():
+            try:
+                rows = api.CachedListing.model_validate_json(path.read_text()).rows
+            except (OSError, ValueError):
+                # A cache is a hint, so every way of failing to read one means the
+                # same thing: there is no hint. Written by an older rbx, truncated
+                # by an interrupted run, unreadable -- all of it reads as empty and
+                # costs one listing call to rebuild.
+                rows = {}
+        self._listings[contest] = rows
+        return rows
+
+    def _write_listing(self, contest: str, rows: Dict[str, api.SubmissionRow]) -> None:
+        path = self._listing_path(contest)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Through a temporary file: two rbx processes downloading from the same
+        # contest at once must not leave half a listing behind for a third to read.
+        tmp = path.with_suffix('.json.tmp')
+        tmp.write_text(api.CachedListing(rows=rows).model_dump_json())
+        tmp.replace(path)
+
+    def _forget(self, contest: str, subid: str) -> None:
+        """Drop one row, after it turned out not to describe a download."""
+        rows = dict(self._read_listing(contest))
+        if rows.pop(subid, None) is None:
+            return
+        self._listings[contest] = rows
+        self._write_listing(contest, rows)
+
+    def _cached_row(self, contest: str, subid: str) -> Optional[api.SubmissionRow]:
+        """A row good enough to download from, or `None` to go and ask MOJ.
+
+        Two conditions, and the second carries the argument. A **pending** row
+        says nothing durable -- its verdict is still moving, and MOJ archives the
+        source only once it has stopped -- so it is never served from cache and
+        always costs a fresh listing. A **settled** row, on the other hand, is a
+        set of facts about a submission that has already been judged: its language
+        and its epoch cannot change afterwards, and they are the whole of what the
+        download needs. There is nothing for a TTL to protect.
+        """
+        row = self._read_listing(contest).get(subid)
+        if row is None or row.is_pending:
+            return None
+        return row
+
+    def _fetch_listing(self, contest: str, token: str) -> Dict[str, api.SubmissionRow]:
+        """The listing as MOJ has it now, kept for the next reference.
+
+        Once per contest per process. A second lookup missing milliseconds after a
+        full listing came back is not going to be answered by asking for it again;
+        anything genuinely new since then arrives with the next `rbx` invocation.
+        """
+        if contest in self._refetched:
+            return self._read_listing(contest)
+
+        who = self._whoami(contest)
+        rows = api.list_submissions(
+            contest, token, any_submission=who.can_read_any_submission
+        )
+        self._listings[contest] = rows
+        self._refetched.add(contest)
+        self._write_listing(contest, rows)
+        return rows
+
+    def _download(
+        self, contest: str, token: str, row: api.SubmissionRow
+    ) -> pathlib.Path:
         from rbx.box.packaging.moj import moj_language_utils
 
+        source = api.download_source(contest, token, row)
+
+        # MOJ sends no filename with the source, so one is built. The extension
+        # comes from the language rbx would compile it with, falling back to MOJ's
+        # own id -- which is what its web UI names the download.
+        rbx_language = moj_language_utils.get_rbx_language_from_moj_language(
+            moj_language_utils.normalize_moj_language(row.lang)
+        )
+        extension = row.lang.lower()
+        if rbx_language is not None:
+            language = environment.get_language_or_nil(rbx_language)
+            if language is not None:
+                extension = language.extension
+
+        final_path = self.get_moj_folder(contest) / f'{row.subid}.{extension}'
+        final_path.parent.mkdir(parents=True, exist_ok=True)
+        final_path.write_text(source)
+        console.console.print(f'Downloaded {href(final_path)} from MOJ...')
+        return final_path
+
+    def expand(self, path: pathlib.Path) -> Optional[pathlib.Path]:
         match = self.get_match(str(path))
         if match is None:
             return None
         contest, subid = match
 
-        # Before the token is even read: this is what turns a missing session or a
-        # missing `moj-contest` into its own instruction, and it is also where the
-        # role comes from, which decides which listing below can be asked for.
-        who = cli.contest_whoami(contest)
         token = api.read_token(contest)
 
-        rows = api.list_submissions(
-            contest, token, any_submission=who.can_read_any_submission
-        )
+        # The fast path. A settled row already on disk answers everything the
+        # download asks of the listing, so neither the listing call -- which is the
+        # whole contest, and grows with it -- nor the `whoami` subprocess happens
+        # at all, and the source download is the only thing that touches MOJ.
+        row = self._cached_row(contest, subid)
+        if row is not None:
+            try:
+                return self._download(contest, token, row)
+            except MojCliError:
+                # The cached row did not describe a download after all: a session
+                # that may no longer read this submission, a token that has since
+                # expired, an archived source that has gone. Here that is a bare
+                # `404 source_notfound` (or a `401`) with nothing to act on; the
+                # path below has a sentence for every one of those cases. So the
+                # row goes, and the answer comes from MOJ.
+                self._forget(contest, subid)
+
+        # This is what turns a missing session or a missing `moj-contest` into its
+        # own instruction, and it is also where the role comes from, which decides
+        # which listing below can be asked for.
+        who = self._whoami(contest)
+
+        rows = self._fetch_listing(contest, token)
         row = rows.get(subid)
         if row is None:
             # Asked here rather than left to the download, which answers a bare
@@ -194,25 +333,7 @@ class MojExpander(Expander):
                 f'again in a moment.'
             )
 
-        source = api.download_source(contest, token, row)
-
-        # MOJ sends no filename with the source, so one is built. The extension
-        # comes from the language rbx would compile it with, falling back to MOJ's
-        # own id -- which is what its web UI names the download.
-        rbx_language = moj_language_utils.get_rbx_language_from_moj_language(
-            moj_language_utils.normalize_moj_language(row.lang)
-        )
-        extension = row.lang.lower()
-        if rbx_language is not None:
-            language = environment.get_language_or_nil(rbx_language)
-            if language is not None:
-                extension = language.extension
-
-        final_path = self.get_moj_folder(contest) / f'{subid}.{extension}'
-        final_path.parent.mkdir(parents=True, exist_ok=True)
-        final_path.write_text(source)
-        console.console.print(f'Downloaded {href(final_path)} from MOJ...')
-        return final_path
+        return self._download(contest, token, row)
 
 
 REGISTERED_EXPANDERS: List['Expander'] = [
