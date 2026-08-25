@@ -404,15 +404,26 @@ export function renderTestsetCard(
   // One button per picture that exists, named for the channel it opens. A
   // single unqualified `visualization` button was wrong twice over on a package
   // with both: it named neither, and it could reach only the input one.
+  //
+  // A channel is either built or lazy, never both: `lazyVisualizers` is already
+  // false wherever a picture exists. So `--visualize` packages keep exactly the
+  // buttons they had -- instant, opening a file -- and a lazy button appears
+  // only where the build left nothing to open but a visualizer is declared.
   const buttons = [
-    card.visualization === undefined
-      ? ''
-      : '<button class="card-channel" data-action="rbx.openTestVisualization" ' +
-        `title="${escapeAttr(card.visualization)}">input</button>`,
-    card.answerVisualization === undefined
-      ? ''
-      : '<button class="card-channel" data-action="rbx.openTestAnswerVisualization" ' +
-        `title="${escapeAttr(card.answerVisualization)}">answer</button>`,
+    card.visualization !== undefined
+      ? '<button class="card-channel" data-action="rbx.openTestVisualization" ' +
+        `title="${escapeAttr(card.visualization)}">input</button>`
+      : card.lazyVisualizers.input
+        ? '<button class="card-channel lazy" data-action="rbx.visualizeTest" ' +
+          'title="Run the input visualizer for this testcase">input</button>'
+        : '',
+    card.answerVisualization !== undefined
+      ? '<button class="card-channel" data-action="rbx.openTestAnswerVisualization" ' +
+        `title="${escapeAttr(card.answerVisualization)}">answer</button>`
+      : card.lazyVisualizers.output
+        ? '<button class="card-channel lazy" data-action="rbx.visualizeTestAnswer" ' +
+          'title="Run the solution visualizer on this testcase\'s expected answer">answer</button>'
+        : '',
   ].join('');
   const visualization =
     buttons === ''

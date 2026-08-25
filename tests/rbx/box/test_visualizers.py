@@ -433,3 +433,115 @@ async def test_run_solution_visualizers_for_entries_skips_testcase_with_no_answe
     )
 
     mock_run_item.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# resolve_visualizers_for_input
+# ---------------------------------------------------------------------------
+
+
+def _package_with(visualizer=None, solution_visualizer=None) -> MagicMock:
+    pkg = MagicMock()
+    pkg.visualizer = visualizer
+    pkg.solutionVisualizer = solution_visualizer
+    return pkg
+
+
+@pytest.mark.asyncio
+async def test_resolve_visualizers_prefers_the_entry_over_the_package():
+    """A group or subgroup override wins over the package-level declaration.
+
+    This is the whole reason resolution goes through the generation entry: a
+    visualizer may be declared on the package, on a group or on a subgroup, and
+    reading `pkg.visualizer` directly silently ignores the inner two.
+    """
+    package_visualizer = Visualizer(path=pathlib.Path('pkg.py'), extension='html')
+    group_visualizer = Visualizer(path=pathlib.Path('group.py'), extension='html')
+    entry = _make_entry(
+        input_path=pathlib.Path('tests/g1/000.in'), visualizer=group_visualizer
+    )
+
+    with (
+        patch.object(
+            visualizers,
+            'find_entry_for_input',
+            AsyncMock(return_value=entry),
+        ),
+        patch.object(
+            visualizers.package,
+            'find_problem_package_or_die',
+            MagicMock(return_value=_package_with(visualizer=package_visualizer)),
+        ),
+    ):
+        (
+            input_visualizer,
+            solution_visualizer,
+        ) = await visualizers.resolve_visualizers_for_input(
+            pathlib.Path('tests/g1/000.in')
+        )
+
+    assert input_visualizer == group_visualizer
+    # No solution visualizer anywhere, so the input one stands in -- the same
+    # fallback `run_solution_visualizers_for_entries` applies.
+    assert solution_visualizer == group_visualizer
+
+
+@pytest.mark.asyncio
+async def test_resolve_visualizers_falls_back_to_the_package_without_an_entry():
+    """An input belonging to no entry -- a scratch file -- still resolves."""
+    package_visualizer = Visualizer(path=pathlib.Path('pkg.py'), extension='html')
+    package_solution_visualizer = Visualizer(
+        path=pathlib.Path('pkg_out.py'), extension='html'
+    )
+
+    with (
+        patch.object(visualizers, 'find_entry_for_input', AsyncMock(return_value=None)),
+        patch.object(
+            visualizers.package,
+            'find_problem_package_or_die',
+            MagicMock(
+                return_value=_package_with(
+                    visualizer=package_visualizer,
+                    solution_visualizer=package_solution_visualizer,
+                )
+            ),
+        ),
+    ):
+        (
+            input_visualizer,
+            solution_visualizer,
+        ) = await visualizers.resolve_visualizers_for_input(pathlib.Path('scratch.in'))
+
+    assert input_visualizer == package_visualizer
+    assert solution_visualizer == package_solution_visualizer
+
+
+@pytest.mark.asyncio
+async def test_resolve_visualizers_uses_entry_solution_visualizer():
+    """`solution_visualizer` is honoured separately from `visualizer`."""
+    group_visualizer = Visualizer(path=pathlib.Path('group.py'), extension='html')
+    group_solution_visualizer = Visualizer(
+        path=pathlib.Path('group_out.py'), extension='html'
+    )
+    entry = _make_entry(
+        visualizer=group_visualizer,
+        solution_visualizer=group_solution_visualizer,
+    )
+
+    with (
+        patch.object(
+            visualizers, 'find_entry_for_input', AsyncMock(return_value=entry)
+        ),
+        patch.object(
+            visualizers.package,
+            'find_problem_package_or_die',
+            MagicMock(return_value=_package_with()),
+        ),
+    ):
+        (
+            input_visualizer,
+            solution_visualizer,
+        ) = await visualizers.resolve_visualizers_for_input(pathlib.Path('test.in'))
+
+    assert input_visualizer == group_visualizer
+    assert solution_visualizer == group_solution_visualizer

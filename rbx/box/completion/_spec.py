@@ -3154,6 +3154,137 @@ SPEC = {
                 }
             ],
         },
+        {
+            'children': [
+                {
+                    'help': 'Visualize a testcase input.',
+                    'is_group': False,
+                    'name': 'input',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Path to the testcase input to visualize.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--input'],
+                            'takes_value': True,
+                            'value': {'kind': 'path', 'path': 'file'},
+                        },
+                        {
+                            'help': 'Optional output to pass to the visualizer.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--output'],
+                            'takes_value': True,
+                            'value': {'kind': 'path', 'path': 'file'},
+                        },
+                        {
+                            'help': 'Where to write the visualization, WITHOUT an '
+                            'extension. The visualizer decides the extension, '
+                            'and the final path is printed.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--dest'],
+                            'takes_value': True,
+                            'value': {'kind': 'path', 'path': 'file'},
+                        },
+                        {
+                            'help': "Shorthand for passing the sibling '.err' file "
+                            'instead of the output.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--use-stderr'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': "Visualize a solution's output for a testcase.",
+                    'is_group': False,
+                    'name': 'output',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Path to the testcase input.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--input'],
+                            'takes_value': True,
+                            'value': {'kind': 'path', 'path': 'file'},
+                        },
+                        {
+                            'help': 'Path to the output to visualize.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--output'],
+                            'takes_value': True,
+                            'value': {'kind': 'path', 'path': 'file'},
+                        },
+                        {
+                            'help': 'Optional answer to compare the output against.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--answer'],
+                            'takes_value': True,
+                            'value': {'kind': 'path', 'path': 'file'},
+                        },
+                        {
+                            'help': 'Where to write the visualization, WITHOUT an '
+                            'extension. The visualizer decides the extension, '
+                            'and the final path is printed.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--dest'],
+                            'takes_value': True,
+                            'value': {'kind': 'path', 'path': 'file'},
+                        },
+                        {
+                            'help': "Shorthand for visualizing the sibling '.err' "
+                            'file instead. Prefer passing the stderr file to '
+                            '--output directly: on a communication task the '
+                            "solution's stderr is '.sol.err', which this "
+                            'cannot name.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--use-stderr'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+            ],
+            'help': 'Visualize a single testcase (sub-command).',
+            'is_group': True,
+            'name': 'visualize, viz',
+            'panel': 'Management',
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
     ],
     'help': None,
     'is_group': True,

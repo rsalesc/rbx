@@ -1,6 +1,6 @@
 import pathlib
 import shlex
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from pydantic import BaseModel
 
@@ -143,7 +143,7 @@ async def compile_visualizers_for_entries(
     return await compile_visualizers(visualizers, progress=progress)
 
 
-def _get_answer_from_with_digest(
+def get_answer_from_with_digest(
     visualizer: Visualizer,
     compiled_visualizers: Dict[str, str],
 ) -> Optional[OutputFromWithDigest]:
@@ -375,6 +375,7 @@ async def run_input_visualizer_for_testcase(
     visualizer_digest: str,
     answer_from: Optional[OutputFromWithDigest] = None,
     interactive: bool = False,
+    visualization_stem: Optional[pathlib.Path] = None,
 ) -> Optional[pathlib.Path]:
     input_path = testcase.inputPath
     if not input_path.is_file():
@@ -383,8 +384,9 @@ async def run_input_visualizer_for_testcase(
                 f'[error]Visualization failed: input file [item]{input_path}[/item] does not exist.[/error]'
             )
 
-    visualization_dir = input_path.parent / 'visualization'
-    visualization_stem = visualization_dir / input_path.stem
+    if visualization_stem is None:
+        visualization_dir = input_path.parent / 'visualization'
+        visualization_stem = visualization_dir / input_path.stem
 
     return await run_visualizer(
         visualizer,
@@ -406,6 +408,7 @@ async def run_solution_visualizer_for_testcase(
     output_from: Optional[OutputFromWithDigest] = None,
     answer_from: Optional[OutputFromWithDigest] = None,
     interactive: bool = False,
+    visualization_stem: Optional[pathlib.Path] = None,
 ) -> Optional[pathlib.Path]:
     input_path = testcase.inputPath
     output_path = testcase.outputPath
@@ -417,8 +420,9 @@ async def run_solution_visualizer_for_testcase(
             )
         raise
 
-    visualization_dir = output_path.parent / 'output_visualization'
-    visualization_stem = visualization_dir / output_path.stem
+    if visualization_stem is None:
+        visualization_dir = output_path.parent / 'output_visualization'
+        visualization_stem = visualization_dir / output_path.stem
 
     return await run_visualizer(
         visualizer,
@@ -454,7 +458,7 @@ async def run_input_visualizers_for_entries(
                 entry.metadata.copied_to,
                 entry.visualizer,
                 digest,
-                answer_from=_get_answer_from_with_digest(
+                answer_from=get_answer_from_with_digest(
                     entry.visualizer, compiled_visualizers
                 ),
             )
@@ -494,7 +498,7 @@ async def run_solution_visualizers_for_entries(
                 entry.metadata.copied_to,
                 visualizer,
                 digest,
-                answer_from=_get_answer_from_with_digest(
+                answer_from=get_answer_from_with_digest(
                     visualizer, compiled_visualizers
                 ),
             )
@@ -550,7 +554,7 @@ async def run_visualizers_for_testcase(
                     testcase,
                     pkg.visualizer,
                     visualizer_digest,
-                    answer_from=_get_answer_from_with_digest(
+                    answer_from=get_answer_from_with_digest(
                         pkg.visualizer, compiled_visualizers
                     ),
                 )
@@ -560,26 +564,66 @@ async def run_visualizers_for_testcase(
     return None
 
 
-async def _run_ui_input_visualizer_for_testcase(testcase: Testcase):
-    compiled_visualizers = await compile_package_visualizers(input=True, output=False)
+async def find_entry_for_input(
+    input_path: pathlib.Path,
+) -> Optional[GenerationTestcaseEntry]:
+    """The generation entry whose built input is `input_path`, if any.
 
+    Returns `None` for an input belonging to no entry -- a scratch file, or a
+    package that has not been built.
+    """
+    from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
+
+    target = utils.abspath(input_path)
+    for entry in await extract_generation_testcases_from_groups():
+        if utils.abspath(entry.metadata.copied_to.inputPath) == target:
+            return entry
+    return None
+
+
+async def resolve_visualizers_for_input(
+    input_path: pathlib.Path,
+) -> Tuple[Optional[Visualizer], Optional[Visualizer]]:
+    """`(input visualizer, solution visualizer)` that apply to this testcase.
+
+    A visualizer may be declared on the package, on a group or on a subgroup,
+    the innermost winning. `testcase_extractors` already folds that whole chain
+    into each `GenerationTestcaseEntry`, so honouring an override is a matter of
+    *finding the entry* rather than re-implementing the precedence.
+
+    Reading `pkg.visualizer` directly -- which every caller here used to do --
+    silently ignores a group or subgroup override, and so visualizes such a
+    testcase with the wrong program.
+    """
     pkg = package.find_problem_package_or_die()
-    if pkg.visualizer is None:
+    entry = await find_entry_for_input(input_path)
+
+    if entry is None:
+        return pkg.visualizer, pkg.solutionVisualizer or pkg.visualizer
+
+    return entry.visualizer, entry.solution_visualizer or entry.visualizer
+
+
+async def _run_ui_input_visualizer_for_testcase(testcase: Testcase):
+    visualizer, _ = await resolve_visualizers_for_input(testcase.inputPath)
+    if visualizer is None:
         with VisualizationError() as e:
             e.print('[error]No input visualizer found.[/error]')
         return
 
-    visualizer_digest = compiled_visualizers.get(str(pkg.visualizer.path))
+    compiled_visualizers = await compile_visualizers([visualizer])
+
+    visualizer_digest = compiled_visualizers.get(str(visualizer.path))
     if visualizer_digest is None:
         with VisualizationError() as e:
-            e.print(f'[error]Visualizer {pkg.visualizer.href()} not compiled.[/error]')
+            e.print(f'[error]Visualizer {visualizer.href()} not compiled.[/error]')
         return
 
     visualization_path = await run_input_visualizer_for_testcase(
         testcase,
-        pkg.visualizer,
+        visualizer,
         visualizer_digest,
-        answer_from=_get_answer_from_with_digest(pkg.visualizer, compiled_visualizers),
+        answer_from=get_answer_from_with_digest(visualizer, compiled_visualizers),
         interactive=True,
     )
     if visualization_path is None or not visualization_path.is_file():
@@ -598,13 +642,13 @@ async def _run_ui_solution_visualizer_for_testcase(
     answer_path: Optional[pathlib.Path] = None,
     use_stderr: bool = False,
 ):
-    pkg = package.find_problem_package_or_die()
-    compiled_visualizers = await compile_package_visualizers(input=False, output=True)
-    visualizer = pkg.solutionVisualizer or pkg.visualizer
+    _, visualizer = await resolve_visualizers_for_input(testcase.inputPath)
     if visualizer is None:
         with VisualizationError() as e:
             e.print('[error]No solution visualizer found.[/error]')
         return
+
+    compiled_visualizers = await compile_visualizers([visualizer])
 
     visualizer_digest = compiled_visualizers.get(str(visualizer.path))
     if visualizer_digest is None:
@@ -612,7 +656,7 @@ async def _run_ui_solution_visualizer_for_testcase(
             e.print(f'[error]Visualizer {visualizer.href()} not compiled.[/error]')
         return
 
-    answer_from = _get_answer_from_with_digest(visualizer, compiled_visualizers)
+    answer_from = get_answer_from_with_digest(visualizer, compiled_visualizers)
     if use_stderr:
         answer_from = 'stderr'
 

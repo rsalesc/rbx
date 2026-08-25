@@ -8,6 +8,7 @@
  */
 import * as vscode from 'vscode';
 
+import { VisualizerDeclarations } from './rbx/declaredVisualizers';
 import { discoverPackages } from './discovery';
 import { log } from './log';
 import { PackageLayout } from './rbx/layout';
@@ -112,6 +113,11 @@ export class RunDataProvider {
    */
   testset(pkg: PackageLayout): Promise<Testset | undefined> {
     return this.storeFor(pkg).testset();
+  }
+
+  /** What `problem.rbx.yml` declares about visualizers, for the lazy buttons. */
+  visualizers(pkg: PackageLayout): Promise<VisualizerDeclarations | undefined> {
+    return this.storeFor(pkg).visualizers();
   }
 
   /**

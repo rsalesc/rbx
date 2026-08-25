@@ -26,7 +26,12 @@ import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
 
-import { PackageLayout, packageLayout, testsetFilePath } from './rbx/layout';
+import {
+  PackageLayout,
+  buildPath,
+  packageLayout,
+  testsetFilePath,
+} from './rbx/layout';
 import {
   EMPTY_PANEL_MODEL,
   GalleryCell,
@@ -170,8 +175,12 @@ export class TestsetPanel {
         // bundle. Nothing wider -- the panel renders files a generator wrote,
         // and the workspace root would put every file in the repository one
         // crafted manifest path away from being served into a webview.
+        //
+        // Resolved rather than hardcoded to `build`: `Environment.buildDir` is
+        // a preset setting, so a preset that renames it left this root pointing
+        // nowhere and the gallery blank.
         localResourceRoots: [
-          vscode.Uri.joinPath(vscode.Uri.file(root), 'build'),
+          vscode.Uri.file(buildPath(pkg)),
           vscode.Uri.joinPath(context.extensionUri, 'dist'),
         ],
         // No `retainContextWhenHidden`: the client persists tab, group and

@@ -255,7 +255,12 @@ export class TestsetViewProvider implements vscode.WebviewViewProvider {
       model:
         testset === undefined || selected === undefined
           ? EMPTY_TESTSET_MODEL
-          : buildTestsetViewModel(testset, { builtAt: await builtAt(selected) }),
+          : buildTestsetViewModel(testset, {
+              builtAt: await builtAt(selected),
+              // So a channel the build did not draw can still offer to draw it
+              // now, where a visualizer is declared for it.
+              visualizers: await this.data.visualizers(packageLayout(selected)),
+            }),
       problems: this.active.problems(),
       selected,
     });

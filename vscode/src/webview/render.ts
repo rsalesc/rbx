@@ -13,6 +13,7 @@
  * events, focus, persistence -- precisely because that part cannot be tested,
  * which is why nothing that decides anything is allowed to live there.
  */
+import type { DeclaredVisualizers } from '../rbx/declaredVisualizers';
 import type { ProblemChoice } from '../rbx/problems';
 import type {
   CardOrigin,
@@ -919,6 +920,44 @@ function cardChannels(): string {
   );
 }
 
+/**
+ * The visualize buttons, for the visualizers this testcase actually declares.
+ *
+ * A second line rather than more buttons on the channel row: the sidebar is
+ * ~300px, five buttons wrap, and wrapping is exactly the reflow `cardChannels`
+ * refuses to cause while arrowing down a group.
+ *
+ * These are `lazy` -- they run rbx and wait, where every other button here
+ * opens something already on disk. That difference is worth showing, because it
+ * is the difference between an instant pane and a compile plus a sandboxed run.
+ */
+function cardVisualizers(visualizers: DeclaredVisualizers): string {
+  const button = (action: string, label: string, title: string): string =>
+    `<button class="card-channel lazy" data-action="${action}" title="${escapeAttr(title)}">${escapeHtml(label)}</button>`;
+  const buttons = [
+    visualizers.input
+      ? button(
+          'rbx.visualizeTest',
+          'input',
+          'Run the input visualizer for this testcase',
+        )
+      : '',
+    visualizers.output
+      ? button(
+          'rbx.visualizeSolutionOutput',
+          'output',
+          "Run the solution visualizer on this solution's output",
+        )
+      : '',
+  ].join('');
+  return buttons === ''
+    ? ''
+    : '<div class="card-channels">' +
+        '<span class="card-channels-label">visualization</span>' +
+        buttons +
+        '</div>';
+}
+
 function originLine(origin: CardOrigin): string {
   const text = escapeHtml(origin.text);
   const title = escapeAttr(origin.title);
@@ -958,7 +997,8 @@ export function renderCard(model: RunViewModel, state: UiState): string {
     `<div class="card-title">${escapeHtml(card.title)}</div>` +
     checker +
     card.origins.map(originLine).join('') +
-    cardChannels()
+    cardChannels() +
+    cardVisualizers(card.visualizers)
   );
 }
 
