@@ -18,6 +18,11 @@ LAZY_MODULES = {
 CLI_LAZY_MODULES = {
     'textual',
     'iso639',
+    # The BOCA scraping stack, reachable only through a `@boca/...` expansion.
+    'bs4',
+    'lxml',
+    'mechanize',
+    'dateparser',
 }
 
 
@@ -41,7 +46,7 @@ def test_rich_not_imported_unnecessary():
     assert not [module for module in modules if module in LAZY_MODULES]
 
 
-def test_cli_does_not_import_heavy_modules():
+def test_cli_does_not_import_lazy_modules():
     modules = _imported_modules(
         '-c',
         'import sys; import rbx.box.cli; print("\\n".join(sys.modules))',
