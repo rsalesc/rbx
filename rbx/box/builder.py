@@ -34,6 +34,13 @@ async def build(
     is_run: bool = False,
     is_statement: bool = False,
 ) -> bool:
+    """Build the testset.
+
+    `groups` restricts the build to a subset of the testcase groups. `is_statement`
+    marks a build whose only purpose is feeding a statement its samples: coverage
+    of the constraint bounds is never the question there, so the hit-bounds
+    section of the validation report is dropped entirely.
+    """
     no_main_solution_report = False
     # None, not [], when the build did not validate: the manifest omits its
     # `validation` key entirely rather than publishing an empty coverage table
@@ -63,7 +70,9 @@ async def build(
                 groups=groups,
             )
             input_validation_infos = infos
-            print_validation_report(infos)
+            print_validation_report(
+                infos, groups=groups, report_hit_bounds=not is_statement
+            )
 
         if has_validation_errors(infos):
             console.console.print(

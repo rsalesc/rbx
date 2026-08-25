@@ -523,9 +523,34 @@ def has_validation_errors(infos: List[TestcaseValidationInfo]) -> bool:
     return any(not info.ok for info in infos)
 
 
+def _is_partial_build(groups: Optional[Set[str]]) -> bool:
+    """Whether the build that produced these infos covered only some groups.
+
+    A group is always built whole, so a per-group hit-bounds row is as complete
+    on a subset build as on a full one. The package-wide row is not: it asserts
+    that the testset *as a whole* hits every bound, which the groups that were
+    left out were free to be the ones to do.
+    """
+    if groups is None:
+        return False
+    pkg = package.find_problem_package_or_die()
+    return not set(group.name for group in pkg.testcases).issubset(groups)
+
+
 def print_validation_report(
-    infos: List[TestcaseValidationInfo], output_validation: bool = False
+    infos: List[TestcaseValidationInfo],
+    output_validation: bool = False,
+    groups: Optional[Set[str]] = None,
+    report_hit_bounds: bool = True,
 ):
+    """Print the validation report for `infos`.
+
+    `groups` is the group filter of the build that produced `infos`, if any: a
+    build restricted to a subset of the groups gets no package-wide hit-bounds
+    row, only the per-group ones. `report_hit_bounds=False` drops the whole
+    hit-bounds section -- for callers whose testset is a subset by construction
+    and for whom coverage is never the question, like statement building.
+    """
     any_failure = any(not info.ok for info in infos)
     validator_mode_str = 'output validator' if output_validation else 'validator'
 
@@ -557,7 +582,15 @@ def print_validation_report(
         console.console.print()
         return
 
-    if not _has_group_specific_bounds():
+    if not report_hit_bounds:
+        hit_bounds_per_group = {}
+    elif _is_partial_build(groups):
+        # Only the per-group rows survive a subset build. When the bounds are
+        # shared package-wide there are no per-group rows to keep: a single
+        # group is not expected to hit the whole package's bounds on its own.
+        if not _has_group_specific_bounds():
+            hit_bounds_per_group = {}
+    elif not _has_group_specific_bounds():
         hit_bounds_per_group = {None: _merge_hit_bounds(hit_bounds_per_group.values())}
 
     def _is_hit_bound_good(hit_bounds: HitBounds) -> bool:

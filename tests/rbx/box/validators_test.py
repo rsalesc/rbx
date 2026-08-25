@@ -181,6 +181,98 @@ async def test_main_validator_no_hit_bound_issues(
     assert '- "x": max-value not hit' not in out
 
 
+async def test_subset_build_does_not_report_package_wide_hit_bounds(
+    testing_pkg: testing_package.TestingPackage,
+    capsys: pytest.CaptureFixture[str],
+):
+    """A subset build cannot assert the package-wide bounds are unhit.
+
+    The groups it left out were free to be the ones hitting them -- which is what
+    made every statement build (samples only) report every bound as unhit.
+    """
+    testing_pkg.add_testgroup_from_glob('samples', 'manual_tests/samples/*.in')
+    testing_pkg.add_testgroup_from_glob('main', 'manual_tests/main/*.in')
+    testing_pkg.add_file('manual_tests/samples/000.in').write_text('59\n')
+    testing_pkg.add_file('manual_tests/main/000.in').write_text('1\n')
+
+    testing_pkg.set_validator(
+        'validator.cpp', src='validators/int-validator-bounded.cpp'
+    )
+
+    assert _has_group_specific_bounds() is False
+
+    await generate_testcases()
+
+    validation_infos = await validate_testcases(groups={'samples'})
+    print_validation_report(validation_infos, groups={'samples'})
+
+    assert not has_validation_errors(validation_infos)
+
+    out = capsys.readouterr().out
+    assert 'Hit bounds:' not in out
+    assert 'not hit' not in out
+    assert 'No validation issues found.' in out
+
+
+async def test_subset_build_still_reports_group_specific_hit_bounds(
+    testing_pkg: testing_package.TestingPackage,
+    capsys: pytest.CaptureFixture[str],
+):
+    """A group is built whole, so its own row is as complete as on a full build."""
+    testing_pkg.add_testgroup_from_glob('samples', 'manual_tests/samples/*.in')
+    testing_pkg.add_testgroup_from_glob('main', 'manual_tests/main/*.in')
+    testing_pkg.add_file('manual_tests/samples/000.in').write_text('59\n')
+    testing_pkg.add_file('manual_tests/main/000.in').write_text('73\n')
+
+    testing_pkg.set_validator(
+        'validator.cpp', src='validators/int-validator-bounded.cpp'
+    )
+    testing_pkg.yml.testcases[1].vars = {'N': {'max': 100}}
+    testing_pkg.save()
+
+    assert _has_group_specific_bounds() is True
+
+    await generate_testcases()
+
+    validation_infos = await validate_testcases(groups={'main'})
+    print_validation_report(validation_infos, groups={'main'})
+
+    assert not has_validation_errors(validation_infos)
+
+    out = capsys.readouterr().out
+    assert 'Group main hit bounds:' in out
+    assert '- "x": min-value not hit' in out
+
+
+async def test_hit_bounds_can_be_suppressed_entirely(
+    testing_pkg: testing_package.TestingPackage,
+    capsys: pytest.CaptureFixture[str],
+):
+    """What statement building asks for: never report coverage, not even here.
+
+    A samples-only package is a full build of every group it has, so the subset
+    rule alone would still report its bounds.
+    """
+    testing_pkg.add_testgroup_from_glob('samples', 'manual_tests/*.in')
+    testing_pkg.add_file('manual_tests/000.in').write_text('59\n')
+
+    testing_pkg.set_validator(
+        'validator.cpp', src='validators/int-validator-bounded.cpp'
+    )
+
+    await generate_testcases()
+
+    validation_infos = await validate_testcases()
+    print_validation_report(validation_infos, report_hit_bounds=False)
+
+    assert not has_validation_errors(validation_infos)
+
+    out = capsys.readouterr().out
+    assert 'Hit bounds:' not in out
+    assert 'not hit' not in out
+    assert 'No validation issues found.' in out
+
+
 async def test_group_specific_validator_catches_invalid_cases(
     testing_pkg: testing_package.TestingPackage,
     capsys: pytest.CaptureFixture[str],
