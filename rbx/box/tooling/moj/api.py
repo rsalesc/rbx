@@ -71,6 +71,18 @@ class SubmissionRow(BaseModel):
         return self.verdict.strip().lower() in PENDING_VERDICTS
 
 
+class CachedListing(BaseModel):
+    """A listing as it was last read from MOJ, on its way to and from disk.
+
+    An envelope rather than a bare dict so that the file carries a shape a future
+    field can be added to, and so that reading one back is a single validation
+    that either yields rows or raises -- a half-written or older file has to read
+    as *no cache*, never as a partial one.
+    """
+
+    rows: Dict[str, SubmissionRow] = {}
+
+
 def config_dir() -> pathlib.Path:
     """`CFG` in `lib/core.sh`."""
     override = os.environ.get('MOJ_CONFIG_DIR')
