@@ -1,4 +1,5 @@
 import pathlib
+from typing import List, Optional
 
 import typer
 
@@ -16,10 +17,19 @@ def _compile_out():
     return package.get_build_path() / 'exe'
 
 
-async def _compile(item: CodeItem, sanitized: SanitizationLevel, warnings: bool):
+async def _compile(
+    item: CodeItem,
+    sanitized: SanitizationLevel,
+    warnings: bool,
+    extra_flags: Optional[List[str]] = None,
+):
     console.console.print(f'Compiling {item.href()}...')
     digest = await code.compile_item(
-        item, sanitized, force_warnings=warnings, verbose=True
+        item,
+        sanitized,
+        force_warnings=warnings,
+        verbose=True,
+        extra_flags=extra_flags,
     )
     cacher = package.get_file_cacher()
     out_path = _compile_out()
@@ -35,7 +45,12 @@ async def _compile(item: CodeItem, sanitized: SanitizationLevel, warnings: bool)
     )
 
 
-async def any(path: str, sanitized: bool = False, warnings: bool = False):
+async def any(
+    path: str,
+    sanitized: bool = False,
+    warnings: bool = False,
+    extra_flags: Optional[List[str]] = None,
+):
     pkg = package.find_problem_package_or_die()
 
     path = str(remote.expand_file(path))
@@ -46,6 +61,7 @@ async def any(path: str, sanitized: bool = False, warnings: bool = False):
             solution,
             sanitized=SanitizationLevel.FORCE if sanitized else SanitizationLevel.NONE,
             warnings=warnings,
+            extra_flags=extra_flags,
         )
         return
 
@@ -57,6 +73,7 @@ async def any(path: str, sanitized: bool = False, warnings: bool = False):
                 if sanitized
                 else SanitizationLevel.PREFER,
                 warnings=warnings,
+                extra_flags=extra_flags,
             )
             return
 
@@ -68,6 +85,7 @@ async def any(path: str, sanitized: bool = False, warnings: bool = False):
             if sanitized
             else SanitizationLevel.PREFER,
             warnings=warnings,
+            extra_flags=extra_flags,
         )
         return
 
@@ -78,6 +96,7 @@ async def any(path: str, sanitized: bool = False, warnings: bool = False):
             if sanitized
             else SanitizationLevel.PREFER,
             warnings=warnings,
+            extra_flags=extra_flags,
         )
         return
 
@@ -85,4 +104,5 @@ async def any(path: str, sanitized: bool = False, warnings: bool = False):
         CodeItem(path=pathlib.Path(path)),
         sanitized=SanitizationLevel.FORCE if sanitized else SanitizationLevel.NONE,
         warnings=warnings,
+        extra_flags=extra_flags,
     )

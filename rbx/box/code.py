@@ -30,6 +30,7 @@ from rbx.box.environment import (
     get_mapped_commands,
     get_sandbox_params_from_config,
     is_interpreted,
+    language_kinds,
     merge_execution_configs,
 )
 from rbx.box.formatting import get_formatted_memory
@@ -152,6 +153,34 @@ def add_cpp_flags(commands: List[str], force_warnings: bool) -> List[str]:
     if cfg.warnings.enabled or force_warnings:
         return [add_warning_flags_to_command(command) for command in commands]
     return commands
+
+
+def add_extra_flags_to_commands(
+    commands: List[str], extra_flags: List[str], language: EnvironmentLanguage
+) -> List[str]:
+    """Append user-supplied compiler flags to a language's compilation commands.
+
+    A language may compile in several steps -- Java runs ``javac`` and then ``jar`` --
+    and the flags belong on the compiler, not on the packaging step. Commands are
+    matched by :func:`command_kinds` on their executable against the language's own
+    kinds, the same way sanitizer and warning flags are placed. When no command
+    matches (a compiler ``command_kinds`` does not recognise, such as ``rustc``), the
+    flags go to the first command, which is the only command such a language has.
+
+    The flags are appended last so they take precedence over the flags rbx injects.
+    """
+    if not extra_flags:
+        return commands
+
+    suffix = ' ' + shlex.join(extra_flags)
+    kinds = language_kinds(language)
+
+    def matches(command: str) -> bool:
+        return bool(command_kinds(steps.get_exe_from_command(command)) & kinds)
+
+    if not any(matches(command) for command in commands):
+        return [commands[0] + suffix] + commands[1:]
+    return [command + suffix if matches(command) else command for command in commands]
 
 
 def _add_warning_pragmas(code: str) -> str:
@@ -612,6 +641,7 @@ async def compile_item(
     verbose: bool = False,
     precompile: bool = True,
     kind: Optional['AssetKind'] = None,
+    extra_flags: Optional[List[str]] = None,
 ) -> str:
     with package.get_new_sandbox() as sandbox:
         _check_stack_limit()
@@ -641,6 +671,11 @@ async def compile_item(
 
         if not compilation_options.commands:
             # Language is not compiled.
+            if extra_flags:
+                console.console.print(
+                    f'[warning]Extra compiler flags ignored: [item]{language}[/item] '
+                    'is not a compiled language.[/warning]'
+                )
             return await sandbox.file_cacher.put_file_from_path(compilable_path)
 
         commands = get_mapped_commands(
@@ -720,8 +755,15 @@ async def compile_item(
         if bits_artifact is not None or added_always_include:
             commands = _add_internal_include(commands)
 
-        # Precompile C++ interesting header files.
-        if precompile and _should_precompile(commands):
+        # User-supplied flags go last so they win over everything rbx injects.
+        commands = add_extra_flags_to_commands(
+            commands, extra_flags or [], get_language(language)
+        )
+
+        # Precompile C++ interesting header files. Skipped when the user passed extra
+        # flags: GCC rejects a precompiled header built under different flags than the
+        # translation unit including it.
+        if precompile and not extra_flags and _should_precompile(commands):
             with profiling.Profiler('code.precompile'):
                 precompilation_inputs = []
                 for input in artifacts.inputs:

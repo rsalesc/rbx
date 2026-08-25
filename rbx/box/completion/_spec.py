@@ -823,6 +823,15 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': None,
+                    'kind': 'argument',
+                    'multiple': False,
+                    'names': [],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                    'variadic': True,
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,

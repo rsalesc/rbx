@@ -9,7 +9,7 @@ there too.
 
 import pathlib
 import tempfile
-from typing import Annotated, Optional
+from typing import Annotated, List, Optional
 
 import syncer
 import typer
@@ -30,6 +30,7 @@ app = typer.Typer(cls=annotations.AliasGroup)
     'compile',
     rich_help_panel='Testing',
     help='Compile an asset given its path.',
+    context_settings={'ignore_unknown_options': True},
 )
 @package.within_problem
 @syncer.sync
@@ -57,7 +58,22 @@ async def compile_command(
         '-a',
         help='Whether to compile all assets.',
     ),
+    extra_flags: Annotated[
+        Optional[List[str]],
+        typer.Argument(
+            metavar='[-- EXTRA_FLAGS...]',
+            help='Extra flags to pass to the compiler, after a `--` separator.',
+        ),
+    ] = None,
 ):
+    extra_flags = list(extra_flags or [])
+
+    # Click fills positional arguments in order and does not report where `--` was,
+    # so `rbx compile -- -O0` binds `-O0` to `path`. A leading dash is never a path.
+    if path is not None and path.startswith('-'):
+        extra_flags.insert(0, path)
+        path = None
+
     if path is None and not all:
         import questionary
 
@@ -68,16 +84,33 @@ async def compile_command(
 
     if all:
         for solution in package.get_solutions():
-            await compile.any(str(solution.path), sanitized, warnings)
+            await compile.any(
+                str(solution.path), sanitized, warnings, extra_flags=extra_flags
+            )
         if package.get_checker() is not None:
-            await compile.any(str(package.get_checker().path), sanitized, warnings)
+            await compile.any(
+                str(package.get_checker().path),
+                sanitized,
+                warnings,
+                extra_flags=extra_flags,
+            )
         if package.get_validator() is not None:
-            await compile.any(str(package.get_validator().path), sanitized, warnings)
+            await compile.any(
+                str(package.get_validator().path),
+                sanitized,
+                warnings,
+                extra_flags=extra_flags,
+            )
         if package.get_interactor() is not None:
-            await compile.any(str(package.get_interactor().path), sanitized, warnings)
+            await compile.any(
+                str(package.get_interactor().path),
+                sanitized,
+                warnings,
+                extra_flags=extra_flags,
+            )
 
     if path is not None:
-        await compile.any(path, sanitized, warnings)
+        await compile.any(path, sanitized, warnings, extra_flags=extra_flags)
 
 
 @app.command(

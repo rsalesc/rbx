@@ -279,7 +279,7 @@ Compile an asset given its path.
 
 **Usage:**
 ```bash
-rbx compile <PATH> [OPTIONS]
+rbx compile <PATH> <EXTRA_FLAGS> [OPTIONS]
 ```
 
 **Arguments:**
@@ -287,6 +287,7 @@ rbx compile <PATH> [OPTIONS]
 | Name | Description | Required |
 | :--- | :--- | :--- |
 | `PATH` | Path to the asset to compile. | No |
+| `EXTRA_FLAGS` | Extra flags to pass to the compiler, after a `--` separator. | No |
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
