@@ -157,6 +157,10 @@ rbx on A package moj -u
 Uploading goes through the [`moj` CLI](https://github.com/cd-moj/moj-cli), so you have to be
 logged in with `moj login` first. {{rbx}} reuses that session and never handles your credentials.
 
+!!! note "On macOS, check your bash first"
+    The CLI needs bash 4 or newer, and macOS ships 3.2. Installing a newer bash isn't enough on
+    its own -- see [The MOJ CLI needs bash 4 or newer](#the-moj-cli-needs-bash-4-or-newer).
+
 The problem is created on the server if it doesn't exist yet, and is named `<org>#<problem>`.
 You tell {{rbx}} which org to use in your `env.rbx.yml`:
 
@@ -317,6 +321,56 @@ rather than downloaded, and {{rbx}} says which of the two cases it hit -- readin
 code needs a judge account, not a different reference.
 
 ## Troubleshooting
+
+### The MOJ CLI needs bash 4 or newer
+
+If `moj` greets you with
+
+```
+moj: preciso de bash >= 4 (macOS: brew install bash e rode com ele)
+```
+
+then the CLI is fine and your shell isn't. `moj` is a bash script that uses features added in
+bash 4, and macOS still ships bash **3.2** as `/bin/bash` -- it has for well over a decade, and
+it isn't going to change.
+
+Installing a newer one is only half the fix. `moj` starts with `#!/usr/bin/env bash`, so the
+shell that runs it is whichever `bash` comes **first on your `PATH`** -- and Homebrew installs
+its own without touching the system one. If `/opt/homebrew/bin` (or `/usr/local/bin`, on Intel)
+isn't ahead of `/bin`, you get 3.2 no matter what you installed.
+
+So put it there, in the file your shell reads on every session:
+
+```bash title="~/.zshrc"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+```
+
+Then check that you got the one you meant:
+
+```bash
+bash --version   # should say 5.x, not 3.2
+moj whoami
+```
+
+!!! warning
+    Running `/opt/homebrew/bin/bash ~/.local/bin/moj ...` by hand works, and it's a tempting
+    place to stop -- but it only fixes the times *you* type the command. {{rbx}} runs `moj`
+    itself, and it inherits your `PATH`, not your habits. Fix the `PATH` and everything works;
+    fix only your typing and `rbx package moj -u` still fails.
+
+`moj-contest` carries the same requirement, and the same fix covers it.
+
+#### If you can't change your `PATH`
+
+Point {{rbx}} at an interpreter and the script instead:
+
+```bash
+export RBX_MOJ_BINARY="$(brew --prefix)/bin/bash $(command -v moj)"
+```
+
+{{rbx}} splits `RBX_MOJ_BINARY` the way a shell would, so it holds a whole command rather than a
+path. This is a fallback, not the fix: it hard-codes paths that break when you change machines,
+and it does nothing for the times you run `moj` yourself. Prefer the `PATH`.
 
 ### My problem has a tight `outputLimit`, but MOJ doesn't enforce it
 

@@ -16,6 +16,7 @@ Nothing here touches the network.
 """
 
 import json
+import os
 import pathlib
 import re
 import textwrap
@@ -925,3 +926,198 @@ def test_contest_whoami_refuses_output_that_is_not_json(
 
     with pytest.raises(MojCliError):
         cli.contest_whoami('sbc2026')
+
+
+# -- Which `moj`, and which shell runs it. -------------------------------------
+#
+# The MOJ CLI is a bash script that needs bash >= 4, behind a `#!/usr/bin/env
+# bash` shebang -- so *which* bash runs it is decided by `PATH` at exec time, and
+# macOS still ships 3.2 at `/bin/bash`. Both of the things below exist because of
+# that: a way to say which command to run, and a diagnosis when the default one is
+# run by a shell too old for it.
+
+
+def _stub_bash(tmp_path: pathlib.Path, major: int) -> pathlib.Path:
+    """A `bash` reporting `major`, which refuses to run anything if that is < 4.
+
+    It answers the version probe and, for every other argv, does what the real
+    CLI's own guard does: prints its message and exits non-zero. So a `moj` whose
+    shebang resolves to this one fails exactly the way it fails on a stock macOS.
+    """
+    directory = tmp_path / f'bash{major}'
+    directory.mkdir()
+    path = directory / 'bash'
+    refusal = (
+        "echo 'moj: preciso de bash >= 4 (macOS: brew install bash e rode com ele)' >&2; exit 1"
+        if major < 4
+        else "echo 'login: alice  nome: Alice A'"
+    )
+    path.write_text(
+        textwrap.dedent(f"""\
+        #!/bin/sh
+        case "$*" in
+          *BASH_VERSINFO*) echo '{major}' ;;
+          *) {refusal} ;;
+        esac
+        """)
+    )
+    path.chmod(0o755)
+    return path
+
+
+def _stub_bash_script(tmp_path: pathlib.Path, shebang: str) -> pathlib.Path:
+    """A `moj` carrying `shebang`, so what executes it is the shebang's business."""
+    path = tmp_path / 'moj'
+    path.write_text(f'{shebang}\necho "unreachable: the shebang decides"\n')
+    path.chmod(0o755)
+    return path
+
+
+async def test_the_command_to_run_can_be_overridden(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """`RBX_MOJ_BINARY` is split like a shell command, not taken as a path.
+
+    Which is the whole point of it: the fix a setter on macOS reaches for is an
+    interpreter *plus* a script -- `/opt/homebrew/bin/bash ~/.local/bin/moj` --
+    and a plain path could not express that.
+
+    The script is deliberately left non-executable, so that a spawn which ignored
+    the interpreter and exec'd it directly would fail rather than pass by luck.
+    """
+    script = tmp_path / 'somewhere' / 'moj.sh'
+    script.parent.mkdir()
+    script.write_text(f"cat <<'EOF'\n{_WHOAMI}EOF\n")
+    script.chmod(0o644)
+    monkeypatch.setenv('RBX_MOJ_BINARY', f'/bin/sh {script}')
+
+    assert await cli.whoami() == 'alice'
+
+
+async def test_an_override_that_is_not_there_reads_as_a_missing_cli(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """A typo in the override is still "no CLI to run", not an internal error."""
+    monkeypatch.setenv('RBX_MOJ_BINARY', str(tmp_path / 'nowhere' / 'moj'))
+
+    with pytest.raises(MojNotInstalledError) as exc_info:
+        await cli.whoami()
+    assert 'RBX_MOJ_BINARY' in str(exc_info.value)
+
+
+async def test_an_empty_override_falls_back_to_the_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """An unset-by-blanking variable must not spawn the empty string."""
+    _stub_moj(monkeypatch, tmp_path, f"cat <<'EOF'\n{_WHOAMI}EOF\n")
+    monkeypatch.setenv('RBX_MOJ_BINARY', '   ')
+
+    assert await cli.whoami() == 'alice'
+
+
+async def test_a_failure_names_the_overridden_command_rather_than_moj(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """The setter has to be able to re-run by hand what rbx actually ran."""
+    script = tmp_path / 'moj.sh'
+    script.write_text("echo 'problema nao encontrado' >&2\nexit 3\n")
+    monkeypatch.setenv('RBX_MOJ_BINARY', f'/bin/sh {script}')
+
+    with pytest.raises(MojCliError) as exc_info:
+        await cli.check('alice#rbxt-deadbeef')
+    assert f'/bin/sh {script} --json check' in str(exc_info.value)
+
+
+async def test_a_moj_run_by_a_bash_too_old_for_it_says_which_bash(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """The macOS failure, diagnosed structurally rather than by its wording.
+
+    `/bin/bash` is 3.2 and the CLI needs 4; the message it dies with is
+    Portuguese prose that rbx must not have to match to recognise this.
+    """
+    bash = _stub_bash(tmp_path, 3)
+    monkeypatch.setenv('PATH', f'{bash.parent}:{os.environ["PATH"]}')
+    monkeypatch.setattr(
+        cli, 'MOJ_BINARY', str(_stub_bash_script(tmp_path, '#!/usr/bin/env bash'))
+    )
+
+    with pytest.raises(cli.MojUnsupportedShellError) as exc_info:
+        await cli.check('alice#rbxt-deadbeef')
+
+    message = str(exc_info.value)
+    assert str(bash) in message
+    assert 'bash 3' in message
+    assert 'PATH' in message
+
+
+async def test_a_current_bash_leaves_a_failure_as_the_failure_it_is(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """The diagnosis must not fire on every failure that happens under bash."""
+    bash = _stub_bash(tmp_path, 5)
+    monkeypatch.setenv('PATH', f'{bash.parent}:{os.environ["PATH"]}')
+    monkeypatch.setattr(
+        cli, 'MOJ_BINARY', str(_stub_bash_script(tmp_path, '#!/usr/bin/env bash'))
+    )
+
+    with pytest.raises(MojCliError) as exc_info:
+        await cli.testrun_status('4711')
+    assert not isinstance(exc_info.value, cli.MojUnsupportedShellError)
+
+
+async def test_an_explicit_interpreter_is_believed_over_the_shebang(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """An override naming a modern bash is the fix, and must not be diagnosed.
+
+    The script it names still carries `#!/usr/bin/env bash`, so reading the
+    shebang here would resolve the *stale* bash off `PATH` and report the setter's
+    working setup as broken.
+    """
+    old = _stub_bash(tmp_path, 3)
+    new = _stub_bash(tmp_path, 5)
+    monkeypatch.setenv('PATH', f'{old.parent}:{os.environ["PATH"]}')
+    script = _stub_bash_script(tmp_path, '#!/usr/bin/env bash')
+    monkeypatch.setenv('RBX_MOJ_BINARY', f'{new} {script}')
+
+    with pytest.raises(MojCliError) as exc_info:
+        await cli.check('alice#rbxt-deadbeef')
+    assert not isinstance(exc_info.value, cli.MojUnsupportedShellError)
+
+
+async def test_an_outdated_bash_is_not_reported_as_a_missing_login(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """`whoami` is the first call every MOJ command makes, and it lied here.
+
+    Reading this as "run `moj login` first" sends the setter to a command that
+    dies the same way, which is a loop rather than a fix.
+    """
+    bash = _stub_bash(tmp_path, 3)
+    monkeypatch.setenv('PATH', f'{bash.parent}:{os.environ["PATH"]}')
+    monkeypatch.setattr(
+        cli, 'MOJ_BINARY', str(_stub_bash_script(tmp_path, '#!/usr/bin/env bash'))
+    )
+
+    with pytest.raises(cli.MojUnsupportedShellError) as exc_info:
+        await cli.whoami()
+    assert 'Could not read your MOJ login' not in str(exc_info.value)
+
+
+async def test_whoami_does_not_read_every_failure_as_a_missing_session(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """A server error is not a logged-out setter, and saying so hides the cause."""
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        "echo 'moj: erro interno do servidor (500)' >&2\nexit 1\n",
+    )
+
+    with pytest.raises(MojCliError) as exc_info:
+        await cli.whoami()
+
+    message = str(exc_info.value)
+    assert '(500)' in message
+    assert 'Could not read your MOJ login' not in message
