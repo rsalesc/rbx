@@ -13,7 +13,6 @@ from rbx.box.runners.moj import cli
 from rbx.box.runners.moj.cli import MojCliError
 from rbx.box.tooling.boca.scraper import BocaRun
 from rbx.box.tooling.moj import api
-from rbx.box.ui.review_app import start_review
 
 PathLike = Union[str, pathlib.Path]
 
@@ -378,6 +377,8 @@ def _try_cache(path: pathlib.Path, expander: Expander) -> Optional[pathlib.Path]
 
 
 def _expand_path(path: pathlib.Path) -> Optional[pathlib.Path]:
+    from rbx.box.ui.review_app import start_review
+
     if not cd.is_problem_package():
         console.console.print(
             f'Skipping expansion of {ref(path)} because we are not in a problem package.'
