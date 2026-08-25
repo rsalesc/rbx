@@ -352,12 +352,6 @@ bash --version   # should say 5.x, not 3.2
 moj whoami
 ```
 
-!!! warning
-    Running `/opt/homebrew/bin/bash ~/.local/bin/moj ...` by hand works, and it's a tempting
-    place to stop -- but it only fixes the times *you* type the command. {{rbx}} runs `moj`
-    itself, and it inherits your `PATH`, not your habits. Fix the `PATH` and everything works;
-    fix only your typing and `rbx package moj -u` still fails.
-
 `moj-contest` carries the same requirement, and the same fix covers it.
 
 #### If you can't change your `PATH`
