@@ -1,7 +1,8 @@
+import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 LAZY_MODULES = {
     'gitpython',
@@ -28,11 +29,12 @@ CLI_LAZY_MODULES = {
 }
 
 
-def _imported_modules(*args: str) -> List[str]:
+def _imported_modules(*args: str, env: Optional[dict] = None) -> List[str]:
     result = subprocess.run(
         [sys.executable, *args],
         capture_output=True,
         encoding='utf-8',
+        env=env,
     )
     assert result.returncode == 0, result.stderr
     modules = result.stdout.splitlines()
@@ -42,9 +44,16 @@ def _imported_modules(*args: str) -> List[str]:
     return modules
 
 
-def test_rich_not_imported_unnecessary():
+def test_rich_not_imported_unnecessary(tmp_path: Path):
     file_path = Path(__file__).parent / 'lazy_importing_main.py'
-    modules = _imported_modules('-m', 'coverage', 'run', str(file_path))
+    # `coverage run` writes its data file to $COVERAGE_FILE (`.coverage` in the
+    # cwd by default), and this nested run measures statements only. Under
+    # `pytest --cov-branch` that clobbers the outer run's data file with
+    # statement data, and pytest-cov's final combine dies with
+    # "Can't combine branch coverage data with statement data" -- every test
+    # passing but the process exiting 3. Keep the nested data out of the way.
+    env = {**os.environ, 'COVERAGE_FILE': str(tmp_path / '.coverage')}
+    modules = _imported_modules('-m', 'coverage', 'run', str(file_path), env=env)
     assert not [module for module in modules if module in LAZY_MODULES]
 
 
