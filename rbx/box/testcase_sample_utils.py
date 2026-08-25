@@ -366,6 +366,7 @@ async def build_samples(
             groups=set(['samples']),
             output=None,
             validate=validate,
+            is_statement=True,
         )
     if not ok:
         return False
