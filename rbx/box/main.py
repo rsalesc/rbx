@@ -73,7 +73,7 @@ def app():
 
     from rbx.box import git_utils
 
-    if not git_utils.check_symlinks(pathlib.Path.cwd()):
+    if not git_utils.check_symlinks_cached(pathlib.Path.cwd()):
         from rbx import console
         from rbx.box.formatting import ref
 
