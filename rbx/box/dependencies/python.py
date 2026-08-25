@@ -1,5 +1,6 @@
 import ast
 import pathlib
+import warnings
 from typing import List, Optional
 
 from rbx import utils
@@ -47,7 +48,12 @@ class PythonScanner(scanner.DependencyScanner):
     def references(self, file: pathlib.Path) -> List[Reference]:
         file = pathlib.Path(file)
         try:
-            tree = ast.parse(file.read_text())
+            with warnings.catch_warnings():
+                # Scanning a user file must not surface the compiler's own
+                # diagnostics (e.g. SyntaxWarning for invalid escape sequences)
+                # in the middle of unrelated rbx output.
+                warnings.simplefilter('ignore')
+                tree = ast.parse(file.read_text(), filename=str(file))
         except SyntaxError:
             return []
         base_dir = file.parent

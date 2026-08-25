@@ -132,6 +132,16 @@ class TestPythonReferences:
         assert pathlib.Path('a/__init__.py') in targets
         assert pathlib.Path('a/b/__init__.py') in targets
 
+    def test_scanning_does_not_leak_compiler_warnings(self, testing_pkg, recwarn):
+        from rbx.box.dependencies import python
+
+        # An invalid escape sequence makes CPython's compiler emit a
+        # SyntaxWarning; scanning a file must not surface it to the user.
+        main = testing_pkg.add_file('main.py')
+        main.write_text('S = "a\\.b"\nimport os\n')
+        python.PythonScanner().references(pathlib.Path('main.py'))
+        assert [w for w in recwarn.list if issubclass(w.category, SyntaxWarning)] == []
+
 
 class TestExpand:
     def test_cpp_transitive_excludes_root(self, testing_pkg):
