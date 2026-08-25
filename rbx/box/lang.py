@@ -1,11 +1,14 @@
 import functools
-from typing import Dict, List
+from typing import TYPE_CHECKING, Dict, List
 
-import iso639
+if TYPE_CHECKING:
+    import iso639
 
 
 @functools.cache
-def _get_lowercase_name_mapping() -> Dict[str, iso639.Lang]:
+def _get_lowercase_name_mapping() -> Dict[str, 'iso639.Lang']:
+    import iso639
+
     res = {}
     for lang in iso639.iter_langs():
         res[lang.name.lower()] = lang
@@ -20,6 +23,8 @@ def _get_lang_name(lang: str) -> str:
 
 
 def code_to_lang(lang: str) -> str:
+    import iso639
+
     return iso639.Lang(lang).name.lower()
 
 
@@ -29,10 +34,14 @@ def code_to_langs(langs: List[str]) -> List[str]:
 
 @functools.cache
 def is_valid_lang_code(lang: str) -> bool:
+    import iso639
+
     return iso639.is_language(lang)
 
 
 def lang_to_code(lang: str) -> str:
+    import iso639
+
     return iso639.Lang(_get_lang_name(lang)).pt1
 
 
