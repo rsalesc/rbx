@@ -71,8 +71,8 @@ def _invoke_run(runner: CliRunner, *args: str) -> Tuple[Any, Dict[str, Any]]:
 
     with (
         mock.patch('rbx.box.builder.build', _build_ok),
-        mock.patch('rbx.box.cli.run_solutions', run_solutions),
-        mock.patch('rbx.box.cli.print_run_report', print_run_report),
+        mock.patch('rbx.box.cli.commands.run.run_solutions', run_solutions),
+        mock.patch('rbx.box.cli.commands.run.print_run_report', print_run_report),
     ):
         result = runner.invoke(cli.app, ['run', *args])
     return result, calls
@@ -90,7 +90,7 @@ def _invoke_irun(runner: CliRunner, *args: str) -> Tuple[Any, Dict[str, Any]]:
         calls['profile'] = limits_info.get_active_profile()
 
     with mock.patch(
-        'rbx.box.cli.run_and_print_interactive_solutions',
+        'rbx.box.cli.commands.run.run_and_print_interactive_solutions',
         run_and_print_interactive_solutions,
     ):
         result = runner.invoke(cli.app, ['irun', '-t', '0/0', *args])
@@ -173,8 +173,8 @@ def _invoke_run_with_root_flag(
 
     with (
         mock.patch('rbx.box.builder.build', _build_ok),
-        mock.patch('rbx.box.cli.run_solutions', run_solutions),
-        mock.patch('rbx.box.cli.print_run_report', print_run_report),
+        mock.patch('rbx.box.cli.commands.run.run_solutions', run_solutions),
+        mock.patch('rbx.box.cli.commands.run.print_run_report', print_run_report),
     ):
         result = runner.invoke(cli.app, ['-p', profile, 'run'])
     return result, calls

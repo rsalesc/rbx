@@ -182,6 +182,19 @@ def _help_param(cmd: click.Command) -> Optional[Dict[str, Any]]:
     }
 
 
+def materialize_lazy_commands(cmd: click.Command) -> None:
+    """Resolve a lazily-registered group, so ``cmd.commands`` holds everything.
+
+    The `rbx` root group registers its subcommands as import paths and imports
+    each only when it is invoked (see ``rbx/box/lazy_cli.py``). Anything that
+    walks the whole tree has to ask for them first. Duck-typed, to keep this
+    module off the typer import path.
+    """
+    materialize = getattr(cmd, 'materialize_all', None)
+    if materialize is not None:
+        materialize()
+
+
 def build_spec(cmd: click.Command, name: Optional[str] = None) -> Dict[str, Any]:
     params = [_param_spec(p) for p in cmd.params if not getattr(p, 'hidden', False)]
     help_param = _help_param(cmd)
@@ -195,6 +208,7 @@ def build_spec(cmd: click.Command, name: Optional[str] = None) -> Dict[str, Any]
         'params': params,
     }
     if isinstance(cmd, click.Group):
+        materialize_lazy_commands(cmd)
         # Iterate the raw command dict so comma-joined names (e.g. 'package, pkg')
         # are captured verbatim; the engine splits them on ', ' for descent.
         # Skip hidden commands -- Click's completion hides them too, so including

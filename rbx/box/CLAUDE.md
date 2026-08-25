@@ -142,7 +142,7 @@ surface until something needs more.
 
 **Tearing one down.** `await RunSolutionResult.close()` forwards to
 `SolutionRunner.close()`, and every consumer of a run awaits it from a `finally` around
-the *consumption* of the deferreds -- `builder.verify`, `cli.run` and
+the *consumption* of the deferreds -- `builder.verify`, `cli.commands.run.run` and
 `timing._run_for_inference`. It is **not** the `finalize` hook the seam started with and
 must not become it: `finalize` fired inside `run_solutions`, which only builds the
 deferreds, so it ran before a single result had been fetched. What `close` drops is work

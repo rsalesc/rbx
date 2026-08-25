@@ -199,8 +199,8 @@ def _invoke_run(
 
     with (
         mock.patch('rbx.box.builder.build', _ok),
-        mock.patch('rbx.box.cli.run_solutions', run_solutions_stub),
-        mock.patch('rbx.box.cli.print_run_report', report or _ok),
+        mock.patch('rbx.box.cli.commands.run.run_solutions', run_solutions_stub),
+        mock.patch('rbx.box.cli.commands.run.print_run_report', report or _ok),
     ):
         return cli_runner.invoke(cli.app, ['run'])
 
