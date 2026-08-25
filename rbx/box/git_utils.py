@@ -1,30 +1,49 @@
+import json
 import pathlib
 import subprocess
-from typing import List, Optional
-
-import git
+import time
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from rbx import utils
+
+if TYPE_CHECKING:
+    import git
 
 
 def get_repo_or_nil(
     root: pathlib.Path = pathlib.Path(), search_parent_directories: bool = False
-) -> Optional[git.Repo]:
+) -> Optional['git.Repo']:
+    # GitPython is expensive to import (~80ms), so keep it off the module level:
+    # only the few commands that really need a `Repo` object should pay for it.
+    import git
+
     try:
         return git.Repo(root, search_parent_directories=search_parent_directories)
     except git.InvalidGitRepositoryError:
         return None
 
 
+def find_repo_root(
+    path: pathlib.Path, search_parent_directories: bool = True
+) -> Optional[pathlib.Path]:
+    """Find the working tree root containing `path`, without going through GitPython."""
+    path = utils.abspath(path)
+    candidates = [path, *path.parents] if search_parent_directories else [path]
+    for candidate in candidates:
+        if (candidate / '.git').exists():
+            return candidate
+    return None
+
+
 def is_repo(path: pathlib.Path) -> bool:
-    return get_repo_or_nil(path, search_parent_directories=False) is not None
+    return find_repo_root(path, search_parent_directories=False) is not None
 
 
 def is_within_repo(path: pathlib.Path) -> bool:
-    return get_repo_or_nil(path, search_parent_directories=True) is not None
+    return find_repo_root(path, search_parent_directories=True) is not None
 
 
-def get_any_remote(repo: git.Repo) -> Optional[git.Remote]:
+def get_any_remote(repo: 'git.Repo') -> Optional['git.Remote']:
     for remote in repo.remotes:
         if remote.exists():
             return remote
@@ -100,15 +119,15 @@ def resolve_remote_head(uri: str) -> str:
 
 
 def check_symlinks(root: pathlib.Path) -> bool:
-    if not utils.command_exists('git'):
+    working_dir = find_repo_root(root)
+    if working_dir is None:
         return True
-    repo = get_repo_or_nil(root, search_parent_directories=True)
-    if repo is None:
+    if not utils.command_exists('git'):
         return True
 
     completed_process = subprocess.run(
         ['git', 'ls-files', '-s'],
-        cwd=repo.working_dir,
+        cwd=working_dir,
         check=True,
         capture_output=True,
         text=True,
@@ -127,7 +146,7 @@ def check_symlinks(root: pathlib.Path) -> bool:
 
     bad = []
     for rel in symlink_paths:
-        fp = pathlib.Path(repo.working_dir) / rel
+        fp = working_dir / rel
         try:
             if fp.exists() and not fp.is_symlink():
                 bad.append(rel)
@@ -135,3 +154,64 @@ def check_symlinks(root: pathlib.Path) -> bool:
             bad.append(rel)
 
     return len(bad) == 0
+
+
+# The symlink check runs before every command dispatch, and costs a `git
+# ls-files` over the whole working tree. Remember a good verdict for a day so
+# only the first invocation of the day pays for it.
+SYMLINK_CHECK_TTL_SECONDS = 24 * 60 * 60
+
+
+def _symlink_check_cache_path() -> pathlib.Path:
+    return utils.get_app_path() / 'symlink-check.json'
+
+
+def _read_symlink_check_cache() -> Dict[str, float]:
+    try:
+        cache = json.loads(_symlink_check_cache_path().read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(cache, dict):
+        return {}
+    return {
+        key: value for key, value in cache.items() if isinstance(value, (int, float))
+    }
+
+
+def _write_symlink_check_cache(cache: Dict[str, float]) -> None:
+    path = _symlink_check_cache_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(cache))
+    except OSError:
+        # A cache we cannot persist is not worth failing a command over.
+        pass
+
+
+def check_symlinks_cached(root: pathlib.Path) -> bool:
+    """`check_symlinks`, remembering a good verdict per repository for a day.
+
+    Only successful checks are cached: a repository that does not preserve
+    symlinks keeps warning on every command until it is actually fixed.
+    """
+    working_dir = find_repo_root(root)
+    if working_dir is None:
+        return True
+
+    now = time.time()
+    cache = _read_symlink_check_cache()
+    checked_at = cache.get(str(working_dir))
+    if checked_at is not None and 0 <= now - checked_at < SYMLINK_CHECK_TTL_SECONDS:
+        return True
+
+    if not check_symlinks(working_dir):
+        return False
+
+    cache = {
+        key: value
+        for key, value in cache.items()
+        if 0 <= now - value < SYMLINK_CHECK_TTL_SECONDS
+    }
+    cache[str(working_dir)] = now
+    _write_symlink_check_cache(cache)
+    return True
