@@ -1,3 +1,17 @@
+## 1.2.7 (2026-08-25)
+
+### Feat
+
+- **vscode**: run visualizers on demand from the extension (#776)
+
+### Fix
+
+- **deps**: raise requests floor to 2.34 to silence chardet warning (#777)
+
+### Perf
+
+- **moj**: cache the submission listing between downloads (#778)
+
 ## 1.2.6 (2026-08-24)
 
 ### Feat
