@@ -17,6 +17,8 @@ LAZY_MODULES = {
 # Modules that must not be loaded by `rbx.box.cli`, which every command pulls in.
 CLI_LAZY_MODULES = {
     'textual',
+    'questionary',
+    'prompt_toolkit',
 }
 
 

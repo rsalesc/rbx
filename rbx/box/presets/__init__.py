@@ -21,7 +21,6 @@ from typing import (
 )
 
 import pydantic
-import questionary
 import ruyaml
 import typer
 import yaml
@@ -119,6 +118,8 @@ def _collect_expansions(
     expansions: List[VariableExpansion],
 ) -> List[Tuple[str, str, List[str]]]:
     """Prompt the user for expansion values and return (needle, value, globs) tuples."""
+    import questionary
+
     result: List[Tuple[str, str, List[str]]] = []
     for exp in expansions:
         if exp.replacement == ReplacementMode.PROMPT:
@@ -886,6 +887,8 @@ def pick_variant(
     Returns None for the canonical template. Never prompts when the preset
     declares no variants, or when stdin is not a TTY.
     """
+    import questionary
+
     if variant is not None:
         # An explicit flag always wins: never second-guess it with a prompt,
         # and let `resolve_template` be the one to reject a bad id.
@@ -1171,6 +1174,7 @@ def _install_preset_from_remote(
     update: bool = False,
 ):
     import git
+    import questionary
 
     assert fetch_info.fetch_uri is not None
     with tempfile.TemporaryDirectory() as d:
@@ -1249,6 +1253,8 @@ def _install_preset_from_resources(
     ensure_problem: bool = False,
     update: bool = False,
 ):
+    import questionary
+
     if not questionary.confirm(
         'Do you really want to install this preset from its local copy? This is usually unsafe for mature projects, and means that youre not online.'
     ).ask():
@@ -1601,6 +1607,8 @@ def maybe_offer_to_register(
     """After a user creates a package with an explicit ``--preset`` URI, offer
     to add it to the user registry. Interactive-only, and only when the preset
     is not already known to the registry."""
+    import questionary
+
     from rbx.box.presets.registry_schema import RegistryPreset
 
     if fetch_info is None or not getattr(fetch_info, 'uri', None):

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import Any, Iterable, Optional
 
 import pytest
+import questionary
 import typer
 from pydantic import ValidationError
 
@@ -1267,7 +1268,7 @@ def fake_no_tty(monkeypatch):
 
 def _patch_select(monkeypatch, answer: Any) -> _FakeSelect:
     fake = _FakeSelect(answer)
-    monkeypatch.setattr(presets.questionary, 'select', fake)
+    monkeypatch.setattr(questionary, 'select', fake)
     return fake
 
 

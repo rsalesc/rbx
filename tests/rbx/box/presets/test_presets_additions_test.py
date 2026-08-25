@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import click
 import pytest
+import questionary
 
 from rbx.box import presets
 
@@ -199,7 +200,7 @@ class TestCopyLocalPreset:
 
         # User accepts adding submodule
         monkeypatch.setattr(
-            presets.questionary,
+            questionary,
             'confirm',
             lambda *a, **k: SimpleNamespace(ask=lambda: True),
         )

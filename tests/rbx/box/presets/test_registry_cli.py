@@ -1,4 +1,5 @@
 import pytest
+import questionary
 from typer.testing import CliRunner
 
 from rbx.box import presets
@@ -88,7 +89,7 @@ class TestOfferToRegister:
         monkeypatch.setattr(presets.utils, 'is_interactive_tty', lambda: True)
         # Confirm "yes".
         monkeypatch.setattr(
-            presets.questionary,
+            questionary,
             'confirm',
             lambda *a, **k: SimpleNamespace(ask=lambda: True),
         )
@@ -125,7 +126,7 @@ class TestOfferToRegister:
             called['confirm'] = True
             return SimpleNamespace(ask=lambda: True)
 
-        monkeypatch.setattr(presets.questionary, 'confirm', _confirm)
+        monkeypatch.setattr(questionary, 'confirm', _confirm)
         presets.maybe_offer_to_register(SimpleNamespace(uri='o/r'), tmp_path)
         assert called['confirm'] is False  # already known -> no prompt
 

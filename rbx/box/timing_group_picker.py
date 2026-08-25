@@ -1,10 +1,14 @@
-from typing import Callable, Dict, List, Optional
+from __future__ import annotations
 
-from prompt_toolkit.formatted_text import AnyFormattedText
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional
+
 from pydantic import BaseModel
 
 from rbx.box import timing_groups
 from rbx.box.environment import LanguageGroupFallback
+
+if TYPE_CHECKING:
+    from prompt_toolkit.formatted_text import AnyFormattedText
 
 
 class GroupAssignment(BaseModel):
