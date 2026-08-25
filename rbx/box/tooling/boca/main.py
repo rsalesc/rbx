@@ -5,7 +5,6 @@ import typer
 from rbx import annotations
 from rbx.box.tooling.boca.scrape import scrape_boca
 from rbx.box.tooling.boca.scraper import get_boca_scraper
-from rbx.box.tooling.boca.ui import run_app
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 
@@ -25,6 +24,8 @@ def view(
         help='Contest identifier to load (stored under app data).',
     ),
 ) -> None:
+    from rbx.box.tooling.boca.ui import run_app
+
     # Normalize empty input to None to let the UI apply default
     cid = (contest_id or '').strip() or None
     run_app(contest_id=cid)

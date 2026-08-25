@@ -29,7 +29,6 @@ from rbx.box.contest.contest_package import (
 from rbx.box.contest.schema import Contest, ContestProblem
 from rbx.box.packaging import contest_main as packaging
 from rbx.box.schema import Package
-from rbx.box.ui.command_app import CommandEntry, start_command_app
 from rbx.box.yaml_validation import (
     YamlSyntaxError,
     YamlValidationError,
@@ -445,6 +444,8 @@ def _build_command_argvs_or_die(
 )
 @within_contest
 def each(ctx: typer.Context, keep_going: bool = KEEP_GOING_OPTION) -> None:
+    from rbx.box.ui.command_app import CommandEntry, start_command_app
+
     contest = find_contest_package_or_die()
     argvs, placeholder_prefix = _build_command_argvs_or_die(ctx.args)
     commands = [
@@ -514,6 +515,8 @@ def on(
         )
         subprocess.call(command, cwd=problems_of_interest[0].get_path(), shell=True)
         return
+
+    from rbx.box.ui.command_app import CommandEntry, start_command_app
 
     commands = [
         CommandEntry(

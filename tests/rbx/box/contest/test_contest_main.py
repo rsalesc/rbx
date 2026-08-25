@@ -389,7 +389,7 @@ class TestContestOn:
     ):
         with (
             mock.patch.object(contest_main.subprocess, 'call') as call,
-            mock.patch.object(contest_main, 'start_command_app') as start_app,
+            mock.patch('rbx.box.ui.command_app.start_command_app') as start_app,
         ):
             result = runner.invoke(contest_main.app, ['on', 'A', 'build'])
 
@@ -402,7 +402,7 @@ class TestContestOn:
     ):
         with (
             mock.patch.object(contest_main.subprocess, 'call') as call,
-            mock.patch.object(contest_main, 'start_command_app') as start_app,
+            mock.patch('rbx.box.ui.command_app.start_command_app') as start_app,
         ):
             result = runner.invoke(
                 contest_main.app, ['on', 'A', 'build', '::', 'run', '-s']
@@ -418,7 +418,7 @@ class TestContestOn:
     def test_keep_going_flag_precedes_the_problem_selector(
         self, runner: CliRunner, contest_dir: pathlib.Path
     ):
-        with mock.patch.object(contest_main, 'start_command_app') as start_app:
+        with mock.patch('rbx.box.ui.command_app.start_command_app') as start_app:
             result = runner.invoke(
                 contest_main.app, ['on', '-k', 'A', 'build', '::', 'run']
             )
@@ -430,7 +430,7 @@ class TestContestOn:
         self, runner: CliRunner, contest_dir: pathlib.Path
     ):
         # `-k` here is `rbx run`'s business, not `rbx on`'s.
-        with mock.patch.object(contest_main, 'start_command_app') as start_app:
+        with mock.patch('rbx.box.ui.command_app.start_command_app') as start_app:
             result = runner.invoke(
                 contest_main.app, ['on', 'A', 'build', '::', 'run', '-k']
             )
@@ -443,7 +443,7 @@ class TestContestOn:
     def test_empty_command_in_chain_is_an_error(
         self, runner: CliRunner, contest_dir: pathlib.Path
     ):
-        with mock.patch.object(contest_main, 'start_command_app') as start_app:
+        with mock.patch('rbx.box.ui.command_app.start_command_app') as start_app:
             result = runner.invoke(contest_main.app, ['on', 'A', 'build', '::'])
 
         assert result.exit_code == 1
@@ -472,7 +472,7 @@ class TestContestEach:
     def test_each_queues_the_chain_in_every_problem(
         self, runner: CliRunner, contest_dir: pathlib.Path
     ):
-        with mock.patch.object(contest_main, 'start_command_app') as start_app:
+        with mock.patch('rbx.box.ui.command_app.start_command_app') as start_app:
             result = runner.invoke(
                 contest_main.app, ['each', 'build', '::', 'package', 'build']
             )
@@ -486,7 +486,7 @@ class TestContestEach:
     def test_each_without_args_opens_an_empty_app(
         self, runner: CliRunner, contest_dir: pathlib.Path
     ):
-        with mock.patch.object(contest_main, 'start_command_app') as start_app:
+        with mock.patch('rbx.box.ui.command_app.start_command_app') as start_app:
             result = runner.invoke(contest_main.app, ['each'])
 
         assert result.exit_code == 0, result.output
