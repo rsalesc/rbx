@@ -31,11 +31,13 @@ an `OPEN:` comment naming what the probe has to settle.
 import asyncio
 import collections
 import json
+import os
 import pathlib
 import re
 import shlex
+import shutil
 import subprocess
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -44,6 +46,41 @@ from rbx.box.exception import RbxException
 # The executable to shell out to. A name rather than a path: which `moj` is on the
 # setter's `PATH` is their business, and tests point this at a stub.
 MOJ_BINARY = 'moj'
+
+# An escape hatch for a setter whose `moj` cannot simply be run by name.
+#
+# It exists for one concrete situation. The CLI is a bash script that needs
+# bash >= 4 behind a `#!/usr/bin/env bash` shebang, so the shell that runs it is
+# whichever `bash` comes first on `PATH` -- and macOS still ships 3.2 at
+# `/bin/bash`. The fix is to put Homebrew's bash ahead of it on `PATH`, and this
+# variable is for when that cannot be arranged: it is split like a shell command
+# rather than read as a path, so an interpreter and a script both fit --
+#
+#     RBX_MOJ_BINARY='/opt/homebrew/bin/bash /Users/alice/.local/bin/moj'
+#
+# It is deliberately *not* a package or `env.rbx.yml` setting: which `moj` runs is
+# a property of the machine, not of the problem, and committing one setter's
+# absolute paths would break the package for everyone else.
+MOJ_BINARY_ENV_VAR = 'RBX_MOJ_BINARY'
+
+
+def moj_command() -> List[str]:
+    """The argv prefix that runs the MOJ CLI on this machine.
+
+    Read on every call rather than resolved at import, so that a test -- and a
+    setter exporting the variable mid-session -- gets what is set *now*.
+    """
+    override = os.environ.get(MOJ_BINARY_ENV_VAR, '')
+    if override.strip():
+        return shlex.split(override)
+    # `MOJ_BINARY` and not a literal, because the tests point that at a stub.
+    return [MOJ_BINARY]
+
+
+def _display(args: Sequence[str] = ()) -> str:
+    """What to print so the setter can re-run by hand exactly what rbx ran."""
+    return shlex.join([*moj_command(), *args])
+
 
 # The one `status` a testrun is known to report that means the judge is finished.
 #
@@ -81,6 +118,17 @@ class MojNotInstalledError(MojCliError):
     """
 
 
+class MojUnsupportedShellError(MojCliError):
+    """The CLI was handed to a shell too old to run it.
+
+    Its own class for the same reason `MojNotInstalledError` is: the CLI *is*
+    installed and the setter *is* logged in, so every other message here would
+    send them somewhere that cannot help. In particular `whoami`, which reads a
+    failure as a missing session, must not answer this one with `moj login` --
+    that command dies in exactly the same way, which is a loop rather than a fix.
+    """
+
+
 class MojQueueFullError(MojCliError):
     """MOJ refused because this account already has too many testruns queued.
 
@@ -110,6 +158,16 @@ _HTTP_STATUS_RE = re.compile(r'\((\d{3})\)\s*$', re.MULTILINE)
 
 # HTTP 429: too many testruns already queued for this login.
 _QUEUE_FULL_STATUS = '429'
+
+# The CLI's `need_login`: `die "faça '$MOJ_TOOL login' primeiro."`. Matched on the
+# two words that survive a rewording rather than on the sentence, and case-folded,
+# since the only cost of a false positive is a *better* message than the CLI's.
+#
+# Read by both `whoami` and `contest_whoami`, and for opposite purposes: the
+# contest one uses it to *replace* a hint that cannot be followed, while `whoami`
+# uses it to decide whether a failure is a missing session at all -- so a failure
+# that is something else keeps its own cause instead of being told to log in.
+_NO_SESSION_RE = re.compile(r'\blogin\b.*\bprimeiro\b', re.IGNORECASE)
 
 
 class TestrunTest(BaseModel):
@@ -334,7 +392,7 @@ async def _run_moj(args: Sequence[str]) -> str:
     """
     try:
         process = await asyncio.create_subprocess_exec(
-            MOJ_BINARY,
+            *moj_command(),
             *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -355,10 +413,125 @@ async def _run_moj(args: Sequence[str]) -> str:
 
 def _not_installed_error(e: BaseException) -> MojNotInstalledError:
     """The failure to *spawn* the CLI, which is never a failure of the command."""
+    if os.environ.get(MOJ_BINARY_ENV_VAR, '').strip():
+        # An override that does not resolve is a typo in one place the setter
+        # controls, so name that place rather than telling them to install a CLI
+        # they may well already have.
+        return MojNotInstalledError(
+            f'Could not run `{_display()}`, which is what `{MOJ_BINARY_ENV_VAR}` '
+            f'is set to. Check that path, or unset `{MOJ_BINARY_ENV_VAR}` to go '
+            f'back to the `{MOJ_BINARY}` on your `PATH`.'
+        )
     return MojNotInstalledError(
         f'Could not run `{MOJ_BINARY}`: the MOJ CLI is not installed, or is '
         f'not on your `PATH`. Install it and run `moj login` before using '
         f'the MOJ runner.'
+    )
+
+
+# The major version the MOJ CLI's own guard requires:
+#
+#     [ "${BASH_VERSINFO[0]:-0}" -ge 4 ] || die "preciso de bash >= 4 ..."
+#
+# It needs one because it really does use bash-4 features (`declare -A`,
+# `mapfile`, `${x^^}`), and macOS really does still ship 3.2.
+_MIN_BASH_MAJOR = 4
+
+
+def _shebang_interpreter(script: str) -> Optional[str]:
+    """Which program a script's `#!` line hands it to, resolved as the kernel would.
+
+    `None` if this is not a script at all -- a compiled binary, or something
+    unreadable -- which is the answer for every `moj` that is not the bash one.
+    """
+    try:
+        with open(script, 'rb') as f:
+            first = f.readline(256).decode(errors='replace')
+    except OSError:
+        return None
+    if not first.startswith('#!'):
+        return None
+    parts = first[2:].strip().split()
+    if not parts:
+        return None
+    if pathlib.PurePath(parts[0]).name != 'env':
+        return parts[0]
+    # `#!/usr/bin/env bash`, which is what the MOJ CLI carries: `env` resolves the
+    # interpreter off `PATH`, and that indirection is the entire reason a setter
+    # can install a modern bash and still be handed the stock one.
+    for arg in parts[1:]:
+        if not arg.startswith('-') and '=' not in arg:
+            return shutil.which(arg) or arg
+    return None
+
+
+def _bash_major(bash: str) -> Optional[int]:
+    """The major version of `bash`, asked in the one way bash 3.2 also answers.
+
+    `None` when the question does not apply -- the program is not a bash, or
+    could not be run -- rather than a guess, since the only thing this number is
+    used for is refusing.
+    """
+    try:
+        probe = subprocess.run(
+            [bash, '-c', 'echo "${BASH_VERSINFO[0]}"'],
+            capture_output=True,
+            text=True,
+            errors='replace',
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    try:
+        return int(probe.stdout.strip())
+    except ValueError:
+        return None
+
+
+def _outdated_bash() -> Optional[Tuple[str, int]]:
+    """The bash that runs `moj` and its version, if it is too old to run it.
+
+    Structural rather than a match on the CLI's own message, deliberately: that
+    message is Portuguese prose, and this module already argues (see
+    `_HTTP_STATUS_RE`) that reading prose to classify a failure breaks on the
+    first rewording. Reading the shebang and asking the shell its version breaks
+    on neither.
+
+    Run only on the *failure* path, so a healthy setter never pays for the two
+    extra `stat`s and the subprocess it costs.
+    """
+    command = moj_command()
+    if len(command) > 1:
+        # `RBX_MOJ_BINARY='<bash> <script>'`: the setter named the interpreter,
+        # so that is the one that runs, and reading the script's shebang instead
+        # would resolve the very bash they overrode to get away from.
+        interpreter: Optional[str] = command[0]
+    else:
+        executable = shutil.which(command[0])
+        interpreter = _shebang_interpreter(executable) if executable else None
+    if interpreter is None or pathlib.PurePath(interpreter).name != 'bash':
+        return None
+    major = _bash_major(interpreter)
+    if major is None or major >= _MIN_BASH_MAJOR:
+        return None
+    return interpreter, major
+
+
+def _unsupported_shell_error(bash: str, major: int, detail: str) -> MojCliError:
+    """Name the shell, and the one change that fixes it for good."""
+    return MojUnsupportedShellError(
+        f'The MOJ CLI needs bash {_MIN_BASH_MAJOR} or newer, but the bash that '
+        f'runs it here is bash {major} (`{bash}`).\n'
+        f'macOS still ships bash 3.2 as `/bin/bash`, and `moj` starts with '
+        f'`#!/usr/bin/env bash` -- so it runs under whichever bash comes first '
+        f'on your `PATH`.\n'
+        f'Install a current one and put it ahead of the system one:\n'
+        f'  brew install bash\n'
+        f'  eval "$(brew shellenv)"   # in your shell profile, before /bin is reached\n'
+        f'If you cannot change your `PATH`, point '
+        f'`{MOJ_BINARY_ENV_VAR}` at an interpreter and the script instead:\n'
+        f'  export {MOJ_BINARY_ENV_VAR}="$(brew --prefix)/bin/bash $(command -v moj)"\n'
+        f'\n{detail}'
     )
 
 
@@ -378,15 +551,19 @@ def _stdout_or_raise(
     # path goes through it, and a failure whose reason we dropped is a failure
     # the setter cannot act on.
     detail = '\n'.join(part.strip() for part in (err, out) if part.strip())
-    message = (
-        f'Command `{MOJ_BINARY} {shlex.join(args)}` failed with exit code {returncode}.'
-    )
+    message = f'Command `{_display(args)}` failed with exit code {returncode}.'
     full = f'{message}\n{detail}' if detail else message
     status = _HTTP_STATUS_RE.search(detail)
     if status is not None and status.group(1) == _QUEUE_FULL_STATUS:
         # Raised as its own type so a caller can wait it out. Everything else
         # here is a mistake to report; this one is a queue to sit behind.
         raise MojQueueFullError(full)
+    # Checked after the 429 and before anything else is concluded: a queue that
+    # is full answered over the network, so the shell that asked was fine. Every
+    # remaining failure is a candidate for the one cause the CLI cannot survive.
+    outdated = _outdated_bash()
+    if outdated is not None:
+        raise _unsupported_shell_error(*outdated, full)
     raise MojCliError(full)
 
 
@@ -400,7 +577,10 @@ def _run_moj_sync(args: Sequence[str]) -> str:
     """
     try:
         process = subprocess.run(
-            [MOJ_BINARY, *args], capture_output=True, text=True, errors='replace'
+            [*moj_command(), *args],
+            capture_output=True,
+            text=True,
+            errors='replace',
         )
     except (FileNotFoundError, NotADirectoryError, PermissionError) as e:
         raise _not_installed_error(e) from e
@@ -416,7 +596,7 @@ async def _run_moj_json(args: Sequence[str]) -> Any:
     except json.JSONDecodeError as e:
         raise MojCliError(
             f'Could not read the output of '
-            f'`{MOJ_BINARY} {shlex.join(["--json", *args])}` as JSON.\n'
+            f'`{_display(["--json", *args])}` as JSON.\n'
             f'{out.strip()}'
         ) from e
 
@@ -428,14 +608,23 @@ async def whoami() -> str:
     """
     try:
         out = await _run_moj(['whoami'])
-    except MojNotInstalledError:
-        # A missing binary is not a missing session; let it say what it is.
+    except (MojNotInstalledError, MojUnsupportedShellError):
+        # Neither a missing binary nor a shell too old to run it is a missing
+        # session; each already says what it is, and `moj login` would fail in
+        # exactly the same way.
         raise
     except MojCliError as e:
         # Confirmed from the CLI source: without a session, `need_login` calls
         # `die`, which prints to stderr and exits non-zero. So this is the path a
         # logged-out setter actually takes, and the message they need is the one
         # naming `moj login`.
+        #
+        # Only *that* path, though. `whoami` is the first call every MOJ command
+        # makes, so it is where an unrelated failure -- a 500, a proxy, a CLI too
+        # old for the server -- surfaces first, and relabelling all of them as a
+        # missing session buries the cause under an instruction that cannot help.
+        if not _NO_SESSION_RE.search(str(e)):
+            raise
         raise MojCliError(
             f'Could not read your MOJ login. Run `moj login` first.\n{e}'
         ) from e
@@ -445,7 +634,7 @@ async def whoami() -> str:
         # Never guess. A wrong login here uploads the package under an org the
         # setter does not own, which fails much later and much more confusingly.
         raise MojCliError(
-            f'Could not find a login in the output of `{MOJ_BINARY} whoami`. '
+            f'Could not find a login in the output of `{_display(["whoami"])}`. '
             f'Run `moj login` first.\n{out.strip()}'
         )
     return match.group(1)
@@ -495,7 +684,7 @@ async def testrun(ref: Union[str, pathlib.Path], solution: pathlib.Path) -> str:
     # Returning nothing here would leave the caller polling a run that was never
     # queued, forever.
     raise MojCliError(
-        f'Could not find a run id in the output of `{MOJ_BINARY} testrun`.\n'
+        f'Could not find a run id in the output of `{_display(["testrun"])}`.\n'
         f'{out.strip()}'
     )
 
@@ -532,12 +721,6 @@ class ContestWhoami(BaseModel):
         code. Chief and admin get the identities too, which rbx does not need.
         """
         return self.is_judge or self.is_chief or self.is_admin
-
-
-# The CLI's `need_login`: `die "faça '$MOJ_TOOL login' primeiro."`. Matched on the
-# two words that survive a rewording rather than on the sentence, and case-folded,
-# since the only cost of a false positive is a *better* message than the CLI's.
-_NO_SESSION_RE = re.compile(r'\blogin\b.*\bprimeiro\b', re.IGNORECASE)
 
 
 def contest_whoami(contest: str) -> ContestWhoami:
@@ -577,13 +760,14 @@ def contest_whoami(contest: str) -> ContestWhoami:
         parsed = json.loads(out)
     except json.JSONDecodeError as e:
         raise MojCliError(
-            f'Could not read the output of `{MOJ_BINARY} contest --json -c '
-            f'{contest} whoami` as JSON.\n{out.strip()}'
+            f'Could not read the output of '
+            f'`{_display(["contest", "--json", "-c", contest, "whoami"])}` as '
+            f'JSON.\n{out.strip()}'
         ) from e
     try:
         return ContestWhoami.model_validate(parsed)
     except ValidationError as e:
         raise MojCliError(
-            f'`{MOJ_BINARY} contest --json -c {contest} whoami` returned JSON '
-            f'without a login in it.\n{out.strip()}'
+            f'`{_display(["contest", "--json", "-c", contest, "whoami"])}` returned '
+            f'JSON without a login in it.\n{out.strip()}'
         ) from e

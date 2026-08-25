@@ -15,7 +15,9 @@
 -->
 
 You must be logged in to the [`moj` CLI](https://github.com/cd-moj/moj-cli) — {{rbx}} reuses
-its session and never handles your credentials.
+its session and never handles your credentials. On macOS the CLI also needs a bash newer than
+the one the system ships; if it refuses to start, see
+[The MOJ CLI needs bash 4 or newer](/setters/packaging/moj#the-moj-cli-needs-bash-4-or-newer).
 
 {{rbx}} uploads a **throwaway problem** of its own, derived from the id recorded in a committed
 `.moj-id`, so two setters on the same package reach the same one. It never touches a problem it
