@@ -11,7 +11,6 @@ from rbx.box import cd, environment, package
 from rbx.box.formatting import href, ref
 from rbx.box.runners.moj import cli
 from rbx.box.runners.moj.cli import MojCliError
-from rbx.box.tooling.boca.scraper import BocaRun
 from rbx.box.tooling.moj import api
 
 PathLike = Union[str, pathlib.Path]
@@ -73,14 +72,18 @@ class BocaExpander(Expander):
         return [str(self.get_boca_path(run_number, site_number)) + '.*']
 
     def expand(self, path: pathlib.Path) -> Optional[pathlib.Path]:
-        from rbx.box.tooling.boca import scraper as boca_upload
-
         match = self.get_match(str(path))
         if match is None:
             return None
         run_number, site_number = match
 
-        run = BocaRun.from_run_number(run_number, site_number)
+        # Imported here, and only here: the scraper pulls in `bs4`, `lxml`,
+        # `mechanize` and `dateparser`, and `remote` sits on the path every
+        # command walks -- so at module scope that stack would load for
+        # `rbx --help`.
+        from rbx.box.tooling.boca import scraper as boca_upload
+
+        run = boca_upload.BocaRun.from_run_number(run_number, site_number)
         boca_uploader = boca_upload.get_boca_scraper()
         boca_uploader.login()
         sol_path = boca_uploader.download_run(run, self.get_boca_folder())
