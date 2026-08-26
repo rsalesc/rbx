@@ -1,4 +1,5 @@
 import pathlib
+import shlex
 import sys
 from unittest import mock
 
@@ -6,6 +7,11 @@ import pytest
 import typer
 
 from rbx.box import code, package
+from rbx.box.environment import (
+    CompilationConfig,
+    EnvironmentLanguage,
+    ExecutionConfig,
+)
 from rbx.box.schema import CodeItem
 from rbx.box.testing import testing_package
 from rbx.grading import steps
@@ -786,6 +792,82 @@ int custom_function();
         )
         assert compilable is not None
 
+    async def test_extra_flags_come_last_on_the_command(
+        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
+    ):
+        """User flags win, so they are appended after everything rbx injects."""
+        cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
+        code_item = CodeItem(path=cpp_file, language='cpp')
+
+        await code.compile_item(
+            code_item, force_warnings=True, extra_flags=['-DLOCAL', '-O0']
+        )
+
+        commands = mock_steps_with_caching.call_args[0][0]
+
+        assert commands[0].endswith(' -DLOCAL -O0')
+        # And they really are last: after the warning flags rbx added itself.
+        parts = commands[0].split()
+        assert parts.index('-O0') > parts.index('-Wall')
+
+    async def test_extra_flags_reach_javac_and_not_jar(
+        self, testing_pkg: testing_package.TestingPackage, mock_steps_with_caching
+    ):
+        java_file = testing_pkg.add_file(
+            'Solution.java', src='compile_test/simple.java'
+        )
+        code_item = CodeItem(path=java_file, language='java')
+
+        await code.compile_item(code_item, extra_flags=['-nowarn'])
+
+        commands = mock_steps_with_caching.call_args[0][0]
+
+        assert commands[0] == 'javac -Xlint -encoding UTF-8 Simple.java -nowarn'
+        assert commands[1] == 'jar cvf Main.jar @glob:*.class'
+
+    async def test_extra_flags_disable_precompilation(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_steps_with_caching,
+        mock_precompile_header,
+    ):
+        """GCC rejects a PCH built under different flags than its includer."""
+        cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
+        code_item = CodeItem(path=cpp_file, language='cpp')
+
+        await code.compile_item(code_item, extra_flags=['-DLOCAL'])
+
+        mock_precompile_header.assert_not_called()
+
+    async def test_a_plain_compile_still_precompiles(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_steps_with_caching,
+        mock_precompile_header,
+    ):
+        cpp_file = testing_pkg.add_file('solution.cpp', src='compile_test/simple.cpp')
+        code_item = CodeItem(path=cpp_file, language='cpp')
+
+        await code.compile_item(code_item)
+
+        mock_precompile_header.assert_called()
+
+    async def test_extra_flags_on_an_interpreted_language_warn(
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_steps_with_caching,
+        capsys,
+    ):
+        """Silently dropping the flags is the worst outcome for a debugging one-off."""
+        py_file = testing_pkg.add_file('solution.py', src='compile_test/simple.py')
+        code_item = CodeItem(path=py_file, language='py')
+
+        result = await code.compile_item(code_item, extra_flags=['-O2'])
+
+        assert isinstance(result, str)
+        mock_steps_with_caching.assert_not_called()
+        assert 'py' in capsys.readouterr().out
+
 
 class TestRelativeSourcePath:
     def test_nested_source_is_package_relative(
@@ -895,3 +977,76 @@ class TestExecutionFiles:
         item = CodeItem(path=sol, language='py', executionFiles=['m.py'])
         wd = CodeItemWithDigest.create(item, 'deadbeef')
         assert wd.executionFiles == ['m.py']
+
+
+def _language(name: str, extension: str, commands) -> EnvironmentLanguage:
+    return EnvironmentLanguage(
+        name=name,
+        extension=extension,
+        compilation=CompilationConfig(commands=commands),
+        execution=ExecutionConfig(command='./{executable}'),
+    )
+
+
+class TestExtraFlagPlacement:
+    """Where user-supplied compiler flags land, per language.
+
+    A language may compile in several steps, and the flags belong on the compiler
+    rather than on a packaging step, so placement is a decision worth pinning.
+    """
+
+    def test_single_command_language_gets_the_flags(self):
+        language = _language(
+            'cpp', 'cpp', ['g++ -std=c++20 -o {executable} {compilable}']
+        )
+
+        assert code.add_extra_flags_to_commands(
+            ['g++ -std=c++20 -o executable sol.cpp'], ['-DLOCAL', '-O0'], language
+        ) == ['g++ -std=c++20 -o executable sol.cpp -DLOCAL -O0']
+
+    def test_java_puts_the_flags_on_javac_and_not_on_jar(self):
+        language = _language(
+            'java',
+            'java',
+            [
+                'javac -Xlint -encoding UTF-8 {compilable}',
+                'jar cvf {executable} @glob:*.class',
+            ],
+        )
+
+        assert code.add_extra_flags_to_commands(
+            [
+                'javac -Xlint -encoding UTF-8 Main.java',
+                'jar cvf Main.jar @glob:*.class',
+            ],
+            ['-nowarn'],
+            language,
+        ) == [
+            'javac -Xlint -encoding UTF-8 Main.java -nowarn',
+            'jar cvf Main.jar @glob:*.class',
+        ]
+
+    def test_an_unrecognized_compiler_falls_back_to_the_first_command(self):
+        # `command_kinds` knows nothing about rustc, so nothing matches and the
+        # flags go to the only command such a language has.
+        language = _language('rs', 'rs', ['rustc -O -o {executable} {compilable}'])
+
+        assert code.add_extra_flags_to_commands(
+            ['rustc -O -o executable sol.rs'], ['-C', 'debuginfo=2'], language
+        ) == ['rustc -O -o executable sol.rs -C debuginfo=2']
+
+    def test_no_flags_leaves_the_commands_untouched(self):
+        language = _language('cpp', 'cpp', ['g++ -o {executable} {compilable}'])
+        commands = ['g++ -o executable sol.cpp']
+
+        assert code.add_extra_flags_to_commands(commands, [], language) == commands
+
+    def test_flags_needing_quotes_survive_the_round_trip(self):
+        # Commands are shlex-split before execution, so a flag carrying a space
+        # has to be re-quoted on the way in.
+        language = _language('cpp', 'cpp', ['g++ -o {executable} {compilable}'])
+
+        (command,) = code.add_extra_flags_to_commands(
+            ['g++ -o executable sol.cpp'], ['-DMSG=hello world'], language
+        )
+        assert shlex.split(command)[-1] == '-DMSG=hello world'

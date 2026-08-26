@@ -15,6 +15,7 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | Create a new package in folder `package` [:material-open-in-new:](/setters/first-steps) | `rbx create` |
 | Compile a file given its path | `rbx compile my/file.cpp` |
 | Compile every asset of the package | `rbx compile -a` |
+| Compile a file with extra compiler flags | `rbx compile my/file.cpp -- -DLOCAL -g` |
 | Open the problem configuration in a text editor [:material-open-in-new:](/setters/reference/package) | `rbx edit` |
 | Generate all testcases [:material-open-in-new:](/setters/testset#building-the-testset) | `rbx build` |
 | Generate all testcases and their visualizations [:material-open-in-new:](/setters/testset/visualizers) | `rbx build --visualize` |
