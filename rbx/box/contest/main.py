@@ -1,4 +1,5 @@
 import inspect
+import os
 import pathlib
 import shutil
 import subprocess
@@ -418,6 +419,24 @@ KEEP_GOING_OPTION = typer.Option(
 )
 
 
+def _export_contest_selection() -> None:
+    """Make the active contest selection visible to the `rbx` children we spawn.
+
+    `-C <id>` is materialized into a contextvar, which dies with this process,
+    so a child would fall back to the canonical contest and fail to find itself
+    in its `problems[]`. `RBX_CONTEST` is the only channel that survives the
+    fork, and the root callbacks already read it, so exporting it here is
+    enough -- for the inline `subprocess.call`, for the commands the TUI
+    spawns, and for whatever the user types into the TUI later.
+
+    No-op when there is no explicit selection (single-contest mode), and a
+    self-assignment when the selection came from the env var in the first place.
+    """
+    selection = contest_state.resolve_explicit_selection()
+    if selection is not None:
+        os.environ[contest_state.ENV_VAR] = selection
+
+
 def _build_command_argvs_or_die(
     args: List[str],
 ) -> Tuple[List[List[str]], Optional[str]]:
@@ -447,6 +466,7 @@ def each(ctx: typer.Context, keep_going: bool = KEEP_GOING_OPTION) -> None:
     from rbx.box.ui.command_app import CommandEntry, start_command_app
 
     contest = find_contest_package_or_die()
+    _export_contest_selection()
     argvs, placeholder_prefix = _build_command_argvs_or_die(ctx.args)
     commands = [
         CommandEntry(
@@ -492,6 +512,7 @@ def on(
     ],
     keep_going: bool = KEEP_GOING_OPTION,
 ) -> None:
+    _export_contest_selection()
     try:
         problems_of_interest = contest_utils.get_problems_of_interest(problems)
     except problem_selector.ProblemSelectorError as e:
