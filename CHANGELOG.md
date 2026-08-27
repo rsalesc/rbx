@@ -1,3 +1,13 @@
+## 1.3.2 (2026-08-28)
+
+### Feat
+
+- **cli**: accept extra compiler flags in rbx compile (#791)
+
+### Fix
+
+- **contest**: propagate the contest selection to spawned commands (#794)
+
 ## 1.3.1 (2026-08-26)
 
 ### Fix
