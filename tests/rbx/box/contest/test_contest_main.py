@@ -1,12 +1,13 @@
 """Tests for `rbx contest` Typer commands."""
 
+import os
 import pathlib
 from unittest import mock
 
 import pytest
 from typer.testing import CliRunner
 
-from rbx.box.contest import contest_utils
+from rbx.box.contest import contest_state, contest_utils
 from rbx.box.contest import main as contest_main
 
 
@@ -27,6 +28,14 @@ def clear_package_caches():
     contest_utils.clear_all_caches()
     yield
     contest_utils.clear_all_caches()
+
+
+@pytest.fixture
+def clean_contest_env(monkeypatch: pytest.MonkeyPatch):
+    # `rbx on`/`rbx each` export the selection into the real process env, so
+    # swap in a copy that the rest of the suite cannot see.
+    monkeypatch.setattr(os, 'environ', dict(os.environ))
+    os.environ.pop(contest_state.ENV_VAR, None)
 
 
 def _write_minimal_problem(dest: pathlib.Path, name: str) -> None:
@@ -384,6 +393,23 @@ class TestContestOn:
         _write_minimal_problem(tmp_path / 'probs' / 'a', 'prob-a')
         return tmp_path
 
+    @pytest.fixture
+    def variant_contest_dir(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        clear_package_caches,
+    ) -> pathlib.Path:
+        # A real canonical contest that does NOT list the problem, plus a
+        # `warmup` variant that does -- the shape that made `-C` mandatory.
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / 'contest.rbx.yml').write_text('name: ctt\nproblems: []\n')
+        (tmp_path / 'contest.warmup.rbx.yml').write_text(
+            'name: warmup\nproblems:\n  - short_name: A\n    path: probs/a\n'
+        )
+        _write_minimal_problem(tmp_path / 'probs' / 'a', 'prob-a')
+        return tmp_path
+
     def test_single_command_on_single_problem_runs_inline(
         self, runner: CliRunner, contest_dir: pathlib.Path
     ):
@@ -440,6 +466,61 @@ class TestContestOn:
         assert commands[0].argvs == [['rbx', 'build'], ['rbx', 'run', '-k']]
         assert kwargs['keep_going'] is False
 
+    def test_selection_is_exported_to_the_inline_child(
+        self,
+        runner: CliRunner,
+        variant_contest_dir: pathlib.Path,
+        clean_contest_env,
+    ):
+        # `-C` only lives in a contextvar, so the child would otherwise resolve
+        # the canonical contest and not find itself in its `problems[]`.
+        with (
+            mock.patch.object(contest_main.subprocess, 'call') as call,
+            mock.patch('rbx.box.ui.command_app.start_command_app'),
+        ):
+            result = runner.invoke(
+                contest_main.app, ['-C', 'warmup', 'on', 'A', 'build']
+            )
+
+        assert result.exit_code == 0, result.output
+        call.assert_called_once()
+        assert os.environ[contest_state.ENV_VAR] == 'warmup'
+
+    def test_selection_is_exported_before_the_app_starts(
+        self,
+        runner: CliRunner,
+        variant_contest_dir: pathlib.Path,
+        clean_contest_env,
+    ):
+        seen = {}
+        with mock.patch(
+            'rbx.box.ui.command_app.start_command_app',
+            side_effect=lambda *a, **k: seen.update(
+                env=os.environ.get(contest_state.ENV_VAR)
+            ),
+        ):
+            result = runner.invoke(
+                contest_main.app, ['-C', 'warmup', 'on', 'A', 'build', '::', 'run']
+            )
+
+        assert result.exit_code == 0, result.output
+        assert seen['env'] == 'warmup'
+
+    def test_no_selection_leaves_the_env_alone(
+        self,
+        runner: CliRunner,
+        contest_dir: pathlib.Path,
+        clean_contest_env,
+    ):
+        with (
+            mock.patch.object(contest_main.subprocess, 'call'),
+            mock.patch('rbx.box.ui.command_app.start_command_app'),
+        ):
+            result = runner.invoke(contest_main.app, ['on', 'A', 'build'])
+
+        assert result.exit_code == 0, result.output
+        assert contest_state.ENV_VAR not in os.environ
+
     def test_empty_command_in_chain_is_an_error(
         self, runner: CliRunner, contest_dir: pathlib.Path
     ):
@@ -482,6 +563,33 @@ class TestContestEach:
         assert len(commands) == 2
         for command in commands:
             assert command.argvs == [['rbx', 'build'], ['rbx', 'package', 'build']]
+
+    def test_each_exports_the_selection_before_the_app_starts(
+        self,
+        runner: CliRunner,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        clear_package_caches,
+        clean_contest_env,
+    ):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / 'contest.rbx.yml').write_text('name: ctt\nproblems: []\n')
+        (tmp_path / 'contest.warmup.rbx.yml').write_text(
+            'name: warmup\nproblems:\n  - short_name: A\n    path: probs/a\n'
+        )
+        _write_minimal_problem(tmp_path / 'probs' / 'a', 'prob-a')
+
+        seen = {}
+        with mock.patch(
+            'rbx.box.ui.command_app.start_command_app',
+            side_effect=lambda *a, **k: seen.update(
+                env=os.environ.get(contest_state.ENV_VAR)
+            ),
+        ):
+            result = runner.invoke(contest_main.app, ['-C', 'warmup', 'each', 'build'])
+
+        assert result.exit_code == 0, result.output
+        assert seen['env'] == 'warmup'
 
     def test_each_without_args_opens_an_empty_app(
         self, runner: CliRunner, contest_dir: pathlib.Path
