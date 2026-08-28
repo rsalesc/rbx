@@ -395,3 +395,33 @@ def print_problem_benchmark(
     """Print the problem-wide extremes, at the end of the run report."""
     for line in problem_benchmark_lines(problem):
         console.print(line)
+
+
+def report_solution_benchmark(
+    console: rich.console.Console,
+    level: BenchmarkLevel,
+    solution: Solution,
+    skeleton: 'SolutionReportSkeleton',
+    evals: List[Evaluation],
+) -> Optional[SolutionBenchmark]:
+    """Print one solution's block if the level asks for it, and hand it back to
+    be collected.
+
+    Both report paths -- the reporters and `--detailed`, which bypasses them --
+    build and print the same block from the same three values, so the level
+    check lives here, next to the level enum, rather than being spelled out at
+    each call site. `None` comes back when nothing was measured (a `--fail-fast`
+    run that skipped every one of this solution's testcases) or when the level
+    asks for no benchmark at all: in both cases there is nothing to collect for
+    the problem-wide summary.
+
+    ``evals`` must be a gapless prefix of ``skeleton.entries``; see
+    `build_solution_benchmark`.
+    """
+    if level != BenchmarkLevel.SOLUTIONS:
+        return None
+    bench = build_solution_benchmark(solution, skeleton, evals)
+    if bench is None:
+        return None
+    print_solution_benchmark(console, bench)
+    return bench

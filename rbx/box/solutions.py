@@ -2926,7 +2926,12 @@ async def _print_detailed_run_report(
         for evals in structured_evaluations[str(solution.path)].values():
             all_evals.extend(evals)
 
-        # Resolve futures.
+        # Resolve futures. The `None` filter only ever drops a trailing run:
+        # every entry starts out `None` and is filled in entry order as the
+        # items arrive, and a testcase that was skipped is persisted as a
+        # `SKIPPED` evaluation rather than left unset -- so the survivors stay
+        # the gapless prefix `_get_evals_per_group` and the benchmark both
+        # assume.
         all_evals = [await eval() for eval in all_evals if eval is not None]
         _print_solution_header(solution, console)
         report = _print_solution_outcome(
@@ -2942,13 +2947,15 @@ async def _print_detailed_run_report(
         )
         # `--detailed` bypasses the reporters, so it prints the benchmark block
         # itself for the same reason it publishes the report itself.
-        if benchmark_level == benchmark.BenchmarkLevel.SOLUTIONS:
-            solution_benchmark = benchmark.build_solution_benchmark(
-                solution, result.skeleton, report.evals
-            )
-            if solution_benchmark is not None:
-                benchmark.print_solution_benchmark(console, solution_benchmark)
-                solution_benchmarks.append(solution_benchmark)
+        solution_benchmark = benchmark.report_solution_benchmark(
+            console,
+            benchmark_level,
+            solution,
+            result.skeleton,
+            report.evals,
+        )
+        if solution_benchmark is not None:
+            solution_benchmarks.append(solution_benchmark)
         if _gates_report(solution, gating_solutions):
             ok = ok and report.status.ok()
         console.print()
@@ -3005,6 +3012,8 @@ class TraditionalRunReporter:
     verification: VerificationLevel
     structured_evaluations: StructuredEvaluation
     limits_per_solution: Dict[str, Limits]
+    benchmark_level: benchmark.BenchmarkLevel
+    solution_benchmarks: List[benchmark.SolutionBenchmark]
 
     current_solution: Optional[Solution]
     current_group: Optional[GroupSkeleton]
@@ -3113,21 +3122,23 @@ class TraditionalRunReporter:
             # written once and both get it. `LiveRunReporter` has already
             # stopped its live region by the time that returns, so printing
             # plainly to the console cannot land inside a live frame.
-            if self.benchmark_level == benchmark.BenchmarkLevel.SOLUTIONS:
-                solution_benchmark = benchmark.build_solution_benchmark(
-                    self.current_solution, self.result.skeleton, report.evals
-                )
-                # `None` when nothing about this solution was measured -- a
-                # `--fail-fast` run that skipped every one of its testcases.
-                if solution_benchmark is not None:
-                    benchmark.print_solution_benchmark(self.console, solution_benchmark)
-                    self.solution_benchmarks.append(solution_benchmark)
+            solution_benchmark = benchmark.report_solution_benchmark(
+                self.console,
+                self.benchmark_level,
+                self.current_solution,
+                self.result.skeleton,
+                report.evals,
+            )
+            if solution_benchmark is not None:
+                self.solution_benchmarks.append(solution_benchmark)
             # The blank line that separates one solution from the next. It used
             # to close `render_solution_end`, where it reads more naturally --
             # but the benchmark block is printed here, after that returns, so a
             # separator emitted there would land *above* the block and make it
             # read as a header for the next solution rather than a footer for
-            # the one it measures. Keep it last, and keep it here.
+            # the one it measures. Keep it last, and keep it here. Both concrete
+            # reporters always return a report, so this is the same
+            # unconditional separator the overrides used to print.
             self.console.print()
         self.current_solution = None
         self.current_solution_evals = []
@@ -3142,6 +3153,10 @@ class TraditionalRunReporter:
         ``finish_solution`` publishes it (see ``run_report``). Recomputing it
         there instead would push every issue onto the stack a second time --
         ``get_solution_outcome_report`` reports issues unless told not to.
+
+        Render the verdict only. The blank line separating one solution from the
+        next belongs to ``finish_solution``, which prints it below the benchmark
+        block -- see the comment there.
         """
         return None
 
@@ -3640,7 +3655,9 @@ async def print_run_report(
 
     single_solution = len(result.skeleton.solutions) == 1
     report_cls = SingleSolutionRunReporter if single_solution else LiveRunReporter
-    reporter = report_cls(result, verification, console, benchmark_level)
+    reporter = report_cls(
+        result, verification, console, benchmark_level=benchmark_level
+    )
 
     if detailed:
         return await _print_detailed_run_report(

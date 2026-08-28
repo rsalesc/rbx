@@ -11,6 +11,7 @@ import rich.style
 from rich.text import Text
 
 from rbx import utils
+from rbx.box import benchmark as benchmark_module
 from rbx.box import package, schema
 from rbx.box import solutions as solutions_module
 from rbx.box.benchmark import BenchmarkLevel
@@ -1965,6 +1966,53 @@ def benchmark_lines(console: rich.console.Console) -> List[str]:
     ]
 
 
+def uniform_solution_bench(
+    solution: Solution,
+    solution_time_ms: int,
+    checker_time_ms: int,
+    judged: int,
+    total_testcases: int,
+) -> benchmark_module.SolutionBenchmark:
+    """The benchmark of a solution whose testcases all cost the same.
+
+    The wiring tests below drive uniform times, so what the report should print
+    can be built from the run's own inputs instead of transcribed. The wording of
+    the block is `benchmark.solution_benchmark_lines`' contract and
+    `benchmark_test.py` is what pins it -- transcribing it here would break two
+    files on one wording tweak.
+    """
+    solution_seconds = solution_time_ms / 1000
+    checker_seconds = checker_time_ms / 1000
+    per_test_seconds = solution_seconds + checker_seconds
+    return benchmark_module.SolutionBenchmark(
+        solution=solution,
+        slowest_testcase=benchmark_module.TestcaseJudging(
+            entry=TestcaseEntry(group='group1', index=0),
+            judging_time_seconds=per_test_seconds,
+            solution_time_seconds=solution_seconds,
+            checker_time_seconds=checker_seconds,
+            interactor_time_seconds=None,
+        ),
+        total_judging_time_seconds=sum([per_test_seconds] * judged),
+        total_checker_time_seconds=sum([checker_seconds] * judged),
+        total_interactor_time_seconds=None,
+        judged=judged,
+        total_testcases=total_testcases,
+    )
+
+
+def expected_benchmark_lines(
+    *benches: benchmark_module.SolutionBenchmark,
+) -> List[str]:
+    """The per-solution blocks these benchmarks print, through the same console
+    the report uses -- so a comparison against `benchmark_lines` asserts on the
+    wiring rather than on the wording."""
+    console = recording_console()
+    for bench in benches:
+        benchmark_module.print_solution_benchmark(console, bench)
+    return [line.strip() for line in rendered_lines(console) if line.strip()]
+
+
 async def test_benchmark_block_reports_judging_time_per_solution(
     mock_problem_root, mock_skeleton, mock_binary_scoring
 ):
@@ -1989,16 +2037,20 @@ async def test_benchmark_block_reports_judging_time_per_solution(
         benchmark_level=BenchmarkLevel.SOLUTIONS,
     )
 
-    # Two solutions, two blocks of two lines each. Every testcase took 100 ms of
-    # solution time plus 20 ms of checker time, so the slowest is 120 ms and the
-    # two of them total 240 ms, of which 40 ms is checker.
-    assert (
-        benchmark_lines(console)
-        == [
-            'Benchmark: slowest test group1/0 - 120 ms judging (100 ms solution + 20 ms checker)',
-            'Total judging: 240 ms (checker: 40 ms)',
-        ]
-        * 2
+    # Two solutions, one block each, and each block is the one the solution's
+    # own measurements render to: every testcase took 100 ms of solution time
+    # plus 20 ms of checker time.
+    assert benchmark_lines(console) == expected_benchmark_lines(
+        *(
+            uniform_solution_bench(
+                solution,
+                solution_time_ms=100,
+                checker_time_ms=20,
+                judged=2,
+                total_testcases=2,
+            )
+            for solution in solutions
+        )
     )
 
 
@@ -2064,21 +2116,28 @@ async def test_benchmark_block_is_skipped_when_nothing_was_judged(
     reporting `0 ms` would claim a measurement nobody took."""
     solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.INCORRECT)
     skeleton = mock_skeleton([solution], entries_per_group={'group1': 2})
-    result = make_run_result(
-        skeleton,
-        {('group1', 0): Outcome.SKIPPED, ('group1', 1): Outcome.SKIPPED},
-    )
+    verdicts = {('group1', 0): Outcome.SKIPPED, ('group1', 1): Outcome.SKIPPED}
 
     console = recording_console()
     with fresh_issue_stack():
         await print_run_report(
-            result,
+            make_run_result(skeleton, verdicts),
             console,
             VerificationLevel.FULL,
             benchmark_level=BenchmarkLevel.SOLUTIONS,
         )
+    default_console = recording_console()
+    with fresh_issue_stack():
+        await print_run_report(
+            make_run_result(skeleton, verdicts),
+            default_console,
+            VerificationLevel.FULL,
+        )
 
-    assert benchmark_lines(console) == []
+    # Compared against the whole `-b0` report rather than filtered by the block's
+    # labels: a filter keyed on the wording would come back empty, and the test
+    # would pass for the wrong reason, the day that wording changes.
+    assert rendered_lines(console) == rendered_lines(default_console)
 
 
 async def test_benchmark_block_marks_a_partial_run_as_a_lower_bound(
@@ -2303,9 +2362,8 @@ async def test_detailed_report_prints_both_benchmark_blocks(
     """`--detailed` builds its reports without the reporter, so it prints the
     per-solution blocks itself and has to collect them itself for the summary.
     It would otherwise print every block and silently drop the summary."""
-    skeleton = mock_skeleton(
-        two_solutions_with_disagreeing_extremes(), entries_per_group={'group1': 2}
-    )
+    solutions = two_solutions_with_disagreeing_extremes()
+    skeleton = mock_skeleton(solutions, entries_per_group={'group1': 2})
     result = make_run_result_with_per_solution_times(
         skeleton, _ALL_ACCEPTED, _DISAGREEING_TIMES_MS
     )
@@ -2320,12 +2378,18 @@ async def test_detailed_report_prints_both_benchmark_blocks(
 
     # One per-solution block per solution, in the order the solutions are
     # reported, and then the one summary.
-    assert benchmark_lines(console) == [
-        'Benchmark: slowest test group1/0 - 501 ms judging (500 ms solution + 1 ms checker)',
-        'Total judging: 1.0 s (checker: 2 ms)',
-        'Benchmark: slowest test group1/0 - 210 ms judging (10 ms solution + 200 ms checker)',
-        'Total judging: 420 ms (checker: 400 ms)',
-    ]
+    assert benchmark_lines(console) == expected_benchmark_lines(
+        *(
+            uniform_solution_bench(
+                solution,
+                solution_time_ms=_DISAGREEING_TIMES_MS[str(solution.path)][0],
+                checker_time_ms=_DISAGREEING_TIMES_MS[str(solution.path)][1],
+                judged=2,
+                total_testcases=2,
+            )
+            for solution in solutions
+        )
+    )
     assert problem_benchmark_lines(console) == [
         'Benchmark summary',
         'Slowest solution to judge: 1.0 s, sol.cpp',
