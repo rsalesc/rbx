@@ -105,11 +105,48 @@ A real `moj testrun` came back with the per-test `code` `RE_NZEC`, and rbx refus
 unknown code, failing the whole run. It is the qualified spelling of the `RE` already in the
 table: a non-zero exit code is a runtime error.
 
-`_OUTCOME_BY_MOJ_CODE` gained the entry, and `_outcome_for_moj_code` reads any `RE_*` code as
-`RUNTIME_ERROR` — the prefix names the family, so unobserved members (`RE_SIGSEGV` and the
-like) carry no guess about the outcome. Everything outside the family is still refused by
-name; the reason for refusing — a wrong outcome silently corrupting the time-limit estimate —
-does not apply to a code that already says it is a runtime error.
+That prompted the question the probe had left open — what the *rest* of the vocabulary is —
+and it turned out not to need probing at all.
+
+### 3d. The full per-test vocabulary — from the judge's source, 2026-08-29
+
+The codes are not the server's invention: mojtools' `build-and-test.sh` writes
+`VERDICT[<file>]=<code>` into `log.verdictall`, and `calibreitor.sh`'s `sol_tests_json` — the
+same shape the judge agent's `agent_tests_json` produces, as its comment says — parses that
+file straight into `{name, code, time, tl}`. Nothing rewrites the string in between, so
+`run-testinput` **is** the vocabulary:
+
+| `code` | written when | rbx `Outcome` |
+|---|---|---|
+| `AC` | comparator exit 4 | `ACCEPTED` |
+| `AC,PE` | comparator exit 5 | `ACCEPTED` |
+| `WA` | comparator exit 6 | `WRONG_ANSWER` |
+| `MLE` | measured RSS over `MEMLIMITMB` | `MEMORY_LIMIT_EXCEEDED` |
+| `TLE` | exec time over the language's TL | `TIME_LIMIT_EXCEEDED` |
+| `RE` | bwrap exit ≥ 127 | `RUNTIME_ERROR` |
+| `RE_NZEC` | bwrap exit ≠ 0 | `RUNTIME_ERROR` |
+| `TMT` | legacy "signaled PPDI"; still ranked and named, no longer assigned | `RUNTIME_ERROR` |
+| `UE` | comparator exited something else | `JUDGE_FAILED` |
+
+Three notes on the mapping, which is no longer one-to-one:
+
+- **`AC,PE` is a pass.** MOJ scores it as correct (`[[ "$THISVERDICT" =~ "AC" ]]`), ranks it
+  with `AC` in `VERDICTORDER`, and canonicalises it to `Accepted`. rbx has no
+  presentation-error outcome; turning MOJ's pass into a failure would corrupt the estimate in
+  exactly the direction the refusal rule exists to prevent.
+- **`UE` is the comparator, not the solution.** MOJ's `VERDICTCANON` collapses it onto
+  `Runtime Error`; rbx does not follow, because a broken checker reported as the solution's
+  runtime error is the same silent lie in a different costume. `JUDGE_FAILED` says what
+  happened.
+- **`CE` and `NT` stay unmapped, for opposite reasons.** `CE` is real but run-level only
+  (§3b). `NT` ("Não executado") is `gen-report.sh` substituting for a *missing* verdict while
+  rendering HTML — it is never written to `log.verdictall`, so it cannot reach the `code`
+  position; a testcase MOJ said nothing about is already `SKIPPED`.
+
+`_outcome_for_moj_code` still reads any other `RE_*` as `RUNTIME_ERROR`, as a backstop for a
+sibling mojtools might grow — the prefix names the verdict, so the outcome carries no guess.
+Everything else is still refused by name. The invented spellings the earlier table warned
+about (`PE` and `JE` on their own) are now confirmed **not** to exist.
 
 ### 3b. `Compilation Error` — observed 2026-08-21, by accident
 
@@ -210,8 +247,8 @@ Note this is still not a terminal *failure* `status`: the run above finished `do
 
 - Whether a testrun can reach a terminal **failure** status (a compile error does not: it is
   a `done` run with a run-level verdict — see §3b).
-- The full `code` vocabulary beyond `AC` / `WA` / `RE` / `RE_NZEC` / `TLE` — in
-  particular, which other members of the `RE_*` family MOJ emits.
+- ~~The full `code` vocabulary~~ — closed 2026-08-29 by reading mojtools' `run-testinput`;
+  see §3d.
 - Whether `testrun` requires a prior calibration (this problem was already calibrated).
 - Whether a submission outside `.moj-meta.json`'s `languages` is really refused.
 - Whether a `TLOVERRIDE`-only `conf` change forces recalibration.

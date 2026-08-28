@@ -342,7 +342,7 @@ async def test_a_verdict_rbx_could_not_read_is_never_cached(
     ctx = _context(tmp_path, entries=build_entries(tmp_path, ['samples']))
     fake.results['sol.cpp'] = [
         _test(SAMPLE_NAMES[0], 'AC', 0.1),
-        _test(SAMPLE_NAMES[1], 'MLE', 0.2),
+        _test(SAMPLE_NAMES[1], 'PE', 0.2),
     ]
 
     with pytest.raises(MojRunnerError):
