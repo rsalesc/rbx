@@ -76,14 +76,25 @@ class BasePackager(ABC):
 
     @classmethod
     def package_basename(cls):
-        # A classmethod because `rbx package moj --upload` resolves the remote
-        # problem id from this *before* the build, and so before there is an
-        # instance. It never used `self`.
+        """`[<variant>-][<letter>-]<name>`: what this package is called.
+
+        A contest variant is a *different contest* that happens to share problem
+        directories with its siblings, so its id is part of the name: without it
+        two variants of the same problem produce the same basename, and whatever
+        consumes it -- an artifact on disk, a remote problem id -- has one
+        variant overwrite the other.
+
+        A classmethod because `rbx package moj --upload` resolves the remote
+        problem id from this *before* the build, and so before there is an
+        instance. It never used `self`.
+        """
         pkg = package.find_problem_package_or_die()
         shortname = naming.get_problem_shortname_or_require()
-        if shortname is not None:
-            return f'{shortname}-{pkg.name}'
-        return pkg.name
+        basename = f'{shortname}-{pkg.name}' if shortname is not None else pkg.name
+        variant_id = naming.get_selected_contest_variant_id()
+        if variant_id is None:
+            return basename
+        return f'{variant_id}-{basename}'
 
     def statement_types(self) -> List[StatementType]:
         return [StatementType.PDF]
