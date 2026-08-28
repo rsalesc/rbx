@@ -48,14 +48,18 @@ bool read() {
 
 void solve() {
   lf = 1, rg = n;
-  vector<int> was;
+  // Blocks of memory kept alive to grow the RSS of this solution. They are
+  // filled in bulk rather than by a loop of rand() calls: the memory limit
+  // is enforced by sampling RSS and CPU time, and if this solution burned CPU
+  // while allocating it could cross the time limit first and be reported as
+  // TLE instead of ML on a loaded machine. See issue #807.
+  vector<vector<char>> blocks;
   int it = 0;
   while (lf != rg) {
     it++;
     int mid = (lf + rg + 1) / 2;
     if (it > 5)
-      for (int i = 0; i < 10000000; i++)
-        was.pb(rand());
+      blocks.pb(vector<char>(40 * 1024 * 1024, 1));
     cout << mid << endl;
     fflush(stdout);
     string s;
