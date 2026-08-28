@@ -121,6 +121,14 @@ async def upload_package(problem_id: str, directory: pathlib.Path) -> None:
     The calibration is queued and **not waited on**. Calibrating is a long
     server-side job, and a setter who has just uploaded has nothing to block on;
     `moj check <id>` reports the state whenever they want it.
+
+    It is queued on **every online judge**, unlike the probe upload in
+    `rbx.box.runners.moj.runner`, which asks for the cheap global calibration. The
+    park is not homogeneous and `moj check` publishes the time limit as the max
+    across whichever judges calibrated, so a package measured on one machine is
+    judged, on every other machine, against a limit nothing measured there. A
+    probe can live with that -- it is asking a question, and the next run replaces
+    the answer. A package setters submit to cannot.
     """
     console.console.print(f'Uploading the package to [item]{problem_id}[/item]...')
     await cli.upload(problem_id, directory)
@@ -128,9 +136,52 @@ async def upload_package(problem_id: str, directory: pathlib.Path) -> None:
         f'[success]Package uploaded to [item]{problem_id}[/item]![/success]'
     )
 
-    await cli.calibrate(problem_id)
+    await _calibrate_everywhere(problem_id)
+
+
+async def _calibrate_everywhere(problem_id: str) -> None:
+    """Calibrate on the whole park, falling back to a global request.
+
+    The fallback is what keeps the extra reach from costing reliability. Targeting
+    the park makes the CLI resolve the judge list before it queues anything, which
+    is a step the global request does not have and so a way to fail that the
+    global request does not have either -- an empty or unreachable park dies with
+    `nenhum juiz online`.
+
+    Failing there would be the worst outcome available: the package is *already*
+    uploaded by this point, and mojtools refuses to judge a package with no `tl`
+    file, so an upload whose calibration never queued leaves a problem nobody can
+    submit to and nothing on screen tying the two together. One global request
+    instead is strictly better -- it queues, and the first judge free picks it up.
+
+    Any failure is retried this way rather than only the one whose message we
+    recognise. The alternative is matching the CLI's Portuguese error text, which
+    would decide reliability on a string the CLI is free to reword. A failure with
+    a different cause simply fails again on the retry, and it is *that* error the
+    setter is shown.
+    """
+    try:
+        await cli.calibrate(problem_id, all_judges=True)
+    except MojCliError as e:
+        console.console.print(
+            f'[warning]Could not queue the calibration on every judge: '
+            f'{e.message}[/warning]\n'
+            f'[warning]Falling back to a single global calibration, which the '
+            f'first free judge picks up. The time limits it measures describe '
+            f'that judge alone -- re-run [item]moj calibrate {problem_id} '
+            f'--all-judges[/item] once the park is back.[/warning]'
+        )
+        await cli.calibrate(problem_id)
+        console.console.print(
+            f'[status]Calibration queued for [item]{problem_id}[/item] on one '
+            f'judge; check on it with [item]moj check {problem_id}[/item].'
+            f'[/status]'
+        )
+        return
+
     console.console.print(
-        f'[status]Calibration queued for [item]{problem_id}[/item]. It runs on '
-        f'the judge; check on it with [item]moj check {problem_id}[/item].'
-        f'[/status]'
+        f'[status]Calibration queued for [item]{problem_id}[/item] on every '
+        f'online judge. It runs on the judges; check on it with '
+        f'[item]moj check {problem_id}[/item], which reports the time limit as '
+        f'the max across them.[/status]'
     )

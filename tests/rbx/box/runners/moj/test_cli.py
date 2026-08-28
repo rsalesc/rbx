@@ -572,6 +572,41 @@ async def _checked(monkeypatch: pytest.MonkeyPatch, **tl: Any) -> cli.MojCheck:
     return await cli.check('alice#rbxt-deadbeef')
 
 
+async def test_calibrate_is_global_by_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """No targeting flag: the server queues it once and any free judge takes it.
+
+    Which is what the probe upload in `runners.moj.runner` wants -- the fastest
+    number, from anywhere. `packaging.moj.upload` is the caller that does not.
+    """
+    _stub_moj(monkeypatch, tmp_path, 'exit 0')
+
+    await cli.calibrate('alice#rbxt-deadbeef')
+
+    assert _stub_calls(tmp_path) == [['calibrate', 'alice#rbxt-deadbeef']]
+
+
+async def test_calibrate_can_target_every_online_judge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    """`--all-judges` and not a `--hosts` list rbx builds itself.
+
+    Confirmed from the CLI's `cmd_calibrate`: the flag is expanded client-side
+    against the park it queries at that moment, while `--hosts` takes an explicit
+    comma-separated list and refuses a host the park does not know. Assembling
+    that list here would make rbx responsible for an inventory that changes
+    without it.
+    """
+    _stub_moj(monkeypatch, tmp_path, 'exit 0')
+
+    await cli.calibrate('unicamp#a-aplusb', all_judges=True)
+
+    assert _stub_calls(tmp_path) == [
+        ['calibrate', 'unicamp#a-aplusb', '--all-judges'],
+    ]
+
+
 async def test_check_asks_for_json_before_the_subcommand(
     monkeypatch: pytest.MonkeyPatch,
 ):
