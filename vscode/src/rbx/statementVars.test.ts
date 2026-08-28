@@ -3,11 +3,23 @@ import { test } from 'node:test';
 
 import { scanStatementVars, Vars } from './statementVars';
 
+/**
+ * The foreign-scope keys are deliberately *resolvable*. A nested var block
+ * named `g` really does flatten to the key `g.N.max` in `rbx vars --json`, so
+ * without them the scope guard would be untestable: every foreign name would
+ * be turned away by the lookup rather than by the guard.
+ */
 const VARS: Vars = {
   'N.max': 100000,
   'A.max': 1000000000,
   flag: true,
   name: 'foo',
+  'g.N.max': 7,
+  'groups.g.vars.N.max': 7,
+  'p.N.max': 7,
+  'problem.N.max': 7,
+  'contest.year': 7,
+  'vars.problem.N.max': 7,
 };
 
 const scan = (text: string) => scanStatementVars(text, VARS);

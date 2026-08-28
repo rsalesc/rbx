@@ -29,10 +29,19 @@ export interface VarHint {
 /**
  * Scopes whose values this map does not hold. See the module comment.
  *
- * Safe to claim these names outright: rbx rejects a top-level var that collides
- * with a template namespace key (`vars`, `problem`, `contest`, `groups`, ...),
- * so no legitimate root var can be spelled `problem.x` or `groups.x`. The short
- * aliases `g` and `p` are the loop and problem bindings the templates use.
+ * The two halves of this list are claimed on different grounds:
+ *
+ * - `problem`, `contest`, `groups` and `vars` are rbx's own. All four sit in
+ *   `RESERVED_STATEMENT_VAR_NAMES` (rbx/box/fields.py), which rejects a
+ *   top-level var that would shadow a template namespace key, so no legitimate
+ *   root var can ever be spelled `problem.x` or `groups.x`. Claiming them
+ *   costs nothing.
+ * - `g` and `p` are only *conventional* -- the aliases a template author
+ *   happens to bind in `\BLOCK{for g in groups}`. rbx reserves neither, so a
+ *   root var genuinely named `g` is legal and `\VAR{g.max}` would then lose a
+ *   badge it could have had. That is a deliberate false negative: badging a
+ *   loop variable with a root value would be a lie, and under D5 an absent
+ *   badge is never wrong.
  */
 const FOREIGN_SCOPE = /^(vars\.)?(g|p|problem|contest|groups)\./;
 
