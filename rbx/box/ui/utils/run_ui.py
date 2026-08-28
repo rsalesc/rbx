@@ -255,14 +255,19 @@ def get_run_testcase_metadata_markup(
         f'[b]{solutions.get_full_outcome_markup_verdict(eval.result.outcome)}[/b]'
     )
     lines.append(f'[b]Time:[/b] {time_str} / [b]Memory:[/b] {memory_str}')
+    # The label is `Checker time:`, not `Checker:`, because the line below
+    # already spells `Checker:` for the checker's *message* -- a line setters
+    # have read that way since long before judging times existed. Do not
+    # shorten it back into a collision.
     lines.append(
-        f'[b]Checker:[/b] {_get_formatted_judging_time(eval.result.checker_timing)}'
+        f'[b]Checker time:[/b] '
+        f'{_get_formatted_judging_time(eval.result.checker_timing)}'
     )
     # Only a communication problem has an interactor, so a batch testcase must
     # not grow a line reading `-` for a program that does not exist.
     if eval.result.interactor_timing is not None:
         lines.append(
-            f'[b]Interactor:[/b] '
+            f'[b]Interactor time:[/b] '
             f'{_get_formatted_judging_time(eval.result.interactor_timing)}'
         )
     if checker_msg is not None:

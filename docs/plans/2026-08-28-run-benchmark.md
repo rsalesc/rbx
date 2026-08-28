@@ -892,7 +892,7 @@ Expected: FAIL.
 `run_and_print_interactive_solutions` gains `benchmark: BenchmarkLevel = BenchmarkLevel.NONE`. Inside the `async for item in items:` loop, right after `_print_solution_outcome`, print a one-line per-testcase timing when the level is on:
 
 ```
-Checker: 48 ms
+Checker time: 48 ms
 ```
 
 (plus `Interactor:` when there is an interactor timing). Accumulate `build_solution_benchmark(sol, skeleton, [eval])` into a list as you go, and after the loop call `build_problem_benchmark` / `print_problem_benchmark`.

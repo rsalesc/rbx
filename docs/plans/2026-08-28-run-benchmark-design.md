@@ -162,10 +162,14 @@ the existing time/memory line:
 
 ```
 Time: 1.15 s / Memory: 12 MB
-Checker: 48 ms
+Checker time: 48 ms
 ```
 
-with an `Interactor:` line for communication problems. Unmeasured reads `-`.
+with an `Interactor time:` line for communication problems. Unmeasured reads `-`.
+
+The label is `Checker time:`, not `Checker:`, because the pane already carries a
+`Checker:` line holding the checker's *message*. That line predates this feature
+and setters read it that way, so the new line is the one that moves.
 Because capture is unconditional, this works for any run recorded after this
 change ships, benchmarked or not; runs recorded before it show `-`.
 

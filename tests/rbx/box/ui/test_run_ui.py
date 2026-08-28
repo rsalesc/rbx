@@ -493,26 +493,26 @@ def _metadata_markup_for(tmp_path, **kwargs) -> str:
 
 def test_metadata_shows_the_measured_checker_time(tmp_path):
     markup = _metadata_markup_for(tmp_path, checker_timing=RunTiming(time=0.048))
-    assert '[b]Checker:[/b] 48 ms' in markup
+    assert '[b]Checker time:[/b] 48 ms' in markup
 
 
 def test_metadata_shows_no_checker_time_when_the_checker_never_ran(tmp_path):
     """A checker that never ran has no measurement -- never `0 ms`."""
     markup = _metadata_markup_for(tmp_path, checker_timing=None)
-    assert '[b]Checker:[/b] -' in markup
+    assert '[b]Checker time:[/b] -' in markup
     assert '0 ms' not in markup
 
 
 def test_metadata_shows_no_checker_time_when_the_clock_is_unset(tmp_path):
     """A `RunTiming` can exist while its clocks are `None` -- still unmeasured."""
     markup = _metadata_markup_for(tmp_path, checker_timing=RunTiming(wall_time=0.048))
-    assert '[b]Checker:[/b] -' in markup
+    assert '[b]Checker time:[/b] -' in markup
     assert '0 ms' not in markup
 
 
 def test_metadata_has_no_interactor_line_for_a_batch_problem(tmp_path):
     markup = _metadata_markup_for(tmp_path, checker_timing=RunTiming(time=0.048))
-    assert 'Interactor:' not in markup
+    assert 'Interactor time:' not in markup
 
 
 def test_metadata_shows_the_interactor_time_when_there_is_one(tmp_path):
@@ -520,5 +520,5 @@ def test_metadata_shows_the_interactor_time_when_there_is_one(tmp_path):
     markup = _metadata_markup_for(
         tmp_path, checker_timing=None, interactor_timing=RunTiming(time=1.2)
     )
-    assert '[b]Interactor:[/b] 1200 ms' in markup
-    assert '[b]Checker:[/b] -' in markup
+    assert '[b]Interactor time:[/b] 1200 ms' in markup
+    assert '[b]Checker time:[/b] -' in markup
