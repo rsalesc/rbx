@@ -13,6 +13,7 @@ from rich.text import Text
 from rbx import utils
 from rbx.box import package
 from rbx.box import solutions as solutions_module
+from rbx.box.benchmark import BenchmarkLevel
 from rbx.box.deferred import Deferred
 from rbx.box.environment import VerificationLevel
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
@@ -64,6 +65,7 @@ from rbx.grading.steps import (
     CompilationError,
     Evaluation,
     Outcome,
+    RunTiming,
 )
 
 # The synthetic skeleton/evaluation builders live in conftest so that other run
@@ -282,8 +284,14 @@ def make_reporter_skeleton(
 def make_run_result(
     skeleton: SolutionReportSkeleton,
     verdicts: Dict[Tuple[str, int], Outcome],
+    checker_time_ms: Optional[int] = None,
 ) -> RunSolutionResult:
-    """Present fixed verdicts as an already-computed run."""
+    """Present fixed verdicts as an already-computed run.
+
+    ``checker_time_ms`` gives every judged testcase a checker measurement. Left
+    ``None``, the checkers are unmeasured -- which is what an `.eval` written
+    before checker timings existed looks like, so both shapes are worth driving.
+    """
 
     def resolved(evaluation: Evaluation) -> Deferred[Evaluation]:
         async def fn() -> Evaluation:
@@ -295,12 +303,15 @@ def make_run_result(
         # A skipped testcase never entered the sandbox, so it carries no time
         # and no memory -- exactly what the runner records for one.
         unmeasured = outcome == Outcome.SKIPPED
-        return make_evaluation(
+        evaluation = make_evaluation(
             outcome,
             time_ms=None if unmeasured else 100,
             memory_bytes=None if unmeasured else 1024,
             testcase_index=index,
         )
+        if checker_time_ms is not None and not unmeasured:
+            evaluation.result.checker_timing = RunTiming(time=checker_time_ms / 1000.0)
+        return evaluation
 
     return RunSolutionResult(
         skeleton=skeleton,
@@ -1937,6 +1948,121 @@ async def test_plain_report_drops_the_timing_summary_when_timing_is_off(
     console = recording_console()
     await print_run_report(result, console, VerificationLevel.FULL, timing=False)
     assert 'Timing summary' not in console.export_text(clear=False)
+
+
+# `--benchmark` / `-b1`. The block is printed once per solution, from
+# `finish_solution` -- the one place both reporters converge -- so the tests
+# below drive whole reports rather than either reporter's renderer.
+
+
+def benchmark_lines(console: rich.console.Console) -> List[str]:
+    """The per-solution benchmark block's lines, in the order they were printed."""
+    return [
+        line.strip()
+        for line in rendered_lines(console)
+        if line.strip().startswith('Benchmark:')
+        or line.strip().startswith('Total judging:')
+    ]
+
+
+async def test_benchmark_block_reports_judging_time_per_solution(
+    mock_problem_root, mock_skeleton, mock_binary_scoring
+):
+    """`-b1` adds one block per solution, naming its slowest testcase and what
+    judging the whole solution cost."""
+    solutions = [
+        Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED),
+        Solution(path=pathlib.Path('other.cpp'), outcome=ExpectedOutcome.ACCEPTED),
+    ]
+    skeleton = mock_skeleton(solutions, entries_per_group={'group1': 2})
+    result = make_run_result(
+        skeleton,
+        {('group1', 0): Outcome.ACCEPTED, ('group1', 1): Outcome.ACCEPTED},
+        checker_time_ms=20,
+    )
+
+    console = recording_console()
+    await print_run_report(
+        result,
+        console,
+        VerificationLevel.FULL,
+        benchmark_level=BenchmarkLevel.SOLUTIONS,
+    )
+
+    # Two solutions, two blocks of two lines each. Every testcase took 100 ms of
+    # solution time plus 20 ms of checker time, so the slowest is 120 ms and the
+    # two of them total 240 ms, of which 40 ms is checker.
+    assert (
+        benchmark_lines(console)
+        == [
+            'Benchmark: slowest test group1/0 - 120 ms judging (100 ms solution + 20 ms checker)',
+            'Total judging: 240 ms (checker: 40 ms)',
+        ]
+        * 2
+    )
+
+
+async def test_benchmark_block_is_absent_by_default(
+    mock_problem_root, mock_skeleton, mock_binary_scoring
+):
+    """Without `-b1` nothing is benchmarked, and the report is otherwise the
+    very same report -- the block is added, never a line moved."""
+    solutions = [
+        Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED),
+        Solution(path=pathlib.Path('other.cpp'), outcome=ExpectedOutcome.ACCEPTED),
+    ]
+    skeleton = mock_skeleton(solutions, entries_per_group={'group1': 2})
+    verdicts = {('group1', 0): Outcome.ACCEPTED, ('group1', 1): Outcome.ACCEPTED}
+
+    default_console = recording_console()
+    await print_run_report(
+        make_run_result(skeleton, verdicts, checker_time_ms=20),
+        default_console,
+        VerificationLevel.FULL,
+    )
+    benchmarked_console = recording_console()
+    await print_run_report(
+        make_run_result(skeleton, verdicts, checker_time_ms=20),
+        benchmarked_console,
+        VerificationLevel.FULL,
+        benchmark_level=BenchmarkLevel.SOLUTIONS,
+    )
+
+    assert benchmark_lines(default_console) == []
+    # Drop the block from the benchmarked report and the two are identical, so
+    # the flag cannot have changed anything else.
+    block = set(benchmark_lines(benchmarked_console))
+    without_block = [
+        line
+        for line in rendered_lines(benchmarked_console)
+        if line.strip() not in block
+    ]
+    assert without_block == rendered_lines(default_console)
+
+
+async def test_benchmark_block_is_skipped_when_nothing_was_judged(
+    mock_problem_root, mock_skeleton, mock_binary_scoring
+):
+    """A `--fail-fast` run can skip every testcase of a solution, and a skipped
+    testcase carries no time at all. There is nothing to benchmark then, and
+    reporting `0 ms` would claim a measurement nobody took."""
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.INCORRECT)
+    skeleton = mock_skeleton([solution], entries_per_group={'group1': 2})
+    result = make_run_result(
+        skeleton,
+        {('group1', 0): Outcome.SKIPPED, ('group1', 1): Outcome.SKIPPED},
+    )
+
+    console = recording_console()
+    with fresh_issue_stack():
+        await print_run_report(
+            result,
+            console,
+            VerificationLevel.FULL,
+            benchmark_level=BenchmarkLevel.SOLUTIONS,
+        )
+
+    assert benchmark_lines(console) == []
 
 
 @pytest.mark.test_pkg('problems/abort-groups')

@@ -33,6 +33,7 @@ from pydantic import BaseModel
 
 from rbx import console, utils
 from rbx.box import (
+    benchmark,
     checkers,
     code,
     compilation_findings,
@@ -2861,6 +2862,7 @@ async def _print_detailed_run_report(
     timing: bool = True,
     verification: VerificationLevel = VerificationLevel.NONE,
     gating_solutions: Optional[Set[str]] = None,
+    benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
 ) -> bool:
     for group in result.skeleton.groups:
         console.print(f'[bold][status]{group.name}[/status][/bold]')
@@ -2896,6 +2898,14 @@ async def _print_detailed_run_report(
         report_writer.add(
             run_report.build_solution_report(index, result.skeleton, report)
         )
+        # `--detailed` bypasses the reporters, so it prints the benchmark block
+        # itself for the same reason it publishes the report itself.
+        if benchmark_level == benchmark.BenchmarkLevel.SOLUTIONS:
+            solution_benchmark = benchmark.build_solution_benchmark(
+                solution, result.skeleton, report.evals
+            )
+            if solution_benchmark is not None:
+                benchmark.print_solution_benchmark(console, solution_benchmark)
         if _gates_report(solution, gating_solutions):
             ok = ok and report.status.ok()
         console.print()
@@ -2960,10 +2970,18 @@ class TraditionalRunReporter:
         result: RunSolutionResult,
         verification: VerificationLevel,
         console: rich.console.Console,
+        benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
     ):
         self.result = result
         self.console = console
         self.verification = verification
+        # Named for the level rather than for the module it comes from, since
+        # this file refers to `benchmark` the module throughout.
+        self.benchmark_level = benchmark_level
+        # Every solution's benchmark, in the order the solutions finished. Read
+        # by nothing yet: the problem-wide summary that ranks them is built on
+        # top of this list, and collecting them here is what will let it.
+        self.solution_benchmarks: List[benchmark.SolutionBenchmark] = []
         self.structured_evaluations = consume_and_key_evaluation_items(
             result.items, result.skeleton
         )
@@ -3042,6 +3060,20 @@ class TraditionalRunReporter:
                     report,
                 )
             )
+            # Printed from here rather than from either `render_solution_end`
+            # because this is where the two reporters converge, so the block is
+            # written once and both get it. `LiveRunReporter` has already
+            # stopped its live region by the time that returns, so printing
+            # plainly to the console cannot land inside a live frame.
+            if self.benchmark_level == benchmark.BenchmarkLevel.SOLUTIONS:
+                solution_benchmark = benchmark.build_solution_benchmark(
+                    self.current_solution, self.result.skeleton, report.evals
+                )
+                # `None` when nothing about this solution was measured -- a
+                # `--fail-fast` run that skipped every one of its testcases.
+                if solution_benchmark is not None:
+                    benchmark.print_solution_benchmark(self.console, solution_benchmark)
+                    self.solution_benchmarks.append(solution_benchmark)
         self.current_solution = None
         self.current_solution_evals = []
         return report is None or report.status.ok()
@@ -3531,6 +3563,7 @@ async def print_run_report(
     timing: bool = True,
     skip_printing_limits: bool = False,
     gating_solutions: Optional[Set[str]] = None,
+    benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
 ) -> bool:
     """Run every tracked solution and report it.
 
@@ -3544,13 +3577,17 @@ async def print_run_report(
     report. Pass ``False`` when the run may stop early: every line of that
     summary is an extreme over the solutions, and a solution that did not run to
     the end only measures a lower bound.
+
+    ``benchmark_level`` decides whether the judging benchmark is reported. The
+    timings it reads are captured on every run regardless, so the level only
+    ever decides what is printed.
     """
     if not skip_printing_limits:
         _print_limits(result.skeleton.limits)
 
     single_solution = len(result.skeleton.solutions) == 1
     report_cls = SingleSolutionRunReporter if single_solution else LiveRunReporter
-    reporter = report_cls(result, verification, console)
+    reporter = report_cls(result, verification, console, benchmark_level)
 
     if detailed:
         return await _print_detailed_run_report(
@@ -3560,6 +3597,7 @@ async def print_run_report(
             verification=verification,
             timing=timing,
             gating_solutions=gating_solutions,
+            benchmark_level=benchmark_level,
         )
 
     ok = True
