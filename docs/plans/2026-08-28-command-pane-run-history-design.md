@@ -182,13 +182,34 @@ sub.task_id = task.task_id
 along for free: `chained` is persisted, so if a resumed command fails, `_skip_rest_of_chain`
 aborts the rest of that tab's chain just as it did originally.
 
-Two verbs:
+Two verbs, both on the sidebar alongside the existing `!`, `l` and `?`:
 
-- **Retry** re-runs a single sub-command, the one on screen.
-- **Resume** re-queues every sub-command **not in `SUCCESS`** -- `FAILED`, `SKIPPED` and
-  `INTERRUPTED` alike -- in their original order, across every tab. This is the
-  "`each build` over twelve problems, three failed, fix them, carry on" case, and it is why
-  resume is run-wide rather than per-tab. Successful work is never repeated.
+- **`r` -- retry** re-runs the single sub-command currently on screen. It names one command
+  in one tab, so it needs no scope prompt.
+- **`R` -- resume** re-queues every sub-command **not in `SUCCESS`** -- `FAILED`, `SKIPPED`
+  and `INTERRUPTED` alike -- in their original order. Successful work is never repeated.
+
+Resume does not pick a scope for you. It reuses the affordance `!` already established:
+pressing it mounts a `Menu` in `#command-input-container` with the same three choices, in
+the same order and with the same accelerators.
+
+| Key | Item | Behaviour |
+|-----|------|-----------|
+| `1` | Resume this tab | The active problem only. |
+| `2` | Resume all tabs | Every problem in the run -- the `each build` over twelve problems, three failed, fix them, carry on case. |
+| `3` | Resume selected tabs | Pushes `TabSelectorModal` for a multi-select, exactly as `run_selected_tabs` does. |
+
+The handler is the one already written for commands: `_on_menu_selected` dispatches on
+`event.action`, and `run_selected_tabs` already routes through `TabSelectorModal` with a
+callback taking the chosen indices. Resume adds `resume_this_tab` / `resume_all_tabs` /
+`resume_selected_tabs` beside them, and `_pending_command` gains a sibling holding the
+pending *verb* so one menu handler can serve both.
+
+Each item carries its count -- "Resume all tabs (7 commands)" -- so the blast radius is
+visible before committing to it, and tabs with nothing to resume are silently excluded from
+the totals. When nothing anywhere is resumable, `R` raises a toast instead of an empty menu.
+The `TabSelectorModal` rows are labelled through `_make_tab_label`, so each carries its
+aggregate status icon and you can see at a glance which problems actually failed.
 
 Resume deliberately includes `FAILED`: you resume *because* you fixed what failed, so
 starting after the failure point would skip the command you actually wanted re-run.
@@ -223,7 +244,10 @@ problem resumes by the same path, without quitting first.
   present when it is reopened again.
 - **Load states.** A run persisted mid-chain reloads with `RUNNING` as `INTERRUPTED` and
   `PENDING` as `SKIPPED`, and the tab reports itself idle.
+- **Resume scope.** Each of the three menu items enqueues exactly the tabs it names, and a
+  tab whose sub-commands all succeeded is untouched by any of them.
 - **Resume.** Over a run with a mix of statuses, only the non-`SUCCESS` sub-commands are
   enqueued, in order; a resumed command that fails again skips the rest of its chain.
+- **Empty resume.** `R` with nothing resumable notifies and mounts no menu.
 - **Retry hygiene.** Re-running a sub-command that already has output leaves the pane
   holding only the new attempt, and its stored `.ansi` matches.
