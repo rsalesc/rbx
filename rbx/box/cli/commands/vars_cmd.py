@@ -67,11 +67,13 @@ def _dump_json(expanded: fields.Vars) -> str:
             for name, value in expanded.items()
             if isinstance(value, float) and not math.isfinite(value)
         )
-        detail = (
-            f'non-finite values in {", ".join(offenders)}'
-            if offenders
-            else str(e)  # Not the non-finite case: say whatever json said.
-        )
+        if not offenders:
+            # Not the non-finite case: say whatever json said.
+            detail = str(e)
+        elif len(offenders) == 1:
+            detail = f'{offenders[0]} has a non-finite value'
+        else:
+            detail = f'{", ".join(offenders)} have non-finite values'
         console.console.print(
             f'[error]Cannot serialize the vars of this problem to JSON: '
             f'{rich.markup.escape(detail)}.[/error]'

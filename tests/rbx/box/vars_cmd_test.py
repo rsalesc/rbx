@@ -1,6 +1,7 @@
 import json
 import pathlib
 import re
+from unittest import mock
 
 import pytest
 from typer.testing import CliRunner
@@ -15,19 +16,20 @@ _ANSI = re.compile(r'\x1b\[[0-9;]*m')
 
 
 def _plain(output: str) -> str:
-    """Drop the styling Rich adds, leaving the text the setter would read."""
+    """Drop the styling, leaving the text the setter would read.
+
+    The console disables Rich's highlighter, but it still emits SGR codes for
+    the `item` style and for its own `info` default style.
+    """
     return _ANSI.sub('', output)
 
 
-def _with_vars(pkg: testing_package.TestingPackage, vars) -> None:
-    """Give the package these vars, and a preset the CLI will accept.
-
-    `TestingPreset` writes its `preset.rbx.yml` without a `min_version`, which
-    the root callback refuses before any command runs.
-    """
-    pkg.preset.yml.min_version = '1.0.0'
-    pkg.preset.save()
-    pkg.set_vars(vars)
+@pytest.fixture(autouse=True)
+def _skip_preset_check():
+    # The root Typer callback checks the active preset's compatibility, which is
+    # unrelated to the wiring under test and fails for the bare testing package.
+    with mock.patch('rbx.box.presets.check_active_preset_compatibility'):
+        yield
 
 
 @pytest.mark.test_pkg('problems/interactive')
@@ -73,12 +75,11 @@ def test_vars_does_not_render_markup_in_var_values(
     Rich would style `[bold]...[/bold]` away and raise on `[/nope]`, so both
     have to survive to the output verbatim.
     """
-    _with_vars(
-        testing_pkg,
+    testing_pkg.set_vars(
         {
             'styled': '[bold]weight[/bold]',
             'broken': 'a [/nope] b',
-        },
+        }
     )
 
     result = runner.invoke(app, ['vars'])
@@ -96,7 +97,7 @@ def test_vars_json_fails_cleanly_on_non_finite_var(
     The extension degrades on a non-zero exit, so failing is right; what it
     must not do is hand back a payload that cannot be parsed.
     """
-    _with_vars(testing_pkg, {'huge': 'py`float("inf")`'})
+    testing_pkg.set_vars({'huge': 'py`float("inf")`'})
 
     result = runner.invoke(app, ['vars', '--json'])
 
