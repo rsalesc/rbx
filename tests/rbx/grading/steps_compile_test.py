@@ -133,7 +133,10 @@ class TestStepsCompile:
         )
         artifacts.logs = GradingLogsHolder()
 
-        params = SandboxParams(address_space=1024)  # Set memory constraint
+        params = SandboxParams(
+            address_space=1024,  # Set memory constraint
+            stack_space=64,  # Set stack constraint
+        )
         commands = ['javac Simple.java']
 
         # Use mock to capture the params passed to sandbox.run
@@ -143,11 +146,13 @@ class TestStepsCompile:
             assert output_file.exists()
             # Original params should not be modified
             assert params.address_space == 1024
-            # But the params passed to sandbox.run should have address_space removed
+            assert params.stack_space == 64
+            # But the params passed to sandbox.run should have both removed
             mock_run.assert_called_once()
             call_args = mock_run.call_args
             captured_params = call_args[0][1]  # Second argument (params)
             assert captured_params.address_space is None
+            assert captured_params.stack_space is None
 
     async def test_compile_compilation_error_returns_false(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path

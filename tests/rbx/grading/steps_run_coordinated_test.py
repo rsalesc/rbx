@@ -327,6 +327,7 @@ class TestStepsRunCoordinated:
             params=SandboxParams(
                 timeout=5000,
                 address_space=512,  # 512MB limit
+                stack_space=64,  # 64MB stack
             ),
         )
 
@@ -336,6 +337,7 @@ class TestStepsRunCoordinated:
             params=SandboxParams(
                 timeout=5000,
                 address_space=256,  # This should be removed for Java
+                stack_space=32,  # This should be removed for Java too
             ),
         )
 
@@ -367,9 +369,16 @@ class TestStepsRunCoordinated:
                 'Java solution should have address_space removed'
             )
 
-            # Verify that the interactor still has its address_space constraint
+            assert solution_params_actual.stack_space is None, (
+                'Java solution should have stack_space removed'
+            )
+
+            # Verify that the interactor still has its constraints
             assert interactor_params_actual.address_space == 512, (
                 'Interactor should keep its address_space constraint'
+            )
+            assert interactor_params_actual.stack_space == 64, (
+                'Interactor should keep its stack_space constraint'
             )
 
         # The key test is that the function doesn't fail due to memory constraints

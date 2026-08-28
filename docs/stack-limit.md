@@ -101,3 +101,8 @@ languages:
 !!! warning
     `stackLimit` is enforced on Linux only. On MacOS, the stack of a sandboxed program is
     whatever your shell hands down, which is exactly what the sections above are about.
+
+!!! note
+    JVM programs -- Java and Kotlin -- are exempt. The JVM manages its own thread stacks, so
+    the limit would only bound the launcher's main thread and never the code you wrote. This
+    mirrors what {{rbx}} already does with the memory limit for those languages.
