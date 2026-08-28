@@ -150,6 +150,14 @@ SPEC = {
                     'value': {'completer': 'verification_level', 'kind': 'completer'},
                 },
                 {
+                    'help': 'Benchmark level: 0 (off), 1 (benchmark the solution run).',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--benchmark', '-b'],
+                    'takes_value': True,
+                    'value': {'completer': 'benchmark_level', 'kind': 'completer'},
+                },
+                {
                     'help': None,
                     'kind': 'argument',
                     'multiple': False,
@@ -432,6 +440,14 @@ SPEC = {
                     'names': ['--verification-level', '--verification', '-v'],
                     'takes_value': True,
                     'value': {'completer': 'verification_level', 'kind': 'completer'},
+                },
+                {
+                    'help': 'Benchmark level: 0 (off), 1 (benchmark the solution run).',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--benchmark', '-b'],
+                    'takes_value': True,
+                    'value': {'completer': 'benchmark_level', 'kind': 'completer'},
                 },
                 {
                     'help': None,
@@ -3379,6 +3395,7 @@ SPEC = {
 }
 
 COMPLETERS = {
+    'benchmark_level': 'rbx.box.completion.completers:complete_benchmark_level',
     'contest_variant': 'rbx.box.completion.completers:complete_contest_variant',
     'language': 'rbx.box.completion.completers:complete_language',
     'outcome': 'rbx.box.completion.completers:complete_outcome',
