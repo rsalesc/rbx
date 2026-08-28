@@ -19,6 +19,9 @@ import dataclasses
 from enum import Enum
 from typing import TYPE_CHECKING, List, Optional
 
+import rich.console
+
+from rbx.box.formatting import UNMEASURED, get_formatted_time_in_seconds
 from rbx.box.schema import Solution
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.grading.steps import Evaluation, Outcome, RunTiming
@@ -36,7 +39,7 @@ class BenchmarkLevel(Enum):
     SOLUTIONS = 1
 
 
-def _timing_seconds(timing: Optional[RunTiming]) -> Optional[float]:
+def timing_seconds(timing: Optional[RunTiming]) -> Optional[float]:
     """The measured CPU seconds, or `None` when the program was not measured.
 
     A `RunTiming` can exist with its clocks unset, so the inner `None` needs the
@@ -56,7 +59,7 @@ def checker_time_seconds(eval: Evaluation) -> Optional[float]:
     the sandbox reported no clock. It contributes nothing to a sum, but a caller
     that renders it on its own must keep the `None` rather than print `0.0 s`.
     """
-    return _timing_seconds(eval.result.checker_timing)
+    return timing_seconds(eval.result.checker_timing)
 
 
 def interactor_time_seconds(eval: Evaluation) -> Optional[float]:
@@ -65,7 +68,7 @@ def interactor_time_seconds(eval: Evaluation) -> Optional[float]:
     Unmeasured means the problem is not interactive, or the sandbox reported no
     clock. As with the checker, `None` must survive to the renderer.
     """
-    return _timing_seconds(eval.result.interactor_timing)
+    return timing_seconds(eval.result.interactor_timing)
 
 
 def was_judged(eval: Evaluation) -> bool:
@@ -208,4 +211,82 @@ def build_problem_benchmark(
             key=lambda j: j.judging_time_seconds,
         ),
         partial=any(b.partial for b in benchmarks),
+    )
+
+
+def _measurement(seconds: Optional[float]) -> str:
+    """A duration in seconds, or the unmeasured marker when there is none.
+
+    `None` never becomes `0.0 s` here: a checker that never ran and a checker
+    that ran instantaneously read differently, and only the second is a claim
+    about how long judging took.
+    """
+    if seconds is None:
+        return UNMEASURED
+    return get_formatted_time_in_seconds(seconds)
+
+
+def _hilite(seconds: Optional[float]) -> str:
+    return f'[hilite]{_measurement(seconds)}[/hilite]'
+
+
+def print_solution_benchmark(
+    console: rich.console.Console, bench: SolutionBenchmark
+) -> None:
+    """Print one solution's judging benchmark, under its report block.
+
+    The console is passed in rather than taken from `rbx.console` so that the
+    `--share` recording console gets these lines too.
+    """
+    slowest = bench.slowest_testcase
+    breakdown = (
+        f'{_hilite(slowest.solution_time_seconds)} solution'
+        f' + {_hilite(slowest.checker_time_seconds)} checker'
+    )
+    totals = f'(checker: {_hilite(bench.total_checker_time_seconds)}'
+    # The interactor is named only when there is one to name -- a batch problem
+    # must not grow a term reading `- interactor` on every solution.
+    if slowest.interactor_time_seconds is not None:
+        breakdown += f', {_hilite(slowest.interactor_time_seconds)} interactor'
+    if bench.total_interactor_time_seconds is not None:
+        totals += f', interactor: {_hilite(bench.total_interactor_time_seconds)}'
+    totals += ')'
+
+    console.print(
+        f'Benchmark: slowest test [item]{slowest.entry}[/item]'
+        f' - {_hilite(slowest.judging_time_seconds)} judging ({breakdown})'
+    )
+    console.print(
+        f'Total judging: {_hilite(bench.total_judging_time_seconds)} {totals}', end=''
+    )
+    if bench.partial:
+        # A `--fail-fast` run stopped early, so every total above is a lower
+        # bound rather than the cost of judging the whole testset.
+        console.print(f' (over {bench.judged}/{bench.total_testcases} tests judged)')
+    else:
+        console.print()
+
+
+def print_problem_benchmark(
+    console: rich.console.Console, problem: ProblemBenchmark
+) -> None:
+    """Print the problem-wide extremes, at the end of the run report."""
+    console.print('[status]Benchmark summary[/status]', end='')
+    if problem.partial:
+        console.print(' (partial -- some tests were not judged)', end='')
+    console.print()
+    console.print(
+        f'Slowest solution to judge: {_hilite(problem.slowest_to_judge.total_judging_time_seconds)}'
+        f', {problem.slowest_to_judge.solution.href()}'
+    )
+    # `most_checker_time` always names a winner, even when no solution measured
+    # a checker at all -- an unmeasured winner is not a finding, so say nothing.
+    if problem.most_checker_time.total_checker_time_seconds is not None:
+        console.print(
+            f'Most checker time: {_hilite(problem.most_checker_time.total_checker_time_seconds)}'
+            f', {problem.most_checker_time.solution.href()}'
+        )
+    console.print(
+        f'Slowest testcase to judge: {_hilite(problem.slowest_testcase.judging_time_seconds)}'
+        f', [item]{problem.slowest_testcase.entry}[/item]'
     )

@@ -1,4 +1,5 @@
 import pytest
+import rich.console
 
 from rbx.box import benchmark
 from rbx.box.schema import ExpectedOutcome, Solution
@@ -231,3 +232,191 @@ def test_problem_benchmark_ranks_a_solution_with_no_checker_last(
 
 def test_problem_benchmark_is_none_without_any_solution_benchmarks():
     assert benchmark.build_problem_benchmark([]) is None
+
+
+def render(printer, *args):
+    """Render one of the report blocks into a throwaway recording console."""
+    console = rich.console.Console(record=True, width=120)
+    printer(console, *args)
+    return console.export_text()
+
+
+def solution_benchmark(mock_skeleton, tmp_path, evals, *, path='sol.cpp', total=None):
+    """Build a `SolutionBenchmark` out of the evaluations a run would produce."""
+    solution = Solution(path=tmp_path / path, outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = mock_skeleton(
+        [solution], entries_per_group={'test': total or len(evals)}
+    )
+    bench = benchmark.build_solution_benchmark(solution, skeleton, evals)
+    assert bench is not None
+    return bench
+
+
+def test_solution_block_names_the_slowest_testcase_and_both_totals(
+    mock_skeleton, tmp_path
+):
+    bench = solution_benchmark(
+        mock_skeleton,
+        tmp_path,
+        [
+            timed(Outcome.ACCEPTED, time_ms=100, checker_ms=10, index=0),
+            timed(Outcome.ACCEPTED, time_ms=90, checker_ms=200, index=1),
+            timed(Outcome.ACCEPTED, time_ms=150, checker_ms=5, index=2),
+        ],
+    )
+
+    text = render(benchmark.print_solution_benchmark, bench)
+
+    assert 'test/1' in text
+    # 0.29 s of judging, split into 0.09 s of solution and 0.2 s of checker.
+    assert '0.3 s' in text
+    assert '0.1 s' in text
+    assert '0.2 s' in text
+    # Totals: 0.555 s of judging, 0.215 s of it in the checker.
+    assert '0.6 s' in text
+    assert 'checker' in text
+
+
+def test_solution_block_marks_a_partial_run_as_a_lower_bound(mock_skeleton, tmp_path):
+    bench = solution_benchmark(
+        mock_skeleton,
+        tmp_path,
+        [timed(Outcome.WRONG_ANSWER, time_ms=100, checker_ms=10, index=0)],
+        total=3,
+    )
+
+    text = render(benchmark.print_solution_benchmark, bench)
+
+    assert '1/3' in text
+
+
+def test_solution_block_does_not_mark_a_complete_run(mock_skeleton, tmp_path):
+    bench = solution_benchmark(
+        mock_skeleton,
+        tmp_path,
+        [timed(Outcome.ACCEPTED, time_ms=100, checker_ms=10, index=0)],
+    )
+
+    text = render(benchmark.print_solution_benchmark, bench)
+
+    assert 'judged' not in text
+
+
+def test_solution_block_omits_the_interactor_on_a_non_interactive_problem(
+    mock_skeleton, tmp_path
+):
+    bench = solution_benchmark(
+        mock_skeleton,
+        tmp_path,
+        [timed(Outcome.ACCEPTED, time_ms=100, checker_ms=10, index=0)],
+    )
+
+    text = render(benchmark.print_solution_benchmark, bench)
+
+    assert 'interactor' not in text
+
+
+def test_solution_block_reports_the_interactor_when_there_is_one(
+    mock_skeleton, tmp_path
+):
+    bench = solution_benchmark(
+        mock_skeleton,
+        tmp_path,
+        [
+            timed(Outcome.ACCEPTED, time_ms=100, interactor_ms=300, index=0),
+            timed(Outcome.ACCEPTED, time_ms=100, interactor_ms=300, index=1),
+        ],
+    )
+
+    text = render(benchmark.print_solution_benchmark, bench)
+
+    # Once in the slowest testcase's breakdown, once in the totals.
+    assert text.count('interactor') == 2
+    assert '0.4 s' in text
+    assert '0.8 s' in text
+
+
+def test_solution_block_renders_an_unmeasured_checker_total_as_a_dash(
+    mock_skeleton, tmp_path
+):
+    bench = solution_benchmark(
+        mock_skeleton,
+        tmp_path,
+        [timed(Outcome.ACCEPTED, time_ms=100, interactor_ms=10, index=0)],
+    )
+
+    text = render(benchmark.print_solution_benchmark, bench)
+
+    assert 'checker: -' in text
+    assert 'checker: 0.0 s' not in text
+
+
+def test_solution_block_renders_a_genuine_zero_checker_total_as_a_measurement(
+    mock_skeleton, tmp_path
+):
+    # A checker that measurably took no time is a measurement, and must not be
+    # rendered like a checker that never ran.
+    bench = solution_benchmark(
+        mock_skeleton,
+        tmp_path,
+        [timed(Outcome.ACCEPTED, time_ms=100, checker_ms=0, index=0)],
+    )
+
+    text = render(benchmark.print_solution_benchmark, bench)
+
+    assert 'checker: 0.0 s' in text
+    assert 'checker: -' not in text
+
+
+def problem_benchmark(mock_skeleton, tmp_path):
+    slow_judge = solution_benchmark(
+        mock_skeleton,
+        tmp_path,
+        [timed(Outcome.ACCEPTED, time_ms=500, checker_ms=1, index=i) for i in range(2)],
+        path='a.cpp',
+    )
+    heavy_checker = solution_benchmark(
+        mock_skeleton,
+        tmp_path,
+        [
+            timed(Outcome.ACCEPTED, time_ms=10, checker_ms=300, index=i)
+            for i in range(2)
+        ],
+        path='b.cpp',
+    )
+    problem = benchmark.build_problem_benchmark([slow_judge, heavy_checker])
+    assert problem is not None
+    return problem
+
+
+def test_problem_block_names_both_extremes(mock_skeleton, tmp_path):
+    text = render(
+        benchmark.print_problem_benchmark, problem_benchmark(mock_skeleton, tmp_path)
+    )
+
+    # The solution paths are absolute, so a narrow console wraps them mid-name.
+    unwrapped = text.replace('\n', '')
+    assert 'a.cpp' in unwrapped
+    assert 'b.cpp' in unwrapped
+    assert 'test/0' in text
+    assert '1.0 s' in text  # slowest to judge
+    assert '0.6 s' in text  # most checker time
+    assert '0.5 s' in text  # slowest testcase
+
+
+def test_problem_block_omits_the_checker_line_when_no_solution_had_a_checker(
+    mock_skeleton, tmp_path
+):
+    bench = solution_benchmark(
+        mock_skeleton,
+        tmp_path,
+        [timed(Outcome.ACCEPTED, time_ms=100, index=0)],
+        path='a.cpp',
+    )
+    problem = benchmark.build_problem_benchmark([bench])
+    assert problem is not None
+    assert problem.most_checker_time.total_checker_time_seconds is None
+
+    text = render(benchmark.print_problem_benchmark, problem)
+
+    assert 'checker' not in text
