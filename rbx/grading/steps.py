@@ -332,10 +332,9 @@ class RunTiming(BaseModel):
     the wall clock costs nothing, and lets a later benchmarking level report it
     without migrating the `.eval` format.
 
-    `None` means *unmeasured*, never zero. A checker that never ran -- the
-    solution TLE'd or crashed, so `_check_pre_output` short-circuited -- has no
-    timing at all, and reporting `0 ms` for it would claim a measurement that
-    was never taken.
+    `None` means *unmeasured*, never zero -- a checker that never ran has no
+    timing at all, and reporting `0 ms` would claim a measurement that was
+    never taken.
     """
 
     time: Optional[float] = None
@@ -343,6 +342,10 @@ class RunTiming(BaseModel):
 
     @staticmethod
     def of(log: Optional['RunLog']) -> Optional['RunTiming']:
+        # Clocks are copied as-is: a `TestcaseLog` carries `None` when the run
+        # never happened, and that unmeasured-ness must survive the copy. The
+        # caller owes us a log from a run that actually took place -- a default
+        # `RunLog` would hand back a fabricated zero.
         if log is None:
             return None
         return RunTiming(time=log.time, wall_time=log.wall_time)

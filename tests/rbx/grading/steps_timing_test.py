@@ -33,3 +33,9 @@ def test_timing_round_trips_through_yaml(tmp_path: pathlib.Path):
     reloaded = utils.model_from_yaml(CheckerResult, path.read_text())
     assert reloaded.checker_timing == RunTiming(time=0.048, wall_time=0.051)
     assert reloaded.interactor_timing is None
+
+
+def test_a_result_without_timing_has_no_timing_at_all():
+    result = CheckerResult(outcome=Outcome.ACCEPTED)
+    assert result.checker_timing is None
+    assert result.interactor_timing is None
