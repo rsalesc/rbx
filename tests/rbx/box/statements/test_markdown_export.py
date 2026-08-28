@@ -83,6 +83,63 @@ def test_inline_math_survives_untouched():
 
 
 @pytest.mark.parametrize(
+    ('tex', 'expected'),
+    [
+        # The defect: pandoc's `Code` inline holds a string, so a monospace
+        # group with math in it is split into siblings and the separators
+        # collapse to `<code></code>` on MOJ.
+        ('\\texttt{A $a_i$ $t_i$}', '$\\texttt{A}~a_i~t_i$'),
+        ('\\texttt{T $x_i$}', '$\\texttt{T}~x_i$'),
+        # Both spellings reach pandoc: `convert_to_polygon_tex` does not fold
+        # the font switches into `\texttt`.
+        ('{\\tt A $a_i$ B}', '$\\texttt{A}~a_i~\\texttt{B}$'),
+        ('{\\ttfamily x $y$}', '$\\texttt{x}~y$'),
+        # Escaped specials survive the move into math mode.
+        ('\\texttt{100\\% $n$}', '$\\texttt{100\\%}~n$'),
+        # Only the offending group is touched.
+        (
+            '\\texttt{a $x$} e \\texttt{plain} e $y$',
+            '$\\texttt{a}~x$ e \\texttt{plain} e $y$',
+        ),
+    ],
+)
+def test_monospace_math_is_rewrapped_as_one_math_span(tex, expected):
+    assert markdown_export.rewrap_monospace_math(tex) == expected
+
+
+@pytest.mark.parametrize(
+    'tex',
+    [
+        # No math at all: pandoc renders these perfectly as `Code`.
+        '\\texttt{D}',
+        '{\\tt plain}',
+        'no monospace here',
+        # Verbatim regions are literal -- the `$` is a dollar sign and the
+        # `\texttt` is nine characters of text.
+        '\\verb|A $a_i$ \\texttt{q $z$}|',
+        '\\begin{verbatim}\\texttt{a $b$}\\end{verbatim}',
+        '\\begin{lstlisting}\\texttt{a $b$}\\end{lstlisting}',
+        # Nested markup, display math, unsafe bare characters and unbalanced
+        # delimiters all bail: an imperfect render beats a mangled one.
+        '\\texttt{\\textbf{A} $x$}',
+        '\\texttt{x $$y$$}',
+        '\\texttt{a_b $x$}',
+        '\\texttt{unclosed $x}',
+        '\\texttt{empty $ $}',
+    ],
+)
+def test_rewrap_leaves_everything_else_untouched(tex):
+    assert markdown_export.rewrap_monospace_math(tex) == tex
+
+
+def test_rewrapped_monospace_math_reaches_markdown_as_one_span():
+    """The end-to-end shape MOJ reads back: one `$...$`, no split code spans."""
+    out = markdown_export.tex_to_markdown('\\texttt{A $a_i$ $t_i$} is a reply.')
+    assert '$\\texttt{A}~a_i~t_i$' in out
+    assert '`' not in out
+
+
+@pytest.mark.parametrize(
     'block',
     [
         '## Exemplos\n',

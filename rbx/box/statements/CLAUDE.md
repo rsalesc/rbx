@@ -198,6 +198,23 @@ so MOJ's `implicit_figures` does not caption every figure "image"). MOJ renders
 statements by running pandoc over them, so that dialect is the target rather than
 a lossy fallback.
 
+It also fixes up the TeX **before** pandoc runs: `rewrap_monospace_math` turns a
+monospace group holding math (`\texttt{A $a_i$ $t_i$}`, `{\tt ...}`,
+`{\ttfamily ...}`) into a single math span, `$\texttt{A}~a_i~t_i$`. pandoc reads
+`\texttt` into a `Code` inline, which holds a *string* and so cannot contain a
+`Math` node; given one it splits the group into siblings instead, dropping the
+monospace and collapsing the separators to `<code></code>`, so MOJ shows the
+reader `Aa_it_i`. It has to happen on the TeX, not on the AST: there the `Code`
+a `\texttt` left is indistinguishable from the one a `\verb` left (same empty
+attr), and the group boundary is already gone. Every other command in the subset
+(`\textbf`, `\emph`, `\underline`, `\sout`, `\textsc`, `\text{sub,super}script`,
+the size switches, `\href`) reads into a container node that nests `Math` fine
+and is left alone; verbatim regions are skipped wholesale, and a group with
+nested markup, display math or an unbalanced delimiter bails untouched. The
+conversion is **not** scoped into `convert_to_polygon_tex`: Polygon renders real
+LaTeX and handles the original correctly, so this is a pandoc fix on the pandoc
+path, and the PDF build is unaffected.
+
 **The block pipeline and asset resolution live in `export.py`, not in the Polygon
 package.** They used to sit in `packaging/polygon/{statement_block_utils,upload}.py`,
 where no other packager could reach them; `export.py` is the whole pipeline —
