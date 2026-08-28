@@ -562,6 +562,46 @@ Commit: `feat(benchmark): aggregate checker and interactor timings per solution`
 
 ## Task 5: Rendering the two blocks
 
+> **The Task 4 API changed during review. These are the real names — the older
+> spellings elsewhere in this document are superseded by this block.**
+>
+> ```python
+> def checker_time_seconds(eval)    -> Optional[float]
+> def interactor_time_seconds(eval) -> Optional[float]
+> def judging_time_seconds(eval)    -> Optional[float]
+> def was_judged(eval)              -> bool
+>
+> @dataclass TestcaseJudging:
+>     entry: TestcaseEntry
+>     judging_time_seconds: float            # non-optional
+>     solution_time_seconds: float           # non-optional
+>     checker_time_seconds: Optional[float]      # None = unmeasured
+>     interactor_time_seconds: Optional[float]   # None = unmeasured
+>
+> @dataclass SolutionBenchmark:
+>     solution, slowest_testcase, judged, total_testcases
+>     total_judging_time_seconds: float
+>     total_checker_time_seconds: Optional[float]     # None iff never measured
+>     total_interactor_time_seconds: Optional[float]
+>     partial: bool                          # property: judged < total_testcases
+>
+> @dataclass ProblemBenchmark:
+>     slowest_to_judge, most_checker_time, slowest_testcase, partial
+> ```
+>
+> **Every duration is in SECONDS.** Use `formatting.get_formatted_time_in_seconds`,
+> NOT `get_formatted_time` (which takes milliseconds and would silently render
+> `0.29 ms` for 0.29 seconds -- there is no type checker in this repo to catch it).
+>
+> **Render every `Optional[float]` as `solutions._UNMEASURED` (`-`) when `None`.**
+> `None` means unmeasured; `0.0` is a real measurement and must print as one. This
+> is the `_get_evals_time_in_ms` precedent.
+>
+> **`most_checker_time` can point at a solution whose `total_checker_time_seconds`
+> is `None`**, when no solution had a checker at all. Suppress that line rather
+> than printing an unmeasured winner.
+
+
 **Files:**
 - Modify: `rbx/box/benchmark.py`
 - Test: `tests/rbx/box/benchmark_test.py`
