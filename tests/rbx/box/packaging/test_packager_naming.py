@@ -1,4 +1,7 @@
-"""Tests verifying packaging call sites raise the picker error in dispatcher mode.
+"""Tests for how packaging call sites name a package inside a contest.
+
+Two things: the basename carries the selected contest variant, and every call
+site raises the picker error in dispatcher mode rather than guessing.
 
 These exercise the naming path directly via small helpers on each packager,
 without spinning up a full build. Mirrors the fixture style in
@@ -77,6 +80,54 @@ def _setup_ambiguous_problem(tmp_path: pathlib.Path) -> None:
 
 
 class TestBasePackagerBasename:
+    """The basename carries the selected contest variant.
+
+    A variant is a *different contest* that shares problem directories with its
+    siblings, so two variants of a problem would otherwise produce the same
+    basename -- and the artifacts and remote ids built from it would overwrite
+    each other.
+    """
+
+    def _base_packager(self) -> PkgPackager:
+        # BasePackager is abstract; use a concrete subclass to exercise the
+        # inherited package_basename().
+        packager = PkgPackager.__new__(PkgPackager)
+        packager.testcase_entries = []
+        return packager
+
+    def test_prefixes_the_selected_variant(self, tmp_path: pathlib.Path):
+        _setup_ambiguous_problem(tmp_path)
+        selected_variant_id_var.set('div2')
+
+        assert self._base_packager().package_basename() == 'div2-A-prob-a'
+
+    def test_two_variants_of_the_same_problem_differ(self, tmp_path: pathlib.Path):
+        _setup_ambiguous_problem(tmp_path)
+
+        selected_variant_id_var.set('div1')
+        first = self._base_packager().package_basename()
+        _clear_caches()
+
+        selected_variant_id_var.set('div2')
+        second = self._base_packager().package_basename()
+
+        assert (first, second) == ('div1-A-prob-a', 'div2-A-prob-a')
+
+    def test_no_prefix_for_a_single_contest(self, tmp_path: pathlib.Path):
+        (tmp_path / 'contest.rbx.yml').write_text(
+            'name: solo-c\nproblems:\n  - short_name: A\n    path: A\n'
+        )
+        _write_problem(tmp_path / 'A', 'prob-a')
+        os.chdir(tmp_path / 'A')
+
+        assert self._base_packager().package_basename() == 'A-prob-a'
+
+    def test_no_prefix_outside_a_contest(self, tmp_path: pathlib.Path):
+        _write_problem(tmp_path / 'A', 'prob-a')
+        os.chdir(tmp_path / 'A')
+
+        assert self._base_packager().package_basename() == 'prob-a'
+
     def test_package_basename_errors_in_ambiguous_dispatcher(
         self,
         tmp_path: pathlib.Path,
@@ -84,13 +135,8 @@ class TestBasePackagerBasename:
     ):
         _setup_ambiguous_problem(tmp_path)
 
-        # BasePackager is abstract; use a concrete subclass to exercise
-        # the inherited package_basename().
-        packager = PkgPackager.__new__(PkgPackager)
-        packager.testcase_entries = []
-
         with pytest.raises(typer.Exit):
-            packager.package_basename()
+            self._base_packager().package_basename()
 
         out = capsys.readouterr().out
         assert '-C' in out
@@ -165,81 +211,3 @@ class TestBocaPackagerBasename:
         result = packager._get_problem_basename()  # noqa: SLF001
         # _get_problem_name() replaces '-' with '_' in the package name.
         assert result == 'prob_a'
-
-
-class TestMojPackagerBasename:
-    """The MOJ basename carries the contest variant, because the MOJ *id* does.
-
-    `resolve_problem_id` builds `<org>#<slug>` from this very string, so without
-    the variant in it every variant of a problem would upload over the last one.
-    """
-
-    def _setup_variants(self, tmp_path: pathlib.Path) -> None:
-        _write_dispatcher(
-            tmp_path,
-            {
-                'div1': [('A', 'A')],
-                'div2': [('A', 'A')],
-            },
-        )
-        _write_problem(tmp_path / 'A', 'prob-a')
-        os.chdir(tmp_path / 'A')
-
-    def test_prefixes_the_selected_variant(self, tmp_path: pathlib.Path):
-        from rbx.box.packaging.moj.packager import MojPackager
-
-        self._setup_variants(tmp_path)
-        selected_variant_id_var.set('div2')
-
-        assert MojPackager.package_basename() == 'div2-A-prob-a'
-
-    def test_two_variants_of_the_same_problem_get_different_ids(
-        self, tmp_path: pathlib.Path
-    ):
-        from rbx.box.packaging.moj.packager import MojPackager
-        from rbx.box.packaging.moj.upload import build_problem_id
-
-        self._setup_variants(tmp_path)
-
-        selected_variant_id_var.set('div1')
-        first = build_problem_id('unicamp', MojPackager.package_basename())
-        _clear_caches()
-
-        selected_variant_id_var.set('div2')
-        second = build_problem_id('unicamp', MojPackager.package_basename())
-
-        assert first == 'unicamp#div1-a-prob-a'
-        assert second == 'unicamp#div2-a-prob-a'
-
-    def test_no_prefix_for_a_single_contest(self, tmp_path: pathlib.Path):
-        from rbx.box.packaging.moj.packager import MojPackager
-
-        (tmp_path / 'contest.rbx.yml').write_text(
-            'name: solo-c\nproblems:\n  - short_name: A\n    path: A\n'
-        )
-        _write_problem(tmp_path / 'A', 'prob-a')
-        os.chdir(tmp_path / 'A')
-
-        assert MojPackager.package_basename() == 'A-prob-a'
-
-    def test_no_prefix_outside_a_contest(self, tmp_path: pathlib.Path):
-        from rbx.box.packaging.moj.packager import MojPackager
-
-        _write_problem(tmp_path / 'A', 'prob-a')
-        os.chdir(tmp_path / 'A')
-
-        assert MojPackager.package_basename() == 'prob-a'
-
-    def test_errors_in_an_ambiguous_dispatcher(
-        self,
-        tmp_path: pathlib.Path,
-        capsys: pytest.CaptureFixture[str],
-    ):
-        from rbx.box.packaging.moj.packager import MojPackager
-
-        self._setup_variants(tmp_path)
-
-        with pytest.raises(typer.Exit):
-            MojPackager.package_basename()
-
-        assert '-C' in capsys.readouterr().out

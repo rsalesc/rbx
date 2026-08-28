@@ -10,7 +10,6 @@ import typer
 
 from rbx import console, utils
 from rbx.box import environment, header, limits_info, package, timing_config
-from rbx.box import naming as box_naming
 from rbx.box.dependencies import graph as deps_graph
 from rbx.box.dependencies.amalgamation import AmalgamationError, amalgamate
 from rbx.box.dependencies.scanner import DependencyKind
@@ -420,24 +419,6 @@ class MojPackager(BasePackager):
     @classmethod
     def name(cls) -> str:
         return 'moj'
-
-    @classmethod
-    def package_basename(cls) -> str:
-        """`<variant>-<letter>-<name>` when a contest variant is selected.
-
-        A variant is a *different contest* that happens to share problem
-        directories with its siblings, so without the id in the name every
-        variant of a problem resolves to the same `<org>#<slug>` and each upload
-        silently replaces the previous one. The prefix goes in the basename
-        rather than in `build_problem_id` so the remote id and the artifact on
-        disk keep matching -- `resolve_problem_id` builds the id from exactly
-        this string.
-        """
-        basename = super().package_basename()
-        variant_id = box_naming.get_selected_contest_variant_id()
-        if variant_id is None:
-            return basename
-        return f'{variant_id}-{basename}'
 
     @classmethod
     def task_types(cls) -> List[TaskType]:
