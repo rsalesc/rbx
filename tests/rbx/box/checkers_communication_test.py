@@ -869,3 +869,91 @@ class TestCheckCommunicationInteractorComplexScenarios:
         )
 
         assert result.outcome == Outcome.IDLENESS_LIMIT_EXCEEDED
+
+
+# Benchmarking: how long the interactor itself took (`rbx run --benchmark`).
+class TestCheckCommunicationInteractorTiming:
+    async def test_check_communication_records_the_interactor_timing_on_a_wa(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        """The interactor decides the verdict here, and reports its own time."""
+        interactor_run_log.exitcode = 1
+        interactor_run_log.exitstatus = SandboxBase.EXIT_NONZERO_RETURN
+        interactor_run_log.time = 0.25
+        interactor_run_log.wall_time = 0.5
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.WRONG_ANSWER
+        assert result.interactor_timing is not None
+        assert result.interactor_timing.time == 0.25
+        assert result.interactor_timing.wall_time == 0.5
+
+    async def test_check_communication_records_both_timings_when_the_checker_decides(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        """The checker's own time is kept alongside the interactor's."""
+        assert testcase.outputPath is not None
+        testcase.outputPath.write_text('123\n')
+        program_output.write_text('123\n')
+        interactor_run_log.time = 0.25
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.ACCEPTED
+        assert result.interactor_timing is not None
+        assert result.interactor_timing.time == 0.25
+        assert result.checker_timing is not None
+        assert result.checker_timing.time is not None
+
+    async def test_check_communication_records_no_interactor_timing_on_sandbox_failure(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        """A failed sandbox has no honest measurement to report."""
+        interactor_run_log.exitstatus = SandboxBase.EXIT_SANDBOX_ERROR
+        interactor_run_log.time = 0.25
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.INTERNAL_ERROR
+        # Unmeasured, not zero -- the sandbox itself broke.
+        assert result.interactor_timing is None
