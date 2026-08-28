@@ -18,31 +18,34 @@ def timed(outcome, *, time_ms, checker_ms=None, interactor_ms=None, index=0):
 
 def test_judging_time_sums_solution_checker_and_interactor():
     eval = timed(Outcome.ACCEPTED, time_ms=100, checker_ms=20, interactor_ms=5)
-    assert benchmark.judging_time(eval) == pytest.approx(0.125)
+    assert benchmark.judging_time_seconds(eval) == pytest.approx(0.125)
 
 
 def test_judging_time_is_none_when_the_solution_was_never_timed():
     # A skipped testcase must not report an instantaneous judging time.
-    assert benchmark.judging_time(timed(Outcome.SKIPPED, time_ms=None)) is None
+    assert benchmark.judging_time_seconds(timed(Outcome.SKIPPED, time_ms=None)) is None
 
 
 def test_judging_time_counts_an_unmeasured_checker_as_absent_not_zero():
     eval = timed(Outcome.TIME_LIMIT_EXCEEDED, time_ms=1000)
-    assert benchmark.judging_time(eval) == pytest.approx(1.0)
+    assert benchmark.checker_time_seconds(eval) is None
+    assert benchmark.judging_time_seconds(eval) == pytest.approx(1.0)
 
 
-def test_judging_time_tolerates_a_timing_with_no_clock_on_it():
+def test_checker_time_is_none_when_the_timing_carries_no_clock():
     # `RunTiming` can exist with both clocks unset -- guard the inner `None`,
     # not just the outer one.
     eval = timed(Outcome.ACCEPTED, time_ms=100)
     eval.result.checker_timing = RunTiming()
-    assert benchmark.judging_time(eval) == pytest.approx(0.1)
+    assert benchmark.checker_time_seconds(eval) is None
+    assert benchmark.judging_time_seconds(eval) == pytest.approx(0.1)
 
 
 def test_judging_time_handles_a_communication_problem_without_a_checker():
     eval = timed(Outcome.ACCEPTED, time_ms=100, interactor_ms=30)
-    assert eval.result.checker_timing is None
-    assert benchmark.judging_time(eval) == pytest.approx(0.13)
+    assert benchmark.checker_time_seconds(eval) is None
+    assert benchmark.interactor_time_seconds(eval) == pytest.approx(0.03)
+    assert benchmark.judging_time_seconds(eval) == pytest.approx(0.13)
 
 
 def test_solution_benchmark_picks_the_slowest_testcase_to_judge(
@@ -61,14 +64,67 @@ def test_solution_benchmark_picks_the_slowest_testcase_to_judge(
     bench = benchmark.build_solution_benchmark(solution, skeleton, evals)
 
     assert bench is not None
-    assert bench.slowest.entry == skeleton.entries[1].group_entry
-    assert bench.slowest.judging_time == pytest.approx(0.29)
-    assert bench.slowest.checker_time == pytest.approx(0.2)
-    assert bench.total_judging_time == pytest.approx(0.555)
-    assert bench.total_checker_time == pytest.approx(0.215)
+    assert bench.slowest_testcase.entry == skeleton.entries[1].group_entry
+    assert bench.slowest_testcase.judging_time_seconds == pytest.approx(0.29)
+    assert bench.slowest_testcase.solution_time_seconds == pytest.approx(0.09)
+    assert bench.slowest_testcase.checker_time_seconds == pytest.approx(0.2)
+    assert bench.total_judging_time_seconds == pytest.approx(0.555)
+    assert bench.total_checker_time_seconds == pytest.approx(0.215)
     assert bench.judged == 3
-    assert bench.total == 3
+    assert bench.total_testcases == 3
     assert not bench.partial
+
+
+def test_solution_benchmark_reports_no_checker_total_when_none_was_measured(
+    mock_skeleton, tmp_path
+):
+    # A communication problem may have no checker at all. Reporting a total of
+    # `0.0 s` would claim a measurement that was never taken.
+    solution = Solution(path=tmp_path / 'sol.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = mock_skeleton([solution], entries_per_group={'test': 2})
+    evals = [
+        timed(Outcome.ACCEPTED, time_ms=100, interactor_ms=10, index=i)
+        for i in range(2)
+    ]
+
+    bench = benchmark.build_solution_benchmark(solution, skeleton, evals)
+
+    assert bench is not None
+    assert bench.total_checker_time_seconds is None
+    assert bench.total_interactor_time_seconds == pytest.approx(0.02)
+
+
+def test_solution_benchmark_keeps_a_genuine_zero_checker_total(mock_skeleton, tmp_path):
+    # A checker that measurably took no time is a measurement, and must not be
+    # confused with a checker that never ran.
+    solution = Solution(path=tmp_path / 'sol.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = mock_skeleton([solution], entries_per_group={'test': 2})
+    evals = [
+        timed(Outcome.ACCEPTED, time_ms=100, checker_ms=0, index=i) for i in range(2)
+    ]
+
+    bench = benchmark.build_solution_benchmark(solution, skeleton, evals)
+
+    assert bench is not None
+    assert bench.total_checker_time_seconds == pytest.approx(0.0)
+    assert bench.total_checker_time_seconds is not None
+    assert bench.total_interactor_time_seconds is None
+
+
+def test_solution_benchmark_totals_only_the_measured_testcases(mock_skeleton, tmp_path):
+    # A checker measured on some testcases and not others still has a total --
+    # the unmeasured ones simply contribute nothing.
+    solution = Solution(path=tmp_path / 'sol.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = mock_skeleton([solution], entries_per_group={'test': 2})
+    evals = [
+        timed(Outcome.ACCEPTED, time_ms=100, checker_ms=40, index=0),
+        timed(Outcome.ACCEPTED, time_ms=100, index=1),
+    ]
+
+    bench = benchmark.build_solution_benchmark(solution, skeleton, evals)
+
+    assert bench is not None
+    assert bench.total_checker_time_seconds == pytest.approx(0.04)
 
 
 def test_solution_benchmark_is_partial_when_testcases_were_skipped(
@@ -86,7 +142,7 @@ def test_solution_benchmark_is_partial_when_testcases_were_skipped(
 
     assert bench is not None
     assert bench.judged == 1
-    assert bench.total == 3
+    assert bench.total_testcases == 3
     assert bench.partial
 
 
@@ -104,7 +160,7 @@ def test_solution_benchmark_counts_the_testset_not_the_evals_handed_in(
 
     assert bench is not None
     assert bench.judged == 1
-    assert bench.total == 3
+    assert bench.total_testcases == 3
     assert bench.partial
 
 
@@ -146,7 +202,31 @@ def test_problem_benchmark_ranks_solutions(mock_skeleton, tmp_path):
     assert problem.most_checker_time.solution.path == heavy_checker.path
     # 500 ms of solution plus 1 ms of checker beats the heavy checker's
     # 10 ms + 300 ms.
-    assert problem.slowest_testcase.judging_time == pytest.approx(0.501)
+    assert problem.slowest_testcase.judging_time_seconds == pytest.approx(0.501)
+
+
+def test_problem_benchmark_ranks_a_solution_with_no_checker_last(
+    mock_skeleton, tmp_path
+):
+    # An unmeasured checker must not win `most_checker_time` by being `None`.
+    with_checker = Solution(path=tmp_path / 'a.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    without = Solution(path=tmp_path / 'b.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = mock_skeleton([with_checker, without], entries_per_group={'test': 1})
+    benchmarks = [
+        benchmark.build_solution_benchmark(
+            without, skeleton, [timed(Outcome.ACCEPTED, time_ms=10, index=0)]
+        ),
+        benchmark.build_solution_benchmark(
+            with_checker,
+            skeleton,
+            [timed(Outcome.ACCEPTED, time_ms=10, checker_ms=50, index=0)],
+        ),
+    ]
+
+    problem = benchmark.build_problem_benchmark([b for b in benchmarks if b])
+
+    assert problem is not None
+    assert problem.most_checker_time.solution.path == with_checker.path
 
 
 def test_problem_benchmark_is_none_without_any_solution_benchmarks():
