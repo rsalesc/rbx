@@ -871,6 +871,23 @@ Commit: `feat(run): print the per-solution benchmark block under -b1`
 
 ## Task 8: The problem-level block
 
+> **Two facts Task 7 established that this task must not re-derive wrongly.**
+>
+> 1. `_print_detailed_run_report` does **not** construct a reporter.
+>    `print_run_report` builds the reporter and passes it only
+>    `reporter.structured_evaluations`; the detailed path builds each
+>    `SolutionOutcomeReport` itself. So it collects nothing into
+>    `reporter.solution_benchmarks`, and a problem-level block built off the
+>    reporter will simply not appear under `--detailed` unless this task builds
+>    the list separately on that path. Handle it explicitly and test it -- do not
+>    let `--detailed` silently lose the summary.
+> 2. `BenchmarkParam` carries its default via `default_factory` inside
+>    `typer.Option`, so it has no Python-level default and must be declared
+>    BEFORE the defaulted parameters in a command signature (it sits right after
+>    `verification`, which uses the identical pattern). Appending it last is a
+>    `SyntaxError`.
+
+
 **Files:**
 - Modify: `rbx/box/solutions.py` (`print_run_report`, `_print_detailed_run_report`)
 - Test: `tests/rbx/box/solutions_test.py`
