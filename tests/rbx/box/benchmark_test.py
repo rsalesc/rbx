@@ -1,7 +1,7 @@
 import pytest
 import rich.console
 
-from rbx.box import benchmark
+from rbx.box import benchmark, formatting
 from rbx.box.schema import ExpectedOutcome, Solution
 from rbx.grading.steps import Outcome, RunTiming
 from tests.rbx.box.conftest import make_evaluation
@@ -234,6 +234,25 @@ def test_problem_benchmark_is_none_without_any_solution_benchmarks():
     assert benchmark.build_problem_benchmark([]) is None
 
 
+def test_duration_under_a_second_is_rendered_in_milliseconds():
+    # A checker routinely costs tens of milliseconds; one decimal place of
+    # seconds would report every one of them as `0.0 s`.
+    assert formatting.get_formatted_duration_in_seconds(0.048) == '48 ms'
+
+
+def test_duration_under_a_second_rounds_to_the_nearest_millisecond():
+    # Truncating would read `49 ms`, which is a visible lie at this scale.
+    assert formatting.get_formatted_duration_in_seconds(0.0499) == '50 ms'
+
+
+def test_duration_of_at_least_a_second_is_rendered_in_seconds():
+    assert formatting.get_formatted_duration_in_seconds(1.02) == '1.0 s'
+
+
+def test_duration_of_exactly_one_second_is_rendered_in_seconds():
+    assert formatting.get_formatted_duration_in_seconds(1.0) == '1.0 s'
+
+
 def render(printer, *args):
     """Render one of the report blocks into a throwaway recording console."""
     console = rich.console.Console(record=True, width=120)
@@ -268,13 +287,13 @@ def test_solution_block_names_the_slowest_testcase_and_both_totals(
     text = render(benchmark.print_solution_benchmark, bench)
 
     assert 'test/1' in text
-    # 0.29 s of judging, split into 0.09 s of solution and 0.2 s of checker.
-    assert '0.3 s' in text
-    assert '0.1 s' in text
-    assert '0.2 s' in text
-    # Totals: 0.555 s of judging, 0.215 s of it in the checker.
-    assert '0.6 s' in text
-    assert 'checker' in text
+    # 290 ms of judging, split into 90 ms of solution and 200 ms of checker.
+    assert '290 ms' in text
+    assert '90 ms' in text
+    assert '200 ms' in text
+    # Totals: 555 ms of judging, 215 ms of it in the checker.
+    assert '555 ms' in text
+    assert 'checker: 215 ms' in text
 
 
 def test_solution_block_marks_a_partial_run_as_a_lower_bound(mock_skeleton, tmp_path):
@@ -332,8 +351,8 @@ def test_solution_block_reports_the_interactor_when_there_is_one(
 
     # Once in the slowest testcase's breakdown, once in the totals.
     assert text.count('interactor') == 2
-    assert '0.4 s' in text
-    assert '0.8 s' in text
+    assert '300 ms interactor' in text
+    assert 'interactor: 600 ms' in text
 
 
 def test_solution_block_renders_an_unmeasured_checker_total_as_a_dash(
@@ -348,7 +367,7 @@ def test_solution_block_renders_an_unmeasured_checker_total_as_a_dash(
     text = render(benchmark.print_solution_benchmark, bench)
 
     assert 'checker: -' in text
-    assert 'checker: 0.0 s' not in text
+    assert 'checker: 0 ms' not in text
 
 
 def test_solution_block_renders_a_genuine_zero_checker_total_as_a_measurement(
@@ -364,7 +383,7 @@ def test_solution_block_renders_a_genuine_zero_checker_total_as_a_measurement(
 
     text = render(benchmark.print_solution_benchmark, bench)
 
-    assert 'checker: 0.0 s' in text
+    assert 'checker: 0 ms' in text
     assert 'checker: -' not in text
 
 
@@ -399,9 +418,9 @@ def test_problem_block_names_both_extremes(mock_skeleton, tmp_path):
     assert 'a.cpp' in unwrapped
     assert 'b.cpp' in unwrapped
     assert 'test/0' in text
-    assert '1.0 s' in text  # slowest to judge
-    assert '0.6 s' in text  # most checker time
-    assert '0.5 s' in text  # slowest testcase
+    assert '1.0 s' in text  # slowest to judge, 1002 ms
+    assert '600 ms' in text  # most checker time
+    assert '501 ms' in text  # slowest testcase
 
 
 def test_problem_block_omits_the_checker_line_when_no_solution_had_a_checker(

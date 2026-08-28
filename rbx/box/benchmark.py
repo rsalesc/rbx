@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 import rich.console
 
-from rbx.box.formatting import UNMEASURED, get_formatted_time_in_seconds
+from rbx.box.formatting import UNMEASURED, get_formatted_duration_in_seconds
 from rbx.box.schema import Solution
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.grading.steps import Evaluation, Outcome, RunTiming
@@ -217,13 +217,17 @@ def build_problem_benchmark(
 def _measurement(seconds: Optional[float]) -> str:
     """A duration in seconds, or the unmeasured marker when there is none.
 
-    `None` never becomes `0.0 s` here: a checker that never ran and a checker
+    `None` never becomes `0 ms` here: a checker that never ran and a checker
     that ran instantaneously read differently, and only the second is a claim
     about how long judging took.
+
+    The adaptive formatter is the one that matters here: a checker routinely
+    costs a few milliseconds, and a fixed decimal place would report the whole
+    block as zeros.
     """
     if seconds is None:
         return UNMEASURED
-    return get_formatted_time_in_seconds(seconds)
+    return get_formatted_duration_in_seconds(seconds)
 
 
 def _hilite(seconds: Optional[float]) -> str:
@@ -239,6 +243,10 @@ def print_solution_benchmark(
     `--share` recording console gets these lines too.
     """
     slowest = bench.slowest_testcase
+    # The checker term is always printed, as `-` when unmeasured: a batch
+    # problem always has a checker, so its absence is a missing measurement and
+    # worth showing. The interactor below is different -- printing a term for it
+    # on a non-interactive problem would report a component that does not exist.
     breakdown = (
         f'{_hilite(slowest.solution_time_seconds)} solution'
         f' + {_hilite(slowest.checker_time_seconds)} checker'
