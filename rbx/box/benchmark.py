@@ -17,9 +17,10 @@ whether anything is printed. See docs/plans/2026-08-28-run-benchmark-design.md.
 
 import dataclasses
 from enum import Enum
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Annotated, List, Optional
 
 import rich.console
+import typer
 
 from rbx.box.formatting import UNMEASURED, get_formatted_duration_in_seconds
 from rbx.box.schema import Solution
@@ -37,6 +38,53 @@ class BenchmarkLevel(Enum):
 
     NONE = 0
     SOLUTIONS = 1
+
+
+BENCHMARK_ISSUE_URL = 'https://github.com/rsalesc/rbx/issues/801'
+
+
+def parse_level(value: int) -> BenchmarkLevel:
+    """Turn the `-b` flag's int into a level, rejecting the unimplemented ones.
+
+    `-b2` -- benchmarking test generation and validation -- is specified but not
+    built. Rejecting it outright is deliberate: silently treating it as `-b1`
+    would hand back a report that quietly omits half of what was asked for.
+    """
+    if value == 2:
+        raise typer.BadParameter(
+            'Benchmarking test generation and validation (-b2) is not implemented '
+            f'yet. Follow {BENCHMARK_ISSUE_URL} for progress.'
+        )
+    try:
+        return BenchmarkLevel(value)
+    except ValueError:
+        # The valid levels are read off the enum rather than spelled out -- a
+        # second copy of the list is exactly what goes stale when a level lands.
+        valid = ', '.join(str(level.value) for level in BenchmarkLevel)
+        raise typer.BadParameter(
+            f'Invalid benchmark level {value}. Valid levels are: {valid}.'
+        ) from None
+
+
+def _benchmark_autocompletion():
+    # Indirect through a function so module load doesn't eagerly depend on
+    # rbx.annotations (keeps this module's import surface decoupled; the import
+    # is light either way).
+    from rbx import annotations
+
+    return annotations._adapt('benchmark_level')  # noqa: SLF001
+
+
+BenchmarkParam = Annotated[
+    int,
+    typer.Option(
+        '--benchmark',
+        '-b',
+        help='Benchmark level: 0 (off), 1 (benchmark the solution run).',
+        default_factory=lambda: BenchmarkLevel.NONE.value,
+        autocompletion=_benchmark_autocompletion(),
+    ),
+]
 
 
 def timing_seconds(timing: Optional[RunTiming]) -> Optional[float]:

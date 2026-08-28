@@ -1,4 +1,5 @@
 import pytest
+import typer
 
 from rbx.box import benchmark, formatting, sharing
 from rbx.box.schema import ExpectedOutcome, Solution
@@ -492,3 +493,19 @@ def test_the_blocks_styles_resolve_against_the_report_theme(mock_skeleton, tmp_p
     # console falls back to when a tag does not resolve.
     assert console.get_style('item').render('test/0') in styled
     assert console.get_style('status').render('Benchmark summary') in styled
+
+
+def test_parse_level_accepts_the_implemented_levels():
+    assert benchmark.parse_level(0) == benchmark.BenchmarkLevel.NONE
+    assert benchmark.parse_level(1) == benchmark.BenchmarkLevel.SOLUTIONS
+
+
+def test_parse_level_rejects_b2_and_points_at_the_tracking_issue():
+    with pytest.raises(typer.BadParameter) as exc:
+        benchmark.parse_level(2)
+    assert '801' in str(exc.value)
+
+
+def test_parse_level_rejects_nonsense():
+    with pytest.raises(typer.BadParameter):
+        benchmark.parse_level(7)
