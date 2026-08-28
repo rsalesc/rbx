@@ -594,6 +594,7 @@ class TestContestEach:
     def test_each_without_args_opens_an_empty_app(
         self, runner: CliRunner, contest_dir: pathlib.Path
     ):
+        """With no history recorded, a blank session -- the long-standing behaviour."""
         with mock.patch('rbx.box.ui.command_app.start_command_app') as start_app:
             result = runner.invoke(contest_main.app, ['each'])
 
@@ -601,3 +602,55 @@ class TestContestEach:
         (commands,), _ = start_app.call_args
         assert all(command.argvs == [] for command in commands)
         assert all(command.placeholder_prefix == 'rbx' for command in commands)
+
+    def test_each_without_args_offers_the_run_history(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with (
+            mock.patch(
+                'rbx.box.ui.run_picker.open_run_history', return_value='done'
+            ) as history,
+            mock.patch('rbx.box.ui.command_app.start_command_app') as start_app,
+        ):
+            result = runner.invoke(contest_main.app, ['each'])
+
+        assert result.exit_code == 0, result.output
+        history.assert_called_once_with(None)
+        # The picker handled it; no session was started behind it.
+        start_app.assert_not_called()
+
+    def test_each_falls_back_to_a_blank_session_when_asked_for_a_new_one(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with (
+            mock.patch('rbx.box.ui.run_picker.open_run_history', return_value='new'),
+            mock.patch('rbx.box.ui.command_app.start_command_app') as start_app,
+        ):
+            result = runner.invoke(contest_main.app, ['each'])
+
+        assert result.exit_code == 0, result.output
+        (commands,), _ = start_app.call_args
+        assert all(command.argvs == [] for command in commands)
+
+    def test_on_with_a_selector_and_no_command_filters_the_history(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with mock.patch(
+            'rbx.box.ui.run_picker.open_run_history', return_value='done'
+        ) as history:
+            result = runner.invoke(contest_main.app, ['on', 'A'])
+
+        assert result.exit_code == 0, result.output
+        (problem_names,), _ = history.call_args
+        # The same label the run manifest stores as the tab name, so the filter
+        # matches on exactly what was recorded.
+        assert problem_names == ['A. prob-a']
+
+    def test_on_without_a_selector_and_no_history_explains_itself(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with mock.patch('rbx.box.ui.run_picker.open_run_history', return_value='none'):
+            result = runner.invoke(contest_main.app, ['on'])
+
+        assert result.exit_code == 1
+        assert 'No recorded runs' in result.output

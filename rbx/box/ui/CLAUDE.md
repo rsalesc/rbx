@@ -122,6 +122,85 @@ finished left the scroll extents stale and the anchored view scrolled past the r
 the output -- the tail (e.g. a time-limits table) looked eaten. `update_size()` now calls
 `_update_virtual_size()`. Both are covered by `tests/rbx/box/ui/test_command_pane.py`.
 
+## Run history, resume & retry (`run_history.py`, `run_picker.py`, `command_status.py`)
+
+Every command an `each`/`on` session runs leaves its **final screen** on disk, so a session
+can be reopened later with every pane redrawn, and the commands that did not succeed can be
+re-queued. Design: `docs/plans/2026-08-28-command-pane-run-history-design.md`.
+
+The format is **ANSI text**, and that choice is the whole design. `Terminal.write()` feeds
+the same stream parser that built the buffer live, so restoring a pane is one write and the
+restored `Buffer` is indistinguishable from a live one -- which is what makes `ctrl+v`
+select mode, `ctrl+y` and mouse selection work on restored panes **with no code at all**.
+A bespoke buffer snapshot would have needed its own reconstruction and its own way to keep
+selection working. `run_history.dump_buffer` renders each `Buffer.lines` entry (a
+`textual.content.Content`) back to SGR via `style.rich_style.render`; the round trip is
+exact for both text and spans, which `test_run_history.py` pins.
+
+Two consequences worth knowing:
+
+- **Lines are stored unfolded**, so a restored pane re-folds at whatever width it has now.
+  A table drawn at 200 columns wraps if reopened in an 80-column window. This also makes
+  restore order-independent: `Terminal.update_size()` reflows on resize, so writing before
+  the pane learns its real width is fine.
+- **Files hold `\n`; the terminal needs `\r\n`.** `to_terminal_input()` is the adapter, and
+  skipping it leaves every line starting where the previous one ended.
+
+`CommandStatus` lives in `command_status.py` rather than `command_app.py` because the
+history persists it and the app imports the history. It gained **`INTERRUPTED`**: nothing is
+executing when a run is loaded, so `on_load()` maps `RUNNING` -> `INTERRUPTED` (began,
+partial output on disk, no exit code) and `PENDING` -> `SKIPPED` (never began). Both are
+terminal, which is what keeps `TabState.is_idle` and `aggregate_status` honest on a
+reopened run -- a `PENDING` that survived the load would leave a tab busy forever.
+
+**Persistence points.** `_persist()` mirrors the live tabs into the manifest and writes it
+on every status change: at mount, on each `CommandPane.CommandComplete` (which also dumps
+that pane, *before* `notify_complete` releases the terminal to the next queued command), on
+each interactively queued command, and in a **`_shutdown` override** -- so quitting mid-run
+keeps what was on screen. That override is deliberate and must not be "cleaned up" into an
+`on_unmount` handler: `App._shutdown` calls `_close_all()` and clears the node registry
+*before* dispatching `Unmount`, so `on_unmount` finds every pane already gone and dumps
+nothing (this was caught by a test, not in review). `_shutdown` is also the one path every
+teardown funnels through -- `exit()` from `q`, an unhandled error, and `run_test`, which
+calls it directly. History failing to write is never fatal; a session that cannot record
+itself is still a working session.
+
+**Resume and retry** need nothing the manifest does not already hold: `shell_command`,
+`chained`, `cwd`, `prefix` and `status` are the entire input set. `r` retries the
+sub-command on screen; `R` resumes everything **not in `SUCCESS`** (`FAILED` included -- you
+resume because you fixed what failed). Two rules:
+
+- **A retry swaps the pane.** `CommandPane.execute()` appends to the terminal state rather
+  than clearing it, so re-running in place would stack two attempts. `_reset_pane` mounts a
+  fresh pane under the same id and **awaits** the old one's `remove()`, or the two collide
+  on the duplicate id. The stored `.ansi` is dropped with it: only the latest attempt is kept.
+- **Resume resets every pane before enqueueing any.** Otherwise a fast failure could
+  complete while later links of its chain were not yet queued, and `_skip_rest_of_chain`
+  -- which cancels only tasks already in the queue -- would have nothing to cancel.
+
+`R` reuses the `!` prompt's own scope affordance rather than inventing one: the same `Menu`
+in `#command-input-container` offering this tab / all tabs / selected tabs, the third
+pushing `TabSelectorModal`. `_on_menu_selected` dispatches on the action name, so one
+handler serves both verbs; `_pending_menu` records which verb is pending.
+
+**Storage** is `<contest root>/<CACHE_DIR_NAME>/runs/<run-id>/`, reached only through
+`ContestRunStore`. Everything filesystem-shaped lives in that class so a future
+machine-global store (redundancy against a wiped cache) is a second implementation, not a
+refactor. `list_runs` sorts by `updated_at` while the picker *displays* `started_at`, so a
+run you reopen and add to floats back to the top. A manifest that will not parse is skipped,
+never fatal.
+
+**Entry points.** `rbx contest each` / `rbx contest on` with no command to forward open
+`RunPickerApp`. Its first row is **"Start a new session"**, and no recorded history falls
+back the same way -- no-argument `each` has always opened a blank session to type into, and
+history must not cost that (`test_each_without_args_opens_an_empty_app` pins it). `on`'s
+`problems` argument is now optional; given one, the picker is filtered to runs whose tab
+names match, which is why the filter uses `naming.get_contest_problem_label` -- the same
+label the manifest stores.
+
+Tests: `tests/rbx/box/ui/test_run_history.py`, plus the routing cases in
+`tests/rbx/box/contest/test_contest_main.py`.
+
 ## Pane copying & keyboard selection (`terminal_select.py`)
 
 `TerminalSelectMixin` gives a `CommandPane` two things the mouse could not (#717):

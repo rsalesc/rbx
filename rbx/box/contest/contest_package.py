@@ -13,6 +13,7 @@ from rbx.box.package import find_problem_package_or_die
 from rbx.box.sanitizers import issue_stack
 from rbx.box.schema import Package
 from rbx.box.yaml_validation import load_yaml_model
+from rbx.config import CACHE_DIR_NAME
 
 YAML_NAME = 'contest.rbx.yml'
 PROBLEM_YAML_NAME = 'problem.rbx.yml'
@@ -114,6 +115,23 @@ def find_contest_root(
     if not (walker / YAML_NAME).is_file():
         return None
     return walker
+
+
+def get_contest_cache_dir(
+    root: pathlib.Path = pathlib.Path(),
+) -> Optional[pathlib.Path]:
+    """The contest-level cache directory, created on demand.
+
+    The problem-level equivalent is `package.get_problem_cache_dir`; contest-wide
+    artifacts (currently the `each`/`on` run history) had nowhere to live.
+    Returns None outside a contest.
+    """
+    contest_root = find_contest_root(root)
+    if contest_root is None:
+        return None
+    cache_dir = contest_root / CACHE_DIR_NAME
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
 
 
 # NOTE: `find_contest_yaml` is `@functools.cache`d. The contextvar fallback

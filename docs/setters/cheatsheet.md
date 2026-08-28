@@ -100,6 +100,8 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | Build problems A to C in the contest            | `rbx contest on A..C build`           |
 | Build every problem but C                       | `rbx contest on '*,!C' build`         |
 | Chain commands for a problem                    | `rbx contest on A build :: run`       |
+| Reopen a past run and read its output           | `rbx contest each`                    |
+| Reopen past runs touching problem A             | `rbx contest on A`                    |
 | Print a summary of the contest                  | `rbx contest summary`                 |
 | List all contests in the current directory      | `rbx contest list`                    |
 | Scaffold a new contest variant                  | `rbx contest add_variant div2`        |

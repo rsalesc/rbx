@@ -1062,14 +1062,14 @@ Run a command in the problem (or in a set of problems) of a context.
 
 **Usage:**
 ```bash
-rbx contest on <PROBLEMS> [OPTIONS]
+rbx contest on [PROBLEMS] [OPTIONS]
 ```
 
 **Arguments:**
 
 | Name | Description | Required |
 | :--- | :--- | :--- |
-| `PROBLEMS` | - | Yes |
+| `PROBLEMS` | - | No |
 
 
 ---
