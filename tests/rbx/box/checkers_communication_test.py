@@ -957,3 +957,31 @@ class TestCheckCommunicationInteractorTiming:
         assert result.outcome == Outcome.INTERNAL_ERROR
         # Unmeasured, not zero -- the sandbox itself broke.
         assert result.interactor_timing is None
+
+    async def test_check_communication_keeps_the_interactor_timing_when_the_solution_tles(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        """The verdict comes from the solution's log, the timing still doesn't."""
+        run_log.exitstatus = SandboxBase.EXIT_TIMEOUT
+        interactor_run_log.time = 0.25
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.TIME_LIMIT_EXCEEDED
+        # The interactor ran alongside the solution, so its time is real even
+        # though it had no say in the verdict.
+        assert result.interactor_timing is not None
+        assert result.interactor_timing.time == 0.25

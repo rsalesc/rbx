@@ -407,13 +407,11 @@ async def check_communication(
 ) -> CheckerResult:
     def _extra_check_and_sanitize(result: CheckerResult) -> CheckerResult:
         result.sanitizer_warnings = _check_sanitizer_warnings(run_log)
-        # Every return path that reports a real judgement passes through here,
-        # which is why the interactor's timing is stamped at this one point
-        # rather than at each of the returns. Unlike the checker, the interactor
-        # is spawned alongside the solution, so `interactor_run_log` is normally
-        # present even on the paths where the verdict came from the solution's
-        # own log -- the interactor did run and did take that long, so stamping
-        # it is honest, but `of()`'s `None` guard is not what makes it so here.
+        # Stamped at this one point because every judgement-bearing return
+        # passes through here. Step 0 has already rejected a `None` interactor
+        # log, so `of()`'s guard is unreachable below it -- what makes the stamp
+        # honest is that the interactor ran alongside the solution, even when
+        # the verdict came from the solution's own log.
         result.interactor_timing = RunTiming.of(interactor_run_log)
         return result
 
@@ -445,8 +443,8 @@ async def check_communication(
 
     # 0. If any of the sandboxes failed, we should return an error.
     if _any_failed([run_log, interactor_run_log]):
-        # Deliberately left untimed, bypassing `_extra_check_and_sanitize` as it
-        # already did for the sanitizer warnings: when the sandbox itself failed
+        # Deliberately left untimed, bypassing `_extra_check_and_sanitize` as this
+        # return already did for the sanitizer warnings: when the sandbox itself failed
         # there is no honest measurement to report, and an INTERNAL_ERROR
         # carrying a timing would invite the benchmark report to print one.
         return CheckerResult(outcome=Outcome.INTERNAL_ERROR)

@@ -334,7 +334,8 @@ class RunTiming(BaseModel):
 
     `None` means *unmeasured*, never zero -- a checker that never ran has no
     timing at all, and reporting `0 ms` would claim a measurement that was
-    never taken.
+    never taken. The two clocks are independently optional, so a `RunTiming`
+    that exists can still carry a `None` on either of them.
     """
 
     time: Optional[float] = None
