@@ -381,7 +381,8 @@ def test_problem_benchmark_ranks_solutions(mock_skeleton, tmp_path):
     assert problem is not None
     assert problem.slowest_to_judge.solution.path == slow_judge.path
     assert problem.most_checker_time.solution.path == heavy_checker.path
-    assert problem.slowest_testcase.judging_time == pytest.approx(0.51)
+    # 500 ms solution + 1 ms checker, the larger of the two slowest tests.
+    assert problem.slowest_testcase.judging_time == pytest.approx(0.501)
 
 
 def test_problem_benchmark_is_none_without_any_solution_benchmarks():
