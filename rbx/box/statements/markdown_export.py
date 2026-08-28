@@ -19,6 +19,11 @@ alt text triggers ``implicit_figures`` on MOJ's side, captioning every figure
 nested contexts in a way a regex over ``![image](`` is not, and it gives any
 later fix a home.
 
+A second defect has to be corrected *before* pandoc runs, on the TeX --
+monospace wrappers holding math, which live in ``monospace_math.py``. So the
+output here is deliberately **not** what a plain ``pandoc -f latex -t markdown``
+would produce.
+
 **The goldens in ``tests/.../testdata/markdown_export`` are pandoc-version
 sensitive.** They record what a specific pandoc emits; a diff there means pandoc
 changed its Markdown writer, not that the expectation was wrong.
@@ -29,6 +34,7 @@ import re
 from typing import Any, Callable, Optional
 
 from rbx import tooling
+from rbx.box.statements.monospace_math import rewrap_monospace_math
 
 
 class MojGateError(ValueError):
@@ -79,7 +85,9 @@ def tex_to_markdown(
 
     tooling.PANDOC.ensure()
 
-    ast = json.loads(pypandoc.convert_text(tex, 'json', format='latex'))
+    ast = json.loads(
+        pypandoc.convert_text(rewrap_monospace_math(tex), 'json', format='latex')
+    )
     _fix_images(ast, rewrite_image_url)
     return pypandoc.convert_text(json.dumps(ast), 'markdown', format='json')
 

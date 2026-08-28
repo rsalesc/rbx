@@ -82,6 +82,13 @@ def test_inline_math_survives_untouched():
     assert '$n \\le 10^5$' in out
 
 
+def test_rewrapped_monospace_math_reaches_markdown_as_one_span():
+    """The end-to-end shape MOJ reads back: one `$...$`, no split code spans."""
+    out = markdown_export.tex_to_markdown('\\texttt{A $a_i$ $t_i$} is a reply.')
+    assert '$\\texttt{A}~a_i~t_i$' in out
+    assert '`' not in out
+
+
 @pytest.mark.parametrize(
     'block',
     [
