@@ -214,7 +214,7 @@ Expected: FAIL — `interactor_timing is None`.
 
 **Step 3: Implement**
 
-`check_communication` already funnels **every** return through `_extra_check_and_sanitize`. That is the single hook:
+`check_communication` funnels **almost** every return through `_extra_check_and_sanitize`, which is the hook to use:
 
 ```python
     def _extra_check_and_sanitize(result: CheckerResult) -> CheckerResult:
@@ -226,7 +226,34 @@ Expected: FAIL — `interactor_timing is None`.
         return result
 ```
 
-Check the tail of the function for any `return` that does **not** go through the helper and route it through one if you find it. Note the final `result = await check(...)` (step 6) returns a result that already carries `checker_timing`, and is then passed through `_extra_check_and_sanitize`, so it ends up with both.
+**But there is one return that bypasses the helper**, and it is not an oversight to
+"fix" blindly. Step 0 is:
+
+```python
+    if _any_failed([run_log, interactor_run_log]):
+        return CheckerResult(outcome=Outcome.INTERNAL_ERROR)
+```
+
+It already skips `sanitizer_warnings` today — that is pre-existing behaviour, not
+something this task introduced. Leave it unstamped, and say so in a comment: when
+the sandbox itself failed, there is no honest measurement to report, and an
+`INTERNAL_ERROR` result carrying a timing would invite the report to print one.
+Make that a decision on the record rather than an accident.
+
+Note the final `result = await check(...)` (step 6) returns a result that already
+carries `checker_timing`, and is then passed through `_extra_check_and_sanitize`,
+so it ends up with both.
+
+**A contract difference from Task 2 that you must not paper over.** In `_check`,
+"the checker never ran" and "`checker_run_log is None`" coincide, because the log
+is produced by the very call that runs the checker — so `RunTiming.of`'s `None`
+guard enforces the unmeasured contract for free. That does **not** carry over
+here. In a communication problem the interactor is spawned alongside the
+solution, so `interactor_run_log` is generally non-`None` even on paths where the
+verdict came from `check_with_no_output(run_log)`. Stamping it there is still
+honest — the interactor really did run and really did take that long — but you
+cannot copy Task 2's shape and assume `of()` is protecting you. Decide
+deliberately, and write the reason down.
 
 **Step 4: Run to verify it passes**
 
