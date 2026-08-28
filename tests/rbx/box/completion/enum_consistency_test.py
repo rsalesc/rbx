@@ -30,3 +30,11 @@ def test_solution_prefixes_cover_registered_expanders():
 
     prefixes = {p for p, _ in completers._SOLUTION_PREFIXES}  # noqa: SLF001
     assert prefixes == {'@main', '@boca/', '@moj/'}
+
+
+def test_benchmark_table_matches_benchmark_level_enum():
+    from rbx.box.benchmark import BenchmarkLevel
+
+    table = dict(completers._BENCHMARK_TABLE)  # noqa: SLF001
+    expected = {str(level.value): level.name for level in BenchmarkLevel}
+    assert table == expected

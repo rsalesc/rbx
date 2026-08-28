@@ -33,6 +33,7 @@ from pydantic import BaseModel
 
 from rbx import console, utils
 from rbx.box import (
+    benchmark,
     checkers,
     code,
     compilation_findings,
@@ -54,9 +55,10 @@ from rbx.box.environment import (
     VerificationLevel,
 )
 from rbx.box.formatting import (
+    UNMEASURED,
+    get_formatted_duration_in_seconds,
     get_formatted_memory,
     get_formatted_time,
-    get_formatted_time_in_seconds,
     href,
 )
 from rbx.box.generation_schema import GenerationTestcaseEntry, TestcaseOrScriptEntry
@@ -1415,6 +1417,7 @@ async def run_and_print_interactive_solutions(
     only_accepted: bool = False,
     validate: bool = True,
     visualize: bool = False,
+    benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
 ):
     pkg = package.find_problem_package_or_die()
 
@@ -1467,6 +1470,10 @@ async def run_and_print_interactive_solutions(
             visualize=visualize,
         )
 
+    # Collected as the loop streams, since there is no reporter here holding a
+    # list of them -- same shape as the `--detailed` path in `print_run_report`.
+    solution_benchmarks: List[benchmark.SolutionBenchmark] = []
+
     async for item in items:
         sol = skeleton.find_solution_skeleton(item.solution)
         assert sol is not None
@@ -1481,6 +1488,20 @@ async def run_and_print_interactive_solutions(
             _print_solution_outcome(
                 sol, skeleton, [eval], console.console, verification, subset=True
             )
+            _print_interactive_judging_time(console.console, benchmark_level, eval)
+
+        # Deliberately not `benchmark.report_solution_benchmark`: that prints
+        # the per-solution block, whose headline is the run's slowest testcase.
+        # This command runs exactly one, so that block would only restate the
+        # line just printed. The benchmark is still built, because the summary
+        # below ranks solutions against each other and one testcase each is
+        # enough for that.
+        if benchmark_level == benchmark.BenchmarkLevel.SOLUTIONS:
+            solution_bench = benchmark.build_solution_benchmark(
+                item.solution, skeleton, [eval]
+            )
+            if solution_bench is not None:
+                solution_benchmarks.append(solution_bench)
 
         stdout_path = eval.log.stdout_absolute_path
         merged_path = (
@@ -1541,7 +1562,64 @@ async def run_and_print_interactive_solutions(
                     f'[status]Stderr:[/status] {href(package.relpath(eval.log.stderr_absolute_path))}'
                 )
             _print_checker_stderr_hint(eval)
-            console.console.print()
+
+        # The blank line that ends this solution's section. What that section
+        # ends *with* depends on `-p` and on which artifacts the run produced,
+        # so it is closed here, once, rather than by each branch above -- every
+        # section of a report owns its own trailing blank line, and the summary
+        # below relies on that instead of printing a separator of its own.
+        console.console.print()
+
+    # Under `no_progress` like every other block this command prints: the whole
+    # command runs inside the caller's `StatusProgress`, so a line printed with
+    # the spinner still running is interleaved with its frames.
+    with utils.no_progress(progress):
+        _print_problem_benchmark(console.console, benchmark_level, solution_benchmarks)
+
+
+def _print_interactive_judging_time(
+    out: rich.console.Console,
+    benchmark_level: benchmark.BenchmarkLevel,
+    eval: Evaluation,
+) -> None:
+    """Report what judging this one testcase cost, under `-b1`.
+
+    `rbx run` reports the slowest testcase of a whole testset; this command runs
+    a single one, so the testcase's own times are what there is to say. The
+    wording and the shape are `rbx ui`'s -- see
+    `ui.utils.run_ui._get_formatted_judging_time` and its call site -- because a
+    setter reading the same fact in two places should not meet two spellings of
+    it. Only the markup differs: the surrounding lines of this block are
+    `[status]`-labelled, and the panel's are bold.
+    """
+    if benchmark_level != benchmark.BenchmarkLevel.SOLUTIONS:
+        return
+    checker_seconds = benchmark.checker_time_seconds(eval)
+    line = f'[status]Checker time:[/status] {_measurement(checker_seconds)}'
+    # Only a communication problem has an interactor, so a batch testcase must
+    # not spend half a line on a program that does not exist. The half is gated
+    # on the timing object, exactly as `rbx ui` gates it; what it reads comes
+    # from the clock inside it, which may be unset -- an interactor that ran
+    # unmeasured is still an interactor, and reads as `-`.
+    if eval.result.interactor_timing is not None:
+        interactor_seconds = benchmark.interactor_time_seconds(eval)
+        line += (
+            f' / [status]Interactor time:[/status] {_measurement(interactor_seconds)}'
+        )
+    out.print(line)
+
+
+def _measurement(seconds: Optional[float]) -> str:
+    """A duration in seconds, or the unmeasured marker when there is none.
+
+    `None` never becomes `0 ms`: a checker that never ran and a checker that ran
+    instantaneously read differently, and only the second is a claim about how
+    long judging took. Same rule, and the same adaptive formatter, as
+    `benchmark._measurement`.
+    """
+    if seconds is None:
+        return UNMEASURED
+    return get_formatted_duration_in_seconds(seconds)
 
 
 def _print_checker_stderr_hint(eval: Evaluation) -> None:
@@ -1736,12 +1814,6 @@ def _get_evals_time_in_ms(evals: List[Evaluation]) -> Optional[int]:
     return max(int(time * 1000) for time in times)
 
 
-def _get_evals_judging_time_in_seconds(evals: List[Evaluation]) -> float:
-    if not evals:
-        return 0
-    return sum((eval.log.wall_time or 0.0) for eval in evals)
-
-
 def _get_evals_memory_in_bytes(evals: List[Evaluation]) -> Optional[int]:
     memories = [eval.log.memory for eval in evals if eval.log.memory is not None]
     if not memories:
@@ -1749,20 +1821,11 @@ def _get_evals_memory_in_bytes(evals: List[Evaluation]) -> Optional[int]:
     return max(int(memory) for memory in memories)
 
 
-# What a formatted time or memory reads as when nothing was measured at all.
-_UNMEASURED = '-'
-
-
 def get_evals_formatted_time(evals: List[Evaluation]) -> str:
     max_time = _get_evals_time_in_ms(evals)
     if max_time is None:
-        return _UNMEASURED
+        return UNMEASURED
     return get_formatted_time(max_time)
-
-
-def get_evals_formatted_judging_time(evals: List[Evaluation]) -> str:
-    total_time = _get_evals_judging_time_in_seconds(evals)
-    return get_formatted_time_in_seconds(total_time)
 
 
 def get_capped_evals_formatted_time(
@@ -1772,7 +1835,7 @@ def get_capped_evals_formatted_time(
 ) -> str:
     max_time = _get_evals_time_in_ms(evals)
     if max_time is None:
-        return _UNMEASURED
+        return UNMEASURED
     has_tle = any(eval.result.outcome.is_slow() for eval in evals)
     has_ile = any(
         eval.result.outcome == Outcome.IDLENESS_LIMIT_EXCEEDED for eval in evals
@@ -1802,7 +1865,7 @@ def get_capped_evals_formatted_time(
 def get_evals_formatted_memory(evals: List[Evaluation]) -> str:
     max_memory = _get_evals_memory_in_bytes(evals)
     if max_memory is None:
-        return _UNMEASURED
+        return UNMEASURED
     return get_formatted_memory(max_memory)
 
 
@@ -2088,7 +2151,6 @@ class SolutionOutcomeReport(BaseModel):
             res = scoring_res + res
         res += f'\nTime: {get_capped_evals_formatted_time(self.limits, self.evals, self.verification)}'
         res += f'\nMemory: {get_evals_formatted_memory(self.evals)}'
-        # res += f'\nJudging time: {get_evals_formatted_judging_time(self.evals)}'
         if print_message and self.message is not None:
             entry, msg = self.message
             if msg:
@@ -2588,7 +2650,14 @@ async def _print_timing(
     console: rich.console.Console,
     skeleton: SolutionReportSkeleton,
     evaluations: StructuredEvaluation,
-):
+) -> None:
+    """Print the timing summary, closing it with its own blank line.
+
+    Nothing at all is printed when no solution measured anything -- a fully
+    skipped run, say -- and the blank line goes with it. Every section of the
+    report owns the blank line that ends it, so whatever follows this one need
+    not know whether it printed, nor how it terminates.
+    """
     summary = TimingSummary()
     summary_per_language = collections.defaultdict(TimingSummary)
     tls_per_language = {}
@@ -2686,6 +2755,7 @@ async def _print_timing(
 
     if len(all_languages) <= 1 or (len(all_tls) <= 1 and len(all_expanded_tls) <= 1):
         summary.print(console, tl=all_tl, expanded_tl=all_expanded_tl)
+        console.print()
         return
 
     # Otherwise, print per language.
@@ -2701,6 +2771,7 @@ async def _print_timing(
             tl=cur_tl,
             expanded_tl=cur_expanded_tl,
         )
+    console.print()
 
 
 def _length_markup(markup: str) -> int:
@@ -2870,6 +2941,41 @@ async def _render_detailed_group_table(
                 throttled_update()
 
 
+def _print_problem_benchmark(
+    console: rich.console.Console,
+    benchmark_level: benchmark.BenchmarkLevel,
+    solution_benchmarks: List[benchmark.SolutionBenchmark],
+) -> None:
+    """Close the report with the problem-wide extremes, under `-b1`.
+
+    Every line here is an extreme *across* solutions, so it takes at least two
+    of them to say anything. On a single solution -- `rbx run <one-solution>
+    -b1`, the commonest way the flag is used -- every extreme names the only
+    candidate and every number restates the per-solution block printed
+    immediately above, so the whole section is a second copy of what the reader
+    just read. It is suppressed there rather than kept for its totals: the
+    per-solution block is where those totals already are.
+
+    Both report paths end here, and neither guards this on the timing summary
+    having been printed. The timing summary is suppressed on a run that may stop
+    early -- time limit inference reads it, and a solution that stopped early
+    only measures a lower bound -- but the benchmark feeds no inference, carries
+    its own `(partial ...)` marker and is purely diagnostic, so it still prints.
+
+    No blank line is opened here. Whatever precedes this ends with its own, so
+    the separator is never printed twice and never forgotten -- see
+    `_print_timing`.
+    """
+    if benchmark_level != benchmark.BenchmarkLevel.SOLUTIONS:
+        return
+    if len(solution_benchmarks) < 2:
+        return
+    problem_bench = benchmark.build_problem_benchmark(solution_benchmarks)
+    if problem_bench is None:
+        return
+    benchmark.print_problem_benchmark(console, problem_bench)
+
+
 async def _print_detailed_run_report(
     result: RunSolutionResult,
     console: rich.console.Console,
@@ -2877,6 +2983,7 @@ async def _print_detailed_run_report(
     timing: bool = True,
     verification: VerificationLevel = VerificationLevel.NONE,
     gating_solutions: Optional[Set[str]] = None,
+    benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
 ) -> bool:
     for group in result.skeleton.groups:
         console.print(f'[bold][status]{group.name}[/status][/bold]')
@@ -2893,12 +3000,21 @@ async def _print_detailed_run_report(
     # `--detailed` bypasses the reporters entirely, so it has to publish the
     # report itself or `rbx run -d` would leave none behind.
     report_writer = run_report.RunReportWriter(package.get_problem_runs_dir())
+    # And for the same reason it has to collect the per-solution benchmarks as
+    # it goes: there is no reporter here holding a `solution_benchmarks` list,
+    # so without this the summary would silently vanish under `-d`.
+    solution_benchmarks: List[benchmark.SolutionBenchmark] = []
     for index, solution in enumerate(result.skeleton.solutions):
         all_evals = []
         for evals in structured_evaluations[str(solution.path)].values():
             all_evals.extend(evals)
 
-        # Resolve futures.
+        # Resolve futures. The `None` filter only ever drops a trailing run:
+        # every entry starts out `None` and is filled in entry order as the
+        # items arrive, and a testcase that was skipped is persisted as a
+        # `SKIPPED` evaluation rather than left unset -- so the survivors stay
+        # the gapless prefix `_get_evals_per_group` and the benchmark both
+        # assume.
         all_evals = [await eval() for eval in all_evals if eval is not None]
         _print_solution_header(solution, console)
         report = _print_solution_outcome(
@@ -2912,11 +3028,21 @@ async def _print_detailed_run_report(
         report_writer.add(
             run_report.build_solution_report(index, result.skeleton, report)
         )
+        # `--detailed` bypasses the reporters, so it prints the benchmark block
+        # itself for the same reason it publishes the report itself.
+        benchmark.report_solution_benchmark(
+            console,
+            solution,
+            result.skeleton,
+            report.evals,
+            solution_benchmarks,
+            level=benchmark_level,
+        )
         if _gates_report(solution, gating_solutions):
             ok = ok and report.status.ok()
+        # The blank line that ends this solution's section -- including the last
+        # one's, which is why nothing more is printed after the loop.
         console.print()
-
-    console.print()
 
     if timing:
         await _print_timing(
@@ -2924,6 +3050,8 @@ async def _print_detailed_run_report(
             result.skeleton,
             structured_evaluations,
         )
+
+    _print_problem_benchmark(console, benchmark_level, solution_benchmarks)
     return ok
 
 
@@ -2963,6 +3091,8 @@ class TraditionalRunReporter:
     verification: VerificationLevel
     structured_evaluations: StructuredEvaluation
     limits_per_solution: Dict[str, Limits]
+    benchmark_level: benchmark.BenchmarkLevel
+    solution_benchmarks: List[benchmark.SolutionBenchmark]
 
     current_solution: Optional[Solution]
     current_group: Optional[GroupSkeleton]
@@ -2976,10 +3106,18 @@ class TraditionalRunReporter:
         result: RunSolutionResult,
         verification: VerificationLevel,
         console: rich.console.Console,
+        benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
     ):
         self.result = result
         self.console = console
         self.verification = verification
+        # Named for the level rather than for the module it comes from, since
+        # this file refers to `benchmark` the module throughout.
+        self.benchmark_level = benchmark_level
+        # Every solution's benchmark, in the order the solutions finished. Read
+        # by nothing yet: the problem-wide summary that ranks them is built on
+        # top of this list, and collecting them here is what will let it.
+        self.solution_benchmarks: List[benchmark.SolutionBenchmark] = []
         self.structured_evaluations = consume_and_key_evaluation_items(
             result.items, result.skeleton
         )
@@ -3058,6 +3196,28 @@ class TraditionalRunReporter:
                     report,
                 )
             )
+            # Printed from here rather than from either `render_solution_end`
+            # because this is where the two reporters converge, so the block is
+            # written once and both get it. `LiveRunReporter` has already
+            # stopped its live region by the time that returns, so printing
+            # plainly to the console cannot land inside a live frame.
+            benchmark.report_solution_benchmark(
+                self.console,
+                self.current_solution,
+                self.result.skeleton,
+                report.evals,
+                self.solution_benchmarks,
+                level=self.benchmark_level,
+            )
+            # The blank line that separates one solution from the next. It used
+            # to close `render_solution_end`, where it reads more naturally --
+            # but the benchmark block is printed here, after that returns, so a
+            # separator emitted there would land *above* the block and make it
+            # read as a header for the next solution rather than a footer for
+            # the one it measures. Keep it last, and keep it here. Both concrete
+            # reporters always return a report, so this is the same
+            # unconditional separator the overrides used to print.
+            self.console.print()
         self.current_solution = None
         self.current_solution_evals = []
         return report is None or report.status.ok()
@@ -3071,6 +3231,10 @@ class TraditionalRunReporter:
         ``finish_solution`` publishes it (see ``run_report``). Recomputing it
         there instead would push every issue onto the stack a second time --
         ``get_solution_outcome_report`` reports issues unless told not to.
+
+        Render the verdict only. The blank line separating one solution from the
+        next belongs to ``finish_solution``, which prints it below the benchmark
+        block -- see the comment there.
         """
         return None
 
@@ -3400,7 +3564,6 @@ class LiveRunReporter(TraditionalRunReporter):
             verification=self.verification,
             print_message=True,
         )
-        self.console.print()
         return report
 
     def _stop_live(self) -> None:
@@ -3495,7 +3658,6 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
         if self._elapsed is not None and self.console.is_terminal:
             self.console.print(f'[status]Ran in[/status] {self._elapsed}.')
         self._elapsed = None
-        self.console.print()
         return report
 
     def render_group_end(self, group: GroupSkeleton):
@@ -3547,6 +3709,7 @@ async def print_run_report(
     timing: bool = True,
     skip_printing_limits: bool = False,
     gating_solutions: Optional[Set[str]] = None,
+    benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
 ) -> bool:
     """Run every tracked solution and report it.
 
@@ -3560,13 +3723,19 @@ async def print_run_report(
     report. Pass ``False`` when the run may stop early: every line of that
     summary is an extreme over the solutions, and a solution that did not run to
     the end only measures a lower bound.
+
+    ``benchmark_level`` decides whether the judging benchmark is reported. The
+    timings it reads are captured on every run regardless, so the level only
+    ever decides what is printed.
     """
     if not skip_printing_limits:
         _print_limits(result.skeleton.limits)
 
     single_solution = len(result.skeleton.solutions) == 1
     report_cls = SingleSolutionRunReporter if single_solution else LiveRunReporter
-    reporter = report_cls(result, verification, console)
+    reporter = report_cls(
+        result, verification, console, benchmark_level=benchmark_level
+    )
 
     if detailed:
         return await _print_detailed_run_report(
@@ -3576,6 +3745,7 @@ async def print_run_report(
             verification=verification,
             timing=timing,
             gating_solutions=gating_solutions,
+            benchmark_level=benchmark_level,
         )
 
     ok = True
@@ -3609,5 +3779,7 @@ async def print_run_report(
             result.skeleton,
             reporter.structured_evaluations,
         )
+
+    _print_problem_benchmark(console, benchmark_level, reporter.solution_benchmarks)
 
     return ok

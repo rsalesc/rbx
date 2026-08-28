@@ -7,6 +7,7 @@ from textual.widgets.option_list import Option
 
 from rbx import console, utils
 from rbx.box import package, solutions
+from rbx.box.formatting import UNMEASURED, get_formatted_time
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.schema import Solution
 from rbx.box.solutions import (
@@ -16,7 +17,7 @@ from rbx.box.solutions import (
     get_solution_score_markup,
 )
 from rbx.box.testcase_schema import TestcaseEntry
-from rbx.grading.steps import Evaluation
+from rbx.grading.steps import Evaluation, RunTiming
 
 
 def is_main_solution(solution: Solution) -> bool:
@@ -222,6 +223,16 @@ def _get_checker_msg_last_line(eval: Evaluation) -> Optional[str]:
     return eval.result.message.rstrip().split('\n')[-1]
 
 
+def _get_formatted_judging_time(timing: Optional[RunTiming]) -> str:
+    """A judging program's CPU time in milliseconds, or the unmeasured marker."""
+    # The same unmeasured rule -- a `RunTiming` can exist with a `None` clock --
+    # lives in `benchmark._timing_seconds`; keep the two in agreement.
+    if timing is None or timing.time is None:
+        return UNMEASURED
+    # `RunTiming` keeps seconds; `get_formatted_time` wants milliseconds.
+    return get_formatted_time(int(timing.time * 1000))
+
+
 def get_run_testcase_metadata_markup(
     skeleton: SolutionReportSkeleton, solution: SolutionSkeleton, entry: TestcaseEntry
 ) -> Optional[str]:
@@ -241,6 +252,23 @@ def get_run_testcase_metadata_markup(
         f'[b]{solutions.get_full_outcome_markup_verdict(eval.result.outcome)}[/b]'
     )
     lines.append(f'[b]Time:[/b] {time_str} / [b]Memory:[/b] {memory_str}')
+    # The label is `Checker time:`, not `Checker:`, because the line below
+    # already spells `Checker:` for the checker's *message* -- a line setters
+    # have read that way since long before judging times existed. Do not
+    # shorten it back into a collision.
+    judging_str = (
+        f'[b]Checker time:[/b] '
+        f'{_get_formatted_judging_time(eval.result.checker_timing)}'
+    )
+    # Only a communication problem has an interactor, so a batch testcase must
+    # not spend half a row on a program that does not exist. The half is gated
+    # on the timing object; what it reads comes from the clock inside it.
+    if eval.result.interactor_timing is not None:
+        judging_str += (
+            f' / [b]Interactor time:[/b] '
+            f'{_get_formatted_judging_time(eval.result.interactor_timing)}'
+        )
+    lines.append(judging_str)
     if checker_msg is not None:
         lines.append(f'[b]Checker:[/b] {utils.escape_markup(checker_msg)}')
     # Only `--keep-checker-stderr` runs have one, and only its presence is worth

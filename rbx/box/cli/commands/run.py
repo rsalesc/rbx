@@ -15,6 +15,7 @@ from ordered_set import OrderedSet
 from rbx import annotations, console, utils
 from rbx.annotations import PackagePath
 from rbx.box import (
+    benchmark,
     environment,
     generators,
     limits_info,
@@ -75,6 +76,14 @@ def _set_timing_profile(profile: Optional[str]) -> None:
 @syncer.sync
 async def run(
     verification: environment.VerificationParam,
+    # Ahead of every parameter that carries a Python-level default, because this
+    # one carries none of its own -- `BenchmarkParam` supplies its default
+    # through `default_factory`, exactly as `VerificationParam` above does.
+    # Tidying it further down the list is a `SyntaxError` raised when this module
+    # is imported, and command modules are imported lazily: `rbx --help` would go
+    # on working while `rbx run` alone blew up. It is an option either way, so
+    # where it sits in the signature says nothing about the command line.
+    benchmark_level: benchmark.BenchmarkParam,
     solutions: Annotated[
         Optional[List[str]],
         PackagePath,
@@ -168,6 +177,10 @@ async def run(
     ] = None,
 ):
     _set_timing_profile(profile)
+    # Parsed here, beside the profile and for the same reason: a level rbx
+    # cannot report on is a mistake in the command line, and a mistake should
+    # cost the setter an error rather than a whole build.
+    level = benchmark.parse_level(benchmark_level)
 
     if share is not None and share not in ('png', 'text'):
         console.console.print(
@@ -278,6 +291,7 @@ async def run(
             # testcases that never ran, so every extreme in the timing summary --
             # and the time limit picked off it -- would rest on a lower bound.
             timing=not fail_fast,
+            benchmark_level=level,
         )
 
         def _print_fail_fast_warning(to: rich.console.Console) -> None:
@@ -300,6 +314,9 @@ async def run(
                 detailed=detailed,
                 skip_printing_limits=sanitized,
                 timing=not fail_fast,
+                # Benchmarked too: a shared copy silently missing a block the
+                # setter asked for reads as a run that had nothing to report.
+                benchmark_level=level,
             )
             # The shared report is the copy that leaves this machine, and whoever
             # reads it never sees the warning printed below.
@@ -353,6 +370,9 @@ async def summary_cmd(
 @syncer.sync
 async def irun(
     verification: environment.VerificationParam,
+    # Ahead of every parameter that carries a Python-level default, for the
+    # reason `run` above spells out: `BenchmarkParam` has no default of its own.
+    benchmark_level: benchmark.BenchmarkParam,
     solutions: Annotated[
         Optional[List[str]],
         PackagePath,
@@ -451,6 +471,10 @@ async def irun(
         ),
     ] = None,
 ):
+    # Parsed before anything runs, so an unimplemented level is refused rather
+    # than reported after a whole run.
+    level = benchmark.parse_level(benchmark_level)
+
     _set_timing_profile(profile)
 
     if not print:
@@ -518,4 +542,5 @@ async def irun(
             only_accepted=only_accepted,
             validate=validate,
             visualize=visualize,
+            benchmark_level=level,
         )

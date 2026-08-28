@@ -325,11 +325,44 @@ class TestcaseLog(RunLog):
     checker_stderr_absolute_path: Optional[pathlib.Path] = None
 
 
+class RunTiming(BaseModel):
+    """How long one judging program took on one testcase.
+
+    Both clocks are kept even though only CPU time is reported today: storing
+    the wall clock costs nothing, and lets a later benchmarking level report it
+    without migrating the `.eval` format.
+
+    `None` means *unmeasured*, never zero -- a checker that never ran has no
+    timing at all, and reporting `0 ms` would claim a measurement that was
+    never taken. The two clocks are independently optional, so a `RunTiming`
+    that exists can still carry a `None` on either of them.
+    """
+
+    time: Optional[float] = None
+    wall_time: Optional[float] = None
+
+    @staticmethod
+    def of(log: Optional['RunLog']) -> Optional['RunTiming']:
+        # Clocks are copied as-is: a `TestcaseLog` carries `None` when the run
+        # never happened, and that unmeasured-ness must survive the copy. The
+        # caller owes us a log from a run that actually took place -- a default
+        # `RunLog` would hand back a fabricated zero.
+        if log is None:
+            return None
+        return RunTiming(time=log.time, wall_time=log.wall_time)
+
+
 class CheckerResult(BaseModel):
     outcome: Outcome
     message: str = ''
     no_tle_outcome: Optional[Outcome] = None
     sanitizer_warnings: bool = False
+    # How long the checker took on this testcase, and -- for communication
+    # problems -- the interactor. Captured on every run regardless of
+    # `--benchmark`, because `exclude_none` makes it free and `rbx ui` can then
+    # show it for any past run. See docs/plans/2026-08-28-run-benchmark-design.md.
+    checker_timing: Optional[RunTiming] = None
+    interactor_timing: Optional[RunTiming] = None
 
 
 class Evaluation(BaseModel):

@@ -165,6 +165,22 @@ def complete_verification_level(
     return [CompletionItem(v, help=h) for v, h in _VERIFICATION_TABLE]
 
 
+# (value, level name). Kept in sync with benchmark.BenchmarkLevel by
+# enum_consistency_test.py. A literal rather than an import: this module is on
+# the shell-completion path, and `rbx.box.benchmark` pulls the schema in.
+_BENCHMARK_TABLE = (
+    ('0', 'NONE'),
+    ('1', 'SOLUTIONS'),
+)
+
+
+@register_completer('benchmark_level')
+def complete_benchmark_level(
+    ctx: CompletionContext, incomplete: str
+) -> List[CompletionItem]:
+    return [CompletionItem(v, help=h) for v, h in _BENCHMARK_TABLE]
+
+
 @register_completer('runner')
 def complete_runner(ctx: CompletionContext, incomplete: str) -> List[CompletionItem]:
     # `runners.names` is a leaf module with no imports of its own, which is why

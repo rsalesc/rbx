@@ -121,6 +121,7 @@ rbx run <SOLUTIONS> [OPTIONS]
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
 | `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
+| `--benchmark`, `-b` | INTEGER | Benchmark level: 0 (off), 1 (benchmark the solution run). | `0` |
 | `--outcome`, `-o` | TEXT | Include only solutions whose expected outcomes intersect with this. | - |
 | `--tag` | TEXT | Include only solutions whose tags intersect with this. | - |
 | `--check` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
@@ -196,6 +197,7 @@ rbx irun <SOLUTIONS> [OPTIONS]
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
 | `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
+| `--benchmark`, `-b` | INTEGER | Benchmark level: 0 (off), 1 (benchmark the solution run). | `0` |
 | `--outcome`, `-o` | TEXT | Include only solutions whose expected outcomes intersect with this. | - |
 | `--tag` | TEXT | Include only solutions whose tags intersect with this. | - |
 | `--check` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |

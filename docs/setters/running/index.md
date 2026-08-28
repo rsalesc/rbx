@@ -198,3 +198,71 @@ rbx irun -g "gen 100 123" -p
 ```
 
 {{ asciinema("irun-generator") }}
+
+## Benchmarking the judging time
+
+`rbx run` tells you how long each **solution** took, and nothing about how long **judging**
+took. The checker, though, runs once per testcase per solution, and on a problem with a
+heavy checker it can dominate the wall clock of a whole run.
+
+`--benchmark` (`-b`) reports that cost. It takes a level, just like `-v`, and the level is
+required — a bare `-b` is an error:
+
+```bash
+# 0 is the default: nothing is benchmarked, and the report is the one above
+rbx run -b0
+
+# 1 benchmarks the solution run: how long the checker — and, on an interactive
+# problem, the interactor — spent judging
+rbx run -b1
+```
+
+Each solution then gets an extra block under its `Time:` and `Memory:` lines, naming the
+testcase that was slowest to judge, with its breakdown, and the totals over the whole
+testset:
+
+```{.bash .no-copy}
+Benchmark: slowest test secret/12 - 290 ms judging (90 ms solution + 200 ms checker)
+Total judging: 555 ms (checker: 215 ms)
+```
+
+Judging time is the solution's time plus the checker's, plus the interactor's on an
+[interactive problem](/setters/grading/interactors/), where it appears as a third term in
+both the breakdown and the totals.
+
+When several solutions ran, the report closes with the problem-wide extremes:
+
+```{.bash .no-copy}
+Benchmark summary
+Slowest solution to judge: 1.0 s, sols/slow.cpp
+Most checker time: 600 ms, sols/main.cpp
+Slowest testcase to judge: 501 ms, secret/12
+```
+
+Notice the durations follow the value: milliseconds below a second, seconds above it. A
+`-` means the value was never measured — no checker ran on that testcase, or the sandbox
+reported no clock — which is a different fact from a measured zero, and never rendered as
+one.
+
+`rbx irun` takes `-b1` too. There, the checker (and interactor) time is printed on each
+testcase's block, along with the summary. There is no per-solution block: with a single
+testcase, "slowest test" would say nothing.
+
+!!! tip
+    These timings are captured on **every** run, benchmarked or not — `-b` only decides
+    what gets printed. So `rbx ui` shows you the checker time of a run you've already
+    done, without re-running anything.
+
+Checker runs are cached, and a cached checker reports the time it took when it actually
+ran. {{rbx}} never re-runs a checker to benchmark it: the stored measurement is the
+uncached cost, which is the number worth having.
+
+Under `--fail-fast` every total is a **lower bound**, since a solution that stopped early
+was only judged on the testcases that ran. The report says so:
+
+```{.bash .no-copy}
+Total judging: 3.1 s (checker: 400 ms) (over 7/40 tests judged)
+```
+
+Unlike the timing summary, which `--ff` drops entirely because time limit inference reads
+it, the benchmark feeds no inference. A marked lower bound is more useful than nothing.

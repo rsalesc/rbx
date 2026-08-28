@@ -17,6 +17,7 @@ from rbx.grading.steps import (
     GradingFileInput,
     Outcome,
     RunLog,
+    RunTiming,
 )
 from rbx.utils import StatusProgress
 
@@ -347,6 +348,11 @@ async def _check(
         raise typer.Exit(1)
 
     result = processed_checker_result
+    # Stamped here, past every early return that never reached the checker --
+    # those keep a `None` timing, which reads as unmeasured rather than zero.
+    # Not inside `process_checker_run_log`, which the interactor shares and
+    # which would therefore mislabel the interactor's time as the checker's.
+    result.checker_timing = RunTiming.of(checker_run_log)
 
     if skip_run_log:
         return result
@@ -401,6 +407,12 @@ async def check_communication(
 ) -> CheckerResult:
     def _extra_check_and_sanitize(result: CheckerResult) -> CheckerResult:
         result.sanitizer_warnings = _check_sanitizer_warnings(run_log)
+        # Stamped at this one point because every judgement-bearing return
+        # passes through here. Step 0 has already rejected a `None` interactor
+        # log, so `of()`'s guard is unreachable below it -- what makes the stamp
+        # honest is that the interactor ran alongside the solution, even when
+        # the verdict came from the solution's own log.
+        result.interactor_timing = RunTiming.of(interactor_run_log)
         return result
 
     def _check_interactor(reinterpret_rte: bool = True) -> Optional[CheckerResult]:
@@ -431,6 +443,10 @@ async def check_communication(
 
     # 0. If any of the sandboxes failed, we should return an error.
     if _any_failed([run_log, interactor_run_log]):
+        # Deliberately left untimed, bypassing `_extra_check_and_sanitize` as this
+        # return already did for the sanitizer warnings: when the sandbox itself failed
+        # there is no honest measurement to report, and an INTERNAL_ERROR
+        # carrying a timing would invite the benchmark report to print one.
         return CheckerResult(outcome=Outcome.INTERNAL_ERROR)
 
     interactor_first = (
