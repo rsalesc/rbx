@@ -35,6 +35,7 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | Run only the solutions carrying a [tag](#tag-a-solution) | `rbx run --tag brute-force` |
 | Stop a solution at its first non-accepted verdict [:material-open-in-new:](/setters/running#failing-fast) | `rbx run --ff` |
 | Run against a timing profile [:material-open-in-new:](/setters/profiling#using-profiles-when-running-solutions) | `rbx run -p icpc` |
+| Report how long the checker spent judging [:material-open-in-new:](/setters/running#benchmarking-the-judging-time) | `rbx run -b1` |
 | Copy the run report to the clipboard [:material-open-in-new:](/setters/running#sharing-a-report) | `rbx run --share png` |
 | Run a submission downloaded from {{boca}} | `rbx run @boca/123` |
 | Run a submission downloaded from {{moj}} [:material-open-in-new:](/setters/packaging/moj#downloading-a-submission) | `rbx run @moj/<contest>/<id>` |
