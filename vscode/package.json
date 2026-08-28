@@ -499,7 +499,7 @@
           "type": "string",
           "default": "",
           "scope": "resource",
-          "markdownDescription": "Full path to the `rbx` executable to run when visualizing a testcase. Leave empty to find it automatically: the extension tries `PATH` first, then asks a login shell, because the extension host's `PATH` is the one VS Code was launched with and often omits `~/.local/bin`."
+          "markdownDescription": "Full path to the `rbx` executable, used when visualizing a testcase and when reading a problem's vars for statement hints. Leave empty to find it automatically: the extension tries `PATH` first, then asks a login shell, because the extension host's `PATH` is the one VS Code was launched with and often omits `~/.local/bin`."
         }
       }
     }
