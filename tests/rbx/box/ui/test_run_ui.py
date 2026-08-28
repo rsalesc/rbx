@@ -7,6 +7,7 @@ through subgroups.
 """
 
 import pathlib
+from typing import Optional
 from unittest import mock
 
 from rbx import utils
@@ -37,6 +38,7 @@ from rbx.grading.steps import (
     CheckerResult,
     Evaluation,
     Outcome,
+    RunTiming,
     TestcaseIO,
     TestcaseLog,
 )
@@ -453,3 +455,70 @@ def test_run_testcase_metadata_does_not_time_a_skipped_testcase(tmp_path):
     assert 'SKIPPED' in markup
     assert '0 ms' not in markup
     assert '0 B' not in markup
+
+
+def _write_timed_eval(
+    prefix: pathlib.Path,
+    checker_timing: Optional[RunTiming],
+    interactor_timing: Optional[RunTiming] = None,
+) -> None:
+    """An `.eval` carrying whatever judging timings a run captured."""
+    prefix.parent.mkdir(parents=True, exist_ok=True)
+    eval = Evaluation(
+        result=CheckerResult(
+            outcome=Outcome.ACCEPTED,
+            checker_timing=checker_timing,
+            interactor_timing=interactor_timing,
+        ),
+        # An odd solution time, so `0 ms` cannot appear on the Time line and
+        # mask a checker line wrongly claiming a zero measurement.
+        log=TestcaseLog(time=0.123, wall_time=0.123, memory=1024),
+        testcase=TestcaseIO(index=0),
+    )
+    prefix.with_suffix('.eval').write_text(utils.model_to_yaml(eval))
+
+
+def _metadata_markup_for(tmp_path, **kwargs) -> str:
+    skeleton = _make_skeleton(
+        tmp_path / 'runs', tmp_path / 'tests', stems=['1-gen-000']
+    )
+    sol = skeleton.solutions[0]
+    _write_timed_eval(sol.runs_dir / 'main' / '1-gen-000', **kwargs)
+    markup = get_run_testcase_metadata_markup(
+        skeleton, sol, skeleton.entries[0].group_entry
+    )
+    assert markup is not None
+    return markup
+
+
+def test_metadata_shows_the_measured_checker_time(tmp_path):
+    markup = _metadata_markup_for(tmp_path, checker_timing=RunTiming(time=0.048))
+    assert '[b]Checker:[/b] 48 ms' in markup
+
+
+def test_metadata_shows_no_checker_time_when_the_checker_never_ran(tmp_path):
+    """A checker that never ran has no measurement -- never `0 ms`."""
+    markup = _metadata_markup_for(tmp_path, checker_timing=None)
+    assert '[b]Checker:[/b] -' in markup
+    assert '0 ms' not in markup
+
+
+def test_metadata_shows_no_checker_time_when_the_clock_is_unset(tmp_path):
+    """A `RunTiming` can exist while its clocks are `None` -- still unmeasured."""
+    markup = _metadata_markup_for(tmp_path, checker_timing=RunTiming(wall_time=0.048))
+    assert '[b]Checker:[/b] -' in markup
+    assert '0 ms' not in markup
+
+
+def test_metadata_has_no_interactor_line_for_a_batch_problem(tmp_path):
+    markup = _metadata_markup_for(tmp_path, checker_timing=RunTiming(time=0.048))
+    assert 'Interactor:' not in markup
+
+
+def test_metadata_shows_the_interactor_time_when_there_is_one(tmp_path):
+    """A communication problem with no checker still times its interactor."""
+    markup = _metadata_markup_for(
+        tmp_path, checker_timing=None, interactor_timing=RunTiming(time=1.2)
+    )
+    assert '[b]Interactor:[/b] 1200 ms' in markup
+    assert '[b]Checker:[/b] -' in markup

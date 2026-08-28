@@ -7,6 +7,7 @@ from textual.widgets.option_list import Option
 
 from rbx import console, utils
 from rbx.box import package, solutions
+from rbx.box.formatting import get_formatted_time
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.schema import Solution
 from rbx.box.solutions import (
@@ -16,7 +17,7 @@ from rbx.box.solutions import (
     get_solution_score_markup,
 )
 from rbx.box.testcase_schema import TestcaseEntry
-from rbx.grading.steps import Evaluation
+from rbx.grading.steps import Evaluation, RunTiming
 
 
 def is_main_solution(solution: Solution) -> bool:
@@ -222,6 +223,19 @@ def _get_checker_msg_last_line(eval: Evaluation) -> Optional[str]:
     return eval.result.message.rstrip().split('\n')[-1]
 
 
+def _get_formatted_judging_time(timing: Optional[RunTiming]) -> str:
+    """A judging program's CPU time, as milliseconds, or the unmeasured marker.
+
+    Both guards are needed: a run that never happened has no `RunTiming` at all,
+    and a `RunTiming` that exists may still carry a `None` clock. Either way
+    nothing was measured, and rendering `0 ms` would claim otherwise.
+    """
+    if timing is None or timing.time is None:
+        return solutions._UNMEASURED  # noqa: SLF001
+    # `RunTiming` keeps seconds; `get_formatted_time` wants milliseconds.
+    return get_formatted_time(int(timing.time * 1000))
+
+
 def get_run_testcase_metadata_markup(
     skeleton: SolutionReportSkeleton, solution: SolutionSkeleton, entry: TestcaseEntry
 ) -> Optional[str]:
@@ -241,6 +255,16 @@ def get_run_testcase_metadata_markup(
         f'[b]{solutions.get_full_outcome_markup_verdict(eval.result.outcome)}[/b]'
     )
     lines.append(f'[b]Time:[/b] {time_str} / [b]Memory:[/b] {memory_str}')
+    lines.append(
+        f'[b]Checker:[/b] {_get_formatted_judging_time(eval.result.checker_timing)}'
+    )
+    # Only a communication problem has an interactor, so a batch testcase must
+    # not grow a line reading `-` for a program that does not exist.
+    if eval.result.interactor_timing is not None:
+        lines.append(
+            f'[b]Interactor:[/b] '
+            f'{_get_formatted_judging_time(eval.result.interactor_timing)}'
+        )
     if checker_msg is not None:
         lines.append(f'[b]Checker:[/b] {utils.escape_markup(checker_msg)}')
     # Only `--keep-checker-stderr` runs have one, and only its presence is worth
