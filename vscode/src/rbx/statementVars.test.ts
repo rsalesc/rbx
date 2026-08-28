@@ -4,10 +4,18 @@ import { test } from 'node:test';
 import { scanStatementVars, Vars } from './statementVars';
 
 /**
- * The foreign-scope keys are deliberately *resolvable*. A nested var block
- * named `g` really does flatten to the key `g.N.max` in `rbx vars --json`, so
- * without them the scope guard would be untestable: every foreign name would
- * be turned away by the lookup rather than by the guard.
+ * The foreign-scope keys are deliberately *resolvable*, so that the scope
+ * guard is what turns them away rather than the lookup -- otherwise the guard
+ * would be untestable.
+ *
+ * Only the `g.` and `p.` keys are reachable in a real payload: a nested var
+ * block named `g` really does flatten to `g.N.max` in `rbx vars --json`. The
+ * `problem.`/`contest.`/`groups.`/`vars.problem.` ones cannot occur, because
+ * those roots sit in `RESERVED_STATEMENT_VAR_NAMES`; they are here purely to
+ * prove the GUARD rejects them, not to stand in for anything rbx could emit.
+ *
+ * Values are strings because that is what `rbx vars --json` emits -- see the
+ * `Vars` doc comment.
  */
 const VARS: Vars = {
   'N.max': '100000',
@@ -15,6 +23,7 @@ const VARS: Vars = {
   'BIG.max': '1000000000000000007',
   flag: 'True',
   label: 'foo',
+  g: '3',
   'g.N.max': '7',
   'groups.g.vars.N.max': '7',
   'p.N.max': '7',
@@ -117,6 +126,24 @@ test('an integer too large for a double keeps every digit', () => {
   assert.deepStrictEqual(
     scan('$N \\le \\VAR{BIG.max}$').map((hint) => hint.text),
     ['1000000000000000007'],
+  );
+});
+
+test('a root var named exactly `g` still resolves', () => {
+  // FOREIGN_SCOPE only claims `g.`, with the dot: `g` alone is an ordinary
+  // root var, and refusing it would cost a badge for nothing.
+  assert.deepStrictEqual(
+    scan('\\VAR{g}').map((hint) => hint.text),
+    ['3'],
+  );
+});
+
+test('a reference wrapped across a newline still resolves', () => {
+  // `[^}]*` spans newlines, while `isCommented` only inspects the line the
+  // reference opens on.
+  assert.deepStrictEqual(
+    scan('$N \\le \\VAR{N.max\n | sci}$').map((hint) => hint.text),
+    ['100000'],
   );
 });
 

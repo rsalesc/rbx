@@ -39,8 +39,13 @@ export interface VarHint {
  * - `problem`, `contest`, `groups` and `vars` are rbx's own. All four sit in
  *   `RESERVED_STATEMENT_VAR_NAMES` (rbx/box/fields.py), which rejects a
  *   top-level var that would shadow a template namespace key, so no legitimate
- *   root var can ever be spelled `problem.x` or `groups.x`. Claiming them
- *   costs nothing.
+ *   root var can ever be spelled `problem.x` or `groups.x`. That makes these
+ *   four *redundant today*: the lookup below would miss such a name anyway,
+ *   because no payload can contain it. They are kept for legibility -- the
+ *   list reads as "the scopes a statement can name" -- and so that relaxing
+ *   the reserved list does not quietly turn them into wrong badges. Note that
+ *   `problems` is just as reserved and is *not* here, which is the tell that
+ *   this list is a readable summary rather than a mirror of that frozenset.
  * - `g` and `p` are only *conventional* -- the aliases a template author
  *   happens to bind in `\BLOCK{for g in groups}`. rbx reserves neither, so a
  *   root var genuinely named `g` is legal and `\VAR{g.max}` would then lose a
@@ -50,9 +55,26 @@ export interface VarHint {
  */
 const FOREIGN_SCOPE = /^(vars\.)?(g|p|problem|contest|groups)\./;
 
-/** A plain dotted name, with an optional filter pipeline we ignore. */
-const REFERENCE = /^\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:\|[^}]*)?$/;
+/**
+ * A plain dotted name, with an optional filter pipeline we ignore.
+ *
+ * Anchored at both ends and matched against the *trimmed* expression, so a
+ * leading `\s*` would be dead and is not here. The trailing `\s*` is load
+ * bearing: it absorbs the space before the pipe in `N.max | sci`.
+ *
+ * The pipeline's `[^}]*` can never actually meet a `}` -- `OCCURRENCE` stopped
+ * at the first one -- but it is kept over `.*` because it also matches a
+ * newline, and a filter pipeline may well be wrapped across lines.
+ */
+const REFERENCE = /^([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:\|[^}]*)?$/;
 
+/**
+ * One `\VAR{...}` reference and the expression inside it.
+ *
+ * `[^}]*` stops at the first closing brace, so a reference holding a `}` (a
+ * dict literal, say) is not matched as a whole and simply gets no badge. It
+ * spans newlines, which `.` would not.
+ */
 const OCCURRENCE = /\\VAR\{([^}]*)\}/g;
 
 /** How many backslashes immediately precede `offset`. */
@@ -67,11 +89,19 @@ function backslashesBefore(text: string, offset: number): number {
 /**
  * Whether a comment already runs at `offset`.
  *
- * Both comment syntaxes a statement can use open with a percent -- LaTeX's `%`
+ * The comment syntaxes a statement can use open with a percent -- LaTeX's `%`
  * and rbxTeX's Jinja line comment `%#` -- and both run to the end of the line,
  * so one unescaped percent earlier on the line is enough. `\%` is a literal
  * percent and opens nothing; `\\%` is a literal backslash and then a comment,
  * hence the parity check.
+ *
+ * This is a heuristic, not a parse, and it errs toward silence in both known
+ * directions. A Jinja *line statement* opens with `%-`
+ * (`line_statement_prefix`, rbx/box/statements/latex_jinja.py), which is not a
+ * comment, yet a `\VAR{...}` on such a line is treated as commented and loses
+ * its badge. A literal percent inside `\verb|%|` or a verbatim environment
+ * likewise suppresses a legitimate hint on the rest of that line. Both are
+ * missing badges rather than wrong ones, which D5 allows.
  */
 function isCommented(text: string, offset: number): boolean {
   const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
@@ -96,11 +126,13 @@ function isEscaped(text: string, offset: number): boolean {
 function lookup(vars: Vars, name: string): string | undefined {
   // Own-property only: a name like `constructor` or `toString` is a typo, not
   // a var, and must not resolve to whatever `Object.prototype` carries.
-  return Object.prototype.hasOwnProperty.call(vars, name) ? vars[name] : undefined;
+  return Object.hasOwn(vars, name) ? vars[name] : undefined;
 }
 
 export function scanStatementVars(text: string, vars: Vars): VarHint[] {
   const hints: VarHint[] = [];
+  // A fresh regex per scan: a `/g` one carries `lastIndex` between calls, so
+  // sharing the constant would leak where the previous scan stopped.
   const occurrence = new RegExp(OCCURRENCE);
 
   for (let match = occurrence.exec(text); match; match = occurrence.exec(text)) {
