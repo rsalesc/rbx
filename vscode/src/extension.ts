@@ -2,9 +2,9 @@
  * Extension entry point.
  *
  * The extension is a pure reader (design D2/D3): the user runs `rbx run` in the
- * terminal and this watches what lands under `.rbx/runs`. It never spawns rbx,
- * because every rbx invocation has side effects on the package cache and could
- * race a run already in flight.
+ * terminal and this watches what lands under `.rbx/runs`. It never drives a
+ * build; the only rbx it spawns is read-only, idempotent work behind a feature
+ * that asked for it -- see rbxProcess.ts for what makes that safe.
  */
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -23,6 +23,7 @@ import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
 import { registerSolutionLens } from './solutionLens';
 import { registerSolutionStatus } from './solutionStatus';
+import { registerStatementVarHints } from './statementVarHints';
 import { StatementVarsIndex } from './statementVarsIndex';
 import { TestsetPanel } from './testsetPanel';
 import { TestsetViewProvider } from './testsetView';
@@ -118,6 +119,7 @@ export function activate(context: vscode.ExtensionContext): void {
   registerDecorations(context, declared);
   registerSolutionLens(context, declared);
   registerSolutionStatus(context, declared);
+  registerStatementVarHints(context, declared, statementVars);
   // Fed by the same `onDidChange` the run view is, so the Problems entries and
   // the Compilation Findings panel can never describe different runs.
   registerDiagnostics(context, data);
