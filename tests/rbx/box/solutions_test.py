@@ -2083,16 +2083,23 @@ async def test_benchmark_block_is_absent_by_default(
     assert benchmark_lines(default_console) == []
     # Drop the block from the benchmarked report and the two are identical, so
     # the flag cannot have changed anything else.
-    # The summary closes the report and opens with a blank line of its own, so
-    # cut the tail from that separator down; the per-solution blocks then come
-    # out line by line.
+    # The summary closes the report, and the blank line above it belongs to the
+    # section before it -- which the `-b0` report prints too -- so the cut is at
+    # the header itself. The per-solution blocks then come out line by line.
     lines = rendered_lines(benchmarked_console)
     summary = next(
-        index
-        for index, line in enumerate(lines)
-        if line.strip().startswith('Benchmark summary')
+        (
+            index
+            for index, line in enumerate(lines)
+            if line.strip().startswith('Benchmark summary')
+        ),
+        None,
     )
-    lines = lines[: summary - 1]
+    # Two solutions here, so the problem-level block is expected: without a
+    # default this would surface as a `StopIteration` from a test about the
+    # per-solution block.
+    assert summary is not None
+    lines = lines[:summary]
     block = set(benchmark_lines(benchmarked_console))
     without_block = [line for line in lines if line.strip() not in block]
     assert without_block == rendered_lines(default_console)
@@ -2333,6 +2340,7 @@ async def run_detailed_report(
     console: rich.console.Console,
     runs_dir: pathlib.Path,
     benchmark_level: BenchmarkLevel = BenchmarkLevel.NONE,
+    timing: bool = True,
 ) -> bool:
     """Drive `print_run_report` down its `--detailed` path.
 
@@ -2352,6 +2360,7 @@ async def run_detailed_report(
             console,
             VerificationLevel.FULL,
             detailed=True,
+            timing=timing,
             benchmark_level=benchmark_level,
         )
 
@@ -2453,6 +2462,110 @@ async def test_problem_benchmark_prints_when_the_timing_summary_is_suppressed(
     # No timing summary above it here, so the separator has to come from the
     # last solution's own trailing blank line rather than be printed twice.
     assert_summary_stands_apart(console)
+
+
+# `rbx run` reaches four different tails under `-b1`: `--detailed` swaps the
+# whole report path, and `--fail-fast` drops the timing summary from either of
+# them (`cli.commands.run` passes `timing=not fail_fast`). Each section owns the
+# blank line that ends it, so all four have to come out spaced the same -- the
+# `-d --ff` one used to print two, because the detailed path closed every
+# solution *and* the loop.
+@pytest.mark.parametrize('detailed', [False, True], ids=['plain', 'detailed'])
+@pytest.mark.parametrize('fail_fast', [False, True], ids=['full', 'fail_fast'])
+@pytest.mark.parametrize(
+    'benchmark_level',
+    [BenchmarkLevel.NONE, BenchmarkLevel.SOLUTIONS],
+    ids=['b0', 'b1'],
+)
+async def test_every_report_path_is_spaced_the_same(
+    mock_problem_root,
+    mock_skeleton,
+    mock_binary_scoring,
+    detailed,
+    fail_fast,
+    benchmark_level,
+):
+    skeleton = mock_skeleton(
+        two_solutions_with_disagreeing_extremes(), entries_per_group={'group1': 2}
+    )
+    verdicts = (
+        {('group1', 0): Outcome.ACCEPTED, ('group1', 1): Outcome.SKIPPED}
+        if fail_fast
+        else _ALL_ACCEPTED
+    )
+    result = make_run_result_with_per_solution_times(
+        skeleton, verdicts, _DISAGREEING_TIMES_MS
+    )
+
+    console = recording_console()
+    with fresh_issue_stack():
+        if detailed:
+            await run_detailed_report(
+                result,
+                console,
+                mock_problem_root / 'runs',
+                benchmark_level=benchmark_level,
+                timing=not fail_fast,
+            )
+        else:
+            await print_run_report(
+                result,
+                console,
+                VerificationLevel.FULL,
+                timing=not fail_fast,
+                benchmark_level=benchmark_level,
+            )
+
+    lines = rendered_lines(console)
+    # No section is separated from the next by more than one blank line, on any
+    # of the paths.
+    assert not any(
+        first == '' and second == '' for first, second in zip(lines, lines[1:])
+    )
+    if benchmark_level == BenchmarkLevel.SOLUTIONS:
+        assert problem_benchmark_lines(console)
+        assert_summary_stands_apart(console)
+
+
+async def test_problem_benchmark_is_omitted_for_a_single_solution(
+    mock_problem_root, mock_skeleton, mock_binary_scoring
+):
+    """`rbx run <one-solution> -b1` is the commonest way the flag is used, and
+    every line of the summary is an extreme *across* solutions. With one
+    solution each extreme names the only candidate and each number restates the
+    per-solution block printed right above, so the whole section is a second
+    copy of what the reader just read."""
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = mock_skeleton([solution], entries_per_group={'group1': 2})
+    result = make_run_result(
+        skeleton,
+        {('group1', 0): Outcome.ACCEPTED, ('group1', 1): Outcome.ACCEPTED},
+        checker_time_ms=20,
+    )
+
+    console = recording_console()
+    await print_run_report(
+        result,
+        console,
+        VerificationLevel.FULL,
+        benchmark_level=BenchmarkLevel.SOLUTIONS,
+    )
+
+    # The per-solution block is still there -- it is where the totals are read
+    # off, and it is what makes the summary redundant here.
+    assert benchmark_lines(console) == expected_benchmark_lines(
+        uniform_solution_bench(
+            solution,
+            solution_time_ms=100,
+            checker_time_ms=20,
+            judged=2,
+            total_testcases=2,
+        )
+    )
+    # Asserted through `problem_benchmark_lines` rather than `benchmark_lines`:
+    # the latter filters on the per-solution labels, which the summary's own
+    # header does not carry, so it would come back empty either way.
+    assert problem_benchmark_lines(console) == []
 
 
 @pytest.mark.test_pkg('problems/abort-groups')
@@ -3376,6 +3489,27 @@ async def test_interactive_run_closes_with_the_problem_benchmark(
         'Most checker time: 48 ms, sol1.cpp',
         'Slowest testcase to judge: 148 ms, group1/0',
     ]
+    assert_summary_stands_apart(console)
+
+
+async def test_interactive_run_omits_the_summary_for_a_single_solution(
+    mock_problem_root, mock_skeleton, mock_binary_scoring
+):
+    """`rbx irun -b1` on one solution is as common as `rbx run -b1` on one, and
+    the summary is as redundant: every extreme names the only solution, over the
+    only testcase, whose times the `Checker time:` line above already gave."""
+    solutions = interactive_solutions(count=1)
+    skeleton = mock_skeleton(solutions, entries_per_group={'group1': 1})
+    console = recording_console()
+
+    with stubbed_interactive_run(skeleton, [interactive_eval()], console):
+        await solutions_module.run_and_print_interactive_solutions(
+            verification=VerificationLevel.ALL_SOLUTIONS,
+            benchmark_level=BenchmarkLevel.SOLUTIONS,
+        )
+
+    assert judging_time_lines(console) == ['Checker time: 20 ms']
+    assert problem_benchmark_lines(console) == []
 
 
 async def test_interactive_run_benchmark_is_absent_by_default(
@@ -3411,15 +3545,20 @@ async def test_interactive_run_benchmark_is_absent_by_default(
     assert problem_benchmark_lines(default_console) == []
 
     # Drop what `-b1` added and the two reports are identical, so the flag
-    # cannot have changed anything else. The summary closes the report behind a
-    # blank line of its own, so cut from that separator down.
+    # cannot have changed anything else. The blank line above the summary is the
+    # last solution's own, which the `-b0` report prints too, so cut at the
+    # header itself.
     lines = rendered_lines(benchmarked_console)
     summary = next(
-        index
-        for index, line in enumerate(lines)
-        if line.strip().startswith('Benchmark summary')
+        (
+            index
+            for index, line in enumerate(lines)
+            if line.strip().startswith('Benchmark summary')
+        ),
+        None,
     )
-    lines = lines[: summary - 1]
+    assert summary is not None
+    lines = lines[:summary]
     added = set(judging_time_lines(benchmarked_console))
     assert [line for line in lines if line.strip() not in added] == rendered_lines(
         default_console

@@ -182,6 +182,12 @@ class TestcaseJudging:
     # `None` means unmeasured. See `checker_time_seconds`.
     checker_time_seconds: Optional[float]
     interactor_time_seconds: Optional[float]
+    # Whether an interactor ran at all, which the seconds cannot say: an
+    # interactor that ran without a clock reports `None` seconds, exactly like a
+    # batch problem that has no interactor. `rbx ui` tells the two apart by the
+    # timing object, and this report has to agree with it -- hiding an
+    # interactor that ran makes a communication problem read as a batch one.
+    has_interactor: bool = False
 
 
 @dataclasses.dataclass
@@ -195,6 +201,9 @@ class SolutionBenchmark:
     total_interactor_time_seconds: Optional[float]
     judged: int
     total_testcases: int
+    # Whether any judged testcase ran an interactor. See
+    # `TestcaseJudging.has_interactor`.
+    has_interactor: bool = False
 
     @property
     def partial(self) -> bool:
@@ -247,6 +256,7 @@ def build_solution_benchmark(
                 solution_time_seconds=eval.log.time or 0.0,
                 checker_time_seconds=checker_time_seconds(eval),
                 interactor_time_seconds=interactor_time_seconds(eval),
+                has_interactor=eval.result.interactor_timing is not None,
             )
         )
 
@@ -263,6 +273,7 @@ def build_solution_benchmark(
         total_interactor_time_seconds=_total_seconds(
             [j.interactor_time_seconds for j in judgings]
         ),
+        has_interactor=any(j.has_interactor for j in judgings),
         judged=len(judgings),
         # `evals` can be shorter than the skeleton mid-run, so the denominator
         # is the testset, not the list handed in.
@@ -327,8 +338,13 @@ def solution_benchmark_lines(bench: SolutionBenchmark) -> List[str]:
 
     # The totals, in contrast, always name the checker: on the problems where a
     # checker is expected, `checker: -` is the report that it went unmeasured.
+    # The interactor is named there whenever one *ran*, measured or not, which
+    # is how `rbx ui` gates its own interactor line. Gating on the seconds
+    # instead would drop an interactor the sandbox failed to clock, and a
+    # communication problem whose report never mentions an interactor reads as a
+    # batch problem -- a wrong claim, where `interactor: -` is a true one.
     totals = [f'checker: {_measurement(bench.total_checker_time_seconds)}']
-    if bench.total_interactor_time_seconds is not None:
+    if bench.has_interactor:
         totals.append(
             f'interactor: {_measurement(bench.total_interactor_time_seconds)}'
         )
@@ -399,29 +415,34 @@ def print_problem_benchmark(
 
 def report_solution_benchmark(
     console: rich.console.Console,
-    level: BenchmarkLevel,
     solution: Solution,
     skeleton: 'SolutionReportSkeleton',
     evals: List[Evaluation],
-) -> Optional[SolutionBenchmark]:
-    """Print one solution's block if the level asks for it, and hand it back to
-    be collected.
+    into: List[SolutionBenchmark],
+    *,
+    level: BenchmarkLevel,
+) -> None:
+    """Print one solution's block if the level asks for it, collecting it into
+    ``into`` for the problem-wide summary.
 
     Both report paths -- the reporters and `--detailed`, which bypasses them --
     build and print the same block from the same three values, so the level
     check lives here, next to the level enum, rather than being spelled out at
-    each call site. `None` comes back when nothing was measured (a `--fail-fast`
-    run that skipped every one of this solution's testcases) or when the level
-    asks for no benchmark at all: in both cases there is nothing to collect for
-    the problem-wide summary.
+    each call site. The destination list is taken rather than the benchmark
+    handed back, so that "print it, and keep it for the summary" is one call at
+    both sites instead of a convention each of them has to remember.
+
+    Nothing is appended when nothing was measured (a `--fail-fast` run that
+    skipped every one of this solution's testcases) or when the level asks for
+    no benchmark at all: in both cases there is nothing to summarize.
 
     ``evals`` must be a gapless prefix of ``skeleton.entries``; see
     `build_solution_benchmark`.
     """
     if level != BenchmarkLevel.SOLUTIONS:
-        return None
+        return
     bench = build_solution_benchmark(solution, skeleton, evals)
     if bench is None:
-        return None
+        return
     print_solution_benchmark(console, bench)
-    return bench
+    into.append(bench)

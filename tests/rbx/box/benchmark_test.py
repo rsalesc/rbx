@@ -385,6 +385,60 @@ def test_solution_block_reports_the_interactor_when_there_is_one(
     assert totals == 'Total judging: 810 ms (checker: 10 ms, interactor: 600 ms)'
 
 
+# The three states an interactor can be in, and what the totals line says about
+# each. The gate is whether one *ran*, not whether it was clocked -- which is
+# how `rbx ui` gates its own `Interactor time:` line. Gating on the seconds
+# would collapse the last two states into the first, and a communication
+# problem whose report never names an interactor reads as a batch problem.
+
+
+def test_solution_block_says_nothing_about_an_interactor_when_there_is_none(
+    mock_skeleton, tmp_path
+):
+    bench = solution_benchmark(
+        mock_skeleton,
+        tmp_path,
+        [timed(Outcome.ACCEPTED, time_ms=100, checker_ms=10, index=0)],
+    )
+
+    assert not any(
+        'interactor' in line for line in benchmark.solution_benchmark_lines(bench)
+    )
+
+
+def test_solution_block_reports_a_measured_interactor_total(mock_skeleton, tmp_path):
+    bench = solution_benchmark(
+        mock_skeleton,
+        tmp_path,
+        [
+            timed(
+                Outcome.ACCEPTED, time_ms=100, checker_ms=10, interactor_ms=30, index=0
+            )
+        ],
+    )
+
+    _, totals = benchmark.solution_benchmark_lines(bench)
+
+    assert 'interactor: 30 ms' in totals
+
+
+def test_solution_block_names_an_interactor_that_ran_unmeasured(
+    mock_skeleton, tmp_path
+):
+    # A `RunTiming` with no clock: the interactor ran, the sandbox reported no
+    # time. `interactor: -` is the true report; saying nothing is not.
+    eval = timed(Outcome.ACCEPTED, time_ms=100, checker_ms=10, index=0)
+    eval.result.interactor_timing = RunTiming()
+    bench = solution_benchmark(mock_skeleton, tmp_path, [eval])
+
+    breakdown, totals = benchmark.solution_benchmark_lines(bench)
+
+    assert 'interactor: -' in totals
+    # The breakdown is a sum, though, so an unmeasured term is left out of it --
+    # `+ - interactor` is broken prose, exactly as it is for the checker.
+    assert 'interactor' not in breakdown
+
+
 def test_solution_block_renders_an_unmeasured_checker_total_as_a_dash(
     mock_skeleton, tmp_path
 ):
