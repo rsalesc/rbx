@@ -304,24 +304,46 @@ async def test_subgroups_of_one_group_are_paired_apart(
     assert len(paths) == 4
 
 
-async def test_every_observed_code_maps_to_the_matching_outcome(
-    testing_pkg, tmp_path, monkeypatch
+@pytest.mark.parametrize(
+    ('code', 'outcome'),
+    [
+        # mojtools' `run-testinput` writes exactly these, and nothing rewrites the
+        # string between `log.verdictall` and `TestrunTest.code`.
+        ('AC', Outcome.ACCEPTED),
+        # Accepted in MOJ's own accounting: it scores as correct and canonicalises
+        # to `Accepted`, so it must not arrive as a failure.
+        ('AC,PE', Outcome.ACCEPTED),
+        ('WA', Outcome.WRONG_ANSWER),
+        ('MLE', Outcome.MEMORY_LIMIT_EXCEEDED),
+        ('TLE', Outcome.TIME_LIMIT_EXCEEDED),
+        ('RE', Outcome.RUNTIME_ERROR),
+        # Used to be refused as unknown, which failed a whole run over a verdict
+        # whose own name says what it is.
+        ('RE_NZEC', Outcome.RUNTIME_ERROR),
+        ('TMT', Outcome.RUNTIME_ERROR),
+        # The *comparator* misbehaved, which is not the solution's runtime error.
+        ('UE', Outcome.JUDGE_FAILED),
+        # Unobserved sibling of the `RE_*` family, read by its prefix.
+        ('RE_SIGSEGV', Outcome.RUNTIME_ERROR),
+    ],
+)
+async def test_every_moj_code_maps_to_the_matching_outcome(
+    code, outcome, testing_pkg, tmp_path, monkeypatch
 ):
-    """`AC` / `WA` / `RE` / `TLE` are the four codes a real testrun has produced."""
-    runner, fake, ctx = await _prepared(testing_pkg, tmp_path, monkeypatch)
-    names = [*SAMPLE_NAMES, *MAIN_NAMES]
+    """MOJ's whole per-test vocabulary, one code at a time."""
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
     fake.results['sol.cpp'] = [
-        _test(name, code, 0.5) for name, code in zip(names, ['AC', 'WA', 'RE', 'TLE'])
+        _test(SAMPLE_NAMES[0], code, 0.1),
+        _test(SAMPLE_NAMES[1], 'AC', 0.2),
     ]
 
     evals = await _run(runner, ctx)
 
-    assert [e.result.outcome for e in evals] == [
-        Outcome.ACCEPTED,
-        Outcome.WRONG_ANSWER,
-        Outcome.RUNTIME_ERROR,
-        Outcome.TIME_LIMIT_EXCEEDED,
-    ]
+    assert evals[0].result.outcome == outcome
+    # The code the judge sent is what gets reported, not the outcome it became.
+    assert code in evals[0].result.message
 
 
 async def test_a_tle_keeps_the_time_it_really_took(testing_pkg, tmp_path, monkeypatch):
@@ -346,7 +368,7 @@ async def test_a_tle_keeps_the_time_it_really_took(testing_pkg, tmp_path, monkey
 async def test_an_unknown_code_fails_loudly_and_names_it(
     testing_pkg, tmp_path, monkeypatch
 ):
-    """`MLE`/`OLE`/`PE`/`CE`/`JE` were never provoked, so they are not mapped.
+    """`OLE`/`PE`/`JE` are spellings MOJ does not write, so they have no reading.
 
     A code guessed into a plausible `Outcome` corrupts the time-limit estimate
     with nothing in the report to say so -- an unmapped slow solution silently
@@ -358,15 +380,16 @@ async def test_an_unknown_code_fails_loudly_and_names_it(
     )
     fake.results['sol.cpp'] = [
         _test(SAMPLE_NAMES[0], 'AC', 0.1),
-        _test(SAMPLE_NAMES[1], 'MLE', 0.2),
+        _test(SAMPLE_NAMES[1], 'PE', 0.2),
     ]
 
     with pytest.raises(MojRunnerError) as exc:
         await _run(runner, ctx)
 
     message = str(exc.value)
-    assert 'MLE' in message
-    assert '2026-08-21-moj-probe-notes' in message
+    assert 'PE' in message
+    # The codes rbx *does* know are listed, so the fix is visible from the error.
+    assert 'RE_NZEC' in message
     # Plain text: `main.py` bare-prints `str(e)`.
     assert '[item]' not in message and '[error]' not in message
 
@@ -915,7 +938,7 @@ async def test_a_solution_nobody_waits_for_does_not_haunt_the_run_later(
         _test(SAMPLE_NAMES[1], 'AC', 0.2),
     ]
     # The abandoned one fails, which is the case that leaves a trace.
-    fake.results['other.cpp'] = [_test(SAMPLE_NAMES[0], 'MLE', 0.1)]
+    fake.results['other.cpp'] = [_test(SAMPLE_NAMES[0], 'PE', 0.1)]
 
     first = runner.run_solution(ctx.skeleton.solutions[0], ctx.skeleton.entries, ctx)
     abandoned = runner.run_solution(
@@ -953,7 +976,7 @@ async def test_an_abandoned_failure_is_not_reported_out_of_the_garbage_collector
         groups=['samples'],
         solutions=[('sol.cpp', ExpectedOutcome.ACCEPTED)],
     )
-    fake.results['sol.cpp'] = [_test(SAMPLE_NAMES[0], 'MLE', 0.1)]
+    fake.results['sol.cpp'] = [_test(SAMPLE_NAMES[0], 'PE', 0.1)]
 
     loop = asyncio.get_running_loop()
     reported: List[dict] = []

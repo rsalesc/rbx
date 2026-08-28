@@ -332,9 +332,12 @@ replaced a `ctx.progress.update(...)` that nobody ever saw: every caller exits i
 (three, observed) and answers 429 past that, `moj testrun` cannot pick a judge so two in
 flight may share a machine and inflate each other, and the park is shared with everyone
 else. A 429 is waited out rather than failed -- it cannot be cleared, since `moj` has no
-way to cancel a testrun. The poll is bounded, like `prepare`'s. `_OUTCOME_BY_MOJ_CODE` maps only the four codes the probe actually saw
-(`AC`/`WA`/`RE`/`TLE`) and **refuses an unrecognised one by name** rather than guessing --
-a wrong verdict silently corrupts the time limit being estimated. A testcase MOJ did not
+way to cancel a testrun. The poll is bounded, like `prepare`'s. `_outcome_for_moj_code` maps MOJ's whole per-test vocabulary,
+read off mojtools' `run-testinput` (`AC`/`AC,PE`/`WA`/`MLE`/`TLE`/`RE`/`RE_NZEC`/`TMT`/`UE`, plus any
+other `RE_*` read as a runtime error by its prefix) and **refuses an unrecognised one by name** rather
+than guessing -- a wrong verdict silently corrupts the time limit being estimated. `AC,PE` is a *pass*
+(MOJ scores it as correct) and `UE` is the comparator failing, so it becomes `JUDGE_FAILED` rather than
+the solution's runtime error. A testcase MOJ did not
 report on becomes `SKIPPED` with no timing (never a zero), and only the `.eval` is written,
 never an empty `.out`.
 

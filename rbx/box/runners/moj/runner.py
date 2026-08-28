@@ -148,22 +148,82 @@ QUEUE_FULL_ATTEMPTS = 40
 # MOJ's per-test `code`, as it lands in `TestrunTest.code`, mapped onto rbx's
 # `Outcome`. Adding a code is one line here and nothing else.
 #
-# **Observed** -- provoked against the live judge and read off the response
-# (`docs/plans/2026-08-21-moj-probe-notes.md`, section 3): all four below. There
-# are no *inferred* entries in this table on purpose. `MLE`, `OLE`, `PE`, `CE` and
-# `JE` are codes MOJ plausibly emits -- it enforces `MEMLIMITMB`, and its checker
-# bridge has a judge-error path -- but plausibly is not observed, and their exact
-# spellings are guesses. An unrecognised code is therefore refused by name (see
-# `MojRunner._submit_and_poll`) rather than mapped: this table feeds a *time
-# limit*, and a wrong verdict there is silent. A solution mis-mapped to ACCEPTED contributes its
-# time to the estimate as if it had passed; one mis-mapped to TIME_LIMIT_EXCEEDED
-# drops out of it. Neither leaves a trace in the report the setter reads.
+# **This is the judge's whole per-test vocabulary**, read off `run-testinput` in
+# mojtools' `build-and-test.sh` (the only writer of `log.verdictall`) and reaching
+# rbx verbatim: `calibreitor.sh`'s `sol_tests_json` -- and the judge agent's
+# `agent_tests_json`, which it says it mirrors -- parse `VERDICT[<file>]=<code>`
+# straight out of that file into `{name, code, time, tl}`. Nothing rewrites the
+# string on the way. `AC` / `WA` / `RE` / `TLE` were also provoked against the live
+# judge (`docs/plans/2026-08-21-moj-probe-notes.md`, section 3) and `RE_NZEC` came
+# off a real user run; the rest are here on the judge's source rather than on an
+# observation, which is a stronger warrant than a guess at a spelling -- the
+# earlier version of this table had invented `PE` and `JE`, and MOJ emits neither.
+#
+# The mappings that are not one-to-one, and why:
+#
+# - `AC,PE` is an *accepted* run in MOJ's own accounting -- it scores as correct
+#   (`[[ "$THISVERDICT" =~ "AC" ]]`), ranks with `AC` in `VERDICTORDER`, and
+#   canonicalises to `Accepted`. rbx has no presentation-error outcome, and
+#   inventing a failure where the judge counted a pass would corrupt the estimate
+#   in the direction this table exists to avoid. The raw code still reaches the
+#   report through the evaluation's message.
+# - `RE_NZEC` ("non-zero return") and `TMT` ("signaled PPDI") are runtime errors
+#   under different names; MOJ's own `VERDICTCANON` collapses both onto
+#   `Runtime Error`.
+# - `UE` ("Unknown ERROR") is what `run-testinput` writes when the *comparator*
+#   exits with something other than accept/PE/WA. That is the checker
+#   misbehaving, not the solution, so it maps to `JUDGE_FAILED` rather than
+#   following `VERDICTCANON`'s collapse onto `Runtime Error`: a broken checker
+#   reported as a solution's runtime error is exactly the silent lie this table
+#   guards against.
+#
+# Deliberately absent: `CE`, which is real but run-level only -- a submission that
+# does not compile never enters the testset, so `tests` comes back empty and
+# `ran_nothing` handles it (probe notes, section 3b) -- and `NT` ("Nao executado"),
+# which `gen-report.sh` substitutes for a *missing* verdict when rendering HTML and
+# which is therefore never written to `log.verdictall` in the first place. A
+# testcase MOJ said nothing about is already handled, as `SKIPPED`, by
+# `_evaluation_for`.
+#
+# An unrecognised code is refused by name (see `MojRunner._submit_and_poll`)
+# rather than mapped: this table feeds a *time limit*, and a wrong verdict there is
+# silent. A solution mis-mapped to ACCEPTED contributes its time to the estimate as
+# if it had passed; one mis-mapped to TIME_LIMIT_EXCEEDED drops out of it. Neither
+# leaves a trace in the report the setter reads.
 _OUTCOME_BY_MOJ_CODE: Dict[str, Outcome] = {
     'AC': Outcome.ACCEPTED,
+    'AC,PE': Outcome.ACCEPTED,
     'WA': Outcome.WRONG_ANSWER,
-    'RE': Outcome.RUNTIME_ERROR,
+    'MLE': Outcome.MEMORY_LIMIT_EXCEEDED,
     'TLE': Outcome.TIME_LIMIT_EXCEEDED,
+    'RE': Outcome.RUNTIME_ERROR,
+    'RE_NZEC': Outcome.RUNTIME_ERROR,
+    'TMT': Outcome.RUNTIME_ERROR,
+    'UE': Outcome.JUDGE_FAILED,
 }
+
+# `RE_NZEC` is the only qualified runtime error mojtools writes today, and it is in
+# the table above. The prefix is honoured anyway, as a backstop for a judge that
+# grows a sibling (`RE_SIGSEGV` and the like): `RE_` names the family, so reading a
+# member of it as `RUNTIME_ERROR` cannot produce the silent wrong verdict that
+# refusing unknown codes exists to prevent. It is the only inference
+# `_outcome_for_moj_code` makes; anything outside the family is still refused by
+# name.
+_RUNTIME_ERROR_CODE_PREFIX = 'RE_'
+
+
+def _outcome_for_moj_code(code: str) -> Optional[Outcome]:
+    """The rbx `Outcome` for one MOJ per-test `code`, or `None` if there is none.
+
+    `None` is what `_result_from_status` turns into a refusal that names the code,
+    so an unreadable code stops the run instead of becoming a verdict.
+    """
+    if code in _OUTCOME_BY_MOJ_CODE:
+        return _OUTCOME_BY_MOJ_CODE[code]
+    if code.startswith(_RUNTIME_ERROR_CODE_PREFIX):
+        return Outcome.RUNTIME_ERROR
+    return None
+
 
 # What goes in `TestcaseLog.exitstatus` for a testcase MOJ ran.
 #
@@ -819,19 +879,20 @@ class MojRunner:
             {
                 test.code
                 for test in tests.values()
-                if test.code not in _OUTCOME_BY_MOJ_CODE
+                if _outcome_for_moj_code(test.code) is None
             }
         )
         if unknown:
             listed = ', '.join(f'`{code}`' for code in unknown)
+            known = ', '.join(f'`{code}`' for code in _OUTCOME_BY_MOJ_CODE)
             raise MojRunnerError(
                 f'MOJ reported the verdict code(s) {listed} for `{solution.path}` '
                 f'in testrun `{run}`, and rbx does not know what they mean.\n'
-                f'Refusing to guess: only `AC`, `WA`, `RE` and `TLE` have ever '
-                f'been seen from a real testrun (see '
-                f'`docs/plans/2026-08-21-moj-probe-notes.md`), and a code mapped '
-                f'to the wrong outcome would silently corrupt the time limit this '
-                f'run is estimating, with nothing in the report to say so.\n'
+                f'Refusing to guess: {known} are the codes mojtools writes, plus '
+                f'anything else in the `RE_*` runtime-error family, and a code '
+                f'mapped to the wrong outcome would silently corrupt the time '
+                f'limit this run is estimating, with nothing in the report to say '
+                f'so.\n'
                 f'If the code is legitimate, add it to `_OUTCOME_BY_MOJ_CODE` in '
                 f'`rbx/box/runners/moj/runner.py`.'
             )
@@ -1622,8 +1683,12 @@ def _evaluation_for(
             memory=None,
         )
     else:
+        # Never `None` here: `_result_from_status` refused the whole run before any
+        # evaluation was built if a single code was unreadable.
+        outcome = _outcome_for_moj_code(test.code)
+        assert outcome is not None
         result = CheckerResult(
-            outcome=_OUTCOME_BY_MOJ_CODE[test.code],
+            outcome=outcome,
             # MOJ judges with the packaged checker and hands back a code, never
             # the checker's own words (`reports_checker_messages=False`). Saying
             # where the verdict came from is the useful thing left to say, and it
