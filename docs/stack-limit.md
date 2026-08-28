@@ -68,3 +68,41 @@ sudo launchctl limit stack <soft_limit_in_bytes> <hard_limit_in_bytes>
 This configuration will NOT persist after a reboot, but will persist across terminals.
 
 
+
+## Cap the stack of the programs {{rbx}} runs
+
+Everything above is about your machine's limits. Inside the sandbox, {{rbx}} makes the stack as
+large as the system allows, so a solution is never cut short by a limit the real judge would not
+have imposed.
+
+If you want the sandbox to enforce a stack limit instead -- to reproduce a judge that caps it, or
+to catch a solution that recurses deeper than it should -- set `stackLimit`, in MiB, on any
+sandbox configuration in your `env.rbx.yml`:
+
+```yaml
+defaultExecution:
+  sandbox:
+    stackLimit: 256 # 256mb
+```
+
+To apply it to solutions only, and leave checkers, validators and generators unbounded, use the
+`solutionOverrides` of the language that runs them:
+
+```yaml
+languages:
+  - name: "cpp"
+    execution:
+      command: "./{executable}"
+      solutionOverrides:
+        sandbox:
+          stackLimit: 256 # 256mb
+```
+
+!!! warning
+    `stackLimit` is enforced on Linux only. On MacOS, the stack of a sandboxed program is
+    whatever your shell hands down, which is exactly what the sections above are about.
+
+!!! note
+    JVM programs -- Java and Kotlin -- are exempt. The JVM manages its own thread stacks, so
+    the limit would only bound the launcher's main thread and never the code you wrote. This
+    mirrors what {{rbx}} already does with the memory limit for those languages.

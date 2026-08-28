@@ -503,6 +503,21 @@ def _split_and_expand(
     return res
 
 
+def _relax_limits_for_jvm(command: str, params: SandboxParams) -> None:
+    """Drop the limits the JVM cannot live under, for JVM commands only.
+
+    The JVM manages its own memory and its own thread stacks, so neither rlimit
+    means for it what it means for a native program: an ``RLIMIT_AS`` makes it
+    refuse to start at all, and an ``RLIMIT_STACK`` bounds only the launcher's
+    main thread -- never the stack the user code actually runs on. Enforcing
+    either would just break Java and Kotlin without limiting anything.
+    """
+    if LanguageKind.JVM not in command_kinds(get_exe_from_command(command)):
+        return
+    params.address_space = None
+    params.stack_space = None
+
+
 def get_exe_from_command(command: str) -> str:
     cmds = shlex.split(command)
     if not cmds:
@@ -814,9 +829,7 @@ async def compile(
         stderr_file = pathlib.PosixPath(f'compile-{i}.stderr')
         params.set_stdall(stdout=stdout_file, stderr=stderr_file)
 
-        # Remove memory constraints for Java.
-        if LanguageKind.JVM in command_kinds(get_exe_from_command(command)):
-            params.address_space = None
+        _relax_limits_for_jvm(command, params)
 
         try:
             sandbox_log = await asyncio.to_thread(sandbox.run, cmd, params)
@@ -909,9 +922,7 @@ async def run(
     cmd = _split_and_expand(command, sandbox, params)
     params = params.model_copy(deep=True)  # Copy to allow further modification.
 
-    # Remove memory constraints for Java.
-    if LanguageKind.JVM in command_kinds(get_exe_from_command(command)):
-        params.address_space = None
+    _relax_limits_for_jvm(command, params)
 
     try:
         sandbox_log = await asyncio.to_thread(sandbox.run, cmd, params)
@@ -955,8 +966,7 @@ async def run_coordinated(
     interactor_params = interactor.params.model_copy(deep=True)
     solution_params = solution.params.model_copy(deep=True)
 
-    if LanguageKind.JVM in command_kinds(get_exe_from_command(solution.command)):
-        solution_params.address_space = None
+    _relax_limits_for_jvm(solution.command, solution_params)
 
     try:
         solution_sandbox_log, interactor_sandbox_log = await asyncio.to_thread(

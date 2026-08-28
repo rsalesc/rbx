@@ -132,7 +132,9 @@ class EnvironmentSandbox(BaseModel):
 
     stackLimit: Optional[int] = Field(
         default=None,
-        description="""Stack limit in MiB.""",
+        description="""Stack limit in MiB. Only enforced on Linux; ignored on macOS,
+where the stack is whatever the host shell provides. When unset, the stack is
+made as large as the system allows.""",
     )
 
     preserveEnv: Optional[bool] = Field(
@@ -847,6 +849,7 @@ def get_sandbox_params_from_config(
     params.timeout = config.timeLimit
     params.wallclock_timeout = config.wallTimeLimit
     params.address_space = config.memoryLimit
+    params.stack_space = config.stackLimit
     params.max_processes = config.maxProcesses
     params.fsize = config.fileSizeLimit
     if config.preserveEnv:

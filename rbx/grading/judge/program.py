@@ -89,6 +89,7 @@ class ProgramParams:
     time_limit: Optional[float] = None  # seconds
     wall_time_limit: Optional[float] = None  # seconds
     memory_limit: Optional[int] = None  # megabytes
+    stack_limit: Optional[int] = None  # megabytes
     fs_limit: Optional[int] = None  # kilobytes
     env: Dict[str, str] = dataclasses.field(default_factory=dict)
     pgid: Optional[int] = None
@@ -106,13 +107,20 @@ def get_preexec_fn(params: ProgramParams):
         if params.fs_limit is not None:
             fs_limit = params.fs_limit * 1024  # in bytes
             resource.setrlimit(resource.RLIMIT_FSIZE, (fs_limit + 1, fs_limit * 2))
+        # Darwin is left alone: it refuses most RLIMIT_STACK changes, so the
+        # stack there is whatever the host shell hands down (which is what
+        # `rbx`'s stack limit check nags about).
         if sys.platform != 'darwin':
+            stack_limit = (
+                params.stack_limit * 1024 * 1024
+                if params.stack_limit is not None
+                else resource.RLIM_INFINITY
+            )
             try:
-                resource.setrlimit(
-                    resource.RLIMIT_STACK,
-                    (resource.RLIM_INFINITY, resource.RLIM_INFINITY),
-                )
-            except ValueError:
+                resource.setrlimit(resource.RLIMIT_STACK, (stack_limit, stack_limit))
+            except (ValueError, OSError):
+                # Asking for more than the hard limit allows; fall back to
+                # whatever the process already inherited.
                 pass
 
     return preexec_fn

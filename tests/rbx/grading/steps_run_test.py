@@ -356,10 +356,10 @@ class TestStepsRun:
         assert artifacts.logs.run.metadata is not None
         assert artifacts.logs.run.metadata.language == 'python'
 
-    async def test_run_java_removes_memory_constraints(
+    async def test_run_java_removes_memory_and_stack_constraints(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
-        """Test that Java commands have memory constraints removed."""
+        """Test that Java commands have memory and stack constraints removed."""
         # Setup input file
         source_file = testdata_path / 'steps_run_test' / 'simple.java'
         artifacts = GradingArtifacts(root=cleandir)
@@ -376,6 +376,7 @@ class TestStepsRun:
         params = SandboxParams(
             stdout_file=pathlib.Path('output.txt'),
             address_space=1024,  # Set memory constraint
+            stack_space=64,  # Set stack constraint
         )
         command = 'java Simple'
 
@@ -386,11 +387,45 @@ class TestStepsRun:
             assert result is not None
             # Original params should not be modified
             assert params.address_space == 1024
-            # But the params passed to sandbox.run should have address_space removed
+            assert params.stack_space == 64
+            # But the params passed to sandbox.run should have both removed
             mock_run.assert_called_once()
             call_args = mock_run.call_args
             captured_params = call_args[0][1]  # Second argument (params)
             assert captured_params.address_space is None
+            assert captured_params.stack_space is None
+
+    async def test_run_non_jvm_keeps_memory_and_stack_constraints(
+        self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
+    ):
+        """The JVM carve-out is for the JVM only: everything else is limited."""
+        script_file = testdata_path / 'steps_run_test' / 'simple_output.py'
+        artifacts = GradingArtifacts(root=cleandir)
+        artifacts.inputs.append(
+            GradingFileInput(src=script_file, dest=pathlib.Path('script.py'))
+        )
+        artifacts.outputs.append(
+            GradingFileOutput(
+                src=pathlib.Path('output.txt'), dest=pathlib.Path('output.txt')
+            )
+        )
+        artifacts.logs = GradingLogsHolder()
+
+        params = SandboxParams(
+            stdout_file=pathlib.Path('output.txt'),
+            address_space=1024,
+            stack_space=64,
+        )
+        command = f'{sys.executable} script.py'
+
+        with patch.object(sandbox, 'run', wraps=sandbox.run) as mock_run:
+            result = await steps.run(command, params, sandbox, artifacts)
+
+            assert result is not None
+            mock_run.assert_called_once()
+            captured_params = mock_run.call_args[0][1]
+            assert captured_params.address_space == 1024
+            assert captured_params.stack_space == 64
 
     async def test_run_with_optional_output_file(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path

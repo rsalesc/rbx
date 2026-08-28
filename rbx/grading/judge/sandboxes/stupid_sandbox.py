@@ -125,6 +125,7 @@ class StupidSandbox(SandboxBase):
             if params.wallclock_timeout
             else None,
             memory_limit=params.address_space,
+            stack_limit=params.stack_space,
             fs_limit=params.fsize,
             env=params.set_env,
             io=self._get_io(params),
