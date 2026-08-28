@@ -12,7 +12,10 @@ milliseconds, the others seconds -- so a name that omits the unit invites a
 caller to mislabel it, which nothing here would raise on.
 
 The timings themselves are captured unconditionally; the level only decides
-whether anything is printed. See docs/plans/2026-08-28-run-benchmark-design.md.
+whether anything is printed. The `-b` flag itself lives here too -- its
+parameter definition, its completer hook and the parsing of its int into a
+level -- so that the levels and the flag that selects them stay in one file.
+See docs/plans/2026-08-28-run-benchmark-design.md.
 """
 
 import dataclasses
@@ -40,30 +43,54 @@ class BenchmarkLevel(Enum):
     SOLUTIONS = 1
 
 
-BENCHMARK_ISSUE_URL = 'https://github.com/rsalesc/rbx/issues/801'
+BENCHMARK_LEVEL_2_ISSUE_URL = 'https://github.com/rsalesc/rbx/issues/801'
+
+# Levels the design specifies but that are not built yet, each with what it
+# would benchmark and where its progress is tracked. Delete an entry when the
+# level lands: `parse_level` consults `BenchmarkLevel` first, so a value present
+# in both is accepted and this row becomes dead weight --
+# `test_unimplemented_levels_are_not_in_the_enum` is what catches that.
+_UNIMPLEMENTED_LEVELS = {
+    2: ('test generation and validation', BENCHMARK_LEVEL_2_ISSUE_URL),
+}
+
+# Click renders `Invalid value for <hint>: <message>`. Passing the hint by hand
+# is what names the flag at all: `parse_level` is called from a command body
+# rather than from a Click callback, so Click has no parameter to name itself.
+_BENCHMARK_PARAM_HINT = "'--benchmark' / '-b'"
 
 
 def parse_level(value: int) -> BenchmarkLevel:
     """Turn the `-b` flag's int into a level, rejecting the unimplemented ones.
 
-    `-b2` -- benchmarking test generation and validation -- is specified but not
-    built. Rejecting it outright is deliberate: silently treating it as `-b1`
-    would hand back a report that quietly omits half of what was asked for.
+    The enum is consulted first, so implementing a level is enough to make it
+    accepted. Rejecting an unimplemented level outright is deliberate: silently
+    treating `-b2` as `-b1` would hand back a report that quietly omits half of
+    what was asked for.
     """
-    if value == 2:
-        raise typer.BadParameter(
-            'Benchmarking test generation and validation (-b2) is not implemented '
-            f'yet. Follow {BENCHMARK_ISSUE_URL} for progress.'
-        )
     try:
         return BenchmarkLevel(value)
     except ValueError:
-        # The valid levels are read off the enum rather than spelled out -- a
-        # second copy of the list is exactly what goes stale when a level lands.
-        valid = ', '.join(str(level.value) for level in BenchmarkLevel)
+        pass
+
+    if value in _UNIMPLEMENTED_LEVELS:
+        description, issue_url = _UNIMPLEMENTED_LEVELS[value]
+        # The setter wants a benchmark now, so the usable level comes before the
+        # issue link -- the link is what to read later, not what to do next.
         raise typer.BadParameter(
-            f'Invalid benchmark level {value}. Valid levels are: {valid}.'
+            f'`-b{value}` ({description}) is not implemented yet'
+            ' -- use `-b1` to benchmark the solution run.'
+            f' Progress: {issue_url}',
+            param_hint=_BENCHMARK_PARAM_HINT,
         ) from None
+
+    # The valid levels are read off the enum rather than spelled out -- a
+    # second copy of the list is exactly what goes stale when a level lands.
+    valid = ', '.join(str(level.value) for level in BenchmarkLevel)
+    raise typer.BadParameter(
+        f'Benchmark level {value} is not a valid level. Valid levels are: {valid}.',
+        param_hint=_BENCHMARK_PARAM_HINT,
+    ) from None
 
 
 def _benchmark_autocompletion():

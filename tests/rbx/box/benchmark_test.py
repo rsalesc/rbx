@@ -503,9 +503,18 @@ def test_parse_level_accepts_the_implemented_levels():
 def test_parse_level_rejects_b2_and_points_at_the_tracking_issue():
     with pytest.raises(typer.BadParameter) as exc:
         benchmark.parse_level(2)
-    assert '801' in str(exc.value)
+    assert benchmark.BENCHMARK_LEVEL_2_ISSUE_URL in str(exc.value)
+    assert '-b2' in str(exc.value)
 
 
 def test_parse_level_rejects_nonsense():
     with pytest.raises(typer.BadParameter):
         benchmark.parse_level(7)
+
+
+def test_unimplemented_levels_are_not_in_the_enum():
+    # The rejection table and the enum must stay disjoint: `parse_level` looks
+    # the enum up first, so a level that lands while its row is still here is
+    # accepted with a stale row left behind. This is the test that fails then.
+    unimplemented = set(benchmark._UNIMPLEMENTED_LEVELS)  # noqa: SLF001
+    assert unimplemented & {level.value for level in benchmark.BenchmarkLevel} == set()
