@@ -727,14 +727,23 @@ class rbxCommandApp(rbxBaseApp):
             for sub_index, sub in enumerate(tab.sub_commands):
                 self._dump_pane(tab_index, sub_index, sub)
 
-    def on_unmount(self) -> None:
+    async def _shutdown(self) -> None:
         """Keep whatever was on screen when the app goes away.
 
         A command still running here never reported an exit code; it is
         persisted as RUNNING and reloads as INTERRUPTED.
+
+        This overrides a private hook on purpose. `App._shutdown` calls
+        `_close_all()` and clears the node registry *before* it dispatches
+        `Unmount`, so an `on_unmount` handler finds every pane already gone and
+        dumps nothing (verified: the files were empty). `_shutdown` is also the
+        one path every teardown funnels through -- `exit()` from the `q`
+        binding, an unhandled error, and `run_test`, which calls it directly
+        rather than going through `exit()`.
         """
         self._dump_all_panes()
         self._persist()
+        await super()._shutdown()
 
     def _restore_subtitles(self) -> None:
         for tab in self._tabs:

@@ -167,6 +167,54 @@ async def test_history_is_flushed_as_each_command_finishes(tmp_path):
     assert statuses == [CommandStatus.SUCCESS, CommandStatus.SUCCESS]
 
 
+async def test_quitting_mid_run_keeps_what_was_on_screen(tmp_path):
+    """The unmount dump: a command still running is not lost, only unfinished."""
+    store = _store(tmp_path)
+    handle = _new_handle(store)
+    app = rbxCommandApp(
+        [
+            CommandEntry(
+                argvs=[
+                    [
+                        sys.executable,
+                        '-u',
+                        '-c',
+                        'print("partial"); import time; time.sleep(30)',
+                    ]
+                ],
+                name='a',
+            )
+        ],
+        parallel=True,
+        run_handle=handle,
+    )
+    async with app.run_test() as pilot:
+        for _ in range(200):
+            await pilot.pause()
+            await asyncio.sleep(0.05)
+            panes = list(app.query(CommandPane))
+            if panes and 'partial' in '\n'.join(_buffer_lines(panes[0])):
+                break
+        else:
+            raise AssertionError('command never printed')
+
+    # The app is gone; the still-running command left its output behind.
+    dumped = handle.read_pane(0, 0)
+    assert dumped is not None and 'partial' in dumped
+
+    reopened = store.open_run(handle.run_id)
+    assert reopened is not None
+    assert reopened.manifest.tabs[0].sub_commands[0].status is CommandStatus.RUNNING
+    # ... and reloads as interrupted rather than as something still going.
+    restored = rbxCommandApp(
+        [CommandEntry(argvs=[], name='a')], run_handle=reopened, restored=True
+    )
+    assert (
+        restored._tabs[0].sub_commands[0].status  # noqa: SLF001
+        is CommandStatus.INTERRUPTED
+    )
+
+
 def test_pending_and_running_load_as_terminal_states(tmp_path):
     store = _store(tmp_path)
     handle = _new_handle(store)

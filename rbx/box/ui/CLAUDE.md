@@ -156,9 +156,14 @@ reopened run -- a `PENDING` that survived the load would leave a tab busy foreve
 **Persistence points.** `_persist()` mirrors the live tabs into the manifest and writes it
 on every status change: at mount, on each `CommandPane.CommandComplete` (which also dumps
 that pane, *before* `notify_complete` releases the terminal to the next queued command), on
-each interactively queued command, and on `on_unmount` -- so quitting mid-run keeps what was
-on screen. History failing to write is never fatal; a session that cannot record itself is
-still a working session.
+each interactively queued command, and in a **`_shutdown` override** -- so quitting mid-run
+keeps what was on screen. That override is deliberate and must not be "cleaned up" into an
+`on_unmount` handler: `App._shutdown` calls `_close_all()` and clears the node registry
+*before* dispatching `Unmount`, so `on_unmount` finds every pane already gone and dumps
+nothing (this was caught by a test, not in review). `_shutdown` is also the one path every
+teardown funnels through -- `exit()` from `q`, an unhandled error, and `run_test`, which
+calls it directly. History failing to write is never fatal; a session that cannot record
+itself is still a working session.
 
 **Resume and retry** need nothing the manifest does not already hold: `shell_command`,
 `chained`, `cwd`, `prefix` and `status` are the entire input set. `r` retries the
