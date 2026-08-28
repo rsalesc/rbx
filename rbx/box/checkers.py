@@ -17,6 +17,7 @@ from rbx.grading.steps import (
     GradingFileInput,
     Outcome,
     RunLog,
+    RunTiming,
 )
 from rbx.utils import StatusProgress
 
@@ -347,6 +348,9 @@ async def _check(
         raise typer.Exit(1)
 
     result = processed_checker_result
+    # Stamped here, past every early return that never reached the checker --
+    # those keep a `None` timing, which reads as unmeasured rather than zero.
+    result.checker_timing = RunTiming.of(checker_run_log)
 
     if skip_run_log:
         return result

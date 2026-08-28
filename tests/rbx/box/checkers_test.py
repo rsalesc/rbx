@@ -985,3 +985,52 @@ async def test_check_skips_checker_stderr_file_when_checker_said_nothing(
     # An empty file would read as "the checker was run and said nothing", which
     # is exactly what its absence already says -- without the clutter.
     assert not sink.exists()
+
+
+# Benchmarking: how long the checker itself took (`rbx run --benchmark`).
+async def test_check_records_the_checker_timing(
+    checker_digest: str,
+    testcase: Testcase,
+    program_output: pathlib.Path,
+    run_log: RunLog,
+) -> None:
+    """A real checker run leaves its measured time on the result."""
+    assert testcase.outputPath
+    testcase.outputPath.write_text('123\n')
+    program_output.write_text('123\n')
+
+    result = await checkers.check(
+        checker_digest,
+        run_log,
+        testcase,
+        program_output,
+    )
+
+    assert result.outcome == Outcome.ACCEPTED
+    assert result.checker_timing is not None
+    assert result.checker_timing.time is not None
+    assert result.checker_timing.wall_time is not None
+
+
+async def test_check_records_no_timing_when_the_checker_never_ran(
+    checker_digest: str,
+    testcase: Testcase,
+    program_output: pathlib.Path,
+    run_log: RunLog,
+) -> None:
+    """A solution that TLE'd short-circuits before the checker is invoked."""
+    assert testcase.outputPath
+    testcase.outputPath.write_text('123\n')
+    program_output.write_text('123\n')
+
+    run_log.exitstatus = SandboxBase.EXIT_TIMEOUT
+    result = await checkers.check(
+        checker_digest,
+        run_log,
+        testcase,
+        program_output,
+    )
+
+    assert result.outcome == Outcome.TIME_LIMIT_EXCEEDED
+    # Unmeasured, not zero -- the checker was never given the chance to run.
+    assert result.checker_timing is None
