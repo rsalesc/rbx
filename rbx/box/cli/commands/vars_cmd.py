@@ -65,7 +65,9 @@ def _dump_json(expanded: fields.Vars) -> str:
     arbitrarily large ints and keeps float formatting out of the boundary.
 
     `str` is the right renderer because it is what Jinja itself calls on a
-    value with no filter, so the badge shows exactly what `\\VAR{...}` will:
+    value with no filter, so the badge shows exactly what an unfiltered
+    `\\VAR{...}` will (a filtered one renders differently by design -- the
+    badge answers "what number is this?", not "what will this typeset as"):
     an `int` becomes its full decimal expansion, a `str` itself, a `float` its
     `repr`, and a `bool` `True`/`False`. Note that last one is deliberately
     *not* the `1`/`0` of `fields.render_var_on_command_line`: that spelling
