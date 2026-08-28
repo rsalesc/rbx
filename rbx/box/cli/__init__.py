@@ -116,6 +116,12 @@ _COMMANDS = [
         rich_help_panel='Configuration',
     ),
     LazyCommand(
+        'vars',
+        'rbx.box.cli.commands.vars_cmd:app',
+        help='Show the expanded vars of this problem.',
+        rich_help_panel='Configuration',
+    ),
+    LazyCommand(
         'environment, env',
         'rbx.box.cli.commands.config_cmds:app',
         help='Set or show the current box environment.',

@@ -898,6 +898,30 @@ SPEC = {
             ],
         },
         {
+            'help': 'Show the expanded vars of this problem.',
+            'is_group': False,
+            'name': 'vars',
+            'panel': 'Configuration',
+            'params': [
+                {
+                    'help': 'Print the vars as a JSON object of dotted keys.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--json'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+            ],
+        },
+        {
             'help': 'Set or show the current box environment.',
             'is_group': False,
             'name': 'environment, env',
