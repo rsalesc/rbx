@@ -145,14 +145,16 @@ globbing `*.rbx.tex` is not.
 The vars cache memoizes per package root, resolves the binary through
 `rbx/executable.ts` (setting, then `PATH`, then a login-shell probe, validated
 by `--version`, cached per root), and is invalidated by the **existing**
-`**/problem.rbx.yml` watcher and its 200 ms debounce. The spawn is therefore
-paid on save, not on keystroke.
+`**/problem.rbx.yml` watcher. That watcher is un-debounced -- the 200 ms
+debounce belongs to the `.rbx` artifact and `testset.yml` watchers, which are
+not the ones that produce vars -- so invalidation is immediate. The spawn is
+paid on save, not on keystroke, because a save is what the watcher observes.
 
 ## D4. Data flow
 
 ```
 problem.rbx.yml saved
-  -> existing watcher, 200 ms debounce
+  -> existing (un-debounced) problem.rbx.yml watcher
   -> vars cache invalidated for that root
   -> onDidChangeInlayHints fires
   -> VS Code re-requests hints for visible statement editors
