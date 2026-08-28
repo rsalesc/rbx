@@ -324,6 +324,33 @@ async def test_every_observed_code_maps_to_the_matching_outcome(
     ]
 
 
+async def test_a_qualified_runtime_error_code_maps_to_runtime_error(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """`RE_NZEC` is the qualified spelling of `RE`, observed from a real testrun.
+
+    It used to be refused as unknown, which failed the whole run over a verdict
+    whose own name says what it is. Any `RE_*` reads the same way -- the prefix
+    names the family, so the outcome carries no guess.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.results['sol.cpp'] = [
+        _test(SAMPLE_NAMES[0], 'RE_NZEC', 0.1),
+        _test(SAMPLE_NAMES[1], 'RE_SIGSEGV', 0.2),
+    ]
+
+    evals = await _run(runner, ctx)
+
+    assert [e.result.outcome for e in evals] == [
+        Outcome.RUNTIME_ERROR,
+        Outcome.RUNTIME_ERROR,
+    ]
+    # The code the judge sent is what gets reported, not the family it fell into.
+    assert 'RE_NZEC' in evals[0].result.message
+
+
 async def test_a_tle_keeps_the_time_it_really_took(testing_pkg, tmp_path, monkeypatch):
     """MOJ reports a TLE's real time, not the limit: 2.81s against a 0.614s `tl`.
 

@@ -99,6 +99,18 @@ one. Per-test `code` uses the short forms above. `MLE` / `OLE` / `PE` / `JE` wer
 provoked and remain unconfirmed — Task 6's mapping must therefore treat an unknown code as
 *unknown*, not silently coerce it.
 
+### 3c. `RE_NZEC` — observed 2026-08-29, from a user's run
+
+A real `moj testrun` came back with the per-test `code` `RE_NZEC`, and rbx refused it as an
+unknown code, failing the whole run. It is the qualified spelling of the `RE` already in the
+table: a non-zero exit code is a runtime error.
+
+`_OUTCOME_BY_MOJ_CODE` gained the entry, and `_outcome_for_moj_code` reads any `RE_*` code as
+`RUNTIME_ERROR` — the prefix names the family, so unobserved members (`RE_SIGSEGV` and the
+like) carry no guess about the outcome. Everything outside the family is still refused by
+name; the reason for refusing — a wrong outcome silently corrupting the time-limit estimate —
+does not apply to a code that already says it is a runtime error.
+
 ### 3b. `Compilation Error` — observed 2026-08-21, by accident
 
 The first end-to-end `rbx time --runner moj` submitted solutions that did not build on the
@@ -198,7 +210,8 @@ Note this is still not a terminal *failure* `status`: the run above finished `do
 
 - Whether a testrun can reach a terminal **failure** status (a compile error does not: it is
   a `done` run with a run-level verdict — see §3b).
-- The full `code` vocabulary beyond `AC` / `WA` / `RE` / `TLE`.
+- The full `code` vocabulary beyond `AC` / `WA` / `RE` / `RE_NZEC` / `TLE` — in
+  particular, which other members of the `RE_*` family MOJ emits.
 - Whether `testrun` requires a prior calibration (this problem was already calibrated).
 - Whether a submission outside `.moj-meta.json`'s `languages` is really refused.
 - Whether a `TLOVERRIDE`-only `conf` change forces recalibration.

@@ -162,8 +162,40 @@ _OUTCOME_BY_MOJ_CODE: Dict[str, Outcome] = {
     'AC': Outcome.ACCEPTED,
     'WA': Outcome.WRONG_ANSWER,
     'RE': Outcome.RUNTIME_ERROR,
+    'RE_NZEC': Outcome.RUNTIME_ERROR,
     'TLE': Outcome.TIME_LIMIT_EXCEEDED,
 }
+
+# The one family MOJ spells out rather than abbreviating: a plain `RE` is not the
+# only runtime error it reports, and `RE_NZEC` -- observed 2026-08-29 from a real
+# testrun, which `rbx time --runner moj` refused as unknown -- is the qualified
+# form of exactly the code already in the table above. Others of the shape
+# (`RE_SIGSEGV` and friends) are unobserved, but the prefix says what they are:
+# `RE_` is the runtime-error family, and every member of it maps to the outcome
+# `RE` already maps to.
+#
+# This is the only inference `_outcome_for_moj_code` makes, and it is bounded on
+# purpose. The reason unknown codes are refused is that a *wrong* outcome silently
+# corrupts the time-limit estimate -- an unmapped slow solution changes the number
+# rbx writes with nothing in the report to say so. Reading `RE_*` as a runtime
+# error cannot be wrong in that way: the prefix already names the verdict, so the
+# outcome carries no guess. A code outside this family still has no reading, and
+# is still refused by name.
+_RUNTIME_ERROR_CODE_PREFIX = 'RE_'
+
+
+def _outcome_for_moj_code(code: str) -> Optional[Outcome]:
+    """The rbx `Outcome` for one MOJ per-test `code`, or `None` if there is none.
+
+    `None` is what `_result_from_status` turns into a refusal that names the code,
+    so an unreadable code stops the run instead of becoming a verdict.
+    """
+    if code in _OUTCOME_BY_MOJ_CODE:
+        return _OUTCOME_BY_MOJ_CODE[code]
+    if code.startswith(_RUNTIME_ERROR_CODE_PREFIX):
+        return Outcome.RUNTIME_ERROR
+    return None
+
 
 # What goes in `TestcaseLog.exitstatus` for a testcase MOJ ran.
 #
@@ -819,7 +851,7 @@ class MojRunner:
             {
                 test.code
                 for test in tests.values()
-                if test.code not in _OUTCOME_BY_MOJ_CODE
+                if _outcome_for_moj_code(test.code) is None
             }
         )
         if unknown:
@@ -827,8 +859,9 @@ class MojRunner:
             raise MojRunnerError(
                 f'MOJ reported the verdict code(s) {listed} for `{solution.path}` '
                 f'in testrun `{run}`, and rbx does not know what they mean.\n'
-                f'Refusing to guess: only `AC`, `WA`, `RE` and `TLE` have ever '
-                f'been seen from a real testrun (see '
+                f'Refusing to guess: only `AC`, `WA`, `RE`, `RE_NZEC` and `TLE` '
+                f'have ever been seen from a real testrun -- plus anything in the '
+                f'`RE_*` runtime-error family, which is read by its prefix (see '
                 f'`docs/plans/2026-08-21-moj-probe-notes.md`), and a code mapped '
                 f'to the wrong outcome would silently corrupt the time limit this '
                 f'run is estimating, with nothing in the report to say so.\n'
@@ -1622,8 +1655,12 @@ def _evaluation_for(
             memory=None,
         )
     else:
+        # Never `None` here: `_result_from_status` refused the whole run before any
+        # evaluation was built if a single code was unreadable.
+        outcome = _outcome_for_moj_code(test.code)
+        assert outcome is not None
         result = CheckerResult(
-            outcome=_OUTCOME_BY_MOJ_CODE[test.code],
+            outcome=outcome,
             # MOJ judges with the packaged checker and hands back a code, never
             # the checker's own words (`reports_checker_messages=False`). Saying
             # where the verdict came from is the useful thing left to say, and it
