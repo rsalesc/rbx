@@ -20,9 +20,9 @@ nested contexts in a way a regex over ``![image](`` is not, and it gives any
 later fix a home.
 
 A second defect has to be corrected *before* pandoc runs, on the TeX --
-monospace wrappers holding math (see ``rewrap_monospace_math``). So the output
-here is deliberately **not** what a plain ``pandoc -f latex -t markdown`` would
-produce.
+monospace wrappers holding math, which live in ``monospace_math.py``. So the
+output here is deliberately **not** what a plain ``pandoc -f latex -t markdown``
+would produce.
 
 **The goldens in ``tests/.../testdata/markdown_export`` are pandoc-version
 sensitive.** They record what a specific pandoc emits; a diff there means pandoc
@@ -34,6 +34,7 @@ import re
 from typing import Any, Callable, Optional
 
 from rbx import tooling
+from rbx.box.statements.monospace_math import rewrap_monospace_math
 
 
 class MojGateError(ValueError):
@@ -68,205 +69,6 @@ def _fix_images(node: Any, rewrite_url: Optional[Callable[[str], str]]) -> None:
         return
     for value in node.values():
         _fix_images(value, rewrite_url)
-
-
-# The monospace wrappers pandoc reads into a `Code` inline. A pandoc `Code`
-# holds a *string*, so it cannot contain another inline: given math inside one,
-# pandoc has no node to build and splits the group into siblings instead --
-# `\texttt{A $a_i$ $t_i$}` becomes `Code "A "`, `Math a_i`, `Code " "`,
-# `Math t_i`. The math loses its monospace, and the `Code " "` separators
-# collapse to `<code></code>` in HTML, so MOJ shows the reader `Aa_it_i`.
-#
-# Every OTHER command in the Polygon TeX subset is fine and must be left alone:
-# `\textbf`/`\textit`/`\emph`/`\underline`/`\sout`/`\textsc`/`\textsubscript`/
-# `\textsuperscript`, the size switches and `\href` all read into container
-# nodes (Strong, Emph, Span, Link, ...) that nest `Math` correctly.
-_TEXTTT = r'\\texttt[ \t]*(?=\{)'
-_TT_SWITCH = r'\{[ \t]*\\(?:tt|ttfamily)(?![A-Za-z])[ \t]*'
-
-# Scanned rather than parsed with TexSoup, which rbx uses everywhere else it
-# touches TeX. Three measured reasons, all of them about this transform being
-# whitespace- and adjacency-sensitive in a way TexSoup's node list is not:
-#
-# - `find_all('texttt')` descends INTO `\verb|...|` (the `verbatim` environment
-#   is skipped, `\verb` is not), so the literal-region skip below has to be
-#   rebuilt by hand anyway -- and getting it wrong rewrites literal text.
-# - `.contents` drops the adjacency this needs. `\texttt{100\% $n$}` comes back
-#   as `'100'`, `'\%'`, `$n$` -- indistinguishable from `100 \%` except by
-#   re-reading the raw token's trailing space, which is the position arithmetic
-#   `polygon_utils.convert_to_polygon_tex` already carries `_fill_gap` for.
-# - A `{\tt ...}` switch is not a node at all; it runs to the end of its group,
-#   which is the FONT_SWITCHES/BARRIERS problem `polygon_utils` spends ~40 lines
-#   on.
-#
-# The tree would be the right tool if this ever had to *descend* into nested
-# markup instead of bailing on it. It does not.
-#
-# Regions whose content is literal, where a `$` is a dollar sign rather than
-# math and a `\texttt` is six characters of text. Rewriting inside one would be
-# a corruption, not a fix, so the scanner skips over them wholesale.
-_VERB = r'\\verb\*?(?P<delim>[^*\sA-Za-z])'
-_VERBATIM_ENV = r'\\begin\{(?P<env>verbatim|lstlisting)\}'
-
-_SCAN = re.compile(
-    f'(?P<verb>{_VERB})'
-    f'|(?P<env_open>{_VERBATIM_ENV})'
-    f'|(?P<cmd>{_TEXTTT})'
-    f'|(?P<switch>{_TT_SWITCH})'
-)
-
-# A control word (`\alpha`, `\textbf`) in the text part of a monospace group.
-# Only escaped specials (`\%`, `\_` -- backslash then a NON-letter) survive the
-# move into math mode unchanged, so anything else bails out.
-_CONTROL_WORD = re.compile(r'\\[A-Za-z]')
-
-# Bare characters that mean something different inside math than they did in the
-# text-mode group they came from. Braces are in the set because they open a
-# group or a command argument, which is the nested-markup case.
-_UNSAFE_IN_MATH = frozenset('_^%&#{}~')
-
-
-def _read_group(tex: str, start: int) -> Optional[int]:
-    """Index just past the balanced brace group opening at ``tex[start]``.
-
-    ``None`` when the group never closes -- malformed input rbx passes through
-    untouched rather than guessing where it ended.
-    """
-    depth = 0
-    i = start
-    while i < len(tex):
-        char = tex[i]
-        if char == '\\':
-            i += 2
-            continue
-        if char == '{':
-            depth += 1
-        elif char == '}':
-            depth -= 1
-            if depth == 0:
-                return i + 1
-        i += 1
-    return None
-
-
-def _split_on_math(body: str) -> Optional[list]:
-    """``[(is_math, text), ...]`` for a monospace body, or ``None`` to bail.
-
-    Backslash escapes are consumed as a unit, so an escaped ``\\$`` is text and
-    never opens a math run. Display math and an unclosed ``$`` bail.
-    """
-    runs = []
-    text: list = []
-    i = 0
-    while i < len(body):
-        char = body[i]
-        if char == '\\':
-            if i + 1 >= len(body):
-                return None
-            text.append(body[i : i + 2])
-            i += 2
-            continue
-        if char != '$':
-            text.append(char)
-            i += 1
-            continue
-        if body.startswith('$$', i):
-            return None
-        runs.append((False, ''.join(text)))
-        text = []
-        math: list = []
-        i += 1
-        while i < len(body) and body[i] != '$':
-            if body[i] == '\\':
-                if i + 1 >= len(body):
-                    return None
-                math.append(body[i : i + 2])
-                i += 2
-                continue
-            math.append(body[i])
-            i += 1
-        if i >= len(body):
-            return None
-        runs.append((True, ''.join(math)))
-        i += 1
-    runs.append((False, ''.join(text)))
-    return runs
-
-
-def _rewrap_body(body: str) -> Optional[str]:
-    """One monospace body as a single math span, or ``None`` to leave it alone.
-
-    Each whitespace-separated text word becomes its own ``\\texttt{}`` atom and
-    each math run contributes its body bare; the atoms are joined with ``~``.
-    Math mode discards the spaces the source had, so the tie is what keeps the
-    fields of a token like ``A a_i t_i`` visibly apart.
-    """
-    runs = _split_on_math(body)
-    if runs is None or not any(is_math for is_math, _ in runs):
-        return None
-    atoms = []
-    for is_math, run in runs:
-        if is_math:
-            math = run.strip()
-            if not math:
-                return None
-            atoms.append(math)
-            continue
-        if _CONTROL_WORD.search(run):
-            return None
-        for word in run.split():
-            if _UNSAFE_IN_MATH.intersection(re.sub(r'\\.', '', word)):
-                return None
-            atoms.append(f'\\texttt{{{word}}}')
-    return '$' + '~'.join(atoms) + '$' if atoms else None
-
-
-def rewrap_monospace_math(tex: str) -> str:
-    """Rewrite every monospace group that holds math into a single math span.
-
-    ``\\texttt{A $a_i$ $t_i$}`` -> ``$\\texttt{A}~a_i~t_i$``, which pandoc reads
-    as one ``Math`` inline and renders to a single MathML node -- monospace ``A``
-    included, and with real spacing between the fields. See ``_SCAN`` for why
-    this cannot be done on the AST instead: there, the ``Code`` a ``\\texttt``
-    left is indistinguishable from the one a ``\\verb`` left.
-
-    Conservative by construction: a group with no math, with nested markup, with
-    display math or with an unbalanced delimiter is returned untouched, as is
-    anything inside a verbatim region. Rendering such a group imperfectly is a
-    much smaller failure than mangling it.
-    """
-    out = []
-    i = 0
-    while True:
-        hit = _SCAN.search(tex, i)
-        if hit is None:
-            break
-        out.append(tex[i : hit.start()])
-        if hit.group('verb') is not None:
-            closing = tex.find(hit.group('delim'), hit.end())
-            end = len(tex) if closing < 0 else closing + 1
-            out.append(tex[hit.start() : end])
-            i = end
-            continue
-        if hit.group('env_open') is not None:
-            closing = tex.find(f'\\end{{{hit.group("env")}}}', hit.end())
-            end = len(tex) if closing < 0 else closing + len(hit.group('env')) + 6
-            out.append(tex[hit.start() : end])
-            i = end
-            continue
-        if hit.group('cmd') is not None:
-            end = _read_group(tex, hit.end())
-            body_start = hit.end() + 1
-        else:
-            end = _read_group(tex, hit.start())
-            body_start = hit.end()
-        if end is None:
-            break
-        rewrapped = _rewrap_body(tex[body_start : end - 1])
-        out.append(tex[hit.start() : end] if rewrapped is None else rewrapped)
-        i = end
-    out.append(tex[i:])
-    return ''.join(out)
 
 
 def tex_to_markdown(
