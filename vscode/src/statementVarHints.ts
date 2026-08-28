@@ -7,10 +7,11 @@
  * of its own, which is what an inlay hint is: the editor reserves horizontal
  * space for it and pushes the rest of the line along, so nothing is drawn over
  * the LaTeX. An `after` decoration on a zero-width range could paint the same
- * text in the same place, but it would be ours to maintain -- one editor at a
- * time, redrawn by hand on every edit, scroll and theme change, and with no
- * `editor.inlayHints.enabled` for the setter to turn off. The hint API does
- * all of that, and asks us only to answer a range.
+ * text in the same place, but it would be ours to place and to place again: a
+ * decoration is set on one editor at a time, so every split, every newly
+ * revealed statement and every re-scan is ours to drive. And it would carry no
+ * `editor.inlayHints.enabled` for a setter who wants the numbers out of the
+ * way. The hint API asks us only to answer a range.
  */
 import * as vscode from 'vscode';
 
@@ -37,23 +38,28 @@ export class StatementVarHintsProvider implements vscode.InlayHintsProvider {
     if (!enabled()) {
       return [];
     }
-    // The manifest is the authority on which files are statements; it also
-    // covers tutorials, which globbing `*.rbx.tex` would miss.
-    if (this.declared.assetFor(document.uri)?.role !== 'statement') {
-      return [];
-    }
-    const root = this.declared.rootFor(document.uri);
-    if (root === undefined) {
+    // The manifest is the authority on which files are statements, because the
+    // extension does not decide it: a statement is whatever `problem.rbx.yml`
+    // names as one, in any format rbx converts. `StatementType.extension`
+    // (rbx/box/statements/schema.py) alone spells `.rbx.tex`, `.md`, `.rbx.md`
+    // and `.jinja.md`, so no glob over extensions is the same question.
+    const declared = this.declared.declarationFor(document.uri);
+    if (declared?.asset.role !== 'statement') {
       return [];
     }
 
+    // Neither check is needed for correctness -- VS Code drops a cancelled
+    // request's result whatever we hand back. They are early-outs. The first
+    // matters most: typing hands a provider an already-cancelled token quite
+    // routinely, and answering it immediately skips the round-trip below.
+    if (token.isCancellationRequested) {
+      return [];
+    }
     // Never rejects -- `StatementVarsIndex.varsFor` catches its own failures
     // and answers `undefined` -- so there is nothing here to guard against.
-    const vars = await this.vars.varsFor(root);
-    // The await is the only suspension point, and the first request for a cold
-    // package waits on a process spawn behind it. By the time it answers, the
-    // editor may well have asked again for a range that has since scrolled or
-    // been edited; returning hints for the old one is what the token is for.
+    // It is also the only suspension point, and a cold package waits on a
+    // process spawn behind it, which is time enough to be cancelled twice.
+    const vars = await this.vars.varsFor(declared.root);
     if (vars === undefined || token.isCancellationRequested) {
       return [];
     }
@@ -75,10 +81,13 @@ export class StatementVarHintsProvider implements vscode.InlayHintsProvider {
         continue;
       }
       const inlay = new vscode.InlayHint(position, hint.text);
-      // The editor's own leading gap, rather than a space in the label: a
-      // space would be padding *inside* the hint's own background, and would
-      // stack with this if both were used.
+      // The editor's own gaps, rather than spaces in the label: a space would
+      // be padding *inside* the hint's own background, and would stack with
+      // these if both were used. Both sides, because a reference is as often
+      // followed by a `$` or a `\)` as by a space, and a badge with a gap on
+      // one side only reads as lopsided.
       inlay.paddingLeft = true;
+      inlay.paddingRight = true;
       hints.push(inlay);
     }
     return hints;

@@ -17,7 +17,7 @@ import { readYamlFile } from './rbx/store';
 import { RunDataProvider } from './runData';
 
 /** A declaration, and the package whose manifest made it. */
-interface Declared {
+export interface Declared {
   readonly asset: DeclaredAsset;
   /**
    * The root of the package that declared it, which is also the directory rbx
@@ -66,20 +66,20 @@ export class DeclaredIndex {
 
   /** What `uri` is declared as, or `undefined` for a file no manifest names. */
   assetFor(uri: vscode.Uri): DeclaredAsset | undefined {
-    return this.declaredFor(uri)?.asset;
-  }
-
-  /** The root of the package that declares `uri`, if any package does. */
-  rootFor(uri: vscode.Uri): string | undefined {
-    return this.declaredFor(uri)?.root;
+    return this.declarationFor(uri)?.asset;
   }
 
   /**
+   * What `uri` is declared as and by which package, or `undefined` for a file
+   * no manifest names. For callers that need the root as well as the asset:
+   * both come from the one lookup, and a caller holding one already knows the
+   * other is there.
+   *
    * Anything that is not a file on disk is undeclared by construction:
    * artifacts opened through the extension's own read-only scheme are not
    * workspace files and must never be drawn as if they were.
    */
-  private declaredFor(uri: vscode.Uri): Declared | undefined {
+  declarationFor(uri: vscode.Uri): Declared | undefined {
     return uri.scheme === 'file' ? this.index.get(uri.fsPath) : undefined;
   }
 

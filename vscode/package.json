@@ -452,15 +452,15 @@
           "default": true,
           "markdownDescription": "Show what `problem.rbx.yml` declares a solution to do on a CodeLens above its first line."
         },
-        "rbx.statementVarHints": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Show what each `\\VAR{...}` in a statement expands to, beside the reference."
-        },
         "rbx.solutionStatus": {
           "type": "boolean",
           "default": true,
           "markdownDescription": "Show what `problem.rbx.yml` declares a solution to do in the language status area, which stays visible while you scroll."
+        },
+        "rbx.statementVarHints": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show what each `\\VAR{...}` in a statement expands to, beside the reference."
         },
         "rbx.compilationDiagnostics": {
           "type": "boolean",
