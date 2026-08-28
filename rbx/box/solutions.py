@@ -56,6 +56,7 @@ from rbx.box.environment import (
 )
 from rbx.box.formatting import (
     UNMEASURED,
+    get_formatted_duration_in_seconds,
     get_formatted_memory,
     get_formatted_time,
     href,
@@ -1416,6 +1417,7 @@ async def run_and_print_interactive_solutions(
     only_accepted: bool = False,
     validate: bool = True,
     visualize: bool = False,
+    benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
 ):
     pkg = package.find_problem_package_or_die()
 
@@ -1468,6 +1470,10 @@ async def run_and_print_interactive_solutions(
             visualize=visualize,
         )
 
+    # Collected as the loop streams, since there is no reporter here holding a
+    # list of them -- same shape as the `--detailed` path in `print_run_report`.
+    solution_benchmarks: List[benchmark.SolutionBenchmark] = []
+
     async for item in items:
         sol = skeleton.find_solution_skeleton(item.solution)
         assert sol is not None
@@ -1482,6 +1488,20 @@ async def run_and_print_interactive_solutions(
             _print_solution_outcome(
                 sol, skeleton, [eval], console.console, verification, subset=True
             )
+            _print_interactive_judging_time(console.console, benchmark_level, eval)
+
+        # Deliberately not `benchmark.report_solution_benchmark`: that prints
+        # the per-solution block, whose headline is the run's slowest testcase.
+        # This command runs exactly one, so that block would only restate the
+        # line just printed. The benchmark is still built, because the summary
+        # below ranks solutions against each other and one testcase each is
+        # enough for that.
+        if benchmark_level == benchmark.BenchmarkLevel.SOLUTIONS:
+            solution_bench = benchmark.build_solution_benchmark(
+                item.solution, skeleton, [eval]
+            )
+            if solution_bench is not None:
+                solution_benchmarks.append(solution_bench)
 
         stdout_path = eval.log.stdout_absolute_path
         merged_path = (
@@ -1543,6 +1563,60 @@ async def run_and_print_interactive_solutions(
                 )
             _print_checker_stderr_hint(eval)
             console.console.print()
+
+    # Under `no_progress` like every other block this command prints: the whole
+    # command runs inside the caller's `StatusProgress`, so a line printed with
+    # the spinner still running is interleaved with its frames.
+    #
+    # `separate=True` unconditionally: what a solution's block ends with here
+    # depends on `-p` and on which artifacts the run produced, so there is no
+    # trailing blank line to rely on the way the full report has one.
+    with utils.no_progress(progress):
+        _print_problem_benchmark(
+            console.console, benchmark_level, solution_benchmarks, separate=True
+        )
+
+
+def _print_interactive_judging_time(
+    out: rich.console.Console,
+    benchmark_level: benchmark.BenchmarkLevel,
+    eval: Evaluation,
+) -> None:
+    """Report what judging this one testcase cost, under `-b1`.
+
+    `rbx run` reports the slowest testcase of a whole testset; this command runs
+    a single one, so the testcase's own times are what there is to say. The
+    wording and the shape are `rbx ui`'s -- see
+    `ui.utils.run_ui._get_formatted_judging_time` and its call site -- because a
+    setter reading the same fact in two places should not meet two spellings of
+    it. Only the markup differs: the surrounding lines of this block are
+    `[status]`-labelled, and the panel's are bold.
+    """
+    if benchmark_level != benchmark.BenchmarkLevel.SOLUTIONS:
+        return
+    checker_seconds = benchmark.checker_time_seconds(eval)
+    line = f'[status]Checker time:[/status] {_measurement(checker_seconds)}'
+    # Only a communication problem has an interactor, so a batch testcase must
+    # not spend half a line on a program that does not exist.
+    interactor_seconds = benchmark.interactor_time_seconds(eval)
+    if interactor_seconds is not None:
+        line += (
+            f' / [status]Interactor time:[/status] {_measurement(interactor_seconds)}'
+        )
+    out.print(line)
+
+
+def _measurement(seconds: Optional[float]) -> str:
+    """A duration in seconds, or the unmeasured marker when there is none.
+
+    `None` never becomes `0 ms`: a checker that never ran and a checker that ran
+    instantaneously read differently, and only the second is a claim about how
+    long judging took. Same rule, and the same adaptive formatter, as
+    `benchmark._measurement`.
+    """
+    if seconds is None:
+        return UNMEASURED
+    return get_formatted_duration_in_seconds(seconds)
 
 
 def _print_checker_stderr_hint(eval: Evaluation) -> None:

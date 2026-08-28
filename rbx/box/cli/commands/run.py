@@ -370,6 +370,9 @@ async def summary_cmd(
 @syncer.sync
 async def irun(
     verification: environment.VerificationParam,
+    # Ahead of every parameter that carries a Python-level default, for the
+    # reason `run` above spells out: `BenchmarkParam` has no default of its own.
+    benchmark_level: benchmark.BenchmarkParam,
     solutions: Annotated[
         Optional[List[str]],
         PackagePath,
@@ -468,6 +471,10 @@ async def irun(
         ),
     ] = None,
 ):
+    # Parsed before anything runs, so an unimplemented level is refused rather
+    # than reported after a whole run.
+    level = benchmark.parse_level(benchmark_level)
+
     _set_timing_profile(profile)
 
     if not print:
@@ -535,4 +542,5 @@ async def irun(
             only_accepted=only_accepted,
             validate=validate,
             visualize=visualize,
+            benchmark_level=level,
         )
