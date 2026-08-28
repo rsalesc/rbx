@@ -115,7 +115,9 @@ def test_monospace_math_is_rewrapped_as_one_math_span(tex, expected):
         '{\\tt plain}',
         'no monospace here',
         # Verbatim regions are literal -- the `$` is a dollar sign and the
-        # `\texttt` is nine characters of text.
+        # `\texttt` is nine characters of text. The `\verb` case is the one a
+        # TexSoup-based implementation gets wrong: `find_all('texttt')`
+        # descends into `\verb|...|`, though not into `verbatim`.
         '\\verb|A $a_i$ \\texttt{q $z$}|',
         '\\begin{verbatim}\\texttt{a $b$}\\end{verbatim}',
         '\\begin{lstlisting}\\texttt{a $b$}\\end{lstlisting}',

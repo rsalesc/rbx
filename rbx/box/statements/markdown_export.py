@@ -84,6 +84,24 @@ def _fix_images(node: Any, rewrite_url: Optional[Callable[[str], str]]) -> None:
 _TEXTTT = r'\\texttt[ \t]*(?=\{)'
 _TT_SWITCH = r'\{[ \t]*\\(?:tt|ttfamily)(?![A-Za-z])[ \t]*'
 
+# Scanned rather than parsed with TexSoup, which rbx uses everywhere else it
+# touches TeX. Three measured reasons, all of them about this transform being
+# whitespace- and adjacency-sensitive in a way TexSoup's node list is not:
+#
+# - `find_all('texttt')` descends INTO `\verb|...|` (the `verbatim` environment
+#   is skipped, `\verb` is not), so the literal-region skip below has to be
+#   rebuilt by hand anyway -- and getting it wrong rewrites literal text.
+# - `.contents` drops the adjacency this needs. `\texttt{100\% $n$}` comes back
+#   as `'100'`, `'\%'`, `$n$` -- indistinguishable from `100 \%` except by
+#   re-reading the raw token's trailing space, which is the position arithmetic
+#   `polygon_utils.convert_to_polygon_tex` already carries `_fill_gap` for.
+# - A `{\tt ...}` switch is not a node at all; it runs to the end of its group,
+#   which is the FONT_SWITCHES/BARRIERS problem `polygon_utils` spends ~40 lines
+#   on.
+#
+# The tree would be the right tool if this ever had to *descend* into nested
+# markup instead of bailing on it. It does not.
+#
 # Regions whose content is literal, where a `$` is a dollar sign rather than
 # math and a `\texttt` is six characters of text. Rewriting inside one would be
 # a corruption, not a fix, so the scanner skips over them wholesale.
