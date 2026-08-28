@@ -23,6 +23,7 @@ import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
 import { registerSolutionLens } from './solutionLens';
 import { registerSolutionStatus } from './solutionStatus';
+import { StatementVarsIndex } from './statementVarsIndex';
 import { TestsetPanel } from './testsetPanel';
 import { TestsetViewProvider } from './testsetView';
 import { openVisualization } from './visualizationPanel';
@@ -110,6 +111,10 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   const declared = new DeclaredIndex(data);
   context.subscriptions.push(declared);
+  // Populated lazily, on the first hint request in a statement, and dropped
+  // whenever the manifest it was expanded from changes (the watcher below).
+  const statementVars = new StatementVarsIndex();
+  context.subscriptions.push(statementVars);
   registerDecorations(context, declared);
   registerSolutionLens(context, declared);
   registerSolutionStatus(context, declared);
@@ -277,9 +282,23 @@ export function activate(context: vscode.ExtensionContext): void {
       .then(() => active.refresh())
       .then(() => declared.refresh());
   };
-  manifests.onDidCreate(rediscover);
-  manifests.onDidDelete(rediscover);
-  manifests.onDidChange(() => void declared.refresh());
+  // A third reader of the same events: the vars an edited manifest expands to.
+  // All three, on the manifest's own directory, because that directory *is* the
+  // package root `rbx vars` is asked in -- a created or deleted manifest drops
+  // an entry that would otherwise answer for a package that no longer exists.
+  const revars = (uri: vscode.Uri) => statementVars.invalidate(path.dirname(uri.fsPath));
+  manifests.onDidCreate((uri) => {
+    revars(uri);
+    rediscover();
+  });
+  manifests.onDidDelete((uri) => {
+    revars(uri);
+    rediscover();
+  });
+  manifests.onDidChange((uri) => {
+    revars(uri);
+    void declared.refresh();
+  });
   context.subscriptions.push(
     manifests,
     vscode.workspace.onDidChangeWorkspaceFolders(rediscover),
