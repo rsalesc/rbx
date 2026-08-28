@@ -185,6 +185,14 @@ a package is only judgeable once a judge has calibrated it, so there's nothing t
 uploading one and leaving it uncalibrated. It's a long server-side job and {{rbx}} doesn't wait
 for it -- check on it with `moj check <org>#<problem>` whenever you want.
 
+The calibration is queued on **every judge in the park**, not just on the first one free. MOJ's
+judges aren't identical machines, and it publishes the time limit as the *maximum* across the
+judges that calibrated -- so a package measured on one machine is judged, on every other one,
+against a limit nothing ever measured there. Calibrating everywhere makes the published limit
+the one that holds on the slowest judge a submission can land on. When no judge is reachable at
+all, {{rbx}} says so and falls back to a single calibration rather than leaving your uploaded
+package unjudgeable; re-run `moj calibrate <org>#<problem> --all-judges` once the park is back.
+
 ## Iterating faster with a single solution
 
 Calibration runs **every solution the package ships**: the accepted ones to measure the limits,

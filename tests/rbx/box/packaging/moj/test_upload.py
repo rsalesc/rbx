@@ -120,8 +120,89 @@ async def test_upload_shells_out_to_moj_upload_and_queues_a_calibration(
     calls = _stub_calls(tmp_path)
     assert calls == [
         ['upload', 'unicamp#a-aplusb', str(directory)],
-        ['calibrate', 'unicamp#a-aplusb'],
+        ['calibrate', 'unicamp#a-aplusb', '--all-judges'],
     ]
     # Queued, never waited on: no `check` poll follows it. A setter who has just
     # uploaded has nothing to block on, and calibration is a long judge-side job.
     assert not any('check' in call for call in calls)
+
+
+# -- Calibrating the whole park. -----------------------------------------------
+#
+# `--all-judges` and not a `--hosts` list rbx assembles itself: the CLI expands the
+# flag against the park it queries at that moment, so an inventory that changes --
+# a judge added, a judge retired -- is never something rbx has to have known about.
+
+
+async def test_the_package_upload_calibrates_on_every_judge(monkeypatch, tmp_path):
+    """Unlike the probe upload, which asks for the cheap global calibration.
+
+    `moj check` publishes the time limit as the max across the judges that
+    calibrated, so a package measured on one machine is judged, everywhere else,
+    against a limit nothing measured there.
+    """
+    _stub_moj(monkeypatch, tmp_path, 'exit 0')
+    directory = tmp_path / 'package'
+    directory.mkdir()
+
+    await upload_package('unicamp#a-aplusb', directory)
+
+    assert ['calibrate', 'unicamp#a-aplusb', '--all-judges'] in _stub_calls(tmp_path)
+
+
+async def test_an_unreachable_park_falls_back_to_a_global_calibration(
+    monkeypatch, tmp_path, capsys
+):
+    """The package is already uploaded by this point, and mojtools will not judge
+    a package with no `tl` file. Failing here would leave a problem nobody can
+    submit to; one global request instead queues, and the first free judge takes
+    it."""
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        """
+        for a in "$@"; do
+          if [ "$a" = --all-judges ]; then
+            echo 'nenhum juiz online -- veja "moj calibrate --judges"' >&2
+            exit 1
+          fi
+        done
+        exit 0
+        """,
+    )
+    directory = tmp_path / 'package'
+    directory.mkdir()
+
+    await upload_package('unicamp#a-aplusb', directory)
+
+    assert _stub_calls(tmp_path) == [
+        ['upload', 'unicamp#a-aplusb', str(directory)],
+        ['calibrate', 'unicamp#a-aplusb', '--all-judges'],
+        ['calibrate', 'unicamp#a-aplusb'],
+    ]
+    # Said out loud: the limits the fallback measures describe one judge, and the
+    # setter is the only one who can decide to re-run it later.
+    assert 'Falling back' in capsys.readouterr().out
+
+
+async def test_a_failure_that_is_not_the_park_still_reaches_the_setter(
+    monkeypatch, tmp_path
+):
+    """The retry is unconditional rather than matched against the CLI's error
+    text, so a failure with another cause simply fails again -- and it is that
+    second error, not a swallowed first one, that is raised."""
+    _stub_moj(
+        monkeypatch,
+        tmp_path,
+        """
+        case "$1" in
+          calibrate) echo 'sem permissao para editar o problema' >&2; exit 1;;
+        esac
+        exit 0
+        """,
+    )
+    directory = tmp_path / 'package'
+    directory.mkdir()
+
+    with pytest.raises(MojCliError, match='permissao'):
+        await upload_package('unicamp#a-aplusb', directory)

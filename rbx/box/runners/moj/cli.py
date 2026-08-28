@@ -649,9 +649,38 @@ async def upload(problem_id: str, directory: pathlib.Path) -> None:
     await _run_moj(['upload', problem_id, str(directory)])
 
 
-async def calibrate(problem_id: str) -> None:
-    """Queue a calibration. Repeating it does not queue a second one."""
-    await _run_moj(['calibrate', problem_id])
+# Confirmed from the CLI source (`cmd_calibrate`): the flag that targets the whole
+# park is `--all-judges`, and it is expanded *client-side* into the list of online
+# hosts before the POST. `--hosts` next to it takes an explicit comma-separated
+# list and refuses a host the park does not know, so it is the wrong tool for
+# "everywhere" -- it would make rbx responsible for a judge inventory that changes
+# without us.
+ALL_JUDGES_FLAG = '--all-judges'
+
+
+async def calibrate(problem_id: str, *, all_judges: bool = False) -> None:
+    """Queue a calibration. Repeating it does not queue a second one.
+
+    Without `all_judges` the request is **global**: the server queues it once and
+    whichever judge is free first picks it up. That is what a throwaway probe
+    wants -- the fastest number, from anywhere.
+
+    With `all_judges` it is queued on *every online judge* instead. The
+    difference is not thoroughness, it is which limit gets published: `moj check`
+    reports the time limit as the **max across the judges that calibrated**, so a
+    package measured on one machine is judged, on every other machine, against a
+    limit that was never measured there. For a package setters will actually
+    submit to, the max over the real park is the only safe number.
+
+    It is not free -- it spends one calibration run per online judge -- and it can
+    fail where the global request would not: the CLI resolves the host list first
+    and dies with `nenhum juiz online` when the park is empty or unreachable. See
+    `rbx.box.packaging.moj.upload`, which is why that caller falls back.
+    """
+    args = ['calibrate', problem_id]
+    if all_judges:
+        args.append(ALL_JUDGES_FLAG)
+    await _run_moj(args)
 
 
 async def check(problem_id: str) -> MojCheck:
