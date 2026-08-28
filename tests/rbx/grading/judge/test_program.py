@@ -592,6 +592,63 @@ class TestProgramMocks:
 
         stack_call = calls[3]
         assert stack_call[0][0] == resource_module.RLIMIT_STACK
+        # No stack limit was asked for, so the stack is made unbounded.
+        assert stack_call[0][1] == (
+            resource_module.RLIM_INFINITY,
+            resource_module.RLIM_INFINITY,
+        )
+
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'linux')
+    def test_preexec_fn_applies_stack_limit_on_linux(self, mock_setrlimit, _):
+        import resource as resource_module
+
+        params = ProgramParams(stack_limit=64)
+
+        get_preexec_fn(params)()
+
+        stack_calls = [
+            call
+            for call in mock_setrlimit.call_args_list
+            if call[0][0] == resource_module.RLIMIT_STACK
+        ]
+        assert len(stack_calls) == 1
+        assert stack_calls[0][0][1] == (64 * 1024 * 1024, 64 * 1024 * 1024)
+
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'linux')
+    def test_preexec_fn_survives_a_stack_limit_the_system_refuses(
+        self, mock_setrlimit, _
+    ):
+        import resource as resource_module
+
+        def refuse_stack(which, limits):
+            if which == resource_module.RLIMIT_STACK:
+                raise ValueError('current limit exceeds maximum limit')
+
+        mock_setrlimit.side_effect = refuse_stack
+
+        # Must not blow up: preexec_fn runs in the forked child, so raising
+        # there would take the whole run down.
+        get_preexec_fn(ProgramParams(stack_limit=1024))()
+
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'darwin')
+    def test_preexec_fn_ignores_stack_limit_on_darwin(self, mock_setrlimit, _):
+        import resource as resource_module
+
+        params = ProgramParams(stack_limit=64)
+
+        get_preexec_fn(params)()
+
+        assert not [
+            call
+            for call in mock_setrlimit.call_args_list
+            if call[0][0] == resource_module.RLIMIT_STACK
+        ]
 
     @mock.patch('os.setpgid')
     @mock.patch('resource.setrlimit')
