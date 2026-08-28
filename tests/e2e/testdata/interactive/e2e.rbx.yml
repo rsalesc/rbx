@@ -18,3 +18,11 @@ scenarios:
             sols/ac.java: ac
             sols/ac.kt: ac
             sols/af_wa.cpp: wa
+            # Pins the memory-limit fixture per test: the bigger tests run
+            # enough binary-search steps for `af_ml.cpp` to allocate past the
+            # 256 MiB limit, the smaller ones do not. Asserting it here keeps
+            # the ML/TLE race of issue #807 from silently coming back.
+            sols/af_ml.cpp:
+              tests/3: ml
+              tests/4: ml
+              tests/5: ml
