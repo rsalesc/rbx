@@ -116,7 +116,7 @@ benchmark blocks still print, computed over the testcases that actually ran and
 marked with the count:
 
 ```
-Total judging: 3.1 s  (checker: 0.4 s)  (over 7/40 tests judged)
+Total judging: 3.1 s (checker: 400 ms) (over 7/40 tests judged)
 ```
 
 Benchmark output is diagnostic and feeds no inference, so a marked lower bound is
