@@ -15,9 +15,11 @@ It extends `BasePackager` directly and shares no code with BOCA.
 The previous packager (a `BocaPackager` subclass) targeted a shape MOJ no longer
 accepts: it authored a time limit MOJ *measures*, bundled a private copy of the
 checker bridge that MOJ banned, emitted `docs/enunciado.pdf` (not a recognized
-format), and named every test `001`/`002`, so a package had **no samples** and failed
-validation outright. Interactive problems are the one thing it covered that this one
-does not yet — see [Out of scope](#out-of-scope).
+format), and named every test `001`/`002`, so a package had **no samples** and MOJ
+published its first two secret tests as the statement's examples (see [Samples are
+optional, leaking them is not](#samples-are-optional-leaking-them-is-not)).
+Interactive problems are the one thing it covered that this one does not yet — see
+[Out of scope](#out-of-scope).
 
 ## The two rules that shape everything
 
@@ -254,6 +256,28 @@ group's index in `problem.rbx.yml`. Two properties are load-bearing:
   digits (`t01_easy_001` → `t01_easy_`) and compares against `${PAT%\**}` of each glob
   (`t01_easy_*` → `t01_easy_`), then falls back to a real glob match.
 
+### Samples are optional, leaking them is not
+
+MOJ does **not** require samples. `validate-problem.sh` checks `examples_present`,
+which counts any `tests/input`/`tests/output` pair of any name -- it has never looked
+at `sample*`. What does look is `gen-problem-json.sh`, which picks the statement's
+examples in three tiers:
+
+1. the names listed in the package's root **`samples`** file, else
+2. `tests/input/sample*` (all of them), else
+3. the **first `SAMPLE_LIMIT` (default 2) entries** of `tests/input`.
+
+Tier 3 is the trap: a sample-less package gets two *secret* tests -- input and
+expected output both -- rendered into the public statement. So `_write_tests` emits an
+**empty `samples` file** when, and only when, the package has no samples: tier 1 with
+an empty list means no examples and no leak. With samples, tier 2 already picks
+exactly the right tests, and a `samples` file would be a second source of truth to
+drift out of sync with `naming.testcase_name`.
+
+Tier 1 is an undocumented branch of `gen-problem-json.sh` -- mojtools' README only
+ever documents examples as `tests/input/sample*` -- so it is worth re-checking against
+upstream when the packager is next revised.
+
 ## Scoring
 
 `tests/score` is emitted for POINTS problems only; BINARY gets none, so MOJ scores by
@@ -372,8 +396,10 @@ What the packager owes the gate (`validate-problem.sh`):
 - **No title.** `render-statement.sh` injects the `<h1>` from `display_title` and
   strips a legacy `% Title` first line.
 - **No examples section and no ``` fence** -- both land in `render_warnings`,
-  since MOJ builds the examples itself from `tests/input/sample*`. `check_moj_gate`
-  refuses to package rather than shipping a statement that warns.
+  since MOJ builds the examples itself from `tests/input/sample*` (or from none at
+  all; see [Samples are optional, leaking them is
+  not](#samples-are-optional-leaking-them-is-not)). `check_moj_gate` refuses to
+  package rather than shipping a statement that warns.
 
 ### `--language`
 

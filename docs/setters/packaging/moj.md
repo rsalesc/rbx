@@ -84,6 +84,9 @@ A few things to keep in mind:
 - MOJ **builds the examples section itself** from the sample tests, so your statement must not
   have one of its own. {{rbx}} refuses to package a statement MOJ would render with warnings,
   rather than shipping it and letting you find out on the server.
+- A problem **without sample tests** packages fine, and its statement simply shows no examples.
+  {{rbx}} tells MOJ so explicitly, and warns you when it does -- left to its own devices, MOJ
+  would fall back to publishing your first two *secret* tests as the examples.
 - MOJ requires an **input** and an **output** section, and {{rbx}} always emits them, even when
   the corresponding block is empty.
 - Figures are embedded into the rendered HTML, so a PDF figure (which is what TikZ

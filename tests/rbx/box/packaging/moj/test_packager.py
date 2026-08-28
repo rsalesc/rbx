@@ -369,14 +369,35 @@ def test_every_input_has_a_paired_output(moj_package):
     assert inputs == outputs
 
 
-def test_refuses_a_package_without_samples(testing_pkg, tmp_path):
+def test_packages_without_samples_pinning_the_statement_to_no_examples(
+    testing_pkg, tmp_path, capsys
+):
+    # MOJ does not require samples: `validate-problem.sh` only asks for one
+    # input/output pair, of any name. But `gen-problem-json.sh` falls back to
+    # publishing the first two tests as the statement's examples, so a sample-less
+    # package leaks two SECRET tests. An empty root `samples` file takes the
+    # explicit-list branch with an empty list, and no example is rendered.
     testing_pkg.add_file('check.cpp').write_text(CHECKER)
     testing_pkg.set_checker('check.cpp')
     testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
     testing_pkg.save()
 
-    with pytest.raises(typer.Exit):
-        run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['easy']))
+    into_path = run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['easy']))
+
+    samples = into_path / 'samples'
+    assert samples.is_file()
+    assert samples.read_text() == ''
+    # The tests themselves are still packaged, and none of them is a sample.
+    names = {path.name for path in (into_path / 'tests' / 'input').iterdir()}
+    assert names
+    assert not any(name.startswith('sample') for name in names)
+    assert 'no examples' in capsys.readouterr().out
+
+
+def test_package_with_samples_does_not_pin_the_example_list(moj_package):
+    # With samples present MOJ's `tests/input/sample*` branch already picks exactly
+    # the right tests; a `samples` file would be a second source of truth to drift.
+    assert not (moj_package / 'samples').exists()
 
 
 # -- checker ----------------------------------------------------------------
