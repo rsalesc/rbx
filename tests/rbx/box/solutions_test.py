@@ -11,7 +11,7 @@ import rich.style
 from rich.text import Text
 
 from rbx import utils
-from rbx.box import package
+from rbx.box import package, schema
 from rbx.box import solutions as solutions_module
 from rbx.box.benchmark import BenchmarkLevel
 from rbx.box.deferred import Deferred
@@ -2031,8 +2031,17 @@ async def test_benchmark_block_is_absent_by_default(
     assert benchmark_lines(default_console) == []
     # Drop the block from the benchmarked report and the two are identical, so
     # the flag cannot have changed anything else.
-    block = set(benchmark_lines(benchmarked_console))
+    # The summary closes the report and opens with a blank line of its own, so
+    # cut the tail from that separator down; the per-solution blocks then come
+    # out line by line.
     lines = rendered_lines(benchmarked_console)
+    summary = next(
+        index
+        for index, line in enumerate(lines)
+        if line.strip().startswith('Benchmark summary')
+    )
+    lines = lines[: summary - 1]
+    block = set(benchmark_lines(benchmarked_console))
     without_block = [line for line in lines if line.strip() not in block]
     assert without_block == rendered_lines(default_console)
     # And the block hugs the solution it measures. Removing it above says
@@ -2104,6 +2113,282 @@ async def test_benchmark_block_marks_a_partial_run_as_a_lower_bound(
         'Benchmark: slowest test group1/0 - 120 ms judging (100 ms solution + 20 ms checker)',
         'Total judging: 120 ms (checker: 20 ms) (over 1/3 tests judged)',
     ]
+
+
+# The problem-level block, printed once at the end of the report. It ranks the
+# per-solution benchmarks, so every test below needs at least two solutions that
+# actually differ -- one solution can only ever be every extreme at once.
+
+PROBLEM_BENCHMARK_PREFIXES = (
+    'Benchmark summary',
+    'Slowest solution to judge:',
+    'Most checker time:',
+    'Slowest testcase to judge:',
+)
+
+
+def problem_benchmark_lines(console: rich.console.Console) -> List[str]:
+    """The problem-level benchmark block's lines, in the order they were printed."""
+    return [
+        line.strip()
+        for line in rendered_lines(console)
+        if line.strip().startswith(PROBLEM_BENCHMARK_PREFIXES)
+    ]
+
+
+def make_run_result_with_per_solution_times(
+    skeleton: SolutionReportSkeleton,
+    verdicts: Dict[Tuple[str, int], Outcome],
+    times_ms_per_solution: Dict[str, Tuple[int, int]],
+) -> RunSolutionResult:
+    """Like `make_run_result`, but times each solution differently.
+
+    ``times_ms_per_solution`` maps a solution's path to its ``(solution,
+    checker)`` milliseconds per judged testcase. `make_run_result` times every
+    solution identically, which makes every extreme the same solution -- and a
+    ranking that cannot disagree with itself proves nothing about the ranking.
+    """
+
+    def resolved(evaluation: Evaluation) -> Deferred[Evaluation]:
+        async def fn() -> Evaluation:
+            return evaluation
+
+        return Deferred(fn)
+
+    def make(solution_path: str, outcome: Outcome, index: int) -> Evaluation:
+        unmeasured = outcome == Outcome.SKIPPED
+        solution_time_ms, checker_time_ms = times_ms_per_solution[solution_path]
+        evaluation = make_evaluation(
+            outcome,
+            time_ms=None if unmeasured else solution_time_ms,
+            memory_bytes=None if unmeasured else 1024,
+            testcase_index=index,
+        )
+        if not unmeasured:
+            evaluation.result.checker_timing = RunTiming(time=checker_time_ms / 1000.0)
+        return evaluation
+
+    return RunSolutionResult(
+        skeleton=skeleton,
+        items=[
+            EvaluationItem(
+                solution=solution,
+                testcase_entry=entry.group_entry,
+                eval=resolved(
+                    make(
+                        str(solution.path),
+                        verdicts[entry.group_entry.key()],
+                        entry.group_entry.index,
+                    )
+                ),
+            )
+            for solution in skeleton.solutions
+            for entry in skeleton.entries
+        ],
+    )
+
+
+def two_solutions_with_disagreeing_extremes() -> List[Solution]:
+    """`sol.cpp` is the slowest to judge, `other.cpp` spends the most on the
+    checker -- see `_DISAGREEING_TIMES_MS`."""
+    return [
+        Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED),
+        Solution(path=pathlib.Path('other.cpp'), outcome=ExpectedOutcome.ACCEPTED),
+    ]
+
+
+# A slow solution with a cheap checker against a fast one with an expensive
+# checker. Over two testcases `sol.cpp` totals 1002 ms of judging to
+# `other.cpp`'s 420 ms, while `other.cpp` spends 400 ms in the checker to
+# `sol.cpp`'s 2 ms -- so the two rankings name different solutions.
+_DISAGREEING_TIMES_MS = {'sol.cpp': (500, 1), 'other.cpp': (10, 200)}
+
+_ALL_ACCEPTED = {('group1', 0): Outcome.ACCEPTED, ('group1', 1): Outcome.ACCEPTED}
+
+
+async def test_problem_benchmark_names_the_extremes_across_solutions(
+    mock_problem_root, mock_skeleton, mock_binary_scoring
+):
+    """`-b1` closes the report with the problem-wide extremes, each naming the
+    solution it belongs to -- which is not necessarily the same solution."""
+    skeleton = mock_skeleton(
+        two_solutions_with_disagreeing_extremes(), entries_per_group={'group1': 2}
+    )
+    result = make_run_result_with_per_solution_times(
+        skeleton, _ALL_ACCEPTED, _DISAGREEING_TIMES_MS
+    )
+
+    console = recording_console()
+    await print_run_report(
+        result,
+        console,
+        VerificationLevel.FULL,
+        benchmark_level=BenchmarkLevel.SOLUTIONS,
+    )
+
+    assert problem_benchmark_lines(console) == [
+        'Benchmark summary',
+        'Slowest solution to judge: 1.0 s, sol.cpp',
+        'Most checker time: 400 ms, other.cpp',
+        'Slowest testcase to judge: 501 ms, group1/0',
+    ]
+    assert_summary_stands_apart(console)
+
+
+def assert_summary_stands_apart(console: rich.console.Console) -> None:
+    """The summary opens its own block.
+
+    Whatever precedes it -- the timing summary, or the last solution's report --
+    it has to be one blank line above, or the two read as a single block.
+    """
+    lines = rendered_lines(console)
+    header = next(
+        index
+        for index, line in enumerate(lines)
+        if line.strip().startswith('Benchmark summary')
+    )
+    assert lines[header - 1] == ''
+    assert lines[header - 2] != ''
+
+
+async def test_problem_benchmark_is_absent_by_default(
+    mock_problem_root, mock_skeleton, mock_binary_scoring
+):
+    """Without `-b1` there is no summary either -- the per-solution blocks and
+    this one are the same flag."""
+    skeleton = mock_skeleton(
+        two_solutions_with_disagreeing_extremes(), entries_per_group={'group1': 2}
+    )
+    result = make_run_result_with_per_solution_times(
+        skeleton, _ALL_ACCEPTED, _DISAGREEING_TIMES_MS
+    )
+
+    console = recording_console()
+    await print_run_report(result, console, VerificationLevel.FULL)
+
+    assert problem_benchmark_lines(console) == []
+
+
+async def run_detailed_report(
+    result: RunSolutionResult,
+    console: rich.console.Console,
+    runs_dir: pathlib.Path,
+    benchmark_level: BenchmarkLevel = BenchmarkLevel.NONE,
+) -> bool:
+    """Drive `print_run_report` down its `--detailed` path.
+
+    That path draws its tables off the package on disk and publishes its report
+    into the runs dir, neither of which a synthetic run has -- so both lookups
+    are stubbed here rather than in every test that walks the path.
+    """
+    with (
+        patch(
+            'rbx.box.solutions.package.get_testgroup',
+            side_effect=lambda name: schema.TestcaseGroup(name=name),
+        ),
+        patch('rbx.box.solutions.package.get_problem_runs_dir', return_value=runs_dir),
+    ):
+        return await print_run_report(
+            result,
+            console,
+            VerificationLevel.FULL,
+            detailed=True,
+            benchmark_level=benchmark_level,
+        )
+
+
+async def test_detailed_report_prints_both_benchmark_blocks(
+    mock_problem_root, mock_skeleton, mock_binary_scoring
+):
+    """`--detailed` builds its reports without the reporter, so it prints the
+    per-solution blocks itself and has to collect them itself for the summary.
+    It would otherwise print every block and silently drop the summary."""
+    skeleton = mock_skeleton(
+        two_solutions_with_disagreeing_extremes(), entries_per_group={'group1': 2}
+    )
+    result = make_run_result_with_per_solution_times(
+        skeleton, _ALL_ACCEPTED, _DISAGREEING_TIMES_MS
+    )
+
+    console = recording_console()
+    await run_detailed_report(
+        result,
+        console,
+        mock_problem_root / 'runs',
+        benchmark_level=BenchmarkLevel.SOLUTIONS,
+    )
+
+    # One per-solution block per solution, in the order the solutions are
+    # reported, and then the one summary.
+    assert benchmark_lines(console) == [
+        'Benchmark: slowest test group1/0 - 501 ms judging (500 ms solution + 1 ms checker)',
+        'Total judging: 1.0 s (checker: 2 ms)',
+        'Benchmark: slowest test group1/0 - 210 ms judging (10 ms solution + 200 ms checker)',
+        'Total judging: 420 ms (checker: 400 ms)',
+    ]
+    assert problem_benchmark_lines(console) == [
+        'Benchmark summary',
+        'Slowest solution to judge: 1.0 s, sol.cpp',
+        'Most checker time: 400 ms, other.cpp',
+        'Slowest testcase to judge: 501 ms, group1/0',
+    ]
+
+
+async def test_detailed_report_has_no_benchmark_blocks_by_default(
+    mock_problem_root, mock_skeleton, mock_binary_scoring
+):
+    """`--detailed` on its own benchmarks nothing, per-solution or summary."""
+    skeleton = mock_skeleton(
+        two_solutions_with_disagreeing_extremes(), entries_per_group={'group1': 2}
+    )
+    result = make_run_result_with_per_solution_times(
+        skeleton, _ALL_ACCEPTED, _DISAGREEING_TIMES_MS
+    )
+
+    console = recording_console()
+    await run_detailed_report(result, console, mock_problem_root / 'runs')
+
+    assert benchmark_lines(console) == []
+    assert problem_benchmark_lines(console) == []
+
+
+async def test_problem_benchmark_prints_when_the_timing_summary_is_suppressed(
+    mock_problem_root, mock_skeleton, mock_binary_scoring
+):
+    """A `--fail-fast` run drops the timing summary, because time limit
+    inference reads it and a run that stopped early only measures a lower bound.
+    The benchmark summary feeds no inference and says so itself, so it stays."""
+    skeleton = mock_skeleton(
+        two_solutions_with_disagreeing_extremes(), entries_per_group={'group1': 2}
+    )
+    result = make_run_result_with_per_solution_times(
+        skeleton,
+        {('group1', 0): Outcome.ACCEPTED, ('group1', 1): Outcome.SKIPPED},
+        _DISAGREEING_TIMES_MS,
+    )
+
+    console = recording_console()
+    with fresh_issue_stack():
+        await print_run_report(
+            result,
+            console,
+            VerificationLevel.FULL,
+            timing=False,
+            benchmark_level=BenchmarkLevel.SOLUTIONS,
+        )
+
+    assert 'Timing summary' not in console.export_text(clear=False)
+    # Half the testset went unjudged, so every total is a lower bound and the
+    # header says so.
+    assert problem_benchmark_lines(console) == [
+        'Benchmark summary (partial -- some tests were not judged)',
+        'Slowest solution to judge: 501 ms, sol.cpp',
+        'Most checker time: 200 ms, other.cpp',
+        'Slowest testcase to judge: 501 ms, group1/0',
+    ]
+    # No timing summary above it here, so the separator has to come from the
+    # last solution's own trailing blank line rather than be printed twice.
+    assert_summary_stands_apart(console)
 
 
 @pytest.mark.test_pkg('problems/abort-groups')

@@ -2573,7 +2573,13 @@ async def _print_timing(
     console: rich.console.Console,
     skeleton: SolutionReportSkeleton,
     evaluations: StructuredEvaluation,
-):
+) -> bool:
+    """Print the timing summary, reporting whether there was one to print.
+
+    Nothing is printed when no solution measured anything -- a fully skipped
+    run, say. The caller needs to know which happened: the summary ends without
+    a trailing blank line, so whatever follows it has to supply its own.
+    """
     summary = TimingSummary()
     summary_per_language = collections.defaultdict(TimingSummary)
     tls_per_language = {}
@@ -2662,7 +2668,7 @@ async def _print_timing(
             summary_per_language[language].add_slow(solution_time, solution)
 
     if not summary.has_timings():
-        return
+        return False
 
     all_languages = set(summary_per_language)
     all_tl = min(all_tls) if all_tls else None
@@ -2671,7 +2677,7 @@ async def _print_timing(
 
     if len(all_languages) <= 1 or (len(all_tls) <= 1 and len(all_expanded_tls) <= 1):
         summary.print(console, tl=all_tl, expanded_tl=all_expanded_tl)
-        return
+        return True
 
     # Otherwise, print per language.
     # TODO: reconsider having the concept of a global language time limit.
@@ -2686,6 +2692,7 @@ async def _print_timing(
             tl=cur_tl,
             expanded_tl=cur_expanded_tl,
         )
+    return True
 
 
 def _length_markup(markup: str) -> int:
@@ -2855,6 +2862,37 @@ async def _render_detailed_group_table(
                 throttled_update()
 
 
+def _print_problem_benchmark(
+    console: rich.console.Console,
+    benchmark_level: benchmark.BenchmarkLevel,
+    solution_benchmarks: List[benchmark.SolutionBenchmark],
+    separate: bool = False,
+) -> None:
+    """Close the report with the problem-wide extremes, under `-b1`.
+
+    Both report paths end here, and neither guards this on the timing summary
+    having been printed. The timing summary is suppressed on a run that may stop
+    early -- time limit inference reads it, and a solution that stopped early
+    only measures a lower bound -- but the benchmark feeds no inference, carries
+    its own `(partial ...)` marker and is purely diagnostic, so it still prints.
+    A single solution gets it too: one solution is every extreme at once, but
+    the block is where the run's totals are read off, not just its ranking.
+
+    ``separate`` opens with a blank line. Pass it when the timing summary was
+    printed just above -- that summary ends on its last line, so without one the
+    two blocks read as one. The last solution's report already ends in a blank
+    line, so nothing is needed when the benchmark follows that instead.
+    """
+    if benchmark_level != benchmark.BenchmarkLevel.SOLUTIONS:
+        return
+    problem_bench = benchmark.build_problem_benchmark(solution_benchmarks)
+    if problem_bench is None:
+        return
+    if separate:
+        console.print()
+    benchmark.print_problem_benchmark(console, problem_bench)
+
+
 async def _print_detailed_run_report(
     result: RunSolutionResult,
     console: rich.console.Console,
@@ -2879,6 +2917,10 @@ async def _print_detailed_run_report(
     # `--detailed` bypasses the reporters entirely, so it has to publish the
     # report itself or `rbx run -d` would leave none behind.
     report_writer = run_report.RunReportWriter(package.get_problem_runs_dir())
+    # And for the same reason it has to collect the per-solution benchmarks as
+    # it goes: there is no reporter here holding a `solution_benchmarks` list,
+    # so without this the summary would silently vanish under `-d`.
+    solution_benchmarks: List[benchmark.SolutionBenchmark] = []
     for index, solution in enumerate(result.skeleton.solutions):
         all_evals = []
         for evals in structured_evaluations[str(solution.path)].values():
@@ -2906,18 +2948,24 @@ async def _print_detailed_run_report(
             )
             if solution_benchmark is not None:
                 benchmark.print_solution_benchmark(console, solution_benchmark)
+                solution_benchmarks.append(solution_benchmark)
         if _gates_report(solution, gating_solutions):
             ok = ok and report.status.ok()
         console.print()
 
     console.print()
 
+    printed_timing = False
     if timing:
-        await _print_timing(
+        printed_timing = await _print_timing(
             console,
             result.skeleton,
             structured_evaluations,
         )
+
+    _print_problem_benchmark(
+        console, benchmark_level, solution_benchmarks, separate=printed_timing
+    )
     return ok
 
 
@@ -3630,11 +3678,19 @@ async def print_run_report(
         # torn down before anything else reaches the terminal.
         reporter.close()
 
+    printed_timing = False
     if not single_solution and timing:
-        await _print_timing(
+        printed_timing = await _print_timing(
             console,
             result.skeleton,
             reporter.structured_evaluations,
         )
+
+    _print_problem_benchmark(
+        console,
+        benchmark_level,
+        reporter.solution_benchmarks,
+        separate=printed_timing,
+    )
 
     return ok
