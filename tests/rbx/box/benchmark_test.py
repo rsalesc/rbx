@@ -1,7 +1,6 @@
 import pytest
-import rich.console
 
-from rbx.box import benchmark, formatting
+from rbx.box import benchmark, formatting, sharing
 from rbx.box.schema import ExpectedOutcome, Solution
 from rbx.grading.steps import Outcome, RunTiming
 from tests.rbx.box.conftest import make_evaluation
@@ -253,11 +252,18 @@ def test_duration_of_exactly_one_second_is_rendered_in_seconds():
     assert formatting.get_formatted_duration_in_seconds(1.0) == '1.0 s'
 
 
-def render(printer, *args):
-    """Render one of the report blocks into a throwaway recording console."""
-    console = rich.console.Console(record=True, width=120)
-    printer(console, *args)
-    return console.export_text()
+def test_duration_that_rounds_up_to_a_second_is_rendered_in_seconds():
+    # Branching on the raw value would render `1000 ms` beside a sibling's
+    # `1.0 s`, which reads as two scales for the same duration.
+    assert formatting.get_formatted_duration_in_seconds(0.9999) == '1.0 s'
+
+
+def test_duration_below_a_millisecond_is_not_rendered_as_a_measured_zero():
+    assert formatting.get_formatted_duration_in_seconds(0.0004) == '<1 ms'
+
+
+def test_duration_of_zero_is_rendered_as_a_measured_zero():
+    assert formatting.get_formatted_duration_in_seconds(0.0) == '0 ms'
 
 
 def solution_benchmark(mock_skeleton, tmp_path, evals, *, path='sol.cpp', total=None):
@@ -284,16 +290,13 @@ def test_solution_block_names_the_slowest_testcase_and_both_totals(
         ],
     )
 
-    text = render(benchmark.print_solution_benchmark, bench)
+    breakdown, totals = benchmark.solution_benchmark_lines(bench)
 
-    assert 'test/1' in text
     # 290 ms of judging, split into 90 ms of solution and 200 ms of checker.
-    assert '290 ms' in text
-    assert '90 ms' in text
-    assert '200 ms' in text
+    assert 'test/1' in breakdown
+    assert '290 ms judging (90 ms solution + 200 ms checker)' in breakdown
     # Totals: 555 ms of judging, 215 ms of it in the checker.
-    assert '555 ms' in text
-    assert 'checker: 215 ms' in text
+    assert totals == 'Total judging: 555 ms (checker: 215 ms)'
 
 
 def test_solution_block_marks_a_partial_run_as_a_lower_bound(mock_skeleton, tmp_path):
@@ -304,9 +307,9 @@ def test_solution_block_marks_a_partial_run_as_a_lower_bound(mock_skeleton, tmp_
         total=3,
     )
 
-    text = render(benchmark.print_solution_benchmark, bench)
+    _, totals = benchmark.solution_benchmark_lines(bench)
 
-    assert '1/3' in text
+    assert totals.endswith('(over 1/3 tests judged)')
 
 
 def test_solution_block_does_not_mark_a_complete_run(mock_skeleton, tmp_path):
@@ -316,9 +319,9 @@ def test_solution_block_does_not_mark_a_complete_run(mock_skeleton, tmp_path):
         [timed(Outcome.ACCEPTED, time_ms=100, checker_ms=10, index=0)],
     )
 
-    text = render(benchmark.print_solution_benchmark, bench)
+    _, totals = benchmark.solution_benchmark_lines(bench)
 
-    assert 'judged' not in text
+    assert 'judged' not in totals
 
 
 def test_solution_block_omits_the_interactor_on_a_non_interactive_problem(
@@ -330,9 +333,28 @@ def test_solution_block_omits_the_interactor_on_a_non_interactive_problem(
         [timed(Outcome.ACCEPTED, time_ms=100, checker_ms=10, index=0)],
     )
 
-    text = render(benchmark.print_solution_benchmark, bench)
+    lines = benchmark.solution_benchmark_lines(bench)
 
-    assert 'interactor' not in text
+    assert not any('interactor' in line for line in lines)
+
+
+def test_solution_block_omits_the_checker_term_when_there_was_no_checker(
+    mock_skeleton, tmp_path
+):
+    # A communication problem may have no checker at all. Naming it in the sum
+    # would read `+ - checker`, which is broken prose rather than a finding --
+    # the totals line reports the missing measurement instead.
+    bench = solution_benchmark(
+        mock_skeleton,
+        tmp_path,
+        [timed(Outcome.ACCEPTED, time_ms=100, interactor_ms=30, index=0)],
+    )
+
+    breakdown, totals = benchmark.solution_benchmark_lines(bench)
+
+    assert '130 ms judging (100 ms solution + 30 ms interactor)' in breakdown
+    assert 'checker' not in breakdown
+    assert 'checker: -' in totals
 
 
 def test_solution_block_reports_the_interactor_when_there_is_one(
@@ -342,17 +364,24 @@ def test_solution_block_reports_the_interactor_when_there_is_one(
         mock_skeleton,
         tmp_path,
         [
-            timed(Outcome.ACCEPTED, time_ms=100, interactor_ms=300, index=0),
-            timed(Outcome.ACCEPTED, time_ms=100, interactor_ms=300, index=1),
+            timed(
+                Outcome.ACCEPTED, time_ms=100, checker_ms=5, interactor_ms=300, index=0
+            ),
+            timed(
+                Outcome.ACCEPTED, time_ms=100, checker_ms=5, interactor_ms=300, index=1
+            ),
         ],
     )
 
-    text = render(benchmark.print_solution_benchmark, bench)
+    breakdown, totals = benchmark.solution_benchmark_lines(bench)
 
-    # Once in the slowest testcase's breakdown, once in the totals.
-    assert text.count('interactor') == 2
-    assert '300 ms interactor' in text
-    assert 'interactor: 600 ms' in text
+    # Every term of the headline is summed into it, so all of them are joined
+    # with `+` rather than the interactor reading as an aside.
+    assert (
+        '405 ms judging (100 ms solution + 5 ms checker + 300 ms interactor)'
+        in breakdown
+    )
+    assert totals == 'Total judging: 810 ms (checker: 10 ms, interactor: 600 ms)'
 
 
 def test_solution_block_renders_an_unmeasured_checker_total_as_a_dash(
@@ -364,10 +393,10 @@ def test_solution_block_renders_an_unmeasured_checker_total_as_a_dash(
         [timed(Outcome.ACCEPTED, time_ms=100, interactor_ms=10, index=0)],
     )
 
-    text = render(benchmark.print_solution_benchmark, bench)
+    _, totals = benchmark.solution_benchmark_lines(bench)
 
-    assert 'checker: -' in text
-    assert 'checker: 0 ms' not in text
+    assert 'checker: -' in totals
+    assert 'checker: 0 ms' not in totals
 
 
 def test_solution_block_renders_a_genuine_zero_checker_total_as_a_measurement(
@@ -381,10 +410,10 @@ def test_solution_block_renders_a_genuine_zero_checker_total_as_a_measurement(
         [timed(Outcome.ACCEPTED, time_ms=100, checker_ms=0, index=0)],
     )
 
-    text = render(benchmark.print_solution_benchmark, bench)
+    _, totals = benchmark.solution_benchmark_lines(bench)
 
-    assert 'checker: 0 ms' in text
-    assert 'checker: -' not in text
+    assert 'checker: 0 ms' in totals
+    assert 'checker: -' not in totals
 
 
 def problem_benchmark(mock_skeleton, tmp_path):
@@ -409,18 +438,16 @@ def problem_benchmark(mock_skeleton, tmp_path):
 
 
 def test_problem_block_names_both_extremes(mock_skeleton, tmp_path):
-    text = render(
-        benchmark.print_problem_benchmark, problem_benchmark(mock_skeleton, tmp_path)
+    lines = benchmark.problem_benchmark_lines(
+        problem_benchmark(mock_skeleton, tmp_path)
     )
 
-    # The solution paths are absolute, so a narrow console wraps them mid-name.
-    unwrapped = text.replace('\n', '')
-    assert 'a.cpp' in unwrapped
-    assert 'b.cpp' in unwrapped
-    assert 'test/0' in text
-    assert '1.0 s' in text  # slowest to judge, 1002 ms
-    assert '600 ms' in text  # most checker time
-    assert '501 ms' in text  # slowest testcase
+    slowest, most_checker, slowest_testcase = lines[1:]
+    assert slowest.startswith('Slowest solution to judge: 1.0 s,')
+    assert 'a.cpp' in slowest
+    assert most_checker.startswith('Most checker time: 600 ms,')
+    assert 'b.cpp' in most_checker
+    assert slowest_testcase == 'Slowest testcase to judge: 501 ms, [item]test/0[/item]'
 
 
 def test_problem_block_omits_the_checker_line_when_no_solution_had_a_checker(
@@ -436,6 +463,32 @@ def test_problem_block_omits_the_checker_line_when_no_solution_had_a_checker(
     assert problem is not None
     assert problem.most_checker_time.total_checker_time_seconds is None
 
-    text = render(benchmark.print_problem_benchmark, problem)
+    lines = benchmark.problem_benchmark_lines(problem)
 
-    assert 'checker' not in text
+    assert not any('checker' in line for line in lines)
+
+
+def test_the_blocks_styles_resolve_against_the_report_theme(mock_skeleton, tmp_path):
+    # Rich resolves an unknown style to nothing and prints no error, so a
+    # misspelled tag passes every assertion over plain text. Render through the
+    # themed console the `--share` path uses and read the styles back, so that
+    # a `[hilte]` or an unbalanced tag fails here.
+    bench = solution_benchmark(
+        mock_skeleton,
+        tmp_path,
+        [timed(Outcome.ACCEPTED, time_ms=100, checker_ms=10, index=0)],
+        path='a.cpp',
+    )
+    problem = benchmark.build_problem_benchmark([bench])
+    assert problem is not None
+    console = sharing.recording_console(width=400)
+
+    benchmark.print_solution_benchmark(console, bench)
+    benchmark.print_problem_benchmark(console, problem)
+    styled = console.export_text(styles=True)
+
+    # `Style.render` reproduces exactly the escapes the export carries, so this
+    # pins the styled text to the *theme's* style rather than to whatever the
+    # console falls back to when a tag does not resolve.
+    assert console.get_style('item').render('test/0') in styled
+    assert console.get_style('status').render('Benchmark summary') in styled

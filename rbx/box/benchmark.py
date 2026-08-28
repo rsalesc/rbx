@@ -6,10 +6,10 @@ dominate the wall clock of a full run. This module turns the checker and
 interactor timings that every evaluation now carries (see
 `rbx.grading.steps.RunTiming`) into the two blocks `-b1` prints.
 
-Every duration here is in seconds, and every name says so -- the renderer picks
-between `formatting.get_formatted_time` (milliseconds) and
-`formatting.get_formatted_time_in_seconds` on nothing but the name, and picking
-the wrong one mislabels the unit instead of raising.
+Every duration here is in seconds, and every name says so. The formatters in
+`rbx.box.formatting` are told apart by nothing but their names -- one takes
+milliseconds, the others seconds -- so a name that omits the unit invites a
+caller to mislabel it, which nothing here would raise on.
 
 The timings themselves are captured unconditionally; the level only decides
 whether anything is printed. See docs/plans/2026-08-28-run-benchmark-design.md.
@@ -230,8 +230,76 @@ def _measurement(seconds: Optional[float]) -> str:
     return get_formatted_duration_in_seconds(seconds)
 
 
-def _hilite(seconds: Optional[float]) -> str:
-    return f'[hilite]{_measurement(seconds)}[/hilite]'
+def solution_benchmark_lines(bench: SolutionBenchmark) -> List[str]:
+    """The markup lines of one solution's judging benchmark.
+
+    Kept apart from the printing so that tests can assert over the markup --
+    rich resolves an unknown style to nothing and prints no error, so a
+    misspelled tag is invisible in rendered text.
+    """
+    slowest = bench.slowest_testcase
+    # The breakdown names only the programs that were measured. An absent
+    # checker is normal on a communication problem, and an absent interactor on
+    # every other one, so a `- checker` term there is broken prose rather than a
+    # finding. The totals line below still reports the missing measurement.
+    terms = [f'{_measurement(slowest.solution_time_seconds)} solution']
+    if slowest.checker_time_seconds is not None:
+        terms.append(f'{_measurement(slowest.checker_time_seconds)} checker')
+    if slowest.interactor_time_seconds is not None:
+        terms.append(f'{_measurement(slowest.interactor_time_seconds)} interactor')
+    # The headline is the sum of these terms, so they are joined as a sum.
+    breakdown = ' + '.join(terms)
+
+    # The totals, in contrast, always name the checker: on the problems where a
+    # checker is expected, `checker: -` is the report that it went unmeasured.
+    totals = [f'checker: {_measurement(bench.total_checker_time_seconds)}']
+    if bench.total_interactor_time_seconds is not None:
+        totals.append(
+            f'interactor: {_measurement(bench.total_interactor_time_seconds)}'
+        )
+
+    total_line = (
+        f'Total judging: {_measurement(bench.total_judging_time_seconds)}'
+        f' ({", ".join(totals)})'
+    )
+    if bench.partial:
+        # A `--fail-fast` run stopped early, so every total above is a lower
+        # bound rather than the cost of judging the whole testset.
+        total_line += f' (over {bench.judged}/{bench.total_testcases} tests judged)'
+
+    return [
+        f'Benchmark: slowest test [item]{slowest.entry}[/item]'
+        f' - {_measurement(slowest.judging_time_seconds)} judging ({breakdown})',
+        total_line,
+    ]
+
+
+def problem_benchmark_lines(problem: ProblemBenchmark) -> List[str]:
+    """The markup lines of the problem-wide extremes."""
+    header = '[status]Benchmark summary[/status]'
+    if problem.partial:
+        header += ' (partial -- some tests were not judged)'
+
+    lines = [
+        header,
+        f'Slowest solution to judge: '
+        f'{_measurement(problem.slowest_to_judge.total_judging_time_seconds)}'
+        f', {problem.slowest_to_judge.solution.href()}',
+    ]
+    # `most_checker_time` always names a winner, even when no solution measured
+    # a checker at all -- an unmeasured winner is not a finding, so say nothing.
+    if problem.most_checker_time.total_checker_time_seconds is not None:
+        lines.append(
+            f'Most checker time: '
+            f'{_measurement(problem.most_checker_time.total_checker_time_seconds)}'
+            f', {problem.most_checker_time.solution.href()}'
+        )
+    lines.append(
+        f'Slowest testcase to judge: '
+        f'{_measurement(problem.slowest_testcase.judging_time_seconds)}'
+        f', [item]{problem.slowest_testcase.entry}[/item]'
+    )
+    return lines
 
 
 def print_solution_benchmark(
@@ -242,59 +310,13 @@ def print_solution_benchmark(
     The console is passed in rather than taken from `rbx.console` so that the
     `--share` recording console gets these lines too.
     """
-    slowest = bench.slowest_testcase
-    # The checker term is always printed, as `-` when unmeasured: a batch
-    # problem always has a checker, so its absence is a missing measurement and
-    # worth showing. The interactor below is different -- printing a term for it
-    # on a non-interactive problem would report a component that does not exist.
-    breakdown = (
-        f'{_hilite(slowest.solution_time_seconds)} solution'
-        f' + {_hilite(slowest.checker_time_seconds)} checker'
-    )
-    totals = f'(checker: {_hilite(bench.total_checker_time_seconds)}'
-    # The interactor is named only when there is one to name -- a batch problem
-    # must not grow a term reading `- interactor` on every solution.
-    if slowest.interactor_time_seconds is not None:
-        breakdown += f', {_hilite(slowest.interactor_time_seconds)} interactor'
-    if bench.total_interactor_time_seconds is not None:
-        totals += f', interactor: {_hilite(bench.total_interactor_time_seconds)}'
-    totals += ')'
-
-    console.print(
-        f'Benchmark: slowest test [item]{slowest.entry}[/item]'
-        f' - {_hilite(slowest.judging_time_seconds)} judging ({breakdown})'
-    )
-    console.print(
-        f'Total judging: {_hilite(bench.total_judging_time_seconds)} {totals}', end=''
-    )
-    if bench.partial:
-        # A `--fail-fast` run stopped early, so every total above is a lower
-        # bound rather than the cost of judging the whole testset.
-        console.print(f' (over {bench.judged}/{bench.total_testcases} tests judged)')
-    else:
-        console.print()
+    for line in solution_benchmark_lines(bench):
+        console.print(line)
 
 
 def print_problem_benchmark(
     console: rich.console.Console, problem: ProblemBenchmark
 ) -> None:
     """Print the problem-wide extremes, at the end of the run report."""
-    console.print('[status]Benchmark summary[/status]', end='')
-    if problem.partial:
-        console.print(' (partial -- some tests were not judged)', end='')
-    console.print()
-    console.print(
-        f'Slowest solution to judge: {_hilite(problem.slowest_to_judge.total_judging_time_seconds)}'
-        f', {problem.slowest_to_judge.solution.href()}'
-    )
-    # `most_checker_time` always names a winner, even when no solution measured
-    # a checker at all -- an unmeasured winner is not a finding, so say nothing.
-    if problem.most_checker_time.total_checker_time_seconds is not None:
-        console.print(
-            f'Most checker time: {_hilite(problem.most_checker_time.total_checker_time_seconds)}'
-            f', {problem.most_checker_time.solution.href()}'
-        )
-    console.print(
-        f'Slowest testcase to judge: {_hilite(problem.slowest_testcase.judging_time_seconds)}'
-        f', [item]{problem.slowest_testcase.entry}[/item]'
-    )
+    for line in problem_benchmark_lines(problem):
+        console.print(line)

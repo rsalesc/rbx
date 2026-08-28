@@ -57,7 +57,6 @@ from rbx.box.formatting import (
     UNMEASURED,
     get_formatted_memory,
     get_formatted_time,
-    get_formatted_time_in_seconds,
     href,
 )
 from rbx.box.generation_schema import GenerationTestcaseEntry, TestcaseOrScriptEntry
@@ -1737,12 +1736,6 @@ def _get_evals_time_in_ms(evals: List[Evaluation]) -> Optional[int]:
     return max(int(time * 1000) for time in times)
 
 
-def _get_evals_judging_time_in_seconds(evals: List[Evaluation]) -> float:
-    if not evals:
-        return 0
-    return sum((eval.log.wall_time or 0.0) for eval in evals)
-
-
 def _get_evals_memory_in_bytes(evals: List[Evaluation]) -> Optional[int]:
     memories = [eval.log.memory for eval in evals if eval.log.memory is not None]
     if not memories:
@@ -1755,11 +1748,6 @@ def get_evals_formatted_time(evals: List[Evaluation]) -> str:
     if max_time is None:
         return UNMEASURED
     return get_formatted_time(max_time)
-
-
-def get_evals_formatted_judging_time(evals: List[Evaluation]) -> str:
-    total_time = _get_evals_judging_time_in_seconds(evals)
-    return get_formatted_time_in_seconds(total_time)
 
 
 def get_capped_evals_formatted_time(
@@ -2085,7 +2073,6 @@ class SolutionOutcomeReport(BaseModel):
             res = scoring_res + res
         res += f'\nTime: {get_capped_evals_formatted_time(self.limits, self.evals, self.verification)}'
         res += f'\nMemory: {get_evals_formatted_memory(self.evals)}'
-        # res += f'\nJudging time: {get_evals_formatted_judging_time(self.evals)}'
         if print_message and self.message is not None:
             entry, msg = self.message
             if msg:

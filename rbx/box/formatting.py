@@ -61,7 +61,7 @@ def get_formatted_time_in_seconds(time_in_seconds: float) -> str:
 
 
 def get_formatted_duration_in_seconds(time_in_seconds: float) -> str:
-    """A duration that may span milliseconds to minutes, read at a useful scale.
+    """A duration that may span milliseconds to seconds, read at a useful scale.
 
     `get_formatted_time_in_seconds` fixes one decimal place, which is right for
     a whole run's judging time but renders every realistic checker time as
@@ -71,8 +71,17 @@ def get_formatted_duration_in_seconds(time_in_seconds: float) -> str:
     Rounds rather than truncates: at the millisecond scale truncation is a
     visible lie (`0.0499 s` reading as `49 ms`). `solutions._get_evals_time_in_ms`
     truncates instead because it compares against a time *limit*, where rounding
-    up could turn a pass into a fail.
+    up could turn a pass into a fail. The branch reads the rounded milliseconds
+    rather than the raw value, so `0.9999 s` reads `1.0 s` and never `1000 ms`.
+
+    A duration that rounds to nothing is reported as `<1 ms`, so that it is not
+    read as a measured zero. A negative duration would render with a leading
+    `-`, colliding with `UNMEASURED` -- no sandbox clock produces one today, so
+    it is not guarded against.
     """
-    if time_in_seconds < 1.0:
-        return get_formatted_time(round(time_in_seconds * 1000))
+    time_in_ms = round(time_in_seconds * 1000)
+    if time_in_seconds > 0 and time_in_ms == 0:
+        return '<1 ms'
+    if time_in_ms < 1000:
+        return get_formatted_time(time_in_ms)
     return get_formatted_time_in_seconds(time_in_seconds)
