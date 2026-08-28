@@ -338,6 +338,22 @@ rbx header [OPTIONS]
 
 ---
 
+## vars
+
+Show the expanded vars of this problem.
+
+**Usage:**
+```bash
+rbx vars [OPTIONS]
+```
+
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--json` | BOOLEAN | Print the vars as a JSON object of dotted keys and string values. | `False` |
+
+
+---
+
 ## environment (env)
 
 Set or show the current box environment.

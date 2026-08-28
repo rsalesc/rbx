@@ -167,3 +167,34 @@ Variables can also be used in [generator expressions](/setters/stress-testing/#g
 rbx stress -g "gen [1..<N.max>]" -f "[sols/wa.cpp] ~ INCORRECT"
 ```
 
+## Seeing the expanded values
+
+The value you write is not always the value {{rbx}} ends up using: a
+``py`...` `` expression has to be evaluated, and one variable can be defined in
+terms of another. `rbx vars` prints what is left after all of that -- the very
+same values your validators, checkers and statements see. On the
+``py`...` `` package from [Defining variables](#defining-variables), it prints:
+
+<!--termynal-->
+
+```bash
+$ rbx vars
+M.max = 200000
+N.max = 100000
+```
+
+Pass `--json` and you get the same map as a JSON object, keyed by dotted name.
+Every value crosses as a **string**, never as a JSON number, so that a bound
+like ``py`10**18 + 7` `` survives a JSON parser exactly instead of being
+quietly rounded to the nearest float.
+
+```bash
+$ rbx vars --json
+{"N.max": "100000", "M.max": "200000"}
+```
+
+!!! tip "Right there in your statement"
+
+    The [VS Code extension](../tools/vscode.md#variables-in-a-statement) reads
+    this to show you what each `\VAR{...}` in a statement expands to, beside
+    the reference itself.
