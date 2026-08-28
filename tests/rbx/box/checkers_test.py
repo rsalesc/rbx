@@ -988,11 +988,13 @@ async def test_check_skips_checker_stderr_file_when_checker_said_nothing(
 
 
 # Benchmarking: how long the checker itself took (`rbx run --benchmark`).
+@pytest.mark.parametrize('skip_run_log', [False, True])
 async def test_check_records_the_checker_timing(
     checker_digest: str,
     testcase: Testcase,
     program_output: pathlib.Path,
     run_log: RunLog,
+    skip_run_log: bool,
 ) -> None:
     """A real checker run leaves its measured time on the result."""
     assert testcase.outputPath
@@ -1004,6 +1006,7 @@ async def test_check_records_the_checker_timing(
         run_log,
         testcase,
         program_output,
+        skip_run_log=skip_run_log,
     )
 
     assert result.outcome == Outcome.ACCEPTED
@@ -1012,7 +1015,26 @@ async def test_check_records_the_checker_timing(
     assert result.checker_timing.wall_time is not None
 
 
-async def test_check_records_no_timing_when_the_checker_never_ran(
+async def test_check_keeps_the_checker_timing_across_a_soft_tle(
+    checker_digest: str,
+    testcase: Testcase,
+    program_output: pathlib.Path,
+    run_log: RunLog,
+) -> None:
+    """The checker ran; the later TLE conversion must not discard its time."""
+    assert testcase.outputPath
+    testcase.outputPath.write_text('123\n')
+    program_output.write_text('123\n')
+    run_log.time = 1.5  # Over the TL but under 2*TL -- soft TLE.
+
+    result = await checkers.check(checker_digest, run_log, testcase, program_output)
+
+    assert result.outcome == Outcome.TIME_LIMIT_EXCEEDED
+    assert result.no_tle_outcome == Outcome.ACCEPTED
+    assert result.checker_timing is not None
+
+
+async def test_check_records_no_timing_when_the_solution_timed_out(
     checker_digest: str,
     testcase: Testcase,
     program_output: pathlib.Path,

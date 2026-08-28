@@ -350,6 +350,8 @@ async def _check(
     result = processed_checker_result
     # Stamped here, past every early return that never reached the checker --
     # those keep a `None` timing, which reads as unmeasured rather than zero.
+    # Not inside `process_checker_run_log`, which the interactor shares and
+    # which would therefore mislabel the interactor's time as the checker's.
     result.checker_timing = RunTiming.of(checker_run_log)
 
     if skip_run_log:
