@@ -54,6 +54,7 @@ from rbx.box.environment import (
     VerificationLevel,
 )
 from rbx.box.formatting import (
+    UNMEASURED,
     get_formatted_memory,
     get_formatted_time,
     get_formatted_time_in_seconds,
@@ -1749,14 +1750,10 @@ def _get_evals_memory_in_bytes(evals: List[Evaluation]) -> Optional[int]:
     return max(int(memory) for memory in memories)
 
 
-# What a formatted time or memory reads as when nothing was measured at all.
-_UNMEASURED = '-'
-
-
 def get_evals_formatted_time(evals: List[Evaluation]) -> str:
     max_time = _get_evals_time_in_ms(evals)
     if max_time is None:
-        return _UNMEASURED
+        return UNMEASURED
     return get_formatted_time(max_time)
 
 
@@ -1772,7 +1769,7 @@ def get_capped_evals_formatted_time(
 ) -> str:
     max_time = _get_evals_time_in_ms(evals)
     if max_time is None:
-        return _UNMEASURED
+        return UNMEASURED
     has_tle = any(eval.result.outcome.is_slow() for eval in evals)
     has_ile = any(
         eval.result.outcome == Outcome.IDLENESS_LIMIT_EXCEEDED for eval in evals
@@ -1802,7 +1799,7 @@ def get_capped_evals_formatted_time(
 def get_evals_formatted_memory(evals: List[Evaluation]) -> str:
     max_memory = _get_evals_memory_in_bytes(evals)
     if max_memory is None:
-        return _UNMEASURED
+        return UNMEASURED
     return get_formatted_memory(max_memory)
 
 

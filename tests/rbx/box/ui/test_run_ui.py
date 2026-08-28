@@ -478,12 +478,20 @@ def _write_timed_eval(
     prefix.with_suffix('.eval').write_text(utils.model_to_yaml(eval))
 
 
-def _metadata_markup_for(tmp_path, **kwargs) -> str:
+def _metadata_markup_for(
+    tmp_path,
+    checker_timing: Optional[RunTiming],
+    interactor_timing: Optional[RunTiming] = None,
+) -> str:
     skeleton = _make_skeleton(
         tmp_path / 'runs', tmp_path / 'tests', stems=['1-gen-000']
     )
     sol = skeleton.solutions[0]
-    _write_timed_eval(sol.runs_dir / 'main' / '1-gen-000', **kwargs)
+    _write_timed_eval(
+        sol.runs_dir / 'main' / '1-gen-000',
+        checker_timing=checker_timing,
+        interactor_timing=interactor_timing,
+    )
     markup = get_run_testcase_metadata_markup(
         skeleton, sol, skeleton.entries[0].group_entry
     )
@@ -496,14 +504,14 @@ def test_metadata_shows_the_measured_checker_time(tmp_path):
     assert '[b]Checker time:[/b] 48 ms' in markup
 
 
-def test_metadata_shows_no_checker_time_when_the_checker_never_ran(tmp_path):
+def test_metadata_shows_a_dash_when_the_checker_never_ran(tmp_path):
     """A checker that never ran has no measurement -- never `0 ms`."""
     markup = _metadata_markup_for(tmp_path, checker_timing=None)
     assert '[b]Checker time:[/b] -' in markup
     assert '0 ms' not in markup
 
 
-def test_metadata_shows_no_checker_time_when_the_clock_is_unset(tmp_path):
+def test_metadata_shows_a_dash_when_the_checker_clock_is_unset(tmp_path):
     """A `RunTiming` can exist while its clocks are `None` -- still unmeasured."""
     markup = _metadata_markup_for(tmp_path, checker_timing=RunTiming(wall_time=0.048))
     assert '[b]Checker time:[/b] -' in markup
@@ -520,5 +528,15 @@ def test_metadata_shows_the_interactor_time_when_there_is_one(tmp_path):
     markup = _metadata_markup_for(
         tmp_path, checker_timing=None, interactor_timing=RunTiming(time=1.2)
     )
-    assert '[b]Interactor time:[/b] 1200 ms' in markup
-    assert '[b]Checker time:[/b] -' in markup
+    assert '[b]Checker time:[/b] - / [b]Interactor time:[/b] 1200 ms' in markup
+
+
+def test_metadata_shows_a_dash_when_the_interactor_clock_is_unset(tmp_path):
+    """The half is gated on the timing object, but reads from the clock in it."""
+    markup = _metadata_markup_for(
+        tmp_path,
+        checker_timing=RunTiming(time=0.048),
+        interactor_timing=RunTiming(wall_time=1.2),
+    )
+    assert '[b]Checker time:[/b] 48 ms / [b]Interactor time:[/b] -' in markup
+    assert '0 ms' not in markup

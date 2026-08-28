@@ -40,6 +40,10 @@ def href(
     return f'[{style}][link={url_str}]{text}[/link][/{style}]'
 
 
+# What a formatted time or memory reads as when nothing was measured at all.
+UNMEASURED = '-'
+
+
 def get_formatted_memory(memory_in_bytes: int, mib_decimal_places: int = 0) -> str:
     if memory_in_bytes < 1024 * 1024:
         if memory_in_bytes < 1024:
