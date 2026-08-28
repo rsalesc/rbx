@@ -76,13 +76,15 @@ class BasePackager(ABC):
 
     @classmethod
     def package_basename(cls):
-        """`[<variant>-][<letter>-]<name>`: what this package is called.
+        """`[<letter>-]<name>`: what this package is called.
 
-        A contest variant is a *different contest* that happens to share problem
-        directories with its siblings, so its id is part of the name: without it
-        two variants of the same problem produce the same basename, and whatever
-        consumes it -- an artifact on disk, a remote problem id -- has one
-        variant overwrite the other.
+        The variant prefix is commented out below for now, so two variants of
+        the same problem share a basename again. When it is back, the name is
+        `[<variant>-][<letter>-]<name>`: a contest variant is a *different
+        contest* that happens to share problem directories with its siblings, so
+        its id belongs in the name -- without it whatever consumes the basename
+        -- an artifact on disk, a remote problem id -- has one variant overwrite
+        the other.
 
         A classmethod because `rbx package moj --upload` resolves the remote
         problem id from this *before* the build, and so before there is an
@@ -91,10 +93,12 @@ class BasePackager(ABC):
         pkg = package.find_problem_package_or_die()
         shortname = naming.get_problem_shortname_or_require()
         basename = f'{shortname}-{pkg.name}' if shortname is not None else pkg.name
-        variant_id = naming.get_selected_contest_variant_id()
-        if variant_id is None:
-            return basename
-        return f'{variant_id}-{basename}'
+        # Variant prefix temporarily disabled -- see #798.
+        # variant_id = naming.get_selected_contest_variant_id()
+        # if variant_id is None:
+        #     return basename
+        # return f'{variant_id}-{basename}'
+        return basename
 
     def statement_types(self) -> List[StatementType]:
         return [StatementType.PDF]

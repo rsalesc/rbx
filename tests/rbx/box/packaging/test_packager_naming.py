@@ -79,13 +79,19 @@ def _setup_ambiguous_problem(tmp_path: pathlib.Path) -> None:
     os.chdir(tmp_path / 'A')
 
 
+_VARIANT_PREFIX_DISABLED = pytest.mark.skip(
+    reason='The variant prefix is commented out in BasePackager.package_basename.'
+)
+
+
 class TestBasePackagerBasename:
-    """The basename carries the selected contest variant.
+    """The basename would carry the selected contest variant.
 
     A variant is a *different contest* that shares problem directories with its
     siblings, so two variants of a problem would otherwise produce the same
     basename -- and the artifacts and remote ids built from it would overwrite
-    each other.
+    each other. The prefix is currently commented out, so the two tests that
+    assert it are skipped alongside it.
     """
 
     def _base_packager(self) -> PkgPackager:
@@ -95,12 +101,14 @@ class TestBasePackagerBasename:
         packager.testcase_entries = []
         return packager
 
+    @_VARIANT_PREFIX_DISABLED
     def test_prefixes_the_selected_variant(self, tmp_path: pathlib.Path):
         _setup_ambiguous_problem(tmp_path)
         selected_variant_id_var.set('div2')
 
         assert self._base_packager().package_basename() == 'div2-A-prob-a'
 
+    @_VARIANT_PREFIX_DISABLED
     def test_two_variants_of_the_same_problem_differ(self, tmp_path: pathlib.Path):
         _setup_ambiguous_problem(tmp_path)
 
