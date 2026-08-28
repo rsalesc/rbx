@@ -775,7 +775,12 @@ BenchmarkParam = Annotated[
 ]
 ```
 
-Verify that a bare `-b` (no value) yields `1`. Typer's int option normally *requires* a value; if `-b` alone errors, give the option `flag_value=BenchmarkLevel.SOLUTIONS.value` (Click supports `flag_value` on a non-boolean option) and add a test asserting `rbx run -b` behaves as `-b1`. Do not skip this check — the design promises bare `-b` means `-b1`.
+**A bare `-b` (no value) is an error, and that is correct.** Typer does not
+support `flag_value` -- it emits `DeprecationWarning: The 'is_flag' and
+'flag_value' parameters are not supported by Typer` -- so the trick that would
+make `-b` alone mean `-b1` is not available. It is also not wanted: the flag
+mirrors `-v`, which requires a value too (`rbx run -v` alone errors, `-v4`
+works). Spell the level: `-b1`, `-b 1` or `--benchmark 1`.
 
 In `rbx/box/completion/completers.py`, next to `_VERIFICATION_TABLE`:
 

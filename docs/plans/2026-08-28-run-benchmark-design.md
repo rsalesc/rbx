@@ -149,8 +149,9 @@ class BenchmarkLevel(Enum):
     SOLUTIONS = 1
 ```
 
-`-b` / `--benchmark`, an int option with `default_factory` returning `0`, bare
-`-b` meaning `1`, and an autocompletion adapter alongside `verification_level`.
+`-b` / `--benchmark`, an int option with `default_factory` returning `0`, and an
+autocompletion adapter alongside `verification_level`. A value is required, as
+for `-v`: Typer does not support `flag_value`, and `rbx run -v` alone errors too.
 A level outside `{0, 1}` is an error naming #801, so `-b2` never
 silently under-delivers. Both `rbx run` and `rbx irun` take it; `-b` is free in
 both (`irun` already spends `-p` on `--print`, but not `-b`).
