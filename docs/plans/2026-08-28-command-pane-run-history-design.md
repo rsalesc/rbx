@@ -161,9 +161,46 @@ manifest and whose panes load their `.ansi` file instead of executing. There is 
 mode: the shell input works, `cwd`/`prefix` come from the manifest, and commands typed into a
 reopened session append to that same run directory under the same rules as a fresh one.
 
-Sub-commands persisted as `PENDING` or `RUNNING` -- the app was quit mid-chain -- load as
-`SKIPPED`. They are not re-queued, and marking them skipped is honest about what happened
-rather than leaving a pending command that will never start.
+A sub-command is never reloaded as `PENDING` or `RUNNING`: nothing is executing when a run
+is opened, and leaving a pending command that will never start would be a lie. `PENDING`
+loads as `SKIPPED` (it never began) and `RUNNING` loads as a new `INTERRUPTED` status (it
+began, its partial output was dumped on unmount, and its exit code is unknown). Both are
+terminal, so `TabState.is_idle` and `aggregate_status` stay correct -- and the two are kept
+distinct because resuming treats them differently.
+
+## Resuming
+
+Re-running a command needs nothing the manifest does not already hold. Enqueueing is:
+
+```python
+sub.status = CommandStatus.PENDING
+task = self._task_queue.enqueue(sub.shell_command, terminal_id=tab_index)
+sub.task_id = task.task_id
+```
+
+`TaskReady` then drives `pane.execute()` exactly as for a first run. Chain semantics come
+along for free: `chained` is persisted, so if a resumed command fails, `_skip_rest_of_chain`
+aborts the rest of that tab's chain just as it did originally.
+
+Two verbs:
+
+- **Retry** re-runs a single sub-command, the one on screen.
+- **Resume** re-queues every sub-command **not in `SUCCESS`** -- `FAILED`, `SKIPPED` and
+  `INTERRUPTED` alike -- in their original order, across every tab. This is the
+  "`each build` over twelve problems, three failed, fix them, carry on" case, and it is why
+  resume is run-wide rather than per-tab. Successful work is never repeated.
+
+Resume deliberately includes `FAILED`: you resume *because* you fixed what failed, so
+starting after the failure point would skip the command you actually wanted re-run.
+
+`execute()` appends to the terminal state rather than clearing it, so re-running a
+sub-command that already has output would concatenate two attempts in one pane. A retried
+sub-command therefore gets a fresh pane mounted under the same id -- the same remove/mount
+`_queue_command_in_tab` already performs -- and its `.ansi` file is overwritten when the new
+attempt completes. Only the latest attempt is kept.
+
+None of this is specific to reopened runs. A live session where a chain aborted on one
+problem resumes by the same path, without quitting first.
 
 ## Testing
 
@@ -184,3 +221,9 @@ rather than leaving a pending command that will never start.
   `on A` filters to runs touching `A`.
 - **Continuation.** A command queued into a reopened run lands in that run's directory and is
   present when it is reopened again.
+- **Load states.** A run persisted mid-chain reloads with `RUNNING` as `INTERRUPTED` and
+  `PENDING` as `SKIPPED`, and the tab reports itself idle.
+- **Resume.** Over a run with a mix of statuses, only the non-`SUCCESS` sub-commands are
+  enqueued, in order; a resumed command that fails again skips the rest of its chain.
+- **Retry hygiene.** Re-running a sub-command that already has output leaves the pane
+  holding only the new attempt, and its stored `.ansi` matches.
