@@ -158,6 +158,23 @@ def get_problem_shortname_or_require() -> Optional[str]:
     return None
 
 
+def get_selected_contest_variant_id() -> Optional[str]:
+    """The id of the contest variant currently selected, or None.
+
+    None means "there is no variant to name": either the problem sits outside
+    any contest at all, or the contest that resolved is the canonical one
+    (`contest.rbx.yml`), which has no id. Unlike
+    `contest_package.get_selected_variant_id`, being outside a contest is not an
+    error here -- a stand-alone problem is a perfectly good thing to package.
+
+    Dispatcher mode with no selection still errors, through the same picker
+    message every other contest accessor gives.
+    """
+    if contest_package.find_contest_root() is None:
+        return None
+    return contest_package.get_selected_variant_id()
+
+
 def get_problem_index() -> Optional[int]:
     entry = get_problem_entry_in_contest()
     if entry is None:

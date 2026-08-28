@@ -177,6 +177,15 @@ extensions:
 
 The org itself is *not* created for you: uploading to an org that doesn't exist fails.
 
+The `<problem>` half is the package's own name, prefixed by its letter in the contest -- so
+problem `A`, named `aplusb`, becomes `your-org#a-aplusb`. A problem packaged on its own,
+outside any contest, just uses its name.
+
+When you select a contest variant with `-C <id>`, the id comes first: the same problem in
+variant `div1` becomes `your-org#div1-a-aplusb`. Without it, every variant of a contest would
+name the same problem on the judge, and uploading one would quietly replace the last. The
+built `.zip` is named to match, so what's on disk and what's on the server always agree.
+
 Uploading also queues the calibration right after it, whether or not you passed `--calibrate`:
 a package is only judgeable once a judge has calibrated it, so there's nothing to gain from
 uploading one and leaving it uncalibrated. It's a long server-side job and {{rbx}} doesn't wait
