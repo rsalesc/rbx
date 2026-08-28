@@ -437,6 +437,20 @@ def _export_contest_selection() -> None:
         os.environ[contest_state.ENV_VAR] = selection
 
 
+def _offer_run_history(problem_names: Optional[List[str]] = None) -> bool:
+    """Offer to reopen a past `each`/`on` session.
+
+    Reached when there is no command to forward. Returns True once it has shown
+    something; False means the caller should open a blank session instead --
+    either nothing was ever recorded, or the user asked for a new one. No-argument
+    `each` has always opened a blank session, and history must not cost that.
+    """
+    from rbx.box.ui import run_picker
+
+    outcome = run_picker.open_run_history(problem_names)
+    return outcome == run_picker.HANDLED
+
+
 def _build_command_argvs_or_die(
     args: List[str],
 ) -> Tuple[List[List[str]], Optional[str]]:
@@ -467,6 +481,8 @@ def each(ctx: typer.Context, keep_going: bool = KEEP_GOING_OPTION) -> None:
 
     contest = find_contest_package_or_die()
     _export_contest_selection()
+    if not ctx.args and _offer_run_history():
+        return
     argvs, placeholder_prefix = _build_command_argvs_or_die(ctx.args)
     commands = [
         CommandEntry(
@@ -504,15 +520,26 @@ def each(ctx: typer.Context, keep_going: bool = KEEP_GOING_OPTION) -> None:
 def on(
     ctx: typer.Context,
     problems: Annotated[
-        str,
+        Optional[str],
         typer.Argument(
             autocompletion=annotations._adapt('problem'),  # noqa: SLF001
             help=PROBLEM_SELECTOR_HELP,
         ),
-    ],
+    ] = None,
     keep_going: bool = KEEP_GOING_OPTION,
 ) -> None:
     _export_contest_selection()
+    if problems is None:
+        # No selector and nothing to run: history is all that is on offer, since
+        # there is no problem set to open a blank session over.
+        if not _offer_run_history():
+            console.console.print(
+                '[error]No recorded runs found for this contest.[/error]\n'
+                '[status]Pass a problem selector, e.g. '
+                '[item]rbx contest on A build[/item].[/status]'
+            )
+            raise typer.Exit(1)
+        return
     try:
         problems_of_interest = contest_utils.get_problems_of_interest(problems)
     except problem_selector.ProblemSelectorError as e:
@@ -524,6 +551,12 @@ def on(
             f'[error]No problems found in contest matching [item]{problems}[/item].[/error]'
         )
         raise typer.Exit(1)
+
+    if not ctx.args and _offer_run_history(
+        [naming.get_contest_problem_label(p) for p in problems_of_interest]
+    ):
+        # A selector but nothing to run: show this problem's history.
+        return
 
     argvs, placeholder_prefix = _build_command_argvs_or_die(ctx.args)
 

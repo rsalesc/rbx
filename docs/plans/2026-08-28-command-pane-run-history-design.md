@@ -86,7 +86,7 @@ after the resize.
 Contest-rooted, beside the existing problem-level cache:
 
 ```
-<contest root>/.box/runs/
+<contest root>/.rbx/runs/
   20260828-141233-a3f1/
     run.yml
     0/0.ansi        # tab 0 (problem A), sub-command 0
@@ -117,7 +117,9 @@ class RunStore(Protocol):
 redundancy against a wiped `.box` -- is then a second implementation plus a merge in the
 picker, not a refactor. Nothing outside the store module knows where runs live.
 
-A consequence worth stating: history under `.box/` is destroyed by a cache wipe. That is
+The directory is `rbx.config.CACHE_DIR_NAME` (`.rbx`), not a new one.
+
+A consequence worth stating: history under the cache is destroyed by a wipe. That is
 accepted for now, and is precisely what the global fallback would later mitigate.
 
 ### Manifest
@@ -143,8 +145,13 @@ reopened and added commands to does not sink to the bottom of the list.
 
 ## Reopening
 
-`_build_command_argvs_or_die` currently rejects an empty command with `EmptyCommandError`.
-That is the hook: an empty command means "show me history" rather than an error.
+An empty command means "show me history" rather than running nothing.
+
+**The picker must not cost the blank session.** No-argument `each` already opened an empty
+app to type commands into (`test_each_without_args_opens_an_empty_app`), so replacing it
+outright with history would have removed a working feature. Instead the picker's first row
+is **"Start a new session"**, and a contest with no recorded history skips the picker and
+opens the blank session exactly as before. History is offered, never imposed.
 
 `rbx contest on`'s `problems` argument becomes **optional**. Bare `rbx contest on` behaves
 like bare `rbx contest each` and lists every run; `rbx contest on A` with no command lists
@@ -153,8 +160,9 @@ only runs that touched problem `A`.
 The picker is a small standalone app that returns a run id, following the `rbxReviewApp`
 pattern (run the app, read a result attribute synchronously). Each row shows the start
 timestamp, the command chain, the problems involved, and the aggregate status icon --
-`_STATUS_MARKUP` already exists for that. With no runs recorded it prints a plain message and
-exits non-zero.
+`STATUS_MARKUP` already exists for that. Bare `rbx contest on`, which has no problem set to
+open a blank session over, is the one case that reports "no recorded runs" and exits
+non-zero.
 
 Selecting a run starts an ordinary `rbxCommandApp` whose tabs and sub-commands come from the
 manifest and whose panes load their `.ansi` file instead of executing. There is no read-only
@@ -182,7 +190,8 @@ sub.task_id = task.task_id
 along for free: `chained` is persisted, so if a resumed command fails, `_skip_rest_of_chain`
 aborts the rest of that tab's chain just as it did originally.
 
-Two verbs, both on the sidebar alongside the existing `!`, `l` and `?`:
+Two verbs, both on the sidebar alongside the existing `!`, `l` and `?`, and both listed in
+the app's `HelpModal`:
 
 - **`r` -- retry** re-runs the single sub-command currently on screen. It names one command
   in one tab, so it needs no scope prompt.
@@ -222,6 +231,19 @@ attempt completes. Only the latest attempt is kept.
 
 None of this is specific to reopened runs. A live session where a chain aborted on one
 problem resumes by the same path, without quitting first.
+
+## What the implementation added
+
+Three things the design did not anticipate, all recorded in `rbx/box/ui/CLAUDE.md`:
+
+- **`CommandStatus` moved to its own module** (`command_status.py`). The history persists it
+  and the app imports the history, so leaving the enum in `command_app.py` would have been a
+  cycle.
+- **Dumps store `\n`, terminals need `\r\n`.** `to_terminal_input()` is the adapter; without
+  it every restored line starts where the previous one ended rather than at column zero.
+- **Resume resets every pane before enqueueing any.** Enqueueing as it went left a window in
+  which a fast failure completed while later links of its chain were still unqueued, and
+  `_skip_rest_of_chain` cancels only tasks already in the queue.
 
 ## Testing
 

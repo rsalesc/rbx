@@ -1,5 +1,5 @@
 import dataclasses
-import enum
+import datetime
 import shlex
 from time import monotonic
 from typing import Dict, List, Optional, Tuple
@@ -20,7 +20,9 @@ from rbx.box.setter_config import (
     get_setter_config,
     set_problem_label,
 )
+from rbx.box.ui import command_status, run_history
 from rbx.box.ui._vendor.toad.widgets.command_pane import CommandPane
+from rbx.box.ui.command_status import CommandStatus
 from rbx.box.ui.main import rbxBaseApp
 from rbx.box.ui.screens.tab_selector import TabSelectorModal
 from rbx.box.ui.task_queue import Task, TaskQueue
@@ -160,6 +162,8 @@ class HelpModal(ModalScreen[None]):
                 '  [b]tab[/b]         Focus terminal\n'
                 '  [b]![/b]           Open shell input\n'
                 '  [b]\u2190 / \u2192[/b]       Previous / next sub-command\n'
+                '  [b]r[/b]           Retry this command\n'
+                '  [b]R[/b]           Resume everything that did not succeed\n'
                 '  [b]l[/b]           Cycle problem label (name/title/path)\n'
                 '  [b]?[/b]           Show this help\n'
                 '  [b]q[/b]           Quit',
@@ -201,35 +205,11 @@ class HelpModal(ModalScreen[None]):
             )
 
 
-class CommandStatus(enum.Enum):
-    PENDING = 'pending'
-    RUNNING = 'running'
-    SUCCESS = 'success'
-    FAILED = 'failed'
-    SKIPPED = 'skipped'
-
-
-_STATUS_MARKUP = {
-    CommandStatus.PENDING: '[dim]○[/dim]',
-    CommandStatus.RUNNING: '[yellow]●[/yellow]',
-    CommandStatus.SUCCESS: '[green]✓[/green]',
-    CommandStatus.FAILED: '[red]✗[/red]',
-    CommandStatus.SKIPPED: '[dim]⊘[/dim]',
-}
-
-_STATUS_ICON = {
-    CommandStatus.PENDING: '○',
-    CommandStatus.RUNNING: '●',
-    CommandStatus.SUCCESS: '✓',
-    CommandStatus.FAILED: '✗',
-    CommandStatus.SKIPPED: '⊘',
-}
-
-_FINISHED_STATUSES = (
-    CommandStatus.SUCCESS,
-    CommandStatus.FAILED,
-    CommandStatus.SKIPPED,
-)
+# Re-exported so existing importers of `command_app.CommandStatus` keep working;
+# the enum itself lives beside the run history, which persists it.
+_STATUS_MARKUP = command_status.STATUS_MARKUP
+_STATUS_ICON = command_status.STATUS_ICON
+_FINISHED_STATUSES = command_status.FINISHED_STATUSES
 
 
 @dataclasses.dataclass
@@ -271,11 +251,25 @@ class SubCommand:
     shell_command: str
     pane_id: str
     status: CommandStatus = CommandStatus.PENDING
+    exit_code: Optional[int] = None
     task_id: Optional[int] = None
     # Seeded from the CLI as part of a `::` chain. Only chained commands are
     # skipped when an earlier one fails; commands queued interactively always
     # run, so a typo in one does not silently swallow the next.
     chained: bool = False
+
+
+def _subtitle_for(sub: SubCommand) -> str:
+    """What a pane's border says about a command that is no longer running."""
+    if sub.status is CommandStatus.SUCCESS:
+        return 'Done'
+    if sub.status is CommandStatus.FAILED:
+        return f'Exit code: {sub.exit_code}'
+    if sub.status is CommandStatus.SKIPPED:
+        return 'Skipped'
+    if sub.status is CommandStatus.INTERRUPTED:
+        return 'Interrupted'
+    return ''
 
 
 class TabState:
@@ -309,6 +303,22 @@ class TabState:
         shell_command = self.entry.make_raw_shell_command(raw_command)
         return self._append_sub_command(name, shell_command)
 
+    def add_recorded_sub_command(
+        self, record: run_history.SubCommandRecord
+    ) -> SubCommand:
+        """Re-create a sub-command from history.
+
+        The stored `shell_command` is used verbatim: it already had the tab's
+        `cwd`/`prefix` folded into it when it first ran, and re-deriving it
+        would risk resuming something subtly different from what was recorded.
+        """
+        sub = self._append_sub_command(
+            record.name, record.shell_command, chained=record.chained
+        )
+        sub.status = command_status.on_load(record.status)
+        sub.exit_code = record.exit_code
+        return sub
+
     @property
     def active_sub_command_index(self) -> Optional[int]:
         """The sub-command worth showing when this tab is opened.
@@ -336,12 +346,7 @@ class TabState:
         if not self.sub_commands:
             return CommandStatus.PENDING
         statuses = {s.status for s in self.sub_commands}
-        for status in (
-            CommandStatus.FAILED,
-            CommandStatus.SKIPPED,
-            CommandStatus.RUNNING,
-            CommandStatus.PENDING,
-        ):
+        for status in command_status.AGGREGATE_PRECEDENCE:
             if status in statuses:
                 return status
         return CommandStatus.SUCCESS
@@ -430,11 +435,15 @@ class rbxCommandApp(rbxBaseApp):
         commands: List[CommandEntry],
         parallel: bool = False,
         keep_going: bool = False,
+        run_handle: Optional[run_history.RunHandle] = None,
+        restored: bool = False,
     ):
         super().__init__()
         self.commands = commands
         self.parallel = parallel
         self.keep_going = keep_going
+        self._run_handle = run_handle
+        self._restored = restored
         self._tabs: List[TabState] = []
         self._active_tab: int = 0
         self._label_mode: ProblemLabelMode = get_setter_config().ui.problem_label
@@ -444,16 +453,21 @@ class rbxCommandApp(rbxBaseApp):
             on_task_ready=lambda t: self.post_message(self.TaskReady(t)),
         )
         self._pending_command: Optional[str] = None
+        self._pending_menu: Optional[str] = None
         self._pane_size: Tuple[int, int] = (0, 0)
 
         # Initialize tab states and add initial sub-commands.
         for i, cmd in enumerate(commands):
             tab = TabState(entry=cmd, tab_index=i)
-            chained = len(cmd.argvs) > 1
-            for argv in cmd.argvs:
-                if not argv:
-                    continue
-                tab.add_sub_command(name=' '.join(argv), argv=argv, chained=chained)
+            if restored and run_handle is not None:
+                for record in run_handle.manifest.tabs[i].sub_commands:
+                    tab.add_recorded_sub_command(record)
+            else:
+                chained = len(cmd.argvs) > 1
+                for argv in cmd.argvs:
+                    if not argv:
+                        continue
+                    tab.add_sub_command(name=' '.join(argv), argv=argv, chained=chained)
             self._tabs.append(tab)
 
     def compose(self) -> ComposeResult:
@@ -633,11 +647,117 @@ class rbxCommandApp(rbxBaseApp):
         # Initial focus on the sidebar.
         self._focus_sidebar()
 
-        # Enqueue initial commands.
-        for i, tab in enumerate(self._tabs):
+        if self._restored:
+            # Nothing runs on open: the panes are filled from disk and the run
+            # sits idle until the user retries, resumes, or types a command.
+            self._restore_subtitles()
+            self.run_worker(self._restore_panes(), exclusive=False)
+        else:
+            # Enqueue initial commands.
+            for i, tab in enumerate(self._tabs):
+                for sub in tab.sub_commands:
+                    task = self._task_queue.enqueue(sub.shell_command, terminal_id=i)
+                    sub.task_id = task.task_id
+
+        self._persist()
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+
+    def _persist(self) -> None:
+        """Mirror the live tabs into the manifest and write it out.
+
+        Called on every status change, so history on disk is complete up to the
+        last finished command at all times -- whatever happens to the process
+        next.
+        """
+        if self._run_handle is None:
+            return
+        self._run_handle.manifest.tabs = [
+            run_history.TabRecord(
+                name=tab.entry.display_name,
+                cwd=tab.entry.cwd,
+                prefix=tab.entry.prefix,
+                placeholder_prefix=tab.entry.placeholder_prefix,
+                labels=(
+                    {mode.value: label for mode, label in tab.entry.labels.items()}
+                    if tab.entry.labels
+                    else None
+                ),
+                sub_commands=[
+                    run_history.SubCommandRecord(
+                        name=sub.name,
+                        shell_command=sub.shell_command,
+                        status=sub.status,
+                        exit_code=sub.exit_code,
+                        chained=sub.chained,
+                    )
+                    for sub in tab.sub_commands
+                ],
+            )
+            for tab in self._tabs
+        ]
+        try:
+            self._run_handle.save()
+        except OSError:
+            # History is a convenience; never take the session down for it.
+            pass
+
+    def _dump_pane(self, tab_index: int, sub_index: int, sub: SubCommand) -> None:
+        if self._run_handle is None:
+            return
+        try:
+            pane = self.query_one(f'#{sub.pane_id}', CommandPane)
+        except NoMatches:
+            return
+        try:
+            dumped = run_history.dump_buffer(pane.state.scrollback_buffer)
+        except Exception:
+            return
+        if not dumped:
+            return
+        try:
+            self._run_handle.write_pane(tab_index, sub_index, dumped)
+        except OSError:
+            pass
+
+    def _dump_all_panes(self) -> None:
+        for tab_index, tab in enumerate(self._tabs):
+            for sub_index, sub in enumerate(tab.sub_commands):
+                self._dump_pane(tab_index, sub_index, sub)
+
+    def on_unmount(self) -> None:
+        """Keep whatever was on screen when the app goes away.
+
+        A command still running here never reported an exit code; it is
+        persisted as RUNNING and reloads as INTERRUPTED.
+        """
+        self._dump_all_panes()
+        self._persist()
+
+    def _restore_subtitles(self) -> None:
+        for tab in self._tabs:
             for sub in tab.sub_commands:
-                task = self._task_queue.enqueue(sub.shell_command, terminal_id=i)
-                sub.task_id = task.task_id
+                try:
+                    pane = self.query_one(f'#{sub.pane_id}', CommandPane)
+                except NoMatches:
+                    continue
+                pane.border_subtitle = _subtitle_for(sub)
+
+    async def _restore_panes(self) -> None:
+        for tab_index, tab in enumerate(self._tabs):
+            for sub_index, sub in enumerate(tab.sub_commands):
+                if self._run_handle is None:
+                    return
+                dumped = self._run_handle.read_pane(tab_index, sub_index)
+                if not dumped:
+                    continue
+                try:
+                    pane = self.query_one(f'#{sub.pane_id}', CommandPane)
+                except NoMatches:
+                    continue
+                await pane.write(run_history.to_terminal_input(dumped))
 
     def on_rbx_command_app_task_ready(self, event: TaskReady) -> None:
         task = event.task
@@ -771,6 +891,18 @@ class rbxCommandApp(rbxBaseApp):
             self._select_next_sub_command()
             return
 
+        if event.character == 'r':
+            event.stop()
+            event.prevent_default()
+            self.run_worker(self._retry_current(), exclusive=False)
+            return
+
+        if event.character == 'R':
+            event.stop()
+            event.prevent_default()
+            self._open_resume_menu()
+            return
+
         if event.character == 'l' and self._has_labels():
             event.stop()
             event.prevent_default()
@@ -808,18 +940,22 @@ class rbxCommandApp(rbxBaseApp):
                 if pane.return_code is None:
                     continue
 
+                sub.exit_code = pane.return_code
                 if pane.return_code == 0:
                     sub.status = CommandStatus.SUCCESS
-                    pane.border_subtitle = 'Done'
                 else:
                     sub.status = CommandStatus.FAILED
-                    pane.border_subtitle = f'Exit code: {pane.return_code}'
+                pane.border_subtitle = _subtitle_for(sub)
 
                 if sub.status == CommandStatus.FAILED:
                     self._skip_rest_of_chain(tab_index, sub)
 
                 self._update_sidebar(tab_index)
                 self._refresh_select_if_active(tab_index)
+                # Dump before releasing the terminal: the next command in the
+                # queue may start the moment `notify_complete` returns.
+                self._dump_pane(tab_index, tab.sub_commands.index(sub), sub)
+                self._persist()
                 if sub.task_id is not None:
                     self._task_queue.notify_complete(sub.task_id)
                 return
@@ -868,6 +1004,7 @@ class rbxCommandApp(rbxBaseApp):
 
         task = self._task_queue.enqueue(sub.shell_command, terminal_id=tab_index)
         sub.task_id = task.task_id
+        self._persist()
         return sub
 
     def _show_latest_sub_command(self) -> None:
@@ -897,6 +1034,127 @@ class rbxCommandApp(rbxBaseApp):
         if queued > 0:
             self.notify(f'Command queued in {queued} tab(s)')
 
+    # ------------------------------------------------------------------
+    # Retry and resume
+    # ------------------------------------------------------------------
+
+    def _resumable_in_tab(self, tab_index: int) -> List[Tuple[int, SubCommand]]:
+        return [
+            (i, sub)
+            for i, sub in enumerate(self._tabs[tab_index].sub_commands)
+            if command_status.is_resumable(sub.status)
+        ]
+
+    def _resumable_count(self, tab_indices: List[int]) -> int:
+        return sum(len(self._resumable_in_tab(i)) for i in tab_indices)
+
+    async def _reset_pane(
+        self, tab_index: int, sub_index: int, sub: SubCommand
+    ) -> None:
+        """Give a command a clean slate to run in again.
+
+        `CommandPane.execute` appends to the terminal state rather than
+        clearing it, so re-running in place would stack the new attempt under
+        the old one. Swapping in a fresh pane under the same id is the only way
+        to get an empty terminal, and the stored output goes with it -- only
+        the latest attempt is kept.
+        """
+        container = self.query_one('#command-pane-container', Vertical)
+        displayed = False
+        try:
+            old = self.query_one(f'#{sub.pane_id}', CommandPane)
+        except NoMatches:
+            old = None
+        if old is not None:
+            displayed = old.display
+            # Awaited: mounting the replacement before the old widget is gone
+            # would collide on the duplicate id.
+            await old.remove()
+
+        pane = self._make_pane(sub.pane_id)
+        pane.border_title = sub.name
+        pane.display = displayed
+        await container.mount(pane)
+
+        if self._run_handle is not None:
+            self._run_handle.clear_pane(tab_index, sub_index)
+        sub.status = CommandStatus.PENDING
+        sub.exit_code = None
+
+    def _enqueue_sub(self, tab_index: int, sub: SubCommand) -> None:
+        task = self._task_queue.enqueue(sub.shell_command, terminal_id=tab_index)
+        sub.task_id = task.task_id
+
+    async def _resume_tabs(self, tab_indices: List[int]) -> None:
+        targets: List[Tuple[int, int, SubCommand]] = []
+        for tab_index in tab_indices:
+            for sub_index, sub in self._resumable_in_tab(tab_index):
+                targets.append((tab_index, sub_index, sub))
+        if not targets:
+            self.notify('Nothing to resume')
+            return
+
+        # Every pane is reset before anything is enqueued, so the whole batch is
+        # PENDING by the time the first command can finish. Otherwise a fast
+        # failure could complete while later links of its chain were not yet
+        # queued, and `_skip_rest_of_chain` would have nothing to cancel.
+        for tab_index, sub_index, sub in targets:
+            await self._reset_pane(tab_index, sub_index, sub)
+        for tab_index, _, sub in targets:
+            self._enqueue_sub(tab_index, sub)
+
+        for tab_index in sorted({t for t, _, _ in targets}):
+            self._update_sidebar(tab_index)
+        self._refresh_select_if_active(self._active_tab)
+        self._persist()
+        self.notify(f'Resumed {len(targets)} command(s)')
+
+    async def _retry_current(self) -> None:
+        tab = self._tabs[self._active_tab]
+        select = self.query_one('#command-select', Select)
+        if select.value is Select.BLANK:
+            return
+        sub_index: int = select.value  # type: ignore[assignment]
+        if not 0 <= sub_index < len(tab.sub_commands):
+            return
+        sub = tab.sub_commands[sub_index]
+        if sub.status in (CommandStatus.PENDING, CommandStatus.RUNNING):
+            self.notify('Command is already queued')
+            return
+        await self._reset_pane(self._active_tab, sub_index, sub)
+        self._enqueue_sub(self._active_tab, sub)
+        self._update_sidebar(self._active_tab)
+        self._refresh_select_if_active(self._active_tab)
+        self._persist()
+        self.notify(f'Retrying {sub.name}')
+
+    def _start_resume(self, tab_indices: List[int]) -> None:
+        self.run_worker(self._resume_tabs(tab_indices), exclusive=False)
+
+    def _open_resume_menu(self) -> None:
+        total = self._resumable_count(list(range(len(self._tabs))))
+        if total == 0:
+            self.notify('Nothing to resume')
+            return
+        self._dismiss_menu()
+        self._pending_menu = 'resume'
+        here = self._resumable_count([self._active_tab])
+        menu = Menu(
+            [
+                MenuItem(f'Resume this tab ({here} commands)', 'resume_this_tab', '1'),
+                MenuItem(f'Resume all tabs ({total} commands)', 'resume_all_tabs', '2'),
+                MenuItem('Resume selected tabs', 'resume_selected_tabs', '3'),
+            ],
+        )
+        input_container = self.query_one('#command-input-container', Horizontal)
+        input_container.mount(menu)
+        menu.focus()
+
+    def _on_resume_tabs_selected(self, indices: Optional[List[int]]) -> None:
+        if indices:
+            self._start_resume(indices)
+        self._focus_sidebar()
+
     def _dismiss_menu(self) -> None:
         self._pending_command = None
         for menu in self.query(Menu):
@@ -914,6 +1172,7 @@ class rbxCommandApp(rbxBaseApp):
         self._dismiss_menu()
 
         self._pending_command = raw
+        self._pending_menu = 'run'
         menu = Menu(
             [
                 MenuItem('Run in this tab', 'run_this_tab', '1'),
@@ -930,7 +1189,26 @@ class rbxCommandApp(rbxBaseApp):
         event.stop()
         raw = self._pending_command
         self._pending_command = None
+        self._pending_menu = None
         event.menu.remove()
+
+        if event.action.startswith('resume_'):
+            if event.action == 'resume_selected_tabs':
+                self.push_screen(
+                    TabSelectorModal(
+                        [self._make_tab_label(i) for i in range(len(self._tabs))]
+                    ),
+                    callback=self._on_resume_tabs_selected,
+                )
+                return
+            tab_indices = (
+                [self._active_tab]
+                if event.action == 'resume_this_tab'
+                else list(range(len(self._tabs)))
+            )
+            self._start_resume(tab_indices)
+            self._focus_sidebar()
+            return
 
         if raw is not None and event.action == 'run_selected_tabs':
             tab_names = [tab.entry.display_name for tab in self._tabs]
@@ -951,6 +1229,7 @@ class rbxCommandApp(rbxBaseApp):
     def _on_menu_dismissed(self, event: Menu.Dismissed) -> None:
         event.stop()
         self._pending_command = None
+        self._pending_menu = None
         event.menu.remove()
 
         # Clear input and return to sidebar.
@@ -981,12 +1260,42 @@ class rbxCommandApp(rbxBaseApp):
             self.notify(f'Command queued in {queued} tab(s)')
 
 
+def _create_run_handle() -> Optional[run_history.RunHandle]:
+    """Start recording this run, if we are inside a contest.
+
+    Never fatal: a session that cannot write history is still a working session.
+    """
+    try:
+        from rbx.box.contest import contest_state
+
+        store = run_history.get_contest_run_store()
+        if store is None:
+            return None
+        store.prune()
+        now = datetime.datetime.now()
+        return store.create_run(
+            run_history.RunManifest(
+                run_id=run_history.new_run_id(now),
+                started_at=now,
+                updated_at=now,
+                contest_id=contest_state.resolve_explicit_selection(),
+            )
+        )
+    except Exception:
+        return None
+
+
 def start_command_app(
     commands: List[CommandEntry],
     parallel: bool = False,
     keep_going: bool = False,
 ) -> None:
-    app = rbxCommandApp(commands, parallel=parallel, keep_going=keep_going)
+    app = rbxCommandApp(
+        commands,
+        parallel=parallel,
+        keep_going=keep_going,
+        run_handle=_create_run_handle(),
+    )
     app.run()
 
 
