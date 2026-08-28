@@ -88,8 +88,14 @@ level.
 This is a property to keep, not merely to observe, so it is a test: running
 `rbx vars` in a package with no `.box/` leaves it with no `.box/`.
 
-`rbx visualize` is the extension's existing precedent for spawning at all
-(`visualize.ts:19`), and brings the discovery path this feature reuses.
+`rbx visualize` is the extension's existing precedent for spawning at all, and
+brings the discovery path this feature reuses. Its header also records that the
+rule's stated rationale is out of date: rbx cache directories take a *shared*
+session lock and support any number of concurrent processes, and a cache is
+emptied only under an *exclusive* lock that waits for or refuses live holders.
+So even a command that did touch the cache could not corrupt a run in flight.
+`rbx vars` does not touch it at all, which makes it a narrower exception than
+the one already taken.
 
 ## D3. Components
 
