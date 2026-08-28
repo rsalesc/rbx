@@ -2032,12 +2032,19 @@ async def test_benchmark_block_is_absent_by_default(
     # Drop the block from the benchmarked report and the two are identical, so
     # the flag cannot have changed anything else.
     block = set(benchmark_lines(benchmarked_console))
-    without_block = [
-        line
-        for line in rendered_lines(benchmarked_console)
-        if line.strip() not in block
-    ]
+    lines = rendered_lines(benchmarked_console)
+    without_block = [line for line in lines if line.strip() not in block]
     assert without_block == rendered_lines(default_console)
+    # And the block hugs the solution it measures. Removing it above says
+    # nothing about where it sat, so pin the placement: the solution's verdict
+    # runs straight into the block, and the blank line that separates one
+    # solution from the next falls below it rather than above.
+    for index, line in enumerate(lines):
+        if not line.strip().startswith('Benchmark:'):
+            continue
+        assert lines[index - 1].strip() != ''
+        assert lines[index + 1].strip().startswith('Total judging:')
+        assert lines[index + 2] == ''
 
 
 async def test_benchmark_block_is_skipped_when_nothing_was_judged(
@@ -2063,6 +2070,40 @@ async def test_benchmark_block_is_skipped_when_nothing_was_judged(
         )
 
     assert benchmark_lines(console) == []
+
+
+async def test_benchmark_block_marks_a_partial_run_as_a_lower_bound(
+    mock_problem_root, mock_skeleton, mock_binary_scoring
+):
+    """The shape `--fail-fast` actually produces: the solution is judged on its
+    first testcase and the rest are skipped. The block still prints, and says
+    how many tests it covers -- without that, a total measured over one third of
+    the testset reads as the cost of judging the whole thing."""
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.INCORRECT)
+    skeleton = mock_skeleton([solution], entries_per_group={'group1': 3})
+    result = make_run_result(
+        skeleton,
+        {
+            ('group1', 0): Outcome.WRONG_ANSWER,
+            ('group1', 1): Outcome.SKIPPED,
+            ('group1', 2): Outcome.SKIPPED,
+        },
+        checker_time_ms=20,
+    )
+
+    console = recording_console()
+    with fresh_issue_stack():
+        await print_run_report(
+            result,
+            console,
+            VerificationLevel.FULL,
+            benchmark_level=BenchmarkLevel.SOLUTIONS,
+        )
+
+    assert benchmark_lines(console) == [
+        'Benchmark: slowest test group1/0 - 120 ms judging (100 ms solution + 20 ms checker)',
+        'Total judging: 120 ms (checker: 20 ms) (over 1/3 tests judged)',
+    ]
 
 
 @pytest.mark.test_pkg('problems/abort-groups')

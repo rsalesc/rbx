@@ -3074,6 +3074,13 @@ class TraditionalRunReporter:
                 if solution_benchmark is not None:
                     benchmark.print_solution_benchmark(self.console, solution_benchmark)
                     self.solution_benchmarks.append(solution_benchmark)
+            # The blank line that separates one solution from the next. It used
+            # to close `render_solution_end`, where it reads more naturally --
+            # but the benchmark block is printed here, after that returns, so a
+            # separator emitted there would land *above* the block and make it
+            # read as a header for the next solution rather than a footer for
+            # the one it measures. Keep it last, and keep it here.
+            self.console.print()
         self.current_solution = None
         self.current_solution_evals = []
         return report is None or report.status.ok()
@@ -3416,7 +3423,6 @@ class LiveRunReporter(TraditionalRunReporter):
             verification=self.verification,
             print_message=True,
         )
-        self.console.print()
         return report
 
     def _stop_live(self) -> None:
@@ -3511,7 +3517,6 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
         if self._elapsed is not None and self.console.is_terminal:
             self.console.print(f'[status]Ran in[/status] {self._elapsed}.')
         self._elapsed = None
-        self.console.print()
         return report
 
     def render_group_end(self, group: GroupSkeleton):
