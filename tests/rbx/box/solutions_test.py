@@ -3424,3 +3424,26 @@ async def test_interactive_run_benchmark_is_absent_by_default(
     assert [line for line in lines if line.strip() not in added] == rendered_lines(
         default_console
     )
+
+
+async def test_interactive_run_reports_an_unmeasured_interactor_as_unmeasured(
+    mock_problem_root, mock_skeleton, mock_binary_scoring
+):
+    """The interactor half is gated on the interactor having run at all, not on
+    its clock -- an interactor whose time the sandbox did not report is still an
+    interactor, and hiding the half would read as a batch problem."""
+    solutions = interactive_solutions(count=1)
+    skeleton = mock_skeleton(solutions, entries_per_group={'group1': 1})
+    eval = interactive_eval()
+    eval.result.interactor_timing = RunTiming(time=None)
+    console = recording_console()
+
+    with stubbed_interactive_run(
+        skeleton, [eval], console, task_type=schema.TaskType.COMMUNICATION
+    ):
+        await solutions_module.run_and_print_interactive_solutions(
+            verification=VerificationLevel.ALL_SOLUTIONS,
+            benchmark_level=BenchmarkLevel.SOLUTIONS,
+        )
+
+    assert judging_time_lines(console) == ['Checker time: 20 ms / Interactor time: -']

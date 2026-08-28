@@ -1597,9 +1597,12 @@ def _print_interactive_judging_time(
     checker_seconds = benchmark.checker_time_seconds(eval)
     line = f'[status]Checker time:[/status] {_measurement(checker_seconds)}'
     # Only a communication problem has an interactor, so a batch testcase must
-    # not spend half a line on a program that does not exist.
-    interactor_seconds = benchmark.interactor_time_seconds(eval)
-    if interactor_seconds is not None:
+    # not spend half a line on a program that does not exist. The half is gated
+    # on the timing object, exactly as `rbx ui` gates it; what it reads comes
+    # from the clock inside it, which may be unset -- an interactor that ran
+    # unmeasured is still an interactor, and reads as `-`.
+    if eval.result.interactor_timing is not None:
+        interactor_seconds = benchmark.interactor_time_seconds(eval)
         line += (
             f' / [status]Interactor time:[/status] {_measurement(interactor_seconds)}'
         )
