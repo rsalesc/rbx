@@ -269,9 +269,9 @@ export function activate(context: vscode.ExtensionContext): void {
   // their contents, so it needs a full rediscovery.
   //
   // A manifest being *edited* changes no root, and so does not concern the run
-  // view at all -- but it is exactly what the badges and banners are drawn
-  // from, which is why the index is re-read on all three events and the run
-  // view on only two.
+  // view at all -- but it is exactly what the badges, the banners and the
+  // statement var hints are drawn from, which is why the indexes are re-read on
+  // all three events and the run view on only two.
   const manifests = vscode.workspace.createFileSystemWatcher(`**/${PROBLEM_MANIFEST}`);
   // The choices are rebuilt after every rediscovery, not just at startup: a
   // package appearing or disappearing changes what the dropdown can offer, and

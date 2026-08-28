@@ -25,9 +25,12 @@ test('a nested object of strings is rejected too', () => {
 
 test('a non-string value is rejected rather than coerced', () => {
   // The contract is display strings. A number here means the CLI changed
-  // shape, and coercing it would reintroduce the precision bug that made
-  // the contract strings in the first place.
-  assert.strictEqual(parseVarsPayload('{"N.max": 100000}'), undefined);
+  // shape, and coercing it would reintroduce the precision bug that made the
+  // contract strings in the first place -- this bound is a plausible modulus
+  // and JSON.parse cannot carry it, as the assertion below shows.
+  const modulus = '1000000000000000007';
+  assert.strictEqual(JSON.parse(`{"N": ${modulus}}`).N.toString(), '1000000000000000000');
+  assert.strictEqual(parseVarsPayload(`{"N.max": ${modulus}}`), undefined);
 });
 
 test('leading noise before the object is tolerated', () => {
@@ -41,6 +44,12 @@ test('a brace inside the leading noise does not hide the payload', () => {
   assert.deepStrictEqual(parseVarsPayload('warning: {weird}\n{"N.max": "5"}'), {
     'N.max': '5',
   });
+});
+
+test('trailing noise drops the payload rather than salvaging it', () => {
+  // The stated limit: only leading noise is tolerated. Output after the object
+  // means something wrote over rbx's stdout, and no badges beats guessing.
+  assert.strictEqual(parseVarsPayload('{"N.max": "5"}\nwarning: x'), undefined);
 });
 
 test('an empty var block is a valid, empty result', () => {

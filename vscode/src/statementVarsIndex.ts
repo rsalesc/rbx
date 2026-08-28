@@ -23,7 +23,7 @@ import { resolveRbx, run } from './rbxProcess';
  * the command only parses a YAML file and expands its vars, so anything near
  * this bound is a stuck interpreter rather than slow work.
  */
-const TIMEOUT_MS = 10_000;
+const VARS_TIMEOUT_MS = 10_000;
 
 export class StatementVarsIndex {
   private readonly changed = new vscode.EventEmitter<void>();
@@ -58,11 +58,14 @@ export class StatementVarsIndex {
   /**
    * Drop what is cached for `root` and announce it.
    *
-   * This is also what re-arms the logging. `load` -- the only place that logs
-   * -- runs once per cache entry, and a failed load caches its `undefined` like
-   * any other answer, so a package with no rbx installed writes one line here
-   * and stays silent until a manifest change drops the entry again. Nothing
-   * about a hint request can make it log.
+   * This is also what bounds the logging. Asking a root once produces a
+   * handful of lines -- `resolveRbx` logs each candidate it rejects, of which
+   * there are up to three, and `load` logs whatever went wrong after that --
+   * and a failed load caches its `undefined` like any successful answer. So a
+   * package with no rbx installed writes that handful once and then stays
+   * silent however much the setter types, until a manifest change drops the
+   * entry and the next request pays for a fresh look. `resolveRbx` does not
+   * cache its own failures; only this cache bounds them.
    */
   invalidate(root: string): void {
     this.index.delete(root);
@@ -70,35 +73,60 @@ export class StatementVarsIndex {
   }
 
   private async load(root: string): Promise<Vars | undefined> {
-    const rbx = await resolveRbx(root);
-    if (rbx === undefined) {
-      log(`No usable rbx for ${root}; statement var hints are off there.`);
-      return undefined;
-    }
+    // The whole body, because a *rejection* is the one failure mode that is
+    // not an absent badge: it would be cached like any other answer, re-thrown
+    // into every later hint request for this root, and -- because the promise
+    // is cached before it settles -- surface as an unhandledRejection with no
+    // handler attached yet. Nothing below is expected to throw today, but D5
+    // asks that every failure degrade to no badge, and that has to hold for
+    // whatever line is added here next, not only for the ones proved safe now.
+    try {
+      const rbx = await resolveRbx(root);
+      if (rbx === undefined) {
+        log(`No usable rbx for ${root}; statement var hints are off there.`);
+        return undefined;
+      }
 
-    const result = await run(rbx, ['vars', '--json'], root, TIMEOUT_MS);
-    if (result.spawnError !== undefined || result.code !== 0) {
-      // A bad package is the common case here -- `rbx vars` exits non-zero on
-      // one -- and it is the setter's own half-typed manifest, not a bug to
-      // report. The stderr says which, for when it is not.
-      log(`rbx vars failed in ${root} (exit ${result.code}): ${result.stderr.trim()}`);
-      return undefined;
-    }
+      const result = await run(rbx, ['vars', '--json'], root, VARS_TIMEOUT_MS);
+      // Split from the exit code below because `run` spells both failures with
+      // a null code, and a process that never started wrote no stderr either:
+      // the error is the only thing that says what happened.
+      if (result.spawnError !== undefined) {
+        log(`Could not start rbx in ${root}: ${result.spawnError.message}`);
+        return undefined;
+      }
+      if (result.code !== 0) {
+        // A bad package is the common case here -- `rbx vars` exits non-zero
+        // on one -- and it is the setter's own half-typed manifest, not a bug
+        // to report. A null code that reaches here is the timeout, which `run`
+        // reports in the stderr it hands back.
+        log(
+          `rbx vars failed in ${root} (exit ${result.code ?? 'none'}): ` +
+            result.stderr.trim(),
+        );
+        return undefined;
+      }
 
-    const vars = parseVarsPayload(result.stdout);
-    if (vars === undefined) {
-      log(`Could not read the vars rbx printed for ${root}.`);
+      const vars = parseVarsPayload(result.stdout);
+      if (vars === undefined) {
+        log(`Could not read the vars rbx printed for ${root}.`);
+        return undefined;
+      }
+      return vars;
+    } catch (error) {
+      log(`Asking rbx for the vars of ${root} threw: ${String(error)}`);
       return undefined;
     }
-    return vars;
   }
 
   /**
    * A spawn already in flight is left to finish.
    *
    * `run` hands back no handle to kill, and there is nothing to kill it for:
-   * the command writes nothing, and its own timeout bounds it at
-   * `TIMEOUT_MS`. Its result resolves into a map nothing reads any more.
+   * the command writes nothing, and every spawn a load makes -- the probes
+   * `resolveRbx` runs as much as `rbx vars` itself -- carries its own timeout,
+   * so the whole thing is bounded. Its result resolves into a map nothing
+   * reads any more.
    */
   dispose(): void {
     this.index.clear();
