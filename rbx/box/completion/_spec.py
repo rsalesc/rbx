@@ -904,7 +904,8 @@ SPEC = {
             'panel': 'Configuration',
             'params': [
                 {
-                    'help': 'Print the vars as a JSON object of dotted keys.',
+                    'help': 'Print the vars as a JSON object of dotted keys and string '
+                    'values.',
                     'kind': 'option',
                     'multiple': False,
                     'names': ['--json'],

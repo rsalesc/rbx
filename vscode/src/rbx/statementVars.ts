@@ -13,16 +13,21 @@
  * See docs/plans/2026-08-28-vscode-statement-var-hints-design.md (D1).
  */
 
-/** A var value, as `rbx vars --json` emits it. */
-export type VarValue = number | boolean | string;
-
-/** The expanded package vars, keyed by dotted name. */
-export type Vars = Readonly<Record<string, VarValue>>;
+/**
+ * The expanded package vars, keyed by dotted name.
+ *
+ * Values are strings, not numbers: `rbx vars --json` renders each one to the
+ * text the statement will show and emits *that*. A JSON number would be an
+ * IEEE double by the time `JSON.parse` was done with it, so a bound like
+ * `10**18 + 7` would silently badge as `1000000000000000000` and `10**21` as
+ * `1e+21`. Nothing here does arithmetic on a value, so text is all it needs.
+ */
+export type Vars = Readonly<Record<string, string>>;
 
 export interface VarHint {
   /** Offset just past the reference's closing brace. */
   readonly end: number;
-  /** The value, rendered for display. */
+  /** The value's display text, verbatim from `rbx vars --json`. */
   readonly text: string;
 }
 
@@ -87,12 +92,8 @@ function isEscaped(text: string, offset: number): boolean {
   return backslashesBefore(text, offset) % 2 === 1;
 }
 
-function render(value: VarValue): string {
-  return typeof value === 'string' ? value : String(value);
-}
-
 /** The value `name` holds, or `undefined` if the map does not hold it. */
-function lookup(vars: Vars, name: string): VarValue | undefined {
+function lookup(vars: Vars, name: string): string | undefined {
   // Own-property only: a name like `constructor` or `toString` is a typo, not
   // a var, and must not resolve to whatever `Object.prototype` carries.
   return Object.prototype.hasOwnProperty.call(vars, name) ? vars[name] : undefined;
@@ -123,7 +124,7 @@ export function scanStatementVars(text: string, vars: Vars): VarHint[] {
       continue;
     }
 
-    hints.push({ end: start + match[0].length, text: render(value) });
+    hints.push({ end: start + match[0].length, text: value });
   }
 
   return hints;

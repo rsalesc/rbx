@@ -37,7 +37,54 @@ def test_vars_json_dumps_expanded_dotted_keys(pkg_from_testdata: pathlib.Path):
     result = runner.invoke(app, ['vars', '--json'])
 
     assert result.exit_code == 0, result.output
-    assert json.loads(result.stdout) == {'N.min': 1, 'N.max': 1000000}
+    assert json.loads(result.stdout) == {'N.min': '1', 'N.max': '1000000'}
+
+
+def test_vars_json_preserves_ints_too_large_for_a_double(
+    testing_pkg: testing_package.TestingPackage,
+):
+    """The whole reason values cross as strings.
+
+    `10**18 + 7` is a plausible bound and is not representable as an IEEE
+    double: emitted as a JSON number, `JSON.parse` would hand the extension
+    `1000000000000000000` and it would badge a wrong value with full
+    confidence. Rendering in Python keeps every digit.
+    """
+    testing_pkg.set_vars({'MOD': 'py`10**18 + 7`'})
+
+    result = runner.invoke(app, ['vars', '--json'])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {'MOD': '1000000000000000007'}
+
+
+def test_vars_json_renders_values_as_jinja_would(
+    testing_pkg: testing_package.TestingPackage,
+):
+    """The badge predicts what the statement will show, so it must match Jinja.
+
+    Notably a bool is `True`/`False` here, not the `1`/`0` that
+    `render_var_on_command_line` produces -- that spelling is about testlib and
+    jngen argument parsing, not about what `\\VAR{flag}` renders to.
+    """
+    testing_pkg.set_vars(
+        {
+            'flag': True,
+            'off': False,
+            'ratio': 1.5,
+            'label': 'foo',
+        }
+    )
+
+    result = runner.invoke(app, ['vars', '--json'])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {
+        'flag': 'True',
+        'off': 'False',
+        'ratio': '1.5',
+        'label': 'foo',
+    }
 
 
 @pytest.mark.test_pkg('problems/interactive')
@@ -92,10 +139,12 @@ def test_vars_does_not_render_markup_in_var_values(
 def test_vars_json_fails_cleanly_on_non_finite_var(
     testing_pkg: testing_package.TestingPackage,
 ):
-    """`json.dumps` would emit bare `Infinity`, which `JSON.parse` rejects.
+    """An infinite bound is a package bug, so it is surfaced rather than badged.
 
-    The extension degrades on a non-zero exit, so failing is right; what it
-    must not do is hand back a payload that cannot be parsed.
+    `str(float('inf'))` would serialize fine now that values cross as strings,
+    but `inf` is never a bound a setter meant to write. The extension degrades
+    on a non-zero exit, so failing is the useful answer; what it must not do is
+    quietly hand back a badge reading `inf`.
     """
     testing_pkg.set_vars({'huge': 'py`float("inf")`'})
 

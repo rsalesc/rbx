@@ -10,16 +10,17 @@ import { scanStatementVars, Vars } from './statementVars';
  * be turned away by the lookup rather than by the guard.
  */
 const VARS: Vars = {
-  'N.max': 100000,
-  'A.max': 1000000000,
-  flag: true,
-  name: 'foo',
-  'g.N.max': 7,
-  'groups.g.vars.N.max': 7,
-  'p.N.max': 7,
-  'problem.N.max': 7,
-  'contest.year': 7,
-  'vars.problem.N.max': 7,
+  'N.max': '100000',
+  'A.max': '1000000000',
+  'BIG.max': '1000000000000000007',
+  flag: 'True',
+  label: 'foo',
+  'g.N.max': '7',
+  'groups.g.vars.N.max': '7',
+  'p.N.max': '7',
+  'problem.N.max': '7',
+  'contest.year': '7',
+  'vars.problem.N.max': '7',
 };
 
 const scan = (text: string) => scanStatementVars(text, VARS);
@@ -102,10 +103,20 @@ test('an escaped VAR is not a reference', () => {
   );
 });
 
-test('non-numeric values render as themselves', () => {
+test('non-numeric values are shown verbatim', () => {
   assert.deepStrictEqual(
-    scan('\\VAR{flag} \\VAR{name}').map((hint) => hint.text),
-    ['true', 'foo'],
+    scan('\\VAR{flag} \\VAR{label}').map((hint) => hint.text),
+    ['True', 'foo'],
+  );
+});
+
+test('an integer too large for a double keeps every digit', () => {
+  // The reason values cross as strings at all: as a JSON number this would
+  // come back from `JSON.parse` as 1000000000000000000, and the badge would
+  // confidently show a bound the statement does not have.
+  assert.deepStrictEqual(
+    scan('$N \\le \\VAR{BIG.max}$').map((hint) => hint.text),
+    ['1000000000000000007'],
   );
 });
 

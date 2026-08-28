@@ -108,8 +108,15 @@ Python, one new lazy command:
 
 The `ENTRIES` row is not optional bookkeeping -- `tests/rbx/box/lazy_cli_test.py`
 pins the table against the modules, and `--help` renders from the table without
-importing the module. Output is the flat dotted-key map,
-`{"N.max": 100000, "A.max": 1000000000}`, i.e. `Package.expanded_vars` verbatim.
+importing the module. Output is the flat dotted-key map of
+`Package.expanded_vars`, with every value rendered to its display *string*:
+`{"N.max": "100000", "A.max": "1000000000"}`. Strings, not JSON numbers,
+because `JSON.parse` yields IEEE doubles -- a bound of `` py`10**18 + 7` ``
+would reach the extension as `1000000000000000000` and badge a wrong value,
+and `` py`10**21` `` would badge as `1e+21`. The extension only ever displays
+these, so rendering them in Python (where the int is exact) keeps D5's
+"absent, never wrong" promise. The renderer is `str`, which is what Jinja
+itself calls on an unfiltered value, so a bool badges as `True`/`False`.
 
 Extension, following the pure/impure split every `src/rbx/*.ts` module already
 observes:
