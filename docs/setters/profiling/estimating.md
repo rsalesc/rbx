@@ -187,10 +187,10 @@ verdict. It applies to this stage only, it is for quick experimentation, and the
 its timing summary under it — a solution that stopped early was not timed on the testcases that
 never ran.
 
-### `rbx check`
+### `rbx preship`
 
 ```bash
-rbx check      # alias: rbx ck
+rbx preship
 ```
 
 `rbx time --auto --run-all` under a name that says what it is for: estimate the limit, check it,

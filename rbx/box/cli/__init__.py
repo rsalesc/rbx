@@ -74,7 +74,7 @@ _COMMANDS = [
         rich_help_panel='Testing',
     ),
     LazyCommand(
-        'check, ck',
+        'preship',
         'rbx.box.cli.commands.time_cmd:app',
         help=(
             'Estimate a time limit and check the whole package against it: every '

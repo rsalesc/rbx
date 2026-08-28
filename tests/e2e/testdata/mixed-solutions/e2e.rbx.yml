@@ -60,16 +60,16 @@ scenarios:
               main/0: wa
             sols/tle.cpp: tle
 
-  - name: check-runs-what-the-estimate-did-not
+  - name: preship-runs-what-the-estimate-did-not
     description: >
-      `rbx check` is `rbx time --auto --run-all`: it estimates the limit off
+      `rbx preship` is `rbx time --auto --run-all`: it estimates the limit off
       sols/main.cpp, checks it against sols/tle.cpp, and then runs sols/wa.cpp
       -- the only solution neither phase had a reason to touch -- against the
       limit it just wrote. The accepted and the slow solution are not run a
       third time: their verdicts under this limit already follow from the
       phases that ran them.
     steps:
-      - cmd: check
+      - cmd: preship
         expect:
           stdout_contains:
             - 'Run report (for time estimation)'

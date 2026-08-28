@@ -1,6 +1,6 @@
-"""How `--run-all`, `--fail-fast` and `rbx check` reach the extra run.
+"""How `--run-all`, `--fail-fast` and `rbx preship` reach the extra run.
 
-`rbx check` is `rbx time --auto --run-all` under another name, so what it has to
+`rbx preship` is `rbx time --auto --run-all` under another name, so what it has to
 guarantee is that it lands on the same code path with those two switched on.
 """
 
@@ -88,21 +88,21 @@ def test_the_short_alias_of_fail_fast_works(
     assert seen['fail_fast'] is True
 
 
-def test_check_is_an_automatic_run_all(
+def test_preship_is_an_automatic_run_all(
     runner: CliRunner, testing_pkg: testing_package.TestingPackage
 ):
-    result, seen = _invoke(runner, ['check'])
+    result, seen = _invoke(runner, ['preship'])
 
     assert result.exit_code == 0, result.output
     assert seen['run_all'] is True
     assert seen['auto'] is True
 
 
-def test_check_takes_the_remaining_flags(
+def test_preship_takes_the_remaining_flags(
     runner: CliRunner, testing_pkg: testing_package.TestingPackage
 ):
     result, seen = _invoke(
-        runner, ['check', '--dry', '--skip-slow', '--fail-fast', '-r', '3']
+        runner, ['preship', '--dry', '--skip-slow', '--fail-fast', '-r', '3']
     )
 
     assert result.exit_code == 0, result.output

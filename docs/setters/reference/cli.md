@@ -181,13 +181,13 @@ rbx time [OPTIONS]
 
 ---
 
-## check (ck)
+## preship
 
 Estimate a time limit and check the whole package against it: every solution is run, and every one of them has to behave as problem.rbx.yml says it does.
 
 **Usage:**
 ```bash
-rbx check [OPTIONS]
+rbx preship [OPTIONS]
 ```
 
 | Name | Type | Description | Default |

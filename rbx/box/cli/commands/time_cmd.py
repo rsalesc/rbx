@@ -1,4 +1,4 @@
-"""`rbx time` and `rbx check`.
+"""`rbx time` and `rbx preship`.
 
 Registered lazily from `rbx.box.cli.ENTRIES`, so this module is imported
 only when one of its commands is invoked. A command added here needs a row
@@ -23,7 +23,7 @@ from rbx.box.runners import registry as runners_registry
 
 app = typer.Typer(cls=annotations.AliasGroup)
 
-# The options `rbx time` and `rbx check` share. Declared once, as annotated
+# The options `rbx time` and `rbx preship` share. Declared once, as annotated
 # types, because the two commands differ only in which of them they *offer*:
 # spelling each option twice would leave two help strings to keep in step, and
 # the completion spec is generated from them.
@@ -128,9 +128,9 @@ async def _estimate(
     run_all: bool,
     fail_fast: bool,
 ) -> None:
-    """The body of `rbx time`, shared with `rbx check`.
+    """The body of `rbx time`, shared with `rbx preship`.
 
-    `rbx check` is the same command with `--auto` and `--run-all` fixed on, so
+    `rbx preship` is the same command with `--auto` and `--run-all` fixed on, so
     the two are one implementation and two signatures rather than one signature
     with a mode flag: what distinguishes them is which options they *offer*, and
     that is a property of the signature.
@@ -339,14 +339,14 @@ async def time(
 
 
 @app.command(
-    'check, ck',
+    'preship',
     rich_help_panel='Testing',
     help='Estimate a time limit and check the whole package against it: every solution '
     'is run, and every one of them has to behave as problem.rbx.yml says it does.',
 )
 @package.within_problem
 @syncer.sync
-async def check_package(
+async def preship(
     check: _Check = True,
     validate: _Validate = True,
     detailed: _Detailed = False,

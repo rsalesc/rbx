@@ -451,7 +451,7 @@ SPEC = {
         {
             'help': 'Estimate a time limit and check the whole...',
             'is_group': False,
-            'name': 'check, ck',
+            'name': 'preship',
             'panel': 'Testing',
             'params': [
                 {
