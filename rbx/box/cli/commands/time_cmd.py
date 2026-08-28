@@ -1,11 +1,11 @@
-"""`rbx time`.
+"""`rbx time` and `rbx check`.
 
 Registered lazily from `rbx.box.cli.ENTRIES`, so this module is imported
 only when one of its commands is invoked. A command added here needs a row
 there too.
 """
 
-from typing import Optional
+from typing import Annotated, Optional
 
 import syncer
 import typer
@@ -23,62 +23,46 @@ from rbx.box.runners import registry as runners_registry
 
 app = typer.Typer(cls=annotations.AliasGroup)
 
-
-@app.command(
-    'time, t',
-    rich_help_panel='Testing',
-    help='Estimate a time limit for the problem using the timings of its solutions and the estimation strategy configured in the environment.',
-)
-@package.within_problem
-@syncer.sync
-async def time(
-    check: bool = typer.Option(
-        True,
-        help='Whether to not build outputs for tests and run checker.',
-    ),
-    validate: bool = typer.Option(
-        True,
-        help='Whether to not validate outputs for tests.',
-    ),
-    detailed: bool = typer.Option(
-        False,
+# The options `rbx time` and `rbx check` share. Declared once, as annotated
+# types, because the two commands differ only in which of them they *offer*:
+# spelling each option twice would leave two help strings to keep in step, and
+# the completion spec is generated from them.
+_Check = Annotated[
+    bool,
+    typer.Option(help='Whether to not build outputs for tests and run checker.'),
+]
+_Validate = Annotated[
+    bool,
+    typer.Option(help='Whether to not validate outputs for tests.'),
+]
+_Detailed = Annotated[
+    bool,
+    typer.Option(
         '--detailed',
         '-d',
         help='Whether to print a detailed view of the tests using tables.',
     ),
-    strategy: Optional[str] = typer.Option(
-        None,
-        '--strategy',
-        '-s',
-        help='Strategy to use for time limit estimation (estimate, inherit, estimate_custom, custom).',
-    ),
-    auto: bool = typer.Option(
-        False,
-        '--auto',
-        '-a',
-        help='Whether to automatically estimate the time limit.',
-    ),
-    runs: int = typer.Option(
-        0,
+]
+_Runs = Annotated[
+    int,
+    typer.Option(
         '--runs',
         '-r',
         help='Number of runs to perform for each solution. Zero means the config default.',
     ),
-    profile: str = typer.Option(
-        'local',
+]
+_Profile = Annotated[
+    str,
+    typer.Option(
         '--profile',
         '-p',
         help='Profile to use for time limit estimation.',
         autocompletion=annotations._adapt('profile'),  # noqa: SLF001
     ),
-    integrate: bool = typer.Option(
-        False,
-        '--integrate',
-        '-i',
-        help='Integrate the given limits profile into the package.',
-    ),
-    runner: str = typer.Option(
-        runners_registry.DEFAULT_RUNNER,
+]
+_Runner = Annotated[
+    str,
+    typer.Option(
         '--runner',
         # Built from the table, never spelled out: this string is baked into
         # the committed completion spec, so a hard-coded list would be a second
@@ -89,25 +73,68 @@ async def time(
         ),
         autocompletion=annotations._adapt('runner'),  # noqa: SLF001
     ),
-    share: Optional[str] = typer.Option(
-        None,
+]
+_Share = Annotated[
+    Optional[str],
+    typer.Option(
         '--share',
         help='Capture the time report (run report + limits table) and copy it '
         'to the clipboard. Pass a format: --share png or --share text.',
     ),
-    skip_slow: bool = typer.Option(
-        False,
+]
+_SkipSlow = Annotated[
+    bool,
+    typer.Option(
         '--skip-slow',
         help='Skip checking the estimated limit against the solutions expected to '
         'be too slow. The limit is written with its upper bound unchecked.',
     ),
-    dry: bool = typer.Option(
-        False,
+]
+_Dry = Annotated[
+    bool,
+    typer.Option(
         '--dry',
         help='Run the whole estimation but write nothing to the disk: the limits '
         'profile is printed instead of saved.',
     ),
-):
+]
+_FailFast = Annotated[
+    bool,
+    typer.Option(
+        '--fail-fast',
+        '--ff',
+        help='Whether to stop running a solution as soon as it gets a non-accepted '
+        'verdict. Applies only to the solutions run after the estimation, and is '
+        'only meant for quick experimentation, as the remaining tests are reported '
+        'as failed.',
+    ),
+]
+
+
+async def _estimate(
+    *,
+    check: bool,
+    validate: bool,
+    detailed: bool,
+    strategy: Optional[str],
+    auto: bool,
+    runs: int,
+    profile: str,
+    integrate: bool,
+    runner: str,
+    share: Optional[str],
+    skip_slow: bool,
+    dry: bool,
+    run_all: bool,
+    fail_fast: bool,
+) -> None:
+    """The body of `rbx time`, shared with `rbx check`.
+
+    `rbx check` is the same command with `--auto` and `--run-all` fixed on, so
+    the two are one implementation and two signatures rather than one signature
+    with a mode flag: what distinguishes them is which options they *offer*, and
+    that is a property of the signature.
+    """
     if share is not None and share not in ('png', 'text'):
         console.console.print(
             f'[error]Invalid --share format: {share!r} (use png or text).[/error]'
@@ -229,6 +256,8 @@ async def time(
         skip_slow=skip_slow,
         runner=solution_runner,
         dry=dry,
+        run_all=run_all,
+        fail_fast=fail_fast,
     )
     if estimated is None:
         # Every failure of the estimation -- an unsatisfiable range, a solution
@@ -237,3 +266,115 @@ async def time(
         # limit it did not produce. The reasons were printed where they were
         # found; this only turns them into an exit code a pipeline can see.
         raise typer.Exit(1)
+
+
+@app.command(
+    'time, t',
+    rich_help_panel='Testing',
+    help='Estimate a time limit for the problem using the timings of its solutions and the estimation strategy configured in the environment.',
+)
+@package.within_problem
+@syncer.sync
+async def time(
+    check: _Check = True,
+    validate: _Validate = True,
+    detailed: _Detailed = False,
+    strategy: Annotated[
+        Optional[str],
+        typer.Option(
+            '--strategy',
+            '-s',
+            help='Strategy to use for time limit estimation (estimate, inherit, estimate_custom, custom).',
+        ),
+    ] = None,
+    auto: Annotated[
+        bool,
+        typer.Option(
+            '--auto',
+            '-a',
+            help='Whether to automatically estimate the time limit.',
+        ),
+    ] = False,
+    runs: _Runs = 0,
+    profile: _Profile = 'local',
+    integrate: Annotated[
+        bool,
+        typer.Option(
+            '--integrate',
+            '-i',
+            help='Integrate the given limits profile into the package.',
+        ),
+    ] = False,
+    runner: _Runner = runners_registry.DEFAULT_RUNNER,
+    share: _Share = None,
+    skip_slow: _SkipSlow = False,
+    dry: _Dry = False,
+    run_all: Annotated[
+        bool,
+        typer.Option(
+            '--run-all',
+            help='After the estimation, also run every solution it did not need -- the '
+            'ones expected to be wrong, and any slow one that was never checked -- '
+            'against the estimated time limit.',
+        ),
+    ] = False,
+    fail_fast: _FailFast = False,
+):
+    await _estimate(
+        check=check,
+        validate=validate,
+        detailed=detailed,
+        strategy=strategy,
+        auto=auto,
+        runs=runs,
+        profile=profile,
+        integrate=integrate,
+        runner=runner,
+        share=share,
+        skip_slow=skip_slow,
+        dry=dry,
+        run_all=run_all,
+        fail_fast=fail_fast,
+    )
+
+
+@app.command(
+    'check, ck',
+    rich_help_panel='Testing',
+    help='Estimate a time limit and check the whole package against it: every solution '
+    'is run, and every one of them has to behave as problem.rbx.yml says it does.',
+)
+@package.within_problem
+@syncer.sync
+async def check_package(
+    check: _Check = True,
+    validate: _Validate = True,
+    detailed: _Detailed = False,
+    runs: _Runs = 0,
+    profile: _Profile = 'local',
+    runner: _Runner = runners_registry.DEFAULT_RUNNER,
+    share: _Share = None,
+    skip_slow: _SkipSlow = False,
+    dry: _Dry = False,
+    fail_fast: _FailFast = False,
+):
+    # `rbx time --auto --run-all` under a name that says what it is for. The
+    # three options it does not offer are the ones `--auto` and `--run-all`
+    # settle: `--strategy` (auto forces `estimate`), `--auto` itself, and
+    # `--integrate`, which writes the package instead of estimating anything.
+    await _estimate(
+        check=check,
+        validate=validate,
+        detailed=detailed,
+        strategy=None,
+        auto=True,
+        runs=runs,
+        profile=profile,
+        integrate=False,
+        runner=runner,
+        share=share,
+        skip_slow=skip_slow,
+        dry=dry,
+        run_all=True,
+        fail_fast=fail_fast,
+    )

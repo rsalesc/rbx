@@ -59,3 +59,34 @@ scenarios:
               samples: wa
               main/0: wa
             sols/tle.cpp: tle
+
+  - name: check-runs-what-the-estimate-did-not
+    description: >
+      `rbx check` is `rbx time --auto --run-all`: it estimates the limit off
+      sols/main.cpp, checks it against sols/tle.cpp, and then runs sols/wa.cpp
+      -- the only solution neither phase had a reason to touch -- against the
+      limit it just wrote. The accepted and the slow solution are not run a
+      third time: their verdicts under this limit already follow from the
+      phases that ran them.
+    steps:
+      - cmd: check
+        expect:
+          stdout_contains:
+            - 'Run report (for time estimation)'
+            - 'Run report (upper-bound validation)'
+            - 'Run report (remaining solutions)'
+          files_exist:
+            - '.limits/local.yml'
+          file_contains:
+            # The extra phase runs exactly one solution, so it is `.rbx/runs/0`
+            # of its own batch: sols/wa.cpp, wrong as the package says it is.
+            .rbx/runs/0/samples/1-gen-000.eval: 'outcome: wrong-answer'
+
+  - name: time-does-not-run-the-rest-by-default
+    description: >
+      Without --run-all there is no third phase, so sols/wa.cpp is never run.
+    steps:
+      - cmd: time --auto
+        expect:
+          stdout_not_contains:
+            - 'Run report (remaining solutions)'

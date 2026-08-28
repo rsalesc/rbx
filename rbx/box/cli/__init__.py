@@ -74,6 +74,16 @@ _COMMANDS = [
         rich_help_panel='Testing',
     ),
     LazyCommand(
+        'check, ck',
+        'rbx.box.cli.commands.time_cmd:app',
+        help=(
+            'Estimate a time limit and check the whole package against it: every '
+            'solution is run, and every one of them has to behave as '
+            'problem.rbx.yml says it does.'
+        ),
+        rich_help_panel='Testing',
+    ),
+    LazyCommand(
         'irun, ir',
         'rbx.box.cli.commands.run:app',
         help='Build and run solution(s) by passing testcases in the CLI.',

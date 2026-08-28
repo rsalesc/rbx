@@ -418,6 +418,132 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'After the estimation, also run every solution it did not need '
+                    '-- the ones expected to be wrong, and any slow one that was '
+                    'never checked -- against the estimated time limit.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--run-all'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Whether to stop running a solution as soon as it gets a '
+                    'non-accepted verdict. Applies only to the solutions run after '
+                    'the estimation, and is only meant for quick experimentation, '
+                    'as the remaining tests are reported as failed.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--fail-fast', '--ff'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+            ],
+        },
+        {
+            'help': 'Estimate a time limit and check the whole...',
+            'is_group': False,
+            'name': 'check, ck',
+            'panel': 'Testing',
+            'params': [
+                {
+                    'help': 'Whether to not build outputs for tests and run checker.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--check', '--no-check'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Whether to not validate outputs for tests.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--validate', '--no-validate'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Whether to print a detailed view of the tests using tables.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--detailed', '-d'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Number of runs to perform for each solution. Zero means the '
+                    'config default.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--runs', '-r'],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Profile to use for time limit estimation.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--profile', '-p'],
+                    'takes_value': True,
+                    'value': {'completer': 'profile', 'kind': 'completer'},
+                },
+                {
+                    'help': 'Where to run the solutions being timed (local, moj).',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--runner'],
+                    'takes_value': True,
+                    'value': {'completer': 'runner', 'kind': 'completer'},
+                },
+                {
+                    'help': 'Capture the time report (run report + limits table) and copy '
+                    'it to the clipboard. Pass a format: --share png or --share '
+                    'text.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--share'],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Skip checking the estimated limit against the solutions '
+                    'expected to be too slow. The limit is written with its upper '
+                    'bound unchecked.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--skip-slow'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Run the whole estimation but write nothing to the disk: the '
+                    'limits profile is printed instead of saved.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--dry'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Whether to stop running a solution as soon as it gets a '
+                    'non-accepted verdict. Applies only to the solutions run after '
+                    'the estimation, and is only meant for quick experimentation, '
+                    'as the remaining tests are reported as failed.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--fail-fast', '--ff'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,

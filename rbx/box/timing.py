@@ -34,6 +34,7 @@ from rbx.box.schema import InferenceRole, Solution
 from rbx.box.solutions import (
     RunSolutionResult,
     consume_and_key_evaluation_items,
+    fail_fast_abort_predicate,
     get_inference_solutions,
     inference_role_of,
     print_run_report,
@@ -1402,6 +1403,7 @@ async def _validate_upper_bound(
     detailed: bool,
     runs: int,
     runner: Optional['SolutionRunner'] = None,
+    ran: Optional[Set[str]] = None,
 ) -> _ValidationOutcome:
     """Run each slow solution at the limit this estimate demands of it, and say
     whether it is genuinely too slow.
@@ -1409,6 +1411,12 @@ async def _validate_upper_bound(
     Only the solutions whose answer is not already known are run: ``knowledge``
     carries what earlier iterations established, and a lower limit never needs
     re-asking.
+
+    ``ran``, when given, collects the solutions this phase actually executed.
+    `--run-all` runs the complement of that set, and it has to be *recorded*
+    rather than derived: which slow solutions this phase skips depends on
+    ``knowledge``, on ``--skip-slow`` and on whether the estimate is bounded from
+    above at all, none of which is visible in `problem.rbx.yml`.
     """
     if not upper_solutions:
         return _ValidationOutcome()
@@ -1423,6 +1431,8 @@ async def _validate_upper_bound(
         return _classify_slow_solutions(profile, upper_solutions, knowledge, [])
 
     tracked_solutions = OrderedSet(str(solution.path) for solution in to_run)
+    if ran is not None:
+        ran.update(tracked_solutions)
     languages = {find_language_name(solution) for solution in to_run}
     with utils.StatusProgress('Checking solutions expected to be too slow...') as s:
         result = await run_solutions(
@@ -1517,6 +1527,7 @@ async def _estimate_and_validate(
     detailed: bool,
     runs: int,
     runner: Optional['SolutionRunner'] = None,
+    ran: Optional[Set[str]] = None,
 ) -> Optional[TimingProfile]:
     """Estimate a limit and check it against the solutions expected to be too
     slow, letting the setter re-decide until the two agree.
@@ -1560,6 +1571,7 @@ async def _estimate_and_validate(
             detailed=detailed,
             runs=runs,
             runner=runner,
+            ran=ran,
         )
         _report_validation_outcome(outcome, profile)
         if outcome.ok:
@@ -1587,6 +1599,115 @@ async def _estimate_and_validate(
         )
 
 
+async def _run_remaining(
+    profile: TimingProfile,
+    already_run: Set[str],
+    check: bool,
+    detailed: bool,
+    runs: int,
+    fail_fast: bool = False,
+    runner: Optional['SolutionRunner'] = None,
+) -> bool:
+    """Run whatever the estimate did not, at the limit the estimate produced.
+
+    The two phases before this one run only what bounds the limit: the accepted
+    solutions, and the slow ones the check actually had to ask about. Everything
+    else -- a `wrong-answer`, an `rte`, an `accepted-or-tle`, anything carrying
+    `inference: false`, and every slow solution `--skip-slow` or `SlowKnowledge`
+    let it skip -- has no verdict yet. This runs exactly those, which is what
+    turns `rbx time` into a full check of the problem rather than of its limit
+    alone.
+
+    Deliberately *not* re-run: the solutions that did run. Their verdicts under
+    this limit already follow from the phases that ran them -- an accepted
+    solution was checked under a far looser cap, and a slow one that timed out
+    at `ceil(TL x timeLimitToTle) >= TL` times out here a fortiori -- and the
+    time limit is part of the sandbox cache key, so re-running them would cost a
+    full second pass to learn nothing.
+    """
+    remaining = [
+        solution
+        for solution in package.get_solutions()
+        if str(solution.path) not in already_run
+    ]
+    if not remaining:
+        console.console.print(
+            '[status]Every solution already ran while the time limit was being '
+            'estimated. Nothing left to run.[/status]'
+        )
+        return True
+
+    # Every language present is named, never only the ones with an entry of
+    # their own: `resolve_timelimit_override` reads an unmentioned language off
+    # the limits profile *on disk*, which is the limit this estimate replaces.
+    limits: Dict[str, int] = {}
+    for solution in remaining:
+        lang = find_language_name(solution)
+        limits[lang] = profile.timeLimitPerLanguage.get(lang, profile.timeLimit)
+
+    tracked_solutions = OrderedSet(str(solution.path) for solution in remaining)
+    with utils.StatusProgress('Running remaining solutions...') as s:
+        result = await run_solutions(
+            progress=s,
+            # The backend the limit was estimated on. A solution judged against
+            # this limit somewhere else is judged against a different machine.
+            runner=runner,
+            tracked_solutions=tracked_solutions,
+            check=check,
+            # ALL_SOLUTIONS keeps `isDoubleTL` off, as in both phases above: the
+            # override carries the estimated limit exactly, and doubling it here
+            # would judge every remaining solution against a limit the setter is
+            # not about to ship.
+            verification=_INFERENCE_VERIFICATION,
+            timelimit_override=limits,
+            # A plain run, and said so: these solutions are not being measured
+            # for anything, they are being judged against the limit that was.
+            # `MojRunner` stages this on the same remote problem `rbx run` uses.
+            purpose=RunPurpose.RUN,
+            nruns=runs,
+            # `--fail-fast` is the only reason to stop early here. The two phases
+            # above abort on a timeout because a timeout answers their question;
+            # this one has no question of its own, so it runs everything unless
+            # the setter asked it not to.
+            abort_on=fail_fast_abort_predicate if fail_fast else None,
+        )
+
+    try:
+        console.console.print()
+        console.console.rule(
+            '[status]Run report (remaining solutions)[/status]', style='status'
+        )
+        ok = await print_run_report(
+            result,
+            console.console,
+            _INFERENCE_VERIFICATION,
+            detailed=detailed,
+            skip_printing_limits=True,
+            # A solution that stopped at its first bad verdict was not timed on
+            # the testcases that never ran, so every extreme in the summary
+            # would rest on a lower bound. Same rule as `rbx run --fail-fast`.
+            timing=not fail_fast,
+        )
+        if fail_fast:
+            console.console.print()
+            console.console.print(
+                '[warning]The [item]--fail-fast / --ff[/item] flag should only be '
+                'used for quick experimentation, and should not be trusted for '
+                'full validation of the problem.[/warning]'
+            )
+            console.console.print(
+                '[warning]The timing summary was omitted: a solution that stopped '
+                'early is only timed on the testcases that ran.[/warning]'
+            )
+        return ok
+    finally:
+        # Same reasoning as both phases above: the report is what consumes this
+        # batch, so once it has returned the backend holds nothing anybody wants
+        # -- and if it raised, the batch belongs to a run that ended early,
+        # which is precisely what this `finally` is here for.
+        await result.close()
+
+
 async def compute_time_limits(
     check: bool,
     detailed: bool,
@@ -1598,6 +1719,8 @@ async def compute_time_limits(
     skip_slow: bool = False,
     runner: Optional['SolutionRunner'] = None,
     dry: bool = False,
+    run_all: bool = False,
+    fail_fast: bool = False,
 ):
     if package.get_main_solution() is None:
         # An error, not a warning: with no accepted solution nothing bounds the
@@ -1606,6 +1729,13 @@ async def compute_time_limits(
             '[error]No main solution found, so cannot estimate a time limit.[/error]'
         )
         return None
+
+    # Seeded with what phase 1 is about to run -- every solution that bounds the
+    # limit from below -- and added to by phase 2 as it decides which slow ones
+    # it actually has to ask about. `--run-all` runs the complement.
+    ran: Set[str] = {
+        str(solution.path) for solution in get_inference_solutions(InferenceRole.LOWER)
+    }
 
     run = await _run_for_inference(
         check=check, detailed=detailed, runs=runs, formula=formula, runner=runner
@@ -1633,6 +1763,7 @@ async def compute_time_limits(
         detailed=detailed,
         runs=runs,
         runner=runner,
+        ran=ran,
     )
     if estimated_tl is None:
         return None
@@ -1670,6 +1801,27 @@ async def compute_time_limits(
             limits_info.build_limits_table(limits, title=f'Time limits ({profile})')
         )
         sharing.capture_and_share(rec, fmt=share, title='rbx time report')
+
+    if run_all and not await _run_remaining(
+        estimated_tl,
+        ran,
+        check=check,
+        detailed=detailed,
+        runs=runs,
+        fail_fast=fail_fast,
+        runner=runner,
+    ):
+        # Raised rather than folded into the `None` the estimation returns: that
+        # `None` means no limit was produced and nothing was written, and this is
+        # the opposite case -- the limit is estimated, checked and saved, and a
+        # solution unrelated to it does not do what the package says it does. The
+        # exit code is the same, so a pipeline still stops; the message is not,
+        # so a setter reading it knows the profile on disk is good.
+        console.console.print(
+            '[error]The time limit was estimated and written, but some solution '
+            'did not behave as the package expects it to.[/error]'
+        )
+        raise typer.Exit(1)
 
     return estimated_tl
 
