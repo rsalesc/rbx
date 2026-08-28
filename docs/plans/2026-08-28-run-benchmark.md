@@ -612,6 +612,13 @@ Total judging: 555 ms (checker: 215 ms)
 
 with `, N ms interactor` / `(checker: X, interactor: Y)` added only when `total_interactor_time > 0`, and ` (over 1/3 tests judged)` appended to the totals line when `bench.partial`.
 
+**A case Task 3 surfaced that this rendering must handle.** A communication
+problem with no checker (`checker_digest is None`) produces evaluations carrying
+an `interactor_timing` and **no** `checker_timing` at all. Render a missing
+checker timing as blank or `-`, never as `0 ms` -- the whole point of the
+`None`-means-unmeasured contract is that those are different claims. Cover it
+with a test.
+
 The problem block:
 
 ```
