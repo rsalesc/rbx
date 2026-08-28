@@ -4,13 +4,13 @@
  * ## Why an inlay hint
  *
  * The value belongs *between* two characters of the line rather than on a line
- * of its own, which is exactly what an inlay hint is: the editor reserves
- * horizontal space for it, so nothing is drawn over the LaTeX. A decoration's
- * `after` attachment could paint the same text, but only at the end of a line
- * -- there is no way to attach one mid-line -- and a constraints block routinely
- * names two bounds on one line. Inlay hints also come with a user-facing
- * toggle, a hover, and the editor's own re-request on every document change,
- * none of which a decoration gets for free.
+ * of its own, which is what an inlay hint is: the editor reserves horizontal
+ * space for it and pushes the rest of the line along, so nothing is drawn over
+ * the LaTeX. An `after` decoration on a zero-width range could paint the same
+ * text in the same place, but it would be ours to maintain -- one editor at a
+ * time, redrawn by hand on every edit, scroll and theme change, and with no
+ * `editor.inlayHints.enabled` for the setter to turn off. The hint API does
+ * all of that, and asks us only to answer a range.
  */
 import * as vscode from 'vscode';
 
@@ -68,9 +68,9 @@ export class StatementVarHintsProvider implements vscode.InlayHintsProvider {
       // `hint.end` is the offset just past the closing brace, so the hint sits
       // immediately after `}` and never inside the reference.
       const position = document.positionAt(hint.end);
-      // Inclusive at both ends, which is the forgiving side to err on: a hint
-      // exactly on the boundary is drawn rather than dropped, and the editor
-      // accepts hints outside the range it asked for anyway.
+      // `contains` is inclusive at both ends, which is the side to err on: a
+      // reference ending exactly on the boundary keeps its hint rather than
+      // falling between two adjacent requests.
       if (!range.contains(position)) {
         continue;
       }
@@ -107,8 +107,9 @@ export function registerStatementVarHints(
   context.subscriptions.push(
     provider,
     // Every file on disk, because which ones are statements is a fact about
-    // the manifest rather than about the language: rbxTeX, plain LaTeX and
-    // Markdown are all spelled by different language ids.
+    // the manifest rather than about the language: a statement can be written
+    // in anything rbx can convert, and `.rbx.tex` has no language id of its
+    // own to select on.
     vscode.languages.registerInlayHintsProvider({ scheme: 'file' }, provider),
     // Both indexes, because either can be the one that changed. The vars index
     // answers what a reference expands to; the declared index answers whether
