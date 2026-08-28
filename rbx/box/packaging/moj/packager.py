@@ -1127,16 +1127,36 @@ class MojPackager(BasePackager):
                 (outputs_path / name).touch()
 
         if not has_sample:
-            console.console.print(
-                '[error]This problem has no testcases in the [item]samples[/item] '
-                'group, but MOJ requires at least one.[/error]\n'
-                "[error]MOJ builds the statement's examples from "
-                '[item]tests/input/sample*[/item], and [item]validate-problem.sh[/item] '
-                'hard-fails a package without any.[/error]'
-            )
-            raise typer.Exit(1)
+            self._write_empty_samples_pin(into_path)
 
         return seen_groups
+
+    def _write_empty_samples_pin(self, into_path: pathlib.Path) -> None:
+        """Pin the statement to *no* examples, for a package with no samples.
+
+        MOJ does not require samples -- `validate-problem.sh` only asks for at least
+        one input/output pair, of any name. What it does is pick the statement's
+        examples in three tiers (`gen-problem-json.sh`):
+
+            1. the names listed in the package's root `samples` file, else
+            2. `tests/input/sample*` (all of them), else
+            3. the FIRST `SAMPLE_LIMIT` (default 2) entries of `tests/input`.
+
+        Tier 3 is the trap: with no samples, MOJ publishes two *secret* tests --
+        input and expected output both -- as the statement's worked examples. An
+        empty `samples` file takes tier 1 with an empty list, so no examples are
+        rendered and no test leaks. Only emitted when there are no samples; with
+        samples, tier 2 already picks exactly the right tests, and a `samples` file
+        would be one more thing that can drift out of sync with the test names.
+        """
+        (into_path / 'samples').write_text('')
+        console.console.print(
+            '[warning]This problem has no testcases in the [item]samples[/item] '
+            'group, so its MOJ statement will show no examples.[/warning]\n'
+            '[warning]Emitted an empty [item]samples[/item] file to say so: without '
+            'it, MOJ would publish the first two [item]secret[/item] tests as the '
+            'statement examples.[/warning]'
+        )
 
     def _write_score(self, into_path: pathlib.Path, seen_groups: List[str]) -> None:
         """Write `tests/score` for POINTS problems.
