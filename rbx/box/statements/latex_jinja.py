@@ -3,6 +3,8 @@ that overrides Jinja2 defaults to make it work more seamlessly
 with Latex.
 """
 
+import enum
+import functools
 import pathlib
 import re
 import typing
@@ -83,6 +85,28 @@ REGEX_BACKSLASH = re.compile(r'(?<!\\)\\(?!{})'.format(ESCAPE_CHARS_OR))
 
 
 ######################################################################
+# Filter targets
+######################################################################
+class FilterTarget(enum.Enum):
+    """What a filter is formatting for.
+
+    The *rules* a filter applies -- when `sci` abbreviates, when it declines --
+    are a property of the value and never vary. Only the spelling does: a PDF
+    wants `2 \\times 10^{5}`, a VS Code inlay hint wants `2×10⁵` because it
+    cannot typeset maths.
+
+    MARKDOWN maps to the LaTeX formatter and is not redundant: a Markdown
+    statement puts its constraints in `$...$` math, so LaTeX is correct there.
+    Naming it separately means the day it stops being correct is a one-line
+    change rather than an archaeology exercise.
+    """
+
+    LATEX = 'latex'
+    MARKDOWN = 'markdown'
+    TEXT = 'text'
+
+
+######################################################################
 # Declare module functions
 ######################################################################
 def escape_latex_str_if_str(value):
@@ -105,10 +129,57 @@ def _process_zeroes(value: int) -> Tuple[int, int, int]:
     return acc, cnt, value - acc * 10**cnt
 
 
+def _scientific_decision(
+    value: int,
+    zeroes: int,
+    rest: bool,
+) -> Optional[Tuple[int, int, int]]:
+    """Decide how to abbreviate a positive integer, or decline.
+
+    Returns the `(mult, exp, rem)` of `mult * 10^exp + rem`, or None when the
+    number should be printed as-is. These are the rules of the value, shared by
+    every target; only the spelling of the answer varies.
+    """
+    mult, exp, rem = _process_zeroes(value)
+    if exp < zeroes:
+        return None
+    if not rest and rem > 0:
+        # Should not convert numbers like 100007 to 10^5 + 7,
+        # unless rest is true.
+        return None
+    if rem > 0 and len(str(rem)) + 1 >= len(str(value)):
+        # Should not convert numbers like 532 to 5*10^2 + 32.
+        return None
+    return mult, exp, rem
+
+
+def _format_scientific_latex(mult: int, exp: int, rem: int) -> str:
+    res = '10' if exp == 1 else f'10^{{{exp}}}'
+    if mult > 1:
+        res = f'{mult} \\times {res}'
+    if rem > 0:
+        res = f'{res} + {rem}'
+    return res
+
+
+_SUPERSCRIPT_DIGITS = str.maketrans('0123456789', '⁰¹²³⁴⁵⁶⁷⁸⁹')
+
+
+def _format_scientific_text(mult: int, exp: int, rem: int) -> str:
+    res = '10' if exp == 1 else '10' + str(exp).translate(_SUPERSCRIPT_DIGITS)
+    if mult > 1:
+        res = f'{mult}×{res}'
+    if rem > 0:
+        res = f'{res} + {rem}'
+    return res
+
+
 def scientific_notation(
     value: Union[int, jinja2.Undefined],
     zeroes: int = 4,
     rest: bool = False,
+    *,
+    target: FilterTarget = FilterTarget.LATEX,
 ) -> Union[str, jinja2.Undefined]:
     if jinja2.is_undefined(value):
         return typing.cast(jinja2.Undefined, value)
@@ -117,31 +188,26 @@ def scientific_notation(
     if value == 0:
         return '0'
     if value < 0:
-        return f'-{scientific_notation(-value, zeroes=zeroes)}'
+        # `rest` is deliberately not forwarded: a negative number has never
+        # kept a remainder, and this must not start doing so.
+        return f'-{scientific_notation(-value, zeroes=zeroes, target=target)}'
 
-    mult, exp, rem = _process_zeroes(value)
-    if exp < zeroes:
+    decision = _scientific_decision(value, zeroes=zeroes, rest=rest)
+    if decision is None:
         return str(value)
-    res = '10' if exp == 1 else f'10^{{{exp}}}'
-    if not rest and rem > 0:
-        # Should not convert numbers like 100007 to 10^5 + 7,
-        # unless rest is true.
-        return str(value)
-    if rem > 0 and len(str(rem)) + 1 >= len(str(value)):
-        # Should not convert numbers like 532 to 5*10^2 + 32.
-        return str(value)
-    if mult > 1:
-        res = f'{mult} \\times {res}'
-    if rem > 0:
-        res = f'{res} + {rem}'
-    return res
+    mult, exp, rem = decision
+    if target is FilterTarget.TEXT:
+        return _format_scientific_text(mult, exp, rem)
+    return _format_scientific_latex(mult, exp, rem)
 
 
 def rest_scientific_notation(
     value: Union[int, jinja2.Undefined],
     zeroes: int = 4,
+    *,
+    target: FilterTarget = FilterTarget.LATEX,
 ) -> Union[str, jinja2.Undefined]:
-    return scientific_notation(value, zeroes=zeroes, rest=True)
+    return scientific_notation(value, zeroes=zeroes, rest=True, target=target)
 
 
 def path_parent(path: pathlib.Path) -> pathlib.Path:
@@ -287,10 +353,20 @@ class JinjaDictWrapper(dict):
             )
 
 
-def add_builtin_filters(j2_env: jinja2.Environment):
-    j2_env.filters['escape'] = escape_latex_str_if_str
-    j2_env.filters['sci'] = scientific_notation
-    j2_env.filters['rsci'] = rest_scientific_notation
+def _identity(value: Any) -> Any:
+    return value
+
+
+def add_builtin_filters(
+    j2_env: jinja2.Environment,
+    target: FilterTarget = FilterTarget.LATEX,
+):
+    # A badge is not a document: there is nothing to escape into under TEXT.
+    j2_env.filters['escape'] = (
+        _identity if target is FilterTarget.TEXT else escape_latex_str_if_str
+    )
+    j2_env.filters['sci'] = functools.partial(scientific_notation, target=target)
+    j2_env.filters['rsci'] = functools.partial(rest_scientific_notation, target=target)
     j2_env.filters['parent'] = path_parent
     j2_env.filters['stem'] = path_stem
 
@@ -333,7 +409,7 @@ def render_latex_template(path_templates, template_filename, template_vars=None)
         **J2_ARGS,
         undefined=StrictChainableUndefined,
     )
-    add_builtin_filters(j2_env)
+    add_builtin_filters(j2_env, target=FilterTarget.LATEX)
     add_builtin_tests(j2_env)
     template = j2_env.get_template(template_filename)
     try:
@@ -360,7 +436,7 @@ def render_latex_template_blocks(
         **J2_ARGS,
         undefined=StrictChainableUndefined,
     )
-    add_builtin_filters(j2_env)
+    add_builtin_filters(j2_env, target=FilterTarget.LATEX)
     add_builtin_tests(j2_env)
     template = j2_env.get_template(template_filename)
     ctx = template.new_context(var_dict)  # type: ignore
@@ -391,7 +467,7 @@ def render_markdown_template_blocks(
         **J2_MD_ARGS,  # type: ignore
         undefined=StrictChainableUndefined,
     )
-    add_builtin_filters(j2_env)
+    add_builtin_filters(j2_env, target=FilterTarget.MARKDOWN)
     add_builtin_tests(j2_env)
     template = j2_env.get_template(template_filename)
     ctx = template.new_context(var_dict)  # type: ignore
