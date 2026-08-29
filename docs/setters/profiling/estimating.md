@@ -198,6 +198,13 @@ and check every solution against it. It takes the rest of `rbx time`'s flags —
 `--runs`, `--profile`, `--runner`, `--skip-slow`, `--fail-fast`, `--share` — but not the ones
 `--auto` settles (`--strategy`, `--integrate`).
 
+Both commands also take the `rbx run` flags about how a run is reported, and apply them to every
+stage: `-b` for a [judging-time benchmark](../running/index.md#benchmarking-the-judging-time),
+and [`--keep-checker-stderr`](../running/index.md#reading-what-the-checker-said). Neither takes
+`--sanitized` (sanitizers inflate every timing the estimate rests on), `--verification-level`
+(pinned, so the estimation cap is never doubled), or a solution filter (both run the whole
+package by definition).
+
 ## Sharing the report
 
 ```bash

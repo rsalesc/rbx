@@ -12,6 +12,7 @@ import typer
 
 from rbx import annotations, console
 from rbx.box import (
+    benchmark,
     environment,
     limits_info,
     package,
@@ -98,6 +99,15 @@ _Dry = Annotated[
         'profile is printed instead of saved.',
     ),
 ]
+_KeepCheckerStderr = Annotated[
+    bool,
+    typer.Option(
+        '--keep-checker-stderr',
+        help="Also keep each testcase's full checker stderr, as a `.checker.err` file "
+        "next to its output. Only the checker's last line reaches the verdict, so "
+        'this is how to read whatever it printed before that.',
+    ),
+]
 _FailFast = Annotated[
     bool,
     typer.Option(
@@ -127,6 +137,8 @@ async def _estimate(
     dry: bool,
     run_all: bool,
     fail_fast: bool,
+    benchmark_level: int,
+    keep_checker_stderr: bool,
 ) -> None:
     """The body of `rbx time`, shared with `rbx preship`.
 
@@ -135,6 +147,11 @@ async def _estimate(
     with a mode flag: what distinguishes them is which options they *offer*, and
     that is a property of the signature.
     """
+    # Parsed before anything is built, for the same reason `rbx run` parses it
+    # there: a level rbx cannot report on is a mistake in the command line, and a
+    # mistake should cost the setter an error rather than a whole estimation.
+    level = benchmark.parse_level(benchmark_level)
+
     if share is not None and share not in ('png', 'text'):
         console.console.print(
             f'[error]Invalid --share format: {share!r} (use png or text).[/error]'
@@ -258,6 +275,8 @@ async def _estimate(
         dry=dry,
         run_all=run_all,
         fail_fast=fail_fast,
+        benchmark_level=level,
+        keep_checker_stderr=keep_checker_stderr,
     )
     if estimated is None:
         # Every failure of the estimation -- an unsatisfiable range, a solution
@@ -276,6 +295,12 @@ async def _estimate(
 @package.within_problem
 @syncer.sync
 async def time(
+    # Ahead of every parameter carrying a Python-level default, for the same
+    # reason as in `rbx run`: `BenchmarkParam` supplies its default through
+    # `default_factory` and so has none of its own, and tidying it further down
+    # the list is a `SyntaxError` raised when this module is imported. It is an
+    # option either way, so its position says nothing about the command line.
+    benchmark_level: benchmark.BenchmarkParam,
     check: _Check = True,
     validate: _Validate = True,
     detailed: _Detailed = False,
@@ -319,6 +344,7 @@ async def time(
         ),
     ] = False,
     fail_fast: _FailFast = False,
+    keep_checker_stderr: _KeepCheckerStderr = False,
 ):
     await _estimate(
         check=check,
@@ -335,6 +361,8 @@ async def time(
         dry=dry,
         run_all=run_all,
         fail_fast=fail_fast,
+        benchmark_level=benchmark_level,
+        keep_checker_stderr=keep_checker_stderr,
     )
 
 
@@ -347,6 +375,9 @@ async def time(
 @package.within_problem
 @syncer.sync
 async def preship(
+    # First for the same reason as in `rbx time` above: it carries no default of
+    # its own.
+    benchmark_level: benchmark.BenchmarkParam,
     check: _Check = True,
     validate: _Validate = True,
     detailed: _Detailed = False,
@@ -357,11 +388,20 @@ async def preship(
     skip_slow: _SkipSlow = False,
     dry: _Dry = False,
     fail_fast: _FailFast = False,
+    keep_checker_stderr: _KeepCheckerStderr = False,
 ):
     # `rbx time --auto --run-all` under a name that says what it is for. The
     # three options it does not offer are the ones `--auto` and `--run-all`
     # settle: `--strategy` (auto forces `estimate`), `--auto` itself, and
     # `--integrate`, which writes the package instead of estimating anything.
+    #
+    # It offers the `rbx run` flags that are about how a run is *reported* and
+    # what it leaves behind -- `-b`, `--keep-checker-stderr`, `--detailed`,
+    # `--share`, `--fail-fast` -- and none of the ones that would change what is
+    # measured or which solutions run. `--sanitized` inflates every timing the
+    # estimate rests on; `--verification-level` is pinned at ALL_SOLUTIONS so
+    # `isDoubleTL` stays off; and a solution filter would leave the solutions it
+    # skipped looking checked. See `test_timing_run_flags_omitted.py`.
     await _estimate(
         check=check,
         validate=validate,
@@ -377,4 +417,6 @@ async def preship(
         dry=dry,
         run_all=True,
         fail_fast=fail_fast,
+        benchmark_level=benchmark_level,
+        keep_checker_stderr=keep_checker_stderr,
     )
