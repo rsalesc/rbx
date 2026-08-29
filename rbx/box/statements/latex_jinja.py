@@ -96,9 +96,14 @@ class FilterTarget(enum.Enum):
     cannot typeset maths.
 
     MARKDOWN maps to the LaTeX formatter and is not redundant: a Markdown
-    statement puts its constraints in `$...$` math, so LaTeX is correct there.
-    Naming it separately means the day it stops being correct is a one-line
-    change rather than an archaeology exercise.
+    statement puts its constraints in `$...$` math, so LaTeX is what `sci` and
+    `rsci` should emit there. Naming it separately means the day that stops
+    being correct is a one-line change rather than an archaeology exercise.
+
+    That claim covers `sci`/`rsci` only. The target also picks `escape`, and
+    under MARKDOWN that is still the inherited LaTeX escaping (`a_b` -> `a\\_b`,
+    a backslash -> `\\textbackslash{}`), which nobody has examined against a
+    Markdown body outside math. Whether it is right there is out of scope here.
     """
 
     LATEX = 'latex'
@@ -119,6 +124,11 @@ def escape_latex_str_if_str(value):
     return value
 
 
+def _no_escape(value: Any) -> Any:
+    """The `escape` filter for output that is not embedded in a markup document."""
+    return value
+
+
 def _process_zeroes(value: int) -> Tuple[int, int, int]:
     cnt = 0
 
@@ -129,7 +139,7 @@ def _process_zeroes(value: int) -> Tuple[int, int, int]:
     return acc, cnt, value - acc * 10**cnt
 
 
-def _scientific_decision(
+def _decide_scientific_notation(
     value: int,
     zeroes: int,
     rest: bool,
@@ -153,24 +163,26 @@ def _scientific_decision(
     return mult, exp, rem
 
 
-def _format_scientific_latex(mult: int, exp: int, rem: int) -> str:
+def _format_scientific_latex(mult: int, exp: int) -> str:
+    """Spell `mult * 10^exp` as maths. The ` + rem` tail is added by the caller."""
     res = '10' if exp == 1 else f'10^{{{exp}}}'
     if mult > 1:
         res = f'{mult} \\times {res}'
-    if rem > 0:
-        res = f'{res} + {rem}'
     return res
 
 
 _SUPERSCRIPT_DIGITS = str.maketrans('0123456789', '⁰¹²³⁴⁵⁶⁷⁸⁹')
 
 
-def _format_scientific_text(mult: int, exp: int, rem: int) -> str:
+def _format_scientific_text(mult: int, exp: int) -> str:
+    """Spell `mult * 10^exp` as plain text. The ` + rem` tail is added by the caller."""
     res = '10' if exp == 1 else '10' + str(exp).translate(_SUPERSCRIPT_DIGITS)
     if mult > 1:
+        # Tight, where the LaTeX spelling is `2 \times 10^{5}`. Not an
+        # inconsistency: math mode discards source spaces and `\times` sets its
+        # own, so the PDF shows the same tightness either way. Here `×` is the
+        # glyph, and every space around it would be shown.
         res = f'{mult}×{res}'
-    if rem > 0:
-        res = f'{res} + {rem}'
     return res
 
 
@@ -188,17 +200,26 @@ def scientific_notation(
     if value == 0:
         return '0'
     if value < 0:
-        # `rest` is deliberately not forwarded: a negative number has never
-        # kept a remainder, and this must not start doing so.
+        # `rest` is not forwarded, so `rsci(-100007)` is `-100007` rather than
+        # the negation of `10^{5} + 7`. That asymmetry is pre-existing, and it
+        # is kept bug-for-bug because this refactor's one constraint is that
+        # shipped statement output does not move. Changing it is a fine thing
+        # to want; it belongs in its own commit, with its own golden row and a
+        # changelog line.
         return f'-{scientific_notation(-value, zeroes=zeroes, target=target)}'
 
-    decision = _scientific_decision(value, zeroes=zeroes, rest=rest)
+    decision = _decide_scientific_notation(value, zeroes=zeroes, rest=rest)
     if decision is None:
         return str(value)
     mult, exp, rem = decision
     if target is FilterTarget.TEXT:
-        return _format_scientific_text(mult, exp, rem)
-    return _format_scientific_latex(mult, exp, rem)
+        res = _format_scientific_text(mult, exp)
+    else:
+        res = _format_scientific_latex(mult, exp)
+    if rem > 0:
+        # Target-independent: every target spells the remainder the same way.
+        res = f'{res} + {rem}'
+    return res
 
 
 def rest_scientific_notation(
@@ -353,17 +374,14 @@ class JinjaDictWrapper(dict):
             )
 
 
-def _identity(value: Any) -> Any:
-    return value
-
-
 def add_builtin_filters(
     j2_env: jinja2.Environment,
     target: FilterTarget = FilterTarget.LATEX,
 ):
-    # A badge is not a document: there is nothing to escape into under TEXT.
+    # TEXT output is not embedded in a markup document, so there is nothing to
+    # escape for.
     j2_env.filters['escape'] = (
-        _identity if target is FilterTarget.TEXT else escape_latex_str_if_str
+        _no_escape if target is FilterTarget.TEXT else escape_latex_str_if_str
     )
     j2_env.filters['sci'] = functools.partial(scientific_notation, target=target)
     j2_env.filters['rsci'] = functools.partial(rest_scientific_notation, target=target)

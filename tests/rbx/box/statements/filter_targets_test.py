@@ -51,16 +51,15 @@ def test_text_scientific_notation(value, sci, rsci, text_sci, text_rsci):
 def test_text_and_latex_agree_on_whether_to_abbreviate(
     value, sci, rsci, text_sci, text_rsci
 ):
-    """The rules are the value's; only the spelling is the medium's."""
-    latex_declined = sci == str(value)
-    text_declined = scientific_notation(value, target=FilterTarget.TEXT) == str(value)
-    assert latex_declined == text_declined
+    """The rules are the value's; only the spelling is the medium's.
 
-    latex_rest_declined = rsci == str(value)
-    text_rest_declined = rest_scientific_notation(
-        value, target=FilterTarget.TEXT
-    ) == str(value)
-    assert latex_rest_declined == text_rest_declined
+    Read purely off the table, so a failure points at the mistyped row rather
+    than at the code the other two tests already pin. The `== str(value)`
+    detector assumes an abbreviation never spells itself: with a low `zeroes`
+    one can (`sci(10, 1)` is `'10'`), which no row here triggers.
+    """
+    assert (sci == str(value)) == (text_sci == str(value))
+    assert (rsci == str(value)) == (text_rsci == str(value))
 
 
 def test_markdown_target_formats_as_latex():
@@ -93,16 +92,19 @@ def _render(target: FilterTarget, source: str, **kwargs) -> str:
 
 
 @pytest.mark.parametrize(
-    ('target', 'expected'),
+    ('target', 'expected', 'rest_expected'),
     [
-        (FilterTarget.LATEX, r'2 \times 10^{5}'),
-        (FilterTarget.MARKDOWN, r'2 \times 10^{5}'),
-        (FilterTarget.TEXT, '2×10⁵'),
+        (FilterTarget.LATEX, r'2 \times 10^{5}', '10^{5} + 7'),
+        (FilterTarget.MARKDOWN, r'2 \times 10^{5}', '10^{5} + 7'),
+        (FilterTarget.TEXT, '2×10⁵', '10⁵ + 7'),
     ],
 )
-def test_sci_filter_is_installed_per_target(target, expected):
+def test_sci_filter_is_installed_per_target(target, expected, rest_expected):
     assert _render(target, '{{ n | sci }}', n=200000) == expected
-    assert _render(target, '{{ n | rsci }}', n=200000) == expected
+    # 100007, where `sci` and `rsci` disagree: `rsci` must be the `rest=True`
+    # flavour, not a second copy of `sci` under another name.
+    assert _render(target, '{{ n | sci }}', n=100007) == '100007'
+    assert _render(target, '{{ n | rsci }}', n=100007) == rest_expected
     # The filter still accepts `zeroes` positionally.
     assert _render(target, '{{ n | sci(9) }}', n=200000) == '200000'
 
