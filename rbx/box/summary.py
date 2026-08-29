@@ -76,6 +76,7 @@ def get_outcome_bucket(outcome: ExpectedOutcome) -> Optional[ExpectedOutcome]:
     if outcome in (
         ExpectedOutcome.RUNTIME_ERROR,
         ExpectedOutcome.MEMORY_LIMIT_EXCEEDED,
+        ExpectedOutcome.MLE_OR_RTE,
         ExpectedOutcome.OUTPUT_LIMIT_EXCEEDED,
         ExpectedOutcome.JUDGE_FAILED,
         ExpectedOutcome.COMPILATION_ERROR,

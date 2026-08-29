@@ -137,6 +137,7 @@ _OUTCOME_TABLE = (
     ('mle', 'memory limit exceeded'),
     ('ole', 'output limit exceeded'),
     ('tle/rte', 'time limit exceeded or runtime error'),
+    ('mle/rte', 'memory limit exceeded or runtime error'),
     ('jf', 'judge failed'),
     ('ce', 'compilation error'),
 )

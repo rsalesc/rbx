@@ -22,7 +22,11 @@ scenarios:
             # enough binary-search steps for `af_ml.cpp` to allocate past the
             # 256 MiB limit, the smaller ones do not. Asserting it here keeps
             # the ML/TLE race of issue #807 from silently coming back.
+            # `ml+re`, not `ml`: how the limit is enforced differs by platform, so
+            # the same solution is ML on macOS and RE on Linux, where RLIMIT_AS
+            # makes the allocation itself fail. This still excludes TLE, which is
+            # what the #807 guard is about.
             sols/af_ml.cpp:
-              tests/3: ml
-              tests/4: ml
-              tests/5: ml
+              tests/3: ml+re
+              tests/4: ml+re
+              tests/5: ml+re

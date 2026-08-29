@@ -27,7 +27,13 @@ while it runs and kills it once it goes over the limit.
     `MLE` on MacOS, because {{rbx}} is the one that killed it.
 
     A solution declared with `outcome: memory limit exceeded` will therefore fail on Linux. Use
-    `outcome: incorrect` instead, which holds on both.
+    `outcome: mle+rte` instead, which accepts either and still rules out every other verdict:
+
+    ```yaml title="problem.rbx.yml"
+    solutions:
+      - path: "sols/too-much-memory.cpp"
+        outcome: mle+rte
+    ```
 
 !!! note
     There is a stronger consequence for Linux, and it is worth stating plainly: because
