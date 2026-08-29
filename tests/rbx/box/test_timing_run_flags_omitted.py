@@ -36,8 +36,10 @@ def _skip_preset_check():
         # Sanitizers inflate a solution's runtime severalfold, so a limit
         # estimated under them is a limit for a binary nobody will ship.
         ('--sanitized', 'would corrupt every timing the estimate rests on'),
-        # The estimation pins ALL_SOLUTIONS so `isDoubleTL` stays off; FULL would
-        # double the very cap the accepted solutions are measured under.
+        # Every phase's level is pinned: the two that measure run at
+        # ALL_SOLUTIONS so `isDoubleTL` stays off -- FULL would double the very
+        # cap they measure under -- and the remaining-solutions phase runs at
+        # FULL, like `rbx run`. See `test_timing_verification_level.py`.
         ('--verification-level', 'is pinned by the estimation'),
         # `rbx preship` promises to run every solution. A filter would leave the
         # ones it skipped looking checked.
