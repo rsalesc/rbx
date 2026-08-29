@@ -18,7 +18,6 @@ import math
 import sys
 from typing import Annotated, Dict, List
 
-import jinja2
 import rich.markup
 import typer
 
@@ -106,28 +105,6 @@ def _read_expressions() -> List[str]:
     return list(seen)
 
 
-def _render_environment(target: latex_jinja.FilterTarget) -> jinja2.Environment:
-    """The environment a statement renders under, minus the file loader.
-
-    Same delimiters, same strict undefined, same filters -- the badge is only
-    worth showing if it agrees with the statement, and the way to guarantee
-    that is to render under the same environment rather than a lookalike.
-
-    This environment is **not** sandboxed, exactly like the statement one: an
-    expression can reach whatever the namespace exposes. That is not a new
-    boundary. Anyone who can pipe expressions in can already run arbitrary
-    Python through a ``py`...``` var in `problem.rbx.yml`, which this command
-    expands before it renders anything.
-    """
-    env = jinja2.Environment(
-        **latex_jinja.J2_ARGS,  # type: ignore[arg-type]
-        undefined=latex_jinja.StrictChainableUndefined,
-    )
-    latex_jinja.add_builtin_filters(env, target=target)
-    latex_jinja.add_builtin_tests(env)
-    return env
-
-
 def _render_from_stdin(expanded: fields.Vars, target: latex_jinja.FilterTarget) -> str:
     """Render each expression read from stdin, dropping the ones that fail.
 
@@ -137,7 +114,15 @@ def _render_from_stdin(expanded: fields.Vars, target: latex_jinja.FilterTarget) 
     which is always a safe answer; a non-zero exit is reserved for a package
     that could not be read at all, and would cost every other badge too.
     """
-    env = _render_environment(target)
+    # The statement's own environment, minus the file loader: the badge is only
+    # worth showing if it agrees with the statement, and the way to guarantee
+    # that is to build it with the statement's factory rather than a lookalike.
+    # Not sandboxed, exactly like the statement one -- an expression can reach
+    # whatever the namespace exposes. That is not a new boundary: anyone who can
+    # pipe expressions in can already run arbitrary Python through a
+    # ``py`...``` var in `problem.rbx.yml`, which this command expands before it
+    # renders anything.
+    env = latex_jinja.make_jinja_env(target, syntax=latex_jinja.JinjaSyntax.LATEX)
     # `\VAR{N.max}` is shorthand for `\VAR{vars.N.max}` (see
     # `statements/context._lift`), and the scanner may send either spelling.
     wrapper = latex_jinja.JinjaDictWrapper.from_dict(dict(expanded), wrapper_key='vars')

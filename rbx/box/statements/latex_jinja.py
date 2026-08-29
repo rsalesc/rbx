@@ -111,6 +111,23 @@ class FilterTarget(enum.Enum):
     TEXT = 'text'
 
 
+class JinjaSyntax(enum.Enum):
+    """Which delimiters a template is lexed with.
+
+    A separate axis from `FilterTarget`, because the two really do vary
+    independently: `rbx vars --render` lexes with the LaTeX delimiters (an
+    expression is only worth rendering if a statement could hold it) while
+    formatting for TEXT. Collapsing them into one `markdown=True` flag would
+    make that combination unsayable.
+    """
+
+    LATEX = 'latex'
+    """`\\VAR{...}`, `\\BLOCK{...}`, `%-`: the rbxTeX flavour (`J2_ARGS`)."""
+
+    PLAIN = 'plain'
+    """Jinja's own `{{ ... }}` / `{% ... %}` (`J2_MD_ARGS`)."""
+
+
 ######################################################################
 # Declare module functions
 ######################################################################
@@ -396,6 +413,39 @@ def add_builtin_tests(j2_env: jinja2.Environment):
     j2_env.tests['nonnull'] = test_var_nonnull
 
 
+_SYNTAX_ARGS: Dict[JinjaSyntax, Dict[str, Any]] = {
+    JinjaSyntax.LATEX: J2_ARGS,
+    JinjaSyntax.PLAIN: J2_MD_ARGS,
+}
+
+
+def make_jinja_env(
+    target: FilterTarget = FilterTarget.LATEX,
+    *,
+    syntax: JinjaSyntax = JinjaSyntax.LATEX,
+    loader: Optional[jinja2.BaseLoader] = None,
+) -> jinja2.Environment:
+    """The environment a statement renders under.
+
+    Everything that renders a statement -- or claims to agree with one, as the
+    var hints do -- goes through here, so "same filters, same tests, same
+    undefined" is one function rather than a convention repeated at each call
+    site. Only `target` and `syntax` may differ, and they are independent: see
+    `JinjaSyntax`.
+
+    The environment is **not** sandboxed. That is not new and not incidental:
+    templates are setter-authored files from the package being built.
+    """
+    j2_env = jinja2.Environment(
+        loader=loader,
+        **_SYNTAX_ARGS[syntax],  # type: ignore[arg-type]
+        undefined=StrictChainableUndefined,
+    )
+    add_builtin_filters(j2_env, target=target)
+    add_builtin_tests(j2_env)
+    return j2_env
+
+
 def _handle_rendering_undefined(
     err: jinja2.UndefinedError,
 ) -> str:
@@ -422,13 +472,11 @@ def render_latex_template(path_templates, template_filename, template_vars=None)
         defaults to None for case when no values need to be passed
     """
     var_dict = template_vars if template_vars else {}
-    j2_env = jinja2.Environment(
+    j2_env = make_jinja_env(
+        FilterTarget.LATEX,
+        syntax=JinjaSyntax.LATEX,
         loader=jinja2.FileSystemLoader(path_templates),
-        **J2_ARGS,
-        undefined=StrictChainableUndefined,
     )
-    add_builtin_filters(j2_env, target=FilterTarget.LATEX)
-    add_builtin_tests(j2_env)
     template = j2_env.get_template(template_filename)
     try:
         return template.render(**var_dict)  # type: ignore
@@ -449,13 +497,11 @@ def render_latex_template_blocks(
         defaults to None for case when no values need to be passed
     """
     var_dict = template_vars if template_vars else {}
-    j2_env = jinja2.Environment(
+    j2_env = make_jinja_env(
+        FilterTarget.LATEX,
+        syntax=JinjaSyntax.LATEX,
         loader=jinja2.FileSystemLoader(path_templates),
-        **J2_ARGS,
-        undefined=StrictChainableUndefined,
     )
-    add_builtin_filters(j2_env, target=FilterTarget.LATEX)
-    add_builtin_tests(j2_env)
     template = j2_env.get_template(template_filename)
     ctx = template.new_context(var_dict)  # type: ignore
     try:
@@ -480,13 +526,11 @@ def render_markdown_template_blocks(
         defaults to None for case when no values need to be passed
     """
     var_dict = template_vars if template_vars else {}
-    j2_env = jinja2.Environment(
+    j2_env = make_jinja_env(
+        FilterTarget.MARKDOWN,
+        syntax=JinjaSyntax.PLAIN,
         loader=jinja2.FileSystemLoader(path_templates),
-        **J2_MD_ARGS,  # type: ignore
-        undefined=StrictChainableUndefined,
     )
-    add_builtin_filters(j2_env, target=FilterTarget.MARKDOWN)
-    add_builtin_tests(j2_env)
     template = j2_env.get_template(template_filename)
     ctx = template.new_context(var_dict)  # type: ignore
     try:

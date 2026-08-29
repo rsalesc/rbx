@@ -3,7 +3,10 @@ import pytest
 
 from rbx.box.statements.latex_jinja import (
     FilterTarget,
+    JinjaSyntax,
+    StrictChainableUndefined,
     add_builtin_filters,
+    make_jinja_env,
     rest_scientific_notation,
     scientific_notation,
 )
@@ -119,3 +122,25 @@ def test_sci_filter_is_installed_per_target(target, expected, rest_expected):
 )
 def test_escape_filter_is_installed_per_target(target, expected):
     assert _render(target, '{{ s | escape }}', s='a_b') == expected
+
+
+@pytest.mark.parametrize('target', list(FilterTarget))
+def test_make_jinja_env_installs_filters_tests_and_strict_undefined(target):
+    env = make_jinja_env(target)
+    assert env.variable_start_string == r'\VAR{'
+    assert env.undefined is StrictChainableUndefined
+    assert {'sci', 'rsci', 'escape', 'parent', 'stem'} <= set(env.filters)
+    assert {'truthy', 'falsy', 'null', 'nonnull'} <= set(env.tests)
+    assert env.from_string(r'\VAR{n | sci}').render(n=100000) == (
+        '10⁵' if target is FilterTarget.TEXT else '10^{5}'
+    )
+
+
+def test_make_jinja_env_syntax_is_independent_of_target():
+    plain = make_jinja_env(FilterTarget.MARKDOWN, syntax=JinjaSyntax.PLAIN)
+    assert plain.variable_start_string == '{{'
+    assert plain.from_string('{{ n | sci }}').render(n=200000) == r'2 \times 10^{5}'
+
+    # What `rbx vars --render` asks for: LaTeX delimiters, text spelling.
+    latex_text = make_jinja_env(FilterTarget.TEXT, syntax=JinjaSyntax.LATEX)
+    assert latex_text.from_string(r'\VAR{n | sci}').render(n=200000) == '2×10⁵'
