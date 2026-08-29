@@ -116,6 +116,17 @@ def get_preexec_fn(params: ProgramParams):
                 if params.stack_limit is not None
                 else resource.RLIM_INFINITY
             )
+            # Clamp to the hard limit rather than let the call fail: a refused
+            # `setrlimit` leaves the *inherited soft* limit in place, which is
+            # usually far below what the system would actually allow.
+            try:
+                _, hard = resource.getrlimit(resource.RLIMIT_STACK)
+                if hard != resource.RLIM_INFINITY and (
+                    stack_limit == resource.RLIM_INFINITY or stack_limit > hard
+                ):
+                    stack_limit = hard
+            except (ValueError, OSError):
+                pass
             try:
                 resource.setrlimit(resource.RLIMIT_STACK, (stack_limit, stack_limit))
             except (ValueError, OSError):
