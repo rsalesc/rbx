@@ -569,7 +569,11 @@ class TestProgramMocks:
         params = ProgramParams(time_limit=5.0, fs_limit=1000, pgid=12345)
 
         preexec_fn = get_preexec_fn(params)
-        preexec_fn()
+        with mock.patch(
+            'resource.getrlimit',
+            return_value=(8 * 1024 * 1024, resource_module.RLIM_INFINITY),
+        ):
+            preexec_fn()
 
         # Verify setpgid was called
         mock_setpgid.assert_called_once_with(0, 12345)
@@ -606,7 +610,58 @@ class TestProgramMocks:
 
         params = ProgramParams(stack_limit=64)
 
-        get_preexec_fn(params)()
+        with mock.patch(
+            'resource.getrlimit',
+            return_value=(8 * 1024 * 1024, resource_module.RLIM_INFINITY),
+        ):
+            get_preexec_fn(params)()
+
+        stack_calls = [
+            call
+            for call in mock_setrlimit.call_args_list
+            if call[0][0] == resource_module.RLIMIT_STACK
+        ]
+        assert len(stack_calls) == 1
+        assert stack_calls[0][0][1] == (64 * 1024 * 1024, 64 * 1024 * 1024)
+
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'linux')
+    def test_preexec_fn_clamps_an_unset_stack_limit_to_the_hard_limit(
+        self, mock_setrlimit, _
+    ):
+        """Asking for RLIM_INFINITY under a finite hard limit fails outright and
+        leaves the inherited soft limit in place, which is far smaller than what
+        the system allows."""
+        import resource as resource_module
+
+        with mock.patch(
+            'resource.getrlimit',
+            return_value=(8 * 1024 * 1024, 512 * 1024 * 1024),
+        ):
+            get_preexec_fn(ProgramParams())()
+
+        stack_calls = [
+            call
+            for call in mock_setrlimit.call_args_list
+            if call[0][0] == resource_module.RLIMIT_STACK
+        ]
+        assert len(stack_calls) == 1
+        assert stack_calls[0][0][1] == (512 * 1024 * 1024, 512 * 1024 * 1024)
+
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'linux')
+    def test_preexec_fn_clamps_a_configured_stack_limit_to_the_hard_limit(
+        self, mock_setrlimit, _
+    ):
+        import resource as resource_module
+
+        with mock.patch(
+            'resource.getrlimit',
+            return_value=(8 * 1024 * 1024, 64 * 1024 * 1024),
+        ):
+            get_preexec_fn(ProgramParams(stack_limit=256))()
 
         stack_calls = [
             call
