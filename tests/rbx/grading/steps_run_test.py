@@ -278,47 +278,10 @@ class TestStepsRun:
         assert result.exitstatus == SandboxBase.EXIT_MEMORY_LIMIT_EXCEEDED
         assert result.exitcode != 0
 
-    async def test_run_with_memory_limit_regression_test(
-        self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
-    ):
-        """Regression test for memory limit detection bug.
-
-        This test ensures that the get_memory_usage function correctly reports
-        memory usage in bytes on all platforms. Previously, on macOS, the function
-        incorrectly divided ru.ru_maxrss by 1024, causing memory limits to not
-        be properly detected.
-
-        The original memory_heavy.py script allocates memory quickly and exits,
-        relying on the post-execution memory check (ru.ru_maxrss) rather than
-        the runtime monitoring thread to detect memory limit violations.
-        """
-        # Setup input file
-        script_file = testdata_path / 'steps_run_test' / 'memory_heavy.py'
-        artifacts = GradingArtifacts(root=cleandir)
-        artifacts.inputs.append(
-            GradingFileInput(src=script_file, dest=pathlib.Path('script.py'))
-        )
-        artifacts.outputs.append(
-            GradingFileOutput(
-                src=pathlib.Path('output.txt'), dest=pathlib.Path('output.txt')
-            )
-        )
-        artifacts.logs = GradingLogsHolder()
-
-        params = SandboxParams(
-            stdout_file=pathlib.Path('output.txt'),
-            address_space=50,  # 50MB memory limit
-        )
-        command = f'{sys.executable} script.py 100'  # Try to allocate 100MB
-
-        result = await steps.run(command, params, sandbox, artifacts)
-
-        assert result is not None
-        # Should hit memory limit and be flagged (may complete successfully but exceed limit)
-        assert result.exitstatus == SandboxBase.EXIT_MEMORY_LIMIT_EXCEEDED
-        # Memory usage should exceed the limit
-        assert result.memory is not None
-        assert result.memory > 50 * 1024 * 1024  # Should use more than 50MB
+    # `test_run_with_memory_limit_regression_test` lived here. What a program
+    # over its memory limit is reported as depends on the platform -- MLE from
+    # the RSS watchdog on macOS, a failed allocation under `RLIMIT_AS` on Linux
+    # -- so both halves now live in `grading/memory_limit_platform_test.py`.
 
     async def test_run_with_metadata(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
