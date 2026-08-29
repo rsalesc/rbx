@@ -75,6 +75,11 @@ scenarios:
             - 'Run report (for time estimation)'
             - 'Run report (upper-bound validation)'
             - 'Run report (remaining solutions)'
+            # The remaining-solutions phase judges rather than measures, so it
+            # runs like `rbx run` -- at 2*TL, and printing the limits it judged
+            # against. Neither estimation phase prints a limits table, so this
+            # line can only come from that one.
+            - 'Running with 2*TL'
           files_exist:
             - '.limits/local.yml'
           file_contains:

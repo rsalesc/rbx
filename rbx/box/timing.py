@@ -71,8 +71,11 @@ class MissingLowerBoundError(RbxException):
         self.msg.append(message)
 
 
-# Solutions are verified during estimation, but never at FULL -- which is the
-# only level that turns `isDoubleTL` on (see `limits_info._get_limits_from_profile`).
+# The level of the phases that *measure*: never FULL, which is the only level
+# that turns `isDoubleTL` on (see `limits_info._get_limits_from_profile`), and a
+# doubled cap is a corrupted measurement. `_run_remaining_solutions` measures
+# nothing and runs at FULL instead, like `rbx run`; the reasoning is written out
+# at that call site.
 _INFERENCE_VERIFICATION = VerificationLevel.ALL_SOLUTIONS
 
 _NO_LOWER_BOUND_MESSAGE = (
@@ -1639,6 +1642,11 @@ async def _run_remaining(
     at `ceil(TL x timeLimitToTle) >= TL` times out here a fortiori -- and the
     time limit is part of the sandbox cache key, so re-running them would cost a
     full second pass to learn nothing.
+
+    One consequence of that, worth saying out loud now that this phase runs at
+    FULL: the 2x-TL diagnostics cover the solutions this phase runs, and only
+    those. A slow solution the upper-bound check already settled is not reported
+    as fitting in 2x TL -- that check asked a stricter question and answered it.
     """
     remaining = [
         solution
@@ -1669,11 +1677,27 @@ async def _run_remaining(
             runner=runner,
             tracked_solutions=tracked_solutions,
             check=check,
-            # ALL_SOLUTIONS keeps `isDoubleTL` off, as in both phases above: the
-            # override carries the estimated limit exactly, and doubling it here
-            # would judge every remaining solution against a limit the setter is
-            # not about to ship.
-            verification=_INFERENCE_VERIFICATION,
+            # FULL, which is what `rbx run` defaults to -- and unlike both
+            # phases above, this one measures nothing, so `isDoubleTL` is safe
+            # to turn on. It does not judge the solutions against 2x the limit:
+            # `_get_execution_config` doubles the *sandbox* limit only, leaving
+            # `problemLimits.time` at the estimate, and that is the value
+            # `checkers._process_run_log` stamps TLE from. Every verdict is the
+            # one a 1x run would have produced; what the headroom buys is the
+            # diagnostics a setter about to ship wants and `ALL_SOLUTIONS` cannot
+            # produce -- a solution declared `tle` that actually fits in 2x TL,
+            # and the verdicts a soft TLE hid (see `runUnderDoubleTl` and
+            # `unexpectedNoTleVerdicts` in `solutions.py`). None of them feed the
+            # pass/fail status, so this run's exit code keeps meaning what it
+            # meant. The bill is wall clock: a solution that times out here is
+            # killed at 2x TL, exactly as it is under `rbx run`.
+            #
+            # The two phases above stay at `_INFERENCE_VERIFICATION` because
+            # they measure: doubling phase one's cap doubles the
+            # `inferenceTimeout` its accepted solutions are measured against,
+            # and doubling phase two's doubles the `TL x timeLimitToTle` it
+            # probes at, whose measured time decides `violates_upper_bound`.
+            verification=VerificationLevel.FULL,
             timelimit_override=limits,
             # A plain run, and said so: these solutions are not being measured
             # for anything, they are being judged against the limit that was.
@@ -1696,9 +1720,16 @@ async def _run_remaining(
         ok = await print_run_report(
             result,
             console.console,
-            _INFERENCE_VERIFICATION,
+            # The level the run above actually used. Passing the inference one
+            # would report a run that did not happen: this argument is read both
+            # for the `>TL ms` formatting and for the double-TL verdict logic.
+            VerificationLevel.FULL,
             detailed=detailed,
-            skip_printing_limits=True,
+            # Printed here, unlike in the two phases above, whose caps are
+            # internal to the estimation. This phase judges against the limit
+            # the setter is about to ship, so the limits table -- and with it the
+            # `Running with 2*TL` warning -- is what says at what.
+            skip_printing_limits=False,
             # A solution that stopped at its first bad verdict was not timed on
             # the testcases that never ran, so every extreme in the summary
             # would rest on a lower bound. Same rule as `rbx run --fail-fast`.
