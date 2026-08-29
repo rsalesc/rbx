@@ -315,6 +315,14 @@ SPEC = {
             'panel': 'Testing',
             'params': [
                 {
+                    'help': 'Benchmark level: 0 (off), 1 (benchmark the solution run).',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--benchmark', '-b'],
+                    'takes_value': True,
+                    'value': {'completer': 'benchmark_level', 'kind': 'completer'},
+                },
+                {
                     'help': 'Whether to not build outputs for tests and run checker.',
                     'kind': 'option',
                     'multiple': False,
@@ -439,6 +447,17 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': "Also keep each testcase's full checker stderr, as a "
+                    "`.checker.err` file next to its output. Only the checker's "
+                    'last line reaches the verdict, so this is how to read whatever '
+                    'it printed before that.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--keep-checker-stderr'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,
@@ -454,6 +473,14 @@ SPEC = {
             'name': 'preship',
             'panel': 'Testing',
             'params': [
+                {
+                    'help': 'Benchmark level: 0 (off), 1 (benchmark the solution run).',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--benchmark', '-b'],
+                    'takes_value': True,
+                    'value': {'completer': 'benchmark_level', 'kind': 'completer'},
+                },
                 {
                     'help': 'Whether to not build outputs for tests and run checker.',
                     'kind': 'option',
@@ -540,6 +567,17 @@ SPEC = {
                     'kind': 'option',
                     'multiple': False,
                     'names': ['--fail-fast', '--ff'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': "Also keep each testcase's full checker stderr, as a "
+                    "`.checker.err` file next to its output. Only the checker's "
+                    'last line reaches the verdict, so this is how to read whatever '
+                    'it printed before that.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--keep-checker-stderr'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
                 },

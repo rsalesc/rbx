@@ -163,6 +163,7 @@ rbx time [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
+| `--benchmark`, `-b` | INTEGER | Benchmark level: 0 (off), 1 (benchmark the solution run). | `0` |
 | `--check` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
 | `--validate` | BOOLEAN | Whether to not validate outputs for tests. | `True` |
 | `--detailed`, `-d` | BOOLEAN | Whether to print a detailed view of the tests using tables. | `False` |
@@ -177,6 +178,7 @@ rbx time [OPTIONS]
 | `--dry` | BOOLEAN | Run the whole estimation but write nothing to the disk: the limits profile is printed instead of saved. | `False` |
 | `--run-all` | BOOLEAN | After the estimation, also run every solution it did not need -- the ones expected to be wrong, and any slow one that was never checked -- against the estimated time limit. | `False` |
 | `--fail-fast`, `--ff` | BOOLEAN | Whether to stop running a solution as soon as it gets a non-accepted verdict. Applies only to the solutions run after the estimation, and is only meant for quick experimentation, as the remaining tests are reported as failed. | `False` |
+| `--keep-checker-stderr` | BOOLEAN | Also keep each testcase's full checker stderr, as a `.checker.err` file next to its output. Only the checker's last line reaches the verdict, so this is how to read whatever it printed before that. | `False` |
 
 
 ---
@@ -192,6 +194,7 @@ rbx preship [OPTIONS]
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
+| `--benchmark`, `-b` | INTEGER | Benchmark level: 0 (off), 1 (benchmark the solution run). | `0` |
 | `--check` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
 | `--validate` | BOOLEAN | Whether to not validate outputs for tests. | `True` |
 | `--detailed`, `-d` | BOOLEAN | Whether to print a detailed view of the tests using tables. | `False` |
@@ -202,6 +205,7 @@ rbx preship [OPTIONS]
 | `--skip-slow` | BOOLEAN | Skip checking the estimated limit against the solutions expected to be too slow. The limit is written with its upper bound unchecked. | `False` |
 | `--dry` | BOOLEAN | Run the whole estimation but write nothing to the disk: the limits profile is printed instead of saved. | `False` |
 | `--fail-fast`, `--ff` | BOOLEAN | Whether to stop running a solution as soon as it gets a non-accepted verdict. Applies only to the solutions run after the estimation, and is only meant for quick experimentation, as the remaining tests are reported as failed. | `False` |
+| `--keep-checker-stderr` | BOOLEAN | Also keep each testcase's full checker stderr, as a `.checker.err` file next to its output. Only the checker's last line reaches the verdict, so this is how to read whatever it printed before that. | `False` |
 
 
 ---

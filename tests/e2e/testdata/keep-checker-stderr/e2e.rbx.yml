@@ -25,3 +25,26 @@ scenarios:
           solutions:
             sols/main.cpp: ac
             sols/wrong.cpp: wa
+
+  # `rbx preship` carries both `rbx run` reporting flags. Each stage stages its
+  # run under the same `.rbx/runs` directory, so what is on disk afterwards is
+  # the last stage's -- this pins that the flags survive the whole command, and
+  # `test_timing_run_flags.py` pins that each of the three stages gets them.
+  - name: preship-carries-the-run-reporting-flags
+    steps:
+      - cmd: preship -b1 --keep-checker-stderr
+        expect:
+          files_exist:
+            - "**/*.checker.err"
+          stdout_contains:
+            - 'Benchmark: slowest test'
+            - 'Total judging:'
+
+  - name: preship-benchmarks-nothing-by-default
+    steps:
+      - cmd: preship
+        expect:
+          files_absent:
+            - "**/*.checker.err"
+          stdout_not_contains:
+            - 'Benchmark: slowest test'

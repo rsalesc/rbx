@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from rbx import console, utils
 from rbx.box import (
+    benchmark,
     environment,
     limits_info,
     package,
@@ -1153,6 +1154,8 @@ async def _run_for_inference(
     runs: int,
     formula: Optional[str],
     runner: Optional['SolutionRunner'] = None,
+    benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
+    keep_checker_stderr: bool = False,
 ) -> Optional[_InferenceRun]:
     """Run the solutions the time limit is inferred from, report them, and say
     what their verdicts mean. ``None`` when the estimate must not proceed."""
@@ -1194,6 +1197,7 @@ async def _run_for_inference(
             # validation one, or from a plain `rbx run`.
             purpose=RunPurpose.ESTIMATION,
             nruns=runs,
+            keep_checker_stderr=keep_checker_stderr,
             # An accepted solution killed at the cap fails the estimate outright,
             # so its remaining tests only cost wall clock.
             abort_on=lambda ctx: ctx.evaluation.result.outcome.is_slow(),
@@ -1211,6 +1215,7 @@ async def _run_for_inference(
             detailed=detailed,
             skip_printing_limits=True,
             gating_solutions={str(solution.path) for solution in lower_solutions},
+            benchmark_level=benchmark_level,
         )
 
         diagnosis = await _diagnose_inference_run(result)
@@ -1404,6 +1409,8 @@ async def _validate_upper_bound(
     runs: int,
     runner: Optional['SolutionRunner'] = None,
     ran: Optional[Set[str]] = None,
+    benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
+    keep_checker_stderr: bool = False,
 ) -> _ValidationOutcome:
     """Run each slow solution at the limit this estimate demands of it, and say
     whether it is genuinely too slow.
@@ -1453,6 +1460,7 @@ async def _validate_upper_bound(
             # runs instead of overwriting each other.
             purpose=RunPurpose.VALIDATION,
             nruns=runs,
+            keep_checker_stderr=keep_checker_stderr,
             # One timeout settles the question, so the remaining testcases only
             # cost wall clock.
             abort_on=lambda ctx: ctx.evaluation.result.outcome.is_slow(),
@@ -1470,6 +1478,7 @@ async def _validate_upper_bound(
             detailed=detailed,
             skip_printing_limits=True,
             gating_solutions=set(tracked_solutions),
+            benchmark_level=benchmark_level,
         )
 
         failed, unmeasured = await _record_validation_run(
@@ -1528,6 +1537,8 @@ async def _estimate_and_validate(
     runs: int,
     runner: Optional['SolutionRunner'] = None,
     ran: Optional[Set[str]] = None,
+    benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
+    keep_checker_stderr: bool = False,
 ) -> Optional[TimingProfile]:
     """Estimate a limit and check it against the solutions expected to be too
     slow, letting the setter re-decide until the two agree.
@@ -1572,6 +1583,8 @@ async def _estimate_and_validate(
             runs=runs,
             runner=runner,
             ran=ran,
+            benchmark_level=benchmark_level,
+            keep_checker_stderr=keep_checker_stderr,
         )
         _report_validation_outcome(outcome, profile)
         if outcome.ok:
@@ -1607,6 +1620,8 @@ async def _run_remaining(
     runs: int,
     fail_fast: bool = False,
     runner: Optional['SolutionRunner'] = None,
+    benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
+    keep_checker_stderr: bool = False,
 ) -> bool:
     """Run whatever the estimate did not, at the limit the estimate produced.
 
@@ -1665,6 +1680,7 @@ async def _run_remaining(
             # `MojRunner` stages this on the same remote problem `rbx run` uses.
             purpose=RunPurpose.RUN,
             nruns=runs,
+            keep_checker_stderr=keep_checker_stderr,
             # `--fail-fast` is the only reason to stop early here. The two phases
             # above abort on a timeout because a timeout answers their question;
             # this one has no question of its own, so it runs everything unless
@@ -1687,6 +1703,7 @@ async def _run_remaining(
             # the testcases that never ran, so every extreme in the summary
             # would rest on a lower bound. Same rule as `rbx run --fail-fast`.
             timing=not fail_fast,
+            benchmark_level=benchmark_level,
         )
         if fail_fast:
             console.console.print()
@@ -1721,6 +1738,8 @@ async def compute_time_limits(
     dry: bool = False,
     run_all: bool = False,
     fail_fast: bool = False,
+    benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
+    keep_checker_stderr: bool = False,
 ):
     if package.get_main_solution() is None:
         # An error, not a warning: with no accepted solution nothing bounds the
@@ -1738,7 +1757,13 @@ async def compute_time_limits(
     }
 
     run = await _run_for_inference(
-        check=check, detailed=detailed, runs=runs, formula=formula, runner=runner
+        check=check,
+        detailed=detailed,
+        runs=runs,
+        formula=formula,
+        runner=runner,
+        benchmark_level=benchmark_level,
+        keep_checker_stderr=keep_checker_stderr,
     )
     if run is None:
         return None
@@ -1764,6 +1789,8 @@ async def compute_time_limits(
         runs=runs,
         runner=runner,
         ran=ran,
+        benchmark_level=benchmark_level,
+        keep_checker_stderr=keep_checker_stderr,
     )
     if estimated_tl is None:
         return None
@@ -1795,6 +1822,10 @@ async def compute_time_limits(
             _INFERENCE_VERIFICATION,
             detailed=detailed,
             skip_printing_limits=True,
+            # Benchmarked too, for the same reason `rbx run --share` benchmarks
+            # its copy: a shared report silently missing a block the setter asked
+            # for reads as a run that had nothing to report.
+            benchmark_level=benchmark_level,
         )
         rec.print()
         rec.print(
@@ -1810,6 +1841,8 @@ async def compute_time_limits(
         runs=runs,
         fail_fast=fail_fast,
         runner=runner,
+        benchmark_level=benchmark_level,
+        keep_checker_stderr=keep_checker_stderr,
     ):
         # Raised rather than folded into the `None` the estimation returns: that
         # `None` means no limit was produced and nothing was written, and this is
