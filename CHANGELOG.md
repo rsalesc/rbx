@@ -1,3 +1,15 @@
+## 1.4.1 (2026-08-29)
+
+### Feat
+
+- **time**: judge the remaining solutions at 2*TL, like rbx run (#815)
+- **grading**: warn when a configured stack limit cannot be honored (#816)
+- **time**: carry -b and --keep-checker-stderr into rbx time and rbx preship (#814)
+
+### Fix
+
+- **statements**: allow building contest documents by name (#820)
+
 ## 1.4.0 (2026-08-29)
 
 ### Feat
