@@ -179,7 +179,25 @@ The values come from `rbx vars`, which only reads `problem.rbx.yml` -- so they
 are right while you type, and do not wait for a `rbx build` or a
 `rbx statements build`.
 
-A hint is shown only where it can be exactly right, and there are four places
+A reference piped through a
+[filter](../setters/statements/context.md#filters) is hinted as what the filter
+makes of it, not as the bare number underneath. {{rbx}} renders the expression
+itself, so the hint agrees with the statement whatever you pipe through --
+`sci`, `rsci`, or any {{Jinja2}} builtin such as `upper` or `round(2)`:
+
+```{.latex .no-copy}
+\item $1 \le N \le \VAR{N.max | sci}$      10⁵
+\item $1 \le a_i \le \VAR{A.max | sci}$    10⁹
+\item Answers modulo \VAR{MOD | rsci}      10⁹ + 7
+```
+
+An inlay hint cannot typeset maths, so it spells the same value in plain text:
+superscript digits and `×` where the built statement gets `^{}` and `\times`.
+Only the spelling changes. What a filter *decides* is the same in both places,
+so `sci` leaving `250000` as its digits in the PDF leaves it as its digits in
+the hint too.
+
+A hint is shown only where it can be exactly right, and there are three places
 it deliberately is not:
 
 - **Problem-root references only.** `\VAR{N.max}` and `\VAR{vars.N.max}` are
@@ -189,12 +207,12 @@ it deliberately is not:
   `\VAR{p.N.max}`, `\VAR{problem.N.max}` and `\VAR{contest.year}` resolve
   against variable sets that are not this problem's own. None of them get a
   hint.
-- **The raw value, whatever the filter does.** `\VAR{N.max | sci}` typesets as
-  `10^5` in the built statement but hints `100000`. The filter decides how the
-  number is *typeset*; the hint answers what the number *is*.
 - **Nothing is ever guessed.** A name no variable answers to, an expression
   that is not a plain dotted name, a commented-out line, an escaped `\\VAR` --
-  all get nothing. An absent hint is never a wrong one, and it is a useful
+  all get nothing, and neither does a half-typed pipeline like
+  `\VAR{N.max |}`. A filter over a name that does not exist gets nothing
+  either: the name is looked up before anything is rendered, so a typo never
+  costs a render. An absent hint is never a wrong one, and it is a useful
   tell: a misspelled variable is the one reference on the line with no number
   next to it.
 - **Only what the manifest calls a statement.** `problem.rbx.yml`'s

@@ -193,8 +193,32 @@ $ rbx vars --json
 {"N.max": "100000", "M.max": "200000"}
 ```
 
+A value and what a statement *shows* for it are two different things, though --
+that is exactly what a filter like `sci` sits in the middle of. `--render`
+answers the second question: it reads statement expressions from stdin, one per
+line, and prints a JSON object mapping each one to the text it renders to.
+
+```bash
+$ printf 'N.max\nM.max | sci\n' | rbx vars --render
+{"N.max": "100000", "M.max | sci": "2×10⁵"}
+```
+
+`--target` picks the spelling of that text, never the rules the filter follows:
+
+| Target | What `sci` spells `M.max` as |
+| ------ | ---------------------------- |
+| `text` (the default) | `2×10⁵` -- plain text, for somewhere that cannot typeset maths |
+| `latex` | `2 \times 10^{5}` -- what a {{rbxTeX}} statement puts in the PDF |
+| `markdown` | the same as `latex`, since a Markdown statement writes its constraints inside `$...$` |
+
+An expression {{rbx}} cannot render -- an unknown filter, a name no variable
+answers to -- is left out of the map instead of guessed at, and named on
+`stderr`. The command still exits 0, so one bad expression does not cost you
+the rest.
+
 !!! tip "Right there in your statement"
 
     The [VS Code extension](../tools/vscode.md#variables-in-a-statement) reads
-    this to show you what each `\VAR{...}` in a statement expands to, beside
-    the reference itself.
+    both of these to show you what each `\VAR{...}` in a statement expands to,
+    beside the reference itself -- `--json` for a bare reference, `--render`
+    for a filtered one.
