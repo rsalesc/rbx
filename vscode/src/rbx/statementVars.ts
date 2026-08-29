@@ -29,8 +29,17 @@ interface VarReference {
   readonly end: number;
   /**
    * The canonical expression this reference asks for, ready to hand to
-   * `rbx vars --render`. Stripped of any `vars.` prefix and respaced around
-   * each pipe, so that spellings differing only there are one cache key.
+   * `rbx vars --render`. Stripped of any `vars.` prefix, respaced around each
+   * pipe, and guaranteed to hold no newline -- it crosses to rbx as one line
+   * of stdin and comes back as a key, so a newline in it would be a request
+   * nothing could answer.
+   *
+   * Two spellings that differ only in the spacing around a pipe are therefore
+   * one cache key -- *except* where the pipeline holds a quote, which
+   * `canonicalize` leaves internally verbatim rather than risk rewriting a
+   * string argument. `label|default('x|y')` and `label | default('x|y')` are
+   * two keys and two renders of the same thing. That is a deliberate trade:
+   * a duplicated render costs time, a corrupted expression costs correctness.
    */
   readonly expression: string;
 }
@@ -49,12 +58,6 @@ export interface ResolvedVarHint extends VarReference {
  */
 export interface FilteredVarHint extends VarReference {
   readonly filtered: true;
-  /**
-   * Never set. Declared so that `hint.text` on the union is `string |
-   * undefined` -- a caller that reads it without narrowing is told it may be
-   * missing, instead of being told the property does not exist at all.
-   */
-  readonly text?: undefined;
 }
 
 /**
@@ -167,24 +170,49 @@ function lookup(vars: Vars, name: string): string | undefined {
 }
 
 /**
- * One canonical spelling of `name | pipeline`, so that `N.max|sci`,
- * `N.max | sci` and a pipeline wrapped across lines are one cache key rather
- * than three renders of the same thing.
+ * One canonical spelling of `name | pipeline`, or `undefined` for a pipeline
+ * this scanner refuses to ask rbx about.
  *
- * Only the whitespace *around* each pipe is rewritten. Whitespace inside a
- * filter's arguments is left as written -- collapsing it could change what a
- * string argument means, and the worst it costs is a second cache entry for
- * `sci( 9 )` beside `sci(9)`. A pipeline holding a quote is left alone
- * entirely: a `|` inside a string argument is a literal, and spacing it out
- * would corrupt the expression the renderer is handed.
+ * The spelling exists so that `N.max|sci`, `N.max | sci` and a pipeline
+ * wrapped across lines are one cache key rather than three renders of the same
+ * thing. Only the whitespace *around* each pipe is rewritten; whitespace inside
+ * a filter's arguments is left as written, because collapsing it could change
+ * what a string argument means, and the worst it costs is a second cache entry
+ * for `sci( 9 )` beside `sci(9)`.
+ *
+ * A pipeline holding a quote is left internally verbatim -- a `|` inside a
+ * string argument is a literal, and respacing it would corrupt the expression
+ * the renderer is handed. Only the single space joining the name to the first
+ * pipe is imposed there, so `label|default('x|y')` canonicalizes to
+ * `label |default('x|y')` and keys separately from `label | default('x|y')`.
+ *
+ * Two pipelines are refused outright:
+ *
+ * - one with an empty stage (`N.max |`, the state of every half-typed filter,
+ *   and `N.max ||sci`). Neither is a Jinja expression, so the render could only
+ *   fail, and rejecting them here also spares the caller a double space that
+ *   respacing `||` would otherwise produce. The check splits on `|`, which is
+ *   only unambiguous when no quote is present, so a quoted pipeline skips it --
+ *   at worst one wasted render for something like `N.max | 'x' |`.
+ * - one whose canonical form still holds a newline. Expressions cross to
+ *   `rbx vars --render` one per line of stdin and come back as the keys of its
+ *   reply, so a newline would split one request into two unanswerable ones.
+ *   Respacing launders the newline in `N.max\n | sci`, but not the one in
+ *   `sci(9,\n 3)` or in any quoted pipeline, which is exactly why the check is
+ *   made on the finished expression rather than trusted to the respacing.
  */
-function canonicalize(name: string, pipeline: string | undefined): string {
+function canonicalize(name: string, pipeline: string | undefined): string | undefined {
   if (pipeline === undefined) {
     return name;
   }
   const stages = pipeline.trim();
-  const spaced = /['"]/.test(stages) ? stages : stages.replace(/\s*\|\s*/g, ' | ').trim();
-  return `${name} ${spaced}`;
+  const quoted = /['"]/.test(stages);
+  if (!quoted && stages.split('|').some((stage, index) => index > 0 && stage.trim() === '')) {
+    return undefined;
+  }
+  const spaced = quoted ? stages : stages.replace(/\s*\|\s*/g, ' | ').trim();
+  const expression = `${name} ${spaced}`;
+  return expression.includes('\n') ? undefined : expression;
 }
 
 export function scanStatementVars(text: string, vars: Vars): VarHint[] {
@@ -227,8 +255,15 @@ export function scanStatementVars(text: string, vars: Vars): VarHint[] {
       continue;
     }
 
-    const end = start + match[0].length;
+    // A pipeline `canonicalize` refuses yields no hint at all, rather than a
+    // bare-name hint: the badge would then show the unfiltered value, which is
+    // the very lie this scanner reports the pipeline to avoid.
     const expression = canonicalize(name, pipeline);
+    if (expression === undefined) {
+      continue;
+    }
+
+    const end = start + match[0].length;
     hints.push(
       pipeline === undefined
         ? { end, expression, filtered: false, text: value }

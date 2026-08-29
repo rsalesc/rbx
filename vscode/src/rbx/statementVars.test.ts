@@ -34,12 +34,22 @@ const VARS: Vars = {
 
 const scan = (text: string) => scanStatementVars(text, VARS);
 
+/**
+ * The badge texts of a scan, a filtered reference contributing none.
+ *
+ * `VarHint` carries `text` only on its unfiltered arm, so this narrows once
+ * here rather than at every assertion. A reference that unexpectedly turned
+ * filtered shows up as a missing text, which is what these tests watch for.
+ */
+const texts = (source: string) =>
+  scan(source).flatMap((hint) => (hint.filtered ? [] : [hint.text]));
+
 test('the shorthand and the long form both resolve', () => {
   assert.deepStrictEqual(scan('$N \\le \\VAR{N.max}$'), [
     { end: 18, expression: 'N.max', filtered: false, text: '100000' },
   ]);
   assert.deepStrictEqual(
-    scan('$N \\le \\VAR{vars.N.max}$').map((hint) => hint.text),
+    texts('$N \\le \\VAR{vars.N.max}$'),
     ['100000'],
   );
 });
@@ -99,6 +109,37 @@ test('filter arguments survive', () => {
   );
 });
 
+test('a quoted pipeline keys on itself, spacing and all', () => {
+  // The documented exception to one-spelling-one-key: respacing a pipeline
+  // that holds a quote could rewrite a string argument, so only the space
+  // before the first pipe is imposed and the rest stands as written. Two
+  // spellings, two renders of the same thing -- time, not correctness.
+  assert.deepStrictEqual(
+    scan("\\VAR{label|default('x|y')} \\VAR{label |   default('x|y')}").map(
+      (hint) => hint.expression,
+    ),
+    ["label |default('x|y')", "label |   default('x|y')"],
+  );
+});
+
+test('an expression that would still hold a newline gets no hint', () => {
+  // Expressions cross to `rbx vars --render` one per line of stdin and come
+  // back as the keys of its reply, so a newline would split one request into
+  // two that nothing can answer. Respacing launders the newline around a pipe,
+  // but not one inside an argument or anywhere in a quoted pipeline.
+  for (const text of ["\\VAR{label | default('x')\n | upper}", '\\VAR{N.max | sci(9,\n 3)}']) {
+    assert.deepStrictEqual(scan(text), [], text);
+  }
+});
+
+test('a pipeline with an empty stage gets no hint', () => {
+  // `N.max |` is what every half-typed filter looks like, and neither it nor
+  // `N.max ||sci` is an expression rbx could render.
+  for (const text of ['\\VAR{N.max |}', '\\VAR{N.max ||sci}', '\\VAR{N.max | | sci}']) {
+    assert.deepStrictEqual(scan(text), [], text);
+  }
+});
+
 test('a pipeline over an unknown name gets no hint either', () => {
   // The base of a filtered reference is the very value being rendered, so a
   // name the map does not hold is as hopeless here as it is unfiltered -- and
@@ -108,7 +149,7 @@ test('a pipeline over an unknown name gets no hint either', () => {
 
 test('several references on one line each get a hint', () => {
   assert.deepStrictEqual(
-    scan('$\\VAR{N.max}$ and $\\VAR{A.max}$').map((hint) => hint.text),
+    texts('$\\VAR{N.max}$ and $\\VAR{A.max}$'),
     ['100000', '1000000000'],
   );
 });
@@ -153,7 +194,7 @@ test('a comment opened mid-line is skipped too', () => {
 
 test('an escaped percent does not open a comment', () => {
   assert.deepStrictEqual(
-    scan('50\\% of \\VAR{N.max}').map((hint) => hint.text),
+    texts('50\\% of \\VAR{N.max}'),
     ['100000'],
   );
   // A literal backslash before the percent: the percent is a real comment.
@@ -164,14 +205,14 @@ test('an escaped VAR is not a reference', () => {
   assert.deepStrictEqual(scan('\\\\VAR{N.max}'), []);
   // ...but a literal backslash followed by a real reference still is.
   assert.deepStrictEqual(
-    scan('\\\\\\VAR{N.max}').map((hint) => hint.text),
+    texts('\\\\\\VAR{N.max}'),
     ['100000'],
   );
 });
 
 test('non-numeric values are shown verbatim', () => {
   assert.deepStrictEqual(
-    scan('\\VAR{flag} \\VAR{label}').map((hint) => hint.text),
+    texts('\\VAR{flag} \\VAR{label}'),
     ['True', 'foo'],
   );
 });
@@ -181,7 +222,7 @@ test('an integer too large for a double keeps every digit', () => {
   // come back from `JSON.parse` as 1000000000000000000, and the badge would
   // confidently show a bound the statement does not have.
   assert.deepStrictEqual(
-    scan('$N \\le \\VAR{BIG.max}$').map((hint) => hint.text),
+    texts('$N \\le \\VAR{BIG.max}$'),
     ['1000000000000000007'],
   );
 });
@@ -190,7 +231,7 @@ test('a root var named exactly `g` still resolves', () => {
   // FOREIGN_SCOPE only claims `g.`, with the dot: `g` alone is an ordinary
   // root var, and refusing it would cost a badge for nothing.
   assert.deepStrictEqual(
-    scan('\\VAR{g}').map((hint) => hint.text),
+    texts('\\VAR{g}'),
     ['3'],
   );
 });
@@ -213,10 +254,7 @@ test('the hint sits just after the closing brace', () => {
 test('offsets are absolute across lines, and a comment ends at its newline', () => {
   const text = '% $\\VAR{A.max}$\n$N \\le \\VAR{N.max}$\n';
   const hints = scan(text);
-  assert.deepStrictEqual(
-    hints.map((hint) => hint.text),
-    ['100000'],
-  );
+  assert.deepStrictEqual(texts(text), ['100000']);
   assert.strictEqual(text.slice(hints[0].end - 6, hints[0].end), 'N.max}');
 });
 
