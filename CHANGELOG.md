@@ -1,3 +1,9 @@
+## 1.4.2 (2026-08-29)
+
+### Fix
+
+- qfix for MOJ: set STOPWHEN_TLE=n for non-probe pacakge
+
 ## 1.4.1 (2026-08-29)
 
 ### Feat
