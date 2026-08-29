@@ -19,14 +19,25 @@ import { Vars } from './statementVars';
  * wrong shape is the CLI's answer, and looking deeper into it would find the
  * inner map of `{"a": {"b": "1"}}` and badge a var no statement can name.
  *
- * Only *leading* noise is tolerated. Anything printed after the object makes
- * the slice fail to parse, and every later `{` starts even further inside it,
- * so the payload is dropped whole. That is a considered limit rather than an
- * oversight: rbx prints the object last, trailing output would mean something
- * wrote over its stdout, and under D5 no badges beats guessing which half of
- * the stream was the answer.
+ * Terminal escape sequences are stripped first, because rbx really does emit
+ * one after the payload: Rich restores the cursor on exit, so stdout ends
+ * `}\n\x1b[?25h` whenever `FORCE_COLOR` is set in the environment the editor
+ * inherited. That is invisible in a terminal and fatal to `JSON.parse`, and it
+ * depends on how the user launched their editor rather than on anything the
+ * extension does -- exactly the kind of failure that would present as "the
+ * feature does nothing on my machine".
+ *
+ * Other *trailing* noise is still not tolerated. Anything else printed after
+ * the object makes the slice fail to parse, and every later `{` starts further
+ * inside it, so the payload is dropped whole. That remains a considered limit:
+ * rbx prints the object last, so trailing text would mean something wrote over
+ * its stdout, and under D5 no badges beats guessing which half of the stream
+ * was the answer.
  */
-function parseLeadingObject(stdout: string): unknown {
+const ANSI_ESCAPE = /\u001b\[[0-9;?]*[ -\/]*[@-~]/g;
+
+function parseLeadingObject(raw: string): unknown {
+  const stdout = raw.replace(ANSI_ESCAPE, '');
   for (let start = stdout.indexOf('{'); start >= 0; start = stdout.indexOf('{', start + 1)) {
     try {
       return JSON.parse(stdout.slice(start));

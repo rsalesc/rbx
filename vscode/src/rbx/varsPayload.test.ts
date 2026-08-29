@@ -66,3 +66,22 @@ test('a var spelled like a prototype key stays an own property', () => {
   assert.strictEqual(Object.hasOwn(vars, 'toString'), false);
   assert.strictEqual(vars['constructor'], '2');
 });
+
+test('the cursor escape rbx really emits does not eat the payload', () => {
+  // Not hypothetical: with FORCE_COLOR set in the environment the editor
+  // inherited, Rich restores the cursor on exit and rbx's stdout ends with a
+  // show-cursor sequence. Captured verbatim from a real `rbx vars --json`.
+  // Left unstripped it fails JSON.parse and the feature draws nothing at all
+  // -- on some machines and not others, depending on how the editor started.
+  const real = '{"A.min": "0", "A.max": "2147483647"}\n\u001b[?25h';
+  assert.deepStrictEqual(parseVarsPayload(real), {
+    'A.min': '0',
+    'A.max': '2147483647',
+  });
+});
+
+test('colour sequences around the payload are stripped too', () => {
+  assert.deepStrictEqual(parseVarsPayload('\u001b[32m{"N.max": "5"}\u001b[0m\n'), {
+    'N.max': '5',
+  });
+});
