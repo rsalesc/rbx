@@ -1,3 +1,23 @@
+## 1.4.0 (2026-08-29)
+
+### Feat
+
+- **time**: run the remaining solutions with --run-all, and add rbx preship (#813)
+- **grading**: honor the configured stack limit on linux (#799)
+- **moj**: calibrate uploaded packages on every judge (#811)
+- **ui**: persist each/on command panes and let runs be resumed (#806)
+- **run**: add --benchmark to rbx run and rbx irun (#802)
+
+### Fix
+
+- **statements**: rewrap monospace math before pandoc for MOJ (#809)
+- **moj**: map MOJ's full per-test verdict vocabulary (#812)
+- **moj**: package problems with no samples instead of refusing them (#805)
+
+### Refactor
+
+- **packaging**: prefix the contest variant in the package basename (#798)
+
 ## 1.3.2 (2026-08-28)
 
 ### Feat
