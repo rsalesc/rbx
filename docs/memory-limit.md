@@ -26,9 +26,15 @@ while it runs and kills it once it goes over the limit.
     that allocates too much gets `RTE` on Linux, because it dies from a failed allocation, and
     `MLE` on MacOS, because {{rbx}} is the one that killed it.
 
-    If you care about the verdict of a memory-hungry solution -- say you declared it with
-    `outcome: memory limit exceeded` -- prefer `outcome: runtime error` or one of the
-    [multi-outcome forms](setters/reference/package/index.md), so the expectation holds on both.
+    A solution declared with `outcome: memory limit exceeded` will therefore fail on Linux. Use
+    `outcome: incorrect` instead, which holds on both.
+
+!!! note
+    There is a stronger consequence for Linux, and it is worth stating plainly: because
+    `RLIMIT_AS` bounds the address space, a program's resident memory can never exceed the limit
+    either. The watchdog has nothing left to catch, so **`MLE` is not a verdict you will see on
+    Linux** for anything but a JVM language -- which is exempt from the cap, and whose
+    `OutOfMemoryError` is an `RTE` anyway.
 
 The Linux behavior is the one most online judges have, so it is the more faithful of the two. It
 also has a consequence worth knowing about.

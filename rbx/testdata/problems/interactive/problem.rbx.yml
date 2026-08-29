@@ -33,8 +33,13 @@ solutions:
     outcome: WA
   - path: "sols/af_ac_re.cpp"
     outcome: RE
+  # Not `ML`: the verdict for a solution over its memory limit depends on the
+  # platform. On macOS the RSS watchdog kills it (ML); on Linux `RLIMIT_AS`
+  # makes the allocation itself fail, so it dies of `bad_alloc` (RE) and RSS
+  # can never exceed a cap that also bounds the address space. `INCORRECT` is
+  # the only expectation that holds on both.
   - path: "sols/af_ml.cpp"
-    outcome: ML
+    outcome: INCORRECT
   - path: "sols/af_inf_cout_without_flush.cpp"
     outcome: TLE
   - path: "sols/af_inf_cout_with_flush.cpp"
