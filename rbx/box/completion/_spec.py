@@ -922,7 +922,8 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
-                    'help': 'What the rendered expressions are being formatted for.',
+                    'help': 'What the --render expressions are being formatted for. Ignored '
+                    'without --render.',
                     'kind': 'option',
                     'multiple': False,
                     'names': ['--target'],

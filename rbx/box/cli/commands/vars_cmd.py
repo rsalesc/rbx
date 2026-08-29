@@ -54,7 +54,8 @@ def vars_command(
         latex_jinja.FilterTarget,
         typer.Option(
             '--target',
-            help='What the rendered expressions are being formatted for.',
+            help='What the --render expressions are being formatted for. '
+            'Ignored without --render.',
         ),
         # TEXT, because the only caller is the VS Code inlay hint, which cannot
         # typeset maths. A caller that wants the statement's own spelling asks
@@ -123,21 +124,42 @@ def _render_from_stdin(expanded: fields.Vars, target: latex_jinja.FilterTarget) 
     # ``py`...``` var in `problem.rbx.yml`, which this command expands before it
     # renders anything.
     env = latex_jinja.make_jinja_env(target, syntax=latex_jinja.JinjaSyntax.LATEX)
-    # `\VAR{N.max}` is shorthand for `\VAR{vars.N.max}` (see
-    # `statements/context._lift`), and the scanner may send either spelling.
+    # Half of `statements/context._lift`: the vars wrapper bound both under
+    # `vars` and lifted to the top level, because `\VAR{N.max}` is shorthand for
+    # `\VAR{vars.N.max}` and the scanner may send either spelling. The other
+    # half -- the `lang`/`languages`/`params`/`contest`/`problem` names that
+    # `problem_jinja_kwargs` lifts alongside it -- is out of reach here: those
+    # come from a resolved statement, which this command deliberately does not
+    # load. So `problem.title` and `params.foo` render to nothing and are
+    # dropped. That gap cannot reach a badge: the extension's scanner rejects a
+    # `problem.`/`contest.`/`p.`/`g.`-prefixed expression before it is ever sent.
     wrapper = latex_jinja.JinjaDictWrapper.from_dict(dict(expanded), wrapper_key='vars')
     namespace = {**wrapper, 'vars': wrapper}
 
     rendered: Dict[str, str] = {}
     for expression in _read_expressions():
         try:
-            # Wrapped in the statement's own `\VAR{...}`, not `{{ ... }}`: an
-            # expression is only worth a badge if a statement could hold it, so
-            # it is lexed by the delimiters a statement is lexed by.
+            # Wrapped in `\VAR{...}` rather than `{{ ... }}` because an rbxTeX
+            # statement holds it that way. This is not universal -- a Markdown
+            # statement renders under `JinjaSyntax.PLAIN`, so `--target markdown`
+            # lexes with delimiters that statement does not use -- but the two
+            # lexers differ only in where the expression ends, and Jinja balances
+            # brackets before honouring an end delimiter, so an expression that
+            # closes its own brackets (every expression a scanner can extract)
+            # lexes identically either way.
             rendered[expression] = env.from_string(f'\\VAR{{{expression}}}').render(
                 **namespace
             )
-        except Exception:
+        except Exception as err:
+            # stdout is the JSON map, so stderr is free: name the expression and
+            # the error. Without this a bug inside a filter is indistinguishable
+            # from a typo in the expression -- both are just a badge that never
+            # appears -- and neither leaves a trace to diagnose.
+            console.stderr_console.print(
+                f'[warning]Could not render[/warning] '
+                f'{rich.markup.escape(expression)}[warning]:[/warning] '
+                f'{type(err).__name__}: {rich.markup.escape(str(err))}'
+            )
             continue
     # `ensure_ascii=False` so `10⁵` crosses as itself; the consumer reads UTF-8.
     return json.dumps(rendered, ensure_ascii=False)

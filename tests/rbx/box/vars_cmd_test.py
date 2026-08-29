@@ -204,6 +204,20 @@ def test_render_omits_an_expression_it_cannot_evaluate(pkg_from_testdata: pathli
 
 
 @pytest.mark.test_pkg('problems/interactive')
+def test_render_reports_what_it_dropped_on_stderr(pkg_from_testdata: pathlib.Path):
+    """Dropping silently would make a bug in a filter undiagnosable.
+
+    stdout carries the JSON map, so the diagnosis goes to stderr, where it
+    cannot corrupt what the extension parses.
+    """
+    result = runner.invoke(app, ['vars', '--render'], input='N.max | nosuchfilter\n')
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {}
+    assert 'nosuchfilter' in _plain(result.stderr)
+
+
+@pytest.mark.test_pkg('problems/interactive')
 def test_render_with_no_expressions_is_an_empty_object(pkg_from_testdata: pathlib.Path):
     result = runner.invoke(app, ['vars', '--render'], input='')
 
@@ -213,13 +227,19 @@ def test_render_with_no_expressions_is_an_empty_object(pkg_from_testdata: pathli
 
 @pytest.mark.test_pkg('problems/interactive')
 def test_render_asks_once_for_a_repeated_expression(pkg_from_testdata: pathlib.Path):
-    """A statement repeats a bound; the map is keyed by expression regardless."""
+    """A statement repeats a bound; the map is keyed by expression regardless.
+
+    The keys come back in order of first appearance -- not that a consumer of a
+    JSON object should care, but the docstring promises it, so it is pinned.
+    """
     result = runner.invoke(
-        app, ['vars', '--render'], input='N.max | sci\n\n  N.max | sci  \n'
+        app, ['vars', '--render'], input='N.max | sci\n\n  N.min  \nN.max | sci\n'
     )
 
     assert result.exit_code == 0, result.output
-    assert json.loads(result.stdout) == {'N.max | sci': '10⁶'}
+    parsed = json.loads(result.stdout)
+    assert parsed == {'N.max | sci': '10⁶', 'N.min': '1'}
+    assert list(parsed) == ['N.max | sci', 'N.min']
 
 
 @pytest.mark.test_pkg('problems/interactive')
