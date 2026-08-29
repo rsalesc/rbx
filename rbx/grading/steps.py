@@ -520,7 +520,7 @@ def _relax_limits_for_jvm(command: str, params: SandboxParams) -> None:
     params.stack_space = None
 
 
-_STACK_LIMIT_DOCS = 'https://rsalesc.github.io/rbx/stack-limit'
+_STACK_LIMIT_DOCS = 'https://rbx.rsalesc.dev/stack-limit/'
 
 
 class StackLimitNotHonoredIssue(issue_stack.Issue):

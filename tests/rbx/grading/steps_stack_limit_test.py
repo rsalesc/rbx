@@ -34,6 +34,19 @@ def _fresh_issue_stack():
         issue_stack_var.reset(token)
 
 
+def _fake_stack_rlimit(soft: int, hard: int):
+    """Report `(soft, hard)` for RLIMIT_STACK only, leaving every other rlimit
+    query -- including the ones the sandbox makes while spawning -- untouched."""
+    real_getrlimit = resource.getrlimit
+
+    def getrlimit(which: int):
+        if which == resource.RLIMIT_STACK:
+            return (soft, hard)
+        return real_getrlimit(which)
+
+    return mock.patch('resource.getrlimit', side_effect=getrlimit)
+
+
 @pytest.fixture
 def stack_check_enabled():
     """`_maybe_complain_about_stack_limit` reads the setter config; pin it on."""
@@ -55,7 +68,7 @@ class TestStackLimitNotHonoredIssue:
 
         assert '256 MiB' in message
         assert '8 MiB' in message
-        assert 'https://rsalesc.github.io/rbx/stack-limit' in message
+        assert 'https://rbx.rsalesc.dev/stack-limit/' in message
 
     def test_detailed_message_says_unenforced_when_there_is_no_hard_limit(self):
         issue = StackLimitNotHonoredIssue(requested_mib=256, hard_limit=None)
@@ -64,7 +77,7 @@ class TestStackLimitNotHonoredIssue:
 
         assert '256 MiB' in message
         assert 'macOS' in message
-        assert 'https://rsalesc.github.io/rbx/stack-limit' in message
+        assert 'https://rbx.rsalesc.dev/stack-limit/' in message
 
     def test_both_reports_file_the_issue_under_the_same_section(self):
         issue = StackLimitNotHonoredIssue(requested_mib=256, hard_limit=None)
@@ -75,9 +88,7 @@ class TestStackLimitNotHonoredIssue:
     def test_overview_message_is_present_and_links_the_docs(self):
         issue = StackLimitNotHonoredIssue(requested_mib=256, hard_limit=8 * 1024 * 1024)
 
-        assert (
-            'https://rsalesc.github.io/rbx/stack-limit' in issue.get_overview_message()
-        )
+        assert 'https://rbx.rsalesc.dev/stack-limit/' in issue.get_overview_message()
 
     def test_two_issues_with_the_same_values_produce_the_same_message(self):
         """The issue stack dedupes on the message string, so this is what makes
@@ -228,12 +239,12 @@ class TestStackLimitProbeIsWired:
         params = SandboxParams(stdout_file=pathlib.Path('output.txt'), stack_space=256)
         command = f'{sys.executable} script.py'
 
-        with mock.patch(
-            'resource.getrlimit', return_value=(8 * 1024 * 1024, 8 * 1024 * 1024)
-        ):
+        with _fake_stack_rlimit(8 * 1024 * 1024, 8 * 1024 * 1024):
             with _fresh_issue_stack() as accumulator:
-                await steps.run(command, params, sandbox, artifacts)
+                result = await steps.run(command, params, sandbox, artifacts)
 
+        assert result is not None
+        assert result.exitcode == 0
         assert len(accumulator.issues) == 1
 
     @mock.patch('sys.platform', 'linux')
@@ -261,10 +272,9 @@ class TestStackLimitProbeIsWired:
         params = SandboxParams(stdout_file=pathlib.Path('output.txt'), stack_space=256)
         command = 'java Simple'
 
-        with mock.patch(
-            'resource.getrlimit', return_value=(8 * 1024 * 1024, 8 * 1024 * 1024)
-        ):
+        with _fake_stack_rlimit(8 * 1024 * 1024, 8 * 1024 * 1024):
             with _fresh_issue_stack() as accumulator:
-                await steps.run(command, params, sandbox, artifacts)
+                result = await steps.run(command, params, sandbox, artifacts)
 
+        assert result is not None
         assert not accumulator.issues
