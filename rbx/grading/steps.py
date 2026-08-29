@@ -551,6 +551,11 @@ class StackLimitNotHonoredIssue(issue_stack.Issue):
                 'not enforced on macOS: the stack of a sandboxed program is whatever '
                 f'your shell hands down. See [item]{_STACK_LIMIT_DOCS}[/item].'
             )
+        # The claim that programs actually run *with* the hard limit depends on
+        # `get_preexec_fn` clamping the request down to it before calling
+        # `setrlimit`: without that clamp the call is refused and the child keeps
+        # the inherited soft limit, which can be lower. Do not revert one of the
+        # two without the other.
         effective = get_formatted_memory(self.hard_limit)
         return (
             f'[item]stackLimit[/item] is set to [item]{requested}[/item], but this '
@@ -565,15 +570,48 @@ class StackLimitNotHonoredIssue(issue_stack.Issue):
         return issue_stack.IssueSeverity.WARNING
 
 
+@functools.cache
+def _complain_about_stack_limit(stack_space: int) -> None:
+    """Back half of `_maybe_complain_about_stack_limit`, cached.
+
+    Cached for the same reason `_maybe_complain_about_sanitization` is: the
+    report dedupes on the message string, so filing the issue once per spawned
+    program only grows a list that nothing reads -- and a stress run spawns tens
+    of thousands. Keyed on the plain limit rather than on `SandboxParams`, which
+    is not hashable.
+    """
+    from rbx.box import setter_config
+
+    if not setter_config.get_setter_config().judging.check_stack:
+        return
+
+    if sys.platform == 'darwin':
+        # `get_preexec_fn` never touches RLIMIT_STACK here, so the configured
+        # limit is inert whatever the numbers say.
+        issue_stack.add_issue(StackLimitNotHonoredIssue(stack_space, None))
+        return
+
+    try:
+        _, hard = resource.getrlimit(resource.RLIMIT_STACK)
+    except (ValueError, OSError):
+        return
+
+    if hard == resource.RLIM_INFINITY:
+        return
+    if hard >= stack_space * 1024 * 1024:
+        return
+
+    issue_stack.add_issue(StackLimitNotHonoredIssue(stack_space, hard))
+
+
 def _maybe_complain_about_stack_limit(params: SandboxParams) -> None:
     """Diagnose a `stackLimit` the machine will not actually apply.
 
-    `get_preexec_fn` swallows a `setrlimit` that the system refuses -- raising in
-    the forked child would take the whole run down -- so a limit above the hard
-    `RLIMIT_STACK` degrades silently to whatever the process inherited, and the
-    solutions that then blow their stack look like ordinary RTEs. Diagnose it
-    here, in the parent, where it can still be attributed to the configuration
-    that caused it.
+    `get_preexec_fn` clamps a `stackLimit` above the hard `RLIMIT_STACK` down to
+    that hard limit rather than fail -- raising in the forked child would take
+    the whole run down -- so the limit degrades silently, and the solutions that
+    then blow their stack look like ordinary RTEs. Diagnose it here, in the
+    parent, where it can still be attributed to the configuration that caused it.
 
     Call this *after* `_relax_limits_for_jvm`: a JVM command has no stack limit
     left to complain about by then.
@@ -583,28 +621,16 @@ def _maybe_complain_about_stack_limit(params: SandboxParams) -> None:
         # which is exactly what is documented.
         return
 
-    from rbx.box import setter_config
+    from rbx.box import state
 
-    if not setter_config.get_setter_config().judging.check_stack:
+    if not state.STATE.run_through_cli:
+        # Same gate as `code._check_stack_limit`: outside the CLI there is no one
+        # to read the report, and reading the setter config would create
+        # `setter_config.yml` on disk -- a side effect the grading layer must not
+        # have when driven as a library, from the TUI or from tests.
         return
 
-    if sys.platform == 'darwin':
-        # `get_preexec_fn` never touches RLIMIT_STACK here, so the configured
-        # limit is inert whatever the numbers say.
-        issue_stack.add_issue(StackLimitNotHonoredIssue(params.stack_space, None))
-        return
-
-    try:
-        _, hard = resource.getrlimit(resource.RLIMIT_STACK)
-    except Exception:
-        return
-
-    if hard == resource.RLIM_INFINITY:
-        return
-    if hard >= params.stack_space * 1024 * 1024:
-        return
-
-    issue_stack.add_issue(StackLimitNotHonoredIssue(params.stack_space, hard))
+    _complain_about_stack_limit(params.stack_space)
 
 
 def _finalize_limits(command: str, params: SandboxParams) -> None:
@@ -1066,6 +1092,9 @@ async def run_coordinated(
     interactor_params = interactor.params.model_copy(deep=True)
     solution_params = solution.params.model_copy(deep=True)
 
+    # Solution only, on purpose: the interactor's limits are left exactly as
+    # given, so an interactor-only `stackLimit` is neither relaxed for the JVM nor
+    # diagnosed. `steps_run_coordinated_test.py` pins that behaviour.
     _finalize_limits(solution.command, solution_params)
 
     try:

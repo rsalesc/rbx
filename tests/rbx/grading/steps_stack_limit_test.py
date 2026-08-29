@@ -6,6 +6,7 @@ from unittest import mock
 
 import pytest
 
+from rbx.box import state
 from rbx.box.sanitizers.issue_stack import (
     IssueAccumulator,
     IssueSeverity,
@@ -45,6 +46,26 @@ def _fake_stack_rlimit(soft: int, hard: int):
         return real_getrlimit(which)
 
     return mock.patch('resource.getrlimit', side_effect=getrlimit)
+
+
+@pytest.fixture(autouse=True)
+def clear_stack_limit_cache():
+    """`_complain_about_stack_limit` is cached, so a verdict reached under one
+    test's mocked platform/config must not carry into the next."""
+    steps._complain_about_stack_limit.cache_clear()  # noqa: SLF001
+    yield
+    steps._complain_about_stack_limit.cache_clear()  # noqa: SLF001
+
+
+@pytest.fixture
+def cli_mode():
+    """The probe only runs under the CLI; pin the flag on and put it back."""
+    original = state.STATE.run_through_cli
+    state.STATE.run_through_cli = True
+    try:
+        yield
+    finally:
+        state.STATE.run_through_cli = original
 
 
 @pytest.fixture
@@ -105,7 +126,7 @@ class TestStackLimitNotHonoredIssue:
 class TestMaybeComplainAboutStackLimit:
     @mock.patch('sys.platform', 'linux')
     def test_warns_on_linux_when_the_hard_limit_is_below_the_request(
-        self, stack_check_enabled
+        self, stack_check_enabled, cli_mode
     ):
         params = SandboxParams(stack_space=256)
 
@@ -122,7 +143,7 @@ class TestMaybeComplainAboutStackLimit:
 
     @mock.patch('sys.platform', 'linux')
     def test_silent_on_linux_when_the_hard_limit_is_above_the_request(
-        self, stack_check_enabled
+        self, stack_check_enabled, cli_mode
     ):
         params = SandboxParams(stack_space=64)
 
@@ -135,8 +156,43 @@ class TestMaybeComplainAboutStackLimit:
         assert not accumulator.issues
 
     @mock.patch('sys.platform', 'linux')
+    def test_silent_on_linux_when_the_hard_limit_exactly_meets_the_request(
+        self, stack_check_enabled, cli_mode
+    ):
+        """The boundary: a hard limit equal to the request is honored in full."""
+        params = SandboxParams(stack_space=256)
+
+        with mock.patch(
+            'resource.getrlimit', return_value=(8 * 1024 * 1024, 256 * 1024 * 1024)
+        ):
+            with _fresh_issue_stack() as accumulator:
+                _maybe_complain_about_stack_limit(params)
+
+        assert not accumulator.issues
+
+    @mock.patch('sys.platform', 'linux')
+    def test_silent_when_not_running_through_the_cli(self, stack_check_enabled):
+        """Outside the CLI nothing reads the report, and reading the setter config
+        would create `setter_config.yml` on disk."""
+        params = SandboxParams(stack_space=256)
+        original = state.STATE.run_through_cli
+        state.STATE.run_through_cli = False
+
+        try:
+            with mock.patch(
+                'resource.getrlimit', return_value=(8 * 1024 * 1024, 8 * 1024 * 1024)
+            ):
+                with _fresh_issue_stack() as accumulator:
+                    _maybe_complain_about_stack_limit(params)
+        finally:
+            state.STATE.run_through_cli = original
+
+        assert not accumulator.issues
+        stack_check_enabled.assert_not_called()
+
+    @mock.patch('sys.platform', 'linux')
     def test_silent_on_linux_when_the_hard_limit_is_unlimited(
-        self, stack_check_enabled
+        self, stack_check_enabled, cli_mode
     ):
         params = SandboxParams(stack_space=1024)
 
@@ -150,7 +206,7 @@ class TestMaybeComplainAboutStackLimit:
         assert not accumulator.issues
 
     @mock.patch('sys.platform', 'linux')
-    def test_the_soft_limit_is_irrelevant_on_linux(self, stack_check_enabled):
+    def test_the_soft_limit_is_irrelevant_on_linux(self, stack_check_enabled, cli_mode):
         """We raise the soft limit ourselves in the child; only the hard one caps us."""
         params = SandboxParams(stack_space=64)
 
@@ -164,7 +220,9 @@ class TestMaybeComplainAboutStackLimit:
         assert not accumulator.issues
 
     @mock.patch('sys.platform', 'darwin')
-    def test_warns_on_darwin_whenever_a_limit_is_configured(self, stack_check_enabled):
+    def test_warns_on_darwin_whenever_a_limit_is_configured(
+        self, stack_check_enabled, cli_mode
+    ):
         """macOS never applies RLIMIT_STACK, so the numbers do not matter."""
         params = SandboxParams(stack_space=256)
 
@@ -179,7 +237,7 @@ class TestMaybeComplainAboutStackLimit:
         assert accumulator.issues[0].hard_limit is None
 
     @mock.patch('sys.platform', 'linux')
-    def test_silent_when_no_limit_is_configured(self, stack_check_enabled):
+    def test_silent_when_no_limit_is_configured(self, stack_check_enabled, cli_mode):
         params = SandboxParams(stack_space=None)
 
         with mock.patch(
@@ -191,7 +249,7 @@ class TestMaybeComplainAboutStackLimit:
         assert not accumulator.issues
 
     @mock.patch('sys.platform', 'linux')
-    def test_silent_when_the_check_is_disabled_in_the_setter_config(self):
+    def test_silent_when_the_check_is_disabled_in_the_setter_config(self, cli_mode):
         params = SandboxParams(stack_space=256)
 
         with mock.patch('rbx.box.setter_config.get_setter_config') as mock_config:
@@ -205,7 +263,24 @@ class TestMaybeComplainAboutStackLimit:
         assert not accumulator.issues
 
     @mock.patch('sys.platform', 'linux')
-    def test_survives_a_getrlimit_that_raises(self, stack_check_enabled):
+    def test_repeated_calls_file_the_issue_only_once(
+        self, stack_check_enabled, cli_mode
+    ):
+        """A stress run spawns tens of thousands of programs; the report dedupes
+        the message anyway, so only the first call should accumulate an issue."""
+        params = SandboxParams(stack_space=256)
+
+        with mock.patch(
+            'resource.getrlimit', return_value=(8 * 1024 * 1024, 8 * 1024 * 1024)
+        ):
+            with _fresh_issue_stack() as accumulator:
+                for _ in range(5):
+                    _maybe_complain_about_stack_limit(params)
+
+        assert len(accumulator.issues) == 1
+
+    @mock.patch('sys.platform', 'linux')
+    def test_survives_a_getrlimit_that_raises(self, stack_check_enabled, cli_mode):
         params = SandboxParams(stack_space=256)
 
         with mock.patch('resource.getrlimit', side_effect=OSError('nope')):
@@ -216,6 +291,11 @@ class TestMaybeComplainAboutStackLimit:
 
 
 class TestStackLimitProbeIsWired:
+    # NOTE: these two patch `sys.platform` across a real fork/exec, so on a macOS
+    # host the blast radius is wider than the intent: `get_memory_usage` and
+    # `maxrss_inherits_parent` take their Linux branches too, and the child really
+    # does attempt `setrlimit(RLIMIT_STACK)`. Nothing asserted below depends on
+    # any of that, but a new assertion here might.
     @mock.patch('sys.platform', 'linux')
     async def test_a_run_with_an_unhonorable_limit_files_one_issue(
         self,
@@ -223,6 +303,7 @@ class TestStackLimitProbeIsWired:
         cleandir: pathlib.Path,
         testdata_path: pathlib.Path,
         stack_check_enabled,
+        cli_mode,
     ):
         script_file = testdata_path / 'steps_run_test' / 'simple_output.py'
         artifacts = GradingArtifacts(root=cleandir)
@@ -254,6 +335,7 @@ class TestStackLimitProbeIsWired:
         cleandir: pathlib.Path,
         testdata_path: pathlib.Path,
         stack_check_enabled,
+        cli_mode,
     ):
         """The JVM carve-out drops the limit, so there is nothing to warn about --
         this is the whole reason the probe cannot live in `rbx/box/code.py`."""
