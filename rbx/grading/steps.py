@@ -607,6 +607,17 @@ def _maybe_complain_about_stack_limit(params: SandboxParams) -> None:
     issue_stack.add_issue(StackLimitNotHonoredIssue(params.stack_space, hard))
 
 
+def _finalize_limits(command: str, params: SandboxParams) -> None:
+    """Settle the limits a program will actually run under, and complain if they
+    are not the ones that were asked for.
+
+    The order matters: the JVM carve-out drops the stack limit, and a limit that
+    was dropped is not one worth warning about.
+    """
+    _relax_limits_for_jvm(command, params)
+    _maybe_complain_about_stack_limit(params)
+
+
 def get_exe_from_command(command: str) -> str:
     cmds = shlex.split(command)
     if not cmds:
@@ -918,7 +929,7 @@ async def compile(
         stderr_file = pathlib.PosixPath(f'compile-{i}.stderr')
         params.set_stdall(stdout=stdout_file, stderr=stderr_file)
 
-        _relax_limits_for_jvm(command, params)
+        _finalize_limits(command, params)
 
         try:
             sandbox_log = await asyncio.to_thread(sandbox.run, cmd, params)
@@ -1011,7 +1022,7 @@ async def run(
     cmd = _split_and_expand(command, sandbox, params)
     params = params.model_copy(deep=True)  # Copy to allow further modification.
 
-    _relax_limits_for_jvm(command, params)
+    _finalize_limits(command, params)
 
     try:
         sandbox_log = await asyncio.to_thread(sandbox.run, cmd, params)
@@ -1055,7 +1066,7 @@ async def run_coordinated(
     interactor_params = interactor.params.model_copy(deep=True)
     solution_params = solution.params.model_copy(deep=True)
 
-    _relax_limits_for_jvm(solution.command, solution_params)
+    _finalize_limits(solution.command, solution_params)
 
     try:
         solution_sandbox_log, interactor_sandbox_log = await asyncio.to_thread(

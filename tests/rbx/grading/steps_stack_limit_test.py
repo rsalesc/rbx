@@ -1,5 +1,7 @@
 import contextlib
+import pathlib
 import resource
+import sys
 from unittest import mock
 
 import pytest
@@ -9,8 +11,13 @@ from rbx.box.sanitizers.issue_stack import (
     IssueSeverity,
     issue_stack_var,
 )
-from rbx.grading.judge.sandbox import SandboxParams
+from rbx.grading import steps
+from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.steps import (
+    GradingArtifacts,
+    GradingFileInput,
+    GradingFileOutput,
+    GradingLogsHolder,
     StackLimitNotHonoredIssue,
     _maybe_complain_about_stack_limit,
 )
@@ -193,5 +200,71 @@ class TestMaybeComplainAboutStackLimit:
         with mock.patch('resource.getrlimit', side_effect=OSError('nope')):
             with _fresh_issue_stack() as accumulator:
                 _maybe_complain_about_stack_limit(params)
+
+        assert not accumulator.issues
+
+
+class TestStackLimitProbeIsWired:
+    @mock.patch('sys.platform', 'linux')
+    async def test_a_run_with_an_unhonorable_limit_files_one_issue(
+        self,
+        sandbox: SandboxBase,
+        cleandir: pathlib.Path,
+        testdata_path: pathlib.Path,
+        stack_check_enabled,
+    ):
+        script_file = testdata_path / 'steps_run_test' / 'simple_output.py'
+        artifacts = GradingArtifacts(root=cleandir)
+        artifacts.inputs.append(
+            GradingFileInput(src=script_file, dest=pathlib.Path('script.py'))
+        )
+        artifacts.outputs.append(
+            GradingFileOutput(
+                src=pathlib.Path('output.txt'), dest=pathlib.Path('output.txt')
+            )
+        )
+        artifacts.logs = GradingLogsHolder()
+
+        params = SandboxParams(stdout_file=pathlib.Path('output.txt'), stack_space=256)
+        command = f'{sys.executable} script.py'
+
+        with mock.patch(
+            'resource.getrlimit', return_value=(8 * 1024 * 1024, 8 * 1024 * 1024)
+        ):
+            with _fresh_issue_stack() as accumulator:
+                await steps.run(command, params, sandbox, artifacts)
+
+        assert len(accumulator.issues) == 1
+
+    @mock.patch('sys.platform', 'linux')
+    async def test_a_jvm_run_files_no_issue(
+        self,
+        sandbox: SandboxBase,
+        cleandir: pathlib.Path,
+        testdata_path: pathlib.Path,
+        stack_check_enabled,
+    ):
+        """The JVM carve-out drops the limit, so there is nothing to warn about --
+        this is the whole reason the probe cannot live in `rbx/box/code.py`."""
+        source_file = testdata_path / 'steps_run_test' / 'simple.java'
+        artifacts = GradingArtifacts(root=cleandir)
+        artifacts.inputs.append(
+            GradingFileInput(src=source_file, dest=pathlib.Path('Simple.java'))
+        )
+        artifacts.outputs.append(
+            GradingFileOutput(
+                src=pathlib.Path('output.txt'), dest=pathlib.Path('output.txt')
+            )
+        )
+        artifacts.logs = GradingLogsHolder()
+
+        params = SandboxParams(stdout_file=pathlib.Path('output.txt'), stack_space=256)
+        command = 'java Simple'
+
+        with mock.patch(
+            'resource.getrlimit', return_value=(8 * 1024 * 1024, 8 * 1024 * 1024)
+        ):
+            with _fresh_issue_stack() as accumulator:
+                await steps.run(command, params, sandbox, artifacts)
 
         assert not accumulator.issues
