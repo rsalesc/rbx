@@ -1102,6 +1102,17 @@ class MojPackager(BasePackager):
             )
         return named
 
+    def _check_tests_do_not_leak(self) -> None:
+        """Refuse a package whose secret tests MOJ would echo back to submitters.
+
+        See `naming.LEAKY_SUBSTRINGS`.
+        """
+        basename = self.package_basename()
+        for entry, name in self.testcase_names():
+            if entry.is_sample():
+                continue
+            naming.check_secret_test_path(basename, name)
+
     def _write_tests(self, into_path: pathlib.Path) -> List[str]:
         """Write `tests/input` and `tests/output`; return the group names that got
         at least one test, in encounter order."""
@@ -1425,6 +1436,7 @@ class MojPackager(BasePackager):
     ) -> pathlib.Path:
         into_path.mkdir(parents=True, exist_ok=True)
 
+        self._check_tests_do_not_leak()
         self._write_metadata(into_path)
         self._write_conf(into_path)
         seen_groups = self._write_tests(into_path)

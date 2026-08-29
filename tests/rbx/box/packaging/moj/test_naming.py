@@ -88,3 +88,22 @@ def test_distinct_groups_never_share_a_prefix():
     a = naming.testcase_name('ab', group_index=1, index=1, is_sample=False)
     assert not fnmatch.fnmatch(a, naming.group_glob('a', 2))
     assert not fnmatch.fnmatch(a, naming.SAMPLES_GLOB)
+
+
+def test_secret_test_path_rejects_leaky_group_name():
+    # build-and-test.sh echoes the raw input of a failing test whose path matches.
+    name = naming.testcase_name('examples', group_index=1, index=1, is_sample=False)
+    with pytest.raises(naming.MojNamingError) as exc:
+        naming.check_secret_test_path('a-problem', name)
+    assert 'example' in str(exc.value)
+
+
+def test_secret_test_path_rejects_leaky_package_name():
+    name = naming.testcase_name('easy', group_index=1, index=1, is_sample=False)
+    with pytest.raises(naming.MojNamingError):
+        naming.check_secret_test_path('a-sample-tree', name)
+
+
+def test_secret_test_path_accepts_ordinary_names():
+    name = naming.testcase_name('easy', group_index=1, index=1, is_sample=False)
+    naming.check_secret_test_path('a-problem', name)
