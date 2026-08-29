@@ -3,6 +3,7 @@ import dataclasses
 import functools
 import pathlib
 import re
+import resource
 import shlex
 import shutil
 import subprocess
@@ -562,6 +563,48 @@ class StackLimitNotHonoredIssue(issue_stack.Issue):
 
     def get_severity(self) -> issue_stack.IssueSeverity:
         return issue_stack.IssueSeverity.WARNING
+
+
+def _maybe_complain_about_stack_limit(params: SandboxParams) -> None:
+    """Diagnose a `stackLimit` the machine will not actually apply.
+
+    `get_preexec_fn` swallows a `setrlimit` that the system refuses -- raising in
+    the forked child would take the whole run down -- so a limit above the hard
+    `RLIMIT_STACK` degrades silently to whatever the process inherited, and the
+    solutions that then blow their stack look like ordinary RTEs. Diagnose it
+    here, in the parent, where it can still be attributed to the configuration
+    that caused it.
+
+    Call this *after* `_relax_limits_for_jvm`: a JVM command has no stack limit
+    left to complain about by then.
+    """
+    if params.stack_space is None:
+        # No limit configured: the stack is made as large as the system allows,
+        # which is exactly what is documented.
+        return
+
+    from rbx.box import setter_config
+
+    if not setter_config.get_setter_config().judging.check_stack:
+        return
+
+    if sys.platform == 'darwin':
+        # `get_preexec_fn` never touches RLIMIT_STACK here, so the configured
+        # limit is inert whatever the numbers say.
+        issue_stack.add_issue(StackLimitNotHonoredIssue(params.stack_space, None))
+        return
+
+    try:
+        _, hard = resource.getrlimit(resource.RLIMIT_STACK)
+    except Exception:
+        return
+
+    if hard == resource.RLIM_INFINITY:
+        return
+    if hard >= params.stack_space * 1024 * 1024:
+        return
+
+    issue_stack.add_issue(StackLimitNotHonoredIssue(params.stack_space, hard))
 
 
 def get_exe_from_command(command: str) -> str:
