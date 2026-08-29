@@ -652,6 +652,32 @@ class TestProgramMocks:
     @mock.patch('os.setpgid')
     @mock.patch('resource.setrlimit')
     @mock.patch('sys.platform', 'linux')
+    @mock.patch('resource.RLIM_INFINITY', -1)
+    def test_preexec_fn_clamps_an_unset_stack_limit_when_infinity_is_negative(
+        self, mock_setrlimit, _
+    ):
+        """On Linux, CPython exposes RLIM_INFINITY as -1, so the clamp cannot
+        rely on comparing the request against the hard limit: -1 is smaller than
+        any finite hard limit, and the unset request would sail through unclamped."""
+        import resource as resource_module
+
+        with mock.patch(
+            'resource.getrlimit',
+            return_value=(8 * 1024 * 1024, 512 * 1024 * 1024),
+        ):
+            get_preexec_fn(ProgramParams())()
+
+        stack_calls = [
+            call
+            for call in mock_setrlimit.call_args_list
+            if call[0][0] == resource_module.RLIMIT_STACK
+        ]
+        assert len(stack_calls) == 1
+        assert stack_calls[0][0][1] == (512 * 1024 * 1024, 512 * 1024 * 1024)
+
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'linux')
     def test_preexec_fn_clamps_a_configured_stack_limit_to_the_hard_limit(
         self, mock_setrlimit, _
     ):
