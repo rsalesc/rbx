@@ -104,7 +104,7 @@ languages:
 
 Also, keep in mind your machine's hard limit is a ceiling on `stackLimit`. If you ask for 256 MiB
 on a machine whose hard limit is 8 MiB, programs get 8 MiB, and {{rbx}} will point that out at the
-end of a run that actually executed something. See
+end of any command that actually ran a program (a fully cached re-run has nothing to check). See
 [Increase the hard stack limit](#increase-the-hard-stack-limit) for how to raise it.
 
 !!! note

@@ -338,7 +338,12 @@ class TestStackLimitProbeIsWired:
         cli_mode,
     ):
         """The JVM carve-out drops the limit, so there is nothing to warn about --
-        this is the whole reason the probe cannot live in `rbx/box/code.py`."""
+        this is the whole reason the probe cannot live in `rbx/box/code.py`.
+
+        This pins the ordering inside `_finalize_limits`: the configured limit is
+        above the mocked hard limit, so probing before the carve-out instead of
+        after it would file an issue and fail the assertion below.
+        """
         source_file = testdata_path / 'steps_run_test' / 'simple.java'
         artifacts = GradingArtifacts(root=cleandir)
         artifacts.inputs.append(

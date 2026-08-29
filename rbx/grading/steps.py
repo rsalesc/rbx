@@ -579,6 +579,11 @@ def _complain_about_stack_limit(stack_space: int) -> None:
     program only grows a list that nothing reads -- and a stress run spawns tens
     of thousands. Keyed on the plain limit rather than on `SandboxParams`, which
     is not hashable.
+
+    Caching for the process is safe because the issue stack is process-global --
+    nothing in production pushes a nested accumulator -- and because `rbx each`
+    forks a process per problem, so a verdict cached here is never carried into
+    a package it was not computed for.
     """
     from rbx.box import setter_config
 
@@ -627,7 +632,8 @@ def _maybe_complain_about_stack_limit(params: SandboxParams) -> None:
         # Same gate as `code._check_stack_limit`: outside the CLI there is no one
         # to read the report, and reading the setter config would create
         # `setter_config.yml` on disk -- a side effect the grading layer must not
-        # have when driven as a library, from the TUI or from tests.
+        # have when driven as a library or from tests. `rbx ui` is an ordinary
+        # subcommand, so the TUI does set the flag and does get the warning.
         return
 
     _complain_about_stack_limit(params.stack_space)
