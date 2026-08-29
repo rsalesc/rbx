@@ -1154,7 +1154,7 @@ rbx contest statements build <NAMES> [OPTIONS]
 
 | Name | Description | Required |
 | :--- | :--- | :--- |
-| `NAMES` | Names of statements to build. | No |
+| `NAMES` | Names of statements or documents to build. | No |
 
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |

@@ -96,9 +96,18 @@ async def _execute_build(
     )
     valid_statements = [st for st in all_statements if should_process(st)]
 
-    if not valid_statements:
+    # Documents are selectable by name just like statements, so a run that names
+    # only documents is legitimate -- bail out only when nothing at all matched.
+    valid_documents = (
+        [doc for doc in contest.expanded_documents if should_process(doc)]
+        if build_documents
+        else []
+    )
+
+    if not valid_statements and not valid_documents:
+        what = f'{kind.singular} or document' if build_documents else str(kind.singular)
         console.console.print(
-            f'[error]No {kind.singular} found according to the specified criteria.[/error]',
+            f'[error]No {what} found according to the specified criteria.[/error]',
         )
         raise typer.Exit(1)
 
@@ -135,11 +144,6 @@ async def _execute_build(
     built_statements = []
     built_documents = []
     failed_statements: List[Tuple[str, str]] = []
-    valid_documents = (
-        [doc for doc in contest.expanded_documents if should_process(doc)]
-        if build_documents
-        else []
-    )
 
     with limits_info.use_profile(profile, when=lambda: profile is not None):
         for statement in valid_statements:
@@ -253,7 +257,7 @@ async def build(
     names: Annotated[
         Optional[List[str]],
         typer.Argument(
-            help='Names of statements to build.',
+            help='Names of statements or documents to build.',
         ),
     ] = None,
     languages: Annotated[

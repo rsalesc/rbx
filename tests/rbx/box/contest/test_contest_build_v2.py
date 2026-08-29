@@ -1,6 +1,7 @@
 import inspect
 
 import pytest
+import typer
 
 from rbx.box.contest import statements as contest_statements_cli
 from rbx.box.statements.schema import StatementType
@@ -9,10 +10,10 @@ _build_async = inspect.unwrap(contest_statements_cli.build)
 _build_tut_async = inspect.unwrap(contest_statements_cli.build_tutorials)
 
 
-async def _run(output=StatementType.TeX):
+async def _run(output=StatementType.TeX, names=None):
     await _build_async(
         verification=0,
-        names=None,
+        names=names,
         languages=None,
         validate=False,
         output=output,
@@ -71,6 +72,29 @@ async def test_documents_emitted_without_joining(cleandir_with_testdata):
     assert 'info sheet' in info
     assert 'Statements v2 Contest' in info
     assert '\\subimport' not in info
+
+
+@pytest.mark.test_pkg('contests/statements_v2')
+async def test_document_can_be_selected_by_name(cleandir_with_testdata):
+    # Naming only a document must build it, even though it matches no statement.
+    await _run(output=StatementType.TeX, names=['info-en'])
+
+    assert (cleandir_with_testdata / 'build' / 'info-en.tex').is_file()
+    assert not (cleandir_with_testdata / 'build' / 'main-en.tex').exists()
+
+
+@pytest.mark.test_pkg('contests/statements_v2')
+async def test_statement_selected_by_name_skips_documents(cleandir_with_testdata):
+    await _run(output=StatementType.TeX, names=['main-en'])
+
+    assert (cleandir_with_testdata / 'build' / 'main-en.tex').is_file()
+    assert not (cleandir_with_testdata / 'build' / 'info-en.tex').exists()
+
+
+@pytest.mark.test_pkg('contests/statements_v2')
+async def test_unknown_name_still_fails(cleandir_with_testdata):
+    with pytest.raises(typer.Exit):
+        await _run(output=StatementType.TeX, names=['nonexistent'])
 
 
 @pytest.mark.test_pkg('contests/statements_v2')
