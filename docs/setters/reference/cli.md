@@ -175,6 +175,33 @@ rbx time [OPTIONS]
 | `--share` | TEXT | Capture the time report (run report + limits table) and copy it to the clipboard. Pass a format: --share png or --share text. | - |
 | `--skip-slow` | BOOLEAN | Skip checking the estimated limit against the solutions expected to be too slow. The limit is written with its upper bound unchecked. | `False` |
 | `--dry` | BOOLEAN | Run the whole estimation but write nothing to the disk: the limits profile is printed instead of saved. | `False` |
+| `--run-all` | BOOLEAN | After the estimation, also run every solution it did not need -- the ones expected to be wrong, and any slow one that was never checked -- against the estimated time limit. | `False` |
+| `--fail-fast`, `--ff` | BOOLEAN | Whether to stop running a solution as soon as it gets a non-accepted verdict. Applies only to the solutions run after the estimation, and is only meant for quick experimentation, as the remaining tests are reported as failed. | `False` |
+
+
+---
+
+## preship
+
+Estimate a time limit and check the whole package against it: every solution is run, and every one of them has to behave as problem.rbx.yml says it does.
+
+**Usage:**
+```bash
+rbx preship [OPTIONS]
+```
+
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--check` | BOOLEAN | Whether to not build outputs for tests and run checker. | `True` |
+| `--validate` | BOOLEAN | Whether to not validate outputs for tests. | `True` |
+| `--detailed`, `-d` | BOOLEAN | Whether to print a detailed view of the tests using tables. | `False` |
+| `--runs`, `-r` | INTEGER | Number of runs to perform for each solution. Zero means the config default. | `0` |
+| `--profile`, `-p` | TEXT | Profile to use for time limit estimation. | `local` |
+| `--runner` | TEXT | Where to run the solutions being timed (local, moj). | `local` |
+| `--share` | TEXT | Capture the time report (run report + limits table) and copy it to the clipboard. Pass a format: --share png or --share text. | - |
+| `--skip-slow` | BOOLEAN | Skip checking the estimated limit against the solutions expected to be too slow. The limit is written with its upper bound unchecked. | `False` |
+| `--dry` | BOOLEAN | Run the whole estimation but write nothing to the disk: the limits profile is printed instead of saved. | `False` |
+| `--fail-fast`, `--ff` | BOOLEAN | Whether to stop running a solution as soon as it gets a non-accepted verdict. Applies only to the solutions run after the estimation, and is only meant for quick experimentation, as the remaining tests are reported as failed. | `False` |
 
 
 ---

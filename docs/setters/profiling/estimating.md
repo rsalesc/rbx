@@ -20,6 +20,9 @@ A run moves through four stages, and the middle two are where your attention is 
 4. **Checking.** Each solution you declared too slow is run against the limit, to confirm it
    really is. See [Checking the upper bound](#checking-the-upper-bound).
 
+A fifth stage runs the solutions none of these needed, but only if you
+[ask for it](#checking-the-rest-of-the-package).
+
 The solutions declared too slow are not timed in stage 1. Nobody needs to know *how* slow they
 are, only that they are slow enough, which stage 4 settles far more cheaply.
 
@@ -163,6 +166,37 @@ That makes it the flag to reach for when the question is whether the estimation 
 a ratio you just changed, a solution you just declared too slow, a remote judge you are trying
 for the first time — rather than what limit to commit to. It applies to every strategy, and to
 `--integrate` as well, which leaves `problem.rbx.yml` untouched under it.
+
+## Checking the rest of the package
+
+The four stages above run only the solutions the limit depends on: the accepted ones, and the
+slow ones the check had to ask about. Everything else — the solutions you expect to be wrong,
+and any slow one the check could skip — has no verdict at all when the run ends.
+
+```bash
+rbx time --run-all
+```
+
+A fifth stage then runs exactly those, at the limit that was just written, and the command
+fails if any of them does not behave as `problem.rbx.yml` says it does. The solutions that
+already ran are not run again: an accepted one was measured under a far looser cap, and a slow
+one timed out at a bound above the limit, so both answers already hold.
+
+Add `--fail-fast` (or `--ff`) to stop each of those solutions at its first non-accepted
+verdict. It applies to this stage only, it is for quick experimentation, and the report drops
+its timing summary under it — a solution that stopped early was not timed on the testcases that
+never ran.
+
+### `rbx preship`
+
+```bash
+rbx preship
+```
+
+`rbx time --auto --run-all` under a name that says what it is for: estimate the limit, check it,
+and check every solution against it. It takes the rest of `rbx time`'s flags — `--dry`,
+`--runs`, `--profile`, `--runner`, `--skip-slow`, `--fail-fast`, `--share` — but not the ones
+`--auto` settles (`--strategy`, `--integrate`).
 
 ## Sharing the report
 
