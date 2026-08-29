@@ -1008,7 +1008,7 @@ class MojPackager(BasePackager):
             '# Halt at the first failing test. The verdict of an all-or-nothing problem',
             '# is already decided by then, so the remaining tests only cost judge time.',
             'STOPWHEN_WA=y',
-            'STOPWHEN_TLE=y',
+            'STOPWHEN_TLE=n',
             'STOPWHEN_RE=y',
             '',
         ]
