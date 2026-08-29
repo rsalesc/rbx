@@ -71,6 +71,12 @@ export class StatementVarHintsProvider implements vscode.InlayHintsProvider {
     // is a few kilobytes of prose, so the scan is not worth optimizing -- but a
     // pathologically large one would pay for it on every keystroke.
     for (const hint of scanStatementVars(document.getText(), vars)) {
+      // A filtered reference carries no text: what it shows is whatever the
+      // pipeline makes of the value, which only `rbx vars --render` knows. It
+      // is skipped until that render is wired up.
+      if (hint.filtered) {
+        continue;
+      }
       // `hint.end` is the offset just past the closing brace, so the hint sits
       // immediately after `}` and never inside the reference.
       const position = document.positionAt(hint.end);

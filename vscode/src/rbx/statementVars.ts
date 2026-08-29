@@ -24,12 +24,47 @@
  */
 export type Vars = Readonly<Record<string, string>>;
 
-export interface VarHint {
+interface VarReference {
   /** Offset just past the reference's closing brace. */
   readonly end: number;
+  /**
+   * The canonical expression this reference asks for, ready to hand to
+   * `rbx vars --render`. Stripped of any `vars.` prefix and respaced around
+   * each pipe, so that spellings differing only there are one cache key.
+   */
+  readonly expression: string;
+}
+
+/** A bare `\VAR{N.max}`: the bulk vars map already holds its value. */
+export interface ResolvedVarHint extends VarReference {
+  readonly filtered: false;
   /** The value's display text, verbatim from `rbx vars --json`. */
   readonly text: string;
 }
+
+/**
+ * A `\VAR{N.max | sci}`: the raw value would be a lie, because the filter is
+ * exactly what decides how the statement typesets it. Only `rbx vars --render`
+ * can say what this shows, so no text is carried here.
+ */
+export interface FilteredVarHint extends VarReference {
+  readonly filtered: true;
+  /**
+   * Never set. Declared so that `hint.text` on the union is `string |
+   * undefined` -- a caller that reads it without narrowing is told it may be
+   * missing, instead of being told the property does not exist at all.
+   */
+  readonly text?: undefined;
+}
+
+/**
+ * Two shapes discriminated on `filtered`, rather than one with a `text` that
+ * is sometimes there: the two cases are answered from different places -- the
+ * map already in hand versus a render -- and this way the compiler, not a
+ * comment, is what stops a caller from badging a filtered reference with a
+ * value nobody computed.
+ */
+export type VarHint = ResolvedVarHint | FilteredVarHint;
 
 /**
  * Scopes whose values this map does not hold. See the module comment.
@@ -56,17 +91,19 @@ export interface VarHint {
 const FOREIGN_SCOPE = /^(vars\.)?(g|p|problem|contest|groups)\./;
 
 /**
- * A plain dotted name, with an optional filter pipeline we ignore.
+ * A plain dotted name, and the filter pipeline it is piped through, if any.
  *
  * Anchored at both ends and matched against the *trimmed* expression, so a
- * leading `\s*` would be dead and is not here. The trailing `\s*` is load
- * bearing: it absorbs the space before the pipe in `N.max | sci`.
+ * leading `\s*` would be dead and is not here. The `\s*` between the two groups
+ * is load bearing: it absorbs the space before the pipe in `N.max | sci`.
  *
  * The pipeline's `[^}]*` can never actually meet a `}` -- `OCCURRENCE` stopped
  * at the first one -- but it is kept over `.*` because it also matches a
- * newline, and a filter pipeline may well be wrapped across lines.
+ * newline, and a filter pipeline may well be wrapped across lines. Everything
+ * else a pipeline may hold rides along in it: further stages, and filter
+ * arguments such as `sci(9)` or `default('x')`.
  */
-const REFERENCE = /^([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:\|[^}]*)?$/;
+const REFERENCE = /^([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(\|[^}]*)?$/;
 
 /**
  * One `\VAR{...}` reference and the expression inside it.
@@ -129,6 +166,27 @@ function lookup(vars: Vars, name: string): string | undefined {
   return Object.hasOwn(vars, name) ? vars[name] : undefined;
 }
 
+/**
+ * One canonical spelling of `name | pipeline`, so that `N.max|sci`,
+ * `N.max | sci` and a pipeline wrapped across lines are one cache key rather
+ * than three renders of the same thing.
+ *
+ * Only the whitespace *around* each pipe is rewritten. Whitespace inside a
+ * filter's arguments is left as written -- collapsing it could change what a
+ * string argument means, and the worst it costs is a second cache entry for
+ * `sci( 9 )` beside `sci(9)`. A pipeline holding a quote is left alone
+ * entirely: a `|` inside a string argument is a literal, and spacing it out
+ * would corrupt the expression the renderer is handed.
+ */
+function canonicalize(name: string, pipeline: string | undefined): string {
+  if (pipeline === undefined) {
+    return name;
+  }
+  const stages = pipeline.trim();
+  const spaced = /['"]/.test(stages) ? stages : stages.replace(/\s*\|\s*/g, ' | ').trim();
+  return `${name} ${spaced}`;
+}
+
 export function scanStatementVars(text: string, vars: Vars): VarHint[] {
   const hints: VarHint[] = [];
   // A fresh regex per scan: a `/g` one carries `lastIndex` between calls, so
@@ -141,22 +199,41 @@ export function scanStatementVars(text: string, vars: Vars): VarHint[] {
       continue;
     }
 
-    const expression = match[1].trim();
-    if (FOREIGN_SCOPE.test(expression)) {
+    const inner = match[1].trim();
+    if (FOREIGN_SCOPE.test(inner)) {
       continue;
     }
 
-    const parsed = REFERENCE.exec(expression);
+    const parsed = REFERENCE.exec(inner);
     if (!parsed) {
       continue;
     }
 
-    const value = lookup(vars, parsed[1].replace(/^vars\./, ''));
+    // The prefix is dropped from the expression too, not just from the lookup:
+    // rbx's renderer resolves `N.max` and `vars.N.max` alike, so the shorter
+    // spelling is a stable key both forms of the reference can share.
+    const name = parsed[1].replace(/^vars\./, '');
+    const pipeline = parsed[2];
+
+    // The name is checked against the map even when a pipeline follows. The
+    // base of a filtered reference is the value being filtered, so a name the
+    // map does not hold is as hopeless here as it is bare -- rendering it would
+    // spend a process to learn that a typo is a typo. It does cost the odd
+    // legitimate badge (`\VAR{x | default(5)}` over an undefined `x`, or a name
+    // bound by a `\BLOCK{set}` in the template), which is the side D5 says to
+    // err on, and which a bare reference to such a name already loses.
+    const value = lookup(vars, name);
     if (value === undefined) {
       continue;
     }
 
-    hints.push({ end: start + match[0].length, text: value });
+    const end = start + match[0].length;
+    const expression = canonicalize(name, pipeline);
+    hints.push(
+      pipeline === undefined
+        ? { end, expression, filtered: false, text: value }
+        : { end, expression, filtered: true },
+    );
   }
 
   return hints;

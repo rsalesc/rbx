@@ -35,18 +35,75 @@ const VARS: Vars = {
 const scan = (text: string) => scanStatementVars(text, VARS);
 
 test('the shorthand and the long form both resolve', () => {
-  assert.deepStrictEqual(scan('$N \\le \\VAR{N.max}$'), [{ end: 18, text: '100000' }]);
+  assert.deepStrictEqual(scan('$N \\le \\VAR{N.max}$'), [
+    { end: 18, expression: 'N.max', filtered: false, text: '100000' },
+  ]);
   assert.deepStrictEqual(
     scan('$N \\le \\VAR{vars.N.max}$').map((hint) => hint.text),
     ['100000'],
   );
 });
 
-test('a filter pipeline is ignored, the raw value is shown', () => {
+test('an unfiltered reference carries the expression it was resolved from', () => {
+  assert.deepStrictEqual(scan('$N \\le \\VAR{vars.N.max}$'), [
+    { end: 23, expression: 'N.max', filtered: false, text: '100000' },
+  ]);
+});
+
+test('a filtered reference is reported without a value, for rendering', () => {
+  // The raw value would be a lie under a filter: `sci` typesets `100000` as
+  // `10^{5}`. The caller renders `expression` instead of badging `text`.
+  assert.deepStrictEqual(scan('\\VAR{N.max | sci}'), [
+    { end: 17, expression: 'N.max | sci', filtered: true },
+  ]);
+});
+
+test('the same pipeline spelled differently is one expression', () => {
+  const spellings = [
+    '\\VAR{N.max|sci}',
+    '\\VAR{N.max | sci}',
+    '\\VAR{N.max |sci}',
+    '\\VAR{N.max| sci}',
+    '\\VAR{  N.max   |   sci  }',
+    '\\VAR{N.max\n | sci}',
+  ];
+  for (const text of spellings) {
+    assert.deepStrictEqual(
+      scan(text).map((hint) => hint.expression),
+      ['N.max | sci'],
+      text,
+    );
+  }
+});
+
+test('the `vars.` prefix is dropped from the expression too', () => {
+  // rbx's renderer accepts both spellings, so dropping the prefix costs
+  // nothing and lets the two share one cache entry.
   assert.deepStrictEqual(
-    scan('\\VAR{N.max | sci}').map((hint) => hint.text),
-    ['100000'],
+    scan('\\VAR{vars.N.max | sci}').map((hint) => hint.expression),
+    ['N.max | sci'],
   );
+});
+
+test('a multi-stage pipeline is captured whole', () => {
+  assert.deepStrictEqual(
+    scan('\\VAR{N.max|sci|upper}').map((hint) => hint.expression),
+    ['N.max | sci | upper'],
+  );
+});
+
+test('filter arguments survive', () => {
+  assert.deepStrictEqual(
+    scan("\\VAR{N.max | sci(9)} \\VAR{label | default('x|y')}").map((hint) => hint.expression),
+    ['N.max | sci(9)', "label | default('x|y')"],
+  );
+});
+
+test('a pipeline over an unknown name gets no hint either', () => {
+  // The base of a filtered reference is the very value being rendered, so a
+  // name the map does not hold is as hopeless here as it is unfiltered -- and
+  // rendering it would cost a process to find that out.
+  assert.deepStrictEqual(scan('\\VAR{N.mx | sci}'), []);
 });
 
 test('several references on one line each get a hint', () => {
@@ -142,8 +199,8 @@ test('a reference wrapped across a newline still resolves', () => {
   // `[^}]*` spans newlines, while `isCommented` only inspects the line the
   // reference opens on.
   assert.deepStrictEqual(
-    scan('$N \\le \\VAR{N.max\n | sci}$').map((hint) => hint.text),
-    ['100000'],
+    scan('$N \\le \\VAR{N.max\n | sci}$').map((hint) => hint.expression),
+    ['N.max | sci'],
   );
 });
 
