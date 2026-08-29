@@ -913,6 +913,26 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Read statement expressions from stdin, one per line, and print '
+                    'a JSON object mapping each to what it renders to.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--render'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'What the rendered expressions are being formatted for.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--target'],
+                    'takes_value': True,
+                    'value': {
+                        'choices': ['latex', 'markdown', 'text'],
+                        'kind': 'choice',
+                    },
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,

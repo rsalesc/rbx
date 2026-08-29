@@ -153,3 +153,92 @@ def test_vars_json_fails_cleanly_on_non_finite_var(
     assert result.exit_code == 1, result.output
     assert 'Infinity' not in result.output
     assert 'huge' in _plain(result.output)
+
+
+@pytest.mark.test_pkg('problems/interactive')
+def test_render_evaluates_filters_for_the_text_target(pkg_from_testdata: pathlib.Path):
+    result = runner.invoke(
+        app, ['vars', '--render', '--target', 'text'], input='N.max | sci\nN.max\n'
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {
+        'N.max | sci': '10⁶',
+        'N.max': '1000000',
+    }
+
+
+@pytest.mark.test_pkg('problems/interactive')
+def test_render_spells_the_same_expression_differently_per_target(
+    pkg_from_testdata: pathlib.Path,
+):
+    """The whole reason `--target` exists: same rules, different spelling."""
+    result = runner.invoke(
+        app, ['vars', '--render', '--target', 'latex'], input='N.max | sci\n'
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {'N.max | sci': '10^{6}'}
+
+
+@pytest.mark.test_pkg('problems/interactive')
+def test_render_reaches_the_vars_namespace_too(pkg_from_testdata: pathlib.Path):
+    """`\\VAR{N.max}` is shorthand for `\\VAR{vars.N.max}`; both must render."""
+    result = runner.invoke(app, ['vars', '--render'], input='vars.N.max | sci\n')
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {'vars.N.max | sci': '10⁶'}
+
+
+@pytest.mark.test_pkg('problems/interactive')
+def test_render_omits_an_expression_it_cannot_evaluate(pkg_from_testdata: pathlib.Path):
+    """Absent, not an error: the extension draws no badge and moves on."""
+    result = runner.invoke(
+        app,
+        ['vars', '--render', '--target', 'text'],
+        input='N.max | nosuchfilter\nN.typo\nN.max\n',
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {'N.max': '1000000'}
+
+
+@pytest.mark.test_pkg('problems/interactive')
+def test_render_with_no_expressions_is_an_empty_object(pkg_from_testdata: pathlib.Path):
+    result = runner.invoke(app, ['vars', '--render'], input='')
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {}
+
+
+@pytest.mark.test_pkg('problems/interactive')
+def test_render_asks_once_for_a_repeated_expression(pkg_from_testdata: pathlib.Path):
+    """A statement repeats a bound; the map is keyed by expression regardless."""
+    result = runner.invoke(
+        app, ['vars', '--render'], input='N.max | sci\n\n  N.max | sci  \n'
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {'N.max | sci': '10⁶'}
+
+
+@pytest.mark.test_pkg('problems/interactive')
+def test_render_refuses_to_be_combined_with_json(pkg_from_testdata: pathlib.Path):
+    """Two different output shapes; picking one silently would mislead."""
+    result = runner.invoke(app, ['vars', '--render', '--json'], input='N.max\n')
+
+    assert result.exit_code == 1, result.output
+
+
+@pytest.mark.test_pkg('problems/interactive')
+def test_render_creates_no_cache_dir(pkg_from_testdata: pathlib.Path):
+    """Rendering pulls in the statements module; it must stay read-only too."""
+    from rbx.box.package import get_problem_cache_path
+
+    cache = get_problem_cache_path(pkg_from_testdata)
+    assert not cache.exists()
+
+    result = runner.invoke(app, ['vars', '--render'], input='N.max | sci\n')
+
+    assert result.exit_code == 0, result.output
+    assert not cache.exists()
