@@ -80,6 +80,23 @@ test('the cursor escape rbx really emits does not eat the payload', () => {
   });
 });
 
+test('the render map is read by this same parser', () => {
+  // `rbx vars --render` prints the same flat map of strings, keyed by the
+  // expression rather than by a name -- pipes, spaces and all. Nothing here
+  // cares which it is. The superscripts arrive as themselves because the
+  // command dumps its JSON with ensure_ascii=False and this reads UTF-8.
+  assert.deepStrictEqual(
+    parseVarsPayload('{"N.max | sci": "10⁵", "M.max | rsci": "2×10⁹ + 7"}'),
+    { 'N.max | sci': '10⁵', 'M.max | rsci': '2×10⁹ + 7' },
+  );
+});
+
+test('an empty render map is a valid answer, not a failure', () => {
+  // What every expression failing to render looks like: the command drops each
+  // one and still exits 0, so `{}` is the whole payload.
+  assert.deepStrictEqual(parseVarsPayload('{}\n\u001b[?25h'), {});
+});
+
 test('colour sequences around the payload are stripped too', () => {
   assert.deepStrictEqual(parseVarsPayload('\u001b[32m{"N.max": "5"}\u001b[0m\n'), {
     'N.max': '5',

@@ -16,6 +16,7 @@
 import * as vscode from 'vscode';
 
 import { DeclaredIndex } from './declared';
+import { pendingRenders } from './rbx/pendingRenders';
 import { scanStatementVars } from './rbx/statementVars';
 import { StatementVarsIndex } from './statementVarsIndex';
 
@@ -70,11 +71,30 @@ export class StatementVarHintsProvider implements vscode.InlayHintsProvider {
     // edge, and offsets from a slice would all need shifting back. A statement
     // is a few kilobytes of prose, so the scan is not worth optimizing -- but a
     // pathologically large one would pay for it on every keystroke.
-    for (const hint of scanStatementVars(document.getText(), vars)) {
-      // A filtered reference carries no text: what it shows is whatever the
-      // pipeline makes of the value, which only `rbx vars --render` knows. It
-      // is skipped until that render is wired up.
-      if (hint.filtered) {
+    const scanned = scanStatementVars(document.getText(), vars);
+    // The index's map itself, which a batch settling later writes into. The
+    // loop below never suspends, so every hint in one pass is still drawn
+    // against the same contents.
+    const rendered = this.vars.renderedNow(declared.root);
+
+    // Started before the hints are built and deliberately not awaited. What is
+    // already known is drawn now; whatever this batch adds arrives via the
+    // change event, which makes VS Code ask again.
+    //
+    // Over the whole document, not just `range`: VS Code asks range by range as
+    // the setter scrolls, and one spawn covering the file is cheaper than one
+    // per viewport -- the expressions outside it are the ones the next request
+    // would ask for anyway.
+    this.startRendering(declared.root, pendingRenders(scanned, rendered));
+
+    for (const hint of scanned) {
+      // A filtered reference carries no text of its own: what it shows is
+      // whatever the pipeline makes of the value, which only a render knows.
+      // An expression not in the map is either still in flight or one rbx
+      // declined to render, and both draw nothing -- an absent badge is never
+      // wrong (D5).
+      const text = hint.filtered ? rendered.get(hint.expression) : hint.text;
+      if (text === undefined) {
         continue;
       }
       // `hint.end` is the offset just past the closing brace, so the hint sits
@@ -86,7 +106,7 @@ export class StatementVarHintsProvider implements vscode.InlayHintsProvider {
       if (!range.contains(position)) {
         continue;
       }
-      const inlay = new vscode.InlayHint(position, hint.text);
+      const inlay = new vscode.InlayHint(position, text);
       // The editor's own gaps, rather than spaces in the label: a space would
       // be padding *inside* the hint's own background, and would stack with
       // these if both were used. Both sides, because a reference is as often
@@ -97,6 +117,38 @@ export class StatementVarHintsProvider implements vscode.InlayHintsProvider {
       hints.push(inlay);
     }
     return hints;
+  }
+
+  /**
+   * Render `expressions` in the background and re-ask for the hints if any of
+   * them came back with text.
+   *
+   * Firing the event is what makes the newly rendered badges appear, and it is
+   * also what could loop: the fire brings VS Code straight back into
+   * `provideInlayHints`. It terminates because the fire is conditional on a
+   * *new* render landing. The next request sees those expressions in the
+   * snapshot and does not ask for them, and the ones rbx declined are absent
+   * from the batch's result, so asking for them again resolves to an empty map
+   * off the cache -- no spawn and, crucially, no second fire.
+   *
+   * The cancellation token is deliberately not consulted. The batch is a fact
+   * about the package, not about this request: it is worth caching whoever
+   * asked, and the event is worth firing even if the request that started it
+   * was cancelled a keystroke later -- there is a live document showing badges
+   * that are now stale by omission.
+   */
+  private startRendering(root: string, expressions: string[]): void {
+    if (expressions.length === 0) {
+      return;
+    }
+    // Not awaited, so the hints above are not held up by a spawn, and safe to
+    // leave unhandled: `renderedFor` never rejects -- the spawn behind it
+    // catches its own failures and answers with an empty map.
+    void this.vars.renderedFor(root, expressions).then((batch) => {
+      if (batch.size > 0) {
+        this.changed.fire();
+      }
+    });
   }
 
   /** Re-ask VS Code for the hints, after the vars changed or a setting did. */

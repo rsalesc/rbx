@@ -39,14 +39,33 @@ export interface SpawnResult {
   readonly spawnError?: NodeJS.ErrnoException;
 }
 
+/**
+ * Run `command` and collect what it printed.
+ *
+ * `stdin` is optional and, when omitted, the child's stdin is left exactly as
+ * it was before this parameter existed: a pipe nobody writes to and nobody
+ * closes. Only a caller that passes text changes anything, which is what keeps
+ * `rbx visualize` -- the other caller -- byte-for-byte unaffected.
+ */
 export function run(
   command: string,
   args: string[],
   cwd: string,
   timeoutMs: number,
+  stdin?: string,
 ): Promise<SpawnResult> {
   return new Promise((resolve) => {
     const child = spawn(command, args, { cwd, shell: false });
+
+    if (stdin !== undefined) {
+      // Swallowed, not reported: a child that exits without draining its input
+      // leaves this write to fail with EPIPE, and an unhandled `error` on the
+      // stream would throw out of the event loop. Whatever went wrong shows up
+      // as the exit code and stderr below, which is what the caller reads.
+      child.stdin?.on('error', () => undefined);
+      child.stdin?.end(stdin);
+    }
+
     let stdout = '';
     let stderr = '';
     let settled = false;
