@@ -66,6 +66,11 @@ memoryLimit: 256  # 256 MB
 Time is always defined in milliseconds, and memory is defined in megabytes. These limits are all
 applied by the wrapper script, and checked further after the solution is executed.
 
+!!! note
+    The memory limit is applied differently on Linux and on MacOS, and the difference shows up in
+    the verdict a memory-hungry solution gets. See [Memory limit](../../memory-limit.md) for what
+    to expect, and for the exemptions that apply to Java, Kotlin and sanitized builds.
+
 You can also control the maximum size of the participant's output (which defaults to 4096 KB).
 
 ```yaml title="problem.rbx.yml"

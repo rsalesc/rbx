@@ -762,6 +762,117 @@ class TestProgramMocks:
         fs_call = calls[2]
         assert fs_call[0][0] == resource_module.RLIMIT_FSIZE
 
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'linux')
+    def test_preexec_fn_applies_address_space_limit_on_linux(self, mock_setrlimit, _):
+        import resource as resource_module
+
+        with mock.patch(
+            'resource.getrlimit',
+            return_value=(
+                resource_module.RLIM_INFINITY,
+                resource_module.RLIM_INFINITY,
+            ),
+        ):
+            get_preexec_fn(ProgramParams(memory_limit=256))()
+
+        as_calls = [
+            call
+            for call in mock_setrlimit.call_args_list
+            if call[0][0] == resource_module.RLIMIT_AS
+        ]
+        assert len(as_calls) == 1
+        assert as_calls[0][0][1] == (256 * 1024 * 1024, 256 * 1024 * 1024)
+
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'linux')
+    def test_address_space_limit_is_set_last(self, mock_setrlimit, _):
+        """Nothing may run after the cap: an allocation past it would fail in the
+        forked child, between fork and exec."""
+        import resource as resource_module
+
+        with mock.patch(
+            'resource.getrlimit',
+            return_value=(
+                resource_module.RLIM_INFINITY,
+                resource_module.RLIM_INFINITY,
+            ),
+        ):
+            get_preexec_fn(
+                ProgramParams(time_limit=1.0, fs_limit=1000, memory_limit=256)
+            )()
+
+        assert mock_setrlimit.call_args_list[-1][0][0] == resource_module.RLIMIT_AS
+
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'linux')
+    def test_preexec_fn_clamps_address_space_to_the_hard_limit(self, mock_setrlimit, _):
+        import resource as resource_module
+
+        def getrlimit(which: int):
+            if which == resource_module.RLIMIT_AS:
+                return (
+                    resource_module.RLIM_INFINITY,
+                    64 * 1024 * 1024,
+                )
+            return (
+                resource_module.RLIM_INFINITY,
+                resource_module.RLIM_INFINITY,
+            )
+
+        with mock.patch('resource.getrlimit', side_effect=getrlimit):
+            get_preexec_fn(ProgramParams(memory_limit=256))()
+
+        as_calls = [
+            call
+            for call in mock_setrlimit.call_args_list
+            if call[0][0] == resource_module.RLIMIT_AS
+        ]
+        assert len(as_calls) == 1
+        assert as_calls[0][0][1] == (64 * 1024 * 1024, 64 * 1024 * 1024)
+
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'linux')
+    def test_preexec_fn_skips_address_space_without_a_memory_limit(
+        self, mock_setrlimit, _
+    ):
+        import resource as resource_module
+
+        with mock.patch(
+            'resource.getrlimit',
+            return_value=(
+                resource_module.RLIM_INFINITY,
+                resource_module.RLIM_INFINITY,
+            ),
+        ):
+            get_preexec_fn(ProgramParams(time_limit=1.0))()
+
+        assert not [
+            call
+            for call in mock_setrlimit.call_args_list
+            if call[0][0] == resource_module.RLIMIT_AS
+        ]
+
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'darwin')
+    def test_preexec_fn_ignores_address_space_on_darwin(self, mock_setrlimit, _):
+        """macOS keeps the RSS watchdog as the only enforcement, so a program
+        that reserves what it never touches is not charged for it."""
+        import resource as resource_module
+
+        get_preexec_fn(ProgramParams(memory_limit=256))()
+
+        assert not [
+            call
+            for call in mock_setrlimit.call_args_list
+            if call[0][0] == resource_module.RLIMIT_AS
+        ]
+
     @mock.patch('psutil.Process')
     def test_handle_alarm_cpu_limit(self, mock_process_class):
         """Test _handle_alarm correctly detects CPU time limit violations."""
