@@ -44,8 +44,9 @@ export interface SpawnResult {
  *
  * `stdin` is optional and, when omitted, the child's stdin is left exactly as
  * it was before this parameter existed: a pipe nobody writes to and nobody
- * closes. Only a caller that passes text changes anything, which is what keeps
- * `rbx visualize` -- the other caller -- byte-for-byte unaffected.
+ * closes. Only a caller that passes text changes anything, which is what leaves
+ * every other caller -- `rbx visualize`, `rbx vars --json`, and the `--version`
+ * and login-shell probes below -- running as it did.
  */
 export function run(
   command: string,
