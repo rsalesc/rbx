@@ -17,6 +17,7 @@ from rich.text import Text
 from rbx import utils
 from rbx.box import safeeval
 from rbx.box.exception import RbxException
+from rbx.box.sanitizers import issue_stack
 from rbx.config import get_bits_stdcpp
 from rbx.console import console
 from rbx.grading import grading_context
@@ -516,6 +517,51 @@ def _relax_limits_for_jvm(command: str, params: SandboxParams) -> None:
         return
     params.address_space = None
     params.stack_space = None
+
+
+_STACK_LIMIT_DOCS = 'https://rsalesc.github.io/rbx/stack-limit'
+
+
+class StackLimitNotHonoredIssue(issue_stack.Issue):
+    """A configured `stackLimit` that the machine will not actually apply.
+
+    `hard_limit` is the ceiling that will be used instead, in bytes, or `None`
+    when the limit is not enforced at all (macOS, where `get_preexec_fn` never
+    touches `RLIMIT_STACK`).
+    """
+
+    def __init__(self, requested_mib: int, hard_limit: Optional[int]):
+        self.requested_mib = requested_mib
+        self.hard_limit = hard_limit
+
+    def get_detailed_section(self) -> Optional[Tuple[str, ...]]:
+        return ('stack limit',)
+
+    def get_overview_section(self) -> Optional[Tuple[str, ...]]:
+        return ('stack limit',)
+
+    def get_detailed_message(self) -> str:
+        from rbx.box.formatting import get_formatted_memory
+
+        requested = get_formatted_memory(self.requested_mib * 1024 * 1024)
+        if self.hard_limit is None:
+            return (
+                f'[item]stackLimit[/item] is set to [item]{requested}[/item], but it is '
+                'not enforced on macOS: the stack of a sandboxed program is whatever '
+                f'your shell hands down. See [item]{_STACK_LIMIT_DOCS}[/item].'
+            )
+        effective = get_formatted_memory(self.hard_limit)
+        return (
+            f'[item]stackLimit[/item] is set to [item]{requested}[/item], but this '
+            f"machine's hard stack limit is [item]{effective}[/item], so programs run "
+            f'with [item]{effective}[/item]. See [item]{_STACK_LIMIT_DOCS}[/item].'
+        )
+
+    def get_overview_message(self) -> str:
+        return self.get_detailed_message()
+
+    def get_severity(self) -> issue_stack.IssueSeverity:
+        return issue_stack.IssueSeverity.WARNING
 
 
 def get_exe_from_command(command: str) -> str:
