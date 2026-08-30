@@ -73,6 +73,39 @@ def test_build_namespace_same_basename_solutions_get_distinct_names(testing_pkg)
     assert names == {'sols__a__sol.cpp', 'sols__b__sol.cpp'}
 
 
+def test_build_namespace_sanitizes_names_polygon_would_rewrite(testing_pkg):
+    # #829: Polygon silently strips characters outside [A-Za-z0-9._-] from the
+    # names it stores, so rbx must ask for a name Polygon keeps verbatim.
+    _bare_checker(testing_pkg)
+    testing_pkg.add_file('sols/gap_n+m.cpp').write_text('int main(){}\n')
+    testing_pkg.add_solution('sols/gap_n+m.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    testing_pkg.save()
+
+    ns = upload._build_upload_namespace()  # noqa: SLF001
+
+    sol = package.get_solutions()[0]
+    name = ns.flat_name_for(sol)
+    assert name == 'gap_n_m.cpp'
+    assert upload._polygon_safe_name(name) == name  # noqa: SLF001
+
+
+def test_build_namespace_disambiguates_names_that_sanitize_together(testing_pkg):
+    # Both collapse to gap_n_m.cpp on Polygon; they must not overwrite each other.
+    _bare_checker(testing_pkg)
+    testing_pkg.add_file('sols/gap_n+m.cpp').write_text('int main(){}\n')
+    testing_pkg.add_file('sols/gap_n_m.cpp').write_text('int main(){}\n')
+    testing_pkg.add_solution('sols/gap_n+m.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    testing_pkg.add_solution('sols/gap_n_m.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    testing_pkg.save()
+
+    ns = upload._build_upload_namespace()  # noqa: SLF001
+
+    names = [ns.flat_name_for(s) for s in package.get_solutions()]
+    assert len(set(names)) == 2
+    for name in names:
+        assert upload._polygon_safe_name(name) == name  # noqa: SLF001
+
+
 def test_build_namespace_flat_package_keeps_bare_basenames(testing_pkg):
     # Byte-identical guard: when basenames are globally unique, names stay bare.
     _bare_checker(testing_pkg)

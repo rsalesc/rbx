@@ -2,7 +2,17 @@ import collections
 import dataclasses
 import pathlib
 import re
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import (
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 import typer
 
@@ -26,6 +36,7 @@ def assign_flat_names(
     *,
     reserved: Mapping[pathlib.Path, str] = {},
     enforce_stem_unique: bool = False,
+    sanitizer: Optional[Callable[[str], str]] = None,
 ) -> Dict[pathlib.Path, str]:
     """Assign a unique flat name to every path in ``paths``.
 
@@ -38,10 +49,20 @@ def assign_flat_names(
     Only paths present in ``paths`` are assigned; ``reserved`` keys absent from
     ``paths`` are ignored. ``reserved`` values must be mutually distinct (they
     bypass collision handling), otherwise a :class:`ValueError` is raised.
+
+    ``sanitizer``, when given, is applied to every candidate name before it is
+    considered -- for targets that accept a narrower character set than the local
+    filesystem does. It runs *before* collision detection, so two basenames that
+    sanitize to the same string are treated as colliding and both get mangled.
+    ``reserved`` names are passed through untouched. Without it, names are used
+    exactly as they appear on disk.
     """
     if len(set(reserved.values())) != len(reserved):
         raise ValueError('reserved flat names must be mutually distinct')
     ordered = sorted(set(paths))
+    norm = sanitizer if sanitizer is not None else (lambda name: name)
+    bare_names = {path: norm(path.name) for path in ordered}
+    mangled_names = {path: norm(_mangle(path)) for path in ordered}
     result: Dict[pathlib.Path, str] = {}
     taken: set = set()
     taken_stems: set = set()
@@ -61,25 +82,29 @@ def assign_flat_names(
     for path in ordered:
         if path in reserved:
             continue
-        basename_counts[path.name] = basename_counts.get(path.name, 0) + 1
-        stem_counts[path.stem] = stem_counts.get(path.stem, 0) + 1
-        mangled = _mangle(path)
+        bare = bare_names[path]
+        bare_stem = pathlib.Path(bare).stem
+        basename_counts[bare] = basename_counts.get(bare, 0) + 1
+        stem_counts[bare_stem] = stem_counts.get(bare_stem, 0) + 1
+        mangled = mangled_names[path]
         mangle_counts[mangled] = mangle_counts.get(mangled, 0) + 1
 
     for path in ordered:
         if path in reserved:
             continue
+        bare = bare_names[path]
+        bare_stem = pathlib.Path(bare).stem
         bare_ok = (
-            basename_counts[path.name] == 1
-            and mangle_counts[_mangle(path)] == 1
+            basename_counts[bare] == 1
+            and mangle_counts[mangled_names[path]] == 1
             # bare name must not collide with an already-claimed reserved name
-            and path.name not in taken
+            and bare not in taken
             and (
                 not enforce_stem_unique
-                or (stem_counts[path.stem] == 1 and path.stem not in taken_stems)
+                or (stem_counts[bare_stem] == 1 and bare_stem not in taken_stems)
             )
         )
-        candidate = path.name if bare_ok else _mangle(path)
+        candidate = bare if bare_ok else mangled_names[path]
         if candidate in taken or (
             enforce_stem_unique and pathlib.Path(candidate).stem in taken_stems
         ):
@@ -292,6 +317,7 @@ def build_flat_namespace(
     *,
     reserved: Mapping[pathlib.Path, str] = {},
     enforce_stem_unique: bool = False,
+    sanitizer: Optional[Callable[[str], str]] = None,
 ) -> FlatNamespace:
     from rbx import utils
     from rbx.box import package
@@ -339,7 +365,10 @@ def build_flat_namespace(
     _guard_unresolvable_includes(refs_by_path, rewritable)
 
     name_of = assign_flat_names(
-        members, reserved=reserved, enforce_stem_unique=enforce_stem_unique
+        members,
+        reserved=reserved,
+        enforce_stem_unique=enforce_stem_unique,
+        sanitizer=sanitizer,
     )
 
     files: List[FlatFile] = []
