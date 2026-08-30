@@ -50,6 +50,21 @@ _RAW_TEST_SIZE_LIMIT = 1024 * 1024
 # with a legitimately empty test can only be uploaded by putting *something* in
 # the file. We substitute this placeholder and warn loudly, because the tests
 # Polygon ends up storing are no longer byte-identical to the local ones.
+#
+# Routing the empty test through the *script* instead -- a generator that prints
+# nothing, which `saveTest`'s check never sees -- looks like a lossless way out
+# and is not. Polygon runs a built-in well-formedness validator over every test
+# it generates, whatever the problem's own validator is, and the package build
+# fails there instead:
+#
+#   Can't generate input or answer for test 2 [... Validator 'wfval.exe'
+#   returns exit code 3 [FAIL Input can't be empty]]
+#
+# (Verified live in Aug 2026. Note a `verify=False` build of a `standard`
+# package passes, because that package ships generated tests as `doall.sh`
+# rather than as files -- so the emptiness is never materialized and the
+# rejection never happens. Only a full build reveals it.) An empty test simply
+# cannot exist on Polygon, so the placeholder is the only route.
 EMPTY_TEST_PLACEHOLDER = 'NO INPUT\n'
 
 
