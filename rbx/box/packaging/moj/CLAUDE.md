@@ -274,6 +274,14 @@ an empty list means no examples and no leak. With samples, tier 2 already picks
 exactly the right tests, and a `samples` file would be a second source of truth to
 drift out of sync with `naming.testcase_name`.
 
+There is a second leak on the same theme: `build-and-test.sh` echoes the raw input of
+a failing test back to the submitter when `$INPUT` contains `sample` or `example` --
+an unanchored substring match against the **full path**, package directory included.
+A group named `examples` or a problem named `sample-tree` therefore leaks every
+secret test it touches (upstream bug; see issue #804). `package()` refuses such a
+package up front via `naming.check_secret_test_path`, rather than renaming tests
+behind the author's back.
+
 Tier 1 is an undocumented branch of `gen-problem-json.sh` -- mojtools' README only
 ever documents examples as `tests/input/sample*` -- so it is worth re-checking against
 upstream when the packager is next revised.

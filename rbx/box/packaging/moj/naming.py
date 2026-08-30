@@ -17,6 +17,13 @@ SAMPLES_GLOB = 'sample*'
 # statement presents them in.
 TESTSET_PREFIX = 't'
 
+# `build-and-test.sh` echoes the raw input of a failing test back to the submitter
+# when `$INPUT` contains `sample` or `example`. That is meant as a courtesy for the
+# public samples, but the match is an unanchored, case-sensitive substring test
+# against the *full path* -- package directory included -- so a group named
+# `examples` or a problem named `sample-tree` leaks every secret test it touches.
+LEAKY_SUBSTRINGS = ('sample', 'example')
+
 
 class MojNamingError(RbxException):
     """A package cannot be expressed in MOJ's naming or scoring conventions."""
@@ -81,3 +88,19 @@ def build_score_file(groups: Sequence[ScoreGroup]) -> str:
             )
         lines.append(f'{group.glob} - {int(group.weight)} pontos')
     return '\n'.join(lines) + '\n'
+
+
+def check_secret_test_path(basename: str, name: str) -> None:
+    """Refuse a secret test whose path would make MOJ echo its raw input.
+
+    See `LEAKY_SUBSTRINGS`. Only non-sample tests are checked: a sample matching is
+    the intended behavior, and its input is public anyway.
+    """
+    path = f'{basename}/tests/input/{name}'
+    for needle in LEAKY_SUBSTRINGS:
+        if needle in path:
+            raise MojNamingError(
+                f'MOJ would show the raw input of secret test {path!r} to '
+                f'submitters, because its path contains {needle!r}. Rename the '
+                f'group or the problem.'
+            )
