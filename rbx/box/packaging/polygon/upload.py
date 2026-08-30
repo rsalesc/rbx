@@ -1,5 +1,6 @@
 import asyncio
 import pathlib
+import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Literal, Optional, Set
 
@@ -43,6 +44,23 @@ ParamChoices = Literal['statements', 'solutions', 'tests', 'files']
 ALL_PARAMS_CHOICES = list(ParamChoices.__args__)
 MAX_WORKERS = 4
 _RAW_TEST_SIZE_LIMIT = 1024 * 1024
+
+# Polygon silently drops every character outside this set from a file or solution
+# name and still reports success, so a source such as ``sol_n+m.cpp`` is stored
+# under a different name than the one we asked for (#835).
+_POLYGON_UNSAFE_NAME_CHARS = re.compile(r'[^A-Za-z0-9._-]')
+
+
+def _polygon_safe_name(name: str) -> str:
+    """Render ``name`` in the character set Polygon preserves verbatim.
+
+    Anything else is mapped to ``_`` here, up front, so that the name rbx asks for
+    is the name Polygon keeps. Left unsanitized, the rename happens server-side and
+    silently: rbx records the requested name, does not find it among the problem's
+    solutions afterwards, and stubs out the solution it just uploaded.
+    """
+    return _POLYGON_UNSAFE_NAME_CHARS.sub('_', name)
+
 
 # Polygon's `problem.saveTest` rejects an empty test input outright -- and so does
 # any input that is only whitespace, since it strips before checking ("testInput:
@@ -213,7 +231,10 @@ def _build_upload_namespace(
     sources.extend(_collect_generators(entries))
 
     return flattening.build_flat_namespace(
-        sources, reserved=reserved, enforce_stem_unique=True
+        sources,
+        reserved=reserved,
+        enforce_stem_unique=True,
+        sanitizer=_polygon_safe_name,
     )
 
 
@@ -616,11 +637,27 @@ def _upload_solutions(problem: api.Problem, ns: flattening.FlatNamespace):
             tag=api.SolutionTag.NR,
         )
 
+    remote_solutions = problem.solutions()
+    remote_names = {solution.name for solution in remote_solutions}
+    # Polygon renames a name it does not like instead of rejecting it (see
+    # `_polygon_safe_name`). Never run the deletion pass on a mismatch -- every
+    # solution we just uploaded would look stale and be stubbed out.
+    renamed = sorted(saved_solutions - remote_names)
+    if renamed:
+        listed = ', '.join(f'[item]{name}[/item]' for name in renamed)
+        console.console.print(
+            f'[error]Polygon did not store these solutions under the names rbx '
+            f'asked for: {listed}.[/error]\n'
+            '[error]Skipping the removal of stale solutions to avoid deleting them. '
+            'Please report this at https://github.com/rsalesc/rbx/issues.[/error]'
+        )
+        return
+
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = []
         solutions = [
             solution
-            for solution in problem.solutions()
+            for solution in remote_solutions
             if solution.name not in saved_solutions
         ]
         for solution in solutions:
