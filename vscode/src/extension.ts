@@ -2,9 +2,9 @@
  * Extension entry point.
  *
  * The extension is a pure reader (design D2/D3): the user runs `rbx run` in the
- * terminal and this watches what lands under `.rbx/runs`. It never spawns rbx,
- * because every rbx invocation has side effects on the package cache and could
- * race a run already in flight.
+ * terminal and this watches what lands under `.rbx/runs`. It never drives a
+ * build; the only rbx it spawns is read-only, idempotent work behind a feature
+ * that asked for it -- see rbxProcess.ts for what makes that safe.
  */
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -23,6 +23,8 @@ import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
 import { registerSolutionLens } from './solutionLens';
 import { registerSolutionStatus } from './solutionStatus';
+import { registerStatementVarHints } from './statementVarHints';
+import { StatementVarsIndex } from './statementVarsIndex';
 import { TestsetPanel } from './testsetPanel';
 import { TestsetViewProvider } from './testsetView';
 import { openVisualization } from './visualizationPanel';
@@ -110,9 +112,14 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   const declared = new DeclaredIndex(data);
   context.subscriptions.push(declared);
+  // Populated lazily, on the first hint request in a statement, and dropped
+  // whenever the manifest it was expanded from changes (the watcher below).
+  const statementVars = new StatementVarsIndex();
+  context.subscriptions.push(statementVars);
   registerDecorations(context, declared);
   registerSolutionLens(context, declared);
   registerSolutionStatus(context, declared);
+  registerStatementVarHints(context, declared, statementVars);
   // Fed by the same `onDidChange` the run view is, so the Problems entries and
   // the Compilation Findings panel can never describe different runs.
   registerDiagnostics(context, data);
@@ -264,9 +271,9 @@ export function activate(context: vscode.ExtensionContext): void {
   // their contents, so it needs a full rediscovery.
   //
   // A manifest being *edited* changes no root, and so does not concern the run
-  // view at all -- but it is exactly what the badges and banners are drawn
-  // from, which is why the index is re-read on all three events and the run
-  // view on only two.
+  // view at all -- but it is exactly what the badges, the banners and the
+  // statement var hints are drawn from, which is why the indexes are re-read on
+  // all three events and the run view on only two.
   const manifests = vscode.workspace.createFileSystemWatcher(`**/${PROBLEM_MANIFEST}`);
   // The choices are rebuilt after every rediscovery, not just at startup: a
   // package appearing or disappearing changes what the dropdown can offer, and
@@ -277,9 +284,23 @@ export function activate(context: vscode.ExtensionContext): void {
       .then(() => active.refresh())
       .then(() => declared.refresh());
   };
-  manifests.onDidCreate(rediscover);
-  manifests.onDidDelete(rediscover);
-  manifests.onDidChange(() => void declared.refresh());
+  // A third reader of the same events: the vars an edited manifest expands to.
+  // All three, on the manifest's own directory, because that directory *is* the
+  // package root `rbx vars` is asked in -- a created or deleted manifest drops
+  // an entry that would otherwise answer for a package that no longer exists.
+  const revars = (uri: vscode.Uri) => statementVars.invalidate(path.dirname(uri.fsPath));
+  manifests.onDidCreate((uri) => {
+    revars(uri);
+    rediscover();
+  });
+  manifests.onDidDelete((uri) => {
+    revars(uri);
+    rediscover();
+  });
+  manifests.onDidChange((uri) => {
+    revars(uri);
+    void declared.refresh();
+  });
   context.subscriptions.push(
     manifests,
     vscode.workspace.onDidChangeWorkspaceFolders(rediscover),

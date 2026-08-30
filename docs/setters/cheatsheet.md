@@ -20,6 +20,9 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | Generate all testcases [:material-open-in-new:](/setters/testset#building-the-testset) | `rbx build` |
 | Generate all testcases and their visualizations [:material-open-in-new:](/setters/testset/visualizers) | `rbx build --visualize` |
 | Print a summary of the problem | `rbx summary` |
+| Print the expanded variables of the problem [:material-open-in-new:](/setters/variables#seeing-the-expanded-values) | `rbx vars` |
+| Print the expanded variables as JSON | `rbx vars --json` |
+| Print what statement expressions read from stdin render to [:material-open-in-new:](/setters/variables#seeing-the-expanded-values) | `rbx vars --render` |
 | Use dynamic timing to estimate time limits [:material-open-in-new:](/setters/profiling) | `rbx time` |
 | Estimate time limits skipping the language picker [:material-open-in-new:](/setters/profiling#language-groups) | `rbx time -a` |
 | Estimate limits and write them into a profile [:material-open-in-new:](/setters/profiling#limits-profiles) | `rbx time -p icpc -i` |

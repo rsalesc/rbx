@@ -1078,6 +1078,52 @@ SPEC = {
             ],
         },
         {
+            'help': 'Show the expanded vars of this problem.',
+            'is_group': False,
+            'name': 'vars',
+            'panel': 'Configuration',
+            'params': [
+                {
+                    'help': 'Print the vars as a JSON object of dotted keys and string '
+                    'values.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--json'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Read statement expressions from stdin, one per line, and print '
+                    'a JSON object mapping each to what it renders to.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--render'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'What the --render expressions are being formatted for. Ignored '
+                    'without --render.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--target'],
+                    'takes_value': True,
+                    'value': {
+                        'choices': ['latex', 'markdown', 'text'],
+                        'kind': 'choice',
+                    },
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+            ],
+        },
+        {
             'help': 'Set or show the current box environment.',
             'is_group': False,
             'name': 'environment, env',

@@ -3,6 +3,8 @@ that overrides Jinja2 defaults to make it work more seamlessly
 with Latex.
 """
 
+import enum
+import functools
 import pathlib
 import re
 import typing
@@ -83,6 +85,50 @@ REGEX_BACKSLASH = re.compile(r'(?<!\\)\\(?!{})'.format(ESCAPE_CHARS_OR))
 
 
 ######################################################################
+# Filter targets
+######################################################################
+class FilterTarget(enum.Enum):
+    """What a filter is formatting for.
+
+    The *rules* a filter applies -- when `sci` abbreviates, when it declines --
+    are a property of the value and never vary. Only the spelling does: a PDF
+    wants `2 \\times 10^{5}`, a VS Code inlay hint wants `2×10⁵` because it
+    cannot typeset maths.
+
+    MARKDOWN maps to the LaTeX formatter and is not redundant: a Markdown
+    statement puts its constraints in `$...$` math, so LaTeX is what `sci` and
+    `rsci` should emit there. Naming it separately means the day that stops
+    being correct is a one-line change rather than an archaeology exercise.
+
+    That claim covers `sci`/`rsci` only. The target also picks `escape`, and
+    under MARKDOWN that is still the inherited LaTeX escaping (`a_b` -> `a\\_b`,
+    a backslash -> `\\textbackslash{}`), which nobody has examined against a
+    Markdown body outside math. Whether it is right there is out of scope here.
+    """
+
+    LATEX = 'latex'
+    MARKDOWN = 'markdown'
+    TEXT = 'text'
+
+
+class JinjaSyntax(enum.Enum):
+    """Which delimiters a template is lexed with.
+
+    A separate axis from `FilterTarget`, because the two really do vary
+    independently: `rbx vars --render` lexes with the LaTeX delimiters (an
+    expression is only worth rendering if a statement could hold it) while
+    formatting for TEXT. Collapsing them into one `markdown=True` flag would
+    make that combination unsayable.
+    """
+
+    LATEX = 'latex'
+    """`\\VAR{...}`, `\\BLOCK{...}`, `%-`: the rbxTeX flavour (`J2_ARGS`)."""
+
+    PLAIN = 'plain'
+    """Jinja's own `{{ ... }}` / `{% ... %}` (`J2_MD_ARGS`)."""
+
+
+######################################################################
 # Declare module functions
 ######################################################################
 def escape_latex_str_if_str(value):
@@ -92,6 +138,11 @@ def escape_latex_str_if_str(value):
     for regex, replace_text in REGEX_ESCAPE_CHARS:
         value = re.sub(regex, replace_text, value)
     value = re.sub(REGEX_BACKSLASH, r'\\textbackslash{}', value)
+    return value
+
+
+def _no_escape(value: Any) -> Any:
+    """The `escape` filter for output that is not embedded in a markup document."""
     return value
 
 
@@ -105,10 +156,59 @@ def _process_zeroes(value: int) -> Tuple[int, int, int]:
     return acc, cnt, value - acc * 10**cnt
 
 
+def _decide_scientific_notation(
+    value: int,
+    zeroes: int,
+    rest: bool,
+) -> Optional[Tuple[int, int, int]]:
+    """Decide how to abbreviate a positive integer, or decline.
+
+    Returns the `(mult, exp, rem)` of `mult * 10^exp + rem`, or None when the
+    number should be printed as-is. These are the rules of the value, shared by
+    every target; only the spelling of the answer varies.
+    """
+    mult, exp, rem = _process_zeroes(value)
+    if exp < zeroes:
+        return None
+    if not rest and rem > 0:
+        # Should not convert numbers like 100007 to 10^5 + 7,
+        # unless rest is true.
+        return None
+    if rem > 0 and len(str(rem)) + 1 >= len(str(value)):
+        # Should not convert numbers like 532 to 5*10^2 + 32.
+        return None
+    return mult, exp, rem
+
+
+def _format_scientific_latex(mult: int, exp: int) -> str:
+    """Spell `mult * 10^exp` as maths. The ` + rem` tail is added by the caller."""
+    res = '10' if exp == 1 else f'10^{{{exp}}}'
+    if mult > 1:
+        res = f'{mult} \\times {res}'
+    return res
+
+
+_SUPERSCRIPT_DIGITS = str.maketrans('0123456789', '⁰¹²³⁴⁵⁶⁷⁸⁹')
+
+
+def _format_scientific_text(mult: int, exp: int) -> str:
+    """Spell `mult * 10^exp` as plain text. The ` + rem` tail is added by the caller."""
+    res = '10' if exp == 1 else '10' + str(exp).translate(_SUPERSCRIPT_DIGITS)
+    if mult > 1:
+        # Tight, where the LaTeX spelling is `2 \times 10^{5}`. Not an
+        # inconsistency: math mode discards source spaces and `\times` sets its
+        # own, so the PDF shows the same tightness either way. Here `×` is the
+        # glyph, and every space around it would be shown.
+        res = f'{mult}×{res}'
+    return res
+
+
 def scientific_notation(
     value: Union[int, jinja2.Undefined],
     zeroes: int = 4,
     rest: bool = False,
+    *,
+    target: FilterTarget = FilterTarget.LATEX,
 ) -> Union[str, jinja2.Undefined]:
     if jinja2.is_undefined(value):
         return typing.cast(jinja2.Undefined, value)
@@ -117,22 +217,24 @@ def scientific_notation(
     if value == 0:
         return '0'
     if value < 0:
-        return f'-{scientific_notation(-value, zeroes=zeroes)}'
+        # `rest` is not forwarded, so `rsci(-100007)` is `-100007` rather than
+        # the negation of `10^{5} + 7`. That asymmetry is pre-existing, and it
+        # is kept bug-for-bug because this refactor's one constraint is that
+        # shipped statement output does not move. Changing it is a fine thing
+        # to want; it belongs in its own commit, with its own golden row and a
+        # changelog line.
+        return f'-{scientific_notation(-value, zeroes=zeroes, target=target)}'
 
-    mult, exp, rem = _process_zeroes(value)
-    if exp < zeroes:
+    decision = _decide_scientific_notation(value, zeroes=zeroes, rest=rest)
+    if decision is None:
         return str(value)
-    res = '10' if exp == 1 else f'10^{{{exp}}}'
-    if not rest and rem > 0:
-        # Should not convert numbers like 100007 to 10^5 + 7,
-        # unless rest is true.
-        return str(value)
-    if rem > 0 and len(str(rem)) + 1 >= len(str(value)):
-        # Should not convert numbers like 532 to 5*10^2 + 32.
-        return str(value)
-    if mult > 1:
-        res = f'{mult} \\times {res}'
+    mult, exp, rem = decision
+    if target is FilterTarget.TEXT:
+        res = _format_scientific_text(mult, exp)
+    else:
+        res = _format_scientific_latex(mult, exp)
     if rem > 0:
+        # Target-independent: every target spells the remainder the same way.
         res = f'{res} + {rem}'
     return res
 
@@ -140,8 +242,10 @@ def scientific_notation(
 def rest_scientific_notation(
     value: Union[int, jinja2.Undefined],
     zeroes: int = 4,
+    *,
+    target: FilterTarget = FilterTarget.LATEX,
 ) -> Union[str, jinja2.Undefined]:
-    return scientific_notation(value, zeroes=zeroes, rest=True)
+    return scientific_notation(value, zeroes=zeroes, rest=True, target=target)
 
 
 def path_parent(path: pathlib.Path) -> pathlib.Path:
@@ -287,10 +391,17 @@ class JinjaDictWrapper(dict):
             )
 
 
-def add_builtin_filters(j2_env: jinja2.Environment):
-    j2_env.filters['escape'] = escape_latex_str_if_str
-    j2_env.filters['sci'] = scientific_notation
-    j2_env.filters['rsci'] = rest_scientific_notation
+def add_builtin_filters(
+    j2_env: jinja2.Environment,
+    target: FilterTarget = FilterTarget.LATEX,
+):
+    # TEXT output is not embedded in a markup document, so there is nothing to
+    # escape for.
+    j2_env.filters['escape'] = (
+        _no_escape if target is FilterTarget.TEXT else escape_latex_str_if_str
+    )
+    j2_env.filters['sci'] = functools.partial(scientific_notation, target=target)
+    j2_env.filters['rsci'] = functools.partial(rest_scientific_notation, target=target)
     j2_env.filters['parent'] = path_parent
     j2_env.filters['stem'] = path_stem
 
@@ -300,6 +411,39 @@ def add_builtin_tests(j2_env: jinja2.Environment):
     j2_env.tests['falsy'] = test_var_falsy
     j2_env.tests['null'] = test_var_null
     j2_env.tests['nonnull'] = test_var_nonnull
+
+
+_SYNTAX_ARGS: Dict[JinjaSyntax, Dict[str, Any]] = {
+    JinjaSyntax.LATEX: J2_ARGS,
+    JinjaSyntax.PLAIN: J2_MD_ARGS,
+}
+
+
+def make_jinja_env(
+    target: FilterTarget = FilterTarget.LATEX,
+    *,
+    syntax: JinjaSyntax = JinjaSyntax.LATEX,
+    loader: Optional[jinja2.BaseLoader] = None,
+) -> jinja2.Environment:
+    """The environment a statement renders under.
+
+    Everything that renders a statement -- or claims to agree with one, as the
+    var hints do -- goes through here, so "same filters, same tests, same
+    undefined" is one function rather than a convention repeated at each call
+    site. Only `target` and `syntax` may differ, and they are independent: see
+    `JinjaSyntax`.
+
+    The environment is **not** sandboxed. That is not new and not incidental:
+    templates are setter-authored files from the package being built.
+    """
+    j2_env = jinja2.Environment(
+        loader=loader,
+        **_SYNTAX_ARGS[syntax],  # type: ignore[arg-type]
+        undefined=StrictChainableUndefined,
+    )
+    add_builtin_filters(j2_env, target=target)
+    add_builtin_tests(j2_env)
+    return j2_env
 
 
 def _handle_rendering_undefined(
@@ -328,13 +472,11 @@ def render_latex_template(path_templates, template_filename, template_vars=None)
         defaults to None for case when no values need to be passed
     """
     var_dict = template_vars if template_vars else {}
-    j2_env = jinja2.Environment(
+    j2_env = make_jinja_env(
+        FilterTarget.LATEX,
+        syntax=JinjaSyntax.LATEX,
         loader=jinja2.FileSystemLoader(path_templates),
-        **J2_ARGS,
-        undefined=StrictChainableUndefined,
     )
-    add_builtin_filters(j2_env)
-    add_builtin_tests(j2_env)
     template = j2_env.get_template(template_filename)
     try:
         return template.render(**var_dict)  # type: ignore
@@ -355,13 +497,11 @@ def render_latex_template_blocks(
         defaults to None for case when no values need to be passed
     """
     var_dict = template_vars if template_vars else {}
-    j2_env = jinja2.Environment(
+    j2_env = make_jinja_env(
+        FilterTarget.LATEX,
+        syntax=JinjaSyntax.LATEX,
         loader=jinja2.FileSystemLoader(path_templates),
-        **J2_ARGS,
-        undefined=StrictChainableUndefined,
     )
-    add_builtin_filters(j2_env)
-    add_builtin_tests(j2_env)
     template = j2_env.get_template(template_filename)
     ctx = template.new_context(var_dict)  # type: ignore
     try:
@@ -386,13 +526,11 @@ def render_markdown_template_blocks(
         defaults to None for case when no values need to be passed
     """
     var_dict = template_vars if template_vars else {}
-    j2_env = jinja2.Environment(
+    j2_env = make_jinja_env(
+        FilterTarget.MARKDOWN,
+        syntax=JinjaSyntax.PLAIN,
         loader=jinja2.FileSystemLoader(path_templates),
-        **J2_MD_ARGS,  # type: ignore
-        undefined=StrictChainableUndefined,
     )
-    add_builtin_filters(j2_env)
-    add_builtin_tests(j2_env)
     template = j2_env.get_template(template_filename)
     ctx = template.new_context(var_dict)  # type: ignore
     try:

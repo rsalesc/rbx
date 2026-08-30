@@ -22,6 +22,28 @@
 # if node_modules is missing), because a development host pointed at a checkout
 # that was never built fails on activation with a missing dist/extension.js.
 # Pass --no-build to skip that when you already have `npm run watch` going.
+#
+# The host is also pinned to the *same checkout's* rbx, because half of what the
+# extension does is read what rbx wrote and the other half is now run rbx --
+# `rbx visualize`, and `rbx vars` behind the statement var hints. Loading the
+# TypeScript from a branch while calling whatever rbx is on PATH tests a pairing
+# that exists nowhere, and fails quietly: the extension treats a command it
+# cannot run as "no data" and draws nothing, which looks like a feature that
+# does not work rather than a CLI that is too old.
+#
+# Pinning is a setting (`rbx.executable`) written into a per-worktree profile
+# under --user-data-dir, not a PATH export, because a PATH export does not
+# survive the trip. The `code` CLI hands off to an already-running instance over
+# IPC, and the window it opens inherits that instance's environment rather than
+# this shell's -- so exporting PATH works only when no editor is running, which
+# is the kind of "works on my machine" this script exists to remove. A distinct
+# --user-data-dir also forces a separate instance, so the handoff never happens.
+#
+# The profile lives in the cache directory rather than the worktree, so no
+# checkout gains an untracked directory, and it persists per worktree: the theme
+# you pick in a development host is still there next time. Your installed
+# extensions still load (--extensions-dir is left alone). Pass --no-pin-rbx to
+# launch with your normal profile and whatever rbx the extension finds itself.
 
 set -euo pipefail
 
@@ -68,6 +90,60 @@ _re_editor_app() {
 }
 
 _re_editors="code cursor windsurf codium code-insiders"
+
+# --- pinning the host to this checkout's rbx --------------------------------
+# Where a worktree's own rbx lives once `uv sync` has run in it. Editable, so it
+# is the branch's Python, not a copy of it.
+_re_rbx_path() {
+  echo "$1/.venv/bin/rbx"
+}
+
+# The profile directory for one (worktree, editor) pair.
+#
+# Keyed by the worktree's full path, because two worktrees of the same repo have
+# the same basename often enough (a PR checkout and the branch it came from),
+# and per editor because VS Code and its forks do not share a profile format
+# they both promise to honour. Kept in the cache directory: it is regenerable,
+# and putting it in the worktree would show up in `git status` forever.
+_re_profile_dir() {
+  _re_pd_wt="$1"
+  _re_pd_editor="$2"
+  _re_pd_key="$(printf '%s' "$_re_pd_wt" | shasum | cut -c1-8)"
+  echo "${XDG_CACHE_HOME:-$HOME/.cache}/rbx/run-extension/$_re_pd_editor/$(basename "$_re_pd_wt")-$_re_pd_key"
+}
+
+# Write `rbx.executable` into a profile without disturbing anything else in it.
+#
+# Merged rather than overwritten because this runs on every launch and the
+# profile is meant to persist: clobbering it would throw away the theme, the
+# window layout and every other thing the last development host learned. Python
+# does the merge -- a JSON file that VS Code also writes is not a thing to edit
+# with sed.
+_re_seed_profile() {
+  _re_sp_dir="$1"
+  _re_sp_rbx="$2"
+  mkdir -p "$_re_sp_dir/User"
+  RBX_SEED_SETTINGS="$_re_sp_dir/User/settings.json" RBX_SEED_PATH="$_re_sp_rbx" python3 - <<'PY'
+import json
+import os
+import pathlib
+
+settings = pathlib.Path(os.environ['RBX_SEED_SETTINGS'])
+current = {}
+if settings.is_file():
+    try:
+        current = json.loads(settings.read_text() or '{}')
+    except json.JSONDecodeError:
+        # A profile VS Code left mid-write, or one hand-edited into invalid
+        # JSON. Rewriting it from scratch loses less than refusing to launch.
+        current = {}
+    if not isinstance(current, dict):
+        current = {}
+
+current['rbx.executable'] = os.environ['RBX_SEED_PATH']
+settings.write_text(json.dumps(current, indent=2) + '\n')
+PY
+}
 
 # Which editor's integrated terminal we are in, if any. TERM_PROGRAM=vscode is
 # set by VS Code *and every fork*, so the app path is what tells them apart —
@@ -119,6 +195,8 @@ $(wt_name_help '  ')
                         contest.rbx.yml, else nothing
   -n, --no-build        do not build first (use with 'npm run watch')
   -c, --clean           disable your other extensions in the development host
+      --no-pin-rbx      use your normal profile, and whatever rbx the extension
+                        finds, instead of this checkout's .venv/bin/rbx
   -p, --print           print the command instead of running it
   -h, --help            this message
 EOF
@@ -131,6 +209,7 @@ _re_folder=""
 _re_build=1
 _re_clean=0
 _re_print=0
+_re_pin=1
 
 _re_need_value() {
   if [ "$2" -lt 2 ]; then
@@ -155,6 +234,7 @@ while [ "$#" -gt 0 ]; do
       ;;
     -n|--no-build) _re_build=0 ;;
     -c|--clean) _re_clean=1 ;;
+    --no-pin-rbx) _re_pin=0 ;;
     -p|--print) _re_print=1 ;;
     -h|--help) _re_usage; exit 0 ;;
     --) shift; _re_name="${1:-}"; break ;;
@@ -232,11 +312,33 @@ if [ ! -f "$_re_ext/dist/extension.js" ]; then
   exit 1
 fi
 
+# --- resolve this checkout's rbx --------------------------------------------
+# Missing is normal, not an error: a checkout whose venv was never built still
+# runs the extension fine, and everything that does not shell out to rbx works.
+# Say so once, with the fix, rather than failing or staying silent.
+_re_rbx=""
+if [ "$_re_pin" -eq 1 ]; then
+  _re_rbx="$(_re_rbx_path "$_re_wt")"
+  if [ ! -x "$_re_rbx" ]; then
+    echo "$WT_PROG: no rbx at $_re_rbx — the host will use whatever rbx it finds" >&2
+    echo "$WT_PROG: run 'uv sync' in $_re_wt to pin it, or pass --no-pin-rbx to silence this" >&2
+    _re_rbx=""
+  elif ! command -v python3 >/dev/null 2>&1; then
+    echo "$WT_PROG: python3 is required to seed the development profile — not pinning rbx" >&2
+    _re_rbx=""
+  fi
+fi
+
 # --- launch -----------------------------------------------------------------
 for _re_key in $_re_editor_keys; do
   _re_cmd="$(_re_editor_command "$_re_key")"
 
   set -- --new-window --extensionDevelopmentPath="$_re_ext"
+  if [ -n "$_re_rbx" ]; then
+    _re_profile="$(_re_profile_dir "$_re_wt" "$_re_key")"
+    _re_seed_profile "$_re_profile" "$_re_rbx"
+    set -- "$@" --user-data-dir="$_re_profile"
+  fi
   if [ "$_re_clean" -eq 1 ]; then
     set -- "$@" --disable-extensions
   fi
@@ -251,5 +353,8 @@ for _re_key in $_re_editor_keys; do
   fi
 
   echo "$WT_PROG: launching $(_re_editor_label "$_re_key") with $_re_ext${_re_folder:+ on $_re_folder}"
+  if [ -n "$_re_rbx" ]; then
+    echo "$WT_PROG: rbx pinned to $_re_rbx"
+  fi
   "$_re_cmd" "$@"
 done

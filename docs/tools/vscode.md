@@ -10,9 +10,12 @@ a terminal does, and does not care which editor you use; the extension gives
 you VS Code's own diff, its editors and its Problems panel, and it does not
 take over the terminal you are typing `rbx` into.
 
-!!! note "It never runs rbx for you"
+!!! note "It never builds or runs for you"
     Execution stays in the terminal. You type `rbx run`; the extension watches
-    the package and renders whatever lands there.
+    the package and renders whatever lands there. It does call {{rbx}} itself
+    for a couple of small things -- drawing a visualization, asking what a
+    variable expands to -- and for those it has to find an `rbx` to call, which
+    [Finding rbx](#finding-rbx) covers.
 
 ## Installing
 
@@ -156,6 +159,83 @@ your desktop associates with the file.
     answer. Visualizing what a *solution* printed is not available in the
     extension yet -- use `rbx ui` for that.
 
+## Variables in a statement
+
+While you are editing a statement, every `\VAR{...}` that names one of the
+package's [variables](../setters/variables.md) is followed by what that
+variable expands to, so a constraints block reads as its numbers without
+`problem.rbx.yml` open beside it.
+
+```{.latex .no-copy}
+\item $1 \le N \le \VAR{N.max}$    100000
+\item $1 \le a_i \le \VAR{A.max}$  1000000000
+```
+
+The greyed numbers on the right are not in the file: they are VS Code's own
+**inlay hints**, which means `editor.inlayHints.enabled` turns them off along
+with every other extension's, and `rbx.statementVarHints` turns off just these.
+
+The values come from `rbx vars`, which only reads `problem.rbx.yml` -- so they
+are right while you type, and do not wait for a `rbx build` or a
+`rbx statements build`.
+
+A reference piped through a
+[filter](../setters/statements/context.md#filters) is hinted as what the filter
+makes of it, not as the bare number underneath. {{rbx}} renders the expression
+itself, so the hint agrees with the statement whatever you pipe through --
+`sci`, `rsci`, or any {{Jinja2}} builtin such as `upper` or `round(2)`:
+
+```{.latex .no-copy}
+\item $1 \le N \le \VAR{N.max | sci}$      10⁵
+\item $1 \le a_i \le \VAR{A.max | sci}$    10⁹
+\item Answers modulo \VAR{MOD | rsci}      10⁹ + 7
+```
+
+An inlay hint cannot typeset maths, so it spells the same value in plain text:
+superscript digits and `×` where the built statement gets `^{}` and `\times`.
+Only the spelling changes. What a filter *decides* is the same in both places,
+so `sci` leaving `250000` as its digits in the PDF leaves it as its digits in
+the hint too.
+
+A hint is shown only where it can be exactly right, and there are three places
+it deliberately is not:
+
+- **Problem-root references only.** `\VAR{N.max}` and `\VAR{vars.N.max}` are
+  the ones that get a value. A group reference such as `\VAR{g.N.max}` almost
+  always sits inside a `\BLOCK{for g in groups}` loop and renders a different
+  number per group, so a single hint would have to lie or to name a group;
+  `\VAR{p.N.max}`, `\VAR{problem.N.max}` and `\VAR{contest.year}` resolve
+  against variable sets that are not this problem's own. None of them get a
+  hint.
+- **Nothing is ever guessed.** A name no variable answers to, an expression
+  that is not a plain dotted name, a commented-out line, an escaped `\\VAR` --
+  all get nothing, and neither does a half-typed pipeline like
+  `\VAR{N.max |}`. A filter over a name that does not exist gets nothing
+  either: the name is looked up before anything is rendered, so a typo never
+  costs a render. An absent hint is never a wrong one, and it is a useful
+  tell: a misspelled variable is the one reference on the line with no number
+  next to it.
+- **Only what the manifest calls a statement.** `problem.rbx.yml`'s
+  `statements` and `tutorials` are hinted. A contest statement declared in
+  `contest.rbx.yml`, and the LaTeX template a statement is rendered into, are
+  not -- they are not problem statements, and their variables are not this
+  package's.
+
+## Finding rbx
+
+Drawing a visualization and reading a statement's variables both call {{rbx}},
+so the extension has to find one. It tries `PATH` first and then asks a login
+shell, because the extension host inherits the `PATH` of whatever launched VS
+Code -- open the editor from Finder or the Dock rather than from a terminal and
+that `PATH` is a bare one, without the `~/.local/bin` that `uv tool install`
+and `pipx` write into.
+
+If neither finds it, point `rbx.executable` at the binary. The setting is
+per-folder, so a workspace holding packages on different {{rbx}} versions can
+give each one its own.
+
+Everything else keeps working without an `rbx` to call: the views read files.
+
 ## Settings
 
 Every surface above can be turned off or adjusted on its own. Search for
@@ -164,5 +244,7 @@ Every surface above can be turned off or adjusted on its own. Search for
 | Setting | Default | Does |
 |---|---|---|
 | `rbx.compilationDiagnostics` | `true` | Report compiler warnings and failures in the Problems panel |
+| `rbx.statementVarHints` | `true` | Show what each `\VAR{...}` in a statement expands to, beside the reference |
+| `rbx.executable` | *(empty)* | The `rbx` to call, when finding it automatically does not work |
 | `rbx.solutionLabel` | `trimmed` | How much of a solution's path the run view shows: `full`, `trimmed` or `basename` |
 | `rbx.testcaseLayout` | `below` | Where the second testcase pane is *first* placed: `below` or `beside` |
