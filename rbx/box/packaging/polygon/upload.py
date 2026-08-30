@@ -44,6 +44,14 @@ ALL_PARAMS_CHOICES = list(ParamChoices.__args__)
 MAX_WORKERS = 4
 _RAW_TEST_SIZE_LIMIT = 1024 * 1024
 
+# Polygon's `problem.saveTest` rejects an empty test input outright -- and so does
+# any input that is only whitespace, since it strips before checking ("testInput:
+# Test input can't be empty."). There is no API knob to lift that, so a package
+# with a legitimately empty test can only be uploaded by putting *something* in
+# the file. We substitute this placeholder and warn loudly, because the tests
+# Polygon ends up storing are no longer byte-identical to the local ones.
+EMPTY_TEST_PLACEHOLDER = 'NO INPUT\n'
+
 
 def _format_request_failed_comment(comment: str) -> str:
     """Prepare a Polygon FAILED ``comment`` for safe Rich rendering.
@@ -344,6 +352,36 @@ def _get_test_params_for_statement(
     return res
 
 
+def _substitute_empty_test_input(
+    content: str, label: str, substituted: List[str]
+) -> str:
+    """Return ``content``, or the placeholder if Polygon would reject it as empty.
+
+    Appends ``label`` to ``substituted`` whenever a substitution happens, so the
+    caller can warn about every affected test at once.
+    """
+    if content.strip():
+        return content
+    substituted.append(label)
+    return EMPTY_TEST_PLACEHOLDER
+
+
+def _warn_about_substituted_empty_tests(substituted: List[str]):
+    if not substituted:
+        return
+    console.console.print(
+        f'[warning]Polygon does not accept empty test inputs, so '
+        f'{len(substituted)} test(s) were uploaded with the placeholder input '
+        f'[item]{EMPTY_TEST_PLACEHOLDER.strip()}[/item] instead:[/warning]'
+    )
+    for label in substituted:
+        console.console.print(f'[warning]  - {label}[/warning]')
+    console.console.print(
+        '[warning]Make sure your validator accepts this placeholder, and that any '
+        'affected sample renders acceptably in the statement.[/warning]'
+    )
+
+
 def _get_freemarker_for_calls(calls: List[GeneratorCall], next_index: int = 1) -> str:
     return (
         '\n'.join(
@@ -434,6 +472,7 @@ def _upload_testcases(
         next_index = 1
         task_id = progress.add_task('Uploading testcases...', total=len(entries))
         calls = []
+        substituted: List[str] = []
         for entry in entries:
             if entry.metadata.generator_call is not None:
                 # Generated testcases are handled later.
@@ -458,6 +497,9 @@ def _upload_testcases(
                 content = entry.metadata.copied_from.inputPath.read_text()
             if content is None:
                 continue
+            content = _substitute_empty_test_input(
+                content, entry.short_repr(), substituted
+            )
             saved = _save_skip_coinciding_testcases(
                 problem,
                 testset='tests',
@@ -489,6 +531,8 @@ def _upload_testcases(
                 raise
         progress.update(task_id, completed=len(entries))
 
+    _warn_about_substituted_empty_tests(substituted)
+
 
 def _upload_testcases_raw(
     problem: api.Problem,
@@ -509,10 +553,13 @@ def _upload_testcases_raw(
     with rich.progress.Progress(speed_estimate_period=5) as progress:
         next_index = 1
         task_id = progress.add_task('Uploading raw testcases...', total=len(entries))
+        substituted: List[str] = []
         for entry in entries:
             path = _resolve_raw_test_input_path(entry)
             assert path is not None  # validated above
-            content = path.read_text()
+            content = _substitute_empty_test_input(
+                path.read_text(), entry.short_repr(), substituted
+            )
             saved = _save_skip_coinciding_testcases(
                 problem,
                 testset='tests',
@@ -527,6 +574,8 @@ def _upload_testcases_raw(
             if saved:
                 next_index += 1
         progress.update(task_id, completed=len(entries))
+
+    _warn_about_substituted_empty_tests(substituted)
 
 
 def _upload_solutions(problem: api.Problem, ns: flattening.FlatNamespace):
