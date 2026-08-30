@@ -371,13 +371,16 @@ async def test_a_done_testrun_exposes_its_tests_by_name(
     assert status.by_name['sample001'].time == 0.11
 
 
-async def test_two_tests_sharing_a_name_are_an_error_not_a_last_one_wins(
+async def test_a_rerun_testcase_is_read_from_its_last_entry(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """Name pairing is what prevents misattributing a timing.
+    """mojtools reruns a TLE measured under parallel load, and reports both.
 
-    Dropping one of two same-named tests would misattribute one just as silently
-    as pairing by position would.
+    `run-testinput` appends a `VERDICT[<name>]=` line per run, so the reran
+    testcase arrives twice: first the contended measurement the judge threw away,
+    then the one it kept. Reading the first would hand rbx a TLE the judge does
+    not believe in -- and refusing the pair, which is what this used to do, failed
+    the whole run over a testrun MOJ considers ordinary.
     """
     _fake_moj(
         monkeypatch,
@@ -385,8 +388,8 @@ async def test_two_tests_sharing_a_name_are_an_error_not_a_last_one_wins(
             {
                 'status': 'done',
                 'tests': [
-                    {'name': 'sample001', 'code': 'AC', 'time': 0.11},
                     {'name': 'sample001', 'code': 'TLE', 'time': 2.0},
+                    {'name': 'sample001', 'code': 'AC', 'time': 0.11},
                 ],
             }
         ),
@@ -394,10 +397,10 @@ async def test_two_tests_sharing_a_name_are_an_error_not_a_last_one_wins(
 
     status = await cli.testrun_status('4711')
 
-    with pytest.raises(MojCliError) as exc_info:
-        assert status.by_name
-
-    assert '`sample001`' in str(exc_info.value)
+    assert status.by_name['sample001'].code == 'AC'
+    assert status.by_name['sample001'].time == 0.11
+    # One testcase, however many times the judge measured it.
+    assert len(status.by_name) == 1
 
 
 async def test_a_test_without_a_measurement_reads_as_unmeasured(

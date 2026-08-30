@@ -177,13 +177,16 @@ QUEUE_FULL_ATTEMPTS = 40
 #   reported as a solution's runtime error is exactly the silent lie this table
 #   guards against.
 #
-# Deliberately absent: `CE`, which is real but run-level only -- a submission that
-# does not compile never enters the testset, so `tests` comes back empty and
-# `ran_nothing` handles it (probe notes, section 3b) -- and `NT` ("Nao executado"),
-# which `gen-report.sh` substitutes for a *missing* verdict when rendering HTML and
-# which is therefore never written to `log.verdictall` in the first place. A
-# testcase MOJ said nothing about is already handled, as `SKIPPED`, by
-# `_evaluation_for`.
+# - `CE` is real but, on `run-testinput`'s side, run-level only: a submission that
+#   does not compile never enters the testset, so `tests` comes back empty and
+#   `ran_nothing` handles it (probe notes, section 3b). It is mapped anyway, at no
+#   risk -- `COMPILATION_ERROR` is what the code says, and one that only ever
+#   arrives run-level costs a table row to tolerate and a whole failed run to
+#   refuse.
+#
+# `NT` ("Nao executado") is the one code in mojtools' vocabulary with no `Outcome`,
+# and lives in `_UNEXECUTED_MOJ_CODES` instead of here: it does not name a verdict,
+# it names the *absence* of one.
 #
 # An unrecognised code is refused by name (see `MojRunner._submit_and_poll`)
 # rather than mapped: this table feeds a *time limit*, and a wrong verdict there is
@@ -200,7 +203,26 @@ _OUTCOME_BY_MOJ_CODE: Dict[str, Outcome] = {
     'RE_NZEC': Outcome.RUNTIME_ERROR,
     'TMT': Outcome.RUNTIME_ERROR,
     'UE': Outcome.JUDGE_FAILED,
+    'CE': Outcome.COMPILATION_ERROR,
 }
+
+# Codes that say a testcase produced no result at all, rather than naming one.
+#
+# `NT` ("Nao executado") is what mojtools writes for a testcase with no verdict:
+# `gen-report.sh` substitutes it when `log.verdictall` has no entry for an input
+# file, which happens whenever the testset was cut short -- a `STOPWHEN_*` problem
+# that stopped early, or a run the judge abandoned. Whether the judge agent's
+# `agent_tests_json` puts it in the `tests` array the way `gen-report.sh` puts it
+# in the HTML is not something rbx can read off the source it has, so this exists
+# to be *tolerant*: if one arrives, it costs one testcase's measurement rather than
+# the whole run.
+#
+# Dropped rather than mapped, because every `Outcome` would be a claim about the
+# solution that nothing measured. Dropping puts the testcase back on the same path
+# as one MOJ never mentioned: `SKIPPED`, no timing, and counted in the "reported no
+# result for N of M" warning `_evaluation_from_job` prints. That is exactly what an
+# `NT` means, and it keeps a non-measurement out of the time-limit estimate.
+_UNEXECUTED_MOJ_CODES = frozenset({'NT'})
 
 # `RE_NZEC` is the only qualified runtime error mojtools writes today, and it is in
 # the table above. The prefix is honoured anyway, as a backstop for a judge that
@@ -867,9 +889,21 @@ class MojRunner:
         if status.ran_nothing:
             raise _run_never_started(solution, run, status)
 
-        # `by_name` refuses duplicate names rather than letting a dict
-        # comprehension drop one of them.
+        # Last entry wins on a repeated name: that is a testcase mojtools reran
+        # after a TLE measured under parallel load, and the rerun is the number
+        # the judge itself keeps. See `TestrunStatus.by_name`.
         tests = status.by_name
+
+        # Before the codes are checked, because an `NT` is not a code to check:
+        # the judge is saying it never ran this testcase. Removing it here is what
+        # sends it down `_evaluation_for`'s `test is None` path -- `SKIPPED`, no
+        # timing -- and gets it counted in the warning that says how many
+        # testcases came back without a result. See `_UNEXECUTED_MOJ_CODES`.
+        tests = {
+            name: test
+            for name, test in tests.items()
+            if test.code not in _UNEXECUTED_MOJ_CODES
+        }
 
         # Every code is checked here, once, before any evaluation is built -- and
         # the failure lands on *every* deferred of this solution, because they all
@@ -884,7 +918,10 @@ class MojRunner:
         )
         if unknown:
             listed = ', '.join(f'`{code}`' for code in unknown)
-            known = ', '.join(f'`{code}`' for code in _OUTCOME_BY_MOJ_CODE)
+            known = ', '.join(
+                f'`{code}`'
+                for code in (*_OUTCOME_BY_MOJ_CODE, *sorted(_UNEXECUTED_MOJ_CODES))
+            )
             raise MojRunnerError(
                 f'MOJ reported the verdict code(s) {listed} for `{solution.path}` '
                 f'in testrun `{run}`, and rbx does not know what they mean.\n'
@@ -893,6 +930,8 @@ class MojRunner:
                 f'mapped to the wrong outcome would silently corrupt the time '
                 f'limit this run is estimating, with nothing in the report to say '
                 f'so.\n'
+                f'See what the judge actually reported with `moj testrun-status '
+                f'{run}`.\n'
                 f'If the code is legitimate, add it to `_OUTCOME_BY_MOJ_CODE` in '
                 f'`rbx/box/runners/moj/runner.py`.'
             )
