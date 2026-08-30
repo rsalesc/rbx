@@ -136,6 +136,34 @@ The statement blocks will also be uploaded to Polygon, along with all model solu
 Testcases are also uploaded. If your package uses generators, the generators are uploaded and the script is updated in Polygon to generate the tests. Manual tests (without generators) are uploaded as files.
 
 
+##### When Polygon throttles you
+
+An upload is a burst of API calls -- one per file, per test, per solution -- and Polygon
+limits how fast a single API key may call it. When you cross that limit, it starts
+answering with errors instead of results: an HTTP 429, an error page, or a plain
+*"Too many requests. Please, wait a few seconds and try again."*
+
+{{rbx}} handles this for you. It spaces out its API calls, and whenever Polygon pushes
+back, it waits and tries the same call again -- widening the spacing between calls as it
+goes, so the rest of the upload proceeds more gently. You'll see a warning per retry, and
+the upload carries on where it left off. Real errors (a checker that doesn't compile, a
+problem you can't write to) are still reported immediately, without retrying.
+
+If your uploads still get throttled, you can make {{rbx}} slower and more patient through
+these environment variables:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `RBX_POLYGON_MIN_INTERVAL` | `0.25` | Seconds to wait between consecutive API calls. |
+| `RBX_POLYGON_MAX_INTERVAL` | `5.0` | Largest spacing the automatic backoff may grow to. |
+| `RBX_POLYGON_MAX_RETRIES` | `6` | How many times a refused call is retried before giving up. |
+| `RBX_POLYGON_TIMEOUT` | `120` | Seconds to wait for a single API call to answer. |
+
+```bash
+# Upload at one call per second, and be more insistent about retrying.
+RBX_POLYGON_MIN_INTERVAL=1 RBX_POLYGON_MAX_RETRIES=10 rbx contest each package polygon -u
+```
+
 ### Using the Taskbook FTP (flaky)
 
 You can upload a contest package to Codeforces Gym by first building it with the command above, and then

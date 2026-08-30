@@ -16,6 +16,7 @@ import requests
 import typer
 
 from rbx import console
+from rbx.box.packaging.polygon import throttling
 
 # Polygon truncates the ``comment`` field of FAILED responses (e.g. server-side
 # compilation errors) to this many characters. The limit is on the message
@@ -1205,18 +1206,85 @@ class Request:
 
     def issue(self):
         """Issues request and returns parsed JSON response"""
-
-        try:
-            return Response(json.loads(self.issue_raw()))
-        except json.JSONDecodeError:
-            console.console.print(
-                '[error]Failed to parse JSON response from Polygon API. Please check if Polygon is down.[/error]',
-            )
-            raise typer.Exit(1)
+        return self._issue(parse=True)
 
     def issue_raw(self):
         """Issues request and returns raw response (useful e.g. for files)"""
+        return self._issue(parse=False)
 
+    def _issue(self, parse: bool):
+        """Issues the request, retrying while Polygon is throttling us.
+
+        Polygon refuses bursts in three different shapes -- an HTTP 429/5xx, an
+        HTML error page where JSON was promised, and a well-formed FAILED body
+        whose comment says to come back later -- and rbx uploads are bursty, so
+        all three are treated as transient here (#830). Requests are spaced out
+        by the shared rate limiter, and each refusal both widens that spacing
+        and backs the retry off exponentially. Genuine errors (a bad checker, a
+        missing problem) are returned to the caller on the first attempt.
+        """
+        limiter = throttling.get_limiter()
+        retries = throttling.max_retries()
+        failure = 'Polygon API is unavailable.'
+        last_response = None
+
+        for attempt in range(retries + 1):
+            limiter.acquire()
+            retry_after = None
+            try:
+                http_response = self._post()
+            except requests.RequestException as e:
+                failure = f'Could not reach the Polygon API: {e}'
+            else:
+                retry_after = throttling.parse_retry_after(
+                    http_response.headers.get('Retry-After')
+                )
+                if throttling.is_retryable_status(http_response.status_code):
+                    failure = (
+                        f'Polygon API replied with HTTP {http_response.status_code}.'
+                    )
+                elif not parse:
+                    limiter.report_success()
+                    return http_response.text
+                else:
+                    try:
+                        response = Response(json.loads(http_response.text))
+                    except json.JSONDecodeError:
+                        failure = 'Failed to parse JSON response from Polygon API. Please check if Polygon is down.'
+                    else:
+                        if response.status != Response.STATUS_FAILED or (
+                            not throttling.is_retryable_comment(response.comment)
+                        ):
+                            limiter.report_success()
+                            return response
+                        last_response = response
+                        failure = f'Polygon API replied: {response.comment}'
+
+            limiter.penalize(retry_after)
+            if attempt >= retries:
+                break
+
+            delay = throttling.backoff_delay(attempt, retry_after)
+            console.console.print(
+                f'[warning]{failure} Retrying in {delay:.1f}s '
+                f'({attempt + 1}/{retries}).[/warning]',
+            )
+            time.sleep(delay)
+
+        # Out of retries. A FAILED body is still a valid answer, so hand it back
+        # and let the caller raise PolygonRequestFailedException with Polygon's
+        # own wording; anything else has no answer to report.
+        if last_response is not None:
+            return last_response
+        console.console.print(f'[error]{failure}[/error]')
+        console.console.print(
+            '[error]Giving up after too many retries. Polygon may be throttling or down -- '
+            'try again later, or raise [item]RBX_POLYGON_MIN_INTERVAL[/item] to go slower.[/error]',
+        )
+        raise typer.Exit(1)
+
+    def _post(self):
+        """Signs the arguments and performs the actual HTTP request."""
         args = list(self.args)
         args.append(('apiKey', self.config.api_key))
         args.append(('time', str(int(time.time()))))
@@ -1229,8 +1297,11 @@ class Request:
                 ),
             )
         )
-        response = requests.post(self.config.api_url + self.method_name, files=args)
-        return response.text
+        return requests.post(
+            self.config.api_url + self.method_name,
+            files=args,
+            timeout=throttling.request_timeout(),
+        )
 
     def get_api_signature(self, args, api_secret):
         rand_bit = Request._value_to_utf8_bytes(
