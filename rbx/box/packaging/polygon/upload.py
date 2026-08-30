@@ -47,7 +47,7 @@ _RAW_TEST_SIZE_LIMIT = 1024 * 1024
 
 # Polygon silently drops every character outside this set from a file or solution
 # name and still reports success, so a source such as ``sol_n+m.cpp`` is stored
-# under a different name than the one we asked for (#835).
+# under a different name than the one we asked for (#829).
 _POLYGON_UNSAFE_NAME_CHARS = re.compile(r'[^A-Za-z0-9._-]')
 
 

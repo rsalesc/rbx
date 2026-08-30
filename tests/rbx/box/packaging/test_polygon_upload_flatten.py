@@ -74,7 +74,7 @@ def test_build_namespace_same_basename_solutions_get_distinct_names(testing_pkg)
 
 
 def test_build_namespace_sanitizes_names_polygon_would_rewrite(testing_pkg):
-    # #835: Polygon silently strips characters outside [A-Za-z0-9._-] from the
+    # #829: Polygon silently strips characters outside [A-Za-z0-9._-] from the
     # names it stores, so rbx must ask for a name Polygon keeps verbatim.
     _bare_checker(testing_pkg)
     testing_pkg.add_file('sols/gap_n+m.cpp').write_text('int main(){}\n')
