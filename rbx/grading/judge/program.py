@@ -96,7 +96,59 @@ class ProgramParams:
     pipesize: int = -1
 
 
+def enforces_address_space() -> bool:
+    """Whether an ``RLIMIT_AS`` is imposed on the programs rbx spawns.
+
+    Linux only, deliberately. Darwin is left out for the same reason it is left
+    out of the stack limit -- it does not honour the request the way Linux does
+    -- and there `ru_maxrss` is already the child's exact peak (see
+    `maxrss_inherits_parent`), so the RSS watchdog needs no backstop.
+    """
+    return sys.platform == 'linux'
+
+
+def address_space_hard_limit() -> Optional[int]:
+    """This machine's ceiling on ``RLIMIT_AS``, in bytes, or ``None`` for none.
+
+    ``None`` also covers "not enforced on this platform at all", so a caller can
+    treat an absent ceiling and an absent limit alike.
+    """
+    if not enforces_address_space():
+        return None
+    try:
+        _, hard = resource.getrlimit(resource.RLIMIT_AS)
+    except (ValueError, OSError):
+        return None
+    if hard == resource.RLIM_INFINITY:
+        return None
+    return hard
+
+
+def effective_address_space(memory_limit: Optional[int]) -> Optional[int]:
+    """The ``RLIMIT_AS`` a program under `memory_limit` MiB actually runs with,
+    in bytes, or ``None`` when no cap is imposed.
+
+    Clamped to the hard limit rather than left to fail, exactly as the stack
+    limit is: a refused `setrlimit` in the forked child leaves the *inherited*
+    soft limit in place, which is usually no limit at all -- silently dropping
+    the cap is worse than enforcing a lower one. `steps.py` warns when this
+    clamp actually bites, so the degradation is never silent.
+    """
+    if memory_limit is None or not enforces_address_space():
+        return None
+    limit = memory_limit * 1024 * 1024
+    hard = address_space_hard_limit()
+    if hard is not None and hard < limit:
+        return hard
+    return limit
+
+
 def get_preexec_fn(params: ProgramParams):
+    # Resolved out here, in the parent: `preexec_fn` runs between fork and exec,
+    # where the interpreter must do nothing that could allocate or raise -- least
+    # of all once RLIMIT_AS is in force.
+    address_space = effective_address_space(params.memory_limit)
+
     def preexec_fn():
         os.setpgid(0, params.pgid or 0)
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
@@ -133,6 +185,14 @@ def get_preexec_fn(params: ProgramParams):
                 # Asking for more than the hard limit allows; fall back to
                 # whatever the process already inherited.
                 pass
+
+        # Last, and it has to stay last: from here on every allocation this
+        # forked child makes is charged against the cap, so nothing may run
+        # after it. It follows RLIMIT_STACK on purpose too -- RLIMIT_AS bounds
+        # the stack as well, so a `stackLimit` above the memory limit is capped
+        # by this one in practice.
+        if address_space is not None:
+            resource.setrlimit(resource.RLIMIT_AS, (address_space, address_space))
 
     return preexec_fn
 

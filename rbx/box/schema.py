@@ -180,6 +180,15 @@ class ExpectedOutcome(AutoEnum):
 
     Especially useful for environments where TLE and RTE are indistinguishable."""
 
+    MLE_OR_RTE = alias('mle or rte', 'mle/rte', 'mle+rte', 'ml or re', 'ml+re')  # type: ignore
+    """Expected outcome for solutions that finish with either MLE or RTE.
+
+    Which of the two a memory-hungry solution gets depends on how the memory limit is
+    enforced, and that differs by platform: on Linux the address space is capped, so the
+    allocation fails inside the program and it dies of a runtime error, while on macOS
+    the solution is killed once its resident memory crosses the limit. Use this to
+    declare a solution that exceeds the memory limit without pinning it to one of them."""
+
     JUDGE_FAILED = alias('judge failed', 'jf')  # type: ignore
     """Expected outcome for solutions that finish with a judge failed verdict.
     
@@ -281,6 +290,11 @@ class ExpectedOutcome(AutoEnum):
             return outcome == Outcome.MEMORY_LIMIT_EXCEEDED
         if self == ExpectedOutcome.TLE_OR_RTE:
             return outcome in {Outcome.RUNTIME_ERROR} or outcome.is_slow()
+        if self == ExpectedOutcome.MLE_OR_RTE:
+            return outcome in {
+                Outcome.RUNTIME_ERROR,
+                Outcome.MEMORY_LIMIT_EXCEEDED,
+            }
         if self == ExpectedOutcome.OUTPUT_LIMIT_EXCEEDED:
             return outcome == Outcome.OUTPUT_LIMIT_EXCEEDED
         if self == ExpectedOutcome.JUDGE_FAILED:

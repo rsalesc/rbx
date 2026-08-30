@@ -87,6 +87,7 @@ nav:
       - "Generators and rbx.h": "generators-and-rbx-h.md"
       - "cpp-on-macos.md"
       - "stack-limit.md"
+      - "memory-limit.md"
       - "intro/windows-git.md"
       - "Migrating to rbx v1": "migrating-to-v1.md"
 theme:

@@ -346,16 +346,21 @@ class TestProgram:
         assert ProgramCode.TO in result.program_codes
         assert result.wall_time >= 0.5
 
-    def test_memory_limit(self, memory_hog_program):
-        """Test memory limit enforcement."""
+    def test_memory_limit_stops_the_program(self, memory_hog_program):
+        """A program over its memory limit does not run to completion.
+
+        *How* it is stopped is platform-specific -- killed by the RSS watchdog on
+        macOS, dead from a failed allocation under `RLIMIT_AS` on Linux -- so the
+        verdict itself is pinned in `grading/memory_limit_platform_test.py`. What
+        holds everywhere is that it does not succeed.
+        """
         params = ProgramParams(memory_limit=10)  # 10 MB limit
         command = [sys.executable, str(memory_hog_program)]
 
         program = Program(command, params)
         result = program.wait()
 
-        # Should be killed due to memory limit
-        assert ProgramCode.ML in result.program_codes
+        assert result.exitcode != 0
 
     def test_output_limit(self, output_large_program, tmp_path):
         """Test file size limit enforcement."""
@@ -429,7 +434,10 @@ class TestProgram:
 
     def test_multiple_program_codes(self, tmp_path):
         """Test that multiple program codes can be set simultaneously."""
-        # Create a program that will exceed both time and memory limits
+        # Create a program that will exceed both the time and the wall limits.
+        # Deliberately no memory limit: a cap low enough to be interesting is,
+        # under `RLIMIT_AS`, one the interpreter cannot even start within, so the
+        # program would die before violating anything else.
         test_script = tmp_path / 'multi_limit_test.py'
         test_script.write_text("""
 import time
@@ -441,7 +449,6 @@ for i in range(1000000):
 
         params = ProgramParams(
             time_limit=0.1,
-            memory_limit=1,  # 1 MB
             wall_time_limit=0.2,
         )
         command = [sys.executable, str(test_script)]
@@ -762,6 +769,117 @@ class TestProgramMocks:
         fs_call = calls[2]
         assert fs_call[0][0] == resource_module.RLIMIT_FSIZE
 
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'linux')
+    def test_preexec_fn_applies_address_space_limit_on_linux(self, mock_setrlimit, _):
+        import resource as resource_module
+
+        with mock.patch(
+            'resource.getrlimit',
+            return_value=(
+                resource_module.RLIM_INFINITY,
+                resource_module.RLIM_INFINITY,
+            ),
+        ):
+            get_preexec_fn(ProgramParams(memory_limit=256))()
+
+        as_calls = [
+            call
+            for call in mock_setrlimit.call_args_list
+            if call[0][0] == resource_module.RLIMIT_AS
+        ]
+        assert len(as_calls) == 1
+        assert as_calls[0][0][1] == (256 * 1024 * 1024, 256 * 1024 * 1024)
+
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'linux')
+    def test_address_space_limit_is_set_last(self, mock_setrlimit, _):
+        """Nothing may run after the cap: an allocation past it would fail in the
+        forked child, between fork and exec."""
+        import resource as resource_module
+
+        with mock.patch(
+            'resource.getrlimit',
+            return_value=(
+                resource_module.RLIM_INFINITY,
+                resource_module.RLIM_INFINITY,
+            ),
+        ):
+            get_preexec_fn(
+                ProgramParams(time_limit=1.0, fs_limit=1000, memory_limit=256)
+            )()
+
+        assert mock_setrlimit.call_args_list[-1][0][0] == resource_module.RLIMIT_AS
+
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'linux')
+    def test_preexec_fn_clamps_address_space_to_the_hard_limit(self, mock_setrlimit, _):
+        import resource as resource_module
+
+        def getrlimit(which: int):
+            if which == resource_module.RLIMIT_AS:
+                return (
+                    resource_module.RLIM_INFINITY,
+                    64 * 1024 * 1024,
+                )
+            return (
+                resource_module.RLIM_INFINITY,
+                resource_module.RLIM_INFINITY,
+            )
+
+        with mock.patch('resource.getrlimit', side_effect=getrlimit):
+            get_preexec_fn(ProgramParams(memory_limit=256))()
+
+        as_calls = [
+            call
+            for call in mock_setrlimit.call_args_list
+            if call[0][0] == resource_module.RLIMIT_AS
+        ]
+        assert len(as_calls) == 1
+        assert as_calls[0][0][1] == (64 * 1024 * 1024, 64 * 1024 * 1024)
+
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'linux')
+    def test_preexec_fn_skips_address_space_without_a_memory_limit(
+        self, mock_setrlimit, _
+    ):
+        import resource as resource_module
+
+        with mock.patch(
+            'resource.getrlimit',
+            return_value=(
+                resource_module.RLIM_INFINITY,
+                resource_module.RLIM_INFINITY,
+            ),
+        ):
+            get_preexec_fn(ProgramParams(time_limit=1.0))()
+
+        assert not [
+            call
+            for call in mock_setrlimit.call_args_list
+            if call[0][0] == resource_module.RLIMIT_AS
+        ]
+
+    @mock.patch('os.setpgid')
+    @mock.patch('resource.setrlimit')
+    @mock.patch('sys.platform', 'darwin')
+    def test_preexec_fn_ignores_address_space_on_darwin(self, mock_setrlimit, _):
+        """macOS keeps the RSS watchdog as the only enforcement, so a program
+        that reserves what it never touches is not charged for it."""
+        import resource as resource_module
+
+        get_preexec_fn(ProgramParams(memory_limit=256))()
+
+        assert not [
+            call
+            for call in mock_setrlimit.call_args_list
+            if call[0][0] == resource_module.RLIMIT_AS
+        ]
+
     @mock.patch('psutil.Process')
     def test_handle_alarm_cpu_limit(self, mock_process_class):
         """Test _handle_alarm correctly detects CPU time limit violations."""
@@ -962,7 +1080,11 @@ class TestMaxrssCorrection:
 
         A program peaking at 96 MB is over its 32 MB limit and under the parent's
         150 MB, which is exactly where ru_maxrss carries no information about the
-        child. The RSS sampler has to catch it before it exits.
+        child. It has to be caught before it exits regardless.
+
+        Which mechanism catches it differs by platform -- the RSS sampler on
+        macOS, `RLIMIT_AS` on Linux -- so the resulting code is asserted in
+        `grading/memory_limit_platform_test.py` rather than here.
         """
         script = testdata_path / 'steps_run_test' / 'memory_heavy.py'
         ballast = bytearray(150 * 1024 * 1024)
@@ -975,4 +1097,4 @@ class TestMaxrssCorrection:
         finally:
             del ballast
 
-        assert ProgramCode.ML in result.program_codes
+        assert result.exitcode != 0

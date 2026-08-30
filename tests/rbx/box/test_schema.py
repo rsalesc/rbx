@@ -1041,3 +1041,41 @@ class TestExpectedOutcomeMatch:
 
     def test_disjoint_bad_expectations_do_not_intersect(self):
         assert not ExpectedOutcome.WRONG_ANSWER.intersect(ExpectedOutcome.RUNTIME_ERROR)
+
+
+class TestMleOrRte:
+    """The expectation for a solution whose verdict depends on how the memory
+    limit is enforced -- MLE where an RSS watchdog kills it, RTE where
+    `RLIMIT_AS` makes its allocation fail."""
+
+    @pytest.mark.parametrize(
+        'outcome',
+        [Outcome.MEMORY_LIMIT_EXCEEDED, Outcome.RUNTIME_ERROR],
+    )
+    def test_matches_both_ways_a_memory_limit_is_enforced(self, outcome: Outcome):
+        assert ExpectedOutcome.MLE_OR_RTE.match(outcome)
+
+    @pytest.mark.parametrize(
+        'outcome',
+        [
+            Outcome.ACCEPTED,
+            Outcome.WRONG_ANSWER,
+            Outcome.TIME_LIMIT_EXCEEDED,
+            Outcome.OUTPUT_LIMIT_EXCEEDED,
+        ],
+    )
+    def test_does_not_match_anything_else(self, outcome: Outcome):
+        # Excluding TLE is the whole point: the fixture that uses this
+        # expectation exists to catch an ML/TLE race (#807).
+        assert not ExpectedOutcome.MLE_OR_RTE.match(outcome)
+
+    @pytest.mark.parametrize(
+        'value', ['MLE_OR_RTE', 'mle or rte', 'mle/rte', 'mle+rte', 'ml or re', 'ml+re']
+    )
+    def test_every_declared_spelling_resolves(self, value: str):
+        assert ExpectedOutcome(value) == ExpectedOutcome.MLE_OR_RTE
+
+    def test_it_is_not_reported_as_slow(self):
+        # Unlike TLE_OR_RTE, nothing here is a timing verdict, so it must not be
+        # excluded from time-limit estimation as a slow expectation.
+        assert not ExpectedOutcome.MLE_OR_RTE.is_slow()

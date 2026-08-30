@@ -22,6 +22,7 @@ from rbx.box.sanitizers import issue_stack
 from rbx.config import get_bits_stdcpp
 from rbx.console import console
 from rbx.grading import grading_context
+from rbx.grading.judge import program
 from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.judge.program import ProgramError, ProgramNotFoundError
 from rbx.grading.judge.sandbox import (
@@ -639,15 +640,103 @@ def _maybe_complain_about_stack_limit(params: SandboxParams) -> None:
     _complain_about_stack_limit(params.stack_space)
 
 
+_MEMORY_LIMIT_DOCS = 'https://rbx.rsalesc.dev/memory-limit/'
+
+
+class MemoryLimitNotHonoredIssue(issue_stack.Issue):
+    """A `memoryLimit` this machine's hard `RLIMIT_AS` will not let rbx apply.
+
+    `hard_limit` is the ceiling used instead, in bytes. There is no macOS arm
+    here, unlike `StackLimitNotHonoredIssue`: off Linux the limit is still
+    enforced, just by the RSS watchdog rather than by `RLIMIT_AS`, so there is
+    nothing to warn about.
+    """
+
+    def __init__(self, requested_mib: int, hard_limit: int):
+        self.requested_mib = requested_mib
+        self.hard_limit = hard_limit
+
+    def get_detailed_section(self) -> Optional[Tuple[str, ...]]:
+        return ('memory limit',)
+
+    def get_overview_section(self) -> Optional[Tuple[str, ...]]:
+        return ('memory limit',)
+
+    def get_detailed_message(self) -> str:
+        from rbx.box.formatting import get_formatted_memory
+
+        requested = get_formatted_memory(self.requested_mib * 1024 * 1024)
+        effective = get_formatted_memory(self.hard_limit)
+        # As with the stack limit, the claim that programs run *with* the hard
+        # limit depends on `effective_address_space` clamping down to it instead
+        # of letting `setrlimit` be refused. Do not revert one without the other.
+        return (
+            f'[item]memoryLimit[/item] is set to [item]{requested}[/item], but this '
+            f"machine's hard address-space limit is [item]{effective}[/item], so "
+            f'programs run with [item]{effective}[/item]. See '
+            f'[item]{_MEMORY_LIMIT_DOCS}[/item].'
+        )
+
+    def get_overview_message(self) -> str:
+        return self.get_detailed_message()
+
+    def get_severity(self) -> issue_stack.IssueSeverity:
+        return issue_stack.IssueSeverity.WARNING
+
+
+@functools.cache
+def _complain_about_memory_limit(address_space: int) -> None:
+    """Back half of `_maybe_complain_about_memory_limit`, cached.
+
+    Cached for the same reasons `_complain_about_stack_limit` is -- see its
+    docstring for why keying on the plain limit and caching for the process are
+    both safe.
+    """
+    hard = program.address_space_hard_limit()
+    if hard is None:
+        # No ceiling, or a platform where RLIMIT_AS is not imposed at all. Either
+        # way the configured limit is the one that is enforced.
+        return
+    if hard >= address_space * 1024 * 1024:
+        return
+
+    issue_stack.add_issue(MemoryLimitNotHonoredIssue(address_space, hard))
+
+
+def _maybe_complain_about_memory_limit(params: SandboxParams) -> None:
+    """Diagnose a `memoryLimit` the machine's hard `RLIMIT_AS` will not allow.
+
+    `effective_address_space` clamps down to the hard limit rather than let the
+    `setrlimit` be refused -- a refused call would leave the child with no cap at
+    all -- so a too-high `memoryLimit` degrades silently into a *stricter* one,
+    and the solutions it then kills look like ordinary allocation failures.
+
+    Call this *after* `_relax_limits_for_jvm`, which drops the limit outright for
+    JVM commands: there is nothing left to complain about by then.
+    """
+    if params.address_space is None:
+        # No limit configured, or one deliberately dropped (JVM, sanitizers).
+        return
+
+    from rbx.box import state
+
+    if not state.STATE.run_through_cli:
+        # Same gate, and the same reasoning, as the stack limit warning above.
+        return
+
+    _complain_about_memory_limit(params.address_space)
+
+
 def _finalize_limits(command: str, params: SandboxParams) -> None:
     """Settle the limits a program will actually run under, and complain if they
     are not the ones that were asked for.
 
-    The order matters: the JVM carve-out drops the stack limit, and a limit that
-    was dropped is not one worth warning about.
+    The order matters: the JVM carve-out drops both the stack and the memory
+    limit, and a limit that was dropped is not one worth warning about.
     """
     _relax_limits_for_jvm(command, params)
     _maybe_complain_about_stack_limit(params)
+    _maybe_complain_about_memory_limit(params)
 
 
 def get_exe_from_command(command: str) -> str:
