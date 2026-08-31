@@ -3,9 +3,8 @@ import pathlib
 import re
 from typing import Dict, Iterable, List, Optional, Set
 
-from rbx import utils
 from rbx.box import generator_script_handlers as gsh
-from rbx.box import package, package_utils
+from rbx.box import package, package_utils, yaml_include
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.schema import GeneratorScript, TestcaseGroup
 
@@ -189,18 +188,16 @@ def create_manual_group(name: str, glob: str) -> TestcaseGroup:
     """
     pathlib.Path(glob).parent.mkdir(parents=True, exist_ok=True)
 
-    ru, problem_yml = package.get_ruyaml()
-    if 'testcases' not in problem_yml:
-        problem_yml['testcases'] = []
-    problem_yml['testcases'].append(
-        {
-            'name': name,
-            'testcaseGlob': glob,
-        }
-    )
     dest = package.find_problem_yaml()
     assert dest is not None
-    utils.save_ruyaml(dest, ru, problem_yml)
+    # `testcases` may live in an `!include`d fragment; edit whichever file owns it.
+    target = yaml_include.open_for_edit(dest, 'testcases')
+    entry = {'name': name, 'testcaseGlob': glob}
+    if target.value is None:
+        target.replace([entry])
+    else:
+        target.value.append(entry)
+    target.save()
     package_utils.clear_package_cache()
 
     return TestcaseGroup(name=name, testcaseGlob=glob)
@@ -224,18 +221,15 @@ def create_script_group(path: pathlib.Path) -> TestcaseGroup:
     path.touch()
 
     name = path.stem
-    ru, problem_yml = package.get_ruyaml()
-    if 'testcases' not in problem_yml:
-        problem_yml['testcases'] = []
-    problem_yml['testcases'].append(
-        {
-            'name': name,
-            'generatorScript': {'path': str(path)},
-        }
-    )
     dest = package.find_problem_yaml()
     assert dest is not None
-    utils.save_ruyaml(dest, ru, problem_yml)
+    target = yaml_include.open_for_edit(dest, 'testcases')
+    entry = {'name': name, 'generatorScript': {'path': str(path)}}
+    if target.value is None:
+        target.replace([entry])
+    else:
+        target.value.append(entry)
+    target.save()
     package_utils.clear_package_cache()
 
     return TestcaseGroup(name=name, generatorScript=GeneratorScript(path=path))

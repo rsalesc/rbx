@@ -12,7 +12,7 @@ import syncer
 import typer
 
 from rbx import annotations, console, utils
-from rbx.box import cd, creation, naming, presets, summary
+from rbx.box import cd, creation, naming, presets, summary, yaml_include
 from rbx.box.contest import (
     contest_package,
     contest_state,
@@ -311,18 +311,26 @@ def add(
         )
         raise typer.Exit(1)
 
+    dest = find_contest_yaml()
+    assert dest is not None
+
+    # `problems` may live in an `!include`d fragment; edit whichever file owns
+    # it. Resolved and confirmed BEFORE creating anything on disk, so declining
+    # a shared edit does not leave an orphaned problem directory behind.
+    target = yaml_include.open_for_edit(dest, 'problems')
+    if not yaml_include.confirm_shared_edit(target, dest, dest.parent):
+        raise typer.Exit(1)
+
     creation.create(name, preset=preset, path=pathlib.Path(path), variant=variant)
 
     contest_pkg = find_contest_package_or_die()
-
-    ru, contest = contest_package.get_ruyaml()
 
     item = {
         'short_name': short_name,
         'path': path,
     }
-    if 'problems' not in contest or not contest_pkg.problems:
-        contest['problems'] = [item]
+    if target.value is None or not contest_pkg.problems:
+        target.replace([item])
     else:
         idx = 0
         while (
@@ -330,11 +338,9 @@ def add(
             and contest_pkg.problems[idx].short_name <= short_name
         ):
             idx += 1
-        contest['problems'].insert(idx, item)
+        target.value.insert(idx, item)
 
-    dest = find_contest_yaml()
-    assert dest is not None
-    utils.save_ruyaml(dest, ru, contest)
+    target.save()
 
     console.console.print(
         f'Problem [item]{name} ({short_name})[/item] added to contest at [item]{path}[/item].'
@@ -365,12 +371,15 @@ def remove(path_or_short_name: str):
         )
         raise typer.Exit(1)
 
-    ru, contest = contest_package.get_ruyaml()
-
-    del contest['problems'][removed_problem_idx]
     dest = find_contest_yaml()
     assert dest is not None
-    utils.save_ruyaml(dest, ru, contest)
+
+    target = yaml_include.open_for_edit(dest, 'problems')
+    del target.value[removed_problem_idx]
+
+    if not yaml_include.confirm_shared_edit(target, dest, dest.parent):
+        raise typer.Exit(1)
+    target.save()
 
     shutil.rmtree(str(removed_problem.path), ignore_errors=True)
     console.console.print(

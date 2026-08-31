@@ -133,7 +133,9 @@ def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml
     if problem_yaml_path is None:
         console.console.print(f'[error]Problem not found in {root.absolute()}[/error]')
         raise typer.Exit(1)
-    res = ruyaml.YAML()
+    # Include-tolerant: plain ruyaml raises on `<<: !include`, and callers of
+    # this only navigate the tree.
+    res = yaml_include.make_yaml()
     return res, res.load(problem_yaml_path.read_text())
 
 

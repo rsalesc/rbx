@@ -17,15 +17,18 @@ diagnostics can name the fragment that actually owns an error.
 
 from __future__ import annotations
 
+import dataclasses
 import pathlib
-from typing import Any, Optional, Set, Tuple
+from typing import Any, List, Optional, Set, Tuple
 
 import ruyaml
+import typer
 from ruyaml.comments import CommentedMap, CommentedSeq
 from ruyaml.constructor import RoundTripConstructor
 from ruyaml.nodes import ScalarNode
 
 from rbx.box.exception import RbxException
+from rbx.console import console
 
 INCLUDE_TAG = '!include'
 MERGE_TAG = 'tag:yaml.org,2002:merge'
@@ -236,13 +239,274 @@ def file_has_includes(path: pathlib.Path) -> bool:
     return _any_include(tree)
 
 
-def die_if_write_would_inline_includes(path: pathlib.Path) -> None:
-    """Refuse to re-serialise a config that uses `!include`.
+@dataclasses.dataclass
+class EditTarget:
+    """A value to edit, in whichever file actually owns it.
 
-    Writers such as `rbx contest add` rebuild the file from the Pydantic model,
-    where includes no longer exist -- writing that back would inline every
-    fragment and silently undo the sharing. Until those writers can route an
-    edit into the fragment that owns it, refuse and say which file to edit.
+    Resolution follows `!include` tags, so `path` is the fragment the value
+    lives in rather than the file the caller started from. Mutate `value` in
+    place (it is a live round-trip node, so comments survive) or call
+    `replace`; either marks the owning file dirty. Then `save`.
+    """
+
+    session: 'EditSession'
+    path: pathlib.Path
+    # Container and key holding the value, or None when the value *is* the
+    # document root of `path`.
+    parent: Optional[Any]
+    key: Optional[Any]
+
+    @property
+    def value(self) -> Any:
+        """The node to edit, or None when the key is not present yet."""
+        if self.parent is None:
+            node = self.session.tree(self.path)
+        elif self.key not in self.parent:
+            return None
+        else:
+            node = self.parent[self.key]
+        # Mutating a container in place cannot notify us, so assume any read of
+        # a mutable node is about to change it.
+        if isinstance(node, (CommentedMap, CommentedSeq)):
+            self.session.mark_dirty(self.path)
+        return node
+
+    def replace(self, new_value: Any) -> None:
+        self.session.mark_dirty(self.path)
+        if self.parent is None:
+            self.session.set_tree(self.path, new_value)
+        else:
+            self.parent[self.key] = new_value
+
+    def save(self) -> None:
+        """Write every file this target's session touched."""
+        self.session.save()
+
+
+def _merge_include_sources(node: CommentedMap) -> List[str]:
+    return [
+        node[key].value
+        for key in node.keys()
+        if _is_merge_key(key) and is_include(node[key])
+    ]
+
+
+class EditSession:
+    """Targeted, include-aware edits across one config and its fragments.
+
+    A config's values can live in several files, and one logical change may
+    touch more than one of them. The session keeps a single round-trip tree per
+    file, so two edits to the same file cannot clobber each other, and writes
+    only the files an edit actually touched.
+    """
+
+    def __init__(self, path: pathlib.Path):
+        self.root_path = path.resolve()
+        self.yaml = make_yaml()
+        self._trees: dict = {}
+        self._dirty: Set[pathlib.Path] = set()
+
+    def tree(self, path: pathlib.Path) -> Any:
+        path = path.resolve()
+        if path not in self._trees:
+            self._trees[path] = self.yaml.load(path.read_text())
+        return self._trees[path]
+
+    def set_tree(self, path: pathlib.Path, value: Any) -> None:
+        self._trees[path.resolve()] = value
+
+    def mark_dirty(self, path: pathlib.Path) -> None:
+        self._dirty.add(path.resolve())
+
+    def touched_files(self) -> Set[pathlib.Path]:
+        """Every file `save` would write."""
+        return set(self._dirty)
+
+    def _follow_includes(
+        self, node: Any, base_dir: pathlib.Path, stack: IncludeStack
+    ) -> Tuple[Any, pathlib.Path, IncludeStack]:
+        """Resolve a chain of `!include`s, returning the node and its owner."""
+        while is_include(node):
+            target = _resolve_path(node.value, base_dir, stack)
+            stack = stack + (target,)
+            node = self.tree(target)
+            base_dir = target.parent
+        return node, stack[-1], stack
+
+    def target(self, *keys: Any) -> EditTarget:
+        """Descend `keys` from the root file, crossing into fragments.
+
+        Raises IncludeError when a fragment cannot be read, or when the
+        requested key exists only by way of a `<<: !include` merge -- the value
+        lives in the fragment's map, and rbx will not guess whether the caller
+        meant to edit the shared value or shadow it here.
+        """
+        stack: IncludeStack = (self.root_path,)
+        node, owner, stack = self._follow_includes(
+            self.tree(self.root_path), self.root_path.parent, stack
+        )
+        parent: Optional[Any] = None
+        key: Optional[Any] = None
+
+        for index, seg in enumerate(keys):
+            if isinstance(node, CommentedMap) and seg not in node:
+                merged_from = _merge_include_sources(node)
+                if merged_from:
+                    with IncludeError() as err:
+                        err.print(
+                            f'[error]Cannot edit [item]'
+                            f'{".".join(str(k) for k in keys)}[/item] in [item]'
+                            f'{self.root_path}[/item]: [item]{seg}[/item] is not set '
+                            f'there and would come from [item]'
+                            f'{", ".join(merged_from)}[/item] via `<<: !include`.'
+                            f'[/error]\n'
+                            f'[warning]Edit that fragment directly, or set '
+                            f'[item]{seg}[/item] explicitly here first.[/warning]'
+                        )
+                if index == len(keys) - 1:
+                    # A brand new key: the caller may create it with `replace`.
+                    return EditTarget(self, owner, node, seg)
+                with IncludeError() as err:
+                    err.print(
+                        f'[error][item]{seg}[/item] is not set in [item]'
+                        f'{self.root_path}[/item].[/error]'
+                    )
+
+            parent, key = node, seg
+            node = node[seg]
+            resolved, owner_candidate, stack = self._follow_includes(
+                node, owner.parent, stack
+            )
+            if resolved is not node:
+                # The value came from a fragment: continue there, and forget the
+                # parent -- the fragment's document root *is* the value.
+                node, owner = resolved, owner_candidate
+                parent, key = None, None
+
+        return EditTarget(self, owner, parent, key)
+
+    def save(self) -> None:
+        for path in sorted(self._dirty):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open('w') as handle:
+                self.yaml.dump(self._trees[path], handle)
+        self._dirty.clear()
+
+
+def open_for_edit(path: pathlib.Path, *keys: Any) -> EditTarget:
+    """Open `path`, descend `keys`, and return a handle on the owning file.
+
+    Convenience wrapper around a single-target `EditSession`; use the session
+    directly when one change touches several keys.
+    """
+    return EditSession(path).target(*keys)
+
+
+CONTEST_GLOB = 'contest*.rbx.yml'
+
+
+def _include_closure(path: pathlib.Path) -> Set[pathlib.Path]:
+    """Every file `path` reaches through includes, itself included.
+
+    Best-effort: an unresolvable or unparseable include stops that branch
+    rather than raising, so a broken sibling cannot break a scan over many.
+    """
+    seen: Set[pathlib.Path] = set()
+
+    def walk(current: pathlib.Path) -> None:
+        current = current.resolve()
+        if current in seen or not current.is_file():
+            return
+        seen.add(current)
+        try:
+            tree = make_yaml().load(current.read_text())
+        except (OSError, ruyaml.YAMLError):
+            return
+        for raw in _include_targets(tree):
+            candidate = pathlib.Path(raw)
+            if candidate.is_absolute():
+                continue
+            walk(current.parent / candidate)
+
+    walk(path)
+    return seen
+
+
+def _include_targets(node: Any) -> List[str]:
+    if is_include(node):
+        return [node.value]
+    found: List[str] = []
+    if isinstance(node, CommentedMap):
+        for key in node.keys():
+            found.extend(_include_targets(node[key]))
+    elif isinstance(node, CommentedSeq):
+        for item in node:
+            found.extend(_include_targets(item))
+    return found
+
+
+def including_files(
+    fragment: pathlib.Path,
+    search_root: pathlib.Path,
+    glob: str = CONTEST_GLOB,
+) -> List[pathlib.Path]:
+    """Every config under `search_root` that reaches `fragment` via includes.
+
+    Used to report the blast radius before editing a shared fragment.
+    """
+    fragment = fragment.resolve()
+    reachers = [
+        candidate
+        for candidate in sorted(search_root.glob(glob))
+        if candidate.resolve() != fragment and fragment in _include_closure(candidate)
+    ]
+    return reachers
+
+
+def confirm_shared_edit(
+    target: EditTarget,
+    started_from: pathlib.Path,
+    search_root: pathlib.Path,
+    yes: bool = False,
+) -> bool:
+    """Report the blast radius of editing a shared fragment and confirm.
+
+    Returns True when the edit should proceed. Silent (and True) when the
+    target is the file the caller started from, or when no other config
+    reaches it.
+    """
+    if target.path == started_from.resolve():
+        return True
+    reachers = including_files(target.path, search_root)
+    others = [path for path in reachers if path.resolve() != started_from.resolve()]
+    try:
+        shown = target.path.relative_to(search_root)
+    except ValueError:
+        shown = target.path
+    if not others:
+        console.print(f'Editing [item]{shown}[/item].')
+        return True
+
+    names = ', '.join(sorted(path.name for path in reachers))
+    console.print(
+        f'[warning]Editing [item]{shown}[/item], which is included by '
+        f'{len(reachers)} contests: {names}.[/warning]'
+    )
+    if yes:
+        return True
+    return typer.confirm('Proceed?', default=True)
+
+
+def die_if_write_would_inline_includes(path: pathlib.Path) -> None:
+    """Refuse to re-serialise a whole config that uses `!include`.
+
+    A writer that rebuilds a file from its Pydantic model loses the includes --
+    they do not survive validation -- so writing that back inlines every
+    fragment and silently undoes the sharing.
+
+    Targeted writers do not need this: `EditSession` navigates the round-trip
+    tree and lands each edit in the file that owns it. This guards the
+    whole-model writers, which have no way to know where a value came from.
     """
     if not file_has_includes(path):
         return

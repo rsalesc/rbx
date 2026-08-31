@@ -336,5 +336,7 @@ def get_ruyaml(
     if contest_yaml_path is None:
         console.console.print(f'[error]Contest not found in {root.absolute()}[/error]')
         raise typer.Exit(1)
-    res = ruyaml.YAML()
+    # Include-tolerant: plain ruyaml raises on `<<: !include`, and callers of
+    # this only navigate the tree.
+    res = yaml_include.make_yaml()
     return res, res.load(contest_yaml_path.read_text())
