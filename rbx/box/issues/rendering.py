@@ -304,6 +304,13 @@ def print_contest_report(rows: List[ContestIssueRow], detailed: bool = False) ->
     console.console.print(table)
 
     if not detailed:
+        # Only when there is something to expand: the table names one issue per
+        # problem, so a contest with findings is exactly the case where the
+        # reader needs telling that the rest are a flag away.
+        if any(row.report.issues for row in rows if not row.failed_to_load):
+            console.console.print(
+                '[info]Run [item]rbx contest issues -d[/item] to expand these.[/info]'
+            )
         return
 
     for row in rows:

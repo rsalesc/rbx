@@ -10,8 +10,10 @@ import json
 import pathlib
 import time
 import typing
+from unittest import mock
 
 import pytest
+import rich.console
 import yaml
 
 from rbx.box import run_report
@@ -577,3 +579,46 @@ class TestJsonOutput:
         )
 
         assert parsed == report
+
+
+class TestContestHint:
+    """The contest table shows one issue per problem, so it has to say how to
+    see the rest -- but only when there is a rest to see."""
+
+    def _render(self, rows, detailed=False) -> str:
+        recorder = rich.console.Console(record=True, width=200)
+        with mock.patch.object(rendering.console, 'console', recorder):
+            rendering.print_contest_report(rows, detailed=detailed)
+        return recorder.export_text()
+
+    def _row_with_issues(self) -> schema.ContestIssueRow:
+        return schema.ContestIssueRow(
+            short_name='A',
+            name='paths',
+            report=schema.IssueReport(
+                ranAt=time.time(),
+                issues=[schema.UntunedLimitsIssue(affectedSolutions=['sol/a.cpp'])],
+            ),
+        )
+
+    def test_points_at_detailed_when_a_problem_has_issues(self):
+        assert 'rbx contest issues -d' in self._render([self._row_with_issues()])
+
+    def test_stays_quiet_when_every_problem_is_clean(self):
+        row = schema.ContestIssueRow(
+            short_name='A', name='clean', report=schema.IssueReport(ranAt=time.time())
+        )
+
+        assert 'rbx contest issues -d' not in self._render([row])
+
+    def test_stays_quiet_when_nothing_has_been_run(self):
+        row = schema.ContestIssueRow(
+            short_name='A', name='fresh', report=schema.IssueReport(neverRun=True)
+        )
+
+        assert 'rbx contest issues -d' not in self._render([row])
+
+    def test_does_not_point_at_a_flag_the_reader_already_passed(self):
+        assert 'rbx contest issues -d' not in self._render(
+            [self._row_with_issues()], detailed=True
+        )
