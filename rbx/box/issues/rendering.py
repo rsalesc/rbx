@@ -29,10 +29,16 @@ from rbx.box.issues.schema import (
     CompilationFailedIssue,
     CompilationWarningsIssue,
     ContestIssueRow,
+    EmptyTestGroupIssue,
+    ExplanationMissingLanguageIssue,
     HiddenVerdictIssue,
     Issue,
     IssueReport,
     IssueSeverity,
+    MissingStatementLanguageIssue,
+    NoAcceptedSolutionIssue,
+    NoSamplesIssue,
+    NoValidatorIssue,
     TightTimeMarginIssue,
     UnexpectedScoreIssue,
     UnmetExpectationIssue,
@@ -55,6 +61,15 @@ _SEVERITY_MARKER = {
     IssueSeverity.ERROR: '[error]x[/error]',
     IssueSeverity.WARNING: '[warning]![/warning]',
 }
+
+
+def severity_marker(issue: Issue) -> str:
+    """The `x` or `!` an issue is printed behind.
+
+    Exposed so `rbx summary` can print a findings line that looks exactly like
+    `rbx issues`' without reaching into the private table.
+    """
+    return _SEVERITY_MARKER[issue.severity]
 
 
 def humanize_since(timestamp: Optional[float]) -> str:
@@ -130,6 +145,23 @@ def summarize(issue: Issue) -> str:
         )
     if isinstance(issue, UntunedLimitsIssue):
         return 'the time limit may not be tuned to this machine'
+    if isinstance(issue, NoAcceptedSolutionIssue):
+        return 'no solution is declared as accepted'
+    if isinstance(issue, NoValidatorIssue):
+        return 'the problem has no validator'
+    if isinstance(issue, NoSamplesIssue):
+        return 'the problem has no samples'
+    if isinstance(issue, EmptyTestGroupIssue):
+        return f'test group [item]{issue.group}[/item] has no tests'
+    if isinstance(issue, MissingStatementLanguageIssue):
+        if issue.hasNoStatements:
+            return 'the problem has no statement'
+        return f'no statement for language(s): {", ".join(issue.missing)}'
+    if isinstance(issue, ExplanationMissingLanguageIssue):
+        return (
+            f'sample {issue.sample}: explanation missing for '
+            f'language(s): {", ".join(issue.missing)}'
+        )
     return 'unknown issue'
 
 
@@ -196,23 +228,62 @@ def explain(issue: Issue, runs_dir: Optional[str] = None) -> List[str]:
             f'affected: {", ".join(issue.affectedSolutions)}',
             'run [item]rbx time[/item] to estimate limits here.',
         ]
+    if isinstance(issue, NoAcceptedSolutionIssue):
+        return [
+            'Without an accepted solution nothing establishes what a correct '
+            'output is, so every output this package generates is unverified.',
+            'declare one with [item]outcome: accepted[/item] in '
+            '[item]problem.rbx.yml[/item].',
+        ]
+    if isinstance(issue, NoValidatorIssue):
+        return [
+            'Nothing checks that the generated tests obey the constraints the '
+            'statement promises.',
+        ]
+    if isinstance(issue, MissingStatementLanguageIssue):
+        if issue.hasNoStatements:
+            return []
+        return [
+            f'the contest wants: {", ".join(issue.missing)}',
+        ]
+    if isinstance(issue, ExplanationMissingLanguageIssue):
+        return [
+            f'file: {href(issue.path)}',
+            'A language this file does not define is not an error at build '
+            'time -- the explanation is simply left out of that language, with '
+            'nothing said about it.',
+        ]
     return []
 
 
-def _headline(report: IssueReport) -> str:
-    if report.neverRun:
-        return '[warning]This problem has not been run yet.[/warning]'
-    errors = len(report.errors())
-    warnings = len(report.warnings())
-    when = f'[info](last run {humanize_since(report.ranAt)})[/info]'
-    if not errors and not warnings:
-        return f'[success]No issues.[/success] {when}'
+def _counts(errors: int, warnings: int) -> str:
+    """The `2 error(s), 1 warning(s)` fragment.
+
+    Extracted so the run and never-run headlines cannot come to count the same
+    findings two different ways.
+    """
     parts = []
     if errors:
         parts.append(f'[error]{errors} error(s)[/error]')
     if warnings:
         parts.append(f'[warning]{warnings} warning(s)[/warning]')
-    return f'{", ".join(parts)} {when}'
+    return ', '.join(parts)
+
+
+def _headline(report: IssueReport) -> str:
+    errors = len(report.errors())
+    warnings = len(report.warnings())
+    if report.neverRun:
+        # A never-run problem can still have config findings: those are true
+        # about the package whether or not anything was ever run, so the
+        # headline counts them rather than reporting an empty package.
+        if not errors and not warnings:
+            return '[warning]This problem has not been run yet.[/warning]'
+        return f'{_counts(errors, warnings)} [warning](not run yet)[/warning]'
+    when = f'[info](last run {humanize_since(report.ranAt)})[/info]'
+    if not errors and not warnings:
+        return f'[success]No issues.[/success] {when}'
+    return f'{_counts(errors, warnings)} {when}'
 
 
 def print_report(report: IssueReport, detailed: bool = False) -> None:
@@ -220,7 +291,10 @@ def print_report(report: IssueReport, detailed: bool = False) -> None:
     console.console.print(_headline(report))
     if report.neverRun:
         console.console.print('[info]Run [item]rbx run[/item] to populate it.[/info]')
-        return
+        # Deliberately no early return. Config findings are true about the
+        # package whether or not it was ever run, and suppressing them behind
+        # "not run yet" would hide them from exactly the reader who has not run
+        # anything and most needs to be told the package is not ready.
     if not report.issues:
         return
     console.console.print()
@@ -271,33 +345,43 @@ def print_contest_report(rows: List[ContestIssueRow], detailed: bool = False) ->
             )
             continue
         report = row.report
-        if report.neverRun:
-            table.add_row(
-                row.short_name,
-                row.name,
-                '[warning]never[/warning]',
-                '-',
-                '-',
-                '[warning]not run[/warning]',
-            )
-            continue
-
         errors = len(report.errors())
         warnings = len(report.warnings())
         worst = report.issues[0] if report.issues else None
+
         if worst is None:
-            worst_str = '[success]-[/success]'
+            # A problem nobody has run has nothing to say about verdicts, and
+            # nothing wrong with its config either. `-` would read as "clean".
+            worst_str = (
+                '[warning]not run[/warning]'
+                if report.neverRun
+                else '[success]-[/success]'
+            )
         else:
             solution = _solution_of(worst)
             prefix = f'{solution}: ' if solution else ''
             worst_str = f'{prefix}{summarize(worst)}'
 
+        # A never-run problem still has counts whenever its config says
+        # something: those findings are the pre-contest checklist, and a row of
+        # dashes would hide the one thing this table exists to surface. The
+        # counts stay `-` only when there is genuinely nothing to count.
+        if report.neverRun and worst is None:
+            errors_str, warnings_str = '-', '-'
+        else:
+            errors_str = f'[error]{errors}[/error]' if errors else '[info]0[/info]'
+            warnings_str = (
+                f'[warning]{warnings}[/warning]' if warnings else '[info]0[/info]'
+            )
+
         table.add_row(
             row.short_name,
             row.name,
-            humanize_since(report.ranAt),
-            f'[error]{errors}[/error]' if errors else '[info]0[/info]',
-            f'[warning]{warnings}[/warning]' if warnings else '[info]0[/info]',
+            '[warning]never[/warning]'
+            if report.neverRun
+            else humanize_since(report.ranAt),
+            errors_str,
+            warnings_str,
             worst_str,
         )
 

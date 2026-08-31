@@ -18,10 +18,11 @@ import yaml
 
 from rbx.box import run_report
 from rbx.box.compilation_findings import CompilationWarning, SolutionCompilation
-from rbx.box.issues import detectors, rendering, run_state, schema
+from rbx.box.issues import config_detectors, detectors, rendering, run_state, schema
+from rbx.box.issues import config_state as config_state_module
 from rbx.box.issues.contest import build_report
 from rbx.box.run_report import RunGroupReport, RunReport, RunSolutionReport
-from rbx.box.schema import ExpectedOutcome
+from rbx.box.schema import ExpectedOutcome, Solution
 from rbx.grading.steps import Outcome
 
 
@@ -523,6 +524,14 @@ class TestRendering:
             schema.HiddenVerdictIssue(solution='s'),
             schema.TightTimeMarginIssue(solution='s', maxTime=1.0, timeLimit=1.0),
             schema.UntunedLimitsIssue(),
+            schema.NoAcceptedSolutionIssue(),
+            schema.NoValidatorIssue(),
+            schema.NoSamplesIssue(),
+            schema.EmptyTestGroupIssue(group='big'),
+            schema.MissingStatementLanguageIssue(),
+            schema.ExplanationMissingLanguageIssue(
+                sample=0, path=pathlib.Path('a.rbx.tex')
+            ),
         ]
 
         # Every member of the union is covered.
@@ -622,3 +631,379 @@ class TestContestHint:
         assert 'rbx contest issues -d' not in self._render(
             [self._row_with_issues()], detailed=True
         )
+
+
+class TestContestRowsForNeverRunProblems:
+    """The pre-contest checklist: a problem nobody has run still has a config.
+
+    This is the row #840 asked for. A never-run row used to be dashes all the
+    way across, which said "nothing to see" about a problem that might have no
+    accepted solution at all -- and left the table contradicting its own
+    "expand these" hint.
+    """
+
+    def _render(self, rows, detailed=False) -> str:
+        recorder = rich.console.Console(record=True, width=200)
+        with mock.patch.object(rendering.console, 'console', recorder):
+            rendering.print_contest_report(rows, detailed=detailed)
+        return recorder.export_text()
+
+    def _row(self, *issues) -> schema.ContestIssueRow:
+        return schema.ContestIssueRow(
+            short_name='A',
+            name='paths',
+            report=schema.IssueReport(neverRun=True, issues=list(issues)),
+        )
+
+    def test_counts_the_config_findings_of_a_never_run_problem(self):
+        out = self._render(
+            [self._row(schema.NoAcceptedSolutionIssue(), schema.NoValidatorIssue())]
+        )
+
+        assert 'no solution is declared as accepted' in out
+        # Still says the problem was never run -- the counts do not pretend
+        # otherwise.
+        assert 'never' in out
+
+    def test_a_never_run_problem_with_a_clean_config_still_reads_as_not_run(self):
+        out = self._render([self._row()])
+
+        assert 'not run' in out
+
+
+class TestIssueFamily:
+    """`family` is computed, not declared -- the same rule `severity` follows,
+    so a client splitting run findings from config ones reads a field rather
+    than keeping its own table of which kind belongs where."""
+
+    def test_config_issues_carry_the_config_family(self):
+        issue = schema.NoAcceptedSolutionIssue()
+
+        assert issue.family == schema.IssueFamily.CONFIG
+        assert issue.severity == schema.IssueSeverity.ERROR
+
+    def test_run_issues_carry_the_run_family(self):
+        issue = schema.UntunedLimitsIssue(affectedSolutions=['sol/a.cpp'])
+
+        assert issue.family == schema.IssueFamily.RUN
+
+    def test_family_and_severity_are_both_serialized(self):
+        payload = schema.NoValidatorIssue().model_dump()
+
+        assert payload['kind'] == 'config_no_validator'
+        assert payload['family'] == 'config'
+        assert payload['severity'] == 'warning'
+
+    def test_config_kinds_round_trip_through_the_union(self):
+        report = schema.IssueReport(
+            issues=[
+                schema.MissingStatementLanguageIssue(missing=['pt']),
+                schema.EmptyTestGroupIssue(group='big'),
+                schema.ExplanationMissingLanguageIssue(
+                    sample=0,
+                    path=pathlib.Path('tests/samples/000.rbx.tex'),
+                    missing=['pt'],
+                ),
+            ]
+        )
+
+        parsed = schema.IssueReport.model_validate_json(report.model_dump_json())
+
+        assert parsed.issues == report.issues
+
+    def test_the_format_version_records_the_neverrun_change(self):
+        # Not for the new kinds -- the union carries those. For `neverRun`, which
+        # no longer implies an empty list, so a v1 reader short-circuiting on it
+        # would silently drop every config finding.
+        assert schema.ISSUES_FORMAT_VERSION == 2
+
+
+def config_solution(path: str, outcome: ExpectedOutcome) -> Solution:
+    return Solution(path=pathlib.Path(path), outcome=outcome)
+
+
+def config_state(**kwargs) -> config_state_module.ConfigState:
+    """A package with nothing wrong with it, overridden per test.
+
+    Built by hand, like every `RunState` above: a config detector reads counts
+    and names, so exercising one needs no package on disk.
+    """
+    defaults = dict(
+        solutions=[config_solution('sol/ac.cpp', ExpectedOutcome.ACCEPTED)],
+        has_validator=True,
+        group_test_counts={'samples': 2, 'main': 10},
+        sample_count=2,
+        statement_languages=['en'],
+    )
+    defaults.update(kwargs)
+    return config_state_module.ConfigState(**defaults)
+
+
+class TestConfigDetectors:
+    def test_a_healthy_package_produces_nothing(self):
+        assert config_detectors.detect_all_config(config_state()) == []
+
+    def test_flags_a_package_with_no_accepted_solution(self):
+        state = config_state(
+            solutions=[config_solution('sol/wa.cpp', ExpectedOutcome.WRONG_ANSWER)]
+        )
+
+        (issue,) = config_detectors.detect_no_accepted_solution(state)
+
+        assert issue.kind == 'config_no_accepted_solution'
+        assert issue.severity == schema.IssueSeverity.ERROR
+
+    def test_accepted_or_tle_still_pins_down_a_correct_output(self):
+        state = config_state(
+            solutions=[config_solution('sol/ac.cpp', ExpectedOutcome.ACCEPTED_OR_TLE)]
+        )
+
+        assert config_detectors.detect_no_accepted_solution(state) == []
+
+    def test_a_package_with_no_solutions_at_all_is_flagged(self):
+        state = config_state(solutions=[])
+
+        assert len(config_detectors.detect_no_accepted_solution(state)) == 1
+
+    def test_flags_a_missing_validator(self):
+        state = config_state(has_validator=False)
+
+        (issue,) = config_detectors.detect_no_validator(state)
+
+        assert issue.kind == 'config_no_validator'
+        assert issue.severity == schema.IssueSeverity.WARNING
+
+    def test_flags_a_package_with_no_samples(self):
+        (issue,) = config_detectors.detect_no_samples(config_state(sample_count=0))
+
+        assert issue.kind == 'config_no_samples'
+
+    def test_reports_one_issue_per_empty_group(self):
+        state = config_state(group_test_counts={'samples': 2, 'big': 0, 'huge': 0})
+
+        issues = config_detectors.detect_empty_test_groups(state)
+
+        assert [issue.group for issue in issues] == ['big', 'huge']
+
+    def test_an_empty_samples_group_is_only_reported_as_no_samples(self):
+        # Saying both "no samples" and "group samples has no tests" makes one
+        # mistake look like two.
+        state = config_state(
+            sample_count=0, group_test_counts={'samples': 0, 'main': 1}
+        )
+
+        assert config_detectors.detect_empty_test_groups(state) == []
+        assert len(config_detectors.detect_no_samples(state)) == 1
+
+    def test_flags_a_problem_with_no_statement_at_all(self):
+        (issue,) = config_detectors.detect_missing_statement_languages(
+            config_state(statement_languages=[])
+        )
+
+        assert issue.hasNoStatements
+        assert issue.missing == []
+
+    def test_flags_a_contest_language_the_problem_has_no_statement_for(self):
+        state = config_state(statement_languages=['en'], contest_languages=['en', 'pt'])
+
+        (issue,) = config_detectors.detect_missing_statement_languages(state)
+
+        assert issue.missing == ['pt']
+        assert not issue.hasNoStatements
+
+    def test_says_nothing_about_languages_outside_a_contest(self):
+        # A standalone problem shipping only English is not missing Portuguese;
+        # rbx has no way to know which languages were wanted.
+        state = config_state(statement_languages=['en'], contest_languages=[])
+
+        assert config_detectors.detect_missing_statement_languages(state) == []
+
+    def test_flags_an_explanation_missing_a_language(self):
+        state = config_state(
+            statement_languages=['en', 'pt'],
+            explanation_languages={0: ['en']},
+            explanation_paths={0: pathlib.Path('tests/samples/000.rbx.tex')},
+        )
+
+        (issue,) = config_detectors.detect_explanation_languages(state)
+
+        assert issue.sample == 0
+        assert issue.missing == ['pt']
+
+    def test_an_explanation_covering_every_language_is_fine(self):
+        state = config_state(
+            statement_languages=['en', 'pt'],
+            explanation_languages={0: ['pt', 'en']},
+            explanation_paths={0: pathlib.Path('tests/samples/000.rbx.tex')},
+        )
+
+        assert config_detectors.detect_explanation_languages(state) == []
+
+    def test_a_language_agnostic_explanation_is_never_checked(self):
+        # Such a sample never enters `explanation_languages` at all: one file
+        # covers every language by construction.
+        state = config_state(statement_languages=['en', 'pt'])
+
+        assert config_detectors.detect_explanation_languages(state) == []
+
+    def test_detect_all_config_puts_errors_first(self):
+        state = config_state(
+            solutions=[config_solution('sol/wa.cpp', ExpectedOutcome.WRONG_ANSWER)],
+            has_validator=False,
+        )
+
+        issues = config_detectors.detect_all_config(state)
+
+        assert [issue.severity for issue in issues] == [
+            schema.IssueSeverity.ERROR,
+            schema.IssueSeverity.WARNING,
+        ]
+
+    def test_every_config_detector_is_registered(self):
+        """A detector nobody listed in CONFIG_DETECTORS never runs."""
+        defined = {
+            value
+            for name, value in vars(config_detectors).items()
+            if name.startswith('detect_') and name != 'detect_all_config'
+        }
+
+        assert defined == set(config_detectors.CONFIG_DETECTORS)
+
+
+class TestConfigRendering:
+    def _render(self, report, detailed=False) -> str:
+        recorder = rich.console.Console(record=True, width=200)
+        with mock.patch.object(rendering.console, 'console', recorder):
+            rendering.print_report(report, detailed=detailed)
+        return recorder.export_text()
+
+    def test_words_the_two_missing_statement_cases_apart(self):
+        assert (
+            rendering.summarize(
+                schema.MissingStatementLanguageIssue(hasNoStatements=True)
+            )
+            == 'the problem has no statement'
+        )
+        assert (
+            rendering.summarize(
+                schema.MissingStatementLanguageIssue(missing=['pt', 'es'])
+            )
+            == 'no statement for language(s): pt, es'
+        )
+
+    def test_names_the_group_that_is_empty(self):
+        assert 'big' in rendering.summarize(schema.EmptyTestGroupIssue(group='big'))
+
+    def test_a_never_run_problem_still_shows_its_config_findings(self):
+        """The change `ISSUES_FORMAT_VERSION` 2 records.
+
+        Suppressing these behind "not run yet" would hide them from exactly the
+        reader who has not run anything and most needs to know the package is
+        not ready to be run.
+        """
+        report = schema.IssueReport(neverRun=True, issues=[schema.NoValidatorIssue()])
+
+        out = self._render(report)
+
+        assert 'no validator' in out
+        assert 'not run yet' in out
+
+    def test_a_never_run_problem_with_nothing_wrong_reads_as_before(self):
+        out = self._render(schema.IssueReport(neverRun=True))
+
+        assert 'This problem has not been run yet.' in out
+        assert 'rbx run' in out
+
+    def test_a_never_run_headline_counts_the_config_findings(self):
+        report = schema.IssueReport(
+            neverRun=True,
+            issues=[schema.NoAcceptedSolutionIssue(), schema.NoValidatorIssue()],
+        )
+
+        out = self._render(report)
+
+        assert '1 error(s)' in out
+        assert '1 warning(s)' in out
+
+    def test_detailed_explains_why_an_accepted_solution_matters(self):
+        report = schema.IssueReport(issues=[schema.NoAcceptedSolutionIssue()])
+
+        out = self._render(report, detailed=True)
+
+        assert 'unverified' in out
+
+    def test_json_publishes_the_family_of_each_issue(self):
+        report = schema.IssueReport(issues=[schema.NoValidatorIssue()])
+
+        payload = json.loads(rendering.to_json(report))
+
+        assert payload['version'] == 2
+        assert payload['issues'][0]['family'] == 'config'
+        assert payload['issues'][0]['severity'] == 'warning'
+
+
+class TestBuildReportMergesFamilies:
+    def _write_run(self, runs_dir: pathlib.Path) -> None:
+        run_report.write_report(
+            run_report.report_path(runs_dir),
+            RunReport(
+                solutions=[
+                    solution(
+                        path='sol/wa.cpp',
+                        expectedOutcome=ExpectedOutcome.WRONG_ANSWER,
+                        outcome=Outcome.ACCEPTED,
+                        status='UNEXPECTED_VERDICTS',
+                        matchesExpectation=False,
+                        pooledMatchesExpectation=False,
+                    )
+                ]
+            ),
+        )
+
+    def test_config_findings_survive_a_problem_that_was_never_run(
+        self, tmp_path: pathlib.Path
+    ):
+        report = build_report(
+            tmp_path / 'runs', config_state=config_state(has_validator=False)
+        )
+
+        assert report.neverRun
+        assert kinds(report.issues) == ['config_no_validator']
+
+    def test_without_a_config_state_the_report_is_run_only(
+        self, tmp_path: pathlib.Path
+    ):
+        # An absent state means "nobody collected one", never "the package has
+        # nothing wrong with it".
+        report = build_report(tmp_path / 'runs')
+
+        assert report.neverRun
+        assert report.issues == []
+
+    def test_config_findings_sort_before_run_findings_in_a_band(
+        self, tmp_path: pathlib.Path
+    ):
+        """The run is downstream of the config, so the config reads first."""
+        self._write_run(tmp_path)
+
+        report = build_report(
+            tmp_path,
+            config_state=config_state(
+                solutions=[config_solution('sol/wa.cpp', ExpectedOutcome.WRONG_ANSWER)]
+            ),
+        )
+
+        assert kinds(report.issues) == [
+            'config_no_accepted_solution',
+            'unmet_expectation',
+        ]
+
+    def test_errors_still_outrank_warnings_across_families(
+        self, tmp_path: pathlib.Path
+    ):
+        self._write_run(tmp_path)
+
+        report = build_report(tmp_path, config_state=config_state(has_validator=False))
+
+        # The run error beats the config warning; severity is the outer key.
+        assert kinds(report.issues) == ['unmet_expectation', 'config_no_validator']

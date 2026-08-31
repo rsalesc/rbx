@@ -67,7 +67,7 @@ _COMMANDS = [
     LazyCommand(
         'issues',
         'rbx.box.cli.commands.issues:app',
-        help='Show what the last run revealed about the problem.',
+        help='Show what is wrong with the problem, before and after a run.',
         rich_help_panel='Testing',
     ),
     LazyCommand(

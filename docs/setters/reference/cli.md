@@ -138,7 +138,7 @@ rbx run <SOLUTIONS> [OPTIONS]
 
 ## issues
 
-Show what the last run revealed about the problem.
+Show what is wrong with the problem, before and after a run.
 
 **Usage:**
 ```bash
@@ -165,6 +165,7 @@ rbx summary [OPTIONS]
 | Name | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
 | `--detailed`, `-d` | BOOLEAN | Whether to print a detailed view of the tests using tables. | `False` |
+| `--format` | TEXT | How to print the summary. Use `json` to consume it from a tool. | `rich` |
 
 
 ---
@@ -1155,7 +1156,7 @@ rbx contest summary [OPTIONS]
 
 ### issues
 
-Show what each problem's last run revealed.
+Show what is wrong with each problem, before and after a run.
 
 **Usage:**
 ```bash
