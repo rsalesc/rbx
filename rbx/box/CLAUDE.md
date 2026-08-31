@@ -333,13 +333,28 @@ replaced a `ctx.progress.update(...)` that nobody ever saw: every caller exits i
 flight may share a machine and inflate each other, and the park is shared with everyone
 else. A 429 is waited out rather than failed -- it cannot be cleared, since `moj` has no
 way to cancel a testrun. The poll is bounded, like `prepare`'s. `_outcome_for_moj_code` maps MOJ's whole per-test vocabulary,
-read off mojtools' `run-testinput` (`AC`/`AC,PE`/`WA`/`MLE`/`TLE`/`RE`/`RE_NZEC`/`TMT`/`UE`, plus any
+read off mojtools' `run-testinput` (`AC`/`AC,PE`/`WA`/`MLE`/`TLE`/`RE`/`RE_NZEC`/`TMT`/`UE`/`CE`, plus any
 other `RE_*` read as a runtime error by its prefix) and **refuses an unrecognised one by name** rather
 than guessing -- a wrong verdict silently corrupts the time limit being estimated. `AC,PE` is a *pass*
 (MOJ scores it as correct) and `UE` is the comparator failing, so it becomes `JUDGE_FAILED` rather than
-the solution's runtime error. A testcase MOJ did not
+the solution's runtime error. `NT` ("nao executado") is the one code with no `Outcome`: it names the
+*absence* of a verdict, so it is dropped (`_UNEXECUTED_MOJ_CODES`) onto the same path as a testcase MOJ
+never mentioned. A testcase MOJ did not
 report on becomes `SKIPPED` with no timing (never a zero), and only the `.eval` is written,
 never an empty `.out`.
+
+**A name can repeat, and the last one wins.** mojtools reruns a testcase that came back `TLE` under
+parallel load and *appends* a second `VERDICT[<name>]=` line, so the judge can report the same testcase
+twice -- the discarded contended measurement, then the one it kept. `TestrunStatus.by_name` takes the
+last, which is what `build-and-test.sh` itself reads back; refusing the pair (which it used to do)
+failed a whole run over a testrun MOJ considers ordinary.
+
+**A truncated run can come back `Unknown ERROR`, which is not about the solution.** mojtools flips the
+run-level verdict to `UE` when every testcase that produced a verdict passed *and* at least one produced
+none -- the judge saying it cannot account for the testset. Its canon spelling is `Runtime Error`, naming
+a failure that did not happen, so `_note_on_run_verdict` reads the raw `verdict` and appends the judge's
+own words to the "reported no result for N of M testcases" warning. See
+`docs/plans/2026-08-21-moj-probe-notes.md` §3e-§3g for the mechanism and its signature.
 
 **Finished testruns are cached, so re-running `rbx time` costs no judge time.** The key
 (`_cache_key`) is the probe package's `_directory_fingerprint` -- which already contains

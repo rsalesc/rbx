@@ -18,6 +18,7 @@ import dataclasses
 import hashlib
 import json
 import pathlib
+import re
 import tempfile
 from typing import (
     TYPE_CHECKING,
@@ -177,13 +178,16 @@ QUEUE_FULL_ATTEMPTS = 40
 #   reported as a solution's runtime error is exactly the silent lie this table
 #   guards against.
 #
-# Deliberately absent: `CE`, which is real but run-level only -- a submission that
-# does not compile never enters the testset, so `tests` comes back empty and
-# `ran_nothing` handles it (probe notes, section 3b) -- and `NT` ("Nao executado"),
-# which `gen-report.sh` substitutes for a *missing* verdict when rendering HTML and
-# which is therefore never written to `log.verdictall` in the first place. A
-# testcase MOJ said nothing about is already handled, as `SKIPPED`, by
-# `_evaluation_for`.
+# - `CE` is real but, on `run-testinput`'s side, run-level only: a submission that
+#   does not compile never enters the testset, so `tests` comes back empty and
+#   `ran_nothing` handles it (probe notes, section 3b). It is mapped anyway, at no
+#   risk -- `COMPILATION_ERROR` is what the code says, and one that only ever
+#   arrives run-level costs a table row to tolerate and a whole failed run to
+#   refuse.
+#
+# `NT` ("Nao executado") is the one code in mojtools' vocabulary with no `Outcome`,
+# and lives in `_UNEXECUTED_MOJ_CODES` instead of here: it does not name a verdict,
+# it names the *absence* of one.
 #
 # An unrecognised code is refused by name (see `MojRunner._submit_and_poll`)
 # rather than mapped: this table feeds a *time limit*, and a wrong verdict there is
@@ -200,7 +204,72 @@ _OUTCOME_BY_MOJ_CODE: Dict[str, Outcome] = {
     'RE_NZEC': Outcome.RUNTIME_ERROR,
     'TMT': Outcome.RUNTIME_ERROR,
     'UE': Outcome.JUDGE_FAILED,
+    'CE': Outcome.COMPILATION_ERROR,
 }
+
+# Codes that say a testcase produced no result at all, rather than naming one.
+#
+# `NT` ("Nao executado") is what mojtools writes for a testcase with no verdict:
+# `gen-report.sh` substitutes it when `log.verdictall` has no entry for an input
+# file, which happens whenever the testset was cut short -- a `STOPWHEN_*` problem
+# that stopped early, or a run the judge abandoned. Whether the judge agent's
+# `agent_tests_json` puts it in the `tests` array the way `gen-report.sh` puts it
+# in the HTML is not something rbx can read off the source it has, so this exists
+# to be *tolerant*: if one arrives, it costs one testcase's measurement rather than
+# the whole run.
+#
+# Dropped rather than mapped, because every `Outcome` would be a claim about the
+# solution that nothing measured. Dropping puts the testcase back on the same path
+# as one MOJ never mentioned: `SKIPPED`, no timing, and counted in the "reported no
+# result for N of M" warning `_evaluation_from_job` prints. That is exactly what an
+# `NT` means, and it keeps a non-measurement out of the time-limit estimate.
+_UNEXECUTED_MOJ_CODES = frozenset({'NT'})
+
+# What mojtools calls a run it cannot account for -- `VERDICTFULLNAME[UE]`, the
+# run-level verdict `build-and-test.sh` reaches on its second-to-last line:
+#
+#     [[ "$SMALLRESP" =~ "AC" ]] && (( RESPERRO > 0 )) && SMALLRESP=UE
+#
+# It says: *every testcase that produced a verdict passed, and at least one
+# produced none*. That is a statement about the judging run, not about the
+# submission -- and it is the run-level verdict a truncated testset lands on
+# whenever the testcase that truncated it was a `TLE` that passed on its rerun,
+# which is the one shape where nothing in `tests` looks wrong at all.
+#
+# Matched on the two words: the run-level verdict carries a score suffix
+# (`Unknown ERROR,88p`), and the capitalisation is mojtools' own.
+#
+# Read off `verdict` and never `verdict_canon`, which is the one place
+# `canonical_verdict`'s usual preference inverts: `VERDICTCANON[UE]` collapses
+# this onto `Runtime Error`, naming a failure of the solution that did not
+# happen. See `_note_on_run_verdict`.
+_UNKNOWN_ERROR_VERDICT_RE = re.compile(r'\bunknown\s+error\b', re.IGNORECASE)
+
+
+def _note_on_run_verdict(verdict: Optional[str]) -> Optional[str]:
+    """What a run-level verdict adds to "some testcases went unmeasured".
+
+    Only `Unknown ERROR` has anything to add, and it has a lot: it is the judge
+    saying it does not know why the testset came up short, and a setter reading
+    the missing-testcase warning on its own has no way to tell that from a judge
+    that simply stopped early on purpose. The rest of the vocabulary (`Wrong
+    Answer`, `Time Limit Exceeded`, ...) already agrees with the verdicts in
+    `tests`, so repeating it would be noise.
+
+    `None` when there is nothing worth saying, which includes a run with no
+    run-level verdict at all.
+    """
+    if not verdict or not _UNKNOWN_ERROR_VERDICT_RE.search(verdict):
+        return None
+    return (
+        f'MOJ called the run as a whole `{verdict}`, which is the judge saying '
+        f'it cannot account for those testcases -- not a verdict about this '
+        f'solution. mojtools reports it when every testcase that produced a '
+        f'verdict passed and at least one produced none, which is what a testset '
+        f'cut short looks like when the testcase that cut it short passed on its '
+        f'rerun. The judge run is what to look at, not the solution.'
+    )
+
 
 # `RE_NZEC` is the only qualified runtime error mojtools writes today, and it is in
 # the table above. The prefix is honoured anyway, as a backstop for a judge that
@@ -257,6 +326,10 @@ class _TestrunResult:
     expected: int
     # The names rbx asked about and MOJ said nothing about.
     missing: List[str]
+    # What the judge called the run as a whole, raw -- score suffix and all. Kept
+    # only to be *said*, and only when the testset came up short: see
+    # `_note_on_run_verdict` for why `verdict` and not `canonical_verdict`.
+    verdict: Optional[str] = None
     # Set the first time the missing ones are reported, so N deferreds over one
     # testrun produce one warning rather than N.
     warned: bool = False
@@ -867,9 +940,21 @@ class MojRunner:
         if status.ran_nothing:
             raise _run_never_started(solution, run, status)
 
-        # `by_name` refuses duplicate names rather than letting a dict
-        # comprehension drop one of them.
+        # Last entry wins on a repeated name: that is a testcase mojtools reran
+        # after a TLE measured under parallel load, and the rerun is the number
+        # the judge itself keeps. See `TestrunStatus.by_name`.
         tests = status.by_name
+
+        # Before the codes are checked, because an `NT` is not a code to check:
+        # the judge is saying it never ran this testcase. Removing it here is what
+        # sends it down `_evaluation_for`'s `test is None` path -- `SKIPPED`, no
+        # timing -- and gets it counted in the warning that says how many
+        # testcases came back without a result. See `_UNEXECUTED_MOJ_CODES`.
+        tests = {
+            name: test
+            for name, test in tests.items()
+            if test.code not in _UNEXECUTED_MOJ_CODES
+        }
 
         # Every code is checked here, once, before any evaluation is built -- and
         # the failure lands on *every* deferred of this solution, because they all
@@ -884,7 +969,10 @@ class MojRunner:
         )
         if unknown:
             listed = ', '.join(f'`{code}`' for code in unknown)
-            known = ', '.join(f'`{code}`' for code in _OUTCOME_BY_MOJ_CODE)
+            known = ', '.join(
+                f'`{code}`'
+                for code in (*_OUTCOME_BY_MOJ_CODE, *sorted(_UNEXECUTED_MOJ_CODES))
+            )
             raise MojRunnerError(
                 f'MOJ reported the verdict code(s) {listed} for `{solution.path}` '
                 f'in testrun `{run}`, and rbx does not know what they mean.\n'
@@ -893,6 +981,8 @@ class MojRunner:
                 f'mapped to the wrong outcome would silently corrupt the time '
                 f'limit this run is estimating, with nothing in the report to say '
                 f'so.\n'
+                f'See what the judge actually reported with `moj testrun-status '
+                f'{run}`.\n'
                 f'If the code is legitimate, add it to `_OUTCOME_BY_MOJ_CODE` in '
                 f'`rbx/box/runners/moj/runner.py`.'
             )
@@ -909,7 +999,11 @@ class MojRunner:
         # of 72 against a problem that had them enabled.
         missing = [name for name in expected_names if name not in tests]
         return _TestrunResult(
-            run=run, tests=tests, expected=len(expected_names), missing=missing
+            run=run,
+            tests=tests,
+            expected=len(expected_names),
+            missing=missing,
+            verdict=status.verdict,
         )
 
     def _solution_content(self, solution: 'SolutionSkeleton') -> bytes:
@@ -1167,13 +1261,19 @@ class MojRunner:
         # deferreds cannot both pass the check.
         if result.missing and not result.warned:
             result.warned = True
-            console.console.print(
+            lines = [
                 f'[warning]MOJ reported no result for {len(result.missing)} of '
                 f'{result.expected} testcases of [item]{solution.path}[/item] '
-                f'(testrun [item]{result.run}[/item]).[/warning]\n'
-                f'[warning]Those testcases are left unmeasured; the time limit is '
-                f'estimated from the rest.[/warning]'
-            )
+                f'(testrun [item]{result.run}[/item]).[/warning]',
+                '[warning]Those testcases are left unmeasured; the time limit is '
+                'estimated from the rest.[/warning]',
+            ]
+            # Appended rather than replacing the count: the count is what the
+            # estimate lost, and the verdict is why. A setter needs both.
+            note = _note_on_run_verdict(result.verdict)
+            if note is not None:
+                lines.append(f'[warning]{note}[/warning]')
+            console.console.print('\n'.join(lines))
 
         # The slot is deliberately **not** cleared here. Clearing it was meant to
         # keep a stale `running` chip from sitting beside a finished verdict, but

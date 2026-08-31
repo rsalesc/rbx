@@ -29,7 +29,6 @@ an `OPEN:` comment naming what the probe has to settle.
 """
 
 import asyncio
-import collections
 import json
 import os
 import pathlib
@@ -173,10 +172,11 @@ _NO_SESSION_RE = re.compile(r'\blogin\b.*\bprimeiro\b', re.IGNORECASE)
 class TestrunTest(BaseModel):
     """One test of one testrun.
 
-    `code` stays a plain string. OPEN (probe): its vocabulary. Inventing a
-    code -> `Outcome` mapping here would bake a guess into the layer everything
-    else reads; the mapping belongs to the runner, where an unknown code can be
-    surfaced instead of silently becoming a verdict.
+    `code` stays a plain string. Inventing a code -> `Outcome` mapping here would
+    bake a guess into the layer everything else reads; the mapping belongs to the
+    runner, where an unknown code can be surfaced instead of silently becoming a
+    verdict. mojtools' vocabulary is enumerated there, in
+    `_OUTCOME_BY_MOJ_CODE`.
     """
 
     model_config = ConfigDict(extra='ignore')
@@ -259,10 +259,11 @@ class TestrunStatus(BaseModel):
         reports tests alongside a zero (or absent) `total_tests` is read by what
         it actually returned rather than by its bookkeeping.
 
-        Deliberately structural rather than a `verdict_canon` denylist: the
-        verdict vocabulary is only half observed -- five values so far -- and
-        `_OUTCOME_BY_MOJ_CODE` already refuses to guess at the other half.
-        `verdict_canon` is what *names* the cause once this has detected it.
+        Deliberately structural rather than a `verdict_canon` denylist: run-level
+        verdicts are a *scored* vocabulary (`Wrong Answer,88p`) whose spellings
+        the server is free to grow, and `_OUTCOME_BY_MOJ_CODE` already refuses to
+        guess at anything it cannot read. `verdict_canon` is what *names* the
+        cause once this has detected it.
         """
         return self.done and not self.tests and not self.total_tests
 
@@ -284,30 +285,30 @@ class TestrunStatus(BaseModel):
 
     @property
     def by_name(self) -> Dict[str, TestrunTest]:
-        """The tests keyed by MOJ's name for them.
+        """The tests keyed by MOJ's name for them, last entry winning.
 
         Pairing rbx's testcases to these by *name* rather than by position is what
         keeps a change in the packager's naming from silently misattributing a
-        timing to the wrong testcase. Duplicate names would defeat exactly that --
-        a dict comprehension drops one of them just as silently -- so they are an
-        error rather than a last-one-wins.
+        timing to the wrong testcase.
+
+        **A name can legitimately repeat, and the last one is the answer.**
+        mojtools' `build-and-test.sh` reruns a testcase that came back `TLE`
+        ("Rerun: because got TLE while running parallel tests"), because a TLE
+        measured while N tests shared the machine is not a TLE. Each run of
+        `run-testinput` *appends* a `VERDICT[<name>]=<code>` line to
+        `log.verdictall`, and `sol_tests_json` walks that file line by line into
+        the `{name, code, time, tl}` array this parses -- so a reran testcase
+        arrives twice, its first entry the discarded parallel measurement.
+
+        Last-one-wins is not a tiebreak invented here: `build-and-test.sh` itself
+        re-`source`s `log.verdictall` after the rerun and reads the testcase's
+        verdict straight back out of the array, which is bash's own
+        last-assignment-wins. Reading the *first* entry would hand rbx the
+        contended time the judge threw away, and refusing the pair outright --
+        which is what this used to do -- failed the whole run over a testrun the
+        judge considers perfectly ordinary.
         """
-        by_name = {test.name: test for test in self.tests}
-        if len(by_name) != len(self.tests):
-            repeated = sorted(
-                name
-                for name, count in collections.Counter(
-                    test.name for test in self.tests
-                ).items()
-                if count > 1
-            )
-            raise MojCliError(
-                f'The judge reported more than one test named '
-                f'{", ".join(f"`{name}`" for name in repeated)} in the same '
-                f"testrun. rbx pairs its testcases to MOJ's by name, and cannot "
-                f'tell repeated names apart.'
-            )
-        return by_name
+        return {test.name: test for test in self.tests}
 
 
 class MojCheck(BaseModel):

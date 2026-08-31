@@ -138,15 +138,134 @@ Three notes on the mapping, which is no longer one-to-one:
   `Runtime Error`; rbx does not follow, because a broken checker reported as the solution's
   runtime error is the same silent lie in a different costume. `JUDGE_FAILED` says what
   happened.
-- **`CE` and `NT` stay unmapped, for opposite reasons.** `CE` is real but run-level only
-  (§3b). `NT` ("Não executado") is `gen-report.sh` substituting for a *missing* verdict while
-  rendering HTML — it is never written to `log.verdictall`, so it cannot reach the `code`
-  position; a testcase MOJ said nothing about is already `SKIPPED`.
+- **`CE` and `NT` are handled, but not as verdicts of equal standing** — see §3f. Neither is
+  written by `run-testinput`, so neither is *expected* in the `code` position; both are
+  tolerated there rather than refused, because refusing costs a whole run and neither can
+  corrupt an estimate.
 
 `_outcome_for_moj_code` still reads any other `RE_*` as `RUNTIME_ERROR`, as a backstop for a
 sibling mojtools might grow — the prefix names the verdict, so the outcome carries no guess.
 Everything else is still refused by name. The invented spellings the earlier table warned
 about (`PE` and `JE` on their own) are now confirmed **not** to exist.
+
+### 3e. A testcase can appear **twice**, and the last one is the answer — 2026-08-31
+
+Read off mojtools while chasing [#824](https://github.com/rsalesc/rbx/issues/824), and it is
+not an anomaly: it is what the judge does on every TLE.
+
+`build-and-test.sh` runs the testset in parallel (`NPROC` jobs), then walks it a second time
+and reruns any testcase that came back `TLE` — *"Rerun: because got TLE while running
+parallel tests"* — because a timeout measured while N tests shared the machine is not a
+timeout. Each call of `run-testinput` **appends** its own line:
+
+```sh
+echo "VERDICT[$FILE]=$VERDICT" >> $workdirbase/log.verdictall
+```
+
+and `sol_tests_json` walks that file line by line into the `{name, code, time, tl}` array.
+So a reran testcase arrives **twice** in `tests`: first the contended measurement, then the
+one the judge kept. (It gives up after one rerun — a second `TLE` sets `TLERERUN=n` — so a
+name appears at most twice, though nothing here depends on that.)
+
+**The last entry wins**, and that is the judge's own rule rather than a tiebreak rbx
+invented: `build-and-test.sh` re-`source`s `log.verdictall` after the rerun and reads the
+testcase's verdict straight back out of the bash array, which is last-assignment-wins.
+
+`TestrunStatus.by_name` used to *refuse* a repeated name — it read a duplicate as the kind of
+misattribution that pairing-by-name exists to prevent — and so failed the whole run with
+"the judge reported more than one test named `…`" on a testrun MOJ considers perfectly
+ordinary. It now keeps the last entry. Reading the first would have been worse than the
+refusal: it feeds the estimate a time the judge itself discarded.
+
+### 3f. `CE` and `NT` in the `code` position — tolerated, 2026-08-31
+
+Neither is written by `run-testinput`, so §3d's argument stands: they are not expected
+per-test. But `gen-report.sh` shows both are real spellings in mojtools' vocabulary
+(`VERDICTFULLNAME` carries `[CE]="Compilation Error"` and `[NT]="Não executado"`, and the
+report's verdict histogram iterates `AC "AC,PE" WA TLE RE RE_NZEC TMT UE NT`), and the judge
+*agent*'s `agent_tests_json` — which `sol_tests_json` only claims to mirror — is server-side
+and cannot be read from here. So "cannot reach the `code` position" was an inference about
+code rbx has never seen.
+
+The cost of that inference being wrong is a **whole failed run**, and the cost of tolerating
+the two codes is nothing, because neither can put a wrong number into an estimate:
+
+- **`CE` → `COMPILATION_ERROR`.** It is what the code says. A run-level compile error still
+  takes §7b's `ran_nothing` path, which is the one that explains itself properly.
+- **`NT` → dropped, not mapped** (`_UNEXECUTED_MOJ_CODES`). It names the *absence* of a
+  verdict — `gen-report.sh` substitutes it for an input file with no `log.verdictall` entry,
+  which is a testset cut short — so every `Outcome` would be a claim about the solution that
+  nothing measured. Dropping it puts the testcase back on the path of one MOJ never
+  mentioned: `SKIPPED`, no timing, and counted in the "reported no result for N of M"
+  warning.
+
+Unknown codes are still refused by name. This widens what rbx reads; it does not weaken the
+rule that a code it cannot read stops the run.
+
+### 3g. `Unknown ERROR` on a run whose testcases all look fine — 2026-08-31
+
+Reported from a real run: a testrun whose per-test codes were only `AC` and `TLE` came back
+with a **run-level** verdict of `Unknown ERROR`. Traced through mojtools and the CD-MOJ
+server (`cd-moj/cdmoj`, which is open source), and it has exactly one source.
+
+**The server never produces it.** `judged.sh:390` merges the worker's payload wholesale and
+the read handler is a bare `jq -c '{success:true} + .'` (`api/v1/handlers/problems/test-run.sh:110`),
+so `verdict`, `verdict_canon`, `correct`, `total_tests` and `tests[]` are all the worker's
+own words. The only verdict the server ever *synthesizes* is the literal `Judge Error` — and
+not even that for a testrun, because the `_testrun` divert (`judged.sh:418`) runs before that
+fallback. A payload with no verdict therefore yields **no `verdict` key**, never `UE`.
+
+So it always comes from `build-and-test.sh`'s second-to-last decision:
+
+```sh
+[[ "$SMALLRESP" =~ "AC" ]] && (( RESPERRO > 0 )) && SMALLRESP=UE
+```
+
+`SMALLRESP` is the worst verdict across the testcases that *reported* one; `RESPERRO` counts
+inputs that reported none (`RESP="INPUT NOT TESTED"`, line ~514). The line reads: **every
+testcase I have a verdict for passed, and at least one produced no verdict at all** — a
+statement about the judging run, not about the submission.
+
+**How the testset comes up short**, and why a `TLE` can be sitting in `tests` while this
+fires:
+
+1. A testcase returns non-zero during the parallel dispatch (`3` = TLE, `6` = WA, `≥126` = RE)
+   and the loop breaks at line ~475 — `(( RET != 0 )) && [[ "$RUNALL" != "y" ]] && break`.
+   Every remaining input is then never executed. **`RUNALL` is the 4th argv of
+   `build-and-test.sh`, not a package setting**, and it defaults to `no`; it appears as `y`
+   only in the server's dev-only gateway (`server/judge-gw/judge.sh:106`), so what the
+   production agent passes cannot be determined from open source. This break is independent
+   of the `STOPWHEN_*` bits — which is worth knowing, because `STOPWHEN_TLE=n` alone does not
+   keep a run going.
+2. Each unexecuted input hits line ~514 in the second loop, so `RESPERRO > 0`.
+3. If the testcase that broke the loop was a **`TLE` that passed on its `TLERERUN` rerun**
+   (§3e), lines ~516-525 overwrite its verdict with `AC`. Now every *tested* verdict is `AC`,
+   `SMALLRESP` stays `AC`, and line ~568 flips it to `UE`.
+
+That is the reported shape: the discarded `TLE` is still in `tests`, nothing in the array
+looks wrong, and the run as a whole is `Unknown ERROR`.
+
+**The signature**, for reading one of these off a real response:
+
+- `verdict` = `Unknown ERROR,<n>p`, and `verdict_canon` = **`Runtime Error`** —
+  `VERDICTCANON[UE]`, naming a failure of the solution that did not happen. This is the one
+  place `canonical_verdict`'s preference for the canon spelling inverts, and why
+  `_note_on_run_verdict` reads the raw `verdict`.
+- `correct < total_tests`: `TOTALTESTS` counts every input file (line ~403) while `CORRECT`
+  counts only tested ones. The cheapest discriminator available.
+- `tests[]` truncated to the inputs actually dispatched.
+
+rbx now appends the judge's own words to the "reported no result for N of M testcases"
+warning when the run-level verdict is this one, and stays quiet for the rest of the
+vocabulary — a `Wrong Answer` at run level only repeats what the per-test codes already said.
+
+**Still unread:** the agent's `agent_tests_json`, which builds `tests[]`. It lives in a
+separate, non-public repo (`judge/agent/moj-agent.sh`, per `server/judge-gw/PULL.md:51`).
+`calibreitor.sh`'s `sol_tests_json` says it is the same format, and *it* walks
+`log.verdictall` line by line — which is what §3e's duplicate rests on. Two consumers that
+dedupe instead, by sourcing the file into a bash array, are `gen-report.sh:35-36` and
+`build-and-test.sh:484-485`; so `report.html` shows one row per testcase while a line-walking
+`tests[]` would show two. That difference is the check to run against a real reran testrun.
 
 ### 3b. `Compilation Error` — observed 2026-08-21, by accident
 
@@ -161,8 +280,8 @@ judge, and every testrun came back:
 So `Compilation Error` joins the confirmed `verdict_canon` vocabulary — **as a run-level
 verdict, never as a per-test `code`**. There is no per-test anything: a submission that does
 not compile never reaches the testset, so the `tests` array is empty and `CE` was *not*
-observed in the `code` position. `_OUTCOME_BY_MOJ_CODE` therefore still has no `CE` entry,
-and should not grow one on this evidence.
+observed in the `code` position. `_OUTCOME_BY_MOJ_CODE` did not grow a `CE` entry on this
+evidence — it grew one later, on the different argument in §3f.
 
 What rbx said about it was `MOJ reported no result for 6 of 6 testcases ... Those testcases
 are left unmeasured` — true, useless, and pointing at the wrong thing entirely. See section
@@ -246,7 +365,14 @@ Note this is still not a terminal *failure* `status`: the run above finished `do
 ## Still open
 
 - Whether a testrun can reach a terminal **failure** status (a compile error does not: it is
-  a `done` run with a run-level verdict — see §3b).
+  a `done` run with a run-level verdict — see §3b). Partly answered by the server source: a
+  worker payload without a verdict leaves the register with no `verdict` key rather than a
+  failure status, and the server's own `Judge Error` fallback is skipped for testruns (§3g).
+- Whether the production judge agent passes `RUNALL=y` to `build-and-test.sh`, which decides
+  whether a single failing testcase truncates the whole testset (§3g). Not in any public
+  repo; it needs a testrun against a problem with more testcases than the judge has cores.
+- Whether the agent's `agent_tests_json` duplicates a reran testcase the way
+  `sol_tests_json` does (§3e, §3g).
 - ~~The full `code` vocabulary~~ — closed 2026-08-29 by reading mojtools' `run-testinput`;
   see §3d.
 - Whether `testrun` requires a prior calibration (this problem was already calibrated).
