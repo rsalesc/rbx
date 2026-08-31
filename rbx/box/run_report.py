@@ -159,6 +159,27 @@ class RunSolutionReport(BaseModel):
     # subset run or a `--fail-fast` abort leaves that set and the one a client
     # finds on disk disagreeing.
     sanitizerWarnings: bool = False
+    # The time limit this solution was judged against, in seconds.
+    #
+    # The *enforced* limit, so it is absent exactly when none was enforced (a
+    # sanitized run drops it). Published because `maxTime` alone cannot answer
+    # the question a reader actually has -- how much headroom is left -- and
+    # because the limit a solution runs under is not the package's `timeLimit`
+    # whenever a language modifier or a `--profile` applies. Resolving that
+    # needs `skeleton.get_solution_limits`, which is `solutions` state a client
+    # has no business reimplementing.
+    timeLimit: Optional[float] = None
+    # Whether this solution's failure is the kind that untuned limits explain.
+    #
+    # True when a slow verdict went unmatched -- declared slow and wasn't, or
+    # wasn't and was -- on a run that used the package's own limits and skipped
+    # nothing. It is what makes rbx suggest `rbx time`.
+    #
+    # Answered here rather than left to the client for the reason
+    # `unexpectedNoTleVerdicts` is: deciding it needs the per-layer
+    # `bad_verdicts` sets, which are internal shape no artifact publishes, and a
+    # client approximating it from `outcome` would quietly disagree with rbx.
+    untunedLimitsSuspected: bool = False
     groups: List[RunGroupReport] = []
 
 
@@ -284,6 +305,11 @@ def build_solution_report(
         runUnderDoubleTl=report.runUnderDoubleTl,
         doubleTlVerdicts=_sorted_outcomes(report.doubleTlVerdicts),
         sanitizerWarnings=report.sanitizerWarnings,
+        # Milliseconds on `Limits`, seconds here: every other duration the
+        # report publishes comes off `eval.log.time`, which is in seconds, and a
+        # file mixing the two units would be a trap.
+        timeLimit=report.limits.time / 1000 if report.limits.time is not None else None,
+        untunedLimitsSuspected=report.untunedLimitsSuspected,
         groups=groups,
     )
 

@@ -136,6 +136,23 @@ rbx run <SOLUTIONS> [OPTIONS]
 
 ---
 
+## issues
+
+Show what the last run revealed about the problem.
+
+**Usage:**
+```bash
+rbx issues [OPTIONS]
+```
+
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--detailed`, `-d` | BOOLEAN | Explain each issue instead of summarizing it in one line. | `False` |
+| `--format` | TEXT | How to print the issues. Use `json` to consume them from a tool. | `rich` |
+
+
+---
+
 ## summary (sum)
 
 Print a summary of the problem.
@@ -1132,6 +1149,23 @@ Print a summary of the contest.
 ```bash
 rbx contest summary [OPTIONS]
 ```
+
+
+---
+
+### issues
+
+Show what each problem's last run revealed.
+
+**Usage:**
+```bash
+rbx contest issues [OPTIONS]
+```
+
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--detailed`, `-d` | BOOLEAN | Follow the table with every problem's issues in full. | `False` |
+| `--format` | TEXT | How to print the issues. Use `json` to consume them from a tool. | `rich` |
 
 
 ---

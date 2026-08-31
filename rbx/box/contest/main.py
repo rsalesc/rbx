@@ -13,7 +13,7 @@ import syncer
 import typer
 
 from rbx import annotations, console, utils
-from rbx.box import cd, creation, naming, presets, summary
+from rbx.box import cd, creation, issues, naming, presets, summary
 from rbx.box.contest import (
     contest_package,
     contest_state,
@@ -665,6 +665,40 @@ def on(
 async def summary_cmd():
     contest = find_contest_package_or_die()
     await summary.print_contest_summary(contest, get_problems(contest))
+
+
+@app.command(
+    'issues',
+    help="Show what each problem's last run revealed.",
+)
+@within_contest
+def issues_cmd(
+    detailed: Annotated[
+        bool,
+        typer.Option(
+            '--detailed',
+            '-d',
+            help="Follow the table with every problem's issues in full.",
+        ),
+    ] = False,
+    format: Annotated[
+        issues.IssuesFormat,
+        typer.Option(
+            '--format',
+            help='How to print the issues. Use `json` to consume them from a tool.',
+        ),
+    ] = issues.IssuesFormat.RICH,
+):
+    contest = find_contest_package_or_die()
+    rows = issues.collect_contest_rows(contest, get_problems(contest))
+
+    if format is issues.IssuesFormat.JSON:
+        # Straight to stdout, not through the themed console: this output is
+        # parsed, and Rich would wrap and highlight it.
+        print(issues.contest_to_json(rows))
+        return
+
+    issues.print_contest_report(rows, detailed=detailed)
 
 
 @app.command('list, ls', help='List all contests in the current directory.')

@@ -329,6 +329,39 @@ SPEC = {
             ],
         },
         {
+            'help': 'Show what the last run revealed about the...',
+            'is_group': False,
+            'name': 'issues',
+            'panel': 'Testing',
+            'params': [
+                {
+                    'help': 'Explain each issue instead of summarizing it in one line.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--detailed', '-d'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'How to print the issues. Use `json` to consume them from a '
+                    'tool.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--format'],
+                    'takes_value': True,
+                    'value': {'choices': ['rich', 'json'], 'kind': 'choice'},
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+            ],
+        },
+        {
             'help': 'Estimate a time limit for the problem...',
             'is_group': False,
             'name': 'time, t',
@@ -2598,6 +2631,40 @@ SPEC = {
                             'takes_value': False,
                             'value': {'kind': 'none'},
                         }
+                    ],
+                },
+                {
+                    'help': "Show what each problem's last run revealed.",
+                    'is_group': False,
+                    'name': 'issues',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': "Follow the table with every problem's issues in "
+                            'full.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--detailed', '-d'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'How to print the issues. Use `json` to consume '
+                            'them from a tool.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--format'],
+                            'takes_value': True,
+                            'value': {'choices': ['rich', 'json'], 'kind': 'choice'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
                     ],
                 },
                 {

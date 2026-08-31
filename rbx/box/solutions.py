@@ -75,7 +75,7 @@ from rbx.box.rendering import CellSlot, Throttling
 # to break -- and the board has to be a real class here, not a string, because a
 # dataclass default_factory is evaluated at runtime.
 from rbx.box.runners.base import RunProgress
-from rbx.box.sanitizers import compilation_warnings, issue_stack
+from rbx.box.sanitizers import compilation_warnings
 from rbx.box.schema import (
     ExpectedOutcome,
     GeneratorCall,
@@ -429,17 +429,6 @@ class RunSolutionResult:
         await self.runner.close()
 
 
-class FailedSolutionIssue(issue_stack.Issue):
-    def __init__(self, solution: Solution):
-        self.solution = solution
-
-    def get_detailed_section(self) -> Tuple[str, ...]:
-        return ('solutions',)
-
-    def get_detailed_message(self) -> str:
-        return f'{self.solution.href()} has an unexpected outcome.'
-
-
 def is_fast(solution: Solution) -> bool:
     # A solution expected to be slow anywhere -- for the whole testset or for a
     # single group -- is not a fast solution.
@@ -504,32 +493,6 @@ def get_exact_matching_solutions(expected_outcome: ExpectedOutcome) -> List[Solu
         if solution.outcome == expected_outcome:
             res.append(solution)
     return res
-
-
-class FailedToCompileSolutionIssue(issue_stack.Issue):
-    def __init__(self, solution: Solution, exception: Optional[BaseException] = None):
-        self.solution = solution
-        self.exception = exception
-
-    def get_detailed_section(self) -> Tuple[str, ...]:
-        return ('solutions',)
-
-    def _reason(self) -> Optional[str]:
-        if (
-            isinstance(self.exception, steps.CompilationError)
-            and self.exception.not_found_executable
-        ):
-            return f"'{self.exception.not_found_executable}' was not found"
-        return None
-
-    def get_detailed_message(self) -> str:
-        reason = self._reason()
-        if reason is not None:
-            return (
-                f'{self.solution.href()} could not be compiled ({reason}) '
-                'and was skipped.'
-            )
-        return f'{self.solution.href()} could not be compiled and was skipped.'
 
 
 class SolutionCompilationTask(live_tasks.CompilationTask):
@@ -605,9 +568,6 @@ async def compile_solutions(
                     failures[key.solution.path] = exception
                 if exception.not_found_executable:
                     key.skip_reason = f"'{exception.not_found_executable}' not found"
-                issue_stack.add_issue(
-                    FailedToCompileSolutionIssue(key.solution, exception=exception)
-                )
 
         streamer = SolutionCompilationStreamer(
             setter_config.get_async_executor(detach=True)
@@ -2029,6 +1989,19 @@ class SolutionOutcomeReport(BaseModel):
     # here rather than by whoever renders it.
     unexpectedNoTleVerdicts: Set[Outcome]
     sanitizerWarnings: bool
+    # Whether this solution's failure is the kind that untuned limits explain.
+    #
+    # True when a slow verdict went unmatched -- the solution was declared slow
+    # and wasn't, or wasn't and was -- on a run that used the package's own
+    # limits (no `--profile`) and skipped nothing. All three conditions matter:
+    # a limits profile means the setter already chose the limits deliberately,
+    # and a truncated run only looks "too fast" because the testcase that would
+    # have timed out never ran.
+    #
+    # Stored rather than re-derived because the answer needs `bad_verdicts`,
+    # which is per-expectation-layer state that no published artifact carries.
+    # See `run_report.RunSolutionReport.untunedLimitsSuspected`.
+    untunedLimitsSuspected: bool = False
     verification: VerificationLevel
     scoring: ScoreType
 
@@ -2322,26 +2295,6 @@ def _get_evals_per_group(
     return res
 
 
-class TimingIssue(issue_stack.Issue):
-    def __init__(self):
-        pass
-
-    def get_detailed_section(self) -> Optional[Tuple[str, ...]]:
-        return ('timing',)
-
-    def get_detailed_message(self) -> str:
-        return (
-            'A few solutions in your problem have failed expectations either '
-            'because they were too fast or too slow. The limits for this problem '
-            'are being consumed from the package and might not be tuned to your machine. '
-            'Consider running [item]rbx time[/item] if you need more accurate limits '
-            'for your hardware.'
-        )
-
-    def get_severity(self) -> issue_stack.IssueSeverity:
-        return issue_stack.IssueSeverity.WARNING
-
-
 def get_solution_outcome_report(
     solution: Solution,
     skeleton: SolutionReportSkeleton,
@@ -2497,13 +2450,12 @@ def get_solution_outcome_report(
     # reaches the testcase that would have timed out, so it looks "too fast" only
     # because the rest never ran. Blaming the limits for that is misleading.
     has_skipped_eval = any(eval.result.outcome == Outcome.SKIPPED for eval in evals)
-    if (
+    untuned_limits_suspected = (
         report_issues
         and not has_skipped_eval
         and limits.profile is None
         and has_unmatched_slow_verdict
-    ):
-        issue_stack.add_issue(TimingIssue())
+    )
 
     return SolutionOutcomeReport(
         solution=solution,
@@ -2524,6 +2476,7 @@ def get_solution_outcome_report(
         doubleTlVerdicts=double_tl_verdicts,
         unexpectedNoTleVerdicts=verdict_report.unexpected_no_tle_verdicts,
         sanitizerWarnings=verdict_report.has_sanitizer_warnings,
+        untunedLimitsSuspected=untuned_limits_suspected,
         verification=verification,
         scoring=scoring,
     )
@@ -2542,8 +2495,6 @@ def _print_solution_outcome(
     report = get_solution_outcome_report(
         solution, skeleton, evals, verification, subset
     )
-    if not report.status:
-        issue_stack.add_issue(FailedSolutionIssue(solution))
     console.print(
         report.get_outcome_markup(
             skeleton=skeleton,

@@ -340,6 +340,8 @@ async def run(
         if fail_fast:
             _print_fail_fast_warning(console.console)
 
+        _print_issues()
+
         vscode_extension.print_outdated_hint()
 
         if not ok:
@@ -352,6 +354,35 @@ async def run(
         # Ctrl-C, on a backend that had already dispatched every solution.
         # `LocalRunner.close` is a no-op, so this costs a local run nothing.
         await solution_result.close()
+
+
+def _print_issues() -> None:
+    """The issues section at the end of a run.
+
+    Reads the report back off disk rather than being handed the in-memory one.
+    `RunReportWriter` has already written it -- it rewrites the file as each
+    solution lands -- and going through the same path `rbx issues` uses makes it
+    impossible for the two to word the same finding differently, or for one to
+    notice something the other misses.
+
+    Never fatal: `rbx run`'s exit code is the report's verdict, and a problem
+    reading this view must not turn a passing run into a failing one.
+    """
+    from rbx.box import issues
+
+    try:
+        report = issues.build_report(package.get_problem_runs_dir())
+    except issues.UnsupportedReportVersion:
+        return
+    if report.neverRun or not report.issues:
+        return
+
+    console.console.print()
+    console.console.rule('[status]Issues[/status]', style='status')
+    issues.print_report(report)
+    console.console.print(
+        '[info]Run [item]rbx issues -d[/item] to expand these.[/info]'
+    )
 
 
 @app.command(

@@ -1,4 +1,3 @@
-import pathlib
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel
@@ -391,8 +390,11 @@ async def print_contest_summary(contest: Contest, problems: List[Package]):
         row_data: list[str] = []
         short_name = contest.problems[i].short_name
 
-        raw_path = contest.problems[i].path
-        problem_path = pathlib.Path(raw_path) if raw_path else pathlib.Path('.')
+        # `get_path()`, never the raw `path`: it is None for a problem that
+        # relies on the default `./{short_name}/` layout, and reading the field
+        # directly sent every such problem to the contest root -- where no
+        # package is found, so the row was dropped and the table came out empty.
+        problem_path = contest.problems[i].get_path()
 
         row_data.append(short_name)
         row_data.append(problem.name)
