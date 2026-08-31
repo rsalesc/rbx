@@ -902,3 +902,70 @@ class TestConfigRendering:
         assert payload['version'] == 2
         assert payload['issues'][0]['family'] == 'config'
         assert payload['issues'][0]['severity'] == 'warning'
+
+
+class TestBuildReportMergesFamilies:
+    def _write_run(self, runs_dir: pathlib.Path) -> None:
+        run_report.write_report(
+            run_report.report_path(runs_dir),
+            RunReport(
+                solutions=[
+                    solution(
+                        path='sol/wa.cpp',
+                        expectedOutcome=ExpectedOutcome.WRONG_ANSWER,
+                        outcome=Outcome.ACCEPTED,
+                        status='UNEXPECTED_VERDICTS',
+                        matchesExpectation=False,
+                        pooledMatchesExpectation=False,
+                    )
+                ]
+            ),
+        )
+
+    def test_config_findings_survive_a_problem_that_was_never_run(
+        self, tmp_path: pathlib.Path
+    ):
+        report = build_report(
+            tmp_path / 'runs', config_state=config_state(has_validator=False)
+        )
+
+        assert report.neverRun
+        assert kinds(report.issues) == ['config_no_validator']
+
+    def test_without_a_config_state_the_report_is_run_only(
+        self, tmp_path: pathlib.Path
+    ):
+        # An absent state means "nobody collected one", never "the package has
+        # nothing wrong with it".
+        report = build_report(tmp_path / 'runs')
+
+        assert report.neverRun
+        assert report.issues == []
+
+    def test_config_findings_sort_before_run_findings_in_a_band(
+        self, tmp_path: pathlib.Path
+    ):
+        """The run is downstream of the config, so the config reads first."""
+        self._write_run(tmp_path)
+
+        report = build_report(
+            tmp_path,
+            config_state=config_state(
+                solutions=[config_solution('sol/wa.cpp', ExpectedOutcome.WRONG_ANSWER)]
+            ),
+        )
+
+        assert kinds(report.issues) == [
+            'config_no_accepted_solution',
+            'unmet_expectation',
+        ]
+
+    def test_errors_still_outrank_warnings_across_families(
+        self, tmp_path: pathlib.Path
+    ):
+        self._write_run(tmp_path)
+
+        report = build_report(tmp_path, config_state=config_state(has_validator=False))
+
+        # The run error beats the config warning; severity is the outer key.
+        assert kinds(report.issues) == ['unmet_expectation', 'config_no_validator']
