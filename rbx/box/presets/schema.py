@@ -1,5 +1,13 @@
 import pathlib
-from typing import Annotated, Callable, Hashable, List, Optional, TypeVar
+from typing import (
+    Annotated,
+    Callable,
+    ClassVar,
+    Hashable,
+    List,
+    Optional,
+    TypeVar,
+)
 
 import typer
 from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
@@ -195,6 +203,12 @@ def _merge_by(
 
 
 class Preset(BaseModel):
+    # `!include` fragments are resolved when loading this model (see
+    # rbx.box.yaml_include). Only the four user-authored config kinds people
+    # actually share between packages are include-capable; everything else --
+    # limits profiles, locks, registries, generated artifacts -- loads plainly
+    # and is written back from the model, which would inline any fragment.
+    rbx_include_capable: ClassVar[bool] = True
     # Name of the preset, or a GitHub repository containing it.
     name: str = NameField()
 

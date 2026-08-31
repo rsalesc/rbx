@@ -26,6 +26,7 @@ from rbx.box import (
     timing_group_picker,
     timing_groups,
     timing_validation,
+    yaml_include,
 )
 from rbx.box.code import find_language_name
 from rbx.box.environment import VerificationLevel
@@ -1949,25 +1950,30 @@ def integrate(profile: str = 'local', dry: bool = False):
         console.console.print('[warning]This operation is a no-op.[/warning]')
         return
 
-    ru, pkg = package.get_ruyaml()
+    dest_yml = package.find_problem_yaml()
+    assert dest_yml is not None
+
+    # One profile can touch several keys, and any of them may live in an
+    # `!include`d fragment -- a session keeps one tree per file so the writes
+    # cannot clobber each other, and lands each in its owning file.
+    session = yaml_include.EditSession(dest_yml)
 
     if limits_profile.timeLimit is not None:
-        pkg['timeLimit'] = limits_profile.timeLimit
+        session.target('timeLimit').replace(limits_profile.timeLimit)
     if limits_profile.memoryLimit is not None:
-        pkg['memoryLimit'] = limits_profile.memoryLimit
+        session.target('memoryLimit').replace(limits_profile.memoryLimit)
     if limits_profile.outputLimit is not None:
-        pkg['outputLimit'] = limits_profile.outputLimit
+        session.target('outputLimit').replace(limits_profile.outputLimit)
 
     for lang, limits in limits_profile.modifiers.items():
         if limits.time is not None:
-            pkg['modifiers'][lang]['time'] = limits.time
+            session.target('modifiers', lang, 'time').replace(limits.time)
         if limits.memory is not None:
-            pkg['modifiers'][lang]['memory'] = limits.memory
+            session.target('modifiers', lang, 'memory').replace(limits.memory)
         if limits.timeMultiplier is not None:
-            pkg['modifiers'][lang]['timeMultiplier'] = limits.timeMultiplier
-
-    dest_yml = package.find_problem_yaml()
-    assert dest_yml is not None
+            session.target('modifiers', lang, 'timeMultiplier').replace(
+                limits.timeMultiplier
+            )
     if dry:
         # `--integrate` writes the package, not the profile, but a dry run
         # promises nothing reaches the disk -- so this write is skipped too.
@@ -1976,7 +1982,7 @@ def integrate(profile: str = 'local', dry: bool = False):
             f'into the package.[/warning]'
         )
         return
-    utils.save_ruyaml(dest_yml, ru, pkg)
+    session.save()
 
     console.console.print(
         f'[success]Integrated limits profile [item]{profile}[/item] into package.[/success]'

@@ -1,5 +1,5 @@
 import pathlib
-from typing import Annotated, Dict, List, Optional, Set
+from typing import Annotated, ClassVar, Dict, List, Optional, Set
 
 import pydantic
 from pydantic import (
@@ -209,6 +209,13 @@ _CONTEST_NAME_VALIDATOR = TypeAdapter(Annotated[str, NameField()])
 
 class Contest(BaseModel):
     model_config = ConfigDict(extra='forbid')
+
+    # `!include` fragments are resolved when loading this model (see
+    # rbx.box.yaml_include). Only the four user-authored config kinds people
+    # actually share between packages are include-capable; everything else --
+    # limits profiles, locks, registries, generated artifacts -- loads plainly
+    # and is written back from the model, which would inline any fragment.
+    rbx_include_capable: ClassVar[bool] = True
 
     use_variants: bool = Field(
         default=False,

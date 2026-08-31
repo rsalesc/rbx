@@ -1808,3 +1808,15 @@ class TestSchemaRelaxation:
 
         assert dumped['required'] == ['name']
         assert dumped['properties']['name']['type'] == 'string'
+
+
+class TestModelFromYamlInclude:
+    """`!include` is only supported by yaml_validation.load_yaml_model."""
+
+    def test_rejects_include_and_names_the_supported_loader(self):
+        with pytest.raises(ValueError) as exc_info:
+            model_from_yaml(SampleModel, 'name: x\nextra: !include frag.yml\n')
+
+        message = str(exc_info.value)
+        assert '!include' in message
+        assert 'load_yaml_model' in message

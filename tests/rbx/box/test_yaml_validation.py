@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import pathlib
-from typing import List
+from typing import ClassVar, List
 
 import pydantic
 import pytest
 import ruyaml
 
+from rbx.box.yaml_include import IncludeError
 from rbx.box.yaml_validation import (
     YamlSyntaxError,
     YamlValidationError,
     load_yaml_model,
+    load_yaml_model_with_sources,
 )
 
 
@@ -39,7 +41,7 @@ def test_locate_top_level_scalar():
     text = 'name: my-problem\ntimeLimit: 1000\n'
     root = _parse(text)
 
-    line, col, span = _locate(('timeLimit',), root)
+    line, col, span, _ = _locate(('timeLimit',), root)
 
     assert line == 2
     # caret on the value, not the key
@@ -53,7 +55,7 @@ def test_locate_nested_map():
     text = 'a:\n  b:\n    c: hello\n'
     root = _parse(text)
 
-    line, col, span = _locate(('a', 'b', 'c'), root)
+    line, col, span, _ = _locate(('a', 'b', 'c'), root)
 
     assert line == 3
     assert col == len('    c: ') + 1
@@ -66,7 +68,7 @@ def test_locate_list_index():
     text = 'items:\n  - a\n  - b\n  - c\n'
     root = _parse(text)
 
-    line, col, span = _locate(('items', 2), root)
+    line, col, span, _ = _locate(('items', 2), root)
 
     assert line == 4  # third item is on line 4
     assert col == 5  # column of the scalar after "- "
@@ -78,7 +80,7 @@ def test_locate_list_of_maps():
     text = 'items:\n  - name: alice\n  - name: bob\n  - name: carol\n'
     root = _parse(text)
 
-    line, col, span = _locate(('items', 2, 'name'), root)
+    line, col, span, _ = _locate(('items', 2, 'name'), root)
 
     assert line == 4
     assert col == len('  - name: ') + 1
@@ -92,7 +94,7 @@ def test_locate_missing_key_falls_back_to_parent():
     root = _parse(text)
 
     # 'absent' is missing from items[1]; walk should stop at items[1]
-    line, col, span = _locate(('items', 1, 'absent'), root)
+    line, col, span, _ = _locate(('items', 1, 'absent'), root)
 
     assert line == 3  # items[1] starts on line 3
     assert col == 5  # column of 'name' key inside items[1]
@@ -106,7 +108,7 @@ def test_locate_out_of_range_index_falls_back():
     text = 'items:\n  - a\n  - b\n'
     root = _parse(text)
 
-    line, col, span = _locate(('items', 99), root)
+    line, col, span, _ = _locate(('items', 99), root)
 
     # falls back to the 'items' key location
     assert line == 1
@@ -121,7 +123,7 @@ def test_locate_skips_pydantic_internal_segments():
     root = _parse(text)
 
     # 'union_tag' is not a real key; walker should skip and resolve 'type'
-    line, col, span = _locate(('step', 'union_tag', 'type'), root)
+    line, col, span, _ = _locate(('step', 'union_tag', 'type'), root)
 
     assert line == 2
     assert col == len('  type: ') + 1
@@ -134,7 +136,7 @@ def test_locate_empty_loc():
     text = 'name: x\n'
     root = _parse(text)
 
-    line, col, span = _locate((), root)
+    line, col, span, _ = _locate((), root)
 
     assert (line, col, span) == (1, 1, 1)
 
@@ -145,7 +147,7 @@ def test_locate_widens_span_to_scalar_value():
     text = 'timeLimit: 1234567\n'
     root = _parse(text)
 
-    line, col, span = _locate(('timeLimit',), root)
+    line, col, span, _ = _locate(('timeLimit',), root)
 
     # After widening: caret column moves to where the value starts,
     # span equals value length.
@@ -287,6 +289,10 @@ class _NestedModel(pydantic.BaseModel):
 
 
 class _RootModel(pydantic.BaseModel):
+    # Stands in for a user-authored config, so it opts into `!include` the way
+    # the four real ones do.
+    rbx_include_capable: ClassVar[bool] = True
+
     title: str
     items: List[_NestedModel]
 
@@ -346,4 +352,74 @@ def test_load_yaml_model_propagates_file_not_found(tmp_path):
     p = tmp_path / 'missing.yml'
 
     with pytest.raises(FileNotFoundError):
+        load_yaml_model(p, _RootModel)
+
+
+# ------------------------------- !include ------------------------------------
+
+
+def test_load_yaml_model_resolves_a_whole_node_include(tmp_path):
+    (tmp_path / 'items.yml').write_text('- name: a\n  score: 1\n')
+    p = tmp_path / 'p.yml'
+    p.write_text('title: ok\nitems: !include items.yml\n')
+
+    out = load_yaml_model(p, _RootModel)
+
+    assert out.title == 'ok'
+    assert out.items[0].name == 'a'
+    assert out.items[0].score == 1
+
+
+def test_load_yaml_model_resolves_a_merge_key_include(tmp_path):
+    (tmp_path / 'base.yml').write_text('title: from-fragment\nitems: []\n')
+    p = tmp_path / 'p.yml'
+    p.write_text('<<: !include base.yml\ntitle: overridden\n')
+
+    out = load_yaml_model(p, _RootModel)
+
+    assert out.title == 'overridden'
+    assert out.items == []
+
+
+def test_load_yaml_model_reports_sources_including_fragments(tmp_path):
+    (tmp_path / 'items.yml').write_text('- name: a\n  score: 1\n')
+    p = tmp_path / 'p.yml'
+    p.write_text('title: ok\nitems: !include items.yml\n')
+
+    _, sources = load_yaml_model_with_sources(p, _RootModel)
+
+    assert sources == {p.resolve(), (tmp_path / 'items.yml').resolve()}
+
+
+def test_validation_error_inside_a_fragment_names_the_fragment(tmp_path):
+    (tmp_path / 'items.yml').write_text('- name: a\n  score: not-an-int\n')
+    p = tmp_path / 'p.yml'
+    p.write_text('title: ok\nitems: !include items.yml\n')
+
+    with pytest.raises(YamlValidationError) as exc_info:
+        load_yaml_model(p, _RootModel)
+
+    rendered = str(exc_info.value)
+    # The fragment owns the bad value, so it must be the file blamed, and the
+    # snippet must come from the fragment's text.
+    assert 'items.yml' in rendered
+    assert 'not-an-int' in rendered
+
+
+def test_validation_error_outside_a_fragment_still_names_the_parent(tmp_path):
+    (tmp_path / 'items.yml').write_text('- name: a\n  score: 1\n')
+    p = tmp_path / 'p.yml'
+    p.write_text('title: 123\nitems: !include items.yml\n')
+
+    with pytest.raises(YamlValidationError) as exc_info:
+        load_yaml_model(p, _RootModel)
+
+    assert 'p.yml' in str(exc_info.value)
+
+
+def test_include_error_propagates_from_load_yaml_model(tmp_path):
+    p = tmp_path / 'p.yml'
+    p.write_text('title: ok\nitems: !include nope.yml\n')
+
+    with pytest.raises(IncludeError):
         load_yaml_model(p, _RootModel)

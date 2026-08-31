@@ -5,6 +5,7 @@ from enum import Enum
 from typing import (
     Annotated,
     Any,
+    ClassVar,
     Dict,
     List,
     Optional,
@@ -467,6 +468,13 @@ that hits it is an error. Defaults to 10s.""",
 
 class Environment(BaseModel):
     model_config = ConfigDict(extra='forbid')
+
+    # `!include` fragments are resolved when loading this model (see
+    # rbx.box.yaml_include). Only the four user-authored config kinds people
+    # actually share between packages are include-capable; everything else --
+    # limits profiles, locks, registries, generated artifacts -- loads plainly
+    # and is written back from the model, which would inline any fragment.
+    rbx_include_capable: ClassVar[bool] = True
 
     defaultFileMapping: Optional[FileMapping] = Field(
         default=None,
