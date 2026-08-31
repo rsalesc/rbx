@@ -262,3 +262,125 @@ def test_render_creates_no_cache_dir(pkg_from_testdata: pathlib.Path):
 
     assert result.exit_code == 0, result.output
     assert not cache.exists()
+
+
+# `contests/statements_v2_group_vars/A` is the one package in `testdata` that
+# declares per-group `vars`, and it is shaped for exactly what the group payload
+# has to get right: two groups each override one leaf of a nested block and must
+# keep its sibling, and a third overrides nothing at all.
+GROUP_VARS_PKG = 'contests/statements_v2_group_vars/A'
+
+
+@pytest.mark.test_pkg(GROUP_VARS_PKG)
+def test_vars_json_groups_dumps_every_groups_resolved_set(
+    pkg_from_testdata: pathlib.Path,
+):
+    """Resolved sets, not the raw override blocks.
+
+    `sub1` overrides only `AB.max`, and its payload must still carry the
+    inherited `AB.min`: the extension badges `\\VAR{problem.groups.sub1.AB.min}`
+    off this map, and a raw override block would leave that reference blank --
+    the silent degradation per-group vars exist to remove.
+    """
+    result = runner.invoke(app, ['vars', '--json', '--groups'])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {
+        'vars': {'AB.min': '1', 'AB.max': '200'},
+        'groups': {
+            'sub1': {'AB.min': '1', 'AB.max': '10'},
+            'sub2': {'AB.min': '100', 'AB.max': '200'},
+            'sub3': {'AB.min': '1', 'AB.max': '200'},
+        },
+    }
+
+
+@pytest.mark.test_pkg(GROUP_VARS_PKG)
+def test_vars_json_without_groups_stays_the_flat_map(pkg_from_testdata: pathlib.Path):
+    """The flag is opt-in so an older rbx fails loudly instead of lying.
+
+    The extension asks with `--groups` and falls back to this shape when the
+    spawn fails, which is how a statement keeps its root badges under an rbx
+    that predates group scope.
+    """
+    result = runner.invoke(app, ['vars', '--json'])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {'AB.min': '1', 'AB.max': '200'}
+
+
+@pytest.mark.test_pkg(GROUP_VARS_PKG)
+def test_vars_json_groups_fails_cleanly_on_a_non_finite_group_var(
+    pkg_from_testdata: pathlib.Path,
+):
+    """The non-finite guard has to cover the group sets, not just the root one."""
+    yml = pathlib.Path('problem.rbx.yml')
+    yml.write_text(yml.read_text().replace('max: 10 #', "max: py`float('inf')` #"))
+
+    result = runner.invoke(app, ['vars', '--json', '--groups'])
+
+    assert result.exit_code == 1
+    assert 'AB.max' in _plain(result.output)
+    assert 'sub1' in _plain(result.output)
+
+
+@pytest.mark.test_pkg(GROUP_VARS_PKG)
+def test_vars_groups_prints_a_section_per_group_without_json(
+    pkg_from_testdata: pathlib.Path,
+):
+    output = _plain(runner.invoke(app, ['vars', '--groups']).output)
+
+    assert 'AB.max = 200' in output
+    assert 'sub1' in output
+    assert 'AB.max = 10' in output
+
+
+@pytest.mark.test_pkg(GROUP_VARS_PKG)
+def test_render_evaluates_an_expression_against_a_named_group(
+    pkg_from_testdata: pathlib.Path,
+):
+    """The group rides in on the line, tab-separated, so one spawn still serves
+    a whole statement however many groups it names."""
+    result = runner.invoke(
+        app, ['vars', '--render', '--target', 'text'], input='sub1\tAB.max\nAB.max\n'
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {'sub1\tAB.max': '10', 'AB.max': '200'}
+
+
+@pytest.mark.test_pkg(GROUP_VARS_PKG)
+def test_render_applies_filters_to_a_group_expression(pkg_from_testdata: pathlib.Path):
+    result = runner.invoke(
+        app,
+        ['vars', '--render', '--target', 'latex'],
+        input='sub1\tAB.max | sci\n',
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {'sub1\tAB.max | sci': '10'}
+
+
+@pytest.mark.test_pkg(GROUP_VARS_PKG)
+def test_render_reaches_the_vars_namespace_of_a_group_too(
+    pkg_from_testdata: pathlib.Path,
+):
+    """`problem.groups.sub1.AB.max` and `...sub1.vars.AB.max` are one reference;
+    the scanner strips the prefix and sends the shorter spelling either way."""
+    result = runner.invoke(app, ['vars', '--render'], input='sub1\tvars.AB.max\n')
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {'sub1\tvars.AB.max': '10'}
+
+
+@pytest.mark.test_pkg(GROUP_VARS_PKG)
+def test_render_omits_an_expression_for_a_group_that_does_not_exist(
+    pkg_from_testdata: pathlib.Path,
+):
+    """A renamed group is an absent badge, like every other failure (D5)."""
+    result = runner.invoke(
+        app, ['vars', '--render'], input='nosuchgroup\tAB.max\nAB.max\n'
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {'AB.max': '200'}

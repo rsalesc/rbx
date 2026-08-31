@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { test } from 'node:test';
 
-import { parseVarsPayload } from './varsPayload';
+import { parseVarsPayload, parseVarsWithGroups } from './varsPayload';
 
 test('a flat map of display strings is accepted', () => {
   assert.deepStrictEqual(parseVarsPayload('{"N.max": "100000", "flag": "True"}'), {
@@ -88,6 +88,38 @@ test('the render map is read by this same parser', () => {
   assert.deepStrictEqual(
     parseVarsPayload('{"N.max | sci": "10⁵", "M.max | rsci": "2×10⁹ + 7"}'),
     { 'N.max | sci': '10⁵', 'M.max | rsci': '2×10⁹ + 7' },
+  );
+});
+
+test('the grouped payload carries the root set and one set per group', () => {
+  assert.deepStrictEqual(
+    parseVarsWithGroups(
+      '{"vars": {"N.max": "100000"}, "groups": {"sub1": {"N.max": "10"}}}',
+    ),
+    { vars: { 'N.max': '100000' }, groups: { sub1: { 'N.max': '10' } } },
+  );
+});
+
+test('a package with no groups is a grouped payload with none', () => {
+  assert.deepStrictEqual(parseVarsWithGroups('{"vars": {"N.max": "5"}, "groups": {}}'), {
+    vars: { 'N.max': '5' },
+    groups: {},
+  });
+});
+
+test('the flat payload is not a grouped one', () => {
+  // What an rbx too old for `--groups` prints when the flag is dropped. Reading
+  // it as a grouped payload would leave every group silently empty, so it is
+  // refused and the caller falls back to the flat reader deliberately.
+  assert.strictEqual(parseVarsWithGroups('{"N.max": "100000"}'), undefined);
+});
+
+test('a group whose set is not a map of strings is refused whole', () => {
+  // Same rule as the flat parser: a shape mismatch ends the read rather than
+  // yielding a half-trusted payload.
+  assert.strictEqual(
+    parseVarsWithGroups('{"vars": {"N.max": "5"}, "groups": {"sub1": {"N.max": 10}}}'),
+    undefined,
   );
 });
 

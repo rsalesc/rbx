@@ -216,6 +216,37 @@ answers to -- is left out of the map instead of guessed at, and named on
 `stderr`. The command still exits 0, so one bad expression does not cost you
 the rest.
 
+A test group may override a variable for its own testcases, and `--groups`
+shows what each group ends up with. Each group's set is the *resolved* one --
+the package values with that group's overrides applied -- so a variable the
+group does not override still appears, holding what it inherits:
+
+```bash
+$ rbx vars --groups
+M.max = 200000
+N.max = 100000
+groups.sub1
+  M.max = 200000
+  N.max = 1000
+```
+
+With `--json` alongside it, the flat map moves under `vars` and the groups
+arrive beside it:
+
+```bash
+$ rbx vars --json --groups
+{"vars": {"N.max": "100000"}, "groups": {"sub1": {"N.max": "1000"}}}
+```
+
+`--render` takes the group per expression instead, ahead of a tab, since one
+run may need to render against several. A line without a tab is a package-level
+expression, and every key comes back exactly as you wrote it:
+
+```bash
+$ printf 'N.max | sci\nsub1\tN.max\n' | rbx vars --render
+{"N.max | sci": "10⁵", "sub1\tN.max": "1000"}
+```
+
 !!! tip "Right there in your statement"
 
     The [VS Code extension](../tools/vscode.md#variables-in-a-statement) reads
