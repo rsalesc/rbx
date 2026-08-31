@@ -1,0 +1,75 @@
+# Throwaway DOMjudge server for local testing.
+#
+# Driven by scripts/domjudge/domjudge.sh -- see that script and the README in
+# this directory. Nothing here is meant for production: passwords are fixed,
+# the database lives in a named volume, and the judgehost runs privileged.
+
+name: rbx-domjudge
+
+services:
+  mariadb:
+    image: mariadb:10.11
+    container_name: rbx-dj-mariadb
+    command: --max-connections=1000
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DJ_MYSQL_ROOT_PASSWORD:-rootpw}
+      MYSQL_USER: ${DJ_MYSQL_USER:-domjudge}
+      MYSQL_PASSWORD: ${DJ_MYSQL_PASSWORD:-djpw}
+      MYSQL_DATABASE: ${DJ_MYSQL_DATABASE:-domjudge}
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  domserver:
+    image: domjudge/domserver:${DJ_VERSION:-latest}
+    container_name: rbx-dj-domserver
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      CONTAINER_TIMEZONE: ${DJ_TIMEZONE:-UTC}
+      MYSQL_HOST: mariadb
+      MYSQL_USER: ${DJ_MYSQL_USER:-domjudge}
+      MYSQL_PASSWORD: ${DJ_MYSQL_PASSWORD:-djpw}
+      MYSQL_ROOT_PASSWORD: ${DJ_MYSQL_ROOT_PASSWORD:-rootpw}
+      MYSQL_DATABASE: ${DJ_MYSQL_DATABASE:-domjudge}
+      # 0 seeds the demo contest, teams and problems; 1 gives a bare install.
+      DJ_DB_INSTALL_BARE: ${DJ_DB_INSTALL_BARE:-0}
+    ports:
+      - '${DJ_PORT:-12345}:80'
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'curl -fsS http://localhost/public > /dev/null || exit 1']
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  # Only started with `domjudge.sh up --with-judgehost` (compose profile).
+  # Needs a privileged container and host cgroups, so it is Linux-only in
+  # practice -- see the README.
+  judgehost:
+    image: domjudge/judgehost:${DJ_VERSION:-latest}
+    container_name: rbx-dj-judgehost-0
+    profiles: ['judgehost']
+    depends_on:
+      domserver:
+        condition: service_healthy
+    privileged: true
+    hostname: judgedaemon-0
+    environment:
+      CONTAINER_TIMEZONE: ${DJ_TIMEZONE:-UTC}
+      DOMSERVER_BASEURL: http://domserver/
+      DAEMON_ID: 0
+      JUDGEDAEMON_USERNAME: judgehost
+      # Injected by domjudge.sh, read out of the domserver's restapi.secret.
+      JUDGEDAEMON_PASSWORD: ${DJ_JUDGEDAEMON_PASSWORD:-password}
+      DOMJUDGE_CREATE_WRITABLE_TEMP_DIR: 1
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup
+
+volumes:
+  mariadb-data:
