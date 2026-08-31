@@ -417,7 +417,18 @@ def _ensure_json_serializable(obj):
 
 
 def model_from_yaml(model: Type[T], s: str) -> T:
-    return model(**yaml.safe_load(s))
+    try:
+        data = yaml.safe_load(s)
+    except yaml.constructor.ConstructorError as exc:
+        if "tag '!include'" in str(exc):
+            raise ValueError(
+                '`!include` is not supported here: this loader reads YAML from a '
+                'string and so has no directory to resolve fragment paths against. '
+                'Only user-authored config files loaded through '
+                'rbx.box.yaml_validation.load_yaml_model support `!include`.'
+            ) from exc
+        raise
+    return model(**data)
 
 
 def validate_field(model: Type[T], field: str, value: Any):

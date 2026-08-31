@@ -208,6 +208,54 @@ def _resolve_node(
     return node
 
 
+def _any_include(node: Any) -> bool:
+    if is_include(node):
+        return True
+    if isinstance(node, CommentedMap):
+        return any(
+            _is_merge_key(key) and is_include(node[key]) or _any_include(node[key])
+            for key in node.keys()
+        )
+    if isinstance(node, CommentedSeq):
+        return any(_any_include(item) for item in node)
+    return False
+
+
+def file_has_includes(path: pathlib.Path) -> bool:
+    """Whether `path` contains an `!include` anywhere in its own text.
+
+    Purely syntactic -- it does not follow or require the fragments to exist,
+    so it is safe to call on a broken include graph. Writers use it to avoid
+    re-serialising a file from a Pydantic model, which would inline every
+    fragment and silently destroy the sharing.
+    """
+    try:
+        tree = make_yaml().load(path.read_text())
+    except (OSError, ruyaml.YAMLError):
+        return False
+    return _any_include(tree)
+
+
+def die_if_write_would_inline_includes(path: pathlib.Path) -> None:
+    """Refuse to re-serialise a config that uses `!include`.
+
+    Writers such as `rbx contest add` rebuild the file from the Pydantic model,
+    where includes no longer exist -- writing that back would inline every
+    fragment and silently undo the sharing. Until those writers can route an
+    edit into the fragment that owns it, refuse and say which file to edit.
+    """
+    if not file_has_includes(path):
+        return
+    with IncludeError() as err:
+        err.print(
+            f'[error]Refusing to rewrite [item]{path}[/item]: it uses '
+            f'[item]!include[/item], and saving would inline every fragment and '
+            f'lose the sharing.[/error]\n'
+            f'[warning]Edit the file (or the fragment that owns the value) by '
+            f'hand instead.[/warning]'
+        )
+
+
 def resolve_yaml_file(path: pathlib.Path) -> Tuple[Any, Set[pathlib.Path]]:
     """Load `path` and splice in every transitive `!include`.
 

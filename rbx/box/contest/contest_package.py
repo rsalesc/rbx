@@ -6,7 +6,7 @@ import ruyaml
 import typer
 
 from rbx import console, utils
-from rbx.box import cd, environment
+from rbx.box import cd, environment, yaml_include
 from rbx.box.contest.contest_state import is_valid_variant_id
 from rbx.box.contest.schema import Contest
 from rbx.box.package import find_problem_package_or_die
@@ -317,6 +317,7 @@ def save_contest(
     if not contest_yaml_path:
         console.console.print(f'Contest not found in {root.absolute()}', style='error')
         raise typer.Exit(1)
+    yaml_include.die_if_write_would_inline_includes(contest_yaml_path)
     contest_yaml_path.write_text(utils.model_to_yaml(package))
 
 

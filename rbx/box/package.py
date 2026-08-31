@@ -16,7 +16,7 @@ import typer
 from filelock import BaseAsyncFileLock
 
 from rbx import console, utils
-from rbx.box import cd, environment, global_package, path_resolution
+from rbx.box import cd, environment, global_package, path_resolution, yaml_include
 from rbx.box.environment import (
     get_language_by_extension_or_nil,
     get_sandbox_type,
@@ -124,6 +124,7 @@ def save_package(
     if not problem_yaml_path:
         console.console.print(f'[error]Problem not found in {root.absolute()}[/error]')
         raise typer.Exit(1)
+    yaml_include.die_if_write_would_inline_includes(problem_yaml_path)
     problem_yaml_path.write_text(utils.model_to_yaml(package))
 
 

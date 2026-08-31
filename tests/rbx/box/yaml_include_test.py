@@ -4,6 +4,8 @@ import pytest
 
 from rbx.box.yaml_include import (
     IncludeError,
+    die_if_write_would_inline_includes,
+    file_has_includes,
     is_include,
     make_yaml,
     resolve_yaml_file,
@@ -190,3 +192,56 @@ def test_the_same_fragment_may_be_included_twice(tmp_path):
     )
     data, _ = resolve_yaml_file(tmp_path / 'main.yml')
     assert dict(data['one']) == dict(data['two']) == {'a': 1}
+
+
+# ------------------------------ include detection -----------------------------
+
+
+def test_file_has_includes_detects_a_whole_node_include(tmp_path):
+    path = tmp_path / 'main.yml'
+    path.write_text('a: 1\nitems: !include frag.yml\n')
+    assert file_has_includes(path)
+
+
+def test_file_has_includes_detects_a_merge_key_include(tmp_path):
+    path = tmp_path / 'main.yml'
+    path.write_text('vars:\n  <<: !include frag.yml\n  a: 1\n')
+    assert file_has_includes(path)
+
+
+def test_file_has_includes_detects_a_nested_include(tmp_path):
+    path = tmp_path / 'main.yml'
+    path.write_text('a:\n  b:\n  - c: !include frag.yml\n')
+    assert file_has_includes(path)
+
+
+def test_file_has_includes_is_false_for_a_plain_file(tmp_path):
+    path = tmp_path / 'main.yml'
+    path.write_text('a: 1\nb:\n- x\n')
+    assert not file_has_includes(path)
+
+
+def test_file_has_includes_does_not_require_the_fragment_to_exist(tmp_path):
+    """Detection is syntactic, so it works even on a broken include graph."""
+    path = tmp_path / 'main.yml'
+    path.write_text('items: !include definitely-missing.yml\n')
+    assert file_has_includes(path)
+
+
+def test_write_guard_refuses_a_file_with_includes(tmp_path):
+    path = tmp_path / 'contest.rbx.yml'
+    path.write_text('name: c\nproblems: !include shared.yml\n')
+
+    with pytest.raises(IncludeError) as exc:
+        die_if_write_would_inline_includes(path)
+
+    message = str(exc.value)
+    assert 'contest.rbx.yml' in message
+    assert '!include' in message
+
+
+def test_write_guard_allows_a_file_without_includes(tmp_path):
+    path = tmp_path / 'contest.rbx.yml'
+    path.write_text('name: c\nproblems: []\n')
+
+    die_if_write_would_inline_includes(path)  # does not raise
