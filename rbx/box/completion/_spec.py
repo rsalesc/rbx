@@ -44,6 +44,16 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Run the commands straight in this terminal, one after another, '
+                    'instead of opening the TUI. Must come before the problem '
+                    'selector in `rbx on`.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--inline', '-i'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,
@@ -66,6 +76,16 @@ SPEC = {
                     'kind': 'option',
                     'multiple': False,
                     'names': ['--keep-going', '-k'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Run the commands straight in this terminal, one after another, '
+                    'instead of opening the TUI. Must come before the problem '
+                    'selector in `rbx on`.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--inline', '-i'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
                 },
@@ -2501,6 +2521,16 @@ SPEC = {
                             'value': {'kind': 'none'},
                         },
                         {
+                            'help': 'Run the commands straight in this terminal, one '
+                            'after another, instead of opening the TUI. Must '
+                            'come before the problem selector in `rbx on`.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--inline', '-i'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
                             'multiple': False,
@@ -2531,6 +2561,16 @@ SPEC = {
                             'kind': 'option',
                             'multiple': False,
                             'names': ['--keep-going', '-k'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Run the commands straight in this terminal, one '
+                            'after another, instead of opening the TUI. Must '
+                            'come before the problem selector in `rbx on`.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--inline', '-i'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
                         },
