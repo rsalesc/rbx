@@ -414,7 +414,7 @@ class TestContestOn:
         self, runner: CliRunner, contest_dir: pathlib.Path
     ):
         with (
-            mock.patch.object(contest_main.subprocess, 'call') as call,
+            mock.patch.object(contest_main.subprocess, 'call', return_value=0) as call,
             mock.patch('rbx.box.ui.command_app.start_command_app') as start_app,
         ):
             result = runner.invoke(contest_main.app, ['on', 'A', 'build'])
@@ -427,7 +427,7 @@ class TestContestOn:
         self, runner: CliRunner, contest_dir: pathlib.Path
     ):
         with (
-            mock.patch.object(contest_main.subprocess, 'call') as call,
+            mock.patch.object(contest_main.subprocess, 'call', return_value=0) as call,
             mock.patch('rbx.box.ui.command_app.start_command_app') as start_app,
         ):
             result = runner.invoke(
@@ -475,7 +475,7 @@ class TestContestOn:
         # `-C` only lives in a contextvar, so the child would otherwise resolve
         # the canonical contest and not find itself in its `problems[]`.
         with (
-            mock.patch.object(contest_main.subprocess, 'call') as call,
+            mock.patch.object(contest_main.subprocess, 'call', return_value=0) as call,
             mock.patch('rbx.box.ui.command_app.start_command_app'),
         ):
             result = runner.invoke(
@@ -513,7 +513,7 @@ class TestContestOn:
         clean_contest_env,
     ):
         with (
-            mock.patch.object(contest_main.subprocess, 'call'),
+            mock.patch.object(contest_main.subprocess, 'call', return_value=0),
             mock.patch('rbx.box.ui.command_app.start_command_app'),
         ):
             result = runner.invoke(contest_main.app, ['on', 'A', 'build'])
@@ -654,3 +654,154 @@ class TestContestEach:
 
         assert result.exit_code == 1
         assert 'No recorded runs' in result.output
+
+
+class TestContestInline:
+    """`--inline`: the whole chain runs in this terminal, TUI untouched."""
+
+    @pytest.fixture
+    def contest_dir(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        clear_package_caches,
+    ) -> pathlib.Path:
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / 'contest.rbx.yml').write_text(
+            'name: ctt\n'
+            'problems:\n'
+            '  - short_name: A\n    path: probs/a\n'
+            '  - short_name: B\n    path: probs/b\n'
+        )
+        for name in ('a', 'b'):
+            _write_minimal_problem(tmp_path / 'probs' / name, f'prob-{name}')
+        return tmp_path
+
+    def test_each_inline_runs_every_chain_in_the_terminal(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with (
+            mock.patch.object(contest_main.subprocess, 'call', return_value=0) as call,
+            mock.patch('rbx.box.ui.command_app.start_command_app') as start_app,
+        ):
+            result = runner.invoke(
+                contest_main.app, ['each', '--inline', 'build', '::', 'run', '-s']
+            )
+
+        assert result.exit_code == 0, result.output
+        start_app.assert_not_called()
+        assert [c.args[0] for c in call.call_args_list] == [
+            'rbx build',
+            'rbx run -s',
+            'rbx build',
+            'rbx run -s',
+        ]
+        assert [str(c.kwargs['cwd']) for c in call.call_args_list] == [
+            'probs/a',
+            'probs/a',
+            'probs/b',
+            'probs/b',
+        ]
+
+    def test_on_inline_runs_a_chain_over_a_range_of_problems(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with (
+            mock.patch.object(contest_main.subprocess, 'call', return_value=0) as call,
+            mock.patch('rbx.box.ui.command_app.start_command_app') as start_app,
+        ):
+            result = runner.invoke(
+                contest_main.app, ['on', '-i', 'A..B', 'build', '::', 'run']
+            )
+
+        assert result.exit_code == 0, result.output
+        start_app.assert_not_called()
+        assert [c.args[0] for c in call.call_args_list] == [
+            'rbx build',
+            'rbx run',
+            'rbx build',
+            'rbx run',
+        ]
+
+    def test_a_failing_command_skips_the_rest_of_its_own_chain_only(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        # `rbx build` fails in the first problem; its `rbx run` is skipped, but
+        # the second problem still runs its whole chain.
+        codes = {'rbx build': 1}
+        with mock.patch.object(
+            contest_main.subprocess,
+            'call',
+            side_effect=lambda cmd, **kwargs: codes.pop(cmd, 0),
+        ) as call:
+            result = runner.invoke(
+                contest_main.app, ['each', '--inline', 'build', '::', 'run']
+            )
+
+        assert result.exit_code == 1, result.output
+        assert [c.args[0] for c in call.call_args_list] == [
+            'rbx build',
+            'rbx build',
+            'rbx run',
+        ]
+        assert 'failed' in result.output
+
+    def test_keep_going_runs_the_rest_of_a_failing_chain(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        codes = {'rbx build': 1}
+        with mock.patch.object(
+            contest_main.subprocess,
+            'call',
+            side_effect=lambda cmd, **kwargs: codes.pop(cmd, 0),
+        ) as call:
+            result = runner.invoke(
+                contest_main.app, ['each', '-k', '--inline', 'build', '::', 'run']
+            )
+
+        # The chain kept going, but the failure still shows in the exit code.
+        assert result.exit_code == 1, result.output
+        assert [c.args[0] for c in call.call_args_list] == [
+            'rbx build',
+            'rbx run',
+            'rbx build',
+            'rbx run',
+        ]
+
+    def test_inline_without_a_command_is_an_error(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with (
+            mock.patch('rbx.box.ui.run_picker.open_run_history') as history,
+            mock.patch('rbx.box.ui.command_app.start_command_app') as start_app,
+        ):
+            result = runner.invoke(contest_main.app, ['each', '--inline'])
+
+        assert result.exit_code == 1
+        assert 'No command to run' in result.output
+        # Neither the history picker nor a blank session may open in this mode.
+        history.assert_not_called()
+        start_app.assert_not_called()
+
+    def test_on_inline_without_a_command_is_an_error(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with (
+            mock.patch('rbx.box.ui.run_picker.open_run_history') as history,
+            mock.patch('rbx.box.ui.command_app.start_command_app') as start_app,
+        ):
+            result = runner.invoke(contest_main.app, ['on', '-i', 'A'])
+
+        assert result.exit_code == 1
+        assert 'No command to run' in result.output
+        history.assert_not_called()
+        start_app.assert_not_called()
+
+    def test_a_shell_command_stays_unprefixed_inline(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with mock.patch.object(contest_main.subprocess, 'call', return_value=0) as call:
+            result = runner.invoke(contest_main.app, ['each', '--inline', 'bash', '-c'])
+
+        assert result.exit_code == 0, result.output
+        assert [c.args[0] for c in call.call_args_list] == ['bash -c', 'bash -c']

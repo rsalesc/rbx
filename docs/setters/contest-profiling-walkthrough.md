@@ -192,6 +192,20 @@ rbx on B time -p boca --auto     # one problem, straight in your terminal
 A single problem is a single command, so {{rbx}} skips the app entirely and runs it in
 place. Two or more and you get the sidebar again.
 
+`-i` (`--inline`) makes that the rule rather than the exception. It runs every problem's
+chain straight in your terminal, one after another, printing which command is running for
+which problem and nothing else:
+
+```bash
+rbx on -i A,C time -p boca --auto
+rbx each --inline time -p boca --auto
+```
+
+You lose the sidebar and the per-problem scrollback, and you get plain, scrollable output
+you can pipe or read in a log -- plus an exit code that is non-zero if any command failed.
+That makes it the mode to reach for over a handful of problems, and the one to use from a
+script or any other tool that can't answer a TUI.
+
 !!! tip
     `-k` (`--keep-going`) keeps a problem's chain running after one of its commands fails.
     It belongs to `rbx on` and `rbx each`, not to `time`, so it has to come **before** the

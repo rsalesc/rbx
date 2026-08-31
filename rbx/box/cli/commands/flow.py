@@ -41,8 +41,14 @@ app = typer.Typer(cls=annotations.AliasGroup)
     ```
 
     A single command on a single problem runs directly in your terminal; anything
-    else opens the TUI. Since flags after the problem selector belong to the chained
-    commands, `-k`/`--keep-going` has to come first: `rbx on -k A build :: run`.
+    else opens the TUI. Pass `-i`/`--inline` to keep everything in the terminal
+    instead, running each problem's chain in turn and exiting non-zero if any
+    command failed -- handy for a couple of problems, or for a script that cannot
+    answer a TUI.
+
+    Since flags after the problem selector belong to the chained commands,
+    `-k`/`--keep-going` and `-i`/`--inline` have to come first:
+    `rbx on -ik A build :: run`.
     """)
 )
 def on(
@@ -55,8 +61,9 @@ def on(
         ),
     ],
     keep_going: bool = contest.KEEP_GOING_OPTION,
+    inline: bool = contest.INLINE_OPTION,
 ) -> None:
-    contest.on(ctx, problems, keep_going=keep_going)
+    contest.on(ctx, problems, keep_going=keep_going, inline=inline)
 
 
 @app.command(
@@ -86,6 +93,15 @@ def on(
 
     Commands you type into the TUI later are queued too, but they always run, even
     after a failure.
+
+    Pass `-i`/`--inline` to skip the TUI and run every problem's chain straight in
+    your terminal, one after another. Nothing is interactive in that mode, and the
+    command exits non-zero if any command failed, so it is the mode to reach for
+    from a script.
 """)
-def each(ctx: typer.Context, keep_going: bool = contest.KEEP_GOING_OPTION) -> None:
-    contest.each(ctx, keep_going=keep_going)
+def each(
+    ctx: typer.Context,
+    keep_going: bool = contest.KEEP_GOING_OPTION,
+    inline: bool = contest.INLINE_OPTION,
+) -> None:
+    contest.each(ctx, keep_going=keep_going, inline=inline)
