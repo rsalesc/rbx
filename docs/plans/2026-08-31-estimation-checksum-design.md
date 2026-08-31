@@ -128,8 +128,13 @@ segment is never available there. What `light_only` rules out is reading a manif
 Packaging builds statements too, but through `execute_build_on_statements` rather than
 `execute_build`, so the packaging path warns exactly once.
 
-`rbx run` keys on `limits_info.get_active_profile()` rather than on its own `--profile`
-value, so the root-level `rbx -p boca run` is checked exactly like `rbx run -p boca`.
+`rbx run` keys on `limits_info.get_run_profile()` — the profile the run is *actually* judged
+against. Not its own `--profile` value, so the root-level `rbx -p boca run` is checked exactly
+like `rbx run -p boca`; and not `get_active_profile()`, which is None for a plain `rbx run`
+even though such a run resolves its limits from `local`. Since `rbx time` writes `local` by
+default, keying on the active profile skipped the commonest workflow there is: estimate, edit
+a solution, run. `tasks.get_limits_for_language` goes through the same helper, so the profile
+the run is judged by and the profile the check inspects cannot drift apart.
 
 They all go through `warn_if_stale`, so the message is identical everywhere. It is a warning
 in every case — never an error, and never a reason to refuse a package. Only the setter can say

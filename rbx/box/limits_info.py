@@ -26,6 +26,24 @@ def get_active_profile() -> Optional[str]:
     return profile_var.get()
 
 
+# The profile a solution run falls back to when none was named. `rbx time` writes
+# this one by default, so it is the profile of the *default* workflow rather than
+# a fallback for an unusual one.
+DEFAULT_RUN_PROFILE = 'local'
+
+
+def get_run_profile() -> str:
+    """The profile a solution run is actually judged against.
+
+    Deliberately not `get_active_profile()`, which is None when nothing was
+    named: a plain `rbx run` still resolves its limits from `local`. Every
+    consumer that asks "which profile is this run using?" -- limit resolution,
+    and the staleness check that has to agree with it -- must go through here, or
+    the two answer differently for the commonest invocation there is.
+    """
+    return get_active_profile() or DEFAULT_RUN_PROFILE
+
+
 class use_profile:
     def __init__(
         self, profile: Optional[str], when: Optional[Callable[[], bool]] = None

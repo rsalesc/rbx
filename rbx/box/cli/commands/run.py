@@ -234,12 +234,17 @@ async def run(
     ):
         raise typer.Exit(1)
 
-    # After the build, and keyed on the *active* profile rather than on this
-    # command's own flag, so `rbx -p boca run` is checked exactly like
-    # `rbx run -p boca`. Before the build it would have compared against whatever
-    # manifest an earlier build happened to leave in `build/` -- which is a stale
-    # answer precisely when the testset is what changed.
-    estimation_checksum.warn_if_stale(limits_info.get_active_profile())
+    # After the build, and keyed on the profile the run is actually judged
+    # against -- not on this command's own flag, so `rbx -p boca run` is checked
+    # like `rbx run -p boca`, and not on `get_active_profile()`, which is None for
+    # a plain `rbx run` even though that run resolves its limits from `local`.
+    # `rbx time` writes `local` by default, so keying on the active profile
+    # skipped the check for the commonest workflow there is.
+    #
+    # Before the build it would have compared against whatever manifest an
+    # earlier build happened to leave in `build/` -- a stale answer precisely
+    # when the testset is what changed.
+    estimation_checksum.warn_if_stale(limits_info.get_run_profile())
 
     if verification <= VerificationLevel.VALIDATE.value:
         console.console.print(
@@ -487,7 +492,7 @@ async def irun(
     # `rbx irun` never builds a testset, so whatever sits in `build/` says
     # nothing about this run: the check is deliberately held to its light level
     # rather than reading a manifest an unrelated build left behind.
-    estimation_checksum.warn_if_stale(limits_info.get_active_profile(), light_only=True)
+    estimation_checksum.warn_if_stale(limits_info.get_run_profile(), light_only=True)
 
     if not print:
         console.console.print(

@@ -427,6 +427,30 @@ def test_warn_if_stale_says_nothing_when_the_estimate_is_current(
     assert recorder.export_text().strip() == ''
 
 
+def test_the_default_run_profile_is_the_one_a_plain_run_is_judged_by(
+    pkg: testing_package.TestingPackage, monkeypatch
+):
+    """A plain `rbx run` names no profile, but is still judged against `local` --
+    which is also the profile `rbx time` writes by default. Keying the staleness
+    check on `get_active_profile()` (None here) skipped the commonest workflow
+    there is: estimate, edit a solution, run.
+    """
+    from rbx.box import limits_info
+
+    assert limits_info.get_active_profile() is None
+    assert limits_info.get_run_profile() == 'local'
+
+    _save_profile('local', estimation_checksum.compute().encode())
+    (pkg.root / 'sols' / 'ac.cpp').write_text('int main() { return 7; }\n')
+
+    recorder = _recording_console(monkeypatch)
+    assert (
+        estimation_checksum.warn_if_stale(limits_info.get_run_profile())
+        == ChecksumBucket.SOLUTIONS
+    )
+    assert 'local' in recorder.export_text()
+
+
 def test_timing_profile_carries_the_checksum_into_the_limits():
     from rbx.box.timing import TimingProfile
 
