@@ -345,33 +345,43 @@ def print_contest_report(rows: List[ContestIssueRow], detailed: bool = False) ->
             )
             continue
         report = row.report
-        if report.neverRun:
-            table.add_row(
-                row.short_name,
-                row.name,
-                '[warning]never[/warning]',
-                '-',
-                '-',
-                '[warning]not run[/warning]',
-            )
-            continue
-
         errors = len(report.errors())
         warnings = len(report.warnings())
         worst = report.issues[0] if report.issues else None
+
         if worst is None:
-            worst_str = '[success]-[/success]'
+            # A problem nobody has run has nothing to say about verdicts, and
+            # nothing wrong with its config either. `-` would read as "clean".
+            worst_str = (
+                '[warning]not run[/warning]'
+                if report.neverRun
+                else '[success]-[/success]'
+            )
         else:
             solution = _solution_of(worst)
             prefix = f'{solution}: ' if solution else ''
             worst_str = f'{prefix}{summarize(worst)}'
 
+        # A never-run problem still has counts whenever its config says
+        # something: those findings are the pre-contest checklist, and a row of
+        # dashes would hide the one thing this table exists to surface. The
+        # counts stay `-` only when there is genuinely nothing to count.
+        if report.neverRun and worst is None:
+            errors_str, warnings_str = '-', '-'
+        else:
+            errors_str = f'[error]{errors}[/error]' if errors else '[info]0[/info]'
+            warnings_str = (
+                f'[warning]{warnings}[/warning]' if warnings else '[info]0[/info]'
+            )
+
         table.add_row(
             row.short_name,
             row.name,
-            humanize_since(report.ranAt),
-            f'[error]{errors}[/error]' if errors else '[info]0[/info]',
-            f'[warning]{warnings}[/warning]' if warnings else '[info]0[/info]',
+            '[warning]never[/warning]'
+            if report.neverRun
+            else humanize_since(report.ranAt),
+            errors_str,
+            warnings_str,
             worst_str,
         )
 

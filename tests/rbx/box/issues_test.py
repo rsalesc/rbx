@@ -633,6 +633,44 @@ class TestContestHint:
         )
 
 
+class TestContestRowsForNeverRunProblems:
+    """The pre-contest checklist: a problem nobody has run still has a config.
+
+    This is the row #840 asked for. A never-run row used to be dashes all the
+    way across, which said "nothing to see" about a problem that might have no
+    accepted solution at all -- and left the table contradicting its own
+    "expand these" hint.
+    """
+
+    def _render(self, rows, detailed=False) -> str:
+        recorder = rich.console.Console(record=True, width=200)
+        with mock.patch.object(rendering.console, 'console', recorder):
+            rendering.print_contest_report(rows, detailed=detailed)
+        return recorder.export_text()
+
+    def _row(self, *issues) -> schema.ContestIssueRow:
+        return schema.ContestIssueRow(
+            short_name='A',
+            name='paths',
+            report=schema.IssueReport(neverRun=True, issues=list(issues)),
+        )
+
+    def test_counts_the_config_findings_of_a_never_run_problem(self):
+        out = self._render(
+            [self._row(schema.NoAcceptedSolutionIssue(), schema.NoValidatorIssue())]
+        )
+
+        assert 'no solution is declared as accepted' in out
+        # Still says the problem was never run -- the counts do not pretend
+        # otherwise.
+        assert 'never' in out
+
+    def test_a_never_run_problem_with_a_clean_config_still_reads_as_not_run(self):
+        out = self._render([self._row()])
+
+        assert 'not run' in out
+
+
 class TestIssueFamily:
     """`family` is computed, not declared -- the same rule `severity` follows,
     so a client splitting run findings from config ones reads a field rather
