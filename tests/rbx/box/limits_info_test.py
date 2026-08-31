@@ -1278,3 +1278,77 @@ class TestGetSavedLimitsProfileCaching:
 
         assert a is not None and b is not None
         assert a.inheritFromPackage and b.inheritFromPackage
+
+
+class TestProfilesFromANewerRbx:
+    """A profile is written by rbx, so it is read by a *different* rbx.
+
+    A teammate's, or the setter's own before or after an upgrade. Every field
+    added to `LimitsProfile` therefore has to be readable by an rbx that has
+    never heard of it, which is what these pin. See the `model_config` comment
+    on `LimitsProfile`.
+    """
+
+    def _write(self, tmp_path, text: str) -> None:
+        limits_dir = tmp_path / 'test_problem' / '.limits'
+        limits_dir.mkdir(parents=True)
+        (limits_dir / 'local.yml').write_text(text)
+
+    def test_an_unknown_top_level_field_does_not_refuse_the_profile(
+        self, pkg_cder, tmp_path
+    ):
+        self._write(
+            tmp_path,
+            'timeLimit: 2000\nsomeFieldFromANewerRbx: "seg:abc123"\n',
+        )
+
+        with pkg_cder(tmp_path / 'test_problem'):
+            profile = limits_info.get_saved_limits_profile('local')
+
+        # The limits the setter asked for are still available.
+        assert profile is not None
+        assert profile.timeLimit == 2000
+
+    def test_an_unknown_field_inside_a_timing_group_is_tolerated(
+        self, pkg_cder, tmp_path
+    ):
+        """`groups` entries are nested in the profile and equally rbx-written,
+        so a field added there must not break the parse either."""
+        self._write(
+            tmp_path,
+            'timeLimit: 2000\n'
+            'groups:\n'
+            '  - languages: ["cpp"]\n'
+            '    timeLimit: 2000\n'
+            '    origin: estimated\n'
+            '    someFieldFromANewerRbx: 7\n',
+        )
+
+        with pkg_cder(tmp_path / 'test_problem'):
+            profile = limits_info.get_saved_limits_profile('local')
+
+        assert profile is not None
+        assert profile.groups is not None
+        assert profile.groups[0].languages == ['cpp']
+
+    def test_estimation_checksum_round_trips(self, pkg_cder, tmp_path):
+        """The field that made the forward-compat problem concrete."""
+        self._write(
+            tmp_path,
+            'timeLimit: 2000\nestimationChecksum: "sols:abc,tests:def"\n',
+        )
+
+        with pkg_cder(tmp_path / 'test_problem'):
+            profile = limits_info.get_saved_limits_profile('local')
+
+        assert profile is not None
+        assert profile.estimationChecksum == 'sols:abc,tests:def'
+
+    def test_a_genuinely_wrong_value_is_still_refused(self, pkg_cder, tmp_path):
+        """Tolerating unknown *keys* must not tolerate a bad value for a known
+        one -- that is a broken profile, not a newer one."""
+        self._write(tmp_path, 'timeLimit: "not_a_number"\n')
+
+        with pkg_cder(tmp_path / 'test_problem'):
+            with pytest.raises(YamlValidationError):
+                limits_info.get_saved_limits_profile('local')
