@@ -524,6 +524,14 @@ class TestRendering:
             schema.HiddenVerdictIssue(solution='s'),
             schema.TightTimeMarginIssue(solution='s', maxTime=1.0, timeLimit=1.0),
             schema.UntunedLimitsIssue(),
+            schema.NoAcceptedSolutionIssue(),
+            schema.NoValidatorIssue(),
+            schema.NoSamplesIssue(),
+            schema.EmptyTestGroupIssue(group='big'),
+            schema.MissingStatementLanguageIssue(),
+            schema.ExplanationMissingLanguageIssue(
+                sample=0, path=pathlib.Path('a.rbx.tex')
+            ),
         ]
 
         # Every member of the union is covered.
@@ -822,3 +830,75 @@ class TestConfigDetectors:
         }
 
         assert defined == set(config_detectors.CONFIG_DETECTORS)
+
+
+class TestConfigRendering:
+    def _render(self, report, detailed=False) -> str:
+        recorder = rich.console.Console(record=True, width=200)
+        with mock.patch.object(rendering.console, 'console', recorder):
+            rendering.print_report(report, detailed=detailed)
+        return recorder.export_text()
+
+    def test_words_the_two_missing_statement_cases_apart(self):
+        assert (
+            rendering.summarize(
+                schema.MissingStatementLanguageIssue(hasNoStatements=True)
+            )
+            == 'the problem has no statement'
+        )
+        assert (
+            rendering.summarize(
+                schema.MissingStatementLanguageIssue(missing=['pt', 'es'])
+            )
+            == 'no statement for language(s): pt, es'
+        )
+
+    def test_names_the_group_that_is_empty(self):
+        assert 'big' in rendering.summarize(schema.EmptyTestGroupIssue(group='big'))
+
+    def test_a_never_run_problem_still_shows_its_config_findings(self):
+        """The change `ISSUES_FORMAT_VERSION` 2 records.
+
+        Suppressing these behind "not run yet" would hide them from exactly the
+        reader who has not run anything and most needs to know the package is
+        not ready to be run.
+        """
+        report = schema.IssueReport(neverRun=True, issues=[schema.NoValidatorIssue()])
+
+        out = self._render(report)
+
+        assert 'no validator' in out
+        assert 'not run yet' in out
+
+    def test_a_never_run_problem_with_nothing_wrong_reads_as_before(self):
+        out = self._render(schema.IssueReport(neverRun=True))
+
+        assert 'This problem has not been run yet.' in out
+        assert 'rbx run' in out
+
+    def test_a_never_run_headline_counts_the_config_findings(self):
+        report = schema.IssueReport(
+            neverRun=True,
+            issues=[schema.NoAcceptedSolutionIssue(), schema.NoValidatorIssue()],
+        )
+
+        out = self._render(report)
+
+        assert '1 error(s)' in out
+        assert '1 warning(s)' in out
+
+    def test_detailed_explains_why_an_accepted_solution_matters(self):
+        report = schema.IssueReport(issues=[schema.NoAcceptedSolutionIssue()])
+
+        out = self._render(report, detailed=True)
+
+        assert 'unverified' in out
+
+    def test_json_publishes_the_family_of_each_issue(self):
+        report = schema.IssueReport(issues=[schema.NoValidatorIssue()])
+
+        payload = json.loads(rendering.to_json(report))
+
+        assert payload['version'] == 2
+        assert payload['issues'][0]['family'] == 'config'
+        assert payload['issues'][0]['severity'] == 'warning'
