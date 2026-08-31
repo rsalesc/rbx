@@ -3,7 +3,7 @@ import collections
 import functools
 import pathlib
 import shutil
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 import typer
 from rich.console import Console
@@ -463,7 +463,14 @@ async def generate_testcases(
     progress: Optional[StatusProgress] = None,
     groups: Optional[Set[str]] = None,
     verification: VerificationLevel = VerificationLevel.NONE,
-):
+) -> Dict[Tuple[str, int], str]:
+    """Build every testcase, returning each one's input digest by group and index.
+
+    The digests are computed here regardless -- duplicate detection below needs
+    them -- so handing them back costs nothing and saves the manifest a second
+    pass over the whole testset.
+    """
+
     def step():
         if progress is not None:
             progress.step()
@@ -477,6 +484,7 @@ async def generate_testcases(
 
     executor = setter_config.get_async_executor(detach=True)
     futures: List[asyncio.Future[IdentifiedResult[GenerationTestcaseEntry, str]]] = []
+    input_digests: Dict[Tuple[str, int], str] = {}
 
     class BuildTestcaseVisitor(TestcaseGroupVisitor):
         def __init__(
@@ -577,7 +585,10 @@ async def generate_testcases(
                     f'is a hash duplicate of [item]{ref_entry.full_repr()}[/item].'
                 )
             tests_with_same_digest.append(entry)
+        input_digests[(entry.group_entry.group, entry.group_entry.index)] = digest
         step()
+
+    return input_digests
 
 
 async def generate_output_for_testcase(

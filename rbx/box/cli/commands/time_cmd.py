@@ -14,6 +14,7 @@ from rbx import annotations, console
 from rbx.box import (
     benchmark,
     environment,
+    estimation_checksum,
     limits_info,
     package,
     timing,
@@ -176,6 +177,10 @@ async def _estimate(
     limits_info.render_limits_table(
         current_profile, title=f'Current limits ({profile})'
     )
+    # Informational here, unlike in `rbx run` and `rbx package build`: the whole
+    # command exists to replace this estimate, so saying it is stale is context
+    # for the run about to happen, not a warning to act on.
+    estimation_checksum.warn_if_stale(profile)
     console.console.print()
     if integrate:
         timing.integrate(profile, dry=dry)

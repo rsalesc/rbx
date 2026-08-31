@@ -17,6 +17,7 @@ from rbx.annotations import PackagePath
 from rbx.box import (
     benchmark,
     environment,
+    estimation_checksum,
     generators,
     limits_info,
     package,
@@ -56,6 +57,12 @@ def _set_timing_profile(profile: Optional[str]) -> None:
 
     limits_info.get_limits_profile(profile, fallback_to_package_profile=False)
     limits_info.profile_var.set(profile)
+    # Naming a profile is asking to be judged by its limits, so it is also the
+    # moment to say that those limits predate the solutions being run. The check
+    # is at whatever level the build dir currently supports -- `rbx run` has not
+    # built anything yet here, so on a clean checkout it compares the solutions
+    # and stays quiet about the tests.
+    estimation_checksum.warn_if_stale(profile)
 
 
 @app.command(

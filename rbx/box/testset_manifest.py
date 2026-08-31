@@ -26,7 +26,7 @@ from rbx.box.validators import (
     merge_hit_bounds_per_group,
 )
 
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
 
 
 class TestsetGroup(BaseModel):
@@ -68,6 +68,9 @@ class TestsetTest(BaseModel):
     # thousands of files.
     input_size: Optional[int] = None
     output_size: Optional[int] = None
+    # Digest of the input file, as computed during generation. Kept so a reader
+    # can tell two testsets apart without reading a byte of either.
+    input_digest: Optional[str] = None
 
 
 class TestsetGroupValidation(BaseModel):
@@ -88,6 +91,12 @@ class TestsetManifest(BaseModel):
     # An empty list would read as "nothing is covered", which is a much stronger
     # claim than "we did not look".
     validation: Optional[List[TestsetGroupValidation]] = None
+    # Whether this build proved its generators deterministic -- i.e. ran at
+    # `VerificationLevel.VALIDATE` or above, where a generator producing
+    # different bytes on two runs fails the build outright. False says nothing
+    # about the generators; it says nobody looked, so `input_digest` here is one
+    # observation rather than a property of the testset.
+    deterministic: bool = False
 
 
 def get_manifest_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
@@ -193,6 +202,8 @@ def _build_groups(group_names: Set[str]) -> List[TestsetGroup]:
 def build_manifest(
     entries: List[GenerationTestcaseEntry],
     validation_infos: Optional[List[TestcaseValidationInfo]],
+    input_digests: Optional[Dict[Tuple[str, int], str]] = None,
+    deterministic: bool = False,
 ) -> TestsetManifest:
     group_names = {entry.group_entry.group for entry in entries}
 
@@ -212,6 +223,9 @@ def build_manifest(
                 visualization=_visualization_for_entry(entry),
                 input_size=_size_or_none(testcase.inputPath),
                 output_size=_size_or_none(testcase.outputPath),
+                input_digest=(input_digests or {}).get(
+                    (entry.group_entry.group, entry.group_entry.index)
+                ),
             )
         )
 
@@ -234,12 +248,15 @@ def build_manifest(
         entries=list(entries),
         tests=tests,
         validation=validation,
+        deterministic=deterministic,
     )
 
 
 def write_manifest(
     entries: List[GenerationTestcaseEntry],
     validation_infos: Optional[List[TestcaseValidationInfo]],
+    input_digests: Optional[Dict[Tuple[str, int], str]] = None,
+    deterministic: bool = False,
 ) -> pathlib.Path:
     """Dump the manifest for the build that just finished, replacing any previous one.
 
@@ -251,7 +268,9 @@ def write_manifest(
     thing a reader of it may never be shown. A subset build's testset really is
     only those groups.
     """
-    manifest = build_manifest(entries, validation_infos)
+    manifest = build_manifest(
+        entries, validation_infos, input_digests, deterministic=deterministic
+    )
 
     path = get_manifest_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -262,16 +281,37 @@ def write_manifest(
 def write_manifest_or_warn(
     entries: List[GenerationTestcaseEntry],
     validation_infos: Optional[List[TestcaseValidationInfo]],
+    input_digests: Optional[Dict[Tuple[str, int], str]] = None,
+    deterministic: bool = False,
 ) -> None:
     """`write_manifest`, downgraded to a warning.
 
-    The manifest is a convenience for external readers; nothing rbx itself does
-    reads it back. Failing a build that produced perfectly good testcases over
-    it would be a strictly worse trade.
+    The manifest is the build's record for external readers, plus the one thing
+    rbx reads back itself (the heavy half of the estimation checksum). Neither is
+    worth failing a build that produced perfectly good testcases over: a missing
+    manifest costs the checksum its heavy level, and nothing else.
     """
     try:
-        write_manifest(entries, validation_infos)
+        write_manifest(
+            entries, validation_infos, input_digests, deterministic=deterministic
+        )
     except Exception as e:
         console.console.print(
             f'[warning]Failed writing the testset manifest: {utils.escape_markup(str(e))}[/warning]'
         )
+
+
+def read_manifest(
+    root: pathlib.Path = pathlib.Path(),
+) -> Optional[TestsetManifest]:
+    """The manifest the last build left, or None if there is not a readable one.
+
+    Unreadable is folded into missing on purpose. Every caller is asking "can I
+    trust what is in `build/`?", and a manifest that will not parse answers that
+    question the same way an absent one does.
+    """
+    path = get_manifest_path(root)
+    try:
+        return utils.model_from_yaml(TestsetManifest, path.read_text())
+    except Exception:
+        return None

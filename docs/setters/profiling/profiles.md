@@ -131,6 +131,39 @@ rbx package boca
     names the command that would create it, rather than shipping a package with limits
     measured for something else.
 
+## When an estimate goes stale
+
+An estimate is only as good as what it was measured against. Rewrite the accepted solution,
+add a slow one, change a generator — and the number in the profile stays where it is, looking
+as authoritative as the day it was measured.
+
+So {{rbx}} records what it measured, alongside the number:
+
+```yaml title=".limits/boca.yml"
+timeLimit: 1400
+estimationChecksum: 'v1.h.9f3a1c22.4b7e0d81.c1a8f930'
+```
+
+That string is a checksum of the solutions the estimate was derived from — the accepted ones
+that set the limit and the slow ones that validated it — plus, when the tests had been built,
+the interactor and the test inputs themselves. `rbx run -p`, `rbx package` and `rbx time`
+recompute it and tell you when it no longer matches:
+
+```
+The time limit saved in profile boca is stale: the solutions it was estimated from
+have changed since it was estimated.
+Re-run `rbx time -p boca` to refresh it.
+```
+
+It is a warning and never an error. Only you can say whether a solution you just edited was
+one whose timing mattered; {{rbx}} only says that the question is now open.
+
+Two things it deliberately stays quiet about. A profile whose limit you set by hand or
+inherited from the package carries no checksum at all — nothing was estimated, so there is
+nothing to go stale. And a package whose tests are not currently built is checked on its
+solutions alone: on a fresh clone, before any build, an edited generator goes unnoticed until
+you build.
+
 ## Inheriting from the package
 
 Some targets do not need limits of their own — they should use whatever `problem.rbx.yml` says.
