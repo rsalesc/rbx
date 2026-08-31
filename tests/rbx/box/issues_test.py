@@ -622,3 +622,50 @@ class TestContestHint:
         assert 'rbx contest issues -d' not in self._render(
             [self._row_with_issues()], detailed=True
         )
+
+
+class TestIssueFamily:
+    """`family` is computed, not declared -- the same rule `severity` follows,
+    so a client splitting run findings from config ones reads a field rather
+    than keeping its own table of which kind belongs where."""
+
+    def test_config_issues_carry_the_config_family(self):
+        issue = schema.NoAcceptedSolutionIssue()
+
+        assert issue.family == schema.IssueFamily.CONFIG
+        assert issue.severity == schema.IssueSeverity.ERROR
+
+    def test_run_issues_carry_the_run_family(self):
+        issue = schema.UntunedLimitsIssue(affectedSolutions=['sol/a.cpp'])
+
+        assert issue.family == schema.IssueFamily.RUN
+
+    def test_family_and_severity_are_both_serialized(self):
+        payload = schema.NoValidatorIssue().model_dump()
+
+        assert payload['kind'] == 'config_no_validator'
+        assert payload['family'] == 'config'
+        assert payload['severity'] == 'warning'
+
+    def test_config_kinds_round_trip_through_the_union(self):
+        report = schema.IssueReport(
+            issues=[
+                schema.MissingStatementLanguageIssue(missing=['pt']),
+                schema.EmptyTestGroupIssue(group='big'),
+                schema.ExplanationMissingLanguageIssue(
+                    sample=0,
+                    path=pathlib.Path('tests/samples/000.rbx.tex'),
+                    missing=['pt'],
+                ),
+            ]
+        )
+
+        parsed = schema.IssueReport.model_validate_json(report.model_dump_json())
+
+        assert parsed.issues == report.issues
+
+    def test_the_format_version_records_the_neverrun_change(self):
+        # Not for the new kinds -- the union carries those. For `neverRun`, which
+        # no longer implies an empty list, so a v1 reader short-circuiting on it
+        # would silently drop every config finding.
+        assert schema.ISSUES_FORMAT_VERSION == 2
