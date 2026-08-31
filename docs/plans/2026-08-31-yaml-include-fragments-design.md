@@ -88,20 +88,39 @@ vars:
   warmup: true
 ```
 
-`<<` is **shallow** — the second form replaces sibling keys wholesale rather than merging
-into them. A variant that wants to override `vars.short_titles.pt` while keeping `en` must
-either restate `en` or push the merge a level down:
+`<<: !include` is **shallow**, matching what `<<` means in YAML: it replaces a sibling map
+wholesale rather than merging into it. That is right for composing separate fragments, and
+wrong for inheriting a config and overriding one leaf of it.
+
+For the latter there is `!include_deep`, which recurses wherever both sides hold a mapping:
 
 ```yaml
+# contest.warmup.rbx.yml -- the whole file
+<<: !include_deep contest.rbx.yml
+name: warmup
 vars:
-  <<: !include shared/vars.yml
-  short_titles:
-    <<: !include shared/short-titles.yml
-    pt: Maratona SBC de Programação
+  warmup: true      # year, dates and short_titles all survive
+tutorials: []       # clears the inherited editorials
+problems:
+- short_name: A
+  path: warmup/reuniao
 ```
 
-Fragment granularity is therefore the knob users tune. This is a real ergonomic cost and
-the docs must say so plainly.
+Two rules define it, and the second is load-bearing:
+
+- **Whatever the child states explicitly wins.** Maps recurse; scalars, lists and any type
+  mismatch take the child's value.
+- **Lists replace, they never concatenate.** A variant declaring its own `problems` means
+  *those instead of* the parent's. (`deepmerge.always_merger`, which rbx already uses for
+  statement `params`, appends — it is the wrong merger here.) This is also what makes an
+  explicit `tutorials: []` clear an inherited section, which is the removal verb the
+  `extends:` alternative would have needed to invent.
+
+`!include_deep` is meaningful only under a `<<` key, since as a plain value there are no
+siblings to merge into; using it as one is an error pointing at `!include`.
+
+There is deliberately no way to force-replace a nested *map* — a child that wants to wipe
+one sets its keys explicitly. Add a marker if a real case turns up.
 
 Splicing several fragments into one list (`statements: [!include a.yml, !include b.yml]`)
 is **not** supported in v1; it would yield a list of lists. Revisit with an `!include_seq`

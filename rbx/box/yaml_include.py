@@ -33,6 +33,11 @@ from rbx.box.exception import RbxException
 from rbx.console import console
 
 INCLUDE_TAG = '!include'
+# Same splice, but under a `<<` key it merges RECURSIVELY instead of replacing
+# sibling maps wholesale -- what inheriting a whole config and overriding one
+# leaf of it needs.
+INCLUDE_DEEP_TAG = '!include_deep'
+INCLUDE_TAGS = (INCLUDE_TAG, INCLUDE_DEEP_TAG)
 MERGE_TAG = 'tag:yaml.org,2002:merge'
 
 # Stamped on a spliced fragment root, naming the file it came from. Diagnostics
@@ -79,12 +84,17 @@ def tag_value(obj) -> str:
 
 
 def _is_include_node(node) -> bool:
-    return isinstance(node, ScalarNode) and tag_value(node) == INCLUDE_TAG
+    return isinstance(node, ScalarNode) and tag_value(node) in INCLUDE_TAGS
 
 
 def is_include(obj) -> bool:
-    """Whether a constructed round-trip value is an unresolved `!include`."""
-    return tag_value(obj) == INCLUDE_TAG
+    """Whether a constructed round-trip value is an unresolved include."""
+    return tag_value(obj) in INCLUDE_TAGS
+
+
+def is_deep_include(obj) -> bool:
+    """Whether an include asks for a recursive merge."""
+    return tag_value(obj) == INCLUDE_DEEP_TAG
 
 
 class IncludeTolerantConstructor(RoundTripConstructor):
@@ -193,8 +203,20 @@ def _splice(
     base_dir: pathlib.Path,
     stack: IncludeStack,
     sources: Set[pathlib.Path],
+    allow_deep: bool = False,
 ) -> Any:
-    """Replace one `!include` node with the fragment's resolved tree."""
+    """Replace one include node with the fragment's resolved tree."""
+    if is_deep_include(node) and not allow_deep:
+        # Used as a plain value rather than under `<<`. There is no sibling map
+        # to merge into, so the "deep" part would silently mean nothing.
+        with IncludeError() as err:
+            err.print(
+                f'[error][item]{INCLUDE_DEEP_TAG}[/item] only means something under a '
+                f'[item]<<[/item] merge key, where there are sibling values to merge '
+                f'into. In [item]{stack[-1]}[/item], use [item]{INCLUDE_TAG}[/item] to '
+                f'splice a fragment in as a value, or move this under '
+                f'[item]<<:[/item].[/error]'
+            )
     raw = getattr(node, 'value', None)
     if not isinstance(raw, str):
         with IncludeError() as err:
@@ -232,7 +254,7 @@ def _apply_merge_includes(
         if not is_include(value):
             continue
         del node[key]
-        fragment = _splice(value, base_dir, stack, sources)
+        fragment = _splice(value, base_dir, stack, sources, allow_deep=True)
         if not isinstance(fragment, CommentedMap):
             with IncludeError() as err:
                 err.print(
@@ -240,16 +262,42 @@ def _apply_merge_includes(
                     f'a mapping, but it is a {type(fragment).__name__}.[/error]'
                 )
         origin = source_of(fragment) or stack[-1]
-        for fragment_key, fragment_value in fragment.items():
-            if fragment_key in node:
-                continue
-            node[fragment_key] = fragment_value
-            # A merged key lands in the includer's map, so it inherits neither
-            # the fragment's line info nor its stamp. Carry both across, or a
-            # validation error on this key crashes `_locate` looking up an `lc`
-            # entry that plain __setitem__ never created.
-            _copy_lc_entry(fragment, node, fragment_key)
-            _record_merged_source(node, fragment_key, origin)
+        _merge_map(fragment, node, origin, deep=is_deep_include(value))
+
+
+def _merge_map(
+    fragment: CommentedMap,
+    node: CommentedMap,
+    origin: pathlib.Path,
+    deep: bool,
+) -> None:
+    """Merge `fragment` UNDER `node`: whatever `node` states explicitly wins.
+
+    `deep` recurses wherever both sides hold a mapping, so a child can override
+    one leaf and keep its siblings. Lists are never merged element-wise -- a
+    variant declaring its own `problems` means those INSTEAD of the parent's,
+    not appended to them. That also makes an explicit `[]` clear an inherited
+    section.
+    """
+    for fragment_key, fragment_value in fragment.items():
+        if fragment_key in node:
+            existing = node[fragment_key]
+            if (
+                deep
+                and isinstance(existing, CommentedMap)
+                and isinstance(fragment_value, CommentedMap)
+            ):
+                _merge_map(fragment_value, existing, origin, deep=True)
+            # Otherwise the child's value stands: scalars, lists and any
+            # type mismatch are all "explicit wins".
+            continue
+        node[fragment_key] = fragment_value
+        # A merged key lands in the includer's map, so it inherits neither the
+        # fragment's line info nor its stamp. Carry both across, or a validation
+        # error on this key crashes `_locate` looking up an `lc` entry that
+        # plain __setitem__ never created.
+        _copy_lc_entry(fragment, node, fragment_key)
+        _record_merged_source(node, fragment_key, origin)
 
 
 def _copy_lc_entry(src: CommentedMap, dest: CommentedMap, key: Any) -> None:
