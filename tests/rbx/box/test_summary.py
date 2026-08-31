@@ -1,8 +1,14 @@
+import json
 import pathlib
+from unittest import mock
 
 import pytest
+import rich.console
 
+from rbx.box import summary as summary_module
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
+from rbx.box.issues import rendering
+from rbx.box.issues import schema as issues_schema
 from rbx.box.schema import (
     CodeItem,
     ExpectedOutcome,
@@ -12,6 +18,7 @@ from rbx.box.schema import (
     Testcase,
 )
 from rbx.box.summary import (
+    SUMMARY_FORMAT_VERSION,
     ContestProblemSummary,
     ProblemFlags,
     ProblemSummary,
@@ -22,6 +29,8 @@ from rbx.box.summary import (
     get_problem_flags,
     get_problem_summary,
     get_solution_counts,
+    print_checks_section,
+    summary_to_json,
 )
 from rbx.box.testcase_schema import TestcaseEntry
 
@@ -236,3 +245,73 @@ class TestGetContestProblemSummary:
         assert total_bucketed == 2
         assert result.solution_counts_bucketed[ExpectedOutcome.ACCEPTED] == 1
         assert result.solution_counts_bucketed[ExpectedOutcome.WRONG_ANSWER] == 1
+
+
+class TestSummaryJson:
+    """`rbx summary --format json`, the contract a tool reads."""
+
+    def _summary(self) -> ProblemSummary:
+        return get_problem_summary(
+            _make_package(name='a-plus-b'),
+            [_make_solution(ExpectedOutcome.ACCEPTED, 'ac.cpp')],
+            [_make_entry('samples', 0)],
+        )
+
+    def test_carries_the_summary_and_the_checks_together(self):
+        payload = json.loads(
+            summary_to_json(self._summary(), [issues_schema.NoValidatorIssue()])
+        )
+
+        assert payload['version'] == SUMMARY_FORMAT_VERSION
+        assert payload['summary']['name'] == 'a-plus-b'
+        assert payload['issues'][0]['kind'] == 'config_no_validator'
+
+    def test_publishes_the_family_so_a_tool_need_not_infer_it(self):
+        payload = json.loads(
+            summary_to_json(self._summary(), [issues_schema.NoValidatorIssue()])
+        )
+
+        assert payload['issues'][0]['family'] == 'config'
+        assert payload['issues'][0]['severity'] == 'warning'
+
+    def test_a_clean_package_carries_an_empty_list(self):
+        payload = json.loads(summary_to_json(self._summary(), []))
+
+        assert payload['issues'] == []
+
+    def test_its_version_is_independent_of_the_issues_one(self):
+        # The `ProblemSummary` shape and the `Issue` shape change for unrelated
+        # reasons; one number for both would make each bump lie about the other.
+        assert SUMMARY_FORMAT_VERSION != issues_schema.ISSUES_FORMAT_VERSION
+
+
+class TestChecksSection:
+    def _render(self, config_issues, detailed=False) -> str:
+        recorder = rich.console.Console(record=True, width=200)
+        with mock.patch.object(summary_module.console, 'console', recorder):
+            print_checks_section(config_issues, detailed=detailed)
+        return recorder.export_text()
+
+    def test_prints_nothing_at_all_when_there_is_nothing_to_say(self):
+        # Not even a heading: an empty `Checks` block reads as a section that
+        # failed to load, rather than as a package with nothing wrong.
+        assert self._render([]) == ''
+
+    def test_lists_each_finding_under_a_heading(self):
+        out = self._render(
+            [issues_schema.NoValidatorIssue(), issues_schema.NoSamplesIssue()]
+        )
+
+        assert 'Checks' in out
+        assert 'no validator' in out
+        assert 'no samples' in out
+
+    def test_words_a_finding_exactly_as_rbx_issues_does(self):
+        issue = issues_schema.NoAcceptedSolutionIssue()
+
+        assert rendering.summarize(issue) in self._render([issue])
+
+    def test_detailed_expands_a_finding(self):
+        out = self._render([issues_schema.NoAcceptedSolutionIssue()], detailed=True)
+
+        assert 'unverified' in out
