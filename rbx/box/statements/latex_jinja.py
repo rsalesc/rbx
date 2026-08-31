@@ -514,6 +514,29 @@ def render_latex_template_blocks(
         raise
 
 
+def parse_template_block_names(
+    path_templates, template_filename, target: FilterTarget, syntax: JinjaSyntax
+) -> list:
+    """The names of the blocks a template declares, without rendering it.
+
+    Jinja fills ``template.blocks`` while *parsing*, so the names are available
+    with no context, no template vars, and no chance of an ``UndefinedError``
+    from a body that would explode on a real render. That is what makes this
+    cheap enough to run over every sample of every problem on `rbx summary`.
+
+    A block whose name only exists after a conditional render is invisible here.
+    A per-language explanation file is always literal, and rendering every
+    explanation of every problem to find out otherwise is not a trade worth
+    making.
+    """
+    j2_env = make_jinja_env(
+        target,
+        syntax=syntax,
+        loader=jinja2.FileSystemLoader(path_templates),
+    )
+    return list(j2_env.get_template(template_filename).blocks)
+
+
 def render_markdown_template_blocks(
     path_templates, template_filename, template_vars=None
 ) -> Dict[str, str]:
