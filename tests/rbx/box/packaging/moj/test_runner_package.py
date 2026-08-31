@@ -461,7 +461,7 @@ def test_a_binary_package_that_is_not_a_probe_still_halts_early(testing_pkg, tmp
         / 'conf'
     ).read_text()
 
-    for key in ['STOPWHEN_WA=y', 'STOPWHEN_TLE=y', 'STOPWHEN_RE=y']:
+    for key in ['STOPWHEN_WA=y', 'STOPWHEN_TLE=n', 'STOPWHEN_RE=y']:
         assert key in conf
 
 

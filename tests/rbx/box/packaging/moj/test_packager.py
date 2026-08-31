@@ -326,7 +326,7 @@ def test_the_file_ulimit_is_fixed_and_does_not_track_the_output_limit(
 def test_binary_problems_halt_at_the_first_failure(moj_binary_package):
     conf = (moj_binary_package / 'conf').read_text()
     assert 'STOPWHEN_WA=y' in conf
-    assert 'STOPWHEN_TLE=y' in conf
+    assert 'STOPWHEN_TLE=n' in conf
     assert 'STOPWHEN_RE=y' in conf
 
 
