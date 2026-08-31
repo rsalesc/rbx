@@ -196,13 +196,19 @@ def _locate(
     last_source = node_source
     for seg in loc:
         if isinstance(node, CommentedMap) and isinstance(seg, str) and seg in node:
-            line, col = node.lc.key(seg)
+            # A key merged in via `<<: !include` may have no lc entry at all;
+            # keep the last known position rather than crashing.
+            try:
+                line, col = node.lc.key(seg)
+            except (KeyError, TypeError, AttributeError):
+                line, col = last_line, last_col
             last_line, last_col = line, col
             last_span = len(seg)
-            last_source = node_source
-            parent, last_seg, parent_source = node, seg, node_source
+            # A merged key's position belongs to the fragment it came from.
+            last_source = yaml_include.merged_source_of(node, seg) or node_source
+            parent, last_seg, parent_source = node, seg, last_source
             node = node[seg]
-            node_source = yaml_include.source_of(node) or node_source
+            node_source = yaml_include.source_of(node) or last_source
             walked_any = True
             continue
         if (
@@ -436,6 +442,10 @@ def load_yaml_model_with_sources(
     source = path.read_text()
     try:
         data, sources = yaml_include.resolve_yaml_file(path)
+    except yaml_include.FragmentYamlError as exc:
+        # The broken file is a fragment, so render its own text and path --
+        # its line numbers mean nothing against the includer's source.
+        raise YamlSyntaxError(exc.path, exc.source, exc.cause) from exc
     except ruyaml.YAMLError as exc:
         raise YamlSyntaxError(path, source, exc) from exc
 

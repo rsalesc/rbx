@@ -7,7 +7,6 @@ import tempfile
 from typing import Annotated, List, Optional, Tuple
 
 import rich.prompt
-import ruyaml
 import syncer
 import typer
 
@@ -227,7 +226,9 @@ def add_variant(
         presets.install_contest(scratch, fetch_info, materialize=False)
         template_text = (scratch / 'contest.rbx.yml').read_text()
 
-    ru = ruyaml.YAML()
+    # Include-tolerant: a preset's contest template may use `<<: !include`,
+    # which plain ruyaml refuses to construct.
+    ru = yaml_include.make_yaml()
     data = ru.load(template_text)
     data['name'] = f'{variant_id}-c'
     data['problems'] = []
@@ -296,6 +297,15 @@ def add(
             'canonical template, or to be prompted when the preset offers variants.',
         ),
     ] = None,
+    yes: Annotated[
+        bool,
+        typer.Option(
+            '--yes',
+            '-y',
+            help='Do not ask for confirmation when the edit lands in a fragment '
+            'shared with other contests.',
+        ),
+    ] = False,
 ):
     problem_path = pathlib.Path(path)
     name = problem_path.stem
@@ -318,7 +328,7 @@ def add(
     # it. Resolved and confirmed BEFORE creating anything on disk, so declining
     # a shared edit does not leave an orphaned problem directory behind.
     target = yaml_include.open_for_edit(dest, 'problems')
-    if not yaml_include.confirm_shared_edit(target, dest, dest.parent):
+    if not yaml_include.confirm_shared_edit(target, dest, dest.parent, yes=yes):
         raise typer.Exit(1)
 
     creation.create(name, preset=preset, path=pathlib.Path(path), variant=variant)
@@ -349,7 +359,18 @@ def add(
 
 @app.command('remove, r', help='Remove problem from contest.')
 @within_contest
-def remove(path_or_short_name: str):
+def remove(
+    path_or_short_name: str,
+    yes: Annotated[
+        bool,
+        typer.Option(
+            '--yes',
+            '-y',
+            help='Do not ask for confirmation when the edit lands in a fragment '
+            'shared with other contests.',
+        ),
+    ] = False,
+):
     contest = find_contest_package_or_die()
 
     removed_problem_idx = None
@@ -377,7 +398,7 @@ def remove(path_or_short_name: str):
     target = yaml_include.open_for_edit(dest, 'problems')
     del target.value[removed_problem_idx]
 
-    if not yaml_include.confirm_shared_edit(target, dest, dest.parent):
+    if not yaml_include.confirm_shared_edit(target, dest, dest.parent, yes=yes):
         raise typer.Exit(1)
     target.save()
 

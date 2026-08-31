@@ -17,8 +17,10 @@ diagnostics can name the fragment that actually owns an error.
 
 from __future__ import annotations
 
-import dataclasses
+import io
+import os
 import pathlib
+import tempfile
 from typing import Any, List, Optional, Set, Tuple
 
 import ruyaml
@@ -38,9 +40,29 @@ MERGE_TAG = 'tag:yaml.org,2002:merge'
 # than the file that included it.
 SOURCE_ATTR = '_rbx_include_source'
 
+# Stamped on a map that absorbed `<<: !include` keys: {key: fragment path}.
+# Merged keys land in the *includer's* map, so they cannot carry a root stamp
+# of their own; without this the includer gets blamed for the fragment's values.
+MERGED_SOURCE_ATTR = '_rbx_include_merged_sources'
+
 
 class IncludeError(RbxException):
     """Raised when an `!include` cannot be resolved."""
+
+
+class FragmentYamlError(Exception):
+    """A fragment is not valid YAML.
+
+    Carries the fragment's own path and text so the caller can render the
+    diagnostic against the file that actually failed to parse, rather than
+    against whichever file happened to include it.
+    """
+
+    def __init__(self, path: pathlib.Path, source: str, cause: Exception):
+        super().__init__(str(cause))
+        self.path = path
+        self.source = source
+        self.cause = cause
 
 
 def tag_value(obj) -> str:
@@ -148,6 +170,24 @@ def source_of(tree: Any) -> Optional[pathlib.Path]:
     return getattr(tree, SOURCE_ATTR, None)
 
 
+def merged_source_of(node: Any, key: Any) -> Optional[pathlib.Path]:
+    """The fragment a `<<: !include`-merged key came from, if any."""
+    sources = getattr(node, MERGED_SOURCE_ATTR, None)
+    if not sources:
+        return None
+    return sources.get(key)
+
+
+def _load_fragment(target: pathlib.Path) -> Any:
+    text = target.read_text()
+    try:
+        return make_yaml().load(text)
+    except ruyaml.YAMLError as exc:
+        # Surface the fragment's own path and text: rendering the fragment's
+        # line numbers against the includer's source points at nothing.
+        raise FragmentYamlError(target, text, exc) from exc
+
+
 def _splice(
     node: Any,
     base_dir: pathlib.Path,
@@ -155,11 +195,21 @@ def _splice(
     sources: Set[pathlib.Path],
 ) -> Any:
     """Replace one `!include` node with the fragment's resolved tree."""
-    target = _resolve_path(node.value, base_dir, stack)
+    raw = getattr(node, 'value', None)
+    if not isinstance(raw, str):
+        with IncludeError() as err:
+            err.print(
+                f'[error]`!include` expects a relative path string, but got a '
+                f'{type(node).__name__} in [item]{stack[-1]}[/item].[/error]'
+            )
+    target = _resolve_path(raw, base_dir, stack)
     sources.add(target)
-    sub = make_yaml().load(target.read_text())
+    sub = _load_fragment(target)
     sub = _resolve_node(sub, target.parent, stack + (target,), sources)
-    _stamp(sub, target)
+    # A fragment whose own document root is another `!include` is already
+    # stamped with the file that truly owns the value; do not overwrite it.
+    if source_of(sub) is None:
+        _stamp(sub, target)
     return sub
 
 
@@ -176,9 +226,12 @@ def _apply_merge_includes(
     """Resolve `<<: !include ...` pairs, merging *under* the explicit keys."""
     for key in [k for k in list(node.keys()) if _is_merge_key(k)]:
         value = node[key]
-        del node[key]
+        # Only consume a merge key that actually carries an include. A quoted
+        # `"<<"` is an ordinary string key that ruyaml never merges, and
+        # deleting it would silently drop the user's data.
         if not is_include(value):
             continue
+        del node[key]
         fragment = _splice(value, base_dir, stack, sources)
         if not isinstance(fragment, CommentedMap):
             with IncludeError() as err:
@@ -186,9 +239,37 @@ def _apply_merge_includes(
                     f'[error]`<<: !include {value.value}` expects the fragment to be '
                     f'a mapping, but it is a {type(fragment).__name__}.[/error]'
                 )
+        origin = source_of(fragment) or stack[-1]
         for fragment_key, fragment_value in fragment.items():
-            if fragment_key not in node:
-                node[fragment_key] = fragment_value
+            if fragment_key in node:
+                continue
+            node[fragment_key] = fragment_value
+            # A merged key lands in the includer's map, so it inherits neither
+            # the fragment's line info nor its stamp. Carry both across, or a
+            # validation error on this key crashes `_locate` looking up an `lc`
+            # entry that plain __setitem__ never created.
+            _copy_lc_entry(fragment, node, fragment_key)
+            _record_merged_source(node, fragment_key, origin)
+
+
+def _copy_lc_entry(src: CommentedMap, dest: CommentedMap, key: Any) -> None:
+    src_data = getattr(src.lc, 'data', None)
+    if not src_data or key not in src_data:
+        return
+    if getattr(dest.lc, 'data', None) is None:
+        dest.lc.data = {}
+    dest.lc.data[key] = list(src_data[key])
+
+
+def _record_merged_source(node: Any, key: Any, path: pathlib.Path) -> None:
+    sources = getattr(node, MERGED_SOURCE_ATTR, None)
+    if sources is None:
+        sources = {}
+        try:
+            setattr(node, MERGED_SOURCE_ATTR, sources)
+        except AttributeError:
+            return
+    sources[key] = path
 
 
 def _resolve_node(
@@ -239,47 +320,56 @@ def file_has_includes(path: pathlib.Path) -> bool:
     return _any_include(tree)
 
 
-@dataclasses.dataclass
 class EditTarget:
     """A value to edit, in whichever file actually owns it.
 
     Resolution follows `!include` tags, so `path` is the fragment the value
     lives in rather than the file the caller started from. Mutate `value` in
     place (it is a live round-trip node, so comments survive) or call
-    `replace`; either marks the owning file dirty. Then `save`.
+    `replace`. Then `save`.
+
+    The position is re-resolved on every access rather than cached, so a target
+    held across a change that rebinds one of its ancestors still lands in the
+    live tree instead of writing into an orphaned object.
     """
 
-    session: 'EditSession'
-    path: pathlib.Path
-    # Container and key holding the value, or None when the value *is* the
-    # document root of `path`.
-    parent: Optional[Any]
-    key: Optional[Any]
+    def __init__(self, session: 'EditSession', keys: Tuple[Any, ...]):
+        self.session = session
+        self.keys = keys
+
+    def _resolve(self) -> Tuple[pathlib.Path, Optional[Any], Optional[Any]]:
+        return self.session.resolve(self.keys)
+
+    @property
+    def path(self) -> pathlib.Path:
+        """The file that owns this value."""
+        return self._resolve()[0]
 
     @property
     def value(self) -> Any:
         """The node to edit, or None when the key is not present yet."""
-        if self.parent is None:
-            node = self.session.tree(self.path)
-        elif self.key not in self.parent:
+        path, parent, key = self._resolve()
+        if parent is None:
+            return self.session.tree(path)
+        if isinstance(parent, CommentedSeq):
+            # `key not in parent` on a sequence tests the ELEMENTS, not the
+            # indices, so it reports a present element as missing.
+            if not isinstance(key, int) or not -len(parent) <= key < len(parent):
+                return None
+            return parent[key]
+        if key not in parent:
             return None
-        else:
-            node = self.parent[self.key]
-        # Mutating a container in place cannot notify us, so assume any read of
-        # a mutable node is about to change it.
-        if isinstance(node, (CommentedMap, CommentedSeq)):
-            self.session.mark_dirty(self.path)
-        return node
+        return parent[key]
 
     def replace(self, new_value: Any) -> None:
-        self.session.mark_dirty(self.path)
-        if self.parent is None:
-            self.session.set_tree(self.path, new_value)
+        path, parent, key = self._resolve()
+        if parent is None:
+            self.session.set_tree(path, new_value)
         else:
-            self.parent[self.key] = new_value
+            parent[key] = new_value
 
     def save(self) -> None:
-        """Write every file this target's session touched."""
+        """Write every file this target's session actually changed."""
         self.session.save()
 
 
@@ -304,23 +394,36 @@ class EditSession:
         self.root_path = path.resolve()
         self.yaml = make_yaml()
         self._trees: dict = {}
-        self._dirty: Set[pathlib.Path] = set()
+        # What each tree rendered to when first loaded. `save` re-renders and
+        # writes only where the result differs, so reading a value cannot
+        # rewrite (and reformat) a file nothing changed -- there is no way to
+        # observe an in-place mutation of a round-trip node otherwise.
+        self._baseline: dict = {}
+
+    def _render(self, tree: Any) -> str:
+        buffer = io.StringIO()
+        self.yaml.dump(tree, buffer)
+        return buffer.getvalue()
 
     def tree(self, path: pathlib.Path) -> Any:
         path = path.resolve()
         if path not in self._trees:
             self._trees[path] = self.yaml.load(path.read_text())
+            self._baseline[path] = self._render(self._trees[path])
         return self._trees[path]
 
     def set_tree(self, path: pathlib.Path, value: Any) -> None:
-        self._trees[path.resolve()] = value
-
-    def mark_dirty(self, path: pathlib.Path) -> None:
-        self._dirty.add(path.resolve())
+        path = path.resolve()
+        self._baseline.setdefault(path, '')
+        self._trees[path] = value
 
     def touched_files(self) -> Set[pathlib.Path]:
-        """Every file `save` would write."""
-        return set(self._dirty)
+        """Every file `save` would write, i.e. every tree that changed."""
+        return {
+            path
+            for path, tree in self._trees.items()
+            if self._render(tree) != self._baseline.get(path)
+        }
 
     def _follow_includes(
         self, node: Any, base_dir: pathlib.Path, stack: IncludeStack
@@ -333,13 +436,20 @@ class EditSession:
             base_dir = target.parent
         return node, stack[-1], stack
 
-    def target(self, *keys: Any) -> EditTarget:
-        """Descend `keys` from the root file, crossing into fragments.
+    def resolve(
+        self, keys: Tuple[Any, ...]
+    ) -> Tuple[pathlib.Path, Optional[Any], Optional[Any]]:
+        """Walk `keys` from the root file, crossing into fragments.
 
-        Raises IncludeError when a fragment cannot be read, or when the
-        requested key exists only by way of a `<<: !include` merge -- the value
-        lives in the fragment's map, and rbx will not guess whether the caller
-        meant to edit the shared value or shadow it here.
+        Returns the owning file plus the container and key holding the value
+        (or `None, None` when the value is that file's whole document).
+        Missing intermediate mappings are created, so a caller can set a nested
+        value in a config that does not declare the nesting yet.
+
+        Raises IncludeError when a fragment cannot be read, or when a key
+        exists only by way of a `<<: !include` merge -- the value lives in the
+        fragment's map, and rbx will not guess whether the caller meant to edit
+        the shared value or shadow it here.
         """
         stack: IncludeStack = (self.root_path,)
         node, owner, stack = self._follow_includes(
@@ -349,6 +459,7 @@ class EditSession:
         key: Optional[Any] = None
 
         for index, seg in enumerate(keys):
+            is_last = index == len(keys) - 1
             if isinstance(node, CommentedMap) and seg not in node:
                 merged_from = _merge_include_sources(node)
                 if merged_from:
@@ -363,14 +474,13 @@ class EditSession:
                             f'[warning]Edit that fragment directly, or set '
                             f'[item]{seg}[/item] explicitly here first.[/warning]'
                         )
-                if index == len(keys) - 1:
+                if is_last:
                     # A brand new key: the caller may create it with `replace`.
-                    return EditTarget(self, owner, node, seg)
-                with IncludeError() as err:
-                    err.print(
-                        f'[error][item]{seg}[/item] is not set in [item]'
-                        f'{self.root_path}[/item].[/error]'
-                    )
+                    return owner, node, seg
+                # An intermediate that does not exist yet: create the nesting
+                # rather than refusing. `rbx time --integrate` writes
+                # modifiers.<lang>.<field> into packages that declare none.
+                node[seg] = CommentedMap()
 
             parent, key = node, seg
             node = node[seg]
@@ -383,14 +493,42 @@ class EditSession:
                 node, owner = resolved, owner_candidate
                 parent, key = None, None
 
-        return EditTarget(self, owner, parent, key)
+        return owner, parent, key
+
+    def target(self, *keys: Any) -> EditTarget:
+        """A handle on the value at `keys`, in whichever file owns it."""
+        self.resolve(keys)  # resolve eagerly so errors surface here
+        return EditTarget(self, keys)
 
     def save(self) -> None:
-        for path in sorted(self._dirty):
+        """Write every file whose tree changed.
+
+        Renders everything and checks writability before committing anything,
+        so one unwritable file does not leave a multi-file change half applied.
+        """
+        pending = {
+            path: self._render(tree)
+            for path, tree in self._trees.items()
+            if self._render(tree) != self._baseline.get(path)
+        }
+        for path in pending:
+            if path.exists() and not os.access(path, os.W_OK):
+                with IncludeError() as err:
+                    err.print(f'[error]Cannot write [item]{path}[/item].[/error]')
+        for path in sorted(pending):
             path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open('w') as handle:
-                self.yaml.dump(self._trees[path], handle)
-        self._dirty.clear()
+            _write_atomic(path, pending[path])
+            self._baseline[path] = pending[path]
+
+
+def _write_atomic(path: pathlib.Path, text: str) -> None:
+    """Write `text` to `path` via a temp file, so a failure cannot truncate it."""
+    with tempfile.NamedTemporaryFile(
+        'w', dir=str(path.parent), prefix=f'.{path.name}.', delete=False
+    ) as handle:
+        temp = pathlib.Path(handle.name)
+        handle.write(text)
+    os.replace(temp, path)
 
 
 def open_for_edit(path: pathlib.Path, *keys: Any) -> EditTarget:
@@ -475,22 +613,29 @@ def confirm_shared_edit(
     target is the file the caller started from, or when no other config
     reaches it.
     """
-    if target.path == started_from.resolve():
+    started_from = started_from.resolve()
+    if target.path == started_from:
         return True
     reachers = including_files(target.path, search_root)
-    others = [path for path in reachers if path.resolve() != started_from.resolve()]
+    others = [path for path in reachers if path.resolve() != started_from]
     try:
-        shown = target.path.relative_to(search_root)
+        # `search_root` may be relative (callers pass `dest.parent`, and
+        # `find_contest_yaml` defaults to `.`), while `target.path` is always
+        # resolved -- compare like with like or every path prints absolute.
+        shown = target.path.relative_to(search_root.resolve())
     except ValueError:
         shown = target.path
     if not others:
         console.print(f'Editing [item]{shown}[/item].')
         return True
 
-    names = ', '.join(sorted(path.name for path in reachers))
+    # Count and name only the OTHER configs: the one being edited from is not
+    # part of the blast radius the user is being warned about.
+    names = ', '.join(sorted(path.name for path in others))
+    plural = 's' if len(others) != 1 else ''
     console.print(
-        f'[warning]Editing [item]{shown}[/item], which is included by '
-        f'{len(reachers)} contests: {names}.[/warning]'
+        f'[warning]Editing [item]{shown}[/item], which is also included by '
+        f'{len(others)} other contest{plural}: {names}.[/warning]'
     )
     if yes:
         return True

@@ -2442,6 +2442,15 @@ SPEC = {
                             'value': {'kind': 'none'},
                         },
                         {
+                            'help': 'Do not ask for confirmation when the edit lands '
+                            'in a fragment shared with other contests.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--yes', '-y'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
                             'multiple': False,
@@ -2463,6 +2472,15 @@ SPEC = {
                             'multiple': False,
                             'names': [],
                             'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Do not ask for confirmation when the edit lands '
+                            'in a fragment shared with other contests.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--yes', '-y'],
+                            'takes_value': False,
                             'value': {'kind': 'none'},
                         },
                         {

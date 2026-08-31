@@ -27,7 +27,7 @@ import yaml
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box import cd, git_utils
+from rbx.box import cd, git_utils, yaml_include
 from rbx.box.git_utils import latest_remote_tag
 from rbx.box.presets import registry as preset_registry
 from rbx.box.presets.fetch import (
@@ -1145,6 +1145,7 @@ def install_preset_from_dir(
     # Override the uri of the preset.
     if override_uri is not None:
         preset.uri = override_uri
+        yaml_include.die_if_write_would_inline_includes(dest / 'preset.rbx.yml')
         (dest / 'preset.rbx.yml').write_text(utils.model_to_yaml(preset))
 
     # Clean up all cache and left over directories before copying
@@ -1644,7 +1645,9 @@ def get_ruyaml(root: pathlib.Path = pathlib.Path()) -> Tuple[ruyaml.YAML, ruyaml
             f'[error]Preset at [item]{root}[/item] does not have a [item]preset.rbx.yml[/item] file.[/error]'
         )
         raise typer.Exit(1)
-    res = ruyaml.YAML()
+    # Include-tolerant: plain ruyaml raises on `<<: !include`, and callers
+    # of this only navigate the tree.
+    res = yaml_include.make_yaml()
     return res, res.load(root / 'preset.rbx.yml')
 
 
