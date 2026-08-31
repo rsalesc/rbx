@@ -60,8 +60,8 @@ export class StatementVarHintsProvider implements vscode.InlayHintsProvider {
     // and answers `undefined` -- so there is nothing here to guard against.
     // It is also the only suspension point, and a cold package waits on a
     // process spawn behind it, which is time enough to be cancelled twice.
-    const vars = await this.vars.varsFor(declared.root);
-    if (vars === undefined || token.isCancellationRequested) {
+    const payload = await this.vars.varsFor(declared.root);
+    if (payload === undefined || token.isCancellationRequested) {
       return [];
     }
 
@@ -71,7 +71,7 @@ export class StatementVarHintsProvider implements vscode.InlayHintsProvider {
     // edge, and offsets from a slice would all need shifting back. A statement
     // is a few kilobytes of prose, so the scan is not worth optimizing -- but a
     // pathologically large one would pay for it on every keystroke.
-    const scanned = scanStatementVars(document.getText(), vars);
+    const scanned = scanStatementVars(document.getText(), payload);
     // The index's map itself, which a batch settling later writes into. The
     // loop below never suspends, so every hint in one pass is still drawn
     // against the same contents.

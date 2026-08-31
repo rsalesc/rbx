@@ -384,6 +384,7 @@ rbx vars [OPTIONS]
 | :--- | :--- | :--- | :--- |
 | `--json` | BOOLEAN | Print the vars as a JSON object of dotted keys and string values. | `False` |
 | `--render` | BOOLEAN | Read statement expressions from stdin, one per line, and print a JSON object mapping each to what it renders to. | `False` |
+| `--groups` | BOOLEAN | Also show the resolved vars of each testcase group. Ignored with --render, which takes the group per expression. | `False` |
 | `--target` | [FilterTarget][rbx.box.statements.latex_jinja.FilterTarget] | What the --render expressions are being formatted for. Ignored without --render. | `FilterTarget.TEXT` |
 
 

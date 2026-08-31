@@ -197,16 +197,32 @@ Only the spelling changes. What a filter *decides* is the same in both places,
 so `sci` leaving `250000` as its digits in the PDF leaves it as its digits in
 the hint too.
 
+A reference to a
+[test group's own variables](../setters/statements/context.md#building-a-subtasks-table-from-testgroup-vars)
+is hinted too, as long as it names the group:
+
+```{.latex .no-copy}
+\item In subtask 1, $N \le \VAR{problem.groups.sub1.vars.N.max}$    10
+```
+
+The value is that group's *resolved* set -- the package variables with the
+group's overrides applied -- so a name the group does not override is hinted
+with the value it inherits, exactly as it renders. The shorthand
+`\VAR{problem.groups.sub1.N.max}` is hinted the same way, and a group whose name
+holds a dash is reached the only way {{Jinja2}} can reach it, as
+`\VAR{problem.groups['sub-1'].N.max}`.
+
 A hint is shown only where it can be exactly right, and there are three places
 it deliberately is not:
 
-- **Problem-root references only.** `\VAR{N.max}` and `\VAR{vars.N.max}` are
-  the ones that get a value. A group reference such as `\VAR{g.N.max}` almost
-  always sits inside a `\BLOCK{for g in groups}` loop and renders a different
-  number per group, so a single hint would have to lie or to name a group;
-  `\VAR{p.N.max}`, `\VAR{problem.N.max}` and `\VAR{contest.year}` resolve
-  against variable sets that are not this problem's own. None of them get a
-  hint.
+- **Only a group you name.** A reference like `\VAR{g.N.max}` inside a
+  `\BLOCK{for g in groups}` loop renders a different number per group, so one
+  hint on one line would have to lie or to pick a group; it gets nothing. This
+  is worth knowing because the loop is how a subtasks table is usually written
+  -- the table stays unhinted, while a constraint that names its group does
+  not. `\VAR{p.N.max}`, `\VAR{problem.title}` and `\VAR{contest.year}` resolve
+  against variable sets that are not this problem's own, and get nothing
+  either.
 - **Nothing is ever guessed.** A name no variable answers to, an expression
   that is not a plain dotted name, a commented-out line, an escaped `\\VAR` --
   all get nothing, and neither does a half-typed pipeline like

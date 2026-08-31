@@ -1102,6 +1102,15 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Also show the resolved vars of each testcase group. Ignored '
+                    'with --render, which takes the group per expression.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--groups'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'What the --render expressions are being formatted for. Ignored '
                     'without --render.',
                     'kind': 'option',

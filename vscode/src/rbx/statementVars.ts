@@ -3,14 +3,23 @@
  *
  * Pure: no `vscode` import, so `node --test` covers it directly.
  *
- * Only *problem-root* references are badged -- `\VAR{N.max}` and
- * `\VAR{vars.N.max}`. A group reference (`\VAR{g.N.max}`) renders a different
- * value per loop iteration, so a single badge would have to lie or to name the
- * group; contest and problem scopes resolve against var sets this map does not
- * hold. Every one of those, and every expression that is not a plain dotted
- * name, yields no hint: an absent badge is never wrong.
+ * Two scopes are badged, and both resolve to exactly one value:
  *
- * See docs/plans/2026-08-28-vscode-statement-var-hints-design.md (D1).
+ * - *problem-root* references -- `\VAR{N.max}` and `\VAR{vars.N.max}`.
+ * - a *statically named group* -- `\VAR{problem.groups.sub1.vars.N.max}`, its
+ *   `vars`-less shorthand, and the `problem.groups['sub-1']` form that a group
+ *   name holding a dash can only be reached through.
+ *
+ * A *loop-bound* group reference (`\VAR{g.N.max}` inside `\BLOCK{for g in
+ * groups}`) is still not badged, and that is the standing limit rather than an
+ * oversight: one source position renders a different value per iteration, so a
+ * single badge would have to lie, name a group, or list several. Contest and
+ * the rest of the problem scope resolve against var sets this map does not hold.
+ * Every one of those, and every expression that is not a plain dotted name,
+ * yields no hint: an absent badge is never wrong.
+ *
+ * See docs/plans/2026-08-28-vscode-statement-var-hints-design.md (D1) and
+ * docs/plans/2026-08-31-vscode-group-var-hints-design.md.
  */
 
 /**
@@ -24,15 +33,45 @@
  */
 export type Vars = Readonly<Record<string, string>>;
 
+/**
+ * Everything `rbx vars --json --groups` knows about one package.
+ *
+ * `groups` holds each testcase group's **resolved** set -- the package vars
+ * with that group's overrides applied -- not its raw override block. That is
+ * the whole point of asking rbx for it: a subtasks table reads the same name
+ * for every group, and a group that overrides nothing would answer nothing at
+ * all under the raw block. See `statements/context.GroupView`.
+ *
+ * An rbx too old to know the flag leaves `groups` empty, and every group
+ * reference then simply goes unbadged.
+ */
+export interface VarsPayload {
+  readonly vars: Vars;
+  readonly groups: Readonly<Record<string, Vars>>;
+}
+
 interface VarReference {
   /** Offset just past the reference's closing brace. */
   readonly end: number;
+  /**
+   * The testcase group this reference resolves against, absent for a root one.
+   *
+   * Carried for legibility rather than for lookup -- `expression` already
+   * spells it -- and so a consumer can tell the two scopes apart without
+   * re-parsing a wire key.
+   */
+  readonly group?: string;
   /**
    * The canonical expression this reference asks for, ready to hand to
    * `rbx vars --render`. Stripped of any `vars.` prefix, respaced around each
    * pipe, and guaranteed to hold no newline -- it crosses to rbx as one line
    * of stdin and comes back as a key, so a newline in it would be a request
    * nothing could answer.
+   *
+   * A group reference is prefixed with its group and a tab
+   * (`sub1\tN.max | sci`), which is the line protocol `rbx vars --render`
+   * reads. So this doubles as the render cache key, and the same name under
+   * two groups keys twice -- two questions with two answers.
    *
    * Two spellings that differ only in the spacing around a pipe are therefore
    * one cache key -- *except* where the pipeline holds a quote, which
@@ -92,6 +131,58 @@ export type VarHint = ResolvedVarHint | FilteredVarHint;
  *   badge is never wrong.
  */
 const FOREIGN_SCOPE = /^(vars\.)?(g|p|problem|contest|groups)\./;
+
+/**
+ * A reference into one statically named testcase group, and the rest of it.
+ *
+ * Tried *before* `FOREIGN_SCOPE`, which claims the whole `problem.` prefix:
+ * this is the one corner of that scope whose values the payload holds, and the
+ * relaxation is deliberately this narrow. `problem.title` and `problem.params.x`
+ * come from a resolved statement, which `rbx vars` never loads.
+ *
+ * Anchored on `problem.groups` and nothing shorter, because a problem statement
+ * has no top-level `groups`: `context.problem_jinja_kwargs` lifts only `vars`,
+ * and `groups` lives solely inside `problem.namespace()`.
+ *
+ * Both spellings, because the dotted one is not always available.
+ * `fields.NameField` permits `^[a-zA-Z0-9][a-zA-Z0-9\-_]*$`, so `sub-1` and
+ * `1st` are legal group names that Jinja can only reach as
+ * `problem.groups['sub-1']` -- supporting only the dot would quietly unbadge
+ * every package that names its groups that way. `JinjaGroupsGetter` serves
+ * both, so both are real.
+ *
+ * The quote is backreferenced so `'x"` is not read as a name, and the name
+ * itself is matched against the same character class rbx enforces rather than
+ * `[^'"]*`: a payload lookup would turn away anything else anyway, and keeping
+ * the class here means the regex says what a group name *is*.
+ */
+const GROUP_REFERENCE =
+  /^problem\.groups(?:\.([A-Za-z0-9][\w-]*)|\[\s*(['"])([A-Za-z0-9][\w-]*)\2\s*\])\.([^]*)$/;
+
+/** A reference split into the scope it names and the expression within it. */
+interface ScopedReference {
+  /** Absent for a root reference. */
+  readonly group?: string;
+  /** What follows the scope: a dotted name and an optional filter pipeline. */
+  readonly rest: string;
+}
+
+/**
+ * Which var set `inner` asks about, or `undefined` for a scope with no answer.
+ *
+ * Group first, then the foreign-scope guard, then root. The order is what makes
+ * the narrow relaxation safe: `problem.groups.sub1.N.max` is claimed here
+ * before `FOREIGN_SCOPE` can reject it for its `problem.` prefix, and every
+ * other `problem.` spelling still falls through to that rejection.
+ */
+function classify(inner: string): ScopedReference | undefined {
+  const grouped = GROUP_REFERENCE.exec(inner);
+  if (grouped) {
+    // One of the two name groups matched; the other is undefined.
+    return { group: grouped[1] ?? grouped[3], rest: grouped[4] };
+  }
+  return FOREIGN_SCOPE.test(inner) ? undefined : { rest: inner };
+}
 
 /**
  * A plain dotted name, and the filter pipeline it is piped through, if any.
@@ -162,6 +253,15 @@ function isEscaped(text: string, offset: number): boolean {
   return backslashesBefore(text, offset) % 2 === 1;
 }
 
+/** The resolved set of `group`, or `undefined` if the payload has no such group. */
+function varsForGroup(payload: VarsPayload, group: string): Vars | undefined {
+  // Own-property only, for the reason `lookup` gives: a group cannot be named
+  // `constructor` (`fields.NameField` would allow it, but the payload is built
+  // from the declared groups), and reading one off `Object.prototype` would be
+  // a var set that is not a var set.
+  return Object.hasOwn(payload.groups, group) ? payload.groups[group] : undefined;
+}
+
 /** The value `name` holds, or `undefined` if the map does not hold it. */
 function lookup(vars: Vars, name: string): string | undefined {
   // Own-property only: a name like `constructor` or `toString` is a typo, not
@@ -215,7 +315,7 @@ function canonicalize(name: string, pipeline: string | undefined): string | unde
   return expression.includes('\n') ? undefined : expression;
 }
 
-export function scanStatementVars(text: string, vars: Vars): VarHint[] {
+export function scanStatementVars(text: string, payload: VarsPayload): VarHint[] {
   const hints: VarHint[] = [];
   // A fresh regex per scan: a `/g` one carries `lastIndex` between calls, so
   // sharing the constant would leak where the previous scan stopped.
@@ -228,11 +328,22 @@ export function scanStatementVars(text: string, vars: Vars): VarHint[] {
     }
 
     const inner = match[1].trim();
-    if (FOREIGN_SCOPE.test(inner)) {
+    const scoped = classify(inner);
+    if (scoped === undefined) {
       continue;
     }
 
-    const parsed = REFERENCE.exec(inner);
+    // A group the payload does not hold -- renamed, deleted, or one an rbx too
+    // old for `--groups` never reported. Resolving it against the root set
+    // instead would badge the package value under a group that no longer
+    // carries it, which is precisely the confident lie D5 forbids.
+    const vars =
+      scoped.group === undefined ? payload.vars : varsForGroup(payload, scoped.group);
+    if (vars === undefined) {
+      continue;
+    }
+
+    const parsed = REFERENCE.exec(scoped.rest.trim());
     if (!parsed) {
       continue;
     }
@@ -258,16 +369,22 @@ export function scanStatementVars(text: string, vars: Vars): VarHint[] {
     // A pipeline `canonicalize` refuses yields no hint at all, rather than a
     // bare-name hint: the badge would then show the unfiltered value, which is
     // the very lie this scanner reports the pipeline to avoid.
-    const expression = canonicalize(name, pipeline);
-    if (expression === undefined) {
+    const canonical = canonicalize(name, pipeline);
+    if (canonical === undefined) {
       continue;
     }
+    // The wire key, which is also the line `rbx vars --render` reads. A root
+    // reference keeps the bare expression, so the protocol from before groups
+    // were addressable is exactly the subset it was.
+    const expression =
+      scoped.group === undefined ? canonical : `${scoped.group}\t${canonical}`;
+    const scope = scoped.group === undefined ? {} : { group: scoped.group };
 
     const end = start + match[0].length;
     hints.push(
       pipeline === undefined
-        ? { end, expression, filtered: false, text: value }
-        : { end, expression, filtered: true },
+        ? { end, ...scope, expression, filtered: false, text: value }
+        : { end, ...scope, expression, filtered: true },
     );
   }
 
