@@ -141,39 +141,49 @@ share one component: an **include-graph walker**.
 
 ### 1. Loader
 
-`rbx/utils.py:419` `model_from_yaml` is the single choke point (7 call sites) and today
-does `model(**yaml.safe_load(s))`. It takes a *string*, so it has no base directory to
-resolve includes against.
+The single choke point is **`rbx/box/yaml_validation.py:373` `load_yaml_model(path, model)`**,
+which every user-authored config goes through — `problem.rbx.yml`, `contest.rbx.yml`,
+`contest.<id>.rbx.yml`, `env.rbx.yml`, `preset.rbx.yml`, `preset-lock`, limits profiles and
+the preset registry (13 call sites). Two properties make it the right and only seam:
 
-- Add `model_from_yaml_path(model, path)` alongside it; keep the string form for callers
-  that genuinely have no file (it rejects `!include` with a clear error).
-- Return the **transitive set of files read** so callers can invalidate on any of them.
+- It already takes a **path**, so the base directory for resolution is in hand. No caller's
+  signature changes.
+- It already loads with **ruyaml round-trip** (`ruyaml.YAML(typ='rt').load(source)`) and
+  hands the resulting `CommentedMap` straight to `model.model_validate`. So include
+  resolution is a transformation on the round-trip tree, performed between those two steps.
 
-**`!include` must be a node-tree rewrite, not a constructor.** The obvious implementation —
-`SafeLoader.add_constructor('!include', ...)` — cannot support the merge-key form.
-PyYAML's `flatten_mapping` resolves `<<` at the *node* level, before any constructor runs,
-and rejects a value node that is not already a mapping:
+`rbx/utils.py:419` `model_from_yaml(model, s)` is a *different* function serving
+non-user-authored files (setter config, run-UI evaluations, statement export blocks, test
+helpers). It takes a string, has no base directory, and is deliberately left alone: it
+rejects `!include` with a message pointing at `load_yaml_model`.
+
+Resolution walks the round-trip tree and replaces each `!include` `TaggedScalar` with the
+round-trip tree of the fragment, loaded relative to the *including* file's directory and
+guarded by an include stack. Because the substituted subtree is itself a `CommentedMap` /
+`CommentedSeq`, it carries its own `.lc` positions — which is most of what consumer 3 needs,
+provided each fragment root is tagged with the path it came from.
+
+`load_yaml_model` gains an out-parameter (or a sibling `load_yaml_model_with_sources`)
+returning the **transitive set of files read**, so callers can invalidate on any of them.
+
+**The merge-key form needs a `flatten_mapping` override.** ruyaml resolves `<<` during
+construction and rejects a value node that is not already a mapping, so `<<: !include x.yml`
+fails out of the box:
 
 ```
-yaml.constructor.ConstructorError: while constructing a mapping
+ruyaml.constructor.ConstructorError: while constructing a mapping
 expected a mapping or list of mappings for merging, but found scalar
 ```
 
-So the loader instead composes the document to a node tree, walks it replacing every
-`!include` `ScalarNode` with the composed root node of the fragment (recursively, carrying
-each fragment's own directory and the include stack), and only then constructs. Verified
-against the pinned PyYAML: with the rewrite in place,
+A `RoundTripConstructor` subclass that lifts merge-key `!include` pairs out of the node
+before delegating to `super().flatten_mapping`, then reinserts them, loads and round-trips
+the merge form byte-identically (verified). The include resolver then performs the merge
+itself, after the fragment is loaded.
 
-```yaml
-vars: {<<: !include frag.yml, b: 99, c: 3}   # frag.yml = {a: 1, b: 2}
-top: !include frag.yml
-items: !include list.yml                      # list.yml = [x, y]
-```
-
-loads as `{'vars': {'a': 1, 'b': 99, 'c': 3}, 'top': {'a': 1, 'b': 2}, 'items': ['x', 'y']}`.
-
-The rewrite has a second payoff: substituted nodes keep the fragment's own `start_mark`,
-which is most of what consumer 3 needs.
+The same trap exists in PyYAML, whose `flatten_mapping` runs at the *node* level before any
+constructor — so were `!include` ever added to `model_from_yaml`, it would have to be a
+compose-time node rewrite rather than an `add_constructor`. Recorded here because it is the
+non-obvious failure mode a future implementer would otherwise rediscover.
 
 ### 2. Writers
 
@@ -215,13 +225,18 @@ unless `--yes` is passed.
 
 ### 3. Validation and error positions
 
-`rbx/box/yaml_validation.py` maps a pydantic `loc` tuple onto ruyaml `CommentedMap`/
-`CommentedSeq` source positions to render a caret diagnostic. A `loc` that lands inside a
-fragment must resolve to `shared/statements.yml:12`, not to a wrong line in the parent.
-The same walker handles this: descend the `loc`, and when the walk crosses an `!include`
-node, switch to the fragment's ruyaml tree and continue. Getting this wrong makes every
-schema error in shared config point at the wrong file, which is the paper cut that would
-make people abandon the feature.
+`yaml_validation._locate(loc, root)` walks a pydantic `loc` tuple against the round-trip
+tree and returns `(line, col, span)`, which `_render_diagnostic` renders against the single
+`source` string and `path` it was given. Once a tree can span files, that is wrong: a `loc`
+landing inside a fragment yields the fragment's line number rendered against the *parent's*
+text, pointing at an unrelated line.
+
+Since resolution splices real `CommentedMap`/`CommentedSeq` subtrees in, positions are
+already correct per-file; what is missing is knowing *which* file. The resolver stamps each
+spliced fragment root with its source path, `_locate` tracks the most recent stamp as it
+descends and returns it alongside the position, and `_render_diagnostic` renders that file's
+text and name. Getting this wrong makes every schema error in shared config point at the
+wrong file, which is the paper cut that would make people abandon the feature.
 
 ### 4. Cache invalidation
 
@@ -260,8 +275,8 @@ Two softeners, both optional follow-ups rather than blockers:
   resolved relative to *its* directory), cycle detection, absolute-path rejection,
   escape-root warning, missing-fragment error message.
 - A regression test pinning the merge-key form specifically — it is the case that breaks if
-  anyone reimplements `!include` as a plain constructor.
-- `model_from_yaml` (string form) rejects `!include` with a message naming the path form.
+  the `flatten_mapping` override is dropped or `!include` is reimplemented as a constructor.
+- `model_from_yaml` (string form) rejects `!include` with a message naming `load_yaml_model`.
 - Writer tests: `rbx contest add` against a plain `problems`, against an included
   `problems` (lands in the fragment, comments preserved), and against a fragment shared by
   two contests (warns, prompts, `--yes` proceeds).
