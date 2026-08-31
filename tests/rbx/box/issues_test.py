@@ -1,0 +1,579 @@
+"""Tests for the issue detectors.
+
+Every detector is a pure function over a `RunState`, so these build one by hand
+rather than running a package: no sandbox, no compilation, no fixture. That is
+the point of the design -- the issue stack these replaced could only be
+exercised by running a real package end to end.
+"""
+
+import json
+import pathlib
+import time
+import typing
+
+import pytest
+import yaml
+
+from rbx.box import run_report
+from rbx.box.compilation_findings import CompilationWarning, SolutionCompilation
+from rbx.box.issues import detectors, rendering, run_state, schema
+from rbx.box.issues.contest import build_report
+from rbx.box.run_report import RunGroupReport, RunReport, RunSolutionReport
+from rbx.box.schema import ExpectedOutcome
+from rbx.grading.steps import Outcome
+
+
+def make_state(
+    solutions=None,
+    compilation=None,
+) -> run_state.RunState:
+    return run_state.RunState(
+        report=RunReport(solutions=solutions or []),
+        skeleton=run_state.SkeletonView(compilation=compilation or []),
+        runs_dir=pathlib.Path('.rbx/runs'),
+        ran_at=time.time(),
+    )
+
+
+def solution(**kwargs) -> RunSolutionReport:
+    defaults = dict(
+        path='sol/main.cpp',
+        index=0,
+        expectedOutcome=ExpectedOutcome.ACCEPTED,
+        outcome=Outcome.ACCEPTED,
+        status='OK',
+    )
+    defaults.update(kwargs)
+    return RunSolutionReport(**defaults)
+
+
+def kinds(issues) -> list:
+    return [issue.kind for issue in issues]
+
+
+class TestUnmetExpectations:
+    def test_reports_a_solution_that_missed_its_expectation(self):
+        state = make_state(
+            [
+                solution(
+                    path='sol/wa.cpp',
+                    expectedOutcome=ExpectedOutcome.WRONG_ANSWER,
+                    outcome=Outcome.ACCEPTED,
+                    status='UNEXPECTED_VERDICTS',
+                    matchesExpectation=False,
+                    pooledMatchesExpectation=False,
+                )
+            ]
+        )
+
+        (issue,) = detectors.detect_unmet_expectations(state)
+
+        assert issue == schema.UnmetExpectationIssue(
+            solution='sol/wa.cpp',
+            expected=ExpectedOutcome.WRONG_ANSWER,
+            got=Outcome.ACCEPTED,
+            status='UNEXPECTED_VERDICTS',
+            failedGroups=[],
+            pooledMatchesExpectation=False,
+        )
+        assert issue.severity == schema.IssueSeverity.ERROR
+
+    def test_stays_quiet_when_the_expectation_was_met(self):
+        assert detectors.detect_unmet_expectations(make_state([solution()])) == []
+
+    def test_carries_the_pooled_result_so_a_met_expectation_is_not_accused(self):
+        """A solution can fail only its per-group layer.
+
+        Saying "expected INCORRECT, got WA" there names the one expectation that
+        actually held, which is why the flag has to survive to the renderer.
+        """
+        state = make_state(
+            [
+                solution(
+                    path='sol/grp.cpp',
+                    expectedOutcome=ExpectedOutcome.INCORRECT,
+                    outcome=Outcome.WRONG_ANSWER,
+                    status='UNEXPECTED_VERDICTS',
+                    matchesExpectation=False,
+                    pooledMatchesExpectation=True,
+                    failedGroups=['big'],
+                )
+            ]
+        )
+
+        (issue,) = detectors.detect_unmet_expectations(state)
+
+        assert issue.pooledMatchesExpectation
+        assert issue.failedGroups == ['big']
+
+    def test_leaves_an_unexpected_score_to_its_own_detector(self):
+        """Otherwise one failure is reported twice, in two different words."""
+        state = make_state(
+            [
+                solution(
+                    status='UNEXPECTED_SCORE',
+                    matchesExpectation=False,
+                    score=40,
+                    maxScore=100,
+                    expectedScore=(80, 100),
+                )
+            ]
+        )
+
+        assert detectors.detect_unmet_expectations(state) == []
+        assert kinds(detectors.detect_unexpected_scores(state)) == ['unexpected_score']
+
+
+class TestUnexpectedScores:
+    def test_reports_the_declared_range(self):
+        state = make_state(
+            [
+                solution(
+                    status='UNEXPECTED_SCORE',
+                    matchesExpectation=False,
+                    score=40,
+                    maxScore=100,
+                    expectedScore=(80, 100),
+                )
+            ]
+        )
+
+        (issue,) = detectors.detect_unexpected_scores(state)
+
+        assert issue.score == 40
+        assert issue.maxScore == 100
+        assert issue.expectedScore == (80, 100)
+
+    def test_says_nothing_without_a_declared_range(self):
+        """With no range there is nothing to say that the verdict does not."""
+        state = make_state(
+            [solution(status='UNEXPECTED_SCORE', matchesExpectation=False, score=40)]
+        )
+
+        assert detectors.detect_unexpected_scores(state) == []
+
+
+class TestCompilation:
+    def test_reports_a_failure_as_an_error(self):
+        state = make_state(
+            compilation=[
+                SolutionCompilation(
+                    path=pathlib.Path('sol/bad.cpp'),
+                    outcome=ExpectedOutcome.ACCEPTED,
+                    status='FAILED',
+                    log=pathlib.Path('compilation/0.log'),
+                    reason="'g++' was not found",
+                )
+            ]
+        )
+
+        (issue,) = detectors.detect_compilation(state)
+
+        assert issue.kind == 'compilation_failed'
+        assert issue.severity == schema.IssueSeverity.ERROR
+        assert issue.reason == "'g++' was not found"
+
+    def test_reports_warnings_as_a_warning(self):
+        state = make_state(
+            compilation=[
+                SolutionCompilation(
+                    path=pathlib.Path('sol/warn.cpp'),
+                    outcome=ExpectedOutcome.ACCEPTED,
+                    status='WARNINGS',
+                    log=pathlib.Path('compilation/1.log'),
+                    warnings=[
+                        CompilationWarning(
+                            file='sol/warn.cpp', line=12, flag='-Wall', msg='unused'
+                        )
+                    ],
+                )
+            ]
+        )
+
+        (issue,) = detectors.detect_compilation(state)
+
+        assert issue.kind == 'compilation_warnings'
+        assert issue.severity == schema.IssueSeverity.WARNING
+        assert len(issue.warnings) == 1
+
+    def test_finds_a_solution_that_never_reached_the_report(self):
+        """A solution that failed to compile is absent from the run entirely.
+
+        It is filtered out of the skeleton's `solutions`, so the compilation
+        record is the only trace of it -- which is exactly why this detector
+        reads the skeleton instead of the report.
+        """
+        state = make_state(
+            solutions=[],
+            compilation=[
+                SolutionCompilation(
+                    path=pathlib.Path('sol/bad.cpp'),
+                    outcome=ExpectedOutcome.ACCEPTED,
+                    status='FAILED',
+                    log=pathlib.Path('compilation/0.log'),
+                )
+            ],
+        )
+
+        assert kinds(detectors.detect_all(state)) == ['compilation_failed']
+
+
+class TestTimingRisk:
+    def test_flags_a_solution_slow_only_within_double_tl(self):
+        state = make_state(
+            [
+                solution(
+                    path='sol/slow.cpp',
+                    expectedOutcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+                    outcome=Outcome.TIME_LIMIT_EXCEEDED,
+                    runUnderDoubleTl=True,
+                    doubleTlVerdicts=[Outcome.ACCEPTED],
+                    groups=[RunGroupReport(name='main', runUnderDoubleTl=True)],
+                )
+            ]
+        )
+
+        (issue,) = detectors.detect_borderline_tle(state)
+
+        assert issue.groups == ['main']
+        assert issue.doubleTlVerdicts == [Outcome.ACCEPTED]
+        # The run itself passed -- which is the whole reason this needs saying.
+        assert state.report.solutions[0].matchesExpectation
+
+    def test_pools_hidden_verdicts_up_from_the_groups(self):
+        state = make_state(
+            [
+                solution(
+                    groups=[
+                        RunGroupReport(
+                            name='main',
+                            unexpectedNoTleVerdicts=[Outcome.WRONG_ANSWER],
+                        ),
+                        RunGroupReport(name='clean'),
+                    ]
+                )
+            ]
+        )
+
+        (issue,) = detectors.detect_hidden_verdicts(state)
+
+        # Only the group that actually hid something.
+        assert issue.groups == ['main']
+        assert issue.verdicts == [Outcome.WRONG_ANSWER]
+
+    def test_flags_a_passing_solution_close_to_the_limit(self):
+        state = make_state([solution(maxTime=0.95, timeLimit=1.0)])
+
+        (issue,) = detectors.detect_tight_time_margin(state)
+
+        assert issue.maxTime == 0.95
+        assert issue.timeLimit == 1.0
+
+    def test_leaves_a_comfortable_solution_alone(self):
+        state = make_state([solution(maxTime=0.2, timeLimit=1.0)])
+
+        assert detectors.detect_tight_time_margin(state) == []
+
+    def test_never_flags_a_solution_declared_slow(self):
+        """A solution declared slow is supposed to sit against the limit."""
+        state = make_state(
+            [
+                solution(
+                    expectedOutcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+                    outcome=Outcome.TIME_LIMIT_EXCEEDED,
+                    maxTime=1.0,
+                    timeLimit=1.0,
+                )
+            ]
+        )
+
+        assert detectors.detect_tight_time_margin(state) == []
+
+    def test_needs_a_time_limit_to_compare_against(self):
+        """A sanitized run enforces none, so there is no margin to speak of."""
+        state = make_state([solution(maxTime=9.0, timeLimit=None)])
+
+        assert detectors.detect_tight_time_margin(state) == []
+
+    def test_collects_untuned_limits_into_one_issue(self):
+        state = make_state(
+            [
+                solution(path='sol/a.cpp', untunedLimitsSuspected=True),
+                solution(path='sol/b.cpp', untunedLimitsSuspected=True),
+                solution(path='sol/c.cpp'),
+            ]
+        )
+
+        (issue,) = detectors.detect_untuned_limits(state)
+
+        assert issue.affectedSolutions == ['sol/a.cpp', 'sol/b.cpp']
+
+    def test_says_nothing_when_no_solution_suspects_the_limits(self):
+        assert detectors.detect_untuned_limits(make_state([solution()])) == []
+
+
+class TestDetectAll:
+    def test_puts_errors_before_warnings(self):
+        state = make_state(
+            [
+                solution(path='sol/tight.cpp', maxTime=0.95, timeLimit=1.0),
+                solution(
+                    path='sol/wa.cpp',
+                    expectedOutcome=ExpectedOutcome.WRONG_ANSWER,
+                    status='UNEXPECTED_VERDICTS',
+                    matchesExpectation=False,
+                    pooledMatchesExpectation=False,
+                ),
+            ]
+        )
+
+        issues = detectors.detect_all(state)
+
+        assert kinds(issues) == ['unmet_expectation', 'tight_time_margin']
+
+    def test_a_clean_run_has_no_issues(self):
+        assert detectors.detect_all(make_state([solution()])) == []
+
+
+class TestLoadRunState:
+    def _write(self, runs_dir: pathlib.Path, report: RunReport) -> None:
+        run_report.write_report(run_report.report_path(runs_dir), report)
+
+    def test_reads_a_report_back_off_disk(self, tmp_path: pathlib.Path):
+        self._write(tmp_path, RunReport(solutions=[solution(path='sol/a.cpp')]))
+
+        state = run_state.load_run_state(tmp_path)
+
+        assert state is not None
+        assert [s.path for s in state.report.solutions] == ['sol/a.cpp']
+
+    def test_a_missing_report_means_never_run(self, tmp_path: pathlib.Path):
+        assert run_state.load_run_state(tmp_path) is None
+        assert build_report(tmp_path).neverRun
+
+    def test_a_corrupt_report_reads_as_never_run(self, tmp_path: pathlib.Path):
+        """The report is rewritten per solution, so it can be caught mid-write."""
+        run_report.report_path(tmp_path).write_text('{[not yaml')
+
+        assert run_state.load_run_state(tmp_path) is None
+
+    def test_refuses_a_report_from_a_newer_rbx(self, tmp_path: pathlib.Path):
+        path = run_report.report_path(tmp_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            yaml.safe_dump({'version': run_report.REPORT_VERSION + 1, 'solutions': []})
+        )
+
+        with pytest.raises(run_state.UnsupportedReportVersion):
+            run_state.load_run_state(tmp_path)
+
+    def test_tolerates_a_missing_skeleton(self, tmp_path: pathlib.Path):
+        self._write(tmp_path, RunReport(solutions=[solution()]))
+
+        state = run_state.load_run_state(tmp_path)
+
+        assert state is not None
+        assert state.skeleton.compilation == []
+
+    def test_reads_compilation_findings_off_the_skeleton(self, tmp_path: pathlib.Path):
+        self._write(tmp_path, RunReport())
+        (tmp_path / run_state.SKELETON_FILENAME).write_text(
+            yaml.safe_dump(
+                {
+                    'compilation': [
+                        {
+                            'path': 'sol/bad.cpp',
+                            'outcome': 'accepted',
+                            'status': 'FAILED',
+                            'log': 'compilation/0.log',
+                        }
+                    ]
+                }
+            )
+        )
+
+        state = run_state.load_run_state(tmp_path)
+
+        assert state is not None
+        assert [c.path for c in state.skeleton.compilation] == [
+            pathlib.Path('sol/bad.cpp')
+        ]
+
+    def test_report_records_where_relative_paths_hang_off(self, tmp_path: pathlib.Path):
+        self._write(tmp_path, RunReport())
+
+        assert build_report(tmp_path).runsDir == str(tmp_path)
+
+
+class TestSkeletonViewDoesNotDrift:
+    def test_parses_a_real_skeleton(self):
+        """`SkeletonView` is a narrow read of a model it does not import.
+
+        That is deliberate -- importing `solutions` would cost `rbx issues` the
+        whole box -- but it means nothing else stops the two disagreeing. So
+        assert the field is really there, and really means what is read here.
+        """
+        from rbx.box.solutions import SolutionReportSkeleton
+
+        field = SolutionReportSkeleton.model_fields['compilation']
+        view_field = run_state.SkeletonView.model_fields['compilation']
+
+        assert field.annotation == view_field.annotation
+
+
+class TestPublishedReportFields:
+    def test_untuned_limits_rides_the_report(self):
+        """The detector cannot re-derive this, so the report must carry it."""
+        assert 'untunedLimitsSuspected' in RunSolutionReport.model_fields
+
+    def test_time_limit_rides_the_report(self):
+        assert 'timeLimit' in RunSolutionReport.model_fields
+
+    def test_both_are_additive_and_default_off(self):
+        """Additive fields must not change how an existing report reads."""
+        entry = RunSolutionReport(
+            path='sol/a.cpp',
+            index=0,
+            expectedOutcome=ExpectedOutcome.ACCEPTED,
+            status='OK',
+        )
+
+        assert entry.untunedLimitsSuspected is False
+        assert entry.timeLimit is None
+
+
+class TestRendering:
+    """The wording lives in one place, so it is asserted in one place.
+
+    These replace the two `FailedToCompileSolutionIssue` message tests that used
+    to live in `solutions_test.py`: the messages moved here when the rendering
+    left the issue stack.
+    """
+
+    def test_a_compile_failure_names_the_reason(self):
+        issue = schema.CompilationFailedIssue(
+            solution='sols/wa.py',
+            reason="'python3' was not found",
+            log=pathlib.Path('compilation/0.log'),
+        )
+
+        assert 'python3' in rendering.summarize(issue)
+
+    def test_a_compile_failure_without_a_reason_still_reads(self):
+        issue = schema.CompilationFailedIssue(
+            solution='sols/wa.py', log=pathlib.Path('compilation/0.log')
+        )
+
+        assert rendering.summarize(issue) == 'failed to compile'
+
+    def test_never_names_a_pooled_expectation_that_held(self):
+        """Saying "expected INCORRECT, got WA" accuses the layer that worked."""
+        issue = schema.UnmetExpectationIssue(
+            solution='sol/grp.cpp',
+            expected=ExpectedOutcome.INCORRECT,
+            got=Outcome.WRONG_ANSWER,
+            status='UNEXPECTED_VERDICTS',
+            failedGroups=['big'],
+            pooledMatchesExpectation=True,
+        )
+
+        summary = rendering.summarize(issue)
+
+        assert 'INCORRECT' not in summary
+        assert 'big' in summary
+
+    def test_names_the_pooled_expectation_when_it_is_the_one_that_failed(self):
+        issue = schema.UnmetExpectationIssue(
+            solution='sol/wa.cpp',
+            expected=ExpectedOutcome.WRONG_ANSWER,
+            got=Outcome.ACCEPTED,
+            status='UNEXPECTED_VERDICTS',
+            pooledMatchesExpectation=False,
+        )
+
+        summary = rendering.summarize(issue)
+
+        assert 'WRONG_ANSWER' in summary
+        assert 'ACCEPTED' in summary
+
+    def test_a_log_link_resolves_against_the_runs_dir(self):
+        """The stored path is relative, so on its own it points nowhere."""
+        issue = schema.CompilationFailedIssue(
+            solution='sols/wa.py', log=pathlib.Path('compilation/0.log')
+        )
+
+        lines = rendering.explain(issue, runs_dir='/pkg/.rbx/runs')
+
+        assert any('/pkg/.rbx/runs/compilation/0.log' in line for line in lines)
+
+    def test_every_kind_has_a_summary_and_a_severity(self):
+        """A new kind must not fall through to 'unknown issue'."""
+        samples = [
+            schema.UnmetExpectationIssue(
+                solution='s', expected=ExpectedOutcome.ACCEPTED, status='OK'
+            ),
+            schema.UnexpectedScoreIssue(
+                solution='s', score=1, maxScore=2, expectedScore=(2, 2)
+            ),
+            schema.CompilationFailedIssue(solution='s', log=pathlib.Path('a.log')),
+            schema.CompilationWarningsIssue(solution='s', log=pathlib.Path('a.log')),
+            schema.BorderlineTleIssue(solution='s'),
+            schema.HiddenVerdictIssue(solution='s'),
+            schema.TightTimeMarginIssue(solution='s', maxTime=1.0, timeLimit=1.0),
+            schema.UntunedLimitsIssue(),
+        ]
+
+        # Every member of the union is covered.
+        assert {type(sample) for sample in samples} == set(
+            typing.get_args(typing.get_args(schema.Issue)[0])
+        )
+        for sample in samples:
+            assert rendering.summarize(sample) != 'unknown issue'
+            assert sample.severity in tuple(schema.IssueSeverity)
+
+    def test_humanizes_a_missing_timestamp_as_never(self):
+        assert rendering.humanize_since(None) == 'never'
+
+    def test_humanizes_a_recent_run(self):
+        assert rendering.humanize_since(time.time() - 5) == 'just now'
+        assert rendering.humanize_since(time.time() - 260) == '4m ago'
+
+
+class TestJsonOutput:
+    def test_carries_a_version_and_the_severity_of_each_issue(self):
+        report = schema.IssueReport(
+            ranAt=1.0,
+            issues=[schema.UntunedLimitsIssue(affectedSolutions=['sol/a.cpp'])],
+        )
+
+        payload = json.loads(rendering.to_json(report))
+
+        assert payload['version'] == schema.ISSUES_FORMAT_VERSION
+        assert payload['issues'][0]['kind'] == 'untuned_limits'
+        # Published, so a client keeps no table of which kinds are which.
+        assert payload['issues'][0]['severity'] == 'warning'
+
+    def test_a_never_run_package_says_so_rather_than_looking_clean(self):
+        payload = json.loads(rendering.to_json(schema.IssueReport(neverRun=True)))
+
+        assert payload['neverRun'] is True
+        assert payload['issues'] == []
+
+    def test_round_trips_through_the_discriminated_union(self):
+        report = schema.IssueReport(
+            issues=[
+                schema.UnmetExpectationIssue(
+                    solution='sol/wa.cpp',
+                    expected=ExpectedOutcome.WRONG_ANSWER,
+                    got=Outcome.ACCEPTED,
+                    status='UNEXPECTED_VERDICTS',
+                    pooledMatchesExpectation=False,
+                )
+            ]
+        )
+
+        parsed = schema.IssueReport.model_validate(
+            json.loads(rendering.to_json(report))
+        )
+
+        assert parsed == report
