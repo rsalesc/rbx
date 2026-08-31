@@ -44,6 +44,16 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Run the commands straight in this terminal, one after another, '
+                    'instead of opening the TUI. Must come before the problem '
+                    'selector in `rbx on`.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--inline', '-i'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,
@@ -66,6 +76,16 @@ SPEC = {
                     'kind': 'option',
                     'multiple': False,
                     'names': ['--keep-going', '-k'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Run the commands straight in this terminal, one after another, '
+                    'instead of opening the TUI. Must come before the problem '
+                    'selector in `rbx on`.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--inline', '-i'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
                 },
@@ -297,6 +317,39 @@ SPEC = {
                     'names': ['--detailed', '-d'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+            ],
+        },
+        {
+            'help': 'Show what the last run revealed about the...',
+            'is_group': False,
+            'name': 'issues',
+            'panel': 'Testing',
+            'params': [
+                {
+                    'help': 'Explain each issue instead of summarizing it in one line.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--detailed', '-d'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'How to print the issues. Use `json` to consume them from a '
+                    'tool.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--format'],
+                    'takes_value': True,
+                    'value': {'choices': ['rich', 'json'], 'kind': 'choice'},
                 },
                 {
                     'help': 'Show this message and exit.',
@@ -1098,6 +1151,15 @@ SPEC = {
                     'kind': 'option',
                     'multiple': False,
                     'names': ['--render'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Also show the resolved vars of each testcase group. Ignored '
+                    'with --render, which takes the group per expression.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--groups'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
                 },
@@ -2510,6 +2572,16 @@ SPEC = {
                             'value': {'kind': 'none'},
                         },
                         {
+                            'help': 'Run the commands straight in this terminal, one '
+                            'after another, instead of opening the TUI. Must '
+                            'come before the problem selector in `rbx on`.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--inline', '-i'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
                             'multiple': False,
@@ -2544,6 +2616,16 @@ SPEC = {
                             'value': {'kind': 'none'},
                         },
                         {
+                            'help': 'Run the commands straight in this terminal, one '
+                            'after another, instead of opening the TUI. Must '
+                            'come before the problem selector in `rbx on`.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--inline', '-i'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
                             'multiple': False,
@@ -2567,6 +2649,40 @@ SPEC = {
                             'takes_value': False,
                             'value': {'kind': 'none'},
                         }
+                    ],
+                },
+                {
+                    'help': "Show what each problem's last run revealed.",
+                    'is_group': False,
+                    'name': 'issues',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': "Follow the table with every problem's issues in "
+                            'full.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--detailed', '-d'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'How to print the issues. Use `json` to consume '
+                            'them from a tool.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--format'],
+                            'takes_value': True,
+                            'value': {'choices': ['rich', 'json'], 'kind': 'choice'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
                     ],
                 },
                 {

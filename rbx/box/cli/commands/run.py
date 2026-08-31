@@ -17,6 +17,7 @@ from rbx.annotations import PackagePath
 from rbx.box import (
     benchmark,
     environment,
+    estimation_checksum,
     generators,
     limits_info,
     package,
@@ -233,6 +234,18 @@ async def run(
     ):
         raise typer.Exit(1)
 
+    # After the build, and keyed on the profile the run is actually judged
+    # against -- not on this command's own flag, so `rbx -p boca run` is checked
+    # like `rbx run -p boca`, and not on `get_active_profile()`, which is None for
+    # a plain `rbx run` even though that run resolves its limits from `local`.
+    # `rbx time` writes `local` by default, so keying on the active profile
+    # skipped the check for the commonest workflow there is.
+    #
+    # Before the build it would have compared against whatever manifest an
+    # earlier build happened to leave in `build/` -- a stale answer precisely
+    # when the testset is what changed.
+    estimation_checksum.warn_if_stale(limits_info.get_run_profile())
+
     if verification <= VerificationLevel.VALIDATE.value:
         console.console.print(
             '[warning]Verification level is set to [item]validate (-v1)[/item], so rbx only build tests and validated them.[/warning]'
@@ -327,6 +340,8 @@ async def run(
         if fail_fast:
             _print_fail_fast_warning(console.console)
 
+        _print_issues()
+
         vscode_extension.print_outdated_hint()
 
         if not ok:
@@ -339,6 +354,35 @@ async def run(
         # Ctrl-C, on a backend that had already dispatched every solution.
         # `LocalRunner.close` is a no-op, so this costs a local run nothing.
         await solution_result.close()
+
+
+def _print_issues() -> None:
+    """The issues section at the end of a run.
+
+    Reads the report back off disk rather than being handed the in-memory one.
+    `RunReportWriter` has already written it -- it rewrites the file as each
+    solution lands -- and going through the same path `rbx issues` uses makes it
+    impossible for the two to word the same finding differently, or for one to
+    notice something the other misses.
+
+    Never fatal: `rbx run`'s exit code is the report's verdict, and a problem
+    reading this view must not turn a passing run into a failing one.
+    """
+    from rbx.box import issues
+
+    try:
+        report = issues.build_report(package.get_problem_runs_dir())
+    except issues.UnsupportedReportVersion:
+        return
+    if report.neverRun or not report.issues:
+        return
+
+    console.console.print()
+    console.console.rule('[status]Issues[/status]', style='status')
+    issues.print_report(report)
+    console.console.print(
+        '[info]Run [item]rbx issues -d[/item] to expand these.[/info]'
+    )
 
 
 @app.command(
@@ -476,6 +520,10 @@ async def irun(
     level = benchmark.parse_level(benchmark_level)
 
     _set_timing_profile(profile)
+    # `rbx irun` never builds a testset, so whatever sits in `build/` says
+    # nothing about this run: the check is deliberately held to its light level
+    # rather than reading a manifest an unrelated build left behind.
+    estimation_checksum.warn_if_stale(limits_info.get_run_profile(), light_only=True)
 
     if not print:
         console.console.print(

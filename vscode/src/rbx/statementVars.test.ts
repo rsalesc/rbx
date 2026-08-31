@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { test } from 'node:test';
 
-import { scanStatementVars, Vars } from './statementVars';
+import { scanStatementVars, Vars, VarsPayload } from './statementVars';
 
 /**
  * The foreign-scope keys are deliberately *resolvable*, so that the scope
@@ -32,7 +32,26 @@ const VARS: Vars = {
   'vars.problem.N.max': '7',
 };
 
-const scan = (text: string) => scanStatementVars(text, VARS);
+/**
+ * Two groups whose sets differ from the root one and from each other, plus a
+ * name only reachable through the bracket form.
+ *
+ * `sub1` overrides `N.max` and inherits `A.max`, which is the pairing that
+ * makes a badge worth drawing at all: the extension resolves against the
+ * group's *resolved* set, so the inherited name has to answer here exactly as
+ * the overridden one does.
+ */
+const GROUPS: Readonly<Record<string, Vars>> = {
+  sub1: { 'N.max': '10', 'A.max': '1000000000' },
+  sub2: { 'N.max': '1000', 'A.max': '1000000000' },
+  // A legal group name (`fields.NameField` allows dashes and a leading digit)
+  // that Jinja cannot reach with a dot.
+  'sub-3': { 'N.max': '100000', 'A.max': '1000000000' },
+};
+
+const PAYLOAD: VarsPayload = { vars: VARS, groups: GROUPS };
+
+const scan = (text: string) => scanStatementVars(text, PAYLOAD);
 
 /**
  * The badge texts of a scan, a filtered reference contributing none.
@@ -261,4 +280,83 @@ test('offsets are absolute across lines, and a comment ends at its newline', () 
 test('scanning is repeatable, so no regex state leaks between calls', () => {
   const text = '\\VAR{N.max} \\VAR{A.max}';
   assert.deepStrictEqual(scan(text), scan(text));
+});
+
+test('a statically named group resolves against that group', () => {
+  assert.deepStrictEqual(scan('$N \\le \\VAR{problem.groups.sub1.vars.N.max}$'), [
+    {
+      end: 43,
+      expression: 'sub1\tN.max',
+      filtered: false,
+      group: 'sub1',
+      text: '10',
+    },
+  ]);
+});
+
+test('the group shorthand keys the same as the long form', () => {
+  // `g.N.max` is shorthand for `g.vars.N.max` (#630), and both spellings share
+  // one wire key: rbx resolves them identically, so the shorter one is what
+  // crosses and one render answers both.
+  const shorthand = scan('\\VAR{problem.groups.sub2.N.max}');
+  const longForm = scan('\\VAR{problem.groups.sub2.vars.N.max}');
+  assert.deepStrictEqual(texts('\\VAR{problem.groups.sub2.N.max}'), ['1000']);
+  assert.strictEqual(shorthand[0].expression, 'sub2\tN.max');
+  assert.strictEqual(longForm[0].expression, 'sub2\tN.max');
+});
+
+test('a group reaches its inherited names, not only its overrides', () => {
+  // The payload carries each group's *resolved* set, so a name no group
+  // overrides badges the package value rather than nothing at all.
+  assert.deepStrictEqual(texts('\\VAR{problem.groups.sub1.A.max}'), ['1000000000']);
+});
+
+test('the bracket form reaches a group a dot cannot', () => {
+  // `sub-3` is a legal group name and `problem.groups.sub-3.N.max` is not a
+  // Jinja expression, so the quoted form is the only spelling a statement can
+  // use -- and dropping it would silently unbadge whole packages.
+  assert.deepStrictEqual(texts("\\VAR{problem.groups['sub-3'].vars.N.max}"), ['100000']);
+  assert.deepStrictEqual(texts('\\VAR{problem.groups["sub-3"].N.max}'), ['100000']);
+});
+
+test('a filtered group reference carries the group on its wire key', () => {
+  assert.deepStrictEqual(
+    scan('\\VAR{problem.groups.sub1.N.max | sci}').map((hint) => hint.expression),
+    ['sub1\tN.max | sci'],
+  );
+});
+
+test('a group the payload does not hold is left alone', () => {
+  // A renamed or deleted group. The badge would otherwise have to come from
+  // the root set, which is the wrong number under the old name.
+  assert.deepStrictEqual(scan('\\VAR{problem.groups.nosuch.N.max}'), []);
+});
+
+test('a name absent from a group is left alone', () => {
+  // `flag` is a root var and no group carries it; the group scope answers only
+  // out of its own resolved set.
+  assert.deepStrictEqual(scan('\\VAR{problem.groups.sub1.flag}'), []);
+});
+
+test('a group model field is left alone', () => {
+  // `problem.groups.sub1.name` is the *model* field, and `GroupView` gives it
+  // precedence over the var shorthand. No var can be called `name`
+  // (RESERVED_STATEMENT_VAR_NAMES), so the lookup misses and nothing is drawn.
+  assert.deepStrictEqual(scan('\\VAR{problem.groups.sub1.name}'), []);
+});
+
+test('the rest of the problem scope stays foreign', () => {
+  // Only `problem.groups.<name>` is admitted: everything else under `problem`
+  // is answered by a resolved statement, which `rbx vars` deliberately never
+  // loads.
+  for (const expression of [
+    'problem.title',
+    'problem.params.foo',
+    'problem.groups',
+    'problem.groups.sub1',
+    'p.groups.sub1.N.max',
+    'g.N.max',
+  ]) {
+    assert.deepStrictEqual(scan(`\\VAR{${expression}}`), [], expression);
+  }
 });

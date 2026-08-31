@@ -33,7 +33,6 @@ from rbx.box.schema import (
 from rbx.box.solutions import (
     AbortContext,
     EvaluationItem,
-    FailedToCompileSolutionIssue,
     GroupOutcomeReport,
     GroupSkeleton,
     LiveRunReporter,
@@ -41,7 +40,6 @@ from rbx.box.solutions import (
     SolutionOutcomeStatus,
     SolutionReportSkeleton,
     SolutionSkeleton,
-    TimingIssue,
     TraditionalRunReporter,
     _AbortGate,  # noqa: SLF001
     _gates_report,  # noqa: SLF001
@@ -63,7 +61,6 @@ from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.grading.limits import Limits
 from rbx.grading.steps import (
-    CompilationError,
     Evaluation,
     Outcome,
     RunTiming,
@@ -75,9 +72,7 @@ from tests.rbx.box.conftest import make_evaluation, make_generation_entry
 
 # The heaviest file in the suite: every test re-runs the same `box1` solutions
 # in a fresh problem directory. Sharing the problem cache takes it from 84s to
-# 42s. Compilation is a means here, never the assertion -- the two compilation
-# tests in this file exercise `FailedToCompileSolutionIssue` messages built by
-# hand, without compiling anything.
+# 42s. Compilation is a means here, never the assertion.
 pytestmark = pytest.mark.shared_cache
 
 
@@ -1260,7 +1255,11 @@ async def test_partial_reports_do_not_add_timing_issues(
     it. The timing heuristic reads too-fast/too-slow off the evals it is handed,
     so an all-accepted group that finishes before the slow group has started
     looks too fast in isolation, and used to collect a bogus `rbx time` warning
-    that way even though the final report was clean."""
+    that way even though the final report was clean.
+
+    The warning now rides the report as `untunedLimitsSuspected` instead of
+    being pushed onto an issue stack, but the gate is the same one and this
+    still pins it."""
     solution = Solution(
         path=pathlib.Path('sol.cpp'),
         outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
@@ -1281,40 +1280,29 @@ async def test_partial_reports_do_not_add_timing_issues(
         },
     )
 
-    with (
-        fresh_issue_stack() as issues,
-        patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS),
-    ):
+    with patch('rbx.box.solutions.package.get_scoring', return_value=ScoreType.POINTS):
         await drive_reporter(
             LiveRunReporter(result, VerificationLevel.FULL, recording_console()),
             skeleton,
         )
 
-    # Exactly one: the report at solution end, which is the one entitled to speak
-    # about the run. Both group ends also built a report, to render their score.
-    assert len([i for i in issues.issues if isinstance(i, TimingIssue)]) == 1
-
     # The very evals the group-1 partial report saw. As a rendering-only report
-    # they raise nothing; as a final one they still do, so `report_issues` is the
-    # only difference between the two calls.
+    # it must not suspect the limits; as a final one it still does, so
+    # `report_issues` is the only difference between the two calls.
     partial_evals = [make_evaluation(Outcome.ACCEPTED) for _ in range(2)]
-    with fresh_issue_stack() as issues:
-        get_solution_outcome_report(
-            solution,
-            skeleton,
-            partial_evals,
-            VerificationLevel.FULL,
-            report_issues=False,
-        )
+    partial = get_solution_outcome_report(
+        solution,
+        skeleton,
+        partial_evals,
+        VerificationLevel.FULL,
+        report_issues=False,
+    )
+    assert not partial.untunedLimitsSuspected
 
-    assert [issue for issue in issues.issues if isinstance(issue, TimingIssue)] == []
-
-    with fresh_issue_stack() as issues:
-        get_solution_outcome_report(
-            solution, skeleton, partial_evals, VerificationLevel.FULL
-        )
-
-    assert any(isinstance(issue, TimingIssue) for issue in issues.issues)
+    final = get_solution_outcome_report(
+        solution, skeleton, partial_evals, VerificationLevel.FULL
+    )
+    assert final.untunedLimitsSuspected
 
 
 def test_report_evals_are_not_clobbered_by_the_per_group_loop(tmp_path, mock_skeleton):
@@ -1634,30 +1622,6 @@ def test_solution_outcome_report_points_scoring_with_dependencies(
     assert report.gotScore == 60
 
 
-def test_failed_to_compile_issue_includes_not_found_reason():
-    sol = Solution(
-        path=pathlib.Path('sols/wa.py'), outcome=ExpectedOutcome.WRONG_ANSWER
-    )
-    exc = CompilationError()
-    exc.not_found_executable = 'python3'
-    issue = FailedToCompileSolutionIssue(sol, exception=exc)
-
-    msg = issue.get_detailed_message()
-    assert 'python3' in msg
-    assert 'sols/wa.py' in msg
-
-
-def test_failed_to_compile_issue_generic_message_without_reason():
-    sol = Solution(
-        path=pathlib.Path('sols/wa.py'), outcome=ExpectedOutcome.WRONG_ANSWER
-    )
-    issue = FailedToCompileSolutionIssue(sol)
-
-    msg = issue.get_detailed_message()
-    assert 'could not be compiled and was skipped' in msg
-    assert 'sols/wa.py' in msg
-
-
 @pytest.mark.parametrize('outcome', list(Outcome))
 def test_outcome_styles_are_valid_rich_styles(outcome: Outcome):
     # Rich has no plain 'orange' color, and an invalid style blows up at render
@@ -1911,21 +1875,19 @@ def test_timing_issues_are_not_raised_off_a_truncated_run(
     wrong_answer = make_evaluation(Outcome.WRONG_ANSWER)
 
     # Ran to the end and never timed out: the limits really may be untuned.
-    with fresh_issue_stack() as issues:
-        get_solution_outcome_report(
-            solution, skeleton, [wrong_answer], VerificationLevel.FULL
-        )
-    assert any(isinstance(issue, TimingIssue) for issue in issues.issues)
+    complete = get_solution_outcome_report(
+        solution, skeleton, [wrong_answer], VerificationLevel.FULL
+    )
+    assert complete.untunedLimitsSuspected
 
     # Same verdicts, but the run stopped: the missing TLE says nothing.
-    with fresh_issue_stack() as issues:
-        get_solution_outcome_report(
-            solution,
-            skeleton,
-            [wrong_answer, make_evaluation(Outcome.SKIPPED, time_ms=None)],
-            VerificationLevel.FULL,
-        )
-    assert [issue for issue in issues.issues if isinstance(issue, TimingIssue)] == []
+    truncated = get_solution_outcome_report(
+        solution,
+        skeleton,
+        [wrong_answer, make_evaluation(Outcome.SKIPPED, time_ms=None)],
+        VerificationLevel.FULL,
+    )
+    assert not truncated.untunedLimitsSuspected
 
 
 async def test_plain_report_drops_the_timing_summary_when_timing_is_off(

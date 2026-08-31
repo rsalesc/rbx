@@ -20,8 +20,8 @@
 import * as vscode from 'vscode';
 
 import { log } from './log';
-import { Vars } from './rbx/statementVars';
-import { parseVarsPayload } from './rbx/varsPayload';
+import { VarsPayload } from './rbx/statementVars';
+import { parseVarsPayload, parseVarsWithGroups } from './rbx/varsPayload';
 import { resolveRbx, run } from './rbxProcess';
 
 /**
@@ -87,7 +87,7 @@ export class StatementVarsIndex {
    * makes `invalidate` during a spawn safe: the stale promise has no way to
    * overwrite the entry a later miss put there. Its result is simply dropped.
    */
-  private readonly index = new Map<string, Promise<Vars | undefined>>();
+  private readonly index = new Map<string, Promise<VarsPayload | undefined>>();
 
   /**
    * What each root's filtered expressions render to.
@@ -101,7 +101,7 @@ export class StatementVarsIndex {
   private readonly renders = new Map<string, RootRenders>();
 
   /** The vars of the package at `root`, or `undefined` if rbx could not say. */
-  varsFor(root: string): Promise<Vars | undefined> {
+  varsFor(root: string): Promise<VarsPayload | undefined> {
     const cached = this.index.get(root);
     if (cached !== undefined) {
       return cached;
@@ -271,7 +271,7 @@ export class StatementVarsIndex {
     }
   }
 
-  private async load(root: string): Promise<Vars | undefined> {
+  private async load(root: string): Promise<VarsPayload | undefined> {
     // The whole body, because a *rejection* is the one failure mode that is
     // not an absent badge: it would be cached like any other answer, re-thrown
     // into every later hint request for this root, and -- because the promise
@@ -286,32 +286,65 @@ export class StatementVarsIndex {
         return undefined;
       }
 
-      const result = await run(rbx, ['vars', '--json'], root, VARS_TIMEOUT_MS);
+      const grouped = await run(
+        rbx,
+        ['vars', '--json', '--groups'],
+        root,
+        VARS_TIMEOUT_MS,
+      );
       // Split from the exit code below because `run` spells both failures with
       // a null code, and a process that never started wrote no stderr either:
       // the error is the only thing that says what happened.
-      if (result.spawnError !== undefined) {
-        log(`Could not start rbx in ${root}: ${result.spawnError.message}`);
+      if (grouped.spawnError !== undefined) {
+        log(`Could not start rbx in ${root}: ${grouped.spawnError.message}`);
         return undefined;
       }
-      if (result.code !== 0) {
-        // A bad package is the common case here -- `rbx vars` exits non-zero
-        // on one -- and it is the setter's own half-typed manifest, not a bug
-        // to report. A null code that reaches here is the timeout, which `run`
-        // reports in the stderr it hands back.
+      if (grouped.code === 0) {
+        const payload = parseVarsWithGroups(grouped.stdout);
+        if (payload === undefined) {
+          log(`Could not read the vars rbx printed for ${root}.`);
+          return undefined;
+        }
+        return payload;
+      }
+      // A non-zero exit is *either* an rbx too old to know `--groups` (which
+      // exits 2 on the unknown option) or a package that could not be read at
+      // all -- a half-typed manifest, the common case. Retrying without the
+      // flag rather than sniffing the message, because the message is a Rich
+      // panel whose wrapping depends on the terminal width rbx thinks it has,
+      // and reading the wrong half of it would cost every badge in the package.
+      // The retry costs one extra spawn per broken manifest, once, since the
+      // answer -- `undefined` included -- is cached until the watcher fires.
+      log(
+        `rbx vars --groups failed in ${root} (exit ${grouped.code ?? 'none'}): ` +
+          grouped.stderr.trim(),
+      );
+
+      const flat = await run(rbx, ['vars', '--json'], root, VARS_TIMEOUT_MS);
+      if (flat.spawnError !== undefined) {
+        log(`Could not start rbx in ${root}: ${flat.spawnError.message}`);
+        return undefined;
+      }
+      if (flat.code !== 0) {
+        // Both spawns failed, so this is the package rather than the flag. A
+        // null code that reaches here is the timeout, which `run` reports in
+        // the stderr it hands back.
         log(
-          `rbx vars failed in ${root} (exit ${result.code ?? 'none'}): ` +
-            result.stderr.trim(),
+          `rbx vars failed in ${root} (exit ${flat.code ?? 'none'}): ` +
+            flat.stderr.trim(),
         );
         return undefined;
       }
 
-      const vars = parseVarsPayload(result.stdout);
+      const vars = parseVarsPayload(flat.stdout);
       if (vars === undefined) {
         log(`Could not read the vars rbx printed for ${root}.`);
         return undefined;
       }
-      return vars;
+      // An rbx that cannot report groups leaves every group reference
+      // unbadged, which is exactly what this extension did before it could ask.
+      log(`rbx in ${root} does not support --groups; group var hints are off there.`);
+      return { vars, groups: {} };
     } catch (error) {
       log(`Asking rbx for the vars of ${root} threw: ${String(error)}`);
       return undefined;

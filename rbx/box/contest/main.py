@@ -1,17 +1,18 @@
 import inspect
 import os
 import pathlib
+import shlex
 import shutil
 import subprocess
 import tempfile
-from typing import Annotated, List, Optional, Tuple
+from typing import TYPE_CHECKING, Annotated, List, Optional, Tuple
 
 import rich.prompt
 import syncer
 import typer
 
 from rbx import annotations, console, utils
-from rbx.box import cd, creation, naming, presets, summary, yaml_include
+from rbx.box import cd, creation, issues, naming, presets, summary, yaml_include
 from rbx.box.contest import (
     contest_package,
     contest_state,
@@ -35,6 +36,9 @@ from rbx.box.yaml_validation import (
     load_yaml_model,
 )
 from rbx.config import open_editor
+
+if TYPE_CHECKING:
+    from rbx.box.ui.command_app import CommandEntry
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 
@@ -448,6 +452,16 @@ KEEP_GOING_OPTION = typer.Option(
     ),
 )
 
+INLINE_OPTION = typer.Option(
+    False,
+    '--inline',
+    '-i',
+    help=(
+        'Run the commands straight in this terminal, one after another, instead '
+        'of opening the TUI. Must come before the problem selector in `rbx on`.'
+    ),
+)
+
 
 def _export_contest_selection() -> None:
     """Make the active contest selection visible to the `rbx` children we spawn.
@@ -491,6 +505,48 @@ def _build_command_argvs_or_die(
         raise typer.Exit(1) from e
 
 
+def _run_inline(commands: List['CommandEntry'], keep_going: bool) -> None:
+    """Run every chain in this terminal instead of opening the TUI.
+
+    Each entry's commands run in order in the entry's directory, and their
+    output goes straight to the terminal -- nothing is captured, so a command
+    that draws its own progress still looks like it does on its own. A failing
+    command skips the rest of that entry's chain unless `keep_going`; other
+    entries run either way, mirroring the TUI. The exit code is non-zero if any
+    command failed, which is what makes the flag usable from a script.
+    """
+    failed = False
+    for command in commands:
+        for argv in command.argvs:
+            line = shlex.join(argv)
+            console.console.print(
+                f'[status]Running [item]{line}[/item] for '
+                f'[item]{command.display_name}[/item]...[/status]'
+            )
+            code = subprocess.call(line, cwd=command.cwd, shell=True)
+            if code == 0:
+                continue
+            failed = True
+            console.console.print(
+                f'[error]Command [item]{line}[/item] failed for '
+                f'[item]{command.display_name}[/item] with exit code {code}.[/error]'
+            )
+            if not keep_going:
+                break
+
+    if failed:
+        raise typer.Exit(1)
+
+
+def _die_with_nothing_to_run() -> None:
+    console.console.print(
+        '[error]No command to run.[/error]\n'
+        '[status]Pass a command to run inline, e.g. '
+        '[item]rbx each --inline build[/item].[/status]'
+    )
+    raise typer.Exit(1)
+
+
 @app.command(
     'each',
     help=(
@@ -506,13 +562,22 @@ def _build_command_argvs_or_die(
     },
 )
 @within_contest
-def each(ctx: typer.Context, keep_going: bool = KEEP_GOING_OPTION) -> None:
+def each(
+    ctx: typer.Context,
+    keep_going: bool = KEEP_GOING_OPTION,
+    inline: bool = INLINE_OPTION,
+) -> None:
     from rbx.box.ui.command_app import CommandEntry, start_command_app
 
     contest = find_contest_package_or_die()
     _export_contest_selection()
-    if not ctx.args and _offer_run_history():
-        return
+    if not ctx.args:
+        # There is nothing to type a command into when running inline, so an
+        # empty `--inline` is a mistake rather than an invitation to browse.
+        if inline:
+            _die_with_nothing_to_run()
+        if _offer_run_history():
+            return
     argvs, placeholder_prefix = _build_command_argvs_or_die(ctx.args)
     commands = [
         CommandEntry(
@@ -524,6 +589,9 @@ def each(ctx: typer.Context, keep_going: bool = KEEP_GOING_OPTION) -> None:
         )
         for problem in contest.problems
     ]
+    if inline:
+        _run_inline(commands, keep_going=keep_going)
+        return
     start_command_app(commands, keep_going=keep_going)
 
 
@@ -557,6 +625,7 @@ def on(
         ),
     ] = None,
     keep_going: bool = KEEP_GOING_OPTION,
+    inline: bool = INLINE_OPTION,
 ) -> None:
     _export_contest_selection()
     if problems is None:
@@ -582,23 +651,17 @@ def on(
         )
         raise typer.Exit(1)
 
-    if not ctx.args and _offer_run_history(
-        [naming.get_contest_problem_label(p) for p in problems_of_interest]
-    ):
-        # A selector but nothing to run: show this problem's history.
-        return
+    if not ctx.args:
+        # See `each`: inline has nowhere to queue a command typed later.
+        if inline:
+            _die_with_nothing_to_run()
+        if _offer_run_history(
+            [naming.get_contest_problem_label(p) for p in problems_of_interest]
+        ):
+            # A selector but nothing to run: show this problem's history.
+            return
 
     argvs, placeholder_prefix = _build_command_argvs_or_die(ctx.args)
-
-    # A single command on a single problem keeps the plain-terminal fast path;
-    # a chain needs the queue, so it opens the app with one tab.
-    if len(problems_of_interest) == 1 and len(argvs) <= 1:
-        command = ' '.join(['rbx'] + ctx.args)
-        console.console.print(
-            f'[status]Running [item]{command}[/item] for [item]{naming.get_contest_problem_label(problems_of_interest[0])}[/item]...[/status]'
-        )
-        subprocess.call(command, cwd=problems_of_interest[0].get_path(), shell=True)
-        return
 
     from rbx.box.ui.command_app import CommandEntry, start_command_app
 
@@ -612,6 +675,14 @@ def on(
         )
         for p in problems_of_interest
     ]
+
+    # A single command on a single problem already reads fine in the terminal,
+    # so it takes the inline path whether or not the flag is there; anything
+    # else needs the queue, and opens the app unless asked to stay inline.
+    if inline or (len(problems_of_interest) == 1 and len(argvs) <= 1):
+        _run_inline(commands, keep_going=keep_going)
+        return
+
     start_command_app(commands, keep_going=keep_going)
 
 
@@ -624,6 +695,40 @@ def on(
 async def summary_cmd():
     contest = find_contest_package_or_die()
     await summary.print_contest_summary(contest, get_problems(contest))
+
+
+@app.command(
+    'issues',
+    help="Show what each problem's last run revealed.",
+)
+@within_contest
+def issues_cmd(
+    detailed: Annotated[
+        bool,
+        typer.Option(
+            '--detailed',
+            '-d',
+            help="Follow the table with every problem's issues in full.",
+        ),
+    ] = False,
+    format: Annotated[
+        issues.IssuesFormat,
+        typer.Option(
+            '--format',
+            help='How to print the issues. Use `json` to consume them from a tool.',
+        ),
+    ] = issues.IssuesFormat.RICH,
+):
+    contest = find_contest_package_or_die()
+    rows = issues.collect_contest_rows(contest, get_problems(contest))
+
+    if format is issues.IssuesFormat.JSON:
+        # Straight to stdout, not through the themed console: this output is
+        # parsed, and Rich would wrap and highlight it.
+        print(issues.contest_to_json(rows))
+        return
+
+    issues.print_contest_report(rows, detailed=detailed)
 
 
 @app.command('list, ls', help='List all contests in the current directory.')

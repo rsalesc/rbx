@@ -16,6 +16,7 @@ from rbx import console, utils
 from rbx.box import (
     benchmark,
     environment,
+    estimation_checksum,
     limits_info,
     package,
     safeeval,
@@ -93,6 +94,9 @@ class TimingProfile(BaseModel):
     timeLimitPerLanguage: Dict[str, int] = Field(default_factory=dict)
     groups: Optional[List[schema.TimingGroupReport]] = None
     baseEstimate: Optional[schema.TimingGroupReport] = None
+    # What the estimate was computed from; see `rbx.box.estimation_checksum`.
+    # Stamped after the estimation finishes, not carried through it.
+    estimationChecksum: Optional[str] = None
 
     def to_limits(self):
         return schema.LimitsProfile(
@@ -105,6 +109,7 @@ class TimingProfile(BaseModel):
             },
             groups=self.groups,
             baseEstimate=self.baseEstimate,
+            estimationChecksum=self.estimationChecksum,
         )
 
 
@@ -1826,6 +1831,11 @@ async def compute_time_limits(
     )
     if estimated_tl is None:
         return None
+
+    # Stamped here rather than inside the estimation: the checksum describes the
+    # package the estimate was taken against, and that is only settled once the
+    # estimation has stopped rebuilding and re-running things.
+    estimated_tl.estimationChecksum = estimation_checksum.compute().encode()
 
     limits_path = package.get_limits_file(profile)
     limits = estimated_tl.to_limits()

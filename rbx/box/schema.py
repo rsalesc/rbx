@@ -1031,7 +1031,12 @@ skipped. Presentation-only.""",
 
 
 class TimingGroupReport(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    # Ignored rather than refused, for the reason `LimitsProfile` gives: this is
+    # reachable only from a profile (`groups`, `baseEstimate`), it is written by
+    # rbx and never by hand, and under `forbid` a field added to it would break
+    # an older rbx's parse of the whole profile just as surely as one added a
+    # level up.
+    model_config = ConfigDict(extra='ignore')
 
     languages: List[str]
     timeLimit: int
@@ -1205,7 +1210,23 @@ class UnitTests(BaseModel):
 
 
 class LimitsProfile(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    # Unknown keys are ignored, not refused -- the one model in this file that
+    # tolerates them, and deliberately.
+    #
+    # A `limits/<name>.yml` is written by rbx (`rbx time --integrate`, the TUI
+    # limits editor), so a setter reads profiles that a *different* rbx wrote:
+    # a teammate's, or their own after an upgrade or a downgrade. Under
+    # `extra='forbid'` every field added here is a hard break in that direction
+    # -- the older rbx refuses to parse the profile at all, and the limits it
+    # was going to run under are simply unavailable. `estimationChecksum` was
+    # the field that made this concrete.
+    #
+    # Ignoring costs the typo-catching that `forbid` buys elsewhere, which is a
+    # real loss on a file a setter may hand-edit. It is the smaller one: a
+    # mistyped key falls back to a documented default, while a refused profile
+    # stops the command. This is also what `run_report` already relies on for
+    # the same reason -- see its `REPORT_VERSION` note on additive fields.
+    model_config = ConfigDict(extra='ignore')
 
     inheritFromPackage: bool = Field(
         default=False,
@@ -1261,6 +1282,19 @@ Presentation-only; never used for limit resolution.
         description="""
 Metadata describing how the base (fallback) time limit was estimated, pooled
 across every solution. Presentation-only; never used for limit resolution.
+""",
+    )
+
+    estimationChecksum: Optional[str] = Field(
+        default=None,
+        description="""
+A checksum of everything this estimate was computed from -- the solutions that
+bound the limit, and, when the tests were built, the interactor and the test
+inputs. Written by `rbx time`; consumers compare it against the package to warn
+that a saved limit predates the current solutions or testset.
+
+Presentation-only; never used for limit resolution. Absent on a profile whose
+limit was not estimated (inherited from the package, or set by hand).
 """,
     )
 

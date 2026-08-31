@@ -325,6 +325,10 @@ async def test_subgroups_of_one_group_are_paired_apart(
         ('UE', Outcome.JUDGE_FAILED),
         # Unobserved sibling of the `RE_*` family, read by its prefix.
         ('RE_SIGSEGV', Outcome.RUNTIME_ERROR),
+        # Run-level on `run-testinput`'s side -- a submission that does not build
+        # never enters the testset -- but mapped rather than refused, so a judge
+        # that reports it per-test costs a verdict rather than the whole run.
+        ('CE', Outcome.COMPILATION_ERROR),
     ],
 )
 async def test_every_moj_code_maps_to_the_matching_outcome(
@@ -392,6 +396,149 @@ async def test_an_unknown_code_fails_loudly_and_names_it(
     assert 'RE_NZEC' in message
     # Plain text: `main.py` bare-prints `str(e)`.
     assert '[item]' not in message and '[error]' not in message
+
+
+async def test_a_testcase_rerun_after_a_tle_is_read_from_its_last_entry(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """The whole run used to fail on a testrun MOJ considers ordinary.
+
+    mojtools reruns a testcase that came back TLE while the park was running tests
+    in parallel, and each run appends its own `VERDICT[<name>]=` line -- so the
+    array carries the testcase twice. The rerun is the measurement the judge keeps
+    (it re-`source`s the file and reads the name straight back out), and it is the
+    one the time-limit estimate has to be built on: the first entry is a time
+    measured under contention that the judge itself threw away.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.results['sol.cpp'] = [
+        _test(SAMPLE_NAMES[0], 'TLE', 3.9),
+        _test(SAMPLE_NAMES[1], 'AC', 0.2),
+        # The rerun, appended by mojtools after the parallel pass.
+        _test(SAMPLE_NAMES[0], 'AC', 0.3),
+    ]
+
+    evals = await _run(runner, ctx)
+
+    assert evals[0].result.outcome == Outcome.ACCEPTED
+    assert evals[0].log.time == 0.3
+    assert evals[1].result.outcome == Outcome.ACCEPTED
+
+
+async def test_a_rerun_that_is_still_a_tle_stays_a_tle(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """Last-one-wins is not "prefer the better verdict".
+
+    mojtools gives up after one rerun (`TLERERUN=n`), and a testcase that timed
+    out on its own is a real TLE. Taking the last entry has to keep it, or the
+    rerun would become a way to launder every timeout into a pass.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.results['sol.cpp'] = [
+        _test(SAMPLE_NAMES[0], 'AC', 0.1),
+        _test(SAMPLE_NAMES[1], 'TLE', 3.9),
+        _test(SAMPLE_NAMES[1], 'TLE', 4.1),
+    ]
+
+    evals = await _run(runner, ctx)
+
+    assert evals[1].result.outcome == Outcome.TIME_LIMIT_EXCEEDED
+    assert evals[1].log.time == 4.1
+
+
+async def test_a_testcase_the_judge_did_not_execute_is_skipped_not_refused(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """`NT` ("Nao executado") names the absence of a verdict, not a verdict.
+
+    It is what mojtools writes for a testcase with no entry in `log.verdictall` --
+    a testset cut short. Refusing the run over it would fail a solution for a
+    testcase nobody claims to have run; mapping it to any `Outcome` would state a
+    result nothing measured. It reads as the testcase MOJ never mentioned.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.results['sol.cpp'] = [
+        _test(SAMPLE_NAMES[0], 'AC', 0.1),
+        _test(SAMPLE_NAMES[1], 'NT', None),
+    ]
+
+    evals = await _run(runner, ctx)
+
+    assert evals[0].result.outcome == Outcome.ACCEPTED
+    assert evals[1].result.outcome == Outcome.SKIPPED
+    # And nothing it did not measure reaches the estimate.
+    assert evals[1].log.time is None
+
+
+async def test_a_truncated_run_says_the_judge_called_it_unknown_error(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    """The missing-testcase count says what was lost; the verdict says why.
+
+    `Unknown ERROR` is mojtools' run-level verdict for "every testcase that
+    produced a verdict passed, and at least one produced none" -- the judge saying
+    it cannot account for the testset. It is what a run cut short lands on when
+    the testcase that cut it short passed on its rerun, which is the one shape
+    where nothing in `tests` looks wrong at all. Without it the setter reads "no
+    result for 1 of 2" and cannot tell that from a judge that stopped on purpose.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.statuses['sol.cpp'] = cli.TestrunStatus(
+        status='done',
+        verdict='Unknown ERROR,50p',
+        # The canon spelling MOJ pairs with it, and the reason the raw `verdict`
+        # is what gets reported: `VERDICTCANON[UE]` names a failure of the
+        # solution that did not happen.
+        verdict_canon='Runtime Error',
+        correct=1,
+        total_tests=2,
+        tests=[_test(SAMPLE_NAMES[0], 'AC', 0.1)],
+    )
+
+    await _run(runner, ctx)
+
+    out = _ANSI.sub('', capsys.readouterr().out)
+    assert 'no result for 1 of 2' in out
+    assert 'Unknown ERROR,50p' in out
+    assert 'cannot account for' in out
+    # The canon spelling is exactly what must not be repeated at the setter.
+    assert 'Runtime Error' not in out
+
+
+async def test_an_ordinary_run_level_verdict_is_not_repeated(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    """`Wrong Answer` already agrees with the codes in `tests`; saying it is noise.
+
+    Only the judge's own "I do not know" adds anything the per-test verdicts have
+    not already said.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.statuses['sol.cpp'] = cli.TestrunStatus(
+        status='done',
+        verdict='Wrong Answer,0p',
+        verdict_canon='Wrong Answer',
+        correct=0,
+        total_tests=2,
+        tests=[_test(SAMPLE_NAMES[0], 'WA', 0.1)],
+    )
+
+    await _run(runner, ctx)
+
+    out = _ANSI.sub('', capsys.readouterr().out)
+    assert 'no result for 1 of 2' in out
+    assert 'cannot account for' not in out
 
 
 async def test_an_unknown_code_fails_every_testcase_of_that_solution(

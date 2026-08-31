@@ -6,7 +6,7 @@
  *
  * Pure: no `vscode` import, so `node --test` covers it directly.
  */
-import { Vars } from './statementVars';
+import { Vars, VarsPayload } from './statementVars';
 
 /**
  * The payload's own text, with whatever printed before it dropped.
@@ -48,17 +48,18 @@ function parseLeadingObject(raw: string): unknown {
   return undefined;
 }
 
-export function parseVarsPayload(stdout: string): Vars | undefined {
-  const parsed = parseLeadingObject(stdout);
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+/** Whether `value` is a plain object, the shape every payload here is built of. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** A flat map of strings, or `undefined` if `value` is not one. */
+function readVars(value: unknown): Vars | undefined {
+  if (!isRecord(value)) {
     return undefined;
   }
-
-  // Deliberately out here, not inside `parseLeadingObject`'s loop: a shape
-  // mismatch must end the read, not resume the scan. Retrying from the next
-  // brace would step *into* `{"a": {"b": "1"}}` and accept the inner map.
-  const entries = Object.entries(parsed as Record<string, unknown>);
-  if (!entries.every(([, value]) => typeof value === 'string')) {
+  const entries = Object.entries(value);
+  if (!entries.every(([, entry]) => typeof entry === 'string')) {
     return undefined;
   }
   // `fromEntries` *defines* each key, so a var named `__proto__` lands as an
@@ -66,4 +67,48 @@ export function parseVarsPayload(stdout: string): Vars | undefined {
   // result's prototype is left alone. `statementVars.ts` looks names up with
   // `Object.hasOwn`, so that is exactly what it needs to find.
   return Object.fromEntries(entries) as Vars;
+}
+
+export function parseVarsPayload(stdout: string): Vars | undefined {
+  // Deliberately out here, not inside `parseLeadingObject`'s loop: a shape
+  // mismatch must end the read, not resume the scan. Retrying from the next
+  // brace would step *into* `{"a": {"b": "1"}}` and accept the inner map.
+  return readVars(parseLeadingObject(stdout));
+}
+
+/**
+ * Read what `rbx vars --json --groups` printed: the root set plus one per group.
+ *
+ * A separate reader rather than a tolerant `parseVarsPayload`, and it refuses
+ * the flat shape outright. The two payloads are answers to two different
+ * questions, and quietly reading a flat one as "a package with no groups" would
+ * turn an rbx that dropped the flag into a package whose groups all silently
+ * vanished. The caller falls back to the flat reader on purpose, having decided
+ * that is what happened -- it does not discover it here.
+ */
+export function parseVarsWithGroups(stdout: string): VarsPayload | undefined {
+  const parsed = parseLeadingObject(stdout);
+  if (!isRecord(parsed) || !isRecord(parsed.groups)) {
+    return undefined;
+  }
+  const vars = readVars(parsed.vars);
+  if (vars === undefined) {
+    return undefined;
+  }
+
+  const named: [string, Vars][] = [];
+  for (const [name, value] of Object.entries(parsed.groups)) {
+    const groupVars = readVars(value);
+    // One malformed group fails the whole payload rather than being dropped:
+    // a dropped group is indistinguishable from a group that does not exist,
+    // and the scanner would then leave its references unbadged forever without
+    // anything saying why.
+    if (groupVars === undefined) {
+      return undefined;
+    }
+    named.push([name, groupVars]);
+  }
+  // `fromEntries` for the same reason `readVars` uses it -- keys are defined,
+  // never assigned through a prototype setter.
+  return { vars, groups: Object.fromEntries(named) };
 }
