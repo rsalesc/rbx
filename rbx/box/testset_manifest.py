@@ -97,6 +97,12 @@ class TestsetManifest(BaseModel):
     # about the generators; it says nobody looked, so `input_digest` here is one
     # observation rather than a property of the testset.
     deterministic: bool = False
+    # Whether the build was restricted to a subset of the groups (`rbx build
+    # --groups`, `rbx package --samples-only`). Recorded rather than inferred
+    # from `groups` below: a declared group can legitimately produce no tests, so
+    # a reader comparing declared against built cannot tell a partial build from
+    # an empty group.
+    partial: bool = False
 
 
 def get_manifest_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
@@ -204,6 +210,7 @@ def build_manifest(
     validation_infos: Optional[List[TestcaseValidationInfo]],
     input_digests: Optional[Dict[Tuple[str, int], str]] = None,
     deterministic: bool = False,
+    partial: bool = False,
 ) -> TestsetManifest:
     group_names = {entry.group_entry.group for entry in entries}
 
@@ -249,6 +256,7 @@ def build_manifest(
         tests=tests,
         validation=validation,
         deterministic=deterministic,
+        partial=partial,
     )
 
 
@@ -257,6 +265,7 @@ def write_manifest(
     validation_infos: Optional[List[TestcaseValidationInfo]],
     input_digests: Optional[Dict[Tuple[str, int], str]] = None,
     deterministic: bool = False,
+    partial: bool = False,
 ) -> pathlib.Path:
     """Dump the manifest for the build that just finished, replacing any previous one.
 
@@ -269,7 +278,11 @@ def write_manifest(
     only those groups.
     """
     manifest = build_manifest(
-        entries, validation_infos, input_digests, deterministic=deterministic
+        entries,
+        validation_infos,
+        input_digests,
+        deterministic=deterministic,
+        partial=partial,
     )
 
     path = get_manifest_path()
@@ -283,6 +296,7 @@ def write_manifest_or_warn(
     validation_infos: Optional[List[TestcaseValidationInfo]],
     input_digests: Optional[Dict[Tuple[str, int], str]] = None,
     deterministic: bool = False,
+    partial: bool = False,
 ) -> None:
     """`write_manifest`, downgraded to a warning.
 
@@ -293,7 +307,11 @@ def write_manifest_or_warn(
     """
     try:
         write_manifest(
-            entries, validation_infos, input_digests, deterministic=deterministic
+            entries,
+            validation_infos,
+            input_digests,
+            deterministic=deterministic,
+            partial=partial,
         )
     except Exception as e:
         console.console.print(

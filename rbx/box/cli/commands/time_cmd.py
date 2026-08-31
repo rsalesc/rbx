@@ -177,9 +177,11 @@ async def _estimate(
     limits_info.render_limits_table(
         current_profile, title=f'Current limits ({profile})'
     )
-    # Informational here, unlike in `rbx run` and `rbx package build`: the whole
-    # command exists to replace this estimate, so saying it is stale is context
-    # for the run about to happen, not a warning to act on.
+    # Ahead of the `--integrate` branch below, which is the one path here where
+    # this is a warning to act on rather than context: `integrate` copies the
+    # saved limit into `problem.rbx.yml` without re-estimating anything, so a
+    # stale number is about to become the package's own. On every other path the
+    # command is about to replace the estimate anyway.
     estimation_checksum.warn_if_stale(profile)
     console.console.print()
     if integrate:

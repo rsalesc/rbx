@@ -30,7 +30,7 @@ import dataclasses
 import enum
 import io
 import pathlib
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from pydantic import BaseModel
 
@@ -200,8 +200,14 @@ def _tests_segment() -> Optional[str]:
     * a build that did not prove its generators deterministic (`-v0`), since an
       unseeded generator would otherwise mismatch on every single build and turn
       the warning into noise;
-    * a build restricted to a subset of the groups, whose manifest describes a
-      testset that is not the one an estimate ran against.
+    * a build restricted to a subset of the groups (`--samples-only`), whose
+      manifest describes a testset that is not the one an estimate ran against.
+
+    That last one is read off the flag the build recorded, not inferred by
+    comparing the manifest's groups against the declared ones. A group can be
+    declared and still legitimately produce no tests -- a `testcaseGlob` matching
+    nothing -- and inferring would read that as a partial build forever, silently
+    disabling the heavy level for the whole package.
     """
     # Local import: the manifest module imports half of box, and this module is
     # imported from the CLI's hot paths.
@@ -212,12 +218,7 @@ def _tests_segment() -> Optional[str]:
         return None
     if manifest.version != testset_manifest.MANIFEST_VERSION:
         return None
-    if not manifest.deterministic:
-        return None
-
-    pkg = package.find_problem_package_or_die()
-    built_groups = {group.name for group in manifest.groups}
-    if {group.name for group in pkg.testcases} - built_groups:
+    if not manifest.deterministic or manifest.partial:
         return None
 
     tests = []
@@ -278,14 +279,20 @@ class EstimationChecksum:
         return None
 
 
-def compute() -> EstimationChecksum:
+def compute(light_only: bool = False) -> EstimationChecksum:
     """The checksum of the package as it stands right now.
 
     Heavy whenever the built tests can be trusted, light otherwise. Callers do
-    not choose the level: the package does.
+    not normally choose the level -- the package does.
+
+    `light_only` is for the one case where they must: a caller that is *not*
+    about to build cannot treat whatever `build/` happens to hold as evidence
+    about the run it is starting. A leftover manifest from an earlier build would
+    otherwise satisfy the tests segment and report a match that describes nothing
+    this run will do.
     """
     solutions = _solutions_segment()
-    tests = _tests_segment()
+    tests = None if light_only else _tests_segment()
     if tests is None:
         return EstimationChecksum(
             version=CHECKSUM_VERSION, level=_LIGHT, solutions=solutions
@@ -300,7 +307,9 @@ def compute() -> EstimationChecksum:
 
 
 def compare(
-    recorded: str, current: Optional[EstimationChecksum] = None
+    recorded: str,
+    current: Optional[EstimationChecksum] = None,
+    light_only: bool = False,
 ) -> Optional[ChecksumBucket]:
     """The first bucket where `recorded` and the package disagree.
 
@@ -314,7 +323,7 @@ def compare(
     if parsed is None or parsed.version != CHECKSUM_VERSION:
         return None
     if current is None:
-        current = compute()
+        current = compute(light_only=light_only)
     if parsed.solutions != current.solutions:
         return ChecksumBucket.SOLUTIONS
     if not parsed.is_heavy or not current.is_heavy:
@@ -329,7 +338,7 @@ def compare(
     return None
 
 
-def check_profile(profile: str) -> Optional[ChecksumBucket]:
+def check_profile(profile: str, light_only: bool = False) -> Optional[ChecksumBucket]:
     """Compare the checksum saved in `profile` against the package.
 
     None whenever there is nothing to say -- no such profile, a profile that was
@@ -340,13 +349,21 @@ def check_profile(profile: str) -> Optional[ChecksumBucket]:
     saved = limits_info.get_saved_limits_profile(profile)
     if saved is None or saved.estimationChecksum is None:
         return None
-    return compare(saved.estimationChecksum)
+    return compare(saved.estimationChecksum, light_only=light_only)
 
 
-def warn_if_stale(profile: str) -> Optional[ChecksumBucket]:
-    """Print the staleness warning for `profile`, if it has one coming."""
+def warn_if_stale(
+    profile: Optional[str], light_only: bool = False
+) -> Optional[ChecksumBucket]:
+    """Print the staleness warning for `profile`, if it has one coming.
+
+    Accepts None -- "no profile is active" -- so a caller can hand over whatever
+    `limits_info.get_active_profile()` returned without branching on it.
+    """
+    if profile is None:
+        return None
     try:
-        bucket = check_profile(profile)
+        bucket = check_profile(profile, light_only=light_only)
     except Exception as e:
         # Never let a checksum take down a build. The estimate might be stale;
         # the package is still fine.
@@ -365,15 +382,3 @@ def warn_if_stale(profile: str) -> Optional[ChecksumBucket]:
         f'[warning]Re-run [item]rbx time -p {profile}[/item] to refresh it.[/warning]'
     )
     return bucket
-
-
-def describe(profile: str) -> Dict[str, str]:
-    """Human-readable status of a profile's checksum, for `rbx time` to show."""
-    from rbx.box import limits_info
-
-    saved = limits_info.get_saved_limits_profile(profile)
-    if saved is None or saved.estimationChecksum is None:
-        return {}
-    bucket = compare(saved.estimationChecksum)
-    status = 'up to date' if bucket is None else f'stale ({bucket.value} changed)'
-    return {'checksum': saved.estimationChecksum, 'status': status}

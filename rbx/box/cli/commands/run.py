@@ -57,12 +57,6 @@ def _set_timing_profile(profile: Optional[str]) -> None:
 
     limits_info.get_limits_profile(profile, fallback_to_package_profile=False)
     limits_info.profile_var.set(profile)
-    # Naming a profile is asking to be judged by its limits, so it is also the
-    # moment to say that those limits predate the solutions being run. The check
-    # is at whatever level the build dir currently supports -- `rbx run` has not
-    # built anything yet here, so on a clean checkout it compares the solutions
-    # and stays quiet about the tests.
-    estimation_checksum.warn_if_stale(profile)
 
 
 @app.command(
@@ -239,6 +233,13 @@ async def run(
         verification=verification, output=check, validate=validate, is_run=True
     ):
         raise typer.Exit(1)
+
+    # After the build, and keyed on the *active* profile rather than on this
+    # command's own flag, so `rbx -p boca run` is checked exactly like
+    # `rbx run -p boca`. Before the build it would have compared against whatever
+    # manifest an earlier build happened to leave in `build/` -- which is a stale
+    # answer precisely when the testset is what changed.
+    estimation_checksum.warn_if_stale(limits_info.get_active_profile())
 
     if verification <= VerificationLevel.VALIDATE.value:
         console.console.print(
@@ -483,6 +484,10 @@ async def irun(
     level = benchmark.parse_level(benchmark_level)
 
     _set_timing_profile(profile)
+    # `rbx irun` never builds a testset, so whatever sits in `build/` says
+    # nothing about this run: the check is deliberately held to its light level
+    # rather than reading a manifest an unrelated build left behind.
+    estimation_checksum.warn_if_stale(limits_info.get_active_profile(), light_only=True)
 
     if not print:
         console.console.print(

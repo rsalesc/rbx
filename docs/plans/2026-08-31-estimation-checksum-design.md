@@ -99,17 +99,29 @@ format.
   mismatch on every single build and turn the warning into noise nobody reads.
 * **A build restricted to a subset of the groups.** `--samples-only` leaves a manifest
   describing one group; comparing it against an estimate taken over the whole testset would
-  flag every such build.
+  flag every such build. The manifest records this as an explicit `partial` flag rather than
+  having the reader infer it by comparing built groups against declared ones — a declared
+  group can legitimately produce no tests (a `testcaseGlob` matching nothing), and inferring
+  would read that as a partial build forever, silently disabling the heavy level for the whole
+  package.
+
+A caller may also ask for `light_only` explicitly. That is for the case where it is *not*
+about to build: whatever `build/` holds then describes some earlier run, and letting it
+satisfy the tests segment reports a match that describes nothing the caller is doing.
 
 ## Consumers
 
 | Command | Where | Why there |
 | --- | --- | --- |
 | `rbx package build` | after `builder.verify`, in `run_packager` | The heavy level reads the manifest, and only the build that just ran leaves one describing the tests actually being packaged. |
-| `rbx run -p <profile>` | `_set_timing_profile` | Naming a profile is asking to be judged by its limits. Nothing is built yet, so this is usually a light check. |
-| `rbx time` | beside the "Current limits" table | Informational: the command exists to replace the estimate, so staleness is context, not a warning to act on. |
+| `rbx run` | after `builder.build` | Same reason. Checking at the flag would compare against whatever manifest an earlier build left behind — stale exactly when the testset is what changed. |
+| `rbx irun` | after the profile is set, `light_only` | It never builds a testset, so nothing in `build/` is evidence about this run. |
+| `rbx time` | ahead of the `--integrate` branch | `integrate` copies the saved limit into `problem.rbx.yml` without re-estimating, so a stale number is about to become the package's own. Elsewhere the command replaces the estimate anyway. |
 
-All three go through `warn_if_stale`, so the message is identical everywhere. It is a warning
+`rbx run` keys on `limits_info.get_active_profile()` rather than on its own `--profile`
+value, so the root-level `rbx -p boca run` is checked exactly like `rbx run -p boca`.
+
+They all go through `warn_if_stale`, so the message is identical everywhere. It is a warning
 in every case — never an error, and never a reason to refuse a package. Only the setter can say
 whether an edited solution was one whose timing mattered.
 
@@ -124,10 +136,11 @@ never checked.
   beside `groups` and `baseEstimate`.
 * `rbx/box/timing.py` — `TimingProfile.estimationChecksum`, carried by `to_limits()` and
   stamped in `compute_time_limits` once the estimation has settled.
-* `rbx/box/testset_manifest.py` — `TestsetTest.input_digest`, `TestsetManifest.deterministic`,
-  a `read_manifest` reader, `MANIFEST_VERSION` 1 → 2.
+* `rbx/box/testset_manifest.py` — `TestsetTest.input_digest`, `TestsetManifest.deterministic`
+  and `.partial`, a `read_manifest` reader, `MANIFEST_VERSION` 1 → 2.
 * `rbx/box/generators.py` — `generate_testcases` returns the input digests it already computed.
-* `rbx/box/builder.py` — plumbs them, and the determinism flag, into the manifest.
+* `rbx/box/builder.py` — plumbs them, and the determinism and partial flags, into the
+  manifest.
 * `rbx/box/packaging/packager.py`, `rbx/box/cli/commands/run.py`,
   `rbx/box/cli/commands/time_cmd.py` — the three consumers.
 * `docs/setters/profiling/profiles.md` — "When an estimate goes stale".
@@ -136,3 +149,9 @@ The manifest becomes load-bearing for rbx itself here, for the first time: it wa
 purely for external readers (the VS Code extension). That is the deliberate cost of making the
 tests segment free at check time. `write_manifest_or_warn` still downgrades every failure to a
 warning — a missing manifest costs the checksum its heavy level and nothing else.
+
+## Known gap
+
+`rbx statements build -p <profile>` renders the profile's time limit into the statement and
+does not check the checksum. The packaging path already warns before it builds statements, so
+the common route is covered; a standalone statement build is not.

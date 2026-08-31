@@ -149,6 +149,10 @@ async def build(
         # property of the testset rather than of this one run.
         deterministic=VerificationLevel(verification).value
         >= VerificationLevel.VALIDATE.value,
+        # A subset build describes a testset nobody estimated against, and the
+        # manifest has to say so: its own group list cannot be used to work this
+        # out, since a declared group may simply have produced no tests.
+        partial=groups is not None,
     )
 
     return True

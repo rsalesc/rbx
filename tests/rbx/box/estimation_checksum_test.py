@@ -1,5 +1,3 @@
-import pathlib
-
 import pytest
 
 from rbx.box import estimation_checksum
@@ -133,7 +131,7 @@ async def test_checksum_is_heavy_after_a_validated_build(
 
     digests = await generate_testcases(verification=VerificationLevel.VALIDATE)
     entries = await extract_generation_testcases_from_groups(None)
-    write_manifest(entries, None, digests, deterministic=True)
+    write_manifest(entries, None, digests, deterministic=True, partial=False)
 
     checksum = estimation_checksum.compute()
 
@@ -155,7 +153,7 @@ async def test_heavy_checksum_moves_when_a_test_input_changes(
     async def rebuild():
         digests = await generate_testcases(verification=VerificationLevel.VALIDATE)
         entries = await extract_generation_testcases_from_groups(None)
-        write_manifest(entries, None, digests, deterministic=True)
+        write_manifest(entries, None, digests, deterministic=True, partial=False)
 
     await rebuild()
     before = estimation_checksum.compute()
@@ -181,13 +179,13 @@ async def test_checksum_stays_light_when_determinism_was_not_checked(
 
     digests = await generate_testcases(verification=VerificationLevel.NONE)
     entries = await extract_generation_testcases_from_groups(None)
-    write_manifest(entries, None, digests, deterministic=False)
+    write_manifest(entries, None, digests, deterministic=False, partial=False)
 
     assert not estimation_checksum.compute().is_heavy
 
 
 async def test_checksum_stays_light_when_only_some_groups_were_built(
-    testing_pkg: testing_package.TestingPackage,
+    pkg: testing_package.TestingPackage,
 ):
     """A `--samples-only` package build leaves a manifest describing one group.
     Comparing it against an estimate taken over the whole testset would flag
@@ -196,23 +194,54 @@ async def test_checksum_stays_light_when_only_some_groups_were_built(
     from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
     from rbx.box.testset_manifest import write_manifest
 
-    testing_pkg.add_solution('sols/ac.cpp', outcome=ExpectedOutcome.ACCEPTED)
-    (testing_pkg.root / 'sols' / 'ac.cpp').write_text('int main() { return 0; }\n')
-    for group in ('main', 'extra'):
-        path = pathlib.Path('manual') / f'{group}.in'
-        testing_pkg.add_file(path)
-        (testing_pkg.root / path).write_text('1\n')
-        testing_pkg.add_testgroup_with_manual_testcases(
-            group, [{'inputPath': str(path)}]
-        )
-
     digests = await generate_testcases(
         groups={'main'}, verification=VerificationLevel.VALIDATE
     )
     entries = await extract_generation_testcases_from_groups({'main'})
-    write_manifest(entries, None, digests, deterministic=True)
+    write_manifest(entries, None, digests, deterministic=True, partial=True)
 
     assert not estimation_checksum.compute().is_heavy
+
+
+async def test_a_group_that_produces_no_tests_keeps_the_heavy_level(
+    testing_pkg: testing_package.TestingPackage,
+):
+    """A declared group can legitimately be empty -- a `testcaseGlob` matching
+    nothing. Inferring "partial build" by comparing declared groups against built
+    ones would read that as a subset build forever, silently disabling the heavy
+    level for the whole package.
+    """
+    from rbx.box.environment import VerificationLevel
+    from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
+    from rbx.box.testset_manifest import write_manifest
+
+    testing_pkg.add_solution('sols/ac.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    (testing_pkg.root / 'sols' / 'ac.cpp').write_text('int main() { return 0; }\n')
+    _add_manual_test(testing_pkg, 'main', '1\n')
+    testing_pkg.add_testgroup_from_glob('empty', 'nothing/*.in')
+
+    digests = await generate_testcases(verification=VerificationLevel.VALIDATE)
+    entries = await extract_generation_testcases_from_groups(None)
+    write_manifest(entries, None, digests, deterministic=True, partial=False)
+
+    assert estimation_checksum.compute().is_heavy
+
+
+async def test_light_only_ignores_a_manifest_an_earlier_build_left(
+    pkg: testing_package.TestingPackage,
+):
+    """`rbx irun` never builds a testset, so whatever is in `build/` describes
+    some earlier run and must not satisfy the tests segment."""
+    from rbx.box.environment import VerificationLevel
+    from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
+    from rbx.box.testset_manifest import write_manifest
+
+    digests = await generate_testcases(verification=VerificationLevel.VALIDATE)
+    entries = await extract_generation_testcases_from_groups(None)
+    write_manifest(entries, None, digests, deterministic=True, partial=False)
+
+    assert estimation_checksum.compute().is_heavy
+    assert not estimation_checksum.compute(light_only=True).is_heavy
 
 
 # --- Encoding and comparison -------------------------------------------------
@@ -338,6 +367,14 @@ def test_check_profile_flags_a_stale_estimate(pkg: testing_package.TestingPackag
     (pkg.root / 'sols' / 'ac.cpp').write_text('int main() { return 7; }\n')
 
     assert estimation_checksum.check_profile('local') == ChecksumBucket.SOLUTIONS
+
+
+def test_warn_if_stale_accepts_no_active_profile(
+    pkg: testing_package.TestingPackage,
+):
+    """Callers hand over `limits_info.get_active_profile()` directly, which is
+    None whenever no profile was named."""
+    assert estimation_checksum.warn_if_stale(None) is None
 
 
 def test_timing_profile_carries_the_checksum_into_the_limits():
