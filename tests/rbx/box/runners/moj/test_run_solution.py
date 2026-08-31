@@ -477,6 +477,70 @@ async def test_a_testcase_the_judge_did_not_execute_is_skipped_not_refused(
     assert evals[1].log.time is None
 
 
+async def test_a_truncated_run_says_the_judge_called_it_unknown_error(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    """The missing-testcase count says what was lost; the verdict says why.
+
+    `Unknown ERROR` is mojtools' run-level verdict for "every testcase that
+    produced a verdict passed, and at least one produced none" -- the judge saying
+    it cannot account for the testset. It is what a run cut short lands on when
+    the testcase that cut it short passed on its rerun, which is the one shape
+    where nothing in `tests` looks wrong at all. Without it the setter reads "no
+    result for 1 of 2" and cannot tell that from a judge that stopped on purpose.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.statuses['sol.cpp'] = cli.TestrunStatus(
+        status='done',
+        verdict='Unknown ERROR,50p',
+        # The canon spelling MOJ pairs with it, and the reason the raw `verdict`
+        # is what gets reported: `VERDICTCANON[UE]` names a failure of the
+        # solution that did not happen.
+        verdict_canon='Runtime Error',
+        correct=1,
+        total_tests=2,
+        tests=[_test(SAMPLE_NAMES[0], 'AC', 0.1)],
+    )
+
+    await _run(runner, ctx)
+
+    out = _ANSI.sub('', capsys.readouterr().out)
+    assert 'no result for 1 of 2' in out
+    assert 'Unknown ERROR,50p' in out
+    assert 'cannot account for' in out
+    # The canon spelling is exactly what must not be repeated at the setter.
+    assert 'Runtime Error' not in out
+
+
+async def test_an_ordinary_run_level_verdict_is_not_repeated(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    """`Wrong Answer` already agrees with the codes in `tests`; saying it is noise.
+
+    Only the judge's own "I do not know" adds anything the per-test verdicts have
+    not already said.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.statuses['sol.cpp'] = cli.TestrunStatus(
+        status='done',
+        verdict='Wrong Answer,0p',
+        verdict_canon='Wrong Answer',
+        correct=0,
+        total_tests=2,
+        tests=[_test(SAMPLE_NAMES[0], 'WA', 0.1)],
+    )
+
+    await _run(runner, ctx)
+
+    out = _ANSI.sub('', capsys.readouterr().out)
+    assert 'no result for 1 of 2' in out
+    assert 'cannot account for' not in out
+
+
 async def test_an_unknown_code_fails_every_testcase_of_that_solution(
     testing_pkg, tmp_path, monkeypatch
 ):

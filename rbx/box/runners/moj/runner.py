@@ -18,6 +18,7 @@ import dataclasses
 import hashlib
 import json
 import pathlib
+import re
 import tempfile
 from typing import (
     TYPE_CHECKING,
@@ -224,6 +225,52 @@ _OUTCOME_BY_MOJ_CODE: Dict[str, Outcome] = {
 # `NT` means, and it keeps a non-measurement out of the time-limit estimate.
 _UNEXECUTED_MOJ_CODES = frozenset({'NT'})
 
+# What mojtools calls a run it cannot account for -- `VERDICTFULLNAME[UE]`, the
+# run-level verdict `build-and-test.sh` reaches on its second-to-last line:
+#
+#     [[ "$SMALLRESP" =~ "AC" ]] && (( RESPERRO > 0 )) && SMALLRESP=UE
+#
+# It says: *every testcase that produced a verdict passed, and at least one
+# produced none*. That is a statement about the judging run, not about the
+# submission -- and it is the run-level verdict a truncated testset lands on
+# whenever the testcase that truncated it was a `TLE` that passed on its rerun,
+# which is the one shape where nothing in `tests` looks wrong at all.
+#
+# Matched on the two words: the run-level verdict carries a score suffix
+# (`Unknown ERROR,88p`), and the capitalisation is mojtools' own.
+#
+# Read off `verdict` and never `verdict_canon`, which is the one place
+# `canonical_verdict`'s usual preference inverts: `VERDICTCANON[UE]` collapses
+# this onto `Runtime Error`, naming a failure of the solution that did not
+# happen. See `_note_on_run_verdict`.
+_UNKNOWN_ERROR_VERDICT_RE = re.compile(r'\bunknown\s+error\b', re.IGNORECASE)
+
+
+def _note_on_run_verdict(verdict: Optional[str]) -> Optional[str]:
+    """What a run-level verdict adds to "some testcases went unmeasured".
+
+    Only `Unknown ERROR` has anything to add, and it has a lot: it is the judge
+    saying it does not know why the testset came up short, and a setter reading
+    the missing-testcase warning on its own has no way to tell that from a judge
+    that simply stopped early on purpose. The rest of the vocabulary (`Wrong
+    Answer`, `Time Limit Exceeded`, ...) already agrees with the verdicts in
+    `tests`, so repeating it would be noise.
+
+    `None` when there is nothing worth saying, which includes a run with no
+    run-level verdict at all.
+    """
+    if not verdict or not _UNKNOWN_ERROR_VERDICT_RE.search(verdict):
+        return None
+    return (
+        f'MOJ called the run as a whole `{verdict}`, which is the judge saying '
+        f'it cannot account for those testcases -- not a verdict about this '
+        f'solution. mojtools reports it when every testcase that produced a '
+        f'verdict passed and at least one produced none, which is what a testset '
+        f'cut short looks like when the testcase that cut it short passed on its '
+        f'rerun. The judge run is what to look at, not the solution.'
+    )
+
+
 # `RE_NZEC` is the only qualified runtime error mojtools writes today, and it is in
 # the table above. The prefix is honoured anyway, as a backstop for a judge that
 # grows a sibling (`RE_SIGSEGV` and the like): `RE_` names the family, so reading a
@@ -279,6 +326,10 @@ class _TestrunResult:
     expected: int
     # The names rbx asked about and MOJ said nothing about.
     missing: List[str]
+    # What the judge called the run as a whole, raw -- score suffix and all. Kept
+    # only to be *said*, and only when the testset came up short: see
+    # `_note_on_run_verdict` for why `verdict` and not `canonical_verdict`.
+    verdict: Optional[str] = None
     # Set the first time the missing ones are reported, so N deferreds over one
     # testrun produce one warning rather than N.
     warned: bool = False
@@ -948,7 +999,11 @@ class MojRunner:
         # of 72 against a problem that had them enabled.
         missing = [name for name in expected_names if name not in tests]
         return _TestrunResult(
-            run=run, tests=tests, expected=len(expected_names), missing=missing
+            run=run,
+            tests=tests,
+            expected=len(expected_names),
+            missing=missing,
+            verdict=status.verdict,
         )
 
     def _solution_content(self, solution: 'SolutionSkeleton') -> bytes:
@@ -1206,13 +1261,19 @@ class MojRunner:
         # deferreds cannot both pass the check.
         if result.missing and not result.warned:
             result.warned = True
-            console.console.print(
+            lines = [
                 f'[warning]MOJ reported no result for {len(result.missing)} of '
                 f'{result.expected} testcases of [item]{solution.path}[/item] '
-                f'(testrun [item]{result.run}[/item]).[/warning]\n'
-                f'[warning]Those testcases are left unmeasured; the time limit is '
-                f'estimated from the rest.[/warning]'
-            )
+                f'(testrun [item]{result.run}[/item]).[/warning]',
+                '[warning]Those testcases are left unmeasured; the time limit is '
+                'estimated from the rest.[/warning]',
+            ]
+            # Appended rather than replacing the count: the count is what the
+            # estimate lost, and the verdict is why. A setter needs both.
+            note = _note_on_run_verdict(result.verdict)
+            if note is not None:
+                lines.append(f'[warning]{note}[/warning]')
+            console.console.print('\n'.join(lines))
 
         # The slot is deliberately **not** cleared here. Clearing it was meant to
         # keep a stale `running` chip from sitting beside a finished verdict, but
