@@ -1253,6 +1253,19 @@ across every solution. Presentation-only; never used for limit resolution.
 """,
     )
 
+    estimationChecksum: Optional[str] = Field(
+        default=None,
+        description="""
+A checksum of everything this estimate was computed from -- the solutions that
+bound the limit, and, when the tests were built, the interactor and the test
+inputs. Written by `rbx time`; consumers compare it against the package to warn
+that a saved limit predates the current solutions or testset.
+
+Presentation-only; never used for limit resolution. Absent on a profile whose
+limit was not estimated (inherited from the package, or set by hand).
+""",
+    )
+
     def timelimit_for_language(self, language: Optional[str] = None) -> int:
         assert self.timeLimit is not None
         res = self.timeLimit

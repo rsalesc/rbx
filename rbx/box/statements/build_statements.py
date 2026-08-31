@@ -6,7 +6,13 @@ import syncer
 import typer
 
 from rbx import annotations, console, utils
-from rbx.box import environment, limits_info, naming, package
+from rbx.box import (
+    environment,
+    estimation_checksum,
+    limits_info,
+    naming,
+    package,
+)
 from rbx.box.exception import describe_exception
 from rbx.box.formatting import href
 from rbx.box.schema import Package, expand_any_vars
@@ -466,6 +472,15 @@ async def execute_build(
     """
     if profile is not None:
         limits_info.get_limits_profile(profile, fallback_to_package_profile=False)
+        # The rendered statement carries the profile's time limit, so a stale one
+        # is about to be printed into a PDF rather than merely used for a run.
+        #
+        # Held to the light level, and not because nothing is built yet: a
+        # statement build only ever builds `samples`, which the manifest records
+        # as a partial build, so the tests segment is never available here. What
+        # `light_only` rules out is reading a manifest some *earlier* full build
+        # left behind and reporting a match about tests this build never touched.
+        estimation_checksum.warn_if_stale(profile, light_only=True)
 
     with limits_info.use_profile(profile, when=lambda: profile is not None):
         pkg = package.find_problem_package_or_die()

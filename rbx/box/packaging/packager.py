@@ -10,7 +10,14 @@ from typing import Dict, List, Optional, Type
 import typer
 
 from rbx import console
-from rbx.box import environment, header, limits_info, naming, package
+from rbx.box import (
+    environment,
+    estimation_checksum,
+    header,
+    limits_info,
+    naming,
+    package,
+)
 from rbx.box.contest import contest_package
 from rbx.box.contest.schema import ContestProblem, ContestStatement
 from rbx.box.formatting import href
@@ -249,6 +256,17 @@ async def run_packager(
                 '[error]Build or verification failed, check the report.[/error]'
             )
             raise typer.Exit(1)
+
+    # After the build, not before: the heavy half of the checksum reads the
+    # testset manifest, and only the build that just ran leaves one describing
+    # the tests actually about to be packaged. Checking beforehand would compare
+    # the saved limit against whatever some earlier build happened to leave in
+    # `build/`.
+    #
+    # `--samples-only` restricts the build to one group, which the checksum
+    # detects and answers at its light level -- the solutions still get checked,
+    # the tests do not.
+    estimation_checksum.warn_if_stale(packager_cls.name())
 
     testcase_entries = await extract_generation_testcases_from_groups(built_groups)
     pkg = package.find_problem_package_or_die()

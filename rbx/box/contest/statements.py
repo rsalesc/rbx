@@ -4,7 +4,13 @@ import syncer
 import typer
 
 from rbx import annotations, console
-from rbx.box import cd, environment, limits_info, package_utils
+from rbx.box import (
+    cd,
+    environment,
+    estimation_checksum,
+    limits_info,
+    package_utils,
+)
 from rbx.box.contest.build_contest_statements import (
     StatementBuildIssue,
     StatementFailedIssue,
@@ -78,6 +84,26 @@ async def _execute_build(
                 f'[error]No problems in this contest define the timing profile [item]{profile}[/item].[/error]'
             )
             raise typer.Exit(1)
+
+        # Collected and reported once, naming the problems, rather than warned
+        # per problem: a contest has a dozen of these, and the same three-line
+        # warning repeated a dozen times buries the build log it precedes.
+        stale = []
+        for problem in eligible_problems:
+            with cd.new_package_cd(problem.get_path()):
+                package_utils.clear_package_cache()
+                if estimation_checksum.check_profile(profile, light_only=True):
+                    stale.append(problem.short_name)
+        if stale:
+            console.console.print(
+                f'[warning]The time limit saved in profile [item]{profile}[/item] is '
+                f'stale for [item]{", ".join(stale)}[/item]: the solutions it was '
+                f'estimated from have changed since it was estimated.[/warning]'
+            )
+            console.console.print(
+                f'[warning]Re-run [item]rbx time -p {profile}[/item] in those '
+                f'problems to refresh it.[/warning]'
+            )
 
     candidate_languages = set(languages or [])
     candidate_names = set(names or [])

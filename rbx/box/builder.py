@@ -55,7 +55,7 @@ async def build(
         'Built [item]{processed}[/item] testcases...',
         keep=True,
     ) as s:
-        await generate_testcases(
+        input_digests = await generate_testcases(
             s, groups=groups, verification=VerificationLevel(verification)
         )
 
@@ -140,7 +140,20 @@ async def build(
     # Last, on purpose: a reader that sees the manifest may assume everything it
     # names -- inputs, outputs, visualizations -- has already landed, which is
     # what lets its watcher be a single glob instead of a settling heuristic.
-    write_manifest_or_warn(entries, input_validation_infos)
+    write_manifest_or_warn(
+        entries,
+        input_validation_infos,
+        input_digests,
+        # Only a build that checked determinism can promise that regenerating
+        # produces the same bytes, which is what makes the recorded digests a
+        # property of the testset rather than of this one run.
+        deterministic=VerificationLevel(verification).value
+        >= VerificationLevel.VALIDATE.value,
+        # A subset build describes a testset nobody estimated against, and the
+        # manifest has to say so: its own group list cannot be used to work this
+        # out, since a declared group may simply have produced no tests.
+        partial=groups is not None,
+    )
 
     return True
 
