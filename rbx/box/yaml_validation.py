@@ -12,7 +12,7 @@ The single public entry point is :func:`load_yaml_model`.
 from __future__ import annotations
 
 import pathlib
-from typing import Any, List, Tuple, Type, TypeVar
+from typing import Any, List, Optional, Set, Tuple, Type, TypeVar
 
 import pydantic
 import rich.text
@@ -21,6 +21,7 @@ from rich.console import Group
 from rich.syntax import Syntax
 from ruyaml.comments import CommentedMap, CommentedSeq
 
+from rbx.box import yaml_include
 from rbx.box.exception import RbxException
 
 T = TypeVar('T', bound=pydantic.BaseModel)
@@ -92,10 +93,19 @@ class YamlValidationError(RbxException):
 
         rendered_blocks: List[Tuple[int, int, Group]] = []
         for err in deduped:
-            line, col, span = _locate(tuple(err['loc']), root)
+            line, col, span, err_source = _locate(tuple(err['loc']), root)
+            # An error inside an `!include`d fragment belongs to that fragment:
+            # render its text and blame its path, not the including file's.
+            err_path, err_text = path, source
+            if err_source is not None:
+                try:
+                    err_text = err_source.read_text()
+                    err_path = err_source
+                except OSError:
+                    pass
             block = _render_diagnostic(
-                source=source,
-                path=path,
+                source=err_text,
+                path=err_path,
                 line=line,
                 col=col,
                 span=span,
@@ -129,7 +139,7 @@ class YamlValidationError(RbxException):
 def _locate(
     loc: Tuple[Any, ...],
     root: Any,
-) -> Tuple[int, int, int]:
+) -> Tuple[int, int, int, Optional[pathlib.Path]]:
     """Walk a Pydantic ``loc`` tuple against a ruyaml-parsed tree.
 
     ruyaml's ``CommentedMap`` and ``CommentedSeq`` carry source positions
@@ -158,8 +168,14 @@ def _locate(
             keys), ``int`` (sequence indices), or internal markers.
         root: ruyaml-parsed root node (CommentedMap or CommentedSeq).
 
+    When the tree spans several files (`!include`), positions belong to
+    whichever file the containing node was parsed from. `node_source` tracks
+    that file as the walk descends, so the caller can render the snippet
+    against the right text.
+
     Returns:
-        ``(line, col, span)``, all 1-based for line/col.
+        ``(line, col, span, source)``, all 1-based for line/col. ``source`` is
+        the fragment the position belongs to, or ``None`` for the root file.
     """
     # ruyaml uses 0-based line/col; we convert to 1-based on return.
     if hasattr(root, 'lc'):
@@ -173,13 +189,20 @@ def _locate(
     last_seg: Any = None
     walked_any = False
     broke_on_missing_map_key = False
+    # The file `node`'s own lc coordinates refer to. A spliced fragment root
+    # carries a stamp; its inner nodes inherit it.
+    node_source = yaml_include.source_of(root)
+    parent_source = node_source
+    last_source = node_source
     for seg in loc:
         if isinstance(node, CommentedMap) and isinstance(seg, str) and seg in node:
             line, col = node.lc.key(seg)
             last_line, last_col = line, col
             last_span = len(seg)
-            parent, last_seg = node, seg
+            last_source = node_source
+            parent, last_seg, parent_source = node, seg, node_source
             node = node[seg]
+            node_source = yaml_include.source_of(node) or node_source
             walked_any = True
             continue
         if (
@@ -190,8 +213,10 @@ def _locate(
             line, col = node.lc.item(seg)
             last_line, last_col = line, col
             last_span = 1
-            parent, last_seg = node, seg
+            last_source = node_source
+            parent, last_seg, parent_source = node, seg, node_source
             node = node[seg]
+            node_source = yaml_include.source_of(node) or node_source
             walked_any = True
             continue
         if seg in PYDANTIC_INTERNAL_LOC_SEGMENTS:
@@ -210,6 +235,7 @@ def _locate(
                 line, col = node.lc.key(first_key)
                 last_line, last_col = line, col
                 last_span = len(first_key)
+                last_source = node_source
             except Exception:
                 pass
 
@@ -227,10 +253,11 @@ def _locate(
             v_line, v_col = parent.lc.value(last_seg)
             last_line, last_col = v_line, v_col
             last_span = max(1, len(str(node)))
+            last_source = parent_source
         except Exception:
             pass
 
-    return last_line + 1, last_col + 1, last_span
+    return last_line + 1, last_col + 1, last_span, last_source
 
 
 def _format_loc(loc: Tuple[Any, ...]) -> str:
@@ -387,13 +414,32 @@ def load_yaml_model(path: pathlib.Path, model: Type[T]) -> T:
         YamlValidationError: The file parses but does not match ``model``.
         FileNotFoundError: The file does not exist.
     """
+    model_instance, _ = load_yaml_model_with_sources(path, model)
+    return model_instance
+
+
+def load_yaml_model_with_sources(
+    path: pathlib.Path, model: Type[T]
+) -> Tuple[T, Set[pathlib.Path]]:
+    """Like :func:`load_yaml_model`, but also reports every file that was read.
+
+    With `!include`, a config's content can come from several files. The
+    returned set contains ``path`` plus every transitively included fragment,
+    so callers that cache on file contents can invalidate on any of them.
+
+    Raises:
+        YamlSyntaxError: A file in the include graph is not valid YAML.
+        YamlValidationError: The resolved document does not match ``model``.
+        IncludeError: An `!include` could not be resolved.
+        FileNotFoundError: ``path`` does not exist.
+    """
     source = path.read_text()
     try:
-        data = ruyaml.YAML(typ='rt').load(source)
+        data, sources = yaml_include.resolve_yaml_file(path)
     except ruyaml.YAMLError as exc:
         raise YamlSyntaxError(path, source, exc) from exc
 
     try:
-        return model.model_validate(data)
+        return model.model_validate(data), sources
     except pydantic.ValidationError as exc:
         raise YamlValidationError(path, source, data, exc) from exc
