@@ -1842,7 +1842,6 @@ async def compute_time_limits(
             f'[success]Writing the following timing profile to [item]{href(limits_path)}[/item].[/success]'
         )
         limits_path.parent.mkdir(parents=True, exist_ok=True)
-        yaml_include.die_if_write_would_inline_includes(limits_path)
         limits_path.write_text(utils.model_to_yaml(limits))
 
     limits_info.render_limits_table(limits, title=f'Time limits ({profile})')
@@ -1902,7 +1901,6 @@ def inherit_time_limits(profile: str = 'local', dry: bool = False):
         )
         return
     limits_path.parent.mkdir(parents=True, exist_ok=True)
-    yaml_include.die_if_write_would_inline_includes(limits_path)
     limits_path.write_text(utils.model_to_yaml(limits))
 
     console.console.print(
@@ -1920,7 +1918,6 @@ def set_time_limit(timelimit: int, profile: str = 'local', dry: bool = False):
         )
         return
     limits_path.parent.mkdir(parents=True, exist_ok=True)
-    yaml_include.die_if_write_would_inline_includes(limits_path)
     limits_path.write_text(utils.model_to_yaml(limits))
 
     console.console.print(

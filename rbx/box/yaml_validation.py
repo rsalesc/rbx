@@ -136,6 +136,34 @@ class YamlValidationError(RbxException):
         )
 
 
+def is_include_capable(model: Type[pydantic.BaseModel]) -> bool:
+    """Whether `!include` fragments are resolved when loading this model.
+
+    Opt-in, via a `rbx_include_capable` ClassVar on the model. Only the config
+    kinds people actually share between packages carry it -- `problem.rbx.yml`,
+    `contest.rbx.yml` (and its variants), `env.rbx.yml` and `preset.rbx.yml`.
+    Everything else (limits profiles, locks, registries, generated artifacts) is
+    rebuilt from its model on save, which cannot represent an include, so
+    resolving one on load would hand the user sharing that the next write
+    silently destroys.
+    """
+    return bool(getattr(model, 'rbx_include_capable', False))
+
+
+class IncludeNotSupportedError(RbxException):
+    """Raised when a config that is not include-capable uses `!include`."""
+
+    def __init__(self, path: pathlib.Path, model: Type[pydantic.BaseModel]):
+        super().__init__()
+        self.print(
+            f'[error][item]{path}[/item] uses [item]!include[/item], which is not '
+            f'supported for {model.__name__} files.[/error]\n'
+            f'[warning]Only problem.rbx.yml, contest.rbx.yml (and its variants), '
+            f'env.rbx.yml and preset.rbx.yml can include fragments -- rbx rewrites '
+            f'the others from scratch, which would inline the fragment.[/warning]'
+        )
+
+
 def _locate(
     loc: Tuple[Any, ...],
     root: Any,
@@ -440,6 +468,22 @@ def load_yaml_model_with_sources(
         FileNotFoundError: ``path`` does not exist.
     """
     source = path.read_text()
+
+    if not is_include_capable(model):
+        # Not include-capable: load plainly. These configs are written back
+        # from the model (which cannot represent an include), so resolving one
+        # here would only let a user write something the next save destroys.
+        if yaml_include.INCLUDE_TAG in source:
+            raise IncludeNotSupportedError(path, model)
+        try:
+            data = ruyaml.YAML(typ='rt').load(source)
+        except ruyaml.YAMLError as exc:
+            raise YamlSyntaxError(path, source, exc) from exc
+        try:
+            return model.model_validate(data), {path.resolve()}
+        except pydantic.ValidationError as exc:
+            raise YamlValidationError(path, source, data, exc) from exc
+
     try:
         data, sources = yaml_include.resolve_yaml_file(path)
     except yaml_include.FragmentYamlError as exc:

@@ -18,7 +18,7 @@ from textual.widgets import (
 )
 
 from rbx import utils
-from rbx.box import environment, limits_info, package, yaml_include
+from rbx.box import environment, limits_info, package
 from rbx.box.exception import RbxException
 from rbx.box.schema import LimitModifiers, LimitsProfile
 
@@ -531,9 +531,6 @@ class LimitsEditorScreen(Screen):
         # Write to disk.
         limits_path = package.get_limits_file(self._selected_profile)
         limits_path.parent.mkdir(parents=True, exist_ok=True)
-        # Rebuilt from the model, where `!include` no longer exists -- writing
-        # that back would inline every fragment and lose the sharing.
-        yaml_include.die_if_write_would_inline_includes(limits_path)
         yaml_str = utils.model_to_yaml(profile)
         limits_path.write_text(yaml_str)
 

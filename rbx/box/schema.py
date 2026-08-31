@@ -5,7 +5,18 @@ import enum
 import pathlib
 import re
 import typing
-from typing import Annotated, Any, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import (
+    Annotated,
+    Any,
+    ClassVar,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
@@ -1281,6 +1292,13 @@ across every solution. Presentation-only; never used for limit resolution.
 
 class Package(BaseModel):
     model_config = ConfigDict(extra='forbid')
+
+    # `!include` fragments are resolved when loading this model (see
+    # rbx.box.yaml_include). Only the four user-authored config kinds people
+    # actually share between packages are include-capable; everything else --
+    # limits profiles, locks, registries, generated artifacts -- loads plainly
+    # and is written back from the model, which would inline any fragment.
+    rbx_include_capable: ClassVar[bool] = True
 
     # Name of the problem.
     name: str = NameField(description='The name of the problem.')

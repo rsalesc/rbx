@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pathlib
-from typing import List
+from typing import ClassVar, List
 
 import pydantic
 import pytest
@@ -289,6 +289,10 @@ class _NestedModel(pydantic.BaseModel):
 
 
 class _RootModel(pydantic.BaseModel):
+    # Stands in for a user-authored config, so it opts into `!include` the way
+    # the four real ones do.
+    rbx_include_capable: ClassVar[bool] = True
+
     title: str
     items: List[_NestedModel]
 

@@ -120,9 +120,28 @@ An include stack detects cycles and reports the full chain.
 
 ### Scope
 
-The tag is implemented in the loader, so it works uniformly in `contest.rbx.yml`,
-`contest.<id>.rbx.yml`, `problem.rbx.yml`, `env.rbx.yml` and `preset.rbx.yml`. Fragment
-files have no schema of their own; they are whatever node they are spliced into.
+`!include` is **opt-in per config kind**, declared by an `rbx_include_capable` ClassVar on
+the model. Exactly four kinds carry it — the ones people actually share between packages:
+
+| Config | Model |
+|---|---|
+| `problem.rbx.yml` | `Package` |
+| `contest.rbx.yml`, `contest.<id>.rbx.yml` | `Contest` |
+| `env.rbx.yml` | `Environment` |
+| `preset.rbx.yml` | `Preset` |
+
+Everything else that happens to load through the same function — limits profiles,
+`.preset-lock.yml`, the preset registry, generated artifacts — is **not** include-capable
+and takes the plain load path. The reason is the write side: those configs are rebuilt from
+their Pydantic model on save, and a model cannot represent an include, so resolving one on
+load would hand the user sharing that the next write silently destroys. Refusing up front
+beats accepting input rbx cannot preserve; a fragment in one of them raises
+`IncludeNotSupportedError` naming the four kinds that do work.
+
+Widening the set is therefore not a one-line change: a new kind needs a write path that
+routes through `EditSession` (or no writer at all) before it may be marked.
+
+Fragment files have no schema of their own; they are whatever node they are spliced into.
 
 ## Architecture
 

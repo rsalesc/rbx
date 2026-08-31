@@ -5,6 +5,8 @@ are failure modes that produce a raw traceback or silent data loss rather than
 an error a user can act on.
 """
 
+from typing import ClassVar
+
 import pydantic
 import pytest
 
@@ -26,7 +28,55 @@ class _Inner(pydantic.BaseModel):
 
 
 class _Model(pydantic.BaseModel):
+    # Stands in for a real user-authored config, so it opts in the same way.
+    rbx_include_capable: ClassVar[bool] = True
+
     vars: _Inner
+
+
+# --------------------------- include-capable configs --------------------------
+
+
+def test_exactly_the_four_shared_config_kinds_are_include_capable():
+    """The boundary is deliberate; widening it needs a matching write path."""
+    from rbx.box.contest.schema import Contest
+    from rbx.box.environment import Environment
+    from rbx.box.presets.schema import Preset
+    from rbx.box.schema import LimitsProfile, Package
+    from rbx.box.yaml_validation import is_include_capable
+
+    for model in (Package, Contest, Environment, Preset):
+        assert is_include_capable(model), model.__name__
+
+    # Rebuilt from their model on save, so an include would not survive.
+    from rbx.box.presets.lock_schema import PresetLock
+
+    for model in (LimitsProfile, PresetLock):
+        assert not is_include_capable(model), model.__name__
+
+
+def test_an_include_in_a_non_capable_config_is_refused_with_guidance(tmp_path):
+    from rbx.box.schema import LimitsProfile
+    from rbx.box.yaml_validation import IncludeNotSupportedError
+
+    path = tmp_path / 'local.rbx.yml'
+    path.write_text('timeLimit: 1000\nmodifiers: !include mods.yml\n')
+
+    with pytest.raises(IncludeNotSupportedError) as exc:
+        load_yaml_model(path, LimitsProfile)
+
+    message = str(exc.value)
+    assert 'LimitsProfile' in message
+    assert 'problem.rbx.yml' in message
+
+
+def test_a_non_capable_config_without_includes_still_loads(tmp_path):
+    from rbx.box.schema import LimitsProfile
+
+    path = tmp_path / 'local.rbx.yml'
+    path.write_text('timeLimit: 1234\n')
+
+    assert load_yaml_model(path, LimitsProfile).timeLimit == 1234
 
 
 # ----------------------------- resolution defects -----------------------------
