@@ -145,8 +145,9 @@ estimationChecksum: 'v1.h.9f3a1c22.4b7e0d81.c1a8f930'
 
 That string is a checksum of the solutions the estimate was derived from — the accepted ones
 that set the limit and the slow ones that validated it — plus, when the tests had been built,
-the interactor and the test inputs themselves. `rbx run -p`, `rbx package` and `rbx time`
-recompute it and warn you when it no longer matches:
+the interactor and the test inputs themselves. The commands that use a profile — `rbx run -p`,
+`rbx package`, `rbx st b -p`, `rbx time` — recompute it and warn you when it no longer
+matches:
 
 ```
 The time limit saved in profile boca is stale: the solutions it was estimated from

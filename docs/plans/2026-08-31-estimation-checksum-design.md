@@ -117,6 +117,16 @@ satisfy the tests segment reports a match that describes nothing the caller is d
 | `rbx run` | after `builder.build` | Same reason. Checking at the flag would compare against whatever manifest an earlier build left behind — stale exactly when the testset is what changed. |
 | `rbx irun` | after the profile is set, `light_only` | It never builds a testset, so nothing in `build/` is evidence about this run. |
 | `rbx time` | ahead of the `--integrate` branch | `integrate` copies the saved limit into `problem.rbx.yml` without re-estimating, so a stale number is about to become the package's own. Elsewhere the command replaces the estimate anyway. |
+| `rbx st b` / `rbx tut b` | `execute_build`, `light_only` | The rendered statement carries the profile's time limit, so a stale estimate is printed into a PDF rather than merely used for a run. |
+| `rbx contest st b` / `tut b` | the per-problem eligibility loop, `light_only` | Same, per problem. Reported once, naming the stale problems, rather than repeating the warning a dozen times. |
+
+The statement paths are `light_only` for a reason that is not "nothing is built yet": a
+statement build only ever builds `samples`, which the manifest records as partial, so the tests
+segment is never available there. What `light_only` rules out is reading a manifest some
+*earlier* full build left behind and reporting a match about tests this build never touched.
+
+Packaging builds statements too, but through `execute_build_on_statements` rather than
+`execute_build`, so the packaging path warns exactly once.
 
 `rbx run` keys on `limits_info.get_active_profile()` rather than on its own `--profile`
 value, so the root-level `rbx -p boca run` is checked exactly like `rbx run -p boca`.
@@ -142,16 +152,11 @@ never checked.
 * `rbx/box/builder.py` — plumbs them, and the determinism and partial flags, into the
   manifest.
 * `rbx/box/packaging/packager.py`, `rbx/box/cli/commands/run.py`,
-  `rbx/box/cli/commands/time_cmd.py` — the three consumers.
+  `rbx/box/cli/commands/time_cmd.py`, `rbx/box/statements/build_statements.py`,
+  `rbx/box/contest/statements.py` — the consumers.
 * `docs/setters/profiling/profiles.md` — "When an estimate goes stale".
 
 The manifest becomes load-bearing for rbx itself here, for the first time: it was written
 purely for external readers (the VS Code extension). That is the deliberate cost of making the
 tests segment free at check time. `write_manifest_or_warn` still downgrades every failure to a
 warning — a missing manifest costs the checksum its heavy level and nothing else.
-
-## Known gap
-
-`rbx statements build -p <profile>` renders the profile's time limit into the statement and
-does not check the checksum. The packaging path already warns before it builds statements, so
-the common route is covered; a standalone statement build is not.

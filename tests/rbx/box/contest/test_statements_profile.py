@@ -114,3 +114,81 @@ async def test_contest_build_all_missing_profile_exits(cleandir_with_testdata):
             profile='nonexistent',
         )
     assert exc_info.value.exit_code == 1
+
+
+def _recording_console(monkeypatch):
+    import rich.console
+
+    import rbx.console
+
+    recorder = rich.console.Console(
+        theme=rbx.console.theme, record=True, width=200, color_system=None
+    )
+    monkeypatch.setattr(rbx.console, 'console', recorder)
+    return recorder
+
+
+async def _build_with_profile(monkeypatch):
+    async def fake_build_statement(
+        statement, contest, *, problems_of_interest=None, **kwargs
+    ):
+        return pathlib.Path('fake.pdf')
+
+    monkeypatch.setattr(
+        'rbx.box.contest.statements.build_statement',
+        fake_build_statement,
+    )
+    await _build_async(
+        verification=0,
+        names=None,
+        languages=None,
+        validate=False,
+        output=StatementType.PDF,
+        samples=False,
+        vars=None,
+        install_tex=False,
+        profile='icpc',
+    )
+
+
+@pytest.mark.test_pkg('contests/two_problems')
+async def test_contest_build_names_the_problems_whose_estimate_is_stale(
+    cleandir_with_testdata, monkeypatch
+):
+    """A contest renders each problem's limit into the joined statement, so a
+    stale estimate reaches the PDF. The problems are named in one line rather
+    than warned about individually -- a dozen repeats would bury the build log.
+    """
+    pathlib.Path('A/.limits').mkdir(parents=True, exist_ok=True)
+    pathlib.Path('A/.limits/icpc.yml').write_text(
+        "timeLimit: 5000\nestimationChecksum: 'v1.l.deadbeef'\n"
+    )
+
+    recorder = _recording_console(monkeypatch)
+    await _build_with_profile(monkeypatch)
+
+    text = recorder.export_text()
+    assert 'stale' in text
+    assert 'A' in text
+    assert 'rbx time -p icpc' in text
+
+
+@pytest.mark.test_pkg('contests/two_problems')
+async def test_contest_build_is_quiet_when_every_estimate_is_current(
+    cleandir_with_testdata, monkeypatch
+):
+    from rbx.box import cd, estimation_checksum, package_utils
+
+    with cd.new_package_cd(pathlib.Path('A')):
+        package_utils.clear_package_cache()
+        current = estimation_checksum.compute().encode()
+
+    pathlib.Path('A/.limits').mkdir(parents=True, exist_ok=True)
+    pathlib.Path('A/.limits/icpc.yml').write_text(
+        f"timeLimit: 5000\nestimationChecksum: '{current}'\n"
+    )
+
+    recorder = _recording_console(monkeypatch)
+    await _build_with_profile(monkeypatch)
+
+    assert 'stale' not in recorder.export_text()

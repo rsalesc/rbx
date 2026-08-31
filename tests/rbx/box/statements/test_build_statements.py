@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 import typer
 
-from rbx.box import limits_info
+from rbx.box import limits_info, package
 from rbx.box.schema import Statement
 from rbx.box.statements.build_statements import (
     execute_build,
@@ -182,6 +182,93 @@ class TestExecuteBuildStrictProfile:
             profile='icpc',
         )
         assert seen['profile'] == 'icpc'
+
+    @pytest.mark.test_pkg('problems/box1')
+    async def test_execute_build_warns_when_the_profile_is_stale(
+        self, pkg_from_testdata, monkeypatch
+    ):
+        """The rendered statement carries the profile's time limit, so a stale
+        estimate is about to be printed into a PDF."""
+        import rich.console
+
+        import rbx.console
+        from rbx.box import estimation_checksum
+
+        pathlib.Path('.limits').mkdir(exist_ok=True)
+        pathlib.Path('.limits/icpc.yml').write_text(
+            'timeLimit: 5000\n'
+            f"estimationChecksum: '{estimation_checksum.compute().encode()}'\n"
+        )
+
+        solution = pathlib.Path(package.find_problem_package_or_die().solutions[0].path)
+        solution.write_text(solution.read_text() + '\n// nudged\n')
+
+        async def fake_execute_build_on_statements(statements, *args, **kwargs):
+            return
+
+        monkeypatch.setattr(
+            'rbx.box.statements.build_statements.execute_build_on_statements',
+            fake_execute_build_on_statements,
+        )
+        recorder = rich.console.Console(
+            theme=rbx.console.theme, record=True, width=200, color_system=None
+        )
+        monkeypatch.setattr(rbx.console, 'console', recorder)
+
+        await execute_build(
+            verification=0,
+            names=None,
+            languages=None,
+            output=StatementType.PDF,
+            samples=False,
+            vars=None,
+            validate=False,
+            profile='icpc',
+        )
+
+        text = recorder.export_text()
+        assert 'stale' in text
+        assert 'rbx time -p icpc' in text
+
+    @pytest.mark.test_pkg('problems/box1')
+    async def test_execute_build_is_quiet_when_the_profile_is_current(
+        self, pkg_from_testdata, monkeypatch
+    ):
+        import rich.console
+
+        import rbx.console
+        from rbx.box import estimation_checksum
+
+        pathlib.Path('.limits').mkdir(exist_ok=True)
+        pathlib.Path('.limits/icpc.yml').write_text(
+            'timeLimit: 5000\n'
+            f"estimationChecksum: '{estimation_checksum.compute().encode()}'\n"
+        )
+
+        async def fake_execute_build_on_statements(statements, *args, **kwargs):
+            return
+
+        monkeypatch.setattr(
+            'rbx.box.statements.build_statements.execute_build_on_statements',
+            fake_execute_build_on_statements,
+        )
+        recorder = rich.console.Console(
+            theme=rbx.console.theme, record=True, width=200, color_system=None
+        )
+        monkeypatch.setattr(rbx.console, 'console', recorder)
+
+        await execute_build(
+            verification=0,
+            names=None,
+            languages=None,
+            output=StatementType.PDF,
+            samples=False,
+            vars=None,
+            validate=False,
+            profile='icpc',
+        )
+
+        assert 'stale' not in recorder.export_text()
 
     @pytest.mark.test_pkg('problems/box1')
     async def test_execute_build_respects_global_profile_when_local_none(

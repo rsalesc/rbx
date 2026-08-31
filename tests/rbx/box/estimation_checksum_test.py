@@ -377,6 +377,56 @@ def test_warn_if_stale_accepts_no_active_profile(
     assert estimation_checksum.warn_if_stale(None) is None
 
 
+def _recording_console(monkeypatch):
+    import rich.console
+
+    import rbx.console
+
+    recorder = rich.console.Console(
+        theme=rbx.console.theme, record=True, width=200, color_system=None
+    )
+    monkeypatch.setattr(rbx.console, 'console', recorder)
+    return recorder
+
+
+def _save_profile(profile: str, checksum: str) -> None:
+    from rbx import utils
+    from rbx.box import package
+    from rbx.box.schema import LimitsProfile
+
+    limits_path = package.get_limits_file(profile)
+    limits_path.parent.mkdir(parents=True, exist_ok=True)
+    limits_path.write_text(
+        utils.model_to_yaml(LimitsProfile(timeLimit=1000, estimationChecksum=checksum))
+    )
+
+
+def test_warn_if_stale_says_which_bucket_and_how_to_fix_it(
+    pkg: testing_package.TestingPackage, monkeypatch
+):
+    _save_profile('boca', estimation_checksum.compute().encode())
+    (pkg.root / 'sols' / 'ac.cpp').write_text('int main() { return 7; }\n')
+
+    recorder = _recording_console(monkeypatch)
+    assert estimation_checksum.warn_if_stale('boca') == ChecksumBucket.SOLUTIONS
+
+    text = recorder.export_text()
+    assert 'boca' in text
+    assert 'stale' in text
+    assert 'solutions' in text
+    assert 'rbx time -p boca' in text
+
+
+def test_warn_if_stale_says_nothing_when_the_estimate_is_current(
+    pkg: testing_package.TestingPackage, monkeypatch
+):
+    _save_profile('boca', estimation_checksum.compute().encode())
+
+    recorder = _recording_console(monkeypatch)
+    assert estimation_checksum.warn_if_stale('boca') is None
+    assert recorder.export_text().strip() == ''
+
+
 def test_timing_profile_carries_the_checksum_into_the_limits():
     from rbx.box.timing import TimingProfile
 
