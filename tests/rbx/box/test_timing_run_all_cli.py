@@ -119,15 +119,24 @@ def _solution(name: str, outcome: ExpectedOutcome) -> Solution:
     return Solution(path=pathlib.Path(name), language='cpp', outcome=outcome)
 
 
+# `compute_time_limits` operates on the package in the cwd throughout -- it stamps
+# the estimate with `estimation_checksum.compute()`, which reads the solutions off
+# disk -- so these need a real package under the cwd even though every step they
+# assert on is mocked out.
 async def _compute(
     tmp_path: pathlib.Path,
     run_all: bool,
     lower: Optional[List[Solution]] = None,
     remaining_ok: bool = True,
+    run_remaining: Optional[mock.AsyncMock] = None,
     **kwargs,
 ):
     lower = lower or [_solution('sols/ac.cpp', ExpectedOutcome.ACCEPTED)]
-    run_remaining = mock.AsyncMock(return_value=remaining_ok)
+    # Taken from the caller when it has to outlive the call -- `compute_time_limits`
+    # raises on a failing extra run, so the test asserting that cannot read the mock
+    # off the return value.
+    if run_remaining is None:
+        run_remaining = mock.AsyncMock(return_value=remaining_ok)
 
     async def _estimate_and_validate(*_, **__):
         return timing.TimingProfile(timeLimit=1000)
@@ -156,14 +165,16 @@ async def _compute(
     return profile, run_remaining
 
 
-async def test_the_extra_run_only_happens_when_asked(tmp_path: pathlib.Path):
+async def test_the_extra_run_only_happens_when_asked(
+    tmp_path: pathlib.Path, testing_pkg: testing_package.TestingPackage
+):
     _, run_remaining = await _compute(tmp_path, run_all=False)
 
     assert not run_remaining.called
 
 
 async def test_the_solutions_the_estimate_ran_are_not_run_again(
-    tmp_path: pathlib.Path,
+    tmp_path: pathlib.Path, testing_pkg: testing_package.TestingPackage
 ):
     lower = [_solution('sols/ac.cpp', ExpectedOutcome.ACCEPTED)]
 
@@ -174,16 +185,24 @@ async def test_the_solutions_the_estimate_ran_are_not_run_again(
     assert 'sols/ac.cpp' in already_run
 
 
-async def test_a_failing_extra_run_fails_the_command(tmp_path: pathlib.Path):
+async def test_a_failing_extra_run_fails_the_command(
+    tmp_path: pathlib.Path, testing_pkg: testing_package.TestingPackage
+):
     import typer
 
+    run_remaining = mock.AsyncMock(return_value=False)
     with pytest.raises(typer.Exit) as exc:
-        await _compute(tmp_path, run_all=True, remaining_ok=False)
+        await _compute(tmp_path, run_all=True, run_remaining=run_remaining)
 
+    # Asserted so the test cannot pass on an exit raised before the extra run ever
+    # happened -- which is exactly how it kept passing while #844 was open.
+    assert run_remaining.called
     assert exc.value.exit_code == 1
 
 
-async def test_a_passing_extra_run_still_returns_the_profile(tmp_path: pathlib.Path):
+async def test_a_passing_extra_run_still_returns_the_profile(
+    tmp_path: pathlib.Path, testing_pkg: testing_package.TestingPackage
+):
     profile, _ = await _compute(tmp_path, run_all=True)
 
     assert profile is not None
