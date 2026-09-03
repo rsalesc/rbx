@@ -953,6 +953,23 @@ rbx package boca [OPTIONS]
 
 ---
 
+### domjudge
+
+Build a package for DOMjudge.
+
+**Usage:**
+```bash
+rbx package domjudge [OPTIONS]
+```
+
+| Name | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--verification-level`, `--verification`, `-v` | INTEGER of [VerificationLevel][rbx.box.environment.VerificationLevel] | Verification level to use when building package. | `4` |
+| `--language`, `-l` | TEXT | If set, will use the given language as the main language. Leave unset if you want to use the language of the topmost statement. | - |
+
+
+---
+
 ### moj
 
 Build a package for MOJ.
