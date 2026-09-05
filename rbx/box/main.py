@@ -108,5 +108,23 @@ def app():
     except RbxException as e:
         print(str(e))
         sys.exit(1)
+    except typer.Exit:
+        # An intentional exit, not a crash. Click normally handles this one
+        # itself, but it must never be reported if it does get this far.
+        raise
+    except BaseException as e:
+        # A real crash. Leave a file behind before the traceback scrolls away,
+        # then re-raise so it still renders exactly as it did before.
+        #
+        # This has to live here rather than in `sys.excepthook`: `Typer.__call__`
+        # opens by overwriting that hook with its own, so anything installed
+        # before the CLI runs is gone by the time it could fire. Typer re-raises
+        # into this block instead.
+        from rbx import crash
+
+        path = crash.report_crash(e)
+        if path is not None:
+            print(f'Crash report written to {path}', file=sys.stderr)
+        raise
     finally:
         Console().show_cursor()

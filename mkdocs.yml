@@ -84,6 +84,7 @@ nav:
   #     - "JSON schemas": "internal/schemas.md"
   #     - "Backporting a fix": "internal/backporting.md"
   - "Troubleshooting":
+      - "Crash reports": "crash-reports.md"
       - "Generators and rbx.h": "generators-and-rbx-h.md"
       - "cpp-on-macos.md"
       - "stack-limit.md"
