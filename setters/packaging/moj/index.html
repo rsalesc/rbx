@@ -1,0 +1,3723 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A tool for creating and managing competitive programming problems">
+      
+      
+        <meta name="author" content="Roberto Sales">
+      
+      
+        <link rel="canonical" href="https://rbx.rsalesc.dev/setters/packaging/moj/">
+      
+      
+        <link rel="prev" href="../boca/">
+      
+      
+        <link rel="next" href="../polygon/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>MOJ - rbx</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,300i,400,400i,700,700i%7CSource+Code+Pro:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Source Sans Pro";--md-code-font:"Source Code Pro"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../../extra.css">
+    
+      <link rel="stylesheet" href="../../../assets/asciinema-player.css">
+    
+      <link rel="stylesheet" href="../../../termynal.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="orange" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#packaging-moj" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="rbx" class="md-header__button md-logo" aria-label="rbx" data-md-component="logo">
+      
+  <img src="../../../rbx_black_fit.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rbx
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              MOJ
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/rsalesc/rbx" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    rsalesc/rbx
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="rbx" class="md-nav__button md-logo" aria-label="rbx" data-md-component="logo">
+      
+  <img src="../../../rbx_black_fit.png" alt="logo">
+
+    </a>
+    rbx
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/rsalesc/rbx" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    rsalesc/rbx
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../intro/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../intro/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cheatsheet/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cheatsheet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Walkthrough
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Walkthrough
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_1" id="__nav_4_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authoring a problem
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Authoring a problem
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../first-steps/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    First steps
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../custom-checker-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adding a custom checker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../stress-testing-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stress-testing your solutions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_2" id="__nav_4_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Delivering a contest
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Delivering a contest
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contest-scaffolding-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scaffolding a contest
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contest-profiling-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profiling time limits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../packaging-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packaging a problem
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contest-packaging-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packaging the whole contest
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Feature Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Feature Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../variables/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../testset/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testset
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testset
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testset/generators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Generators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../testset/visualizers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualizers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../stress-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stress testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../running/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_3" id="__nav_5_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Running
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../running/remote/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    On the judge itself
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../grading/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grading
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_4" id="__nav_5_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Grading
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../grading/checkers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Checkers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../grading/interactors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Interactors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../verification/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Verification
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_5" id="__nav_5_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Verification
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../verification/validators/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validators
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../verification/unit-tests/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Unit tests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../stress-testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stress testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../profiling/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Profiling
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_6" id="__nav_5_6_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Profiling
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../profiling/profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Limits profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../profiling/estimating/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Estimating a time limit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../profiling/computing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How the limit is computed
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../profiling/language-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Language groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../profiling/remote/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    On the judge itself
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../statements/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Statements
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_7" id="__nav_5_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Statements
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../statements/writing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing statements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../statements/context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Template context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../statements/contest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contest statements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../statements/tutorials/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_8" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packaging
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5_8" id="__nav_5_8_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Packaging
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../boca/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    BOCA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MOJ
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MOJ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#time-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Time limits
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Time limits">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#letting-moj-calibrate-instead" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Letting MOJ calibrate instead
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#statements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Statements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-groups-and-scoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test groups and scoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#submission-languages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Submission languages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#checkers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uploading-to-moj" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uploading to MOJ
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iterating-faster-with-a-single-solution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Iterating faster with a single solution
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#previewing-what-a-contest-uploads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Previewing what a contest uploads
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Previewing what a contest uploads">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#copying-the-list-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Copying the list out
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#downloading-a-submission" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downloading a submission
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Downloading a submission">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#logging-in-to-a-contest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logging in to a contest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-youre-allowed-to-download" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you're allowed to download
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-moj-cli-needs-bash-4-or-newer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The MOJ CLI needs bash 4 or newer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The MOJ CLI needs bash 4 or newer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#if-you-cant-change-your-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If you can't change your PATH
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#my-problem-has-a-tight-outputlimit-but-moj-doesnt-enforce-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        My problem has a tight outputLimit, but MOJ doesn't enforce it
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../polygon/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Polygon
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_9" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../presets/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Presets
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Presets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tools
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../tools/vscode/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VS Code extension
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../reference/package/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Package
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7_2" id="__nav_7_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_7_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Package
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/package/schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../reference/contest/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contest
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7_3" id="__nav_7_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_7_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contest
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/contest/schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../reference/environment/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7_4" id="__nav_7_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_7_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Environment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/environment/schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Troubleshooting
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../generators-and-rbx-h/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Generators and rbx.h
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../cpp-on-macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C/C++ on MacOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../stack-limit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stack limit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../memory-limit/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Memory limit
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../intro/windows-git/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows and symlinks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../migrating-to-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating to rbx v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#time-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Time limits
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Time limits">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#letting-moj-calibrate-instead" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Letting MOJ calibrate instead
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#statements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Statements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#test-groups-and-scoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test groups and scoring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#submission-languages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Submission languages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#checkers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uploading-to-moj" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Uploading to MOJ
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iterating-faster-with-a-single-solution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Iterating faster with a single solution
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#previewing-what-a-contest-uploads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Previewing what a contest uploads
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Previewing what a contest uploads">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#copying-the-list-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Copying the list out
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#downloading-a-submission" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downloading a submission
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Downloading a submission">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#logging-in-to-a-contest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logging in to a contest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-youre-allowed-to-download" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you're allowed to download
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-moj-cli-needs-bash-4-or-newer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The MOJ CLI needs bash 4 or newer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The MOJ CLI needs bash 4 or newer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#if-you-cant-change-your-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If you can't change your PATH
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#my-problem-has-a-tight-outputlimit-but-moj-doesnt-enforce-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        My problem has a tight outputLimit, but MOJ doesn't enforce it
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../../variables/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Feature Guide
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Packaging
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="packaging-moj">Packaging: MOJ<a class="headerlink" href="#packaging-moj" title="Permanent link">#</a></h1>
+<p><a class="rbx" href="">rbx</a> provides a command to build packages for <a href="https://moj.naquadah.com.br">MOJ</a>,
+the judge used by a few Brazilian universities.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>rbx<span class="w"> </span>package<span class="w"> </span>moj
+</span></code></pre></div>
+<p>Or, if you want to build the package for all problems in your contest:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>rbx<span class="w"> </span>each<span class="w"> </span>package<span class="w"> </span>moj
+</span></code></pre></div>
+<p>MOJ has no contest-level package, so <code>rbx each package moj</code> is as far as it goes -- you'll
+get one package per problem.</p>
+<p>Only <strong>batch</strong> problems are supported. Interactive problems are not: MOJ has an interaction
+protocol of its own, which is structurally unlike a <a href="https://codeforces.com/testlib">testlib</a> interactor and doesn't map
+onto one.</p>
+<p>The MOJ packager uses the <code>moj</code> <a href="../../profiling/profiles/">limits profile</a>, so create it with
+<code>rbx time -p moj</code> before packaging.</p>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>You can also point <code>rbx run</code> and <code>rbx time</code> at MOJ itself, and have your solutions run on the
+judge park instead of on your machine. See <a href="../../running/remote/">Running on the judge itself</a>
+and <a href="../../profiling/remote/">Timing on the judge itself</a>.</p>
+</div>
+<h2 id="time-limits">Time limits<a class="headerlink" href="#time-limits" title="Permanent link">#</a></h2>
+<p>MOJ traditionally <strong>measures</strong> the time limit itself: it runs your accepted solutions on the
+judge machine and derives the limit from the worst time it sees.</p>
+<p>By default, <a class="rbx" href="">rbx</a> doesn't let it. It <strong>pins</strong> the limits you estimated with <code>rbx time -p moj</code>
+into the package -- a base limit, plus a per-language limit for every language whose limit
+differs from it. The limit a solution gets on MOJ is then the one you profiled, and the same one
+MOJ shows everywhere it displays a time limit.</p>
+<p>Since the limits come from a profile, packaging <strong>fails</strong> if you haven't created one. That's
+deliberate: falling back to a factor nobody chose is exactly the silent behavior the pinning is
+there to remove.</p>
+<h3 id="letting-moj-calibrate-instead">Letting MOJ calibrate instead<a class="headerlink" href="#letting-moj-calibrate-instead" title="Permanent link">#</a></h3>
+<p>If you'd rather have the limits measured on the judge machine -- which is, after all, the machine
+that will judge the contest -- pass <code>--calibrate</code>:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>rbx<span class="w"> </span>package<span class="w"> </span>moj<span class="w"> </span>--calibrate
+</span></code></pre></div>
+<p>MOJ then measures your accepted solutions and multiplies the worst time by the same ratio
+<a class="rbx" href="">rbx</a> would have used locally, so the limit lands where <code>rbx time</code> would have put it, but
+measured on the judge park.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><code>--calibrate</code> needs <code>timing.multipliers</code> in your <code>env.rbx.yml</code>. A problem that estimates its
+limit through a <a href="../../profiling/computing/">formula</a> defines no such ratio, and packaging
+will tell you so.</p>
+</div>
+<p>Either way, the package is only judgeable <strong>after a judge calibrates it</strong> -- that's a MOJ rule,
+not an <a class="rbx" href="">rbx</a> one. Pinning removes your dependency on <em>what</em> calibration measures, not on it
+running.</p>
+<h2 id="statements">Statements<a class="headerlink" href="#statements" title="Permanent link">#</a></h2>
+<p>MOJ renders statements with pandoc, so <a class="rbx" href="">rbx</a> converts your <a href="/setters/statements/writing">rbxTeX</a> statement into Markdown
+and ships that, together with one file per sample explanation.</p>
+<p>If you have multiple statements, you can pick which one goes into the package with the <code>-l</code> or
+<code>--language</code> flag:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>rbx<span class="w"> </span>package<span class="w"> </span>moj<span class="w"> </span>-l<span class="w"> </span>en
+</span></code></pre></div>
+<p>The rendered problem title comes from the very same statement, so the body and the title can
+never disagree.</p>
+<p>A few things to keep in mind:</p>
+<ul>
+<li>MOJ <strong>builds the examples section itself</strong> from the sample tests, so your statement must not
+  have one of its own. <a class="rbx" href="">rbx</a> refuses to package a statement MOJ would render with warnings,
+  rather than shipping it and letting you find out on the server.</li>
+<li>A problem <strong>without sample tests</strong> packages fine, and its statement simply shows no examples.
+  <a class="rbx" href="">rbx</a> tells MOJ so explicitly, and warns you when it does -- left to its own devices, MOJ
+  would fall back to publishing your first two <em>secret</em> tests as the examples.</li>
+<li>MOJ requires an <strong>input</strong> and an <strong>output</strong> section, and <a class="rbx" href="">rbx</a> always emits them, even when
+  the corresponding block is empty.</li>
+<li>Figures are embedded into the rendered HTML, so a PDF figure (which is what TikZ
+  externalization produces) is rasterized to PNG for you. That needs <code>pdftoppm</code>, from poppler; a
+  statement with PDF figures and no poppler installed refuses to package, naming the figures.</li>
+</ul>
+<h2 id="test-groups-and-scoring">Test groups and scoring<a class="headerlink" href="#test-groups-and-scoring" title="Permanent link">#</a></h2>
+<p>Test groups are supported, and translate into MOJ's own scoring file for problems that score by
+subtasks -- the ones whose <code>scoring</code> is set to <code>points</code> in <code>problem.rbx.yml</code>, with a <code>score</code> per
+group. ICPC-style problems (<code>scoring: binary</code>, the default) ship no scoring file at all: MOJ
+scores them by percentage of tests passed, and <span style="color: green">accepted</span> still requires all of them.</p>
+<p>Two constraints come from MOJ's side, and <a class="rbx" href="">rbx</a> checks both before packaging:</p>
+<ul>
+<li>Group <strong>weights must be integers</strong>. MOJ's parser strips everything that isn't a digit, so a
+  <code>40.5</code> would be read as <code>405</code>.</li>
+<li>Group <strong>names must not contain <code>-</code></strong>, which MOJ uses as a field separator.</li>
+</ul>
+<div class="admonition danger">
+<p class="admonition-title">Per-test partial credit is unavailable</p>
+<p>MOJ reports a <a href="https://codeforces.com/testlib">testlib</a> <code>quitp</code> (a partially correct verdict) as a judge error. If you
+want partial scoring, it has to go through test groups and their weights.</p>
+</div>
+<h2 id="submission-languages">Submission languages<a class="headerlink" href="#submission-languages" title="Permanent link">#</a></h2>
+<p>MOJ keeps a whitelist of the languages a problem accepts, and <a class="rbx" href="">rbx</a> derives it from the
+languages your environment declares in <code>env.rbx.yml</code> -- the same ones it ships compile and run
+scripts for in the package. Packaging prints the list, so you always see what a student may
+submit.</p>
+<p>To take a language off the whitelist, remove it from <code>env.rbx.yml</code>. You don't need an accepted
+solution in a language to enable it: the time limits are pinned from the <code>moj</code> limits profile,
+which covers every language your environment declares.</p>
+<p>The exception is <a href="#letting-moj-calibrate-instead"><code>--calibrate</code></a>, where MOJ
+measures the limits itself -- from the accepted solutions the package ships. A whitelisted
+language with no accepted solution then falls back to the <em>tightest</em> limit MOJ measured,
+usually the C++ one, which no Python submission is going to survive. Packaging warns by name
+when that's the case; the fixes are an accepted solution in that language, or pinning the
+limits with <code>rbx time -p moj</code>.</p>
+<h2 id="checkers">Checkers<a class="headerlink" href="#checkers" title="Permanent link">#</a></h2>
+<p>MOJ compiles the checker in an isolated environment where only the checker itself and
+<a href="https://codeforces.com/testlib">testlib</a> are reachable, so a checker that includes a header of yours -- <code>rbx.h</code> included --
+wouldn't find it, and would report a judge error on <em>every</em> test.</p>
+<p>You don't have to do anything about it: <a class="rbx" href="">rbx</a> amalgamates your checker and everything it
+includes into a single file before shipping it. What it will do is <strong>refuse to package</strong> when
+that isn't possible, rather than hand you a package that fails on every test. The same applies
+to the solutions it ships, since MOJ compiles a submission from a single file too.</p>
+<h2 id="uploading-to-moj">Uploading to MOJ<a class="headerlink" href="#uploading-to-moj" title="Permanent link">#</a></h2>
+<p>You can upload the package by setting the <code>--upload</code> / <code>-u</code> flag:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>rbx<span class="w"> </span>package<span class="w"> </span>moj<span class="w"> </span>-u
+</span></code></pre></div>
+<p>Or, for the whole contest:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Will upload all problems in the contest</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>rbx<span class="w"> </span>each<span class="w"> </span>package<span class="w"> </span>moj<span class="w"> </span>-u
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Will upload only problem A</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>rbx<span class="w"> </span>on<span class="w"> </span>A<span class="w"> </span>package<span class="w"> </span>moj<span class="w"> </span>-u
+</span></code></pre></div>
+<p>Uploading goes through the <a href="https://github.com/cd-moj/moj-cli"><code>moj</code> CLI</a>, so you have to be
+logged in with <code>moj login</code> first. <a class="rbx" href="">rbx</a> reuses that session and never handles your credentials.</p>
+<div class="admonition note">
+<p class="admonition-title">On macOS, check your bash first</p>
+<p>The CLI needs bash 4 or newer, and macOS ships 3.2. Installing a newer bash isn't enough on
+its own -- see <a href="#the-moj-cli-needs-bash-4-or-newer">The MOJ CLI needs bash 4 or newer</a>.</p>
+</div>
+<p>The problem is created on the server if it doesn't exist yet, and is named <code>&lt;org&gt;#&lt;problem&gt;</code>.
+You tell <a class="rbx" href="">rbx</a> which org to use in your <code>env.rbx.yml</code>:</p>
+<div class="language-yaml highlight"><span class="filename">env.rbx.yml</span><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">extensions</span><span class="p">:</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">moj</span><span class="p">:</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">org</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;your-org&quot;</span>
+</span></code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Leave <code>org</code> unset and the package goes to your <strong>own login</strong> -- a private personal org
+nobody else can see. <a class="rbx" href="">rbx</a> warns you when that happens, but it's much better to hear it
+here than from a co-setter.</p>
+</div>
+<p>The org itself is <em>not</em> created for you: uploading to an org that doesn't exist fails.</p>
+<p>Uploading also queues the calibration right after it, whether or not you passed <code>--calibrate</code>:
+a package is only judgeable once a judge has calibrated it, so there's nothing to gain from
+uploading one and leaving it uncalibrated. It's a long server-side job and <a class="rbx" href="">rbx</a> doesn't wait
+for it -- check on it with <code>moj check &lt;org&gt;#&lt;problem&gt;</code> whenever you want.</p>
+<p>The calibration is queued on <strong>every judge in the park</strong>, not just on the first one free. MOJ's
+judges aren't identical machines, and it publishes the time limit as the <em>maximum</em> across the
+judges that calibrated -- so a package measured on one machine is judged, on every other one,
+against a limit nothing ever measured there. Calibrating everywhere makes the published limit
+the one that holds on the slowest judge a submission can land on. When no judge is reachable at
+all, <a class="rbx" href="">rbx</a> says so and falls back to a single calibration rather than leaving your uploaded
+package unjudgeable; re-run <code>moj calibrate &lt;org&gt;#&lt;problem&gt; --all-judges</code> once the park is back.</p>
+<h2 id="iterating-faster-with-a-single-solution">Iterating faster with a single solution<a class="headerlink" href="#iterating-faster-with-a-single-solution" title="Permanent link">#</a></h2>
+<p>Calibration runs <strong>every solution the package ships</strong>: the accepted ones to measure the limits,
+then the rest to check they get the verdict you declared. On a problem with a dozen solutions
+that's the slowest part of an upload, and it's paid again on every re-upload.</p>
+<p>While you're still iterating -- fixing a statement, re-cutting the tests, re-uploading over and
+over -- <code>--reference-only</code> (or <code>-ro</code>) ships just the reference solution, your main one, and
+drops the rest:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>rbx<span class="w"> </span>package<span class="w"> </span>moj<span class="w"> </span>-u<span class="w"> </span>-ro
+</span></code></pre></div>
+<p>Calibration then has exactly one solution to run, which is the minimum MOJ accepts. Everything
+else about the package is unchanged, and your solutions are still all run and checked locally
+before it's built -- what you give up is the judge's own verification of them.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>A package built this way is for iterating, not for the contest. Package again without the
+flag before the problem goes live, so calibration verifies your solutions on the judge --
+and, under <code>--calibrate</code>, so MOJ measures a limit for every language you ship a solution in.</p>
+</div>
+<h2 id="previewing-what-a-contest-uploads">Previewing what a contest uploads<a class="headerlink" href="#previewing-what-a-contest-uploads" title="Permanent link">#</a></h2>
+<p>Uploading a whole contest creates a problem per short name, and a typo in an org or a package
+name is only visible once it's on the judge. <code>rbx tooling moj summary</code> shows you the whole list
+first, from inside the contest directory:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>rbx<span class="w"> </span>tooling<span class="w"> </span>moj<span class="w"> </span>summary
+</span></code></pre></div>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>            MOJ upload summary: my-contest
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>┏━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┓
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>┃ # ┃ Title     ┃ MOJ problem       ┃ Color          ┃
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>┡━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━┩
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>│ A │ A Plus B  │ your-org#a-aplusb │ ● red #ff0000  │
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>│ B │ Chocolate │ your-org#b-choco  │ ● blue #0000ff │
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>└───┴───────────┴───────────────────┴────────────────┘
+</span></code></pre></div>
+<p>One row per problem: its short name in the contest, the title MOJ would display, the
+<code>&lt;org&gt;#&lt;problem&gt;</code> it would be created as, and the color the contest gives it (empty when the
+problem configures none).</p>
+<p>Every value is resolved the way <code>rbx package moj</code> resolves it, so the table is a preview of the
+upload rather than a second guess at it. The title in particular comes from the very statement
+the package would ship -- the topmost declared one, or the one you name with <code>--language</code> / <code>-l</code>:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>rbx<span class="w"> </span>tooling<span class="w"> </span>moj<span class="w"> </span>summary<span class="w"> </span>-l<span class="w"> </span>en
+</span></code></pre></div>
+<p>Nothing is built and nothing is sent to the judge. You don't even need to be logged in, as long
+as <code>extensions.moj.org</code> is set: reading your login is the one thing a session is needed for, and
+that only happens when no org is configured.</p>
+<h3 id="copying-the-list-out">Copying the list out<a class="headerlink" href="#copying-the-list-out" title="Permanent link">#</a></h3>
+<p>Add <code>--porcelain</code> when the list is going somewhere else -- a message to a co-setter, a
+spreadsheet, a shell loop. You get one tab-separated line per problem, no table and no colors:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>rbx<span class="w"> </span>tooling<span class="w"> </span>moj<span class="w"> </span>summary<span class="w"> </span>--porcelain
+</span></code></pre></div>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>A   A Plus B    your-org#a-aplusb   #ff0000 red
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>B   Chocolate   your-org#b-choco    #0000ff blue
+</span></code></pre></div>
+<p>The fields are the table's columns in order: short name, title, MOJ problem, color and color
+name. A problem with no color still has the two (empty) fields, so <code>cut -f3</code> reads the ids of
+every problem no matter how the contest is configured:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>rbx<span class="w"> </span>tooling<span class="w"> </span>moj<span class="w"> </span>summary<span class="w"> </span>--porcelain<span class="w"> </span><span class="p">|</span><span class="w"> </span>cut<span class="w"> </span>-f3
+</span></code></pre></div>
+<p>Warnings go to stderr in this mode, and a problem that couldn't be read is reported there
+instead of taking a line -- so whatever consumes the output never sees a problem pointing at an
+empty id.</p>
+<h2 id="downloading-a-submission">Downloading a submission<a class="headerlink" href="#downloading-a-submission" title="Permanent link">#</a></h2>
+<p>When a contestant's solution does something your testset didn't expect, you usually want to run
+it here rather than read it on the contest page. Point any command that takes a solution at
+<code>@moj/&lt;contest&gt;/&lt;submission&gt;</code> and <a class="rbx" href="">rbx</a> downloads the source into the package:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>rbx<span class="w"> </span>run<span class="w"> </span>@moj/sbc2026/d89e6b7735c675fd7b50b3354ba64097
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>rbx<span class="w"> </span>download<span class="w"> </span>remote<span class="w"> </span>@moj/sbc2026/d89e6b7735c675fd7b50b3354ba64097
+</span></code></pre></div>
+<p>The submission id is the 32-character hexadecimal string MOJ shows beside the submission. The
+downloaded file lands under the package's remote cache and, as with any downloaded code,
+<a class="rbx" href="">rbx</a> shows it to you for review before running it.</p>
+<p>If you work in one contest at a time, set <code>MOJ_CONTEST</code> and drop the contest from the reference:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">MOJ_CONTEST</span><span class="o">=</span>sbc2026
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>rbx<span class="w"> </span>run<span class="w"> </span>@moj/d89e6b7735c675fd7b50b3354ba64097
+</span></code></pre></div>
+<p>Prefer the long form in <code>problem.rbx.yml</code>. A reference you commit is read months later on
+someone else's machine, where nothing says which contest was meant.</p>
+<h3 id="logging-in-to-a-contest">Logging in to a contest<a class="headerlink" href="#logging-in-to-a-contest" title="Permanent link">#</a></h3>
+<p>Downloading needs a session <strong>for that contest</strong>, which is not the one <code>moj login</code> creates --
+that one covers the training area alone. Contest accounts are handed out by whoever runs the
+contest, and they log in through a second CLI, <code>moj-contest</code>:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>moj-contest<span class="w"> </span>login<span class="w"> </span>sbc2026
+</span></code></pre></div>
+<p>Install it alongside <code>moj</code> if you don't have it yet:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>curl<span class="w"> </span>-fLO<span class="w"> </span>https://moj.naquadah.com.br/moj-contest<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>chmod<span class="w"> </span>+x<span class="w"> </span>moj-contest
+</span></code></pre></div>
+<p>As with uploading, <a class="rbx" href="">rbx</a> reuses the session that command establishes and never handles your
+credentials.</p>
+<h3 id="what-youre-allowed-to-download">What you're allowed to download<a class="headerlink" href="#what-youre-allowed-to-download" title="Permanent link">#</a></h3>
+<p><strong>Judges see every submission in the contest.</strong> If your contest account is a judge, a chief
+judge or an admin, any submission id in that contest downloads.</p>
+<p><strong>Everyone else sees only their own.</strong> A submission id that isn't yours is reported as not found
+rather than downloaded, and <a class="rbx" href="">rbx</a> says which of the two cases it hit -- reading someone else's
+code needs a judge account, not a different reference.</p>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">#</a></h2>
+<h3 id="the-moj-cli-needs-bash-4-or-newer">The MOJ CLI needs bash 4 or newer<a class="headerlink" href="#the-moj-cli-needs-bash-4-or-newer" title="Permanent link">#</a></h3>
+<p>If <code>moj</code> greets you with</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>moj: preciso de bash &gt;= 4 (macOS: brew install bash e rode com ele)
+</span></code></pre></div>
+<p>then the CLI is fine and your shell isn't. <code>moj</code> is a bash script that uses features added in
+bash 4, and macOS still ships bash <strong>3.2</strong> as <code>/bin/bash</code> -- it has for well over a decade, and
+it isn't going to change.</p>
+<p>Installing a newer one is only half the fix. <code>moj</code> starts with <code>#!/usr/bin/env bash</code>, so the
+shell that runs it is whichever <code>bash</code> comes <strong>first on your <code>PATH</code></strong> -- and Homebrew installs
+its own without touching the system one. If <code>/opt/homebrew/bin</code> (or <code>/usr/local/bin</code>, on Intel)
+isn't ahead of <code>/bin</code>, you get 3.2 no matter what you installed.</p>
+<p>So put it there, in the file your shell reads on every session:</p>
+<div class="language-bash highlight"><span class="filename">~/.zshrc</span><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="nb">eval</span><span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>/opt/homebrew/bin/brew<span class="w"> </span>shellenv<span class="k">)</span><span class="s2">&quot;</span>
+</span></code></pre></div>
+<p>Then check that you got the one you meant:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>bash<span class="w"> </span>--version<span class="w">   </span><span class="c1"># should say 5.x, not 3.2</span>
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>moj<span class="w"> </span>whoami
+</span></code></pre></div>
+<p><code>moj-contest</code> carries the same requirement, and the same fix covers it.</p>
+<h4 id="if-you-cant-change-your-path">If you can't change your <code>PATH</code><a class="headerlink" href="#if-you-cant-change-your-path" title="Permanent link">#</a></h4>
+<p>Point <a class="rbx" href="">rbx</a> at an interpreter and the script instead:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RBX_MOJ_BINARY</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>brew<span class="w"> </span>--prefix<span class="k">)</span><span class="s2">/bin/bash </span><span class="k">$(</span><span class="nb">command</span><span class="w"> </span>-v<span class="w"> </span>moj<span class="k">)</span><span class="s2">&quot;</span>
+</span></code></pre></div>
+<p><a class="rbx" href="">rbx</a> splits <code>RBX_MOJ_BINARY</code> the way a shell would, so it holds a whole command rather than a
+path. This is a fallback, not the fix: it hard-codes paths that break when you change machines,
+and it does nothing for the times you run <code>moj</code> yourself. Prefer the <code>PATH</code>.</p>
+<h3 id="my-problem-has-a-tight-outputlimit-but-moj-doesnt-enforce-it">My problem has a tight <code>outputLimit</code>, but MOJ doesn't enforce it<a class="headerlink" href="#my-problem-has-a-tight-outputlimit-but-moj-doesnt-enforce-it" title="Permanent link">#</a></h3>
+<p>It doesn't, and that's on purpose. MOJ applies a single file-size limit to both the <em>compilation</em>
+and the <em>execution</em> of a submission, so a problem with a small <code>outputLimit</code> made the linker fail
+to write the executable -- every submission came back as a compilation error without reaching a
+single test.</p>
+<p><a class="rbx" href="">rbx</a> therefore pins that limit high (100 MiB) and accepts the cost: a runaway solution is cut
+off there instead of at your threshold. <a class="rbx" href="">rbx</a> still enforces <code>outputLimit</code> locally, so a
+solution that overruns it shows up in <code>rbx run</code> long before MOJ would say anything.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/rsalesc/rbx" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["content.code.copy", "content.code.annotate", "navigation.sections", "navigation.indexes", "navigation.path", "navigation.expand", "search.highlight", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": {"accepted": "\u003cspan style=\"color: green\"\u003eaccepted\u003c/span\u003e", "wrong_answer": "\u003cspan style=\"color: red\"\u003ewrong answer\u003c/span\u003e"}, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="../../../assets/asciinema-player.min.js"></script>
+      
+        <script src="../../../assets/casts-loop.js"></script>
+      
+        <script src="../../../termynal.js"></script>
+      
+    
+  </body>
+</html>
