@@ -2,10 +2,11 @@ import pathlib
 
 from textual.app import App
 
+from rbx.box.ui.crash_reporting import CrashReportingMixin
 from rbx.box.ui.screens.review import ReviewScreen
 
 
-class rbxReviewApp(App):
+class rbxReviewApp(CrashReportingMixin, App):
     TITLE = 'rbx review'
     CSS_PATH = 'css/app.tcss'
 
