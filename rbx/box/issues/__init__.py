@@ -20,14 +20,13 @@ from rbx.box.issues.config_detectors import CONFIG_DETECTORS, detect_all_config
 from rbx.box.issues.config_state import ConfigState, collect_config_state
 from rbx.box.issues.contest import build_report, collect_contest_rows
 from rbx.box.issues.detectors import DETECTORS, detect_all
+from rbx.box.issues.messages import IssueMessage, explain, message_for, summarize
 from rbx.box.issues.rendering import (
     IssuesFormat,
     contest_to_json,
-    explain,
     print_contest_report,
     print_report,
     severity_marker,
-    summarize,
     to_json,
 )
 from rbx.box.issues.run_state import (
@@ -52,6 +51,7 @@ __all__ = [
     'ContestIssueRow',
     'Issue',
     'IssueFamily',
+    'IssueMessage',
     'IssueReport',
     'IssueSeverity',
     'IssuesFormat',
@@ -65,6 +65,7 @@ __all__ = [
     'detect_all_config',
     'explain',
     'load_run_state',
+    'message_for',
     'print_contest_report',
     'print_report',
     'severity_marker',

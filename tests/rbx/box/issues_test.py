@@ -18,7 +18,14 @@ import yaml
 
 from rbx.box import run_report
 from rbx.box.compilation_findings import CompilationWarning, SolutionCompilation
-from rbx.box.issues import config_detectors, detectors, rendering, run_state, schema
+from rbx.box.issues import (
+    config_detectors,
+    detectors,
+    messages,
+    rendering,
+    run_state,
+    schema,
+)
 from rbx.box.issues import config_state as config_state_module
 from rbx.box.issues.contest import build_report
 from rbx.box.run_report import RunGroupReport, RunReport, RunSolutionReport
@@ -541,6 +548,21 @@ class TestRendering:
         for sample in samples:
             assert rendering.summarize(sample) != 'unknown issue'
             assert sample.severity in tuple(schema.IssueSeverity)
+
+    def test_every_kind_owns_a_message_class(self):
+        """The registry is what makes 'unknown issue' unreachable."""
+        kinds = typing.get_args(typing.get_args(schema.Issue)[0])
+
+        assert set(kinds) <= set(messages.MESSAGES_BY_KIND)
+
+    def test_an_unregistered_kind_is_refused_when_the_module_loads(self):
+        """A new kind is an import error, not an 'unknown issue' in a report."""
+
+        class UnwordedIssue(schema.NoValidatorIssue):
+            pass
+
+        with pytest.raises(RuntimeError, match='UnwordedIssue'):
+            messages.check_coverage([UnwordedIssue])
 
     def test_humanizes_a_missing_timestamp_as_never(self):
         assert rendering.humanize_since(None) == 'never'
