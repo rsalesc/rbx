@@ -4,8 +4,9 @@ import inspect
 from typing import Optional
 
 from textual.binding import Binding
-from textual.dom import DOMNode
 from textual.widgets import Input, TextArea
+
+from rbx.box.ui.dom_mixin import RbxDOMMixin
 
 # Maps a logical direction to (cursor action, scroll fallback action).
 _DIRECTION_ACTIONS = {
@@ -16,7 +17,7 @@ _DIRECTION_ACTIONS = {
 }
 
 
-class VimNavMixin(DOMNode):
+class VimNavMixin(RbxDOMMixin):
     """Adds Vim-style hjkl navigation as an app-level fallback.
 
     Maps h/j/k/l onto the focused widget's existing ``cursor_*`` actions, falling
@@ -24,9 +25,10 @@ class VimNavMixin(DOMNode):
     Textual's binding chain), so any widget that binds these letters wins. They are
     disabled while a text-editing widget is focused, so typing is never hijacked.
 
-    Subclasses ``DOMNode`` so Textual's ``_merge_bindings`` (which only collects
+    Subclasses ``RbxDOMMixin`` so Textual's ``_merge_bindings`` (which only collects
     ``BINDINGS`` from ``DOMNode`` subclasses in the MRO) picks up the hjkl bindings
-    when the mixin is combined with an ``App`` or ``Screen``.
+    when the mixin is combined with an ``App`` or ``Screen`` -- without hiding that
+    host from Textual's CSS base walk (see ``dom_mixin``).
     """
 
     BINDINGS = [

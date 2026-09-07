@@ -10,24 +10,25 @@ restores. It is screen-agnostic -- a screen plugs in by implementing
 ``_extra_predicate`` / ``_extra_filter_labels`` (e.g. the run screen's
 failing-only filter).
 
-Like ``VimNavMixin`` / ``HelpPanelMixin`` it subclasses ``DOMNode`` so Textual
-merges its ``BINDINGS`` into the host screen.
+Like ``VimNavMixin`` / ``HelpPanelMixin`` it subclasses ``RbxDOMMixin`` so Textual
+merges its ``BINDINGS`` into the host screen without hiding that screen from
+Textual's CSS base walk (see ``rbx.box.ui.dom_mixin``).
 """
 
 from typing import Any, Callable, List, Optional, Tuple
 
 from textual import events
 from textual.binding import Binding
-from textual.dom import DOMNode
 from textual.fuzzy import Matcher
 from textual.widgets import Input, OptionList
 
 from rbx.box.generation_schema import GenerationTestcaseEntry
+from rbx.box.ui.dom_mixin import RbxDOMMixin
 
 EntryPredicate = Callable[[GenerationTestcaseEntry], bool]
 
 
-class TestListSearchMixin(DOMNode):
+class TestListSearchMixin(RbxDOMMixin):
     """Search box + goto for a ``#test-list`` OptionList. Mix in before ``Screen``."""
 
     BINDINGS = [
