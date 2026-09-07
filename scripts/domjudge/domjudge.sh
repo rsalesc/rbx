@@ -54,6 +54,8 @@ commands:
   creds                            print URL, admin password, judgehost password
   logs [service] [-f]              tail logs (default: domserver)
   shell [service]                  open a shell in a container (default: domserver)
+  import <zip> [--contest <id>]    import a DOMjudge problem zip (e.g. one from
+              [--problem <id>]     `rbx package domjudge`) into a contest
 
 options:
   --no-judgehost     skip the judgedaemon; submissions then stay PENDING
@@ -63,6 +65,7 @@ options:
 environment:
   DJ_PORT      host port for the web interface (default: 12345)
   DJ_VERSION   image tag for domserver/judgehost (default: latest)
+  DJ_CONTEST   contest to import into (default: demo)
 USAGE
 }
 
@@ -167,6 +170,88 @@ cmd_shell() {
   compose --profile judgehost exec "$service" bash
 }
 
+# Import a DOMjudge problem zip -- e.g. one built by `rbx package domjudge` --
+# into a contest on the running server, via the same REST endpoint DOMjudge's
+# own import-contest uses.
+cmd_import() {
+  local zip='' contest="${DJ_CONTEST:-demo}" problem=''
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --contest)
+        [[ $# -ge 2 ]] || die '--contest needs a contest id'
+        contest="$2"
+        shift 2
+        ;;
+      --problem)
+        [[ $# -ge 2 ]] || die '--problem needs a problem id'
+        problem="$2"
+        shift 2
+        ;;
+      -*) die "unknown option for import: $1" ;;
+      *)
+        [[ -z "$zip" ]] || die 'import takes a single zip file'
+        zip="$1"
+        shift
+        ;;
+    esac
+  done
+
+  [[ -n "$zip" ]] ||
+    die 'usage: domjudge.sh import <package.zip> [--contest <id>] [--problem <id>]'
+  [[ -f "$zip" ]] || die "no such file: $zip"
+  unzip -l "$zip" >/dev/null 2>&1 || die "not a readable zip file: $zip"
+
+  require_docker
+  docker inspect "$DOMSERVER_CONTAINER" >/dev/null 2>&1 ||
+    die 'the domserver container is not running; run "domjudge.sh up" first.'
+
+  local admin
+  admin="$(admin_password)"
+  [[ -n "$admin" ]] || die 'could not read the admin password from the domserver.'
+
+  local url="http://localhost:${DJ_PORT}/api/v4/contests/${contest}/problems"
+  local args=(-sS -u "admin:${admin}" -X POST "$url" -F "zip=@${zip}")
+  # With no --problem, DOMjudge creates a new problem whose id comes from the
+  # zip's filename. --problem overwrites an existing problem instead, and the
+  # id has to already exist (otherwise the API answers "'problem' does not
+  # exist") -- which is what you want when re-importing after a rebuild.
+  [[ -n "$problem" ]] && args+=(-F "problem=${problem}")
+
+  info "importing $(basename "$zip") into contest '${contest}'"
+
+  local body status
+  body="$(curl "${args[@]}" -w '\n%{http_code}' 2>&1)" || die 'the upload request failed.'
+  status="$(printf '%s' "$body" | tail -n 1)"
+  body="$(printf '%s' "$body" | sed '$d')"
+
+  if [[ "$status" != '200' && "$status" != '201' ]]; then
+    printf '%s\n' "$body" >&2
+    die "DOMjudge rejected the import (HTTP ${status})."
+  fi
+
+  printf '%s\n' "$body" | python3 -c '
+import json, sys
+
+raw = sys.stdin.read()
+try:
+    data = json.loads(raw)
+except ValueError:
+    print(raw)
+    sys.exit()
+
+pid = data.get("problem_id")
+if pid:
+    print(f"  problem_id: {pid}")
+for level, entries in (data.get("messages") or {}).items():
+    for entry in entries:
+        print(f"  {level}: {entry}")
+' 2>/dev/null || printf '%s\n' "$body"
+
+  bold 'imported.'
+  echo "  see it at http://localhost:${DJ_PORT}/jury/problems"
+}
+
 main() {
   local cmd="${1:-}"
   [[ $# -gt 0 ]] && shift || true
@@ -183,6 +268,7 @@ main() {
     creds) cmd_creds ;;
     logs) cmd_logs "$@" ;;
     shell) cmd_shell "$@" ;;
+    import|upload) cmd_import "$@" ;;
     ''|-h|--help|help) usage ;;
     *)
       usage >&2

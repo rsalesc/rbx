@@ -43,9 +43,35 @@ the very first `up` (it only affects a fresh database) for an empty install.
 | `creds` | Re-print URL, admin password, judgehost password |
 | `logs [service] [-f]` | Tail logs (default service: `domserver`) |
 | `shell [service]` | Open a shell inside a container |
+| `import <zip> [--contest <id>] [--problem <id>]` | Import a DOMjudge problem zip into a contest |
 
-Environment knobs: `DJ_PORT` (default `12345`) and `DJ_VERSION` (image tag,
-default `latest`).
+Environment knobs: `DJ_PORT` (default `12345`), `DJ_VERSION` (image tag,
+default `latest`) and `DJ_CONTEST` (import target, default `demo`).
+
+## Importing a problem package
+
+`import` uploads a DOMjudge-compatible problem zip -- the kind `rbx package
+domjudge` builds -- into a contest on the running server, through the same REST
+endpoint DOMjudge's own `import-contest` uses:
+
+```bash
+scripts/domjudge/domjudge.sh import path/to/problem.zip
+```
+
+It prints the problem id DOMjudge assigned plus whatever the importer had to
+say, and the problem is immediately submittable and judged.
+
+Two things about the problem id are worth knowing:
+
+- With no `--problem`, DOMjudge **derives the new problem's id from the zip's
+  filename** (`aplusb.zip` becomes problem `aplusb`), not from anything inside
+  the package. Name the file accordingly.
+- `--problem <id>` overwrites an existing problem in place, which is what you
+  want when re-importing after a rebuild. The id has to already exist -- against
+  a fresh id the API answers `Specified 'problem' does not exist`.
+
+`--contest <id>` targets a contest other than `demo`. Both a missing contest and
+a package DOMjudge dislikes surface as the API's own error message.
 
 ## About the judgehost
 
