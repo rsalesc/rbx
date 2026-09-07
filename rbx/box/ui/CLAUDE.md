@@ -263,3 +263,23 @@ The help panel lives in `help_panel.py` (`HelpPanelMixin`, also a `DOMNode` subc
 - `rbx.grading.steps` -- `Evaluation` data model
 
 Also reused by `rbx/box/tooling/boca/ui/app.py` which imports `CodeBox` and `DiffBox`.
+
+## Crash reporting (`crash_reporting.py`)
+
+A crash in a Textual app never reaches the handler in `rbx/box/main.py`. Textual funnels
+every unhandled exception into `App._handle_exception`, which renders a traceback into
+`_exit_renderables` and closes the app down itself -- the exception is consumed there, so
+nothing propagates out of the CLI call. `rbx ui` therefore died without leaving a crash
+report while the top-level hook was already in place.
+
+`CrashReportingMixin` is mixed in **ahead of `App`** by every app in the tree --
+`rbxBaseApp` (so `rbxApp`, `rbxDifferApp`, `RunPickerApp`, `rbxCommandApp`),
+`rbxReviewApp`, and `BocaRunsApp` in `tooling/boca/ui/app.py`. It calls
+`rbx.crash.report_crash` and then delegates downwards, so an app that recognizes an error
+and handles it -- as `rbxBaseApp` does for `RbxException` and `typer.Exit` -- returns
+before reaching the mixin and is never reported. **A new `App` subclass that forgets the
+mixin crashes silently**; `test_crash_reporting.py` asserts every one of them carries it.
+
+The path is printed by overriding `_print_error_renderables`, not by appending to
+`_exit_renderables`: Textual prints only the *first* of those and collapses the rest into
+a "1 of N errors shown" note, so an appended hint would never be seen.
