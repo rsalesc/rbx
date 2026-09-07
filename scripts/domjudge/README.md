@@ -35,7 +35,7 @@ the very first `up` (it only affects a fresh database) for an empty install.
 
 | Command | What it does |
 | --- | --- |
-| `up [--with-judgehost] [--bare]` | Start mariadb + domserver, wait until healthy, print credentials |
+| `up [--no-judgehost] [--bare]` | Start the full stack, wait until healthy, print credentials |
 | `down [--volumes]` | Stop the containers; `--volumes` also drops the database |
 | `nuke` | `down --volumes` -- start over from scratch next time |
 | `restart` | `down` then `up` |
@@ -49,22 +49,21 @@ default `latest`).
 
 ## About the judgehost
 
-`up` starts only the web server and its database. That is enough to browse the
-interface, import problems, and drive the REST API, but submissions sit at
-`PENDING` because nothing judges them.
+`up` starts a judgedaemon along with the server, so submissions are actually
+judged. Pass `--no-judgehost` to skip it; submissions then sit at `PENDING`,
+which is fine if you only care about the web interface or the REST API.
 
-`up --with-judgehost` also starts a judgedaemon. The script reads the generated
-judgehost password out of the domserver's `restapi.secret` and passes it to the
-judgehost container, so no manual credential wiring is needed. The catch is
-that a judgedaemon needs a **privileged container with the host's cgroups**
-(`/sys/fs/cgroup`) and specific kernel boot parameters; in practice it only
-works on Linux. On macOS and Windows Docker Desktop the container starts and
-then fails to claim cgroups -- the script warns and starts it anyway, and
-`domjudge.sh logs judgehost` will show why it gave up.
+The judgedaemon needs three things, all set in the compose file: a privileged
+container, the host's cgroup namespace (`cgroup: host` -- without it the
+daemon exits at startup complaining about a missing cgroup hierarchy prefix),
+and `/sys/fs/cgroup` mounted. The generated judgehost password is read out of
+the domserver's `restapi.secret` by the script and injected into the judgehost
+container, so there is no manual credential wiring.
 
-For judging on a non-Linux host, run the whole thing inside a Linux VM (with
-`systemd.unified_cgroup_hierarchy=0` and the cgroup memory/swap accounting
-parameters DOMjudge's docs list) rather than on Docker Desktop.
+This works on Docker Desktop for Mac (verified on Apple silicon, DOMjudge
+9.0.0): a correct C submission to the demo `hello` problem gets `AC` and a
+wrong one gets `WA`. Judging is slower than native because the images are
+emulated, but it is correct.
 
 ## Troubleshooting
 

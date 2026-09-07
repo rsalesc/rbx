@@ -61,9 +61,12 @@ services:
       retries: 180
       start_period: 30s
 
-  # Only started with `domjudge.sh up --with-judgehost` (compose profile).
-  # Needs a privileged container and host cgroups, so it is Linux-only in
-  # practice -- see the README.
+  # Started by default by `domjudge.sh up` (skip it with --no-judgehost).
+  #
+  # It stays behind a compose profile because it cannot simply be brought up
+  # alongside the others: the domserver generates the judgehost password on
+  # first boot, so the script has to read it back and inject it here once the
+  # server is healthy.
   judgehost:
     image: domjudge/judgehost:${DJ_VERSION:-latest}
     container_name: rbx-dj-judgehost-0
@@ -73,6 +76,9 @@ services:
       domserver:
         condition: service_healthy
     privileged: true
+    # The judgedaemon puts each submission in its own cgroup, which it can only
+    # do if it sees the host's cgroup hierarchy rather than a namespaced one.
+    cgroup: host
     hostname: judgedaemon-0
     environment:
       CONTAINER_TIMEZONE: ${DJ_TIMEZONE:-UTC}
@@ -81,7 +87,6 @@ services:
       JUDGEDAEMON_USERNAME: judgehost
       # Injected by domjudge.sh, read out of the domserver's restapi.secret.
       JUDGEDAEMON_PASSWORD: ${DJ_JUDGEDAEMON_PASSWORD:-password}
-      DOMJUDGE_CREATE_WRITABLE_TEMP_DIR: 1
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup
 
