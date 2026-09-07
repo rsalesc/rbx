@@ -30,3 +30,32 @@ scenarios:
               tests/3: ml+re
               tests/4: ml+re
               tests/5: ml+re
+
+  - name: package-domjudge
+    description: >
+      DOMjudge runs a single validator program, so this package -- whose
+      interactor is a legacy one, writing an output a separate checker
+      grades -- can only be shipped by chaining the two. The scenario pins
+      the shape that chaining takes: `validation: custom interactive` (which
+      is what makes DOMjudge treat the validator as the problem's *run*
+      script and hand it a pipe to the submission), both programs under
+      `output_validators/`, and a `build` that compiles each and writes the
+      `run` bridge between them.
+    steps:
+      - cmd: package domjudge
+        expect:
+          zip_contains:
+            path: build/*.zip
+            entries:
+              - output_validators/interactor.cpp
+              - output_validators/checker.cpp
+              - output_validators/build
+              - output_validators/testlib.h
+          zip_file_contains:
+            path: build/*.zip
+            entries:
+              problem.yaml: "validation: custom interactive"
+              # Compiles both, then writes the bridge that runs the
+              # interactor against the submission and feeds its output to
+              # the checker.
+              output_validators/build: "/(?ms)-o interactor interactor\\.cpp.*-o checker checker\\.cpp.*interactor\" \"\\$1\" \"\\$OUT\".*checker\" \"\\$1\" \"\\$2\" \"\\$3\" <\"\\$OUT\"/"

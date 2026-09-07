@@ -17,8 +17,8 @@ and limitations:
 +-------------------------+---------------------+-----------------------------------------------------------+
 | [DOMjudge](domjudge.md) | DOMjudge            |                                                           |
 |                         |                     | :white_check_mark: Batch problems                         |
+|                         |                     | :white_check_mark: Interactive problems                   |
 |                         |                     | :white_check_mark: Solution verification                  |
-|                         |                     | :x: Interactive problems                                  |
 |                         |                     | :x: Test grouping                                         |
 |                         |                     | :x: Limits per language                                   |
 |                         |                     | :x: Package upload                                        |

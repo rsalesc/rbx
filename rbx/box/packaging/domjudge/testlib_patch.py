@@ -51,10 +51,25 @@ void registerInteraction(int argc, char *argv[]) {
         appesMode = false;
     }
 
+    // Added by rbx: a legacy interactor is chained into a separate checker,
+    // which reads the interactor's own output as a real file, so that output
+    // cannot be folded into the feedback directory. The argument order is
+    // testlib's original one: <input> <output> <answer> <feedbackdir>.
+    if (argc == 5) {
+        resultName = std::string(argv[4]) + "/judgemessage.txt";
+        tout.open(argv[2], std::ios_base::out);
+        if (tout.fail() || !tout.is_open())
+            quit(_fail, "Can not write to the test-output-file '" +
+                        std::string(argv[2]) + "'");
+        appesMode = false;
+    }
+
     inf.init(argv[1], _input);
 
     ouf.init(stdin, _output);
-    if (argc >= 3)
+    if (argc == 5)
+        ans.init(argv[3], _answer);
+    else if (argc >= 3)
         ans.init(argv[2], _answer);
     else
         ans.name = "unopened answer stream";
