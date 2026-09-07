@@ -74,3 +74,13 @@ parameters DOMjudge's docs list) rather than on Docker Desktop.
   idempotent.
 - **Weird state after upgrading `DJ_VERSION`.** The database schema is tied to
   the image version; `domjudge.sh nuke` and start over.
+- **`MySQL server has gone away` during the first install.** The compose file
+  already raises mariadb's `max_allowed_packet` to 512M, which is what the
+  demo problem import needs; if you changed that, put it back.
+
+## A note on Apple silicon
+
+DOMjudge only publishes amd64 images, so on an M-series Mac everything runs
+emulated. It works -- the first `up` just takes a few minutes rather than
+seconds -- and the compose file pins `platform: linux/amd64` so the behaviour
+is the same everywhere.

@@ -10,7 +10,13 @@ services:
   mariadb:
     image: mariadb:10.11
     container_name: rbx-dj-mariadb
-    command: --max-connections=1000
+    # max-allowed-packet has to be generous: DOMjudge ships demo problems whose
+    # test data exceeds the 16M default, and the import dies mid-way with
+    # "MySQL server has gone away" if it is left alone.
+    command: >-
+      --max-connections=1000
+      --max-allowed-packet=512M
+      --wait-timeout=28800
     environment:
       MYSQL_ROOT_PASSWORD: ${DJ_MYSQL_ROOT_PASSWORD:-rootpw}
       MYSQL_USER: ${DJ_MYSQL_USER:-domjudge}
@@ -27,6 +33,10 @@ services:
   domserver:
     image: domjudge/domserver:${DJ_VERSION:-latest}
     container_name: rbx-dj-domserver
+    # DOMjudge only publishes amd64 images, so this runs under emulation on
+    # Apple silicon. Stating it explicitly keeps the behaviour the same
+    # everywhere (and silences the platform-mismatch warning).
+    platform: linux/amd64
     depends_on:
       mariadb:
         condition: service_healthy
@@ -46,7 +56,10 @@ services:
         ['CMD-SHELL', 'curl -fsS http://localhost/public > /dev/null || exit 1']
       interval: 5s
       timeout: 5s
-      retries: 60
+      # The first boot installs the database and imports the demo contest,
+      # which is slow when the amd64 image runs emulated. Allow ~15 minutes.
+      retries: 180
+      start_period: 30s
 
   # Only started with `domjudge.sh up --with-judgehost` (compose profile).
   # Needs a privileged container and host cgroups, so it is Linux-only in
@@ -54,6 +67,7 @@ services:
   judgehost:
     image: domjudge/judgehost:${DJ_VERSION:-latest}
     container_name: rbx-dj-judgehost-0
+    platform: linux/amd64
     profiles: ['judgehost']
     depends_on:
       domserver:
