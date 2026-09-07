@@ -41,6 +41,26 @@ is also why the `KeyboardInterrupt` suppression in
 knowing.) The `try` block is the seam that survives, because typer re-raises
 into it.
 
+## The Textual apps need their own hook
+
+A crash inside a Textual app never reaches `app()` at all. Textual funnels every
+unhandled exception into `App._handle_exception`, which renders a traceback into
+`_exit_renderables` and closes the app down itself. The exception is consumed
+there; nothing propagates out of the CLI call. This is why `rbx ui` crashed
+without leaving a report while the top-level hook was already in place.
+
+`rbx/box/ui/crash_reporting.py` provides a `CrashReportingMixin`, mixed in ahead
+of `App` by every app in the tree. `_handle_exception` reports and then delegates
+downwards, so an app that recognizes an error and handles it -- as `rbxBaseApp`
+does for `RbxException` and `typer.Exit` -- returns before reaching the mixin and
+never reports.
+
+The hint cannot be appended to `_exit_renderables`: Textual's
+`_print_error_renderables` prints only the *first* of them and collapses the rest
+into a "1 of N errors shown" note, so an appended hint would never be seen. The
+mixin overrides that method instead, printing the path to the same console right
+after the traceback, once the app is down and the terminal is back.
+
 ## Format
 
 Markdown with a YAML frontmatter block. The frontmatter is a clean parse target;
