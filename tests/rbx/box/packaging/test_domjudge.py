@@ -314,3 +314,103 @@ def test_package_smoke(testing_pkg, tmp_path):
         assert 'problem.pdf' in names
         assert 'submissions/accepted/ac.cpp' in names
         assert zf.read('problem.pdf') == b'%PDF-fake'
+
+
+def test_submissions_are_amalgamated(testing_pkg, tmp_path):
+    # DOMjudge compiles a jury solution the way it compiles a contestant's: from a
+    # single file, with no local headers beside it. A solution pulling in one has
+    # to be reduced to a self-contained translation unit or it fails on the judge.
+    testing_pkg.add_file('lib.h').write_text('#pragma once\nint k() { return 1; }\n')
+    testing_pkg.add_solution('sols/ac.cpp', ExpectedOutcome.ACCEPTED).write_text(
+        '#include "lib.h"\nint main() { return k() - 1; }\n'
+    )
+    testing_pkg.save()
+
+    packager = DomjudgePackager(testcase_entries=[])
+    submissions_dir = tmp_path / 'submissions'
+    packager._write_submissions(submissions_dir)  # noqa: SLF001
+
+    shipped = (submissions_dir / 'accepted' / 'ac.cpp').read_text()
+    assert 'int k() { return 1; }' in shipped
+    assert '#include "lib.h"' not in shipped
+
+
+def test_submissions_amalgamate_the_rbx_header(testing_pkg, tmp_path):
+    # `rbx.h` is injected beside a source locally but is not on the judge, so a
+    # solution that includes it only compiles there once it is inlined.
+    testing_pkg.add_solution('sols/ac.cpp', ExpectedOutcome.ACCEPTED).write_text(
+        '#include "rbx.h"\nint main() {}\n'
+    )
+    testing_pkg.save()
+
+    packager = DomjudgePackager(testcase_entries=[])
+    submissions_dir = tmp_path / 'submissions'
+    packager._write_submissions(submissions_dir)  # noqa: SLF001
+
+    shipped = (submissions_dir / 'accepted' / 'ac.cpp').read_text()
+    assert '#include "rbx.h"' not in shipped
+    assert 'namespace rbx {' in shipped
+
+
+def test_mixed_submissions_are_amalgamated_before_annotation(testing_pkg, tmp_path):
+    # The @EXPECTED_RESULTS@ annotation goes onto the amalgamated source, so a
+    # `mixed/` solution is as self-contained as a standard-directory one.
+    testing_pkg.add_file('lib.h').write_text('#pragma once\nint k() { return 1; }\n')
+    testing_pkg.add_solution('sols/any.cpp', ExpectedOutcome.ANY).write_text(
+        '#include "lib.h"\nint main() { return k() - 1; }\n'
+    )
+    testing_pkg.save()
+
+    packager = DomjudgePackager(testcase_entries=[])
+    submissions_dir = tmp_path / 'submissions'
+    packager._write_submissions(submissions_dir)  # noqa: SLF001
+
+    shipped = (submissions_dir / 'mixed' / 'any.cpp').read_text()
+    assert 'int k() { return 1; }' in shipped
+    assert '#include "lib.h"' not in shipped
+    assert shipped.endswith(
+        '// @EXPECTED_RESULTS@: CORRECT, WRONG-ANSWER, TIMELIMIT, RUN-ERROR, OUTPUT-LIMIT, NO-OUTPUT\n'
+    )
+
+
+def test_single_file_submission_is_shipped_verbatim(testing_pkg, tmp_path):
+    # Amalgamation must not perturb a solution that already is one file.
+    source = '#include <bits/stdc++.h>\nint main() { return 0; }\n'
+    testing_pkg.add_solution('sols/ac.cpp', ExpectedOutcome.ACCEPTED).write_text(source)
+    testing_pkg.save()
+
+    packager = DomjudgePackager(testcase_entries=[])
+    submissions_dir = tmp_path / 'submissions'
+    packager._write_submissions(submissions_dir)  # noqa: SLF001
+
+    # A system include is left alone; the file is byte-identical.
+    assert (submissions_dir / 'accepted' / 'ac.cpp').read_text() == source
+
+
+def test_submission_that_cannot_be_amalgamated_is_an_error(testing_pkg, tmp_path):
+    # `submissions/` carries one file per solution, and rbx can only amalgamate
+    # C/C++. A Python solution importing a sibling module would ship as a lone
+    # file that cannot run, so it fails at package time instead.
+    testing_pkg.add_file('sols/helper.py').write_text('def k():\n    return 1\n')
+    testing_pkg.add_solution('sols/ac.py', ExpectedOutcome.ACCEPTED).write_text(
+        'from helper import k\nprint(k())\n'
+    )
+    testing_pkg.save()
+
+    packager = DomjudgePackager(testcase_entries=[])
+    with pytest.raises(typer.Exit):
+        packager._write_submissions(tmp_path / 'submissions')  # noqa: SLF001
+
+
+def test_self_contained_interpreted_submission_is_shipped(testing_pkg, tmp_path):
+    # The multi-file guard must not fire on a language rbx cannot amalgamate but
+    # whose solution is already one file.
+    source = 'print(1)\n'
+    testing_pkg.add_solution('sols/ac.py', ExpectedOutcome.ACCEPTED).write_text(source)
+    testing_pkg.save()
+
+    packager = DomjudgePackager(testcase_entries=[])
+    submissions_dir = tmp_path / 'submissions'
+    packager._write_submissions(submissions_dir)  # noqa: SLF001
+
+    assert (submissions_dir / 'accepted' / 'ac.py').read_text() == source

@@ -6,8 +6,10 @@ from typing import Dict, List, Optional, Set
 import typer
 import yaml
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import code, environment, header, limits_info, naming, package
+from rbx.box.dependencies import graph as deps_graph
+from rbx.box.dependencies.amalgamation import AmalgamationError, amalgamate
 from rbx.box.formatting import href
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging import flattening
@@ -75,6 +77,10 @@ _STANDARD_DIRS: Dict[str, str] = {
 # verdict token: DOMjudge keeps the annotation verbatim (multiple acceptable
 # verdicts) instead of collapsing it to the directory's single verdict.
 _MIXED_DIR = 'mixed'
+
+# Suffixes rbx knows how to reduce to a single translation unit. A solution in
+# any other language has to already be one file.
+_AMALGAMATABLE_SUFFIXES = {'.c', '.cc', '.cpp', '.cxx'}
 
 
 def _fmt_seconds(ms: int) -> str:
@@ -224,6 +230,61 @@ class DomjudgePackager(BasePackager):
         kinds = environment.language_kinds(code.find_language(solution))
         return '#' if LanguageKind.PYTHON in kinds else '//'
 
+    def _builtin_header_roots(self) -> List[pathlib.Path]:
+        """Directories holding the headers rbx injects beside a source.
+
+        These are what make `rbx.h` inlinable into a solution; the amalgamator
+        itself knows nothing about them.
+        """
+        return [get_testlib().parent, header.get_header().parent]
+
+    def _solution_content(self, solution: Solution) -> bytes:
+        """The bytes to ship for a solution.
+
+        DOMjudge compiles a jury solution exactly as it compiles a contestant's
+        submission: from a single file, with none of the headers rbx injects
+        beside a source locally. A C/C++ solution that pulls in `rbx.h` or a
+        local header is therefore amalgamated first -- shipped as-is it would
+        build here and fail to compile on the judge. Other languages have no
+        amalgamator, so a multi-file closure is an error rather than a package
+        whose submissions cannot build: `submissions/` holds one file per
+        solution, so any dependency that resolves is one the judge will not have.
+        """
+        if solution.path.suffix.lower() in _AMALGAMATABLE_SUFFIXES:
+            try:
+                result = amalgamate(
+                    utils.abspath(solution.path),
+                    extra_roots=self._builtin_header_roots(),
+                )
+            except AmalgamationError as e:
+                console.console.print(
+                    f'[error]Cannot package {solution.href()} for DOMjudge.[/error]\n'
+                    f'[error]{e}[/error]\n'
+                    '[error]DOMjudge compiles a submission from a single file, so it '
+                    'must reduce to one self-contained translation unit.[/error]'
+                )
+                raise typer.Exit(1) from e
+            return result.content
+
+        # Deliberately unfiltered by dependency kind: an interpreted language
+        # reports its imports as EXECUTION, not COMPILATION, so filtering on the
+        # latter would let a Python solution importing a sibling module through
+        # as a lone file that cannot run on the judge.
+        graph = deps_graph.expand(solution)
+        if graph is not None and len(graph.nodes) > 1:
+            deps = ', '.join(
+                str(path)
+                for path in sorted(graph.nodes)
+                if path != package.get_relative_source_path(solution)
+            )
+            console.console.print(
+                f'[error]Cannot package {solution.href()} for DOMjudge: it depends on '
+                f'[item]{deps}[/item], but DOMjudge builds a submission from a '
+                'single file and rbx cannot amalgamate this language.[/error]'
+            )
+            raise typer.Exit(1)
+        return solution.path.read_bytes()
+
     def _write_submissions(self, into_path: pathlib.Path):
         # DOMjudge auto-judges these on import and surfaces any verdict mismatch
         # on the jury "Judging verifier" page, so every rbx solution ships with a
@@ -240,15 +301,17 @@ class DomjudgePackager(BasePackager):
                 name = '__'.join(solution.path.parts)
             used_names.add(name)
 
+            content = self._solution_content(solution)
+
             if standard_dir is not None:
                 dest_path = into_path / standard_dir / name
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy(str(solution.path), dest_path)
+                dest_path.write_bytes(content)
                 continue
 
             dest_path = into_path / _MIXED_DIR / name
             dest_path.parent.mkdir(parents=True, exist_ok=True)
-            source = solution.path.read_text()
+            source = content.decode()
             if source and not source.endswith('\n'):
                 source += '\n'
             annotation = (
