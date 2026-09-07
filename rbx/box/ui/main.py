@@ -12,6 +12,7 @@ from textual.widgets import Footer, Header, OptionList
 from rbx import console
 from rbx.box import remote
 from rbx.box.exception import RbxException
+from rbx.box.ui.crash_reporting import CrashReportingMixin
 from rbx.box.ui.help_panel import HelpPanelMixin
 from rbx.box.ui.screens.differ import DifferScreen
 from rbx.box.ui.screens.error_modal import ErrorModal
@@ -27,7 +28,7 @@ SCREEN_OPTIONS = [
 ]
 
 
-class rbxBaseApp(VimNavMixin, HelpPanelMixin, App):
+class rbxBaseApp(VimNavMixin, HelpPanelMixin, CrashReportingMixin, App):
     BINDING_GROUP_TITLE = 'Global'
 
     def run(self, *args, **kwargs):

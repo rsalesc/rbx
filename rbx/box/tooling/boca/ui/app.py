@@ -25,6 +25,7 @@ from rbx.box.tooling.boca.scraper import (
     BocaScraper,
     get_boca_scraper,
 )
+from rbx.box.ui.crash_reporting import CrashReportingMixin
 from rbx.box.ui.widgets.code_box import CodeBox
 from rbx.box.ui.widgets.diff_box import DiffBox
 from rbx.config import get_app_path
@@ -37,7 +38,7 @@ def _format_time(minutes: int) -> str:
     return f'{hours:02d}:{mins:02d}'
 
 
-class BocaRunsApp(App):
+class BocaRunsApp(CrashReportingMixin, App):
     CSS_PATH = None
 
     # Compact layout styling for filters, mode indicator and teams panel

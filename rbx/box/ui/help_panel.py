@@ -10,9 +10,10 @@ from rich.table import Table
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.dom import DOMNode
 from textual.widgets import Input, TextArea
 from textual.widgets._key_panel import BindingsTable, KeyPanel
+
+from rbx.box.ui.dom_mixin import RbxDOMMixin
 
 
 class _TitledBindingsTable(BindingsTable):
@@ -107,7 +108,7 @@ class RbxHelpPanel(KeyPanel):
         yield _TitledBindingsTable(shrink=True, expand=False)
 
 
-class HelpPanelMixin(DOMNode):
+class HelpPanelMixin(RbxDOMMixin):
     """Adds a ``?`` binding that toggles the rbx help panel.
 
     Lives at the app level (like ``VimNavMixin``) so the binding is available on
@@ -119,8 +120,9 @@ class HelpPanelMixin(DOMNode):
     stock ``HelpPanel`` so it can hide the obvious built-in navigation bindings
     that have no ``BINDING_GROUP_TITLE``.
 
-    Subclasses ``DOMNode`` so Textual's ``_merge_bindings`` collects ``BINDINGS``
-    when the mixin is combined with an ``App``.
+    Subclasses ``RbxDOMMixin`` so Textual's ``_merge_bindings`` collects
+    ``BINDINGS`` when the mixin is combined with an ``App``, without hiding that
+    ``App`` from Textual's CSS base walk (see ``dom_mixin``).
     """
 
     BINDINGS = [

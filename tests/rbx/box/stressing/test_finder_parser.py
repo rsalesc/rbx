@@ -276,8 +276,28 @@ class TestParseFunction:
         testing_pkg.save()
 
         reference = Solution(path='nonexistent.cpp')
-        with pytest.raises((typer.Exit, lark.exceptions.VisitError)):
+        with pytest.raises(typer.Exit):
             parse('nonexistent.cpp', reference_solution=reference)
+
+    def test_parse_validation_fails_for_missing_solution_in_expression(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        """Test that a missing solution fails cleanly even alongside existing ones.
+
+        The solution resolver runs inside a lark Transformer, which wraps any
+        exception raised by a callback. The clean `typer.Exit` must still reach
+        the caller instead of lark's `VisitError`.
+        """
+        testing_pkg.add_solution(
+            'sol.cpp', outcome=ExpectedOutcome.ACCEPTED
+        ).write_text('#include <iostream>\nint main() { return 0; }')
+        testing_pkg.set_checker('checker.cpp', src='checkers/checker.cpp')
+        testing_pkg.save()
+
+        reference = Solution(path='sol.cpp')
+        with pytest.raises(typer.Exit) as exc_info:
+            parse('sol.cpp && nonexistent.cpp', reference_solution=reference)
+        assert exc_info.value.exit_code == 1
 
     def test_parse_validation_fails_for_missing_checker(
         self, testing_pkg: testing_package.TestingPackage
@@ -870,7 +890,7 @@ class TestParseTreeMethods:
         testing_pkg.save()
 
         # parse() runs the resolver which calls expand_solutions,
-        # failing for non-existent solutions (wrapped in VisitError by Lark).
+        # failing for non-existent solutions.
         reference = Solution(path='nonexistent.cpp')
-        with pytest.raises((typer.Exit, lark.exceptions.VisitError)):
+        with pytest.raises(typer.Exit):
             parse('nonexistent.cpp', reference_solution=reference)

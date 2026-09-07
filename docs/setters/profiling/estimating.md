@@ -224,5 +224,5 @@ wherever the argument about a time limit is happening.
 ## Every flag
 
 The sections above cover the flags worth explaining. For the exhaustive list, with its short
-forms and defaults, see [`rbx time` in the CLI reference](../reference/cli.md#time-t) — it is
+forms and defaults, see [`rbx time` in the CLI reference](../reference/cli.md#rbx-time) — it is
 generated from the command itself, so it cannot fall behind.

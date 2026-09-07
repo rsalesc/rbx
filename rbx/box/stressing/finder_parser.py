@@ -441,6 +441,12 @@ def parse(
     expression: str, reference_solution: Optional[Solution] = None
 ) -> lark.ParseTree:
     tree = LARK_PARSER.parse(expression)
-    tree = FinderSolutionResolver().transform(tree)
+    try:
+        tree = FinderSolutionResolver().transform(tree)
+    except lark.exceptions.VisitError as e:
+        # Surface the underlying error (e.g. a non-existing solution, which exits
+        # with a clean message) instead of lark's wrapper, which would reach the
+        # CLI as an unhandled traceback.
+        raise e.orig_exc from None
     validate(tree, reference_solution)
     return tree
