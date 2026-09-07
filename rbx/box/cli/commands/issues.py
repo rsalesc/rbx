@@ -3,13 +3,20 @@
 Registered lazily from `rbx.box.cli.ENTRIES`, so this module is imported
 only when the command is invoked. A command added here needs a row there too.
 
-Kept apart from `run.py` on purpose: this reads two YAML files and prints, and
-sharing a module with `rbx run` would make it pay for the whole solution-running
-import graph on every invocation.
+Kept apart from `run.py` on purpose: sharing a module with `rbx run` would make
+it pay for the whole solution-running import graph on every invocation.
+
+It is no longer the near-instant command it was, though. Config checks need a
+loaded package and the extracted testcases, which is the cost `rbx summary`
+already pays. Gating them behind a flag was rejected: a flag defaulting to off
+means the two commands disagree about the same package by default, and the
+setter who most needs "you have no accepted solution" is the least likely to
+have found the flag. See docs/plans/2026-08-31-config-issues-design.md.
 """
 
 from typing import Annotated
 
+import syncer
 import typer
 
 from rbx import annotations, console
@@ -22,10 +29,11 @@ app = typer.Typer(cls=annotations.AliasGroup)
 @app.command(
     'issues',
     rich_help_panel='Testing',
-    help='Show what the last run revealed about the problem.',
+    help='Show what is wrong with the problem, before and after a run.',
 )
 @package.within_problem
-def issues_cmd(
+@syncer.sync
+async def issues_cmd(
     detailed: Annotated[
         bool,
         typer.Option(
@@ -42,8 +50,13 @@ def issues_cmd(
         ),
     ] = IssuesFormat.RICH,
 ):
+    config_state = await issues.collect_config_state(
+        package.find_problem_package_or_die()
+    )
     try:
-        report = issues.build_report(package.get_problem_runs_dir())
+        report = issues.build_report(
+            package.get_problem_runs_dir(), config_state=config_state
+        )
     except issues.UnsupportedReportVersion as exception:
         console.console.print(f'[error]{exception}[/error]')
         raise typer.Exit(1) from exception

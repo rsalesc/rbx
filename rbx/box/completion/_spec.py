@@ -319,6 +319,15 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'How to print the summary. Use `json` to consume it from a '
+                    'tool.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--format'],
+                    'takes_value': True,
+                    'value': {'choices': ['rich', 'json'], 'kind': 'choice'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,
@@ -329,7 +338,7 @@ SPEC = {
             ],
         },
         {
-            'help': 'Show what the last run revealed about the...',
+            'help': 'Show what is wrong with the problem,...',
             'is_group': False,
             'name': 'issues',
             'panel': 'Testing',
@@ -2652,7 +2661,7 @@ SPEC = {
                     ],
                 },
                 {
-                    'help': "Show what each problem's last run revealed.",
+                    'help': 'Show what is wrong with each problem,...',
                     'is_group': False,
                     'name': 'issues',
                     'panel': None,

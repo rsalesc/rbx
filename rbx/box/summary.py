@@ -1,15 +1,36 @@
+from enum import Enum
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from rbx import console
-from rbx.box import cd, package, package_utils, testcase_extractors
+from rbx.box import cd, issues, package, package_utils, testcase_extractors
 from rbx.box.contest.schema import Contest
 from rbx.box.formatting import get_formatted_memory, get_formatted_time
 from rbx.box.generation_schema import GenerationTestcaseEntry
+from rbx.box.issues import Issue
 from rbx.box.schema import ExpectedOutcome, Package, Solution, TaskType
+
+# Independent of `ISSUES_FORMAT_VERSION` on purpose: the `ProblemSummary` shape
+# and the `Issue` shape change for unrelated reasons, and pinning both to one
+# number would make every bump lie about the other half of the payload.
+SUMMARY_FORMAT_VERSION = 1
+
+
+class SummaryFormat(str, Enum):
+    """How to print a summary.
+
+    Spelled the way `IssuesFormat` is, so a reader who learned `--format json`
+    on one command does not have to learn it again on the other.
+    """
+
+    RICH = 'rich'
+    JSON = 'json'
+
 
 # --- Data models ---
 
@@ -49,6 +70,19 @@ class ContestProblemSummary(BaseModel):
     flags: ProblemFlags
     solution_counts_bucketed: Dict[ExpectedOutcome, int]
     total_solutions: int
+
+
+class SummaryOutput(BaseModel):
+    """`rbx summary --format json`, as a versioned contract.
+
+    The summary and the checks travel together because they answer the same
+    question about the same package, and a tool that had to call two commands to
+    get both would be reading two different moments of the working tree.
+    """
+
+    version: int = SUMMARY_FORMAT_VERSION
+    summary: ProblemSummary
+    issues: List[Issue] = []
 
 
 # --- Pure functions ---
@@ -156,6 +190,12 @@ def get_contest_problem_summary(
     )
 
 
+def summary_to_json(summary: ProblemSummary, config_issues: List[Issue]) -> str:
+    return SummaryOutput(summary=summary, issues=config_issues).model_dump_json(
+        indent=2
+    )
+
+
 # --- Rendering helpers ---
 
 
@@ -182,8 +222,40 @@ def _get_flags_short(flags: ProblemFlags) -> str:
 # --- Printing functions ---
 
 
+def print_checks_section(config_issues: List[Issue], detailed: bool = False) -> None:
+    """What is wrong with this problem before it is ever run.
+
+    Printed in the shape `rbx issues` uses, down to the marker and the wording,
+    because it is the same finding: both go through `issues.summarize`, so the
+    two commands cannot come to describe one problem two ways.
+
+    Nothing at all when there is nothing to say -- an empty `Checks` heading
+    reads as a section that failed to load rather than as a clean package.
+    """
+    if not config_issues:
+        return
+    console.console.print()
+    console.console.print('[bold]Checks[/bold]')
+    for issue in config_issues:
+        console.console.print(
+            f'{issues.severity_marker(issue)} {issues.summarize(issue)}'
+        )
+        if not detailed:
+            continue
+        for line in issues.explain(issue):
+            # Padded rather than prefixed with spaces, for the reason
+            # `issues.print_report` pads: Rich wraps a long line at the console
+            # width and a prefix only indents its first row.
+            console.console.print(
+                Padding(Text.from_markup(f'[info]{line}[/info]'), (0, 0, 0, 4))
+            )
+
+
 async def print_problem_summary(
-    pkg: Package, short_name: Optional[str] = None, detailed: bool = False
+    pkg: Package,
+    short_name: Optional[str] = None,
+    detailed: bool = False,
+    config_issues: Optional[List[Issue]] = None,
 ):
     entries = await testcase_extractors.extract_generation_testcases_from_groups()
     expanded_solutions = package.get_solutions()
@@ -362,6 +434,11 @@ async def print_problem_summary(
             sol_table.add_row('[dim]No solutions[/dim]', '')
 
         console.console.print(sol_table)
+
+    # Last, under everything it comments on: a reader who has just seen "0
+    # ACCEPTED" is exactly the one ready to be told there is no accepted
+    # solution.
+    print_checks_section(config_issues or [], detailed=detailed)
 
 
 async def print_contest_summary(contest: Contest, problems: List[Package]):

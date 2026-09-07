@@ -35,6 +35,9 @@ from rbx.box.statements.context import (
 )
 from rbx.box.statements.demacro_utils import collect_macro_definitions
 from rbx.box.statements.latex_jinja import (
+    FilterTarget,
+    JinjaSyntax,
+    parse_template_block_names,
     render_latex_template,
     render_latex_template_blocks,
     render_markdown_template_blocks,
@@ -102,6 +105,45 @@ def render_jinja_blocks(
     # externalize (the upload only reads `.explanations`).
     explanations = {value: result.pop(key) for key, value in explanation_keys}
     return StatementBlocks(blocks=result, explanations=explanations)
+
+
+def parse_jinja_block_names(
+    root: pathlib.Path,
+    content: bytes,
+    mode: Mode = 'latex',
+) -> List[str]:
+    """The names of the ``%- block <name>`` chunks in ``content``, in order.
+
+    :func:`render_jinja_blocks` without the render: the template is compiled and
+    its block table read, so no context is built and no body is evaluated. The
+    per-sample ``explanation_<i>`` blocks are dropped for the same reason
+    :func:`render_jinja_blocks` splits them out -- they are a sample index,
+    never a language.
+
+    Used to check that a sample explanation covers every language the problem
+    has a statement for, which is a question about which blocks *exist*.
+    """
+    if mode == 'latex':
+        temp_file = '__blocknames__.tex'
+        target, syntax = FilterTarget.LATEX, JinjaSyntax.LATEX
+    elif mode == 'markdown':
+        temp_file = '__blocknames__.md'
+        target, syntax = FilterTarget.MARKDOWN, JinjaSyntax.PLAIN
+    else:
+        raise ValueError(f'Invalid mode: {mode}')
+
+    temp_path = root / temp_file
+    temp_path.write_bytes(content)
+    try:
+        names = parse_template_block_names(str(root), temp_file, target, syntax)
+    finally:
+        # Cleaned up, unlike `render_jinja_blocks`'s `__input__`: this one runs
+        # over every sample of every problem on `rbx summary`, and a summary has
+        # no business leaving files in the package root.
+        temp_path.unlink(missing_ok=True)
+
+    pattern = re.compile(r'explanation_(\d+)$')
+    return [name for name in names if not pattern.match(name)]
 
 
 VarBlock = TypeVar('VarBlock')

@@ -20,7 +20,8 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | Generate all testcases [:material-open-in-new:](/setters/testset#building-the-testset) | `rbx build` |
 | Generate all testcases and their visualizations [:material-open-in-new:](/setters/testset/visualizers) | `rbx build --visualize` |
 | Print a summary of the problem | `rbx summary` |
-| See what the last run revealed | `rbx issues` |
+| Print the summary as JSON | `rbx summary --format json` |
+| See what is wrong with the problem | `rbx issues` |
 | Explain each issue in full | `rbx issues -d` |
 | Print the expanded variables of the problem [:material-open-in-new:](/setters/variables#seeing-the-expanded-values) | `rbx vars` |
 | Print the expanded variables as JSON | `rbx vars --json` |
@@ -108,7 +109,7 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | Reopen a past run and read its output           | `rbx contest each`                    |
 | Reopen past runs touching problem A             | `rbx contest on A`                    |
 | Print a summary of the contest                  | `rbx contest summary`                 |
-| See what each problem's last run revealed       | `rbx contest issues`                  |
+| See what is wrong with each problem             | `rbx contest issues`                  |
 | List all contests in the current directory      | `rbx contest list`                    |
 | Scaffold a new contest variant                  | `rbx contest add_variant div2`        |
 | Run a command against a contest variant         | `rbx -C div2 contest statements build` |

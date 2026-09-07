@@ -27,9 +27,13 @@ from rbx.grading.steps import Outcome
 #
 # Adding a new issue *kind* is such a change only in the sense that an older
 # reader will not know how to word it; the discriminated union means it can
-# still read `kind` and `severity` and show something. Adding an optional field
-# to an existing kind is not a change at all.
-ISSUES_FORMAT_VERSION = 1
+# still read `kind`, `family` and `severity` and show something. Adding an
+# optional field to an existing kind is not a change at all.
+#
+# 2: config-level issues joined the run-level ones, and `neverRun` stopped
+#    implying an empty `issues` list. A v1 reader that short-circuits on
+#    `neverRun` would silently drop every config finding.
+ISSUES_FORMAT_VERSION = 2
 
 
 class IssueSeverity(str, Enum):
@@ -37,6 +41,21 @@ class IssueSeverity(str, Enum):
     ERROR = 'error'
     # Something is worth a look, but the package may well be fine.
     WARNING = 'warning'
+
+
+class IssueFamily(str, Enum):
+    """Which question an issue answers.
+
+    Computed rather than declared, for the reason `severity` is: a client
+    splitting "what did my last run reveal" from "what is wrong with this
+    package before it is ever run" should read a field, not keep its own table
+    of which `kind` belongs where.
+    """
+
+    # Derived from `.rbx/runs`: needs a run to exist at all.
+    RUN = 'run'
+    # Derived from the package itself: true before anything is ever run.
+    CONFIG = 'config'
 
 
 class _BaseIssue(BaseModel):
@@ -49,8 +68,35 @@ class _BaseIssue(BaseModel):
     def severity(self) -> IssueSeverity:
         raise NotImplementedError
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def family(self) -> IssueFamily:
+        raise NotImplementedError
 
-class UnmetExpectationIssue(_BaseIssue):
+
+class _RunIssue(_BaseIssue):
+    """An issue derived from the artifacts of a run.
+
+    The family is answered once here rather than eight times below: it is a
+    property of where the issue came from, and no detector chooses it.
+    """
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def family(self) -> IssueFamily:
+        return IssueFamily.RUN
+
+
+class _ConfigIssue(_BaseIssue):
+    """An issue derived from the package's own config, true before any run."""
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def family(self) -> IssueFamily:
+        return IssueFamily.CONFIG
+
+
+class UnmetExpectationIssue(_RunIssue):
     """A solution did not behave the way `problem.rbx.yml` says it does."""
 
     kind: Literal['unmet_expectation'] = 'unmet_expectation'
@@ -76,7 +122,7 @@ class UnmetExpectationIssue(_BaseIssue):
         return IssueSeverity.ERROR
 
 
-class UnexpectedScoreIssue(_BaseIssue):
+class UnexpectedScoreIssue(_RunIssue):
     """A solution scored outside the range it declared."""
 
     kind: Literal['unexpected_score'] = 'unexpected_score'
@@ -91,7 +137,7 @@ class UnexpectedScoreIssue(_BaseIssue):
         return IssueSeverity.ERROR
 
 
-class CompilationFailedIssue(_BaseIssue):
+class CompilationFailedIssue(_RunIssue):
     """A solution did not compile.
 
     Worth surfacing loudly because it is otherwise close to invisible: a
@@ -113,7 +159,7 @@ class CompilationFailedIssue(_BaseIssue):
         return IssueSeverity.ERROR
 
 
-class CompilationWarningsIssue(_BaseIssue):
+class CompilationWarningsIssue(_RunIssue):
     """A solution compiled, but the compiler had something to say."""
 
     kind: Literal['compilation_warnings'] = 'compilation_warnings'
@@ -127,7 +173,7 @@ class CompilationWarningsIssue(_BaseIssue):
         return IssueSeverity.WARNING
 
 
-class BorderlineTleIssue(_BaseIssue):
+class BorderlineTleIssue(_RunIssue):
     """A solution declared slow was only slow inside the doubled time limit.
 
     Under `-v4` (the default) rbx judges at 2x the time limit and rewrites an
@@ -151,7 +197,7 @@ class BorderlineTleIssue(_BaseIssue):
         return IssueSeverity.WARNING
 
 
-class HiddenVerdictIssue(_BaseIssue):
+class HiddenVerdictIssue(_RunIssue):
     """A soft TLE hid a verdict that no expectation accepts.
 
     The solution was reported TLE at 1x, but underneath it was doing something
@@ -169,7 +215,7 @@ class HiddenVerdictIssue(_BaseIssue):
         return IssueSeverity.WARNING
 
 
-class TightTimeMarginIssue(_BaseIssue):
+class TightTimeMarginIssue(_RunIssue):
     """A solution that passed came uncomfortably close to the time limit."""
 
     kind: Literal['tight_time_margin'] = 'tight_time_margin'
@@ -183,7 +229,7 @@ class TightTimeMarginIssue(_BaseIssue):
         return IssueSeverity.WARNING
 
 
-class UntunedLimitsIssue(_BaseIssue):
+class UntunedLimitsIssue(_RunIssue):
     """Expectations failed on timing, and the limits were never tuned here.
 
     A package-level issue rather than a per-solution one: the answer is a single
@@ -193,6 +239,117 @@ class UntunedLimitsIssue(_BaseIssue):
 
     kind: Literal['untuned_limits'] = 'untuned_limits'
     affectedSolutions: List[str] = []
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        return IssueSeverity.WARNING
+
+
+class NoAcceptedSolutionIssue(_ConfigIssue):
+    """No solution claims to be correct.
+
+    The one config-level error. Without an accepted solution nothing establishes
+    what a correct output *is*, so every output the package generates is
+    unverified -- the package does not do the thing a package is for.
+    """
+
+    kind: Literal['config_no_accepted_solution'] = 'config_no_accepted_solution'
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        return IssueSeverity.ERROR
+
+
+class NoValidatorIssue(_ConfigIssue):
+    """The package declares no validator.
+
+    A warning rather than an error: a problem whose tests are all hand-written
+    has nothing for a validator to do.
+    """
+
+    kind: Literal['config_no_validator'] = 'config_no_validator'
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        return IssueSeverity.WARNING
+
+
+class NoSamplesIssue(_ConfigIssue):
+    """The package generates no sample tests.
+
+    A warning rather than an error: a package with no samples is legal, and an
+    interactive problem may reasonably ship none.
+    """
+
+    kind: Literal['config_no_samples'] = 'config_no_samples'
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        return IssueSeverity.WARNING
+
+
+class EmptyTestGroupIssue(_ConfigIssue):
+    """A group declared in `problem.rbx.yml` generated no tests.
+
+    One issue per group rather than one listing them all, because the remedy is
+    per-group -- a generator that produced nothing, a glob that matched nothing.
+    That is the opposite of `UntunedLimitsIssue`, where the remedy is a single
+    `rbx time` and repeating it per solution would bury the real findings.
+    """
+
+    kind: Literal['config_empty_test_group'] = 'config_empty_test_group'
+    group: str
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        return IssueSeverity.WARNING
+
+
+class MissingStatementLanguageIssue(_ConfigIssue):
+    """The problem has no statement, or none for a language the contest wants.
+
+    One kind for both because they are the same finding at two granularities and
+    a reader wants them in the same place; `hasNoStatements` lets the renderer
+    word them apart. `missing` is empty exactly when `hasNoStatements` is set --
+    outside a contest rbx does not know which languages were wanted, so it does
+    not guess.
+    """
+
+    kind: Literal['config_missing_statement_language'] = (
+        'config_missing_statement_language'
+    )
+    missing: List[str] = []
+    hasNoStatements: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        return IssueSeverity.WARNING
+
+
+class ExplanationMissingLanguageIssue(_ConfigIssue):
+    """A sample explanation covers only some of the problem's statements.
+
+    The silent one, which is why it is worth a detector at all.
+    `engine._resolve_file_explanation` reads a `.rbx`-suffixed explanation
+    through `render_jinja_blocks` and then does `blocks.get(lang)`: a language
+    the file does not define is not an error, it is `None`, and the explanation
+    is simply absent from that language's build with nothing said about it.
+    """
+
+    kind: Literal['config_explanation_missing_language'] = (
+        'config_explanation_missing_language'
+    )
+    # The sample's index among the samples, as the statement build numbers them.
+    sample: int
+    # The explanation file, as it was resolved.
+    path: pathlib.Path
+    missing: List[str] = []
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -210,6 +367,12 @@ Issue = Annotated[
         HiddenVerdictIssue,
         TightTimeMarginIssue,
         UntunedLimitsIssue,
+        NoAcceptedSolutionIssue,
+        NoValidatorIssue,
+        NoSamplesIssue,
+        EmptyTestGroupIssue,
+        MissingStatementLanguageIssue,
+        ExplanationMissingLanguageIssue,
     ],
     Field(discriminator='kind'),
 ]

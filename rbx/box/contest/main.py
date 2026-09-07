@@ -699,10 +699,11 @@ async def summary_cmd():
 
 @app.command(
     'issues',
-    help="Show what each problem's last run revealed.",
+    help='Show what is wrong with each problem, before and after a run.',
 )
 @within_contest
-def issues_cmd(
+@syncer.sync
+async def issues_cmd(
     detailed: Annotated[
         bool,
         typer.Option(
@@ -720,7 +721,7 @@ def issues_cmd(
     ] = issues.IssuesFormat.RICH,
 ):
     contest = find_contest_package_or_die()
-    rows = issues.collect_contest_rows(contest, get_problems(contest))
+    rows = await issues.collect_contest_rows(contest, get_problems(contest))
 
     if format is issues.IssuesFormat.JSON:
         # Straight to stdout, not through the themed console: this output is

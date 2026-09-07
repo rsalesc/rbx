@@ -19,10 +19,12 @@ from rbx.box import (
     environment,
     estimation_checksum,
     generators,
+    issues,
     limits_info,
     package,
     sharing,
     summary,
+    testcase_extractors,
 )
 from rbx.box.environment import VerificationLevel
 from rbx.box.generation_schema import get_parsed_entry
@@ -340,7 +342,7 @@ async def run(
         if fail_fast:
             _print_fail_fast_warning(console.console)
 
-        _print_issues()
+        await _print_issues()
 
         vscode_extension.print_outdated_hint()
 
@@ -356,23 +358,30 @@ async def run(
         await solution_result.close()
 
 
-def _print_issues() -> None:
+async def _print_issues() -> None:
     """The issues section at the end of a run.
 
     Reads the report back off disk rather than being handed the in-memory one.
     `RunReportWriter` has already written it -- it rewrites the file as each
     solution lands -- and going through the same path `rbx issues` uses makes it
     impossible for the two to word the same finding differently, or for one to
-    notice something the other misses.
+    notice something the other misses. The config family is collected here for
+    the same reason: a section that showed only half of what `rbx issues` shows
+    would send the reader to a second command to see the other half.
 
     Never fatal: `rbx run`'s exit code is the report's verdict, and a problem
     reading this view must not turn a passing run into a failing one.
     """
-    from rbx.box import issues
-
     try:
-        report = issues.build_report(package.get_problem_runs_dir())
+        config_state = await issues.collect_config_state(
+            package.find_problem_package_or_die()
+        )
+        report = issues.build_report(
+            package.get_problem_runs_dir(), config_state=config_state
+        )
     except issues.UnsupportedReportVersion:
+        return
+    except Exception:
         return
     if report.neverRun or not report.issues:
         return
@@ -399,9 +408,34 @@ async def summary_cmd(
         '-d',
         help='Whether to print a detailed view of the tests using tables.',
     ),
+    format: Annotated[
+        summary.SummaryFormat,
+        typer.Option(
+            '--format',
+            help='How to print the summary. Use `json` to consume it from a tool.',
+        ),
+    ] = summary.SummaryFormat.RICH,
 ):
+    pkg = package.find_problem_package_or_die()
+    # The same detectors `rbx issues` runs, through the same entry point: a
+    # finding worded one way there and another way here would be the exact drift
+    # `run_report` exists to prevent.
+    config_issues = issues.detect_all_config(await issues.collect_config_state(pkg))
+
+    if format is summary.SummaryFormat.JSON:
+        entries = await testcase_extractors.extract_generation_testcases_from_groups()
+        # Straight to stdout, not through the themed console: this output is
+        # parsed, and Rich would wrap and highlight it.
+        print(
+            summary.summary_to_json(
+                summary.get_problem_summary(pkg, package.get_solutions(), entries),
+                config_issues,
+            )
+        )
+        return
+
     await summary.print_problem_summary(
-        package.find_problem_package_or_die(), detailed=detailed
+        pkg, detailed=detailed, config_issues=config_issues
     )
 
 
