@@ -60,6 +60,8 @@ uv run rbx
 
 The docs site (`docs/`, built with mkdocs) is written in a specific, consistent voice. When writing or editing any user-facing docs, follow the [documentation writing-style guide](docs/plans/docs-writing-style-guide.md) — it captures the tone, structure, and conventions (notably: introduce a concept before you use it; never forward-reference a mechanism the reader hasn't met).
 
+The CLI reference (`docs/setters/reference/cli.md`) and the JSON schemas (`docs/schemas/`) are **generated** during the build by the `gen-files` scripts listed in `mkdocs.yml`, and are deliberately not tracked. Never commit them: to document a new flag, change the command's help text or its `@annotations.docs`, and the reference picks it up on the next build.
+
 ## Git Commits
 
 **You MUST use the `/commit` skill when creating commits.** This project enforces [Conventional Commits](https://www.conventionalcommits.org/) via commitizen (`cz_conventional_commits`). The pre-commit hook will reject non-compliant messages. See [`.claude/skills/commit.md`](.claude/skills/commit.md) for the full workflow and allowed commit types.

@@ -305,4 +305,12 @@ def generate():
         f.write('\n'.join(generator.content))
 
 
-generate()
+# `generate()` must run when this file is *executed* -- by the mkdocs `gen-files`
+# plugin (through `runpy`, which leaves `__spec__` unset) or by `python -m`.
+# It must not run on a plain import: `griffe_fieldz` dynamically imports this
+# module to introspect `DocsGenerator` while mkdocstrings walks `rbx.box`, and
+# that import happens outside the plugin's context. `mkdocs_gen_files.open` then
+# falls back to its default editor, rooted at `docs_dir`, and writes the
+# reference into the real source tree instead of the build's temp directory.
+if __spec__ is None or __name__ == '__main__':
+    generate()
