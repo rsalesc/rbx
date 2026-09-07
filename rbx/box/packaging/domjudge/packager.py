@@ -230,32 +230,26 @@ class DomjudgePackager(BasePackager):
         kinds = environment.language_kinds(code.find_language(solution))
         return '#' if LanguageKind.PYTHON in kinds else '//'
 
-    def _builtin_header_roots(self) -> List[pathlib.Path]:
-        """Directories holding the headers rbx injects beside a source.
-
-        These are what make `rbx.h` inlinable into a solution; the amalgamator
-        itself knows nothing about them.
-        """
-        return [get_testlib().parent, header.get_header().parent]
-
     def _solution_content(self, solution: Solution) -> bytes:
         """The bytes to ship for a solution.
 
         DOMjudge compiles a jury solution exactly as it compiles a contestant's
-        submission: from a single file, with none of the headers rbx injects
-        beside a source locally. A C/C++ solution that pulls in `rbx.h` or a
-        local header is therefore amalgamated first -- shipped as-is it would
-        build here and fail to compile on the judge. Other languages have no
+        submission: from a single file. A C/C++ solution split across headers of
+        its own is therefore amalgamated first -- shipped as-is it would build
+        here and fail to compile on the judge.
+
+        Resolution is deliberately left natural, with no `extra_roots`: a
+        solution is contestant-like code, and the builtin headers rbx injects
+        beside a source are tooling it has no business using. `rbx.h` reads a
+        vars file the judge will not have, so inlining it would only turn a
+        compile error into a runtime one; refusing names the header instead. Other languages have no
         amalgamator, so a multi-file closure is an error rather than a package
         whose submissions cannot build: `submissions/` holds one file per
         solution, so any dependency that resolves is one the judge will not have.
         """
         if solution.path.suffix.lower() in _AMALGAMATABLE_SUFFIXES:
             try:
-                result = amalgamate(
-                    utils.abspath(solution.path),
-                    extra_roots=self._builtin_header_roots(),
-                )
+                result = amalgamate(utils.abspath(solution.path))
             except AmalgamationError as e:
                 console.console.print(
                     f'[error]Cannot package {solution.href()} for DOMjudge.[/error]\n'

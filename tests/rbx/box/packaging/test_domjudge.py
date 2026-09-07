@@ -320,7 +320,9 @@ def test_submissions_are_amalgamated(testing_pkg, tmp_path):
     # DOMjudge compiles a jury solution the way it compiles a contestant's: from a
     # single file, with no local headers beside it. A solution pulling in one has
     # to be reduced to a self-contained translation unit or it fails on the judge.
-    testing_pkg.add_file('lib.h').write_text('#pragma once\nint k() { return 1; }\n')
+    testing_pkg.add_file('sols/lib.h').write_text(
+        '#pragma once\nint k() { return 1; }\n'
+    )
     testing_pkg.add_solution('sols/ac.cpp', ExpectedOutcome.ACCEPTED).write_text(
         '#include "lib.h"\nint main() { return k() - 1; }\n'
     )
@@ -335,27 +337,27 @@ def test_submissions_are_amalgamated(testing_pkg, tmp_path):
     assert '#include "lib.h"' not in shipped
 
 
-def test_submissions_amalgamate_the_rbx_header(testing_pkg, tmp_path):
-    # `rbx.h` is injected beside a source locally but is not on the judge, so a
-    # solution that includes it only compiles there once it is inlined.
+def test_submissions_do_not_reach_for_builtin_headers(testing_pkg, tmp_path):
+    # Amalgamation resolves naturally, so the builtin headers rbx injects beside a
+    # source are out of a solution's reach. That is deliberate: `rbx.h` reads a vars
+    # file DOMjudge will not have, so inlining it would trade a compile error for a
+    # runtime one. A solution using it is a package bug, and is named as such.
     testing_pkg.add_solution('sols/ac.cpp', ExpectedOutcome.ACCEPTED).write_text(
         '#include "rbx.h"\nint main() {}\n'
     )
     testing_pkg.save()
 
     packager = DomjudgePackager(testcase_entries=[])
-    submissions_dir = tmp_path / 'submissions'
-    packager._write_submissions(submissions_dir)  # noqa: SLF001
-
-    shipped = (submissions_dir / 'accepted' / 'ac.cpp').read_text()
-    assert '#include "rbx.h"' not in shipped
-    assert 'namespace rbx {' in shipped
+    with pytest.raises(typer.Exit):
+        packager._write_submissions(tmp_path / 'submissions')  # noqa: SLF001
 
 
 def test_mixed_submissions_are_amalgamated_before_annotation(testing_pkg, tmp_path):
     # The @EXPECTED_RESULTS@ annotation goes onto the amalgamated source, so a
     # `mixed/` solution is as self-contained as a standard-directory one.
-    testing_pkg.add_file('lib.h').write_text('#pragma once\nint k() { return 1; }\n')
+    testing_pkg.add_file('sols/lib.h').write_text(
+        '#pragma once\nint k() { return 1; }\n'
+    )
     testing_pkg.add_solution('sols/any.cpp', ExpectedOutcome.ANY).write_text(
         '#include "lib.h"\nint main() { return k() - 1; }\n'
     )
