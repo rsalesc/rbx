@@ -3,7 +3,7 @@
 Structured, never rendered -- the same rule `rbx.box.run_report` follows, and
 for the same reason. An issue carries the facts that make it an issue: which
 solution, which groups, what was expected, what happened. Turning that into
-"expected wrong-answer, got accepted" is `rbx.box.issues.rendering`'s business,
+"expected wrong-answer, got accepted" is `rbx.box.issues.messages`' business,
 and the VS Code extension reading `--format json` may reasonably word it
 differently.
 
