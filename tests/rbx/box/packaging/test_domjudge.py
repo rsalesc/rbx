@@ -11,7 +11,7 @@ from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntr
 from rbx.box.packaging.domjudge.packager import DomjudgePackager
 from rbx.box.packaging.domjudge.testlib_patch import patch_testlib_for_domjudge
 from rbx.box.packaging.packager import BuiltStatement
-from rbx.box.schema import ExpectedOutcome, Testcase
+from rbx.box.schema import ExpectedOutcome, TaskType, Testcase
 from rbx.box.statements.schema import Statement, StatementType
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.testing_utils import get_resources_path
@@ -416,3 +416,133 @@ def test_self_contained_interpreted_submission_is_shipped(testing_pkg, tmp_path)
     packager._write_submissions(submissions_dir)  # noqa: SLF001
 
     assert (submissions_dir / 'accepted' / 'ac.py').read_text() == source
+
+
+def _make_communication(testing_pkg, *, legacy: bool):
+    """A COMMUNICATION package with an interactor, and a checker iff legacy."""
+    testing_pkg.yml.type = TaskType.COMMUNICATION
+    testing_pkg.set_interactor('interactor.cpp').write_text(
+        '#include "testlib.h"\nint main(){}\n'
+    )
+    if legacy:
+        assert testing_pkg.yml.interactor is not None
+        testing_pkg.yml.interactor.legacy = True
+        testing_pkg.set_checker('checker.cpp').write_text(
+            '#include "testlib.h"\nint main(){}\n'
+        )
+    testing_pkg.save()
+    header.generate_header()
+
+
+def test_problem_yaml_is_interactive_for_communication(testing_pkg):
+    # `custom interactive` is what puts DOMjudge in combined run/compare mode;
+    # plain `custom` would make the interactor a plain output validator, which
+    # never gets a pipe to the submission.
+    _make_communication(testing_pkg, legacy=False)
+
+    packager = DomjudgePackager(testcase_entries=[])
+    data = yaml.safe_load(packager._get_problem_yaml())  # noqa: SLF001
+
+    assert data['validation'] == 'custom interactive'
+
+
+def test_output_validators_ship_only_the_interactor_when_not_legacy(
+    testing_pkg, tmp_path
+):
+    # A modern rbx interactor is the sole judge of the interaction (its checker
+    # is the no-op builtin), so it maps onto DOMjudge's single validator with no
+    # chaining, and the checker is not shipped at all.
+    _make_communication(testing_pkg, legacy=False)
+
+    packager = DomjudgePackager(testcase_entries=[])
+    validators_dir = tmp_path / 'output_validators'
+    packager._write_output_validators(validators_dir)  # noqa: SLF001
+
+    assert (validators_dir / 'interactor.cpp').is_file()
+    assert not (validators_dir / 'checker.cpp').exists()
+
+    build = (validators_dir / 'build').read_text()
+    # DOMjudge expects the validator to build into a program called `run`.
+    assert build.splitlines()[-1] == 'g++ -Wall -O2 -std=gnu++20 -o run interactor.cpp'
+
+
+def test_output_validators_chain_legacy_interactor_into_checker(testing_pkg, tmp_path):
+    # A legacy interactor writes an output a real checker grades. DOMjudge runs
+    # one program, so both ship and the generated `run` chains them.
+    _make_communication(testing_pkg, legacy=True)
+
+    packager = DomjudgePackager(testcase_entries=[])
+    validators_dir = tmp_path / 'output_validators'
+    packager._write_output_validators(validators_dir)  # noqa: SLF001
+
+    assert (validators_dir / 'interactor.cpp').is_file()
+    assert (validators_dir / 'checker.cpp').is_file()
+
+    build = (validators_dir / 'build').read_text()
+    assert 'g++ -Wall -O2 -std=gnu++20 -o interactor interactor.cpp' in build
+    assert 'g++ -Wall -O2 -std=gnu++20 -o checker checker.cpp' in build
+    # `build` has to leave an executable `run` behind.
+    assert 'chmod +x run' in build
+
+    # The interactor gets the output file the checker then reads on stdin, and
+    # a non-accepting interaction short-circuits the checker.
+    assert '"$DIR/interactor" "$1" "$OUT" "$2" "$3"' in build
+    assert '"$DIR/checker" "$1" "$2" "$3" <"$OUT"' in build
+    assert '-ne 42' in build
+
+
+def test_output_validators_build_is_executable(testing_pkg, tmp_path):
+    testing_pkg.save()
+    header.generate_header()
+
+    packager = DomjudgePackager(testcase_entries=[])
+    validators_dir = tmp_path / 'output_validators'
+    packager._write_output_validators(validators_dir)  # noqa: SLF001
+
+    assert (validators_dir / 'build').stat().st_mode & 0o111
+
+
+def test_output_validators_build_names_dependency_translation_units(
+    testing_pkg, tmp_path
+):
+    # DOMjudge's own auto-detection compiles whichever source `readdir` returns
+    # first, so a flattened `.cpp` dependency has to be named explicitly.
+    testing_pkg.add_file('common/lib.cpp').write_text('int k() { return 1; }\n')
+    testing_pkg.add_file('common/lib.h').write_text('#pragma once\nint k();\n')
+    testing_pkg.set_checker('chk.cpp')
+    assert testing_pkg.yml.checker is not None
+    testing_pkg.yml.checker.compilationFiles = ['common/lib.cpp']
+    testing_pkg.add_file('chk.cpp').write_text(
+        '#include "common/lib.h"\n#include "testlib.h"\nint main(){}\n'
+    )
+    testing_pkg.save()
+    header.generate_header()
+
+    packager = DomjudgePackager(testcase_entries=[])
+    validators_dir = tmp_path / 'output_validators'
+    packager._write_output_validators(validators_dir)  # noqa: SLF001
+
+    build = (validators_dir / 'build').read_text()
+    assert 'lib.cpp' in build.splitlines()[-1]
+
+
+def test_output_validators_reject_non_cpp_interactor(testing_pkg, tmp_path):
+    testing_pkg.yml.type = TaskType.COMMUNICATION
+    testing_pkg.set_interactor('int.py').write_text('print("ok")\n')
+    testing_pkg.save()
+    header.generate_header()
+
+    packager = DomjudgePackager(testcase_entries=[])
+    with pytest.raises(typer.Exit):
+        packager._write_output_validators(tmp_path / 'output_validators')  # noqa: SLF001
+
+
+def test_patch_testlib_supports_the_legacy_interactor_arity(bundled_testlib):
+    # The chained `run` calls the interactor with `<input> <output> <answer>
+    # <feedbackdir>`, so its output stays a real file the checker can read
+    # instead of being folded into the feedback directory.
+    patched = patch_testlib_for_domjudge(bundled_testlib)
+
+    assert 'if (argc == 5) {' in patched
+    assert 'tout.open(argv[2], std::ios_base::out);' in patched
+    assert 'ans.init(argv[3], _answer);' in patched

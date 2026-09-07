@@ -12,8 +12,6 @@ Or, if you want to build the package for all problems in your contest:
 rbx each package domjudge
 ```
 
-Only **batch** problems are supported for now.
-
 The produced zip follows the ICPC problem package format with the DOMjudge-specific
 extensions (`domjudge-problem.ini`, a root-level `problem.pdf` statement), and can be
 imported through the jury interface (*Problems → Import problem*) or the API.
