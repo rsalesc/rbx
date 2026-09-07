@@ -51,6 +51,11 @@ description = "Run docker tests (disabled by default, opt in via RBX_DOCKER_TEST
 env = { RBX_DOCKER_TESTS = "1" }
 run = "pytest tests/docker -m 'docker' -v -s"
 
+[tasks.domjudge]
+description = "Local DOMjudge test server (up | down | creds | logs | ...)"
+# e.g. `mise run domjudge up`, `mise run domjudge creds`, `mise run domjudge nuke`.
+run = "scripts/domjudge/domjudge.sh {{arg(name='args', var=true, required=false)}}"
+
 [tasks.bump]
 description = "Commitizen bump (asks to confirm) + push tags"
 # Extra args go to scripts/release.py, and anything it doesn't know on to

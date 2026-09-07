@@ -1,0 +1,94 @@
+# Throwaway DOMjudge server for local testing.
+#
+# Driven by scripts/domjudge/domjudge.sh -- see that script and the README in
+# this directory. Nothing here is meant for production: passwords are fixed,
+# the database lives in a named volume, and the judgehost runs privileged.
+
+name: rbx-domjudge
+
+services:
+  mariadb:
+    image: mariadb:10.11
+    container_name: rbx-dj-mariadb
+    # max-allowed-packet has to be generous: DOMjudge ships demo problems whose
+    # test data exceeds the 16M default, and the import dies mid-way with
+    # "MySQL server has gone away" if it is left alone.
+    command: >-
+      --max-connections=1000
+      --max-allowed-packet=512M
+      --wait-timeout=28800
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DJ_MYSQL_ROOT_PASSWORD:-rootpw}
+      MYSQL_USER: ${DJ_MYSQL_USER:-domjudge}
+      MYSQL_PASSWORD: ${DJ_MYSQL_PASSWORD:-djpw}
+      MYSQL_DATABASE: ${DJ_MYSQL_DATABASE:-domjudge}
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  domserver:
+    image: domjudge/domserver:${DJ_VERSION:-latest}
+    container_name: rbx-dj-domserver
+    # DOMjudge only publishes amd64 images, so this runs under emulation on
+    # Apple silicon. Stating it explicitly keeps the behaviour the same
+    # everywhere (and silences the platform-mismatch warning).
+    platform: linux/amd64
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      CONTAINER_TIMEZONE: ${DJ_TIMEZONE:-UTC}
+      MYSQL_HOST: mariadb
+      MYSQL_USER: ${DJ_MYSQL_USER:-domjudge}
+      MYSQL_PASSWORD: ${DJ_MYSQL_PASSWORD:-djpw}
+      MYSQL_ROOT_PASSWORD: ${DJ_MYSQL_ROOT_PASSWORD:-rootpw}
+      MYSQL_DATABASE: ${DJ_MYSQL_DATABASE:-domjudge}
+      # 0 seeds the demo contest, teams and problems; 1 gives a bare install.
+      DJ_DB_INSTALL_BARE: ${DJ_DB_INSTALL_BARE:-0}
+    ports:
+      - '${DJ_PORT:-12345}:80'
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'curl -fsS http://localhost/public > /dev/null || exit 1']
+      interval: 5s
+      timeout: 5s
+      # The first boot installs the database and imports the demo contest,
+      # which is slow when the amd64 image runs emulated. Allow ~15 minutes.
+      retries: 180
+      start_period: 30s
+
+  # Started by default by `domjudge.sh up` (skip it with --no-judgehost).
+  #
+  # It stays behind a compose profile because it cannot simply be brought up
+  # alongside the others: the domserver generates the judgehost password on
+  # first boot, so the script has to read it back and inject it here once the
+  # server is healthy.
+  judgehost:
+    image: domjudge/judgehost:${DJ_VERSION:-latest}
+    container_name: rbx-dj-judgehost-0
+    platform: linux/amd64
+    profiles: ['judgehost']
+    depends_on:
+      domserver:
+        condition: service_healthy
+    privileged: true
+    # The judgedaemon puts each submission in its own cgroup, which it can only
+    # do if it sees the host's cgroup hierarchy rather than a namespaced one.
+    cgroup: host
+    hostname: judgedaemon-0
+    environment:
+      CONTAINER_TIMEZONE: ${DJ_TIMEZONE:-UTC}
+      DOMSERVER_BASEURL: http://domserver/
+      DAEMON_ID: 0
+      JUDGEDAEMON_USERNAME: judgehost
+      # Injected by domjudge.sh, read out of the domserver's restapi.secret.
+      JUDGEDAEMON_PASSWORD: ${DJ_JUDGEDAEMON_PASSWORD:-password}
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup
+
+volumes:
+  mariadb-data:
