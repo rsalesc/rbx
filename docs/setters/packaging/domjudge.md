@@ -93,23 +93,3 @@ exactly.
 !!! note
     Solutions in `submissions/mixed/` trigger a harmless "result does not match
     directory" message on import; this is expected and does not block anything.
-
-### Solutions that span more than one file
-
-DOMjudge builds a jury solution the way it builds a contestant's submission: from a
-single file. A C or C++ solution split across headers of your own is therefore
-**amalgamated** — its whole include closure is inlined into one self-contained source
-before it is written to `submissions/`. System includes (`<vector>`,
-`<bits/stdc++.h>`) are left alone, and a solution that is already one file is shipped
-byte-for-byte.
-
-Includes are resolved the way the compiler would resolve them, relative to the file
-doing the including. The builtin headers {{rbx}} injects beside a source — `rbx.h`,
-`testlib.h` — are deliberately *not* reachable: they are tooling for validators and
-checkers, and `rbx.h` in particular reads a vars file the judge will not have. A
-solution that includes one is refused by name rather than shipped.
-
-{{rbx}} can only amalgamate C and C++. A solution in any other language that pulls in
-a file of yours — a Python solution importing a sibling module, say — fails at
-packaging time with the dependency named, rather than shipping a lone file that cannot
-build on the judge.
