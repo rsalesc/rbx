@@ -74,6 +74,11 @@ The estimation package pins a deliberately generous limit. DOMjudge kills a run 
 so a package pinned near the answer you are looking for would truncate exactly the measurements
 that matter most.
 
+Finished judgings are cached, and so is the upload: re-running `rbx time`, or regrouping back
+onto limits already probed, re-submits only the solutions whose source changed, and re-uploads
+the package only when the package itself changed. A judging {{rbx}} could not read — a compile
+error above all — is never cached, so fixing it and running again really does try again.
+
 `--skip-slow` stops after the estimate, which is the one-upload path:
 
 ```bash
