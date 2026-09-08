@@ -1,3 +1,4 @@
+import dataclasses
 import math
 import pathlib
 import shutil
@@ -16,7 +17,7 @@ from rbx.box.packaging import flattening
 from rbx.box.packaging.domjudge.testlib_patch import patch_testlib_for_domjudge
 from rbx.box.packaging.packager import BasePackager, BuiltStatement
 from rbx.box.schema import CodeItem, ExpectedOutcome, Solution, TaskType
-from rbx.box.statements.schema import Statement
+from rbx.box.statements.schema import Statement, StatementType
 from rbx.config import get_testlib
 from rbx.grading.language_kind import LanguageKind
 
@@ -127,14 +128,52 @@ def _fmt_seconds(ms: int) -> str:
     return f'{ms // 1000}.{ms % 1000:03d}'
 
 
+@dataclasses.dataclass(frozen=True)
+class ProbePackage:
+    """Build a throwaway package to *measure* timings on, never to be judged.
+
+    What `rbx time --runner domjudge` uploads to its private `rbxt-` problem. It
+    differs from a real package in three ways, and each one is load-bearing:
+
+    - **`problem_id` is written into the ini as `externalid`.** DOMjudge decides
+      which problem an upload overwrites by comparing that key against the
+      target, and falls back to the *zip filename* when it is absent. Declaring
+      it is what lets the file keep an honest name.
+    - **`timelimit_ms` is pinned by the run**, not read from the profile. The
+      profile's limit is the thing the timing run exists to replace.
+    - **No `submissions/` directory.** An import that carries one answers
+      "Added N jury solution(s)" and *queues them as real submissions*, which
+      then compete with rbx's own measured runs for the judgehost and inflate
+      the timings. This is the difference that is easiest to miss and costliest
+      to miss, because the package still imports cleanly.
+
+    The statement is dropped too (`statement_types` is empty for a probe): it is
+    the bulk of a DOMjudge zip, it is re-uploaded on every limit change, and
+    nobody ever opens a probe problem's PDF.
+    """
+
+    problem_id: str
+    timelimit_ms: int
+
+
 class DomjudgePackager(BasePackager):
     def __init__(
         self,
         testcase_entries: List[GenerationTestcaseEntry],
         language: Optional[str] = None,
+        probe: Optional[ProbePackage] = None,
     ):
         super().__init__(testcase_entries)
         self.language = language
+        self.probe = probe
+
+    def statement_types(self) -> List[StatementType]:
+        # A probe package ships no statement, so asking for one would make the
+        # runner pay for a PDF build -- the single most expensive part of
+        # packaging -- for a document that is never read.
+        if self.probe is not None:
+            return []
+        return super().statement_types()
 
     @classmethod
     def name(cls) -> str:
@@ -188,6 +227,18 @@ class DomjudgePackager(BasePackager):
         statement = self._get_main_statement()
         lang = statement.language if statement is not None else None
         title = naming.get_problem_title(lang, statement, fallback_to_title=True)
+
+        if self.probe is not None:
+            # `externalid` is what DOMjudge matches against the problem being
+            # overwritten; without it the id comes from the zip filename and the
+            # upload is refused as a mismatch.
+            return (
+                f'short-name = {self.probe.problem_id}\n'
+                f'name = {title.replace(chr(39), chr(96))}\n'
+                f'timelimit = {_fmt_seconds(self.probe.timelimit_ms)}\n'
+                f'externalid = {self.probe.problem_id}\n'
+            )
+
         limits = limits_info.get_limits(profile=self.name())
         assert limits.time is not None
 
@@ -351,6 +402,17 @@ class DomjudgePackager(BasePackager):
         kinds = environment.language_kinds(code.find_language(solution))
         return '#' if LanguageKind.PYTHON in kinds else '//'
 
+    def solution_content(self, solution: Solution) -> bytes:
+        """The bytes to submit for a solution, for a caller outside packaging.
+
+        Public because the DOMjudge *runner* submits solution sources over the
+        API rather than shipping them in the package, and must send exactly what
+        the package would have contained -- amalgamation included. Re-deriving
+        that in the runner would be a second implementation of the same rule,
+        free to drift from this one.
+        """
+        return self._solution_content(solution)
+
     def _solution_content(self, solution: Solution) -> bytes:
         """The bytes to ship for a solution.
 
@@ -455,7 +517,11 @@ class DomjudgePackager(BasePackager):
         # The rbx checker is always shipped as a custom output validator.
         self._write_output_validators(into_path / 'output_validators')
 
-        self._write_submissions(into_path / 'submissions')
+        # A probe package deliberately ships no solutions. DOMjudge submits
+        # everything under `submissions/` for real on import, and those judgings
+        # would race the ones the runner is measuring. See `ProbePackage`.
+        if self.probe is None:
+            self._write_submissions(into_path / 'submissions')
 
         # Zip all.
         shutil.make_archive(str(build_path / self.package_basename()), 'zip', into_path)

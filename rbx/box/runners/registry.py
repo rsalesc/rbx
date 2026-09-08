@@ -65,9 +65,16 @@ def _moj() -> 'SolutionRunner':
     return MojRunner()
 
 
+def _domjudge() -> 'SolutionRunner':
+    from rbx.box.runners.domjudge.runner import DomjudgeRunner
+
+    return DomjudgeRunner()
+
+
 _FACTORIES: Dict[str, Callable[[], 'SolutionRunner']] = {
     'local': _local,
     'moj': _moj,
+    'domjudge': _domjudge,
 }
 
 
