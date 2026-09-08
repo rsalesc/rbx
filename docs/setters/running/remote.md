@@ -30,8 +30,8 @@ estimation.
 
 ## Running on MOJ
 
-MOJ is the only backend today, and everything below is specific to it. `rbx run --runner moj`
-and [`rbx time --runner moj`](/setters/profiling/remote/) share all of it.
+Everything below is specific to MOJ. `rbx run --runner moj` and [`rbx time --runner
+moj`](/setters/profiling/remote/) share all of it.
 
 <!-- TODO(record): rbx run --runner moj cast -- needs a live moj login, so it cannot be recorded from CI or from a machine without judge access -->
 
@@ -56,3 +56,20 @@ upload and a calibration on the next run.
 
 `rbx run` and each phase of `rbx time` upload to a problem of their own (`…-run` for `rbx run`,
 `…` and `…-slow` for `rbx time`), so alternating between the commands never costs a re-upload.
+
+## Running on DOMjudge
+
+```bash
+rbx run --runner domjudge
+```
+
+### What it needs, and what it cannot tell you
+
+{% include "_partials/domjudge-backend.md" %}
+
+The problem `rbx run` uploads to is named `rbxt-<fingerprint>-run`, so it never collides with
+either phase of `rbx time`.
+
+[Failing fast](/setters/running/#failing-fast) is **not** available here. DOMjudge has already
+judged the whole submission by the time {{rbx}} reads the result, so there is nothing left to
+stop; the run is reported in full instead.

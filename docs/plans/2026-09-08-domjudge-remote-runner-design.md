@@ -108,7 +108,28 @@ relink; only the link is replaced.
 Verified: with `2`, a solution that times out on testcase 1 still reports runs
 for all three testcases.
 
-### 2.7 Every install already has a team to submit as
+### 2.7 A contest-problem label must be unique, and a duplicate is a bare 500
+
+`add-data` with a label another problem in the contest already holds answers
+`500 Internal Server Error` and nothing else -- no message, no field name.
+
+A fixed label would not merely have been fragile, it would have been *always*
+wrong: the estimation and validation problems share one contest by design, so
+the second phase `rbx time` staged would collide with the first on every run.
+The label is therefore the problem id, which is unique by construction, and is
+invisible anyway -- the probe contest has no scoreboard anyone reads.
+
+### 2.8 Judgehost liveness is `enabled` plus `polltime`, not `active`
+
+There is no `active` field. `GET /judgehosts` returns `enabled` and `polltime`,
+and both matter: a stock install ships a disabled `example-judgehost1` row, and
+an *enabled* judgehost whose daemon has stopped never picks anything up either.
+DOMjudge's own threshold for the latter is `judgehost_critical` (120s by
+default), so preflight reads it from the server rather than inventing one, and
+separates the two cases -- "enable one" and "start the judgedaemon" are different
+fixes.
+
+### 2.9 Every install already has a team to submit as
 
 `GET /teams` shows a hidden `domjudge` team in the `system` group -- the one
 DOMjudge itself uses for jury submissions. rbx submits as that team and creates

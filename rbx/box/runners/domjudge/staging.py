@@ -14,6 +14,7 @@ rather than leaving garbage behind.
 """
 
 import datetime
+import time
 from typing import Any, Dict, List, Optional
 
 from rbx.box.runners.base import RunnerCapabilityError, RunPurpose
@@ -47,9 +48,21 @@ PROBE_TEAM_ID = 'domjudge'
 # instance.
 FULL_JUDGING = 2
 
-# The label every probe problem is linked under. Arbitrary and invisible: the
-# probe contest has no scoreboard anyone reads.
-PROBE_LABEL = 'A'
+
+def probe_label(problem_id: str) -> str:
+    """The label this probe problem is linked into the contest under.
+
+    **The problem id itself**, which is unique by construction, because DOMjudge
+    requires the label to be unique within a contest and answers a duplicate with
+    a bare `500 Internal Server Error` that names nothing.
+
+    A fixed label would not merely be fragile here, it would be *always* wrong:
+    the estimation and validation problems share one contest by design, so the
+    second one `rbx time` staged would collide with the first every time. The
+    label is invisible anyway -- the probe contest has no scoreboard anyone
+    reads.
+    """
+    return problem_id
 
 
 def probe_problem_id(fingerprint: str, purpose: RunPurpose) -> str:
@@ -95,16 +108,31 @@ async def preflight(api: DomjudgeApi) -> List[str]:
         )
 
     judgehosts = await api.judgehosts()
-    active = [host for host in judgehosts if host.get('active')]
-    if not active:
+    enabled = [host for host in judgehosts if host.get('enabled')]
+    if not enabled:
         raise RunnerCapabilityError(
-            'This DOMjudge has no active judgehost, so submissions are stored and '
-            'never judged. Start a judgehost (or activate one in the jury '
-            'interface) before timing solutions on it.'
+            'This DOMjudge has no enabled judgehost, so submissions are stored and '
+            'never judged. Enable one in the jury interface (Judgehosts) before '
+            'timing solutions on it.'
         )
-    if len(active) > 1:
+
+    # Enabled is not the same as alive. A judgehost that is enabled but whose
+    # daemon has stopped never picks anything up, and DOMjudge's own definition
+    # of "this one is in trouble" is how long ago it last polled --
+    # `judgehost_critical`, which is why that threshold is read from the server
+    # rather than invented here.
+    critical = float(config.get('judgehost_critical') or 120)
+    live = [host for host in enabled if _polled_recently(host, critical)]
+    if not live:
+        raise RunnerCapabilityError(
+            f'This DOMjudge has {len(enabled)} enabled judgehost(s), but none of them '
+            f'has polled for work in the last {critical:.0f}s, so nothing would judge '
+            f'a submission. Check that the judgedaemon is running.'
+        )
+
+    if len(live) > 1:
         warnings.append(
-            f'This DOMjudge has {len(active)} active judgehosts. Solutions are judged '
+            f'This DOMjudge has {len(live)} live judgehosts. Solutions are judged '
             f'on whichever one picks them up, and the API offers no way to choose, so '
             f'timings may not be comparable across solutions.'
         )
@@ -116,6 +144,26 @@ async def preflight(api: DomjudgeApi) -> List[str]:
         )
 
     return warnings
+
+
+def _polled_recently(host: Dict[str, Any], critical_seconds: float) -> bool:
+    """Whether this judgehost has asked for work recently enough to count.
+
+    `polltime` is a unix timestamp, as a string, and `null` on a judgehost that
+    has never polled at all -- the shape of the demo `example-judgehost1` row
+    that ships with a stock install. Both of those are "not alive".
+    """
+    polltime = host.get('polltime')
+    if polltime is None:
+        return False
+    try:
+        last = float(polltime)
+    except (TypeError, ValueError):
+        # An unreadable timestamp is not evidence the daemon is down, and
+        # refusing the run over a field rbx failed to parse would be worse than
+        # letting the poll's own bound catch a judge that never answers.
+        return True
+    return (time.time() - last) <= critical_seconds
 
 
 async def ensure_contest(api: DomjudgeApi) -> str:
@@ -186,13 +234,16 @@ async def stage_problem(
     existing = {problem.get('id') for problem in await api.problems(contest)}
     if problem_id not in existing:
         await api.add_problem_data(
-            contest, problem_id, PROBE_LABEL, f'rbx timing probe ({problem_id})'
+            contest,
+            problem_id,
+            probe_label(problem_id),
+            f'rbx timing probe ({problem_id})',
         )
 
     await api.upload_problem(contest, problem_id, zip_path)
 
     await api.unlink_problem(contest, problem_id)
-    await api.link_problem(contest, problem_id, PROBE_LABEL, FULL_JUDGING)
+    await api.link_problem(contest, problem_id, probe_label(problem_id), FULL_JUDGING)
 
 
 def language_id_for(languages: List[Dict[str, Any]], extension: str) -> Optional[str]:

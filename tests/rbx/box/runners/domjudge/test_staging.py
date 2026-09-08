@@ -6,12 +6,18 @@ filtered to empty. So what these tests pin is that each one is *refused by name*
 instead of being discovered ten minutes into a poll.
 """
 
+import time
 from typing import Any, Dict, List, Optional
 
 import pytest
 
 from rbx.box.runners.base import RunnerCapabilityError, RunPurpose
 from rbx.box.runners.domjudge import staging
+
+
+def live_judgehost(id: str) -> Dict[str, Any]:
+    """An enabled judgehost that polled just now -- what a working one looks like."""
+    return {'id': id, 'enabled': True, 'polltime': str(time.time())}
 
 
 class FakeApi:
@@ -27,7 +33,7 @@ class FakeApi:
     ):
         self._config = config if config is not None else {}
         self._judgehosts = (
-            judgehosts if judgehosts is not None else [{'id': '1', 'active': True}]
+            judgehosts if judgehosts is not None else [live_judgehost('1')]
         )
         self._contests = contests if contests is not None else []
         self._teams = teams if teams is not None else [{'id': 'domjudge'}]
@@ -76,7 +82,11 @@ class FakeApi:
     async def link_problem(self, contest, problem_id, label, lazy_eval_results):
         self.calls.append('link_problem')
         self.linked.append(
-            {'problem_id': problem_id, 'lazy_eval_results': lazy_eval_results}
+            {
+                'problem_id': problem_id,
+                'label': label,
+                'lazy_eval_results': lazy_eval_results,
+            }
         )
         return {'id': problem_id}
 
@@ -99,15 +109,41 @@ async def test_verification_required_is_refused_by_name():
     assert 'verification_required' in str(exc.value.message)
 
 
-async def test_no_active_judgehost_is_refused():
+async def test_a_disabled_judgehost_is_refused():
     """Submissions would be stored and never judged -- indistinguishable, from
-    the outside, from a judge that is merely slow."""
-    api = FakeApi(judgehosts=[{'id': '1', 'active': False}])
+    the outside, from a judge that is merely slow.
+
+    `example-judgehost1` ships disabled on a stock install, so this is the shape
+    of a server that has never had a real judgehost attached.
+    """
+    api = FakeApi(judgehosts=[{'id': '1', 'enabled': False, 'polltime': None}])
 
     with pytest.raises(RunnerCapabilityError) as exc:
         await staging.preflight(api)
 
-    assert 'judgehost' in str(exc.value.message)
+    assert 'no enabled judgehost' in str(exc.value.message)
+
+
+async def test_an_enabled_but_silent_judgehost_is_refused_differently():
+    """Enabled is not alive. A judgehost whose daemon stopped never picks
+    anything up, and the fix ("start the judgedaemon") is a different one from
+    enabling it -- so the message has to be different too."""
+    api = FakeApi(
+        judgehosts=[{'id': '1', 'enabled': True, 'polltime': str(time.time() - 9999)}],
+        config={'judgehost_critical': 120},
+    )
+
+    with pytest.raises(RunnerCapabilityError) as exc:
+        await staging.preflight(api)
+
+    assert 'polled for work' in str(exc.value.message)
+
+
+async def test_a_judgehost_that_never_polled_is_not_live():
+    api = FakeApi(judgehosts=[{'id': '1', 'enabled': True, 'polltime': None}])
+
+    with pytest.raises(RunnerCapabilityError):
+        await staging.preflight(api)
 
 
 async def test_no_judgehosts_at_all_is_refused():
@@ -115,15 +151,28 @@ async def test_no_judgehosts_at_all_is_refused():
         await staging.preflight(FakeApi(judgehosts=[]))
 
 
-async def test_several_judgehosts_warn_rather_than_refuse():
+async def test_several_live_judgehosts_warn_rather_than_refuse():
     """The run still works; its timings just come from machines that may differ,
     and the API offers no way to choose one."""
-    api = FakeApi(judgehosts=[{'id': '1', 'active': True}, {'id': '2', 'active': True}])
+    api = FakeApi(judgehosts=[live_judgehost('1'), live_judgehost('2')])
 
     warnings = await staging.preflight(api)
 
     assert len(warnings) == 1
-    assert '2 active judgehosts' in warnings[0]
+    assert '2 live judgehosts' in warnings[0]
+
+
+async def test_a_dead_judgehost_beside_a_live_one_neither_refuses_nor_warns():
+    """The stock demo row is disabled, so every real install has one. Counting
+    it would warn about incomparable timings on a single-judgehost server."""
+    api = FakeApi(
+        judgehosts=[
+            {'id': '1', 'enabled': False, 'polltime': None},
+            live_judgehost('2'),
+        ]
+    )
+
+    assert await staging.preflight(api) == []
 
 
 async def test_parallel_judging_warns():
@@ -268,3 +317,22 @@ def test_a_language_is_matched_on_extension(extension, expected):
 
 def test_an_unknown_extension_matches_nothing():
     assert staging.language_id_for(LANGUAGES, '.rs') is None
+
+
+async def test_two_probe_problems_do_not_share_a_label(tmp_path):
+    """DOMjudge requires the label to be unique within a contest and answers a
+    duplicate with a bare `500 Internal Server Error` naming nothing.
+
+    A fixed label would be *always* wrong rather than merely fragile: the
+    estimation and validation problems share one contest by design, so the second
+    phase would collide with the first on every run.
+    """
+    api = FakeApi()
+    estimation = staging.probe_problem_id('abc123', RunPurpose.ESTIMATION)
+    validation = staging.probe_problem_id('abc123', RunPurpose.VALIDATION)
+
+    await staging.stage_problem(api, 'rbx-timing', estimation, tmp_path)
+    await staging.stage_problem(api, 'rbx-timing', validation, tmp_path)
+
+    labels = [link['label'] for link in api.linked]
+    assert len(set(labels)) == 2

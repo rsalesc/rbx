@@ -23,8 +23,6 @@ If what you want is a *verdict* rather than a limit, reach for [`rbx run
 
 ## Timing on MOJ
 
-MOJ is the only backend today.
-
 <!-- TODO(record): rbx time --runner moj cast -- needs a live moj login, so it cannot be recorded from CI or from a machine without judge access -->
 
 {% include "_partials/moj-backend.md" %}
@@ -54,3 +52,30 @@ rbx time -p moj --runner moj --skip-slow
 Each command uploads to a throwaway problem of its own — `…-run` for `rbx run`, `…` and
 `…-slow` for the two phases of `rbx time` — so alternating between the commands never costs a
 re-upload.
+
+## Timing on DOMjudge
+
+```bash
+rbx time -p domjudge --runner domjudge
+```
+
+### What it needs, and what it cannot tell you
+
+{% include "_partials/domjudge-backend.md" %}
+
+### The two phases, and the two uploads
+
+DOMjudge enforces the time limit from inside the package, so — exactly as on MOJ — the two
+phases measure under different limits and therefore need different packages. Each phase uploads
+to a problem of its own, `rbxt-…-estimation` and `rbxt-…-validation`, so alternating between
+them never costs a re-upload.
+
+The estimation package pins a deliberately generous limit. DOMjudge kills a run at the limit,
+so a package pinned near the answer you are looking for would truncate exactly the measurements
+that matter most.
+
+`--skip-slow` stops after the estimate, which is the one-upload path:
+
+```bash
+rbx time -p domjudge --runner domjudge --skip-slow
+```
