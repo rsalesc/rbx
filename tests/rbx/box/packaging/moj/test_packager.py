@@ -640,6 +640,16 @@ def test_solutions_are_amalgamated(testing_pkg, tmp_path):
     text = (into_path / 'sols' / 'good' / 'sol.cpp').read_text()
     assert 'int k()' in text
     assert '#include "lib.h"' not in text
+    # Nothing about the packaging machine ships with the package: the provenance
+    # comment is anchored at the package root.
+    assert '// amalgamated from lib.h' in text
+    assert str(testing_pkg.root) not in text
+
+    # The checker inlines `testlib.h`, which lives outside the package, in rbx's own
+    # resources -- labelled rather than named by an absolute path.
+    checker = (into_path / 'scripts' / 'checker.cpp').read_text()
+    assert '// amalgamated from <builtin>/testlib.h' in checker
+    assert str(testing_pkg.root) not in checker
 
 
 # -- language scripts -------------------------------------------------------

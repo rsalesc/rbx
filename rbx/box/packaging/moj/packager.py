@@ -1209,7 +1209,9 @@ class MojPackager(BasePackager):
     def _amalgamate(self, code: CodeItem, what: str) -> bytes:
         try:
             result = amalgamate(
-                utils.abspath(code.path), extra_roots=self._builtin_header_roots()
+                utils.abspath(code.path),
+                extra_roots=self._builtin_header_roots(),
+                relative_to=package.find_problem(),
             )
         except AmalgamationError as e:
             console.console.print(

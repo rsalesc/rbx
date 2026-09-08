@@ -335,6 +335,11 @@ def test_submissions_are_amalgamated(testing_pkg, tmp_path):
     shipped = (submissions_dir / 'accepted' / 'ac.cpp').read_text()
     assert 'int k() { return 1; }' in shipped
     assert '#include "lib.h"' not in shipped
+    # The provenance comment travels to the judge, and (once jury solutions become
+    # public) to contestants, so it names the file relative to the package rather
+    # than spelling out the setter's home directory and contest layout.
+    assert '// amalgamated from sols/lib.h' in shipped
+    assert str(testing_pkg.root) not in shipped
 
 
 def test_submissions_do_not_reach_for_builtin_headers(testing_pkg, tmp_path):
