@@ -483,12 +483,16 @@ async def test_a_second_run_does_not_re_upload_an_unchanged_package(
     assert len(fake.uploads) == 1
 
 
-async def test_a_changed_package_is_uploaded_again(testing_pkg, tmp_path, monkeypatch):
+async def test_a_changed_package_is_uploaded_again_to_the_same_problem(
+    testing_pkg, tmp_path, monkeypatch
+):
     """The record says what was uploaded, not merely where.
 
-    A new testcase is a different package under the same `rbxt-` id -- the id is
-    derived from the package *name* and testcase count, so it does not have to
-    move for the content to.
+    A new testcase is a different package under the *same* `rbxt-` id, because
+    the id comes from the package's slug (`.rbx-id`) and nothing else. That is
+    the second half of the claim here: before the slug, the id was a hash of the
+    package name and its testcase count, so adding a testcase staged a brand new
+    problem and left the previous one behind on the server for good.
     """
     minimal_package(testing_pkg)
     fake = FakeApi(entries=4).install(monkeypatch)
@@ -499,6 +503,7 @@ async def test_a_changed_package_is_uploaded_again(testing_pkg, tmp_path, monkey
     )
 
     assert len(fake.uploads) == 2
+    assert fake.uploads[0] == fake.uploads[1]
 
 
 async def test_a_probe_problem_that_vanished_is_uploaded_again(

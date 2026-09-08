@@ -44,6 +44,7 @@ from rbx.box.runners.domjudge.api import (
     DomjudgeApiError,
     credentials_from_env,
 )
+from rbx.box.runners.problem_id import ensure_slug
 from rbx.grading.steps import (
     CheckerResult,
     Evaluation,
@@ -229,8 +230,10 @@ class DomjudgeRunner:
             ctx.progress.update('Building the DOMjudge probe package...')
 
         timelimit_ms = _probe_timelimit_ms(ctx)
-        fingerprint = _package_fingerprint(ctx)
-        problem_id = staging.probe_problem_id(fingerprint, ctx.purpose)
+        # The package's one identity on any remote judge, shared with every other
+        # runner rather than derived here. See `rbx.box.runners.problem_id`.
+        slug = ensure_slug(package.find_problem())
+        problem_id = staging.probe_problem_id(slug, ctx.purpose)
         self._problem_id = problem_id
 
         packager, zip_path, fingerprint = self._build_probe(
@@ -1024,19 +1027,6 @@ def _probe_timelimit_ms(ctx: RunContext) -> int:
 # problem limit, and is generous enough that an accepted solution is measured
 # rather than killed.
 _DEFAULT_PROBE_TIMELIMIT_MS = 10_000
-
-
-def _package_fingerprint(ctx: RunContext) -> str:
-    """A short, stable name for "this package's testset".
-
-    Part of the remote problem id, so two problems on one server do not collide.
-    Derived from the package name and the testset shape rather than from the
-    built bytes: it only has to separate problems, and a content hash would move
-    on every regeneration and leave a trail of dead problems behind.
-    """
-    pkg = package.find_problem_package_or_die()
-    material = f'{pkg.name}:{len(ctx.skeleton.entries)}'
-    return hashlib.sha256(material.encode()).hexdigest()[:8]
 
 
 # -- the upload record -----------------------------------------------------------

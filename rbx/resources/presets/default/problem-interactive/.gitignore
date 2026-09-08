@@ -3,6 +3,7 @@ build/
 .limits/local.yml
 __pycache__/
 .moj-id
+.rbx-id
 
 .DS_Store
 .vscode/

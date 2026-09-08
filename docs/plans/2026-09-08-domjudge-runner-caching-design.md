@@ -19,10 +19,9 @@ is re-measured from scratch every time it comes back around.
 
 ## 2. A real package fingerprint
 
-Both caches turn on one question: *is the judge configured identically?* Neither
-the `rbxt-` problem id nor `_package_fingerprint` can answer it -- the latter
-hashes the package name and testcase count only, deliberately, so the probe
-problem does not churn and strand dead problems on the server.
+Both caches turn on one question: *is the judge configured identically?* The
+`rbxt-` problem id cannot answer it -- it names *which* problem, deliberately
+stable across edits (see §5), and says nothing about what is in it.
 
 So `_build_probe` now also returns `_directory_fingerprint` of the built package
 tree: sorted relative POSIX paths and contents, lengths framed. It covers exactly
@@ -33,7 +32,9 @@ ships no statement and no submissions.
 Taken over the tree rather than the zip: `shutil.make_archive` stamps every entry
 with its mtime, so two builds of an identical package produce different archives.
 
-The problem id is left exactly as it was.
+The two questions stay separate on purpose: *which problem* is the slug's job and
+must not move when a testcase changes, while *what is in it* is the
+fingerprint's and must.
 
 ## 3. The upload fast path
 
@@ -90,7 +91,44 @@ measurements -- the validation phase exists to measure exactly them -- and they
 are the slowest solutions in the package, so they are what a re-run most wants
 back for free.
 
-## 5. What this deliberately does not do
+## 5. One problem identity, shared with MOJ
+
+The caches above are per package, so they raise a question the runner had been
+answering badly: *what is this package called on the server?*
+
+DOMjudge derived its `rbxt-` id from `sha256(f'{pkg.name}:{len(entries)}')[:8]`.
+That moves whenever a testcase is added -- the run then stages a brand new
+problem and abandons the previous one -- and two packages that happen to agree on
+name and testcase count collide on a shared instance. MOJ, meanwhile, minted its
+own slug into `.moj-id`. One package, two unrelated identities, neither stable
+for the reason the other was.
+
+`rbx.box.runners.problem_id` now holds the one identity: a random slug in
+`.rbx-id` at the package root, minted once and then kept. Each backend renders
+its own id from it -- `<login>#rbxt-<slug>` for MOJ, whose ids are scoped by org;
+`rbxt-<slug>-<purpose>` for DOMjudge, whose ids are flat and whose two phases pin
+different limits. `RBXT_PREFIX`, the marker for "a problem rbx may overwrite",
+moves there too: it belongs to every backend rather than to one.
+
+The slug is random rather than derived from anything, and both halves of that
+matter. Not the package name: rbx names are not unique, so two setters working
+through the same tutorial package would collide on a shared server and one would
+write over the other's problem. Not the testset: it changes constantly, and every
+change would strand a dead problem.
+
+**Migration runs one way.** A `.moj-id` written before `.rbx-id` existed names a
+problem MOJ already holds, so `ensure_moj_id` *adopts* its slug into the shared
+file rather than overwriting it from there. An existing shared slug always wins,
+so a package holding both keeps both and neither backend is moved off the problem
+it has been using. A foreign binding -- `.moj-id` is written by `moj upload` too,
+so a package may be bound to a real, published problem -- is neither adopted nor
+rewritten.
+
+DOMjudge probe problems staged before this change keep their old hash-derived
+ids and are simply left behind: they are private, throwaway, and in a contest
+with no scoreboard.
+
+## 6. What this deliberately does not do
 
 - **No `--no-cache` flag.** "I changed something" is what the key is for; "I want
   to see the variance" is not a workflow this backend supports at all, since
