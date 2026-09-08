@@ -47,7 +47,8 @@ def test_an_unknown_name_is_refused_naming_the_known_ones():
         registry.get_runner('mog')
 
     assert str(exc.value) == (
-        'There is no runner called `mog`. The runners rbx knows are: `local`, `moj`.'
+        'There is no runner called `mog`. The runners rbx knows are: `local`, `moj`, '
+        '`domjudge`.'
     )
 
 

@@ -26,6 +26,7 @@ DEFAULT_RUNNER = 'local'
 RUNNERS = (
     ('local', 'Run the solutions in the sandbox on this machine.'),
     ('moj', 'Run the solutions on the MOJ judge park, through the `moj` CLI.'),
+    ('domjudge', 'Run the solutions on a DOMjudge instance, through its REST API.'),
 )
 
 
