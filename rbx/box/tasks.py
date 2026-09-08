@@ -1,5 +1,5 @@
 import pathlib
-from typing import Optional, Tuple, Type
+from typing import Optional, Type
 
 from rbx.box import checkers, environment, limits_info, package, state
 from rbx.box.code import (
@@ -10,7 +10,6 @@ from rbx.box.code import (
 )
 from rbx.box.environment import EnvironmentSandbox, ExecutionConfig, VerificationLevel
 from rbx.box.retries import Retrier, get_retrier_config
-from rbx.box.sanitizers.issue_stack import Issue, add_issue
 from rbx.box.schema import CodeItem, Interactor, Testcase
 from rbx.grading import profiling
 from rbx.grading.judge.sandbox import SandboxBase
@@ -26,23 +25,10 @@ from rbx.grading.steps import (
 )
 from rbx.utils import model_to_yaml
 
-STDERR_THRESHOLD_IN_BYTES = 1024 * 1024  # 1MB
-
 # Extra wall time (ms) granted to the interactor on top of the solution's wall
 # time in communication tasks, so the interactor never times out before the
 # solution does. Mirrors BOCA's `ittime = ttime + 1`.
 _INTERACTOR_WALL_MARGIN_MS = 1000
-
-
-class TooMuchStderrIssue(Issue):
-    def __init__(self, solution: CodeItem):
-        self.solution = solution
-
-    def get_detailed_section(self) -> Tuple[str, ...]:
-        return ('solutions',)
-
-    def get_detailed_message(self) -> str:
-        return f'{self.solution.href()} produces too much stderr.'
 
 
 def get_testcase_output_path(
@@ -109,15 +95,6 @@ def _resolve_checker_stderr_path(
     if checker_error_path is None or not checker_error_path.is_file():
         return None
     return checker_error_path.absolute()
-
-
-def _check_stderr(solution: CodeItem, stderr_path: pathlib.Path):
-    # The stderr file is absent when the program failed to even start (e.g. a
-    # missing interpreter/runtime), in which case there is no stderr to inspect.
-    if not stderr_path.is_file():
-        return
-    if stderr_path.stat().st_size > STDERR_THRESHOLD_IN_BYTES:
-        add_issue(TooMuchStderrIssue(solution))
 
 
 def get_limits_for_language(
@@ -243,8 +220,6 @@ async def run_solution_on_testcase(
                 )
         else:
             checker_result = checkers.check_with_no_output(run_log)
-
-        _check_stderr(solution, error_path)
 
         eval = Evaluation(
             result=checker_result,
@@ -438,8 +413,6 @@ async def _run_communication_solution_on_testcase(
             output_path,
             checker_stderr_path=checker_error_path,
         )
-
-        _check_stderr(solution, solution_error_path)
 
         eval = Evaluation(
             result=checker_result,

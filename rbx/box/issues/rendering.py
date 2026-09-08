@@ -23,7 +23,7 @@ from rich.table import Table
 from rich.text import Text
 
 from rbx import console
-from rbx.box.formatting import get_formatted_time, href
+from rbx.box.formatting import get_formatted_memory, get_formatted_time, href
 from rbx.box.issues.schema import (
     BorderlineTleIssue,
     CompilationFailedIssue,
@@ -37,6 +37,7 @@ from rbx.box.issues.schema import (
     IssueSeverity,
     MissingStatementLanguageIssue,
     NoAcceptedSolutionIssue,
+    NoisyStderrIssue,
     NoSamplesIssue,
     NoValidatorIssue,
     TightTimeMarginIssue,
@@ -143,6 +144,8 @@ def summarize(issue: Issue) -> str:
             f'used {get_formatted_time(int(issue.maxTime * 1000))} of a '
             f'{get_formatted_time(int(issue.timeLimit * 1000))} limit'
         )
+    if isinstance(issue, NoisyStderrIssue):
+        return f'wrote {get_formatted_memory(issue.size)} to stderr on one test'
     if isinstance(issue, UntunedLimitsIssue):
         return 'the time limit may not be tuned to this machine'
     if isinstance(issue, NoAcceptedSolutionIssue):
@@ -219,6 +222,13 @@ def explain(issue: Issue, runs_dir: Optional[str] = None) -> List[str]:
         return [
             f'{ratio:.0%} of the time limit on this machine. Fine here, tight '
             f'on a slower judge.'
+        ]
+    if isinstance(issue, NoisyStderrIssue):
+        return [
+            'Stderr this large is almost always debug output left behind. It '
+            'costs time on every testcase, and some judges reject a submission '
+            'that produces it.',
+            f'stderr: {href(_resolve(issue.path, runs_dir))}',
         ]
     if isinstance(issue, UntunedLimitsIssue):
         return [

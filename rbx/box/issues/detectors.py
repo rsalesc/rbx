@@ -24,6 +24,7 @@ from rbx.box.issues.schema import (
     HiddenVerdictIssue,
     Issue,
     IssueSeverity,
+    NoisyStderrIssue,
     TightTimeMarginIssue,
     UnexpectedScoreIssue,
     UnmetExpectationIssue,
@@ -36,6 +37,11 @@ from rbx.box.issues.schema import (
 # already effectively broken, and flagging at 0.5 would fire on every package
 # whose limits are deliberately snug.
 TIGHT_TIME_MARGIN_RATIO = 0.8
+
+# How much a solution may print to stderr on a single testcase before it is
+# worth a mention. 1MB is far past any plausible deliberate use: a solution that
+# writes this much is printing debug output it forgot to remove.
+STDERR_THRESHOLD_IN_BYTES = 1024 * 1024
 
 
 def detect_unmet_expectations(state: RunState) -> List[Issue]:
@@ -183,6 +189,32 @@ def detect_tight_time_margin(state: RunState) -> List[Issue]:
     return issues
 
 
+def detect_noisy_stderr(state: RunState) -> List[Issue]:
+    """Solutions that printed a lot to stderr.
+
+    One issue per solution rather than per testcase: the remedy is a single edit
+    to the solution, and a package whose debug output is on every testcase would
+    otherwise produce one issue per test. The artifact named is the noisiest
+    one, which is the one worth opening.
+
+    The sizes were taken by `run_state.size_stderr_artifacts`; this detector,
+    like every other, only reads the state it was handed.
+    """
+    issues: List[Issue] = []
+    for solution in state.report.solutions:
+        artifact = state.stderr.get(solution.index)
+        if artifact is None or artifact.size <= STDERR_THRESHOLD_IN_BYTES:
+            continue
+        issues.append(
+            NoisyStderrIssue(
+                solution=solution.path,
+                path=artifact.path,
+                size=artifact.size,
+            )
+        )
+    return issues
+
+
 def detect_untuned_limits(state: RunState) -> List[Issue]:
     """Timing failures on a package whose limits were never tuned here.
 
@@ -207,6 +239,7 @@ DETECTORS: List[Callable[[RunState], List[Issue]]] = [
     detect_borderline_tle,
     detect_hidden_verdicts,
     detect_tight_time_margin,
+    detect_noisy_stderr,
     detect_untuned_limits,
 ]
 

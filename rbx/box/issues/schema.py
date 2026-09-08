@@ -229,6 +229,27 @@ class TightTimeMarginIssue(_RunIssue):
         return IssueSeverity.WARNING
 
 
+class NoisyStderrIssue(_RunIssue):
+    """A solution printed an unreasonable amount to stderr.
+
+    Almost always debug output left behind: it costs time on every testcase, it
+    can be enough to fill a judge's disk, and on some judges it is enough to
+    fail the submission outright. The run itself passes, which is why it needs
+    saying.
+    """
+
+    kind: Literal['noisy_stderr'] = 'noisy_stderr'
+    solution: str
+    # The noisiest artifact, relative to the runs dir, e.g. `0/main/001.err`.
+    path: pathlib.Path
+    size: int  # bytes
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        return IssueSeverity.WARNING
+
+
 class UntunedLimitsIssue(_RunIssue):
     """Expectations failed on timing, and the limits were never tuned here.
 
@@ -366,6 +387,7 @@ Issue = Annotated[
         BorderlineTleIssue,
         HiddenVerdictIssue,
         TightTimeMarginIssue,
+        NoisyStderrIssue,
         UntunedLimitsIssue,
         NoAcceptedSolutionIssue,
         NoValidatorIssue,

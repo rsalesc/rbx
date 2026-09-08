@@ -29,11 +29,13 @@ from rbx.grading.steps import Outcome
 def make_state(
     solutions=None,
     compilation=None,
+    stderr=None,
 ) -> run_state.RunState:
     return run_state.RunState(
         report=RunReport(solutions=solutions or []),
         skeleton=run_state.SkeletonView(compilation=compilation or []),
         runs_dir=pathlib.Path('.rbx/runs'),
+        stderr=stderr or {},
         ran_at=time.time(),
     )
 
@@ -315,6 +317,56 @@ class TestTimingRisk:
         assert detectors.detect_untuned_limits(make_state([solution()])) == []
 
 
+class TestNoisyStderr:
+    def _artifact(self, size: int) -> run_state.StderrArtifact:
+        return run_state.StderrArtifact(path=pathlib.Path('0/main/001.err'), size=size)
+
+    def test_flags_a_solution_that_flooded_stderr(self):
+        state = make_state(
+            [solution(path='sol/main.cpp', index=0)],
+            stderr={0: self._artifact(detectors.STDERR_THRESHOLD_IN_BYTES + 1)},
+        )
+
+        issues = detectors.detect_noisy_stderr(state)
+
+        assert kinds(issues) == ['noisy_stderr']
+        assert issues[0].solution == 'sol/main.cpp'
+        assert issues[0].path == pathlib.Path('0/main/001.err')
+
+    def test_leaves_ordinary_stderr_alone(self):
+        state = make_state(
+            [solution(index=0)],
+            stderr={0: self._artifact(detectors.STDERR_THRESHOLD_IN_BYTES)},
+        )
+
+        assert detectors.detect_noisy_stderr(state) == []
+
+    def test_says_nothing_when_no_artifact_was_sized(self):
+        assert detectors.detect_noisy_stderr(make_state([solution()])) == []
+
+    def test_reports_one_issue_per_solution_not_per_testcase(self):
+        """The remedy is a single edit; one issue per test would bury the run."""
+        state = make_state(
+            [solution(path='sol/a.cpp', index=0), solution(path='sol/b.cpp', index=1)],
+            stderr={
+                0: self._artifact(detectors.STDERR_THRESHOLD_IN_BYTES * 3),
+                1: self._artifact(detectors.STDERR_THRESHOLD_IN_BYTES * 2),
+            },
+        )
+
+        issues = detectors.detect_noisy_stderr(state)
+
+        assert [issue.solution for issue in issues] == ['sol/a.cpp', 'sol/b.cpp']
+
+    def test_is_a_warning_rather_than_an_error(self):
+        """The package still works; the solution is just noisy."""
+        issue = schema.NoisyStderrIssue(
+            solution='s', path=pathlib.Path('0/main/001.err'), size=1
+        )
+
+        assert issue.severity == schema.IssueSeverity.WARNING
+
+
 class TestDetectAll:
     def test_puts_errors_before_warnings(self):
         state = make_state(
@@ -406,6 +458,59 @@ class TestLoadRunState:
         self._write(tmp_path, RunReport())
 
         assert build_report(tmp_path).runsDir == str(tmp_path)
+
+
+class TestStderrSizing:
+    """The one place `rbx issues` looks past `report.yml` and `skeleton.yml`."""
+
+    def _write_err(self, path: pathlib.Path, size: int) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b'x' * size)
+
+    def test_keeps_the_noisiest_artifact_per_solution(self, tmp_path: pathlib.Path):
+        self._write_err(tmp_path / '0' / 'main' / '001.err', 10)
+        self._write_err(tmp_path / '0' / 'main' / '002.err', 40)
+        self._write_err(tmp_path / '1' / 'main' / '001.err', 20)
+
+        sizes = run_state.size_stderr_artifacts(tmp_path, [0, 1])
+
+        assert sizes[0].size == 40
+        assert sizes[0].path == pathlib.Path('0/main/002.err')
+        assert sizes[1].size == 20
+
+    def test_ignores_stderr_that_is_not_the_solution(self, tmp_path: pathlib.Path):
+        """A chatty checker or interactor says nothing about the solution."""
+        self._write_err(tmp_path / '0' / 'main' / '001.err', 10)
+        self._write_err(tmp_path / '0' / 'main' / '001.checker.err', 500)
+        self._write_err(tmp_path / '0' / 'main' / '001.int.err', 500)
+
+        sizes = run_state.size_stderr_artifacts(tmp_path, [0])
+
+        assert sizes[0].path == pathlib.Path('0/main/001.err')
+        assert sizes[0].size == 10
+
+    def test_skips_a_solution_that_wrote_nothing(self, tmp_path: pathlib.Path):
+        assert run_state.size_stderr_artifacts(tmp_path, [0, 1]) == {}
+
+    def test_never_walks_a_directory_the_report_does_not_name(
+        self, tmp_path: pathlib.Path
+    ):
+        """A longer previous run leaves directories this run has no solution for."""
+        self._write_err(tmp_path / '7' / 'main' / '001.err', 100)
+
+        assert run_state.size_stderr_artifacts(tmp_path, [0]) == {}
+
+    def test_load_run_state_sizes_the_artifacts(self, tmp_path: pathlib.Path):
+        run_report.write_report(
+            run_report.report_path(tmp_path),
+            RunReport(solutions=[solution(path='sol/a.cpp', index=0)]),
+        )
+        self._write_err(tmp_path / '0' / 'main' / '001.err', 30)
+
+        state = run_state.load_run_state(tmp_path)
+
+        assert state is not None
+        assert state.stderr[0].size == 30
 
 
 class TestSkeletonViewDoesNotDrift:
@@ -523,6 +628,9 @@ class TestRendering:
             schema.BorderlineTleIssue(solution='s'),
             schema.HiddenVerdictIssue(solution='s'),
             schema.TightTimeMarginIssue(solution='s', maxTime=1.0, timeLimit=1.0),
+            schema.NoisyStderrIssue(
+                solution='s', path=pathlib.Path('0/main/1.err'), size=1
+            ),
             schema.UntunedLimitsIssue(),
             schema.NoAcceptedSolutionIssue(),
             schema.NoValidatorIssue(),
