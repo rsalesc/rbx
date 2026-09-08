@@ -231,5 +231,22 @@ documents this for `@EXPECTED_RESULTS@`.
   as what it is.
 - **Contest teardown.** Staging is idempotent and reused across runs; removing
   the probe contest is a separate explicit action, never something a run does.
-- **Interactive problems.** The packager supports `custom interactive`, but
-  measuring an interactive solution's timing on DOMjudge is untested.
+(Interactive problems were out of scope in an earlier draft of this document.
+They are now verified -- see below.)
+
+## 9. Interactive problems
+
+Verified end-to-end on the local server, in both shapes the packager emits.
+
+A **modern** interactor is the sole judge, and DOMjudge's `validation: custom
+interactive` maps onto it directly: the shipped validator becomes the problem's
+`run` script, wrapped in `runpipe` and driven bidirectionally against the
+submission. A correct binary search came back `AC` and a wrong guesser `WA`.
+
+A **legacy** interactor writes a `tout` that a separate checker grades -- two
+programs where DOMjudge runs one -- so the packager chains them behind a
+generated `run`. Proving that chain really runs *both* needs a solution the
+interactor accepts and only the checker rejects: one that finds the right answer
+but asks every question twice, using 12 queries against a 10-query budget. It
+came back `WA` on every testcase, which the interactor alone could not have
+produced.

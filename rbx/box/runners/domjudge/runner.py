@@ -136,11 +136,12 @@ class DomjudgeRunner:
         # by the time rbx reads the judgement, so gating would overwrite real
         # verdicts with SKIPPED. See `RunnerCapabilities.supports_abort`.
         supports_abort=False,
-        # Untested rather than impossible. The packager emits `custom
-        # interactive`, but nothing has yet measured an interactive solution's
-        # timing here, and declaring support rbx has not verified is how a run
-        # comes back quietly wrong.
-        supports_interactive=False,
+        # DOMjudge runs an interactive problem through `validation: custom
+        # interactive`, which the packager already emits: the shipped validator
+        # becomes the problem's *run* script, wrapped in `runpipe` and driven
+        # bidirectionally against the submission. That is the same interactor rbx
+        # drives locally, so the verdict comes from the same program.
+        supports_interactive=True,
         # Sanitizers are a local-compilation concept; DOMjudge compiles the
         # submission itself with an instance-global script rbx cannot influence.
         supports_sanitizers=False,

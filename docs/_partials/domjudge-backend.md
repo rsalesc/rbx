@@ -45,8 +45,12 @@ your solution wrote:
 - **Times are CPU time**, not wall clock. A solution killed for exceeding the limit reports the
   CPU it actually burned, which for a sleeping or I/O-bound solution is close to zero. The
   verdict is what says it was too slow.
-- `--runs` greater than one, a sanitizer, and interactive (`communication`) problems are
-  **refused by name** before anything is uploaded.
+- `--runs` greater than one and sanitizers are **refused by name** before anything is
+  uploaded — each would produce a report answering a different question than the one you asked.
+
+Interactive (`communication`) problems **do** work. DOMjudge runs the interactor rbx ships as
+the problem's run script, so the verdict comes from the same program that judges locally — and
+a legacy interactor paired with a checker is chained so that both still run.
 
 Solutions are submitted one at a time. A judgehost judges one submission at a time anyway, and
 two in flight on a multi-judgehost instance would land on different machines — whose timings are
