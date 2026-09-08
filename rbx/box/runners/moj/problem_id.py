@@ -2,27 +2,35 @@
 
 MOJ identifies a problem as `<org>#<slug>`, where the org is a login. rbx uses
 throwaway, private problems -- `<login>#rbxt-<slug>` and ids derived from it --
-purely as places to run timings, and records the base one in `.moj-id` at the
-package root. See `derived_id` for why there is more than one.
+purely as places to run timings.
+
+**The slug comes from `.rbx-id`**, the one identity a package has on any remote
+judge -- see `rbx.box.runners.problem_id`. What lives here is only what is
+*MOJ's* about an id: the org, the `<org>#<slug>` spelling, the per-phase suffix,
+and the fact that this file is shared with somebody else's CLI.
 
 `.moj-id` is **the CLI's own convention**, not an invention: `moj testrun` accepts
-a directory in place of an id and reads exactly this file out of it. Committing it
-is what makes two setters on the same problem reach the same remote problem
-instead of each orphaning one on the server.
+a directory in place of an id and reads exactly this file out of it. So it is
+still written, and it is still what the `moj` CLI reads -- but it is now a
+rendering of the shared slug rather than the place the slug is decided. The one
+case where it stays authoritative is a package bound *before* `.rbx-id` existed:
+its slug is adopted rather than replaced, so a run keeps the problem it has been
+using. See `ensure_moj_id`.
 """
 
 import json
 import os
 import pathlib
 import re
-import secrets
 from typing import Any, Dict
+
+from rbx.box.runners import problem_id
 
 MOJ_ID_NAME = '.moj-id'
 
-# The prefix marks a problem as one rbx created for its own use, so a human
-# browsing the server can tell it apart from a real, published problem.
-RBXT_PREFIX = 'rbxt-'
+# Re-exported: the marker belongs to every remote runner, not to MOJ, but the
+# guard below and its callers read it from here.
+RBXT_PREFIX = problem_id.RBXT_PREFIX
 
 _RBXT_ID = re.compile(r'^(?P<org>[^#]+)#' + re.escape(RBXT_PREFIX) + r'(?P<slug>.+)$')
 
@@ -59,11 +67,12 @@ def derived_id(moj_id: str, suffix: str) -> str:
 
 
 def moj_id_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Path:
-    """Where the binding lives: beside `problem.rbx.yml`, and git-tracked.
+    """Where the binding lives: beside `problem.rbx.yml`.
 
     Relative to the package root rather than under the cache directory, the same
-    way `.limits` is: the cache is per-machine and disposable, and a binding that
-    did not survive a clone would give every setter their own remote problem.
+    way `.limits` is, and for the same reason `.rbx-id` is: the cache is
+    regenerated freely, and a binding that vanished with it would leave a dead
+    problem on the server after every clean.
     """
     return root / MOJ_ID_NAME
 
@@ -110,28 +119,23 @@ def ensure_moj_id(login: str, root: pathlib.Path = pathlib.Path()) -> str:
             # does not exist, and would destroy a binding rbx never created.
             # Returning it is therefore right, and is also the hazard `is_rbxt_id`
             # exists for: what comes back here must not be uploaded over.
+            #
+            # Nothing is adopted from it either: a foreign id's slug is the other
+            # server's naming, not an identity rbx may hand to another judge.
             return current
-        slug = match.group('slug')
+        # A package bound before `.rbx-id` existed. Its slug is the one the
+        # server already knows this package by, so it is offered to the shared
+        # file rather than overwritten from it -- and `adopt_slug` keeps an
+        # existing shared slug, so a package that has both simply keeps both.
+        slug = problem_id.adopt_slug(match.group('slug'), root)
     else:
-        slug = _new_slug()
+        slug = problem_id.ensure_slug(root)
 
     moj_id = f'{login}#{RBXT_PREFIX}{slug}'
     if moj_id != current:
         payload['id'] = moj_id
         _write_payload(path, payload)
     return moj_id
-
-
-def _new_slug() -> str:
-    """A slug that no other package will pick.
-
-    Random rather than derived from the problem's name: ids share one namespace
-    across every setter on the server, and rbx package names are not unique --
-    two setters both working through the same tutorial package would otherwise
-    collide on the server, and one of them would be writing over the other's
-    problem. Stability comes from committing `.moj-id`, not from derivation.
-    """
-    return secrets.token_hex(4)
 
 
 def _read_payload(path: pathlib.Path) -> Dict[str, Any]:

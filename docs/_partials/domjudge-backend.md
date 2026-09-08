@@ -24,7 +24,10 @@ for everyone else.
 
 The account needs **admin** rights. {{rbx}} creates a private `rbx-timing` contest the first
 time it runs, uploads a throwaway `rbxt-…` problem into it, and submits as the built-in
-`domjudge` team — none of which a plain jury account may do. The contest has no scoreboard
+`domjudge` team — none of which a plain jury account may do. The problem is named from the slug
+in `.rbx-id` at the package root — the one identity your package has on any remote judge, shared
+with the MOJ backend — so it stays the same problem as
+your testset grows, rather than leaving a trail of abandoned ones behind. The contest has no scoreboard
 anyone reads, and nothing {{rbx}} does there touches a real contest.
 
 Before uploading anything, {{rbx}} checks the instance and **refuses by name** what cannot

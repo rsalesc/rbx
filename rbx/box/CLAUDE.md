@@ -161,6 +161,36 @@ a no-op, because its work happens inside the deferred the consumer awaits. Await
 *unresolved* deferred after `close` is not supported; a resolved one keeps answering from
 its memo, which is what lets `timing` close before the group picker opens.
 
+### One problem identity, shared by every remote runner (`runners/problem_id.py`)
+
+Every remote backend needs a name to put its throwaway problem under, and needs that
+name to be *the same name next time*: an id that moves between runs orphans a problem on
+the server and re-uploads the whole testset to a fresh one. Each backend used to answer
+that its own way -- MOJ from a slug it minted into `.moj-id`, DOMjudge from
+`sha256(f'{pkg.name}:{len(entries)}')[:8]` -- so one package had two unrelated identities,
+and DOMjudge's **moved whenever a testcase was added**.
+
+There is now one slug, in `.rbx-id` at the package root, and each backend renders its own
+id from it: `<login>#rbxt-<slug>` for MOJ (ids are scoped by org, and the org is whoever
+is logged in), `rbxt-<slug>-<purpose>` for DOMjudge (ids are flat, and the two `rbx time`
+phases pin different limits). The slug is **random, minted once, then kept** -- never
+derived from the package name (rbx names are not unique, so two setters on the same
+tutorial package would collide on a shared server) and never from the testset (which
+changes constantly). `RBXT_PREFIX` lives here too: the marker for "a problem rbx may
+overwrite" belongs to every backend, not to one.
+
+`.rbx-id` sits beside `problem.rbx.yml` rather than under `.rbx/` -- the cache is
+regenerated freely, and a slug that vanished with it would leave a dead problem on the
+server after every clean. The default preset git-ignores it, alongside `.moj-id`.
+
+**Migration is via `adopt_slug`, and only in that direction.** A `.moj-id` written before
+this file existed carries a perfectly good slug naming a problem MOJ already holds, so
+`ensure_moj_id` offers it to `.rbx-id` rather than overwriting it from there; an existing
+shared slug always wins, so a package with both keeps both and neither backend is moved
+off the problem it is using. A **foreign** binding (a real, published problem -- `.moj-id`
+is written by `moj upload` too) is neither adopted nor rewritten: it is the other server's
+naming, not an identity rbx may hand to another judge.
+
 **Two `moj` trees, different jobs.** `runners/moj/` is the *client*: a typed wrapper
 over the judge's `moj` CLI (`problem_id.py`, `cli.py`) that a `MojRunner` drives to
 upload, calibrate and testrun. `packaging/moj/` is the *packager* that produces what it
@@ -251,10 +281,11 @@ rather than four, pinned by `test_a_second_run_re_uploads_neither_phase`.
 A *suffix* on the slug, not a second prefix, and derived rather than stored. `is_rbxt_id`
 is what stands between a timing package and a setter's published problem, so it keeps one
 marker and one regex; and `.moj-id` holds one id because that is the `moj` CLI's own
-convention (`moj testrun <dir>` reads that file), so the committed binding stays exactly
-what it always was and every `.moj-id` already committed keeps working. The guard runs
-*before* the derivation -- a binding rbx did not create is refused rather than having a
-second problem derived from it in someone else's namespace.
+convention (`moj testrun <dir>` reads that file), so it stays exactly what it always was
+and every `.moj-id` already written keeps working. The slug inside it now comes from
+`.rbx-id` (see above), which is what makes MOJ and DOMjudge name the same package the
+same way. The guard runs *before* the derivation -- a binding rbx did not create is
+refused rather than having a second problem derived from it in someone else's namespace.
 
 The upload record is a **map** keyed by problem id for the same reason: a single record
 would have each phase evict the other's, which is the original bug moved rather than

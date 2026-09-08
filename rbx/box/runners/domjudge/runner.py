@@ -10,11 +10,14 @@ Everything expensive is once per run, which is what `prepare` is: one upload
 serves however many solutions get measured, because a submission carries its own
 source in the request rather than being read out of the package.
 
-Design: `docs/plans/2026-09-08-domjudge-remote-runner-design.md`.
+Design: `docs/plans/2026-09-08-domjudge-remote-runner-design.md`, and
+`docs/plans/2026-09-08-domjudge-runner-caching-design.md` for what makes a
+re-run cheap.
 """
 
 import asyncio
 import hashlib
+import json
 import pathlib
 import tempfile
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -41,6 +44,7 @@ from rbx.box.runners.domjudge.api import (
     DomjudgeApiError,
     credentials_from_env,
 )
+from rbx.box.runners.problem_id import ensure_slug
 from rbx.grading.steps import (
     CheckerResult,
     Evaluation,
@@ -74,6 +78,32 @@ JUDGEMENT_POLL_ATTEMPTS = 400
 # comparable. Since comparability is the entire point of measuring remotely,
 # serialising costs wall-clock and buys correctness.
 MAX_INFLIGHT_SUBMISSIONS = 1
+
+# Where the fingerprint of the last probe package this machine successfully staged
+# is kept, one entry per server-and-problem. Under the disposable problem cache
+# rather than beside anything the setter owns: it is a per-machine observation
+# ("*I* put this package there"), and losing it must cost one redundant upload
+# rather than correctness. See `_recorded_fingerprint`.
+UPLOAD_STATE_NAME = 'domjudge-runner.json'
+
+# Where finished judgings are remembered, one JSON file per cache key.
+#
+# Beside the upload record, under the problem cache, and for the same reason: a
+# judging is an observation this machine made about a package it staged, not
+# anything that belongs to the package itself. Nothing here may be committed --
+# it says what *a* judgehost answered at *a* moment -- and losing it must cost a
+# redundant submission, never a wrong measurement. See `_cache_key`.
+JUDGEMENT_CACHE_DIR_NAME = 'domjudge-judgements'
+
+# Bumped when a change would make an older entry read wrong. It is part of the
+# key rather than a field to validate, so entries of another version simply never
+# match -- there is nothing to migrate and nothing to delete, and the cost of a
+# bump is one redundant submission per solution.
+JUDGEMENT_CACHE_VERSION = 1
+
+# The DOMjudge verdict for a submission that did not build. Never cached: see
+# `_is_cacheable`.
+COMPILATION_ERROR_VERDICT = 'CE'
 
 # What `TestcaseLog.exitstatus` says for a testcase somebody else ran. rbx never
 # saw a process, so there is no exit status to report; these name the absence
@@ -160,6 +190,11 @@ class DomjudgeRunner:
         self._team_id: Optional[str] = None
         self._packager: Optional[DomjudgePackager] = None
         self._languages: List[Dict[str, Any]] = []
+        # A digest over the probe package this run built, settled by `prepare`.
+        # It is what "the judge is configured identically" means here, and it is
+        # shared by the upload fast path and the judgement cache so the two can
+        # never disagree about it. See `_directory_fingerprint`.
+        self._fingerprint: Optional[str] = None
         # Created on first use rather than here: an `asyncio.Semaphore` belongs
         # to the loop that first awaits it, and nothing guarantees this object
         # was constructed inside the loop that will run it.
@@ -195,17 +230,40 @@ class DomjudgeRunner:
             ctx.progress.update('Building the DOMjudge probe package...')
 
         timelimit_ms = _probe_timelimit_ms(ctx)
-        fingerprint = _package_fingerprint(ctx)
-        problem_id = staging.probe_problem_id(fingerprint, ctx.purpose)
+        # The package's one identity on any remote judge, shared with every other
+        # runner rather than derived here. See `rbx.box.runners.problem_id`.
+        slug = ensure_slug(package.find_problem())
+        problem_id = staging.probe_problem_id(slug, ctx.purpose)
         self._problem_id = problem_id
 
-        packager, zip_path = self._build_probe(ctx, problem_id, timelimit_ms)
+        packager, zip_path, fingerprint = self._build_probe(
+            ctx, problem_id, timelimit_ms
+        )
         self._packager = packager
+        self._fingerprint = fingerprint
+
+        if await self._is_already_staged(problem_id, fingerprint):
+            # Said out loud, because otherwise it is unobservable: everything
+            # above is spinner text that vanishes, so a setter watching two
+            # phases go past would have no way to tell the cheap one from the
+            # expensive one.
+            console.console.print(
+                f'[status]domjudge[/status] · {api.server} · reused `{problem_id}`, '
+                f'package unchanged since the last upload.'
+            )
+            return
+
+        # Cleared *before* the upload, not after: from the moment the server
+        # starts receiving a new package, the recorded fingerprint no longer
+        # describes what is up there. A crash mid-upload must leave the next run
+        # re-uploading, never trusting a stale record.
+        _forget_upload(api.server, problem_id)
 
         if ctx.progress:
             ctx.progress.update(f'Uploading the probe package to `{problem_id}`...')
 
         await staging.stage_problem(api, self._contest, problem_id, zip_path)
+        _record_upload(api.server, problem_id, fingerprint)
 
         # One durable line, because everything above is spinner text that
         # vanishes. This is the only evidence afterwards that a phase re-uploaded
@@ -216,13 +274,45 @@ class DomjudgeRunner:
             f'at a {timelimit_ms} ms limit.'
         )
 
+    async def _is_already_staged(self, problem_id: str, fingerprint: str) -> bool:
+        """Whether the server already holds exactly this package, under this id.
+
+        Two conditions, and the second is what this has over the equivalent MOJ
+        fast path. **This machine last uploaded this fingerprint there** -- which
+        is a record of what rbx did, not of what the server holds. And **the
+        problem is still linked into the probe contest** -- which is the server's
+        own answer, and is what catches a probe problem deleted by hand, a
+        contest recreated, or a record carried onto an instance that was wiped.
+        `stage_problem` asks for that list anyway on the path this skips, so the
+        check costs a request only when it is about to save an upload.
+
+        What neither condition can see is somebody else uploading *over* this
+        problem id between two runs. That is why the record lives in the
+        disposable problem cache: the escape hatch is to delete it, and the cost
+        of the blind spot is bounded by the fact that the ids rbx stages to are
+        its own (`rbxt-`).
+        """
+        assert self._api is not None
+        assert self._contest is not None
+
+        if _recorded_fingerprint(self._api.server, problem_id) != fingerprint:
+            return False
+        problems = await self._api.problems(self._contest)
+        return any(problem.get('id') == problem_id for problem in problems)
+
     def _build_probe(
         self, ctx: RunContext, problem_id: str, timelimit_ms: int
-    ) -> Tuple[DomjudgePackager, pathlib.Path]:
+    ) -> Tuple[DomjudgePackager, pathlib.Path, str]:
         """Build the throwaway package this run measures against.
 
         Built directly rather than through `run_packager`, whose full local
         verification run is the exact work a remote runner exists to avoid.
+
+        Hands back the package's fingerprint along with the zip. It is taken over
+        the built *tree* rather than over the zip's bytes, because
+        `shutil.make_archive` stamps every entry with its mtime -- so two builds
+        of an identical package produce different archives, and a fingerprint
+        over them would never match anything.
         """
         packager = DomjudgePackager(
             testcase_entries=list(ctx.skeleton.entries),
@@ -242,7 +332,7 @@ class DomjudgeRunner:
             raise DomjudgeRunnerError(
                 'Could not build the DOMjudge probe package; see the error above.'
             ) from e
-        return packager, zip_path
+        return packager, zip_path, _directory_fingerprint(into_dir)
 
     # -- run_solution ---------------------------------------------------------
 
@@ -340,6 +430,12 @@ class DomjudgeRunner:
         list *grows* as judging proceeds. Reading it live turns a submission from
         one long silence into a testcase-by-testcase report, which is what a
         local run looks like.
+
+        **The cache is consulted before the semaphore, not inside it.** A hit
+        costs one file read and no judge time at all, so making it queue behind a
+        real submission would serialize free work behind expensive work -- and
+        with `MAX_INFLIGHT_SUBMISSIONS = 1` that means every hit waiting out every
+        miss ahead of it, for nothing.
         """
         assert self._api is not None
         assert self._contest is not None
@@ -349,6 +445,27 @@ class DomjudgeRunner:
 
         content = self._solution_content(solution)
         language_id = self._language_id_for(solution)
+
+        key = self._cache_key(solution, language_id, content)
+        cached = _load_cached_judgement(key)
+        if cached is not None:
+            submission_id, judgement, runs = cached
+            self._say(
+                board,
+                solution,
+                RunnerChip(f'#{submission_id}'),
+                RunnerChip('cached', style='green'),
+            )
+            # Put through the *same* `_Judging` a fresh submission publishes
+            # into, rather than storing derived evaluations. That is what makes a
+            # hit and a miss provably the same measurement: there is one path
+            # from a DOMjudge run to an rbx `Evaluation`, and both take it --
+            # pairing, the mismatch guard and the unknown-verdict refusal
+            # included, which still apply to a file that has been on disk since
+            # the last run and may have been anything by the time it is read.
+            await judging.publish(runs)
+            await judging.finish(judgement)
+            return
 
         async with self._slots:
             self._say(board, solution, RunnerChip('submitting'))
@@ -362,7 +479,12 @@ class DomjudgeRunner:
             )
             submission_id = str(submission['id'])
 
-            await self._poll_until_judged(solution, submission_id, judging, board)
+            judgement, runs = await self._poll_until_judged(
+                solution, submission_id, judging, board
+            )
+
+        if _is_cacheable(judgement, runs, judging.mismatched):
+            _store_cached_judgement(key, submission_id, judgement, runs)
 
     async def _poll_until_judged(
         self,
@@ -370,7 +492,7 @@ class DomjudgeRunner:
         submission_id: str,
         judging: '_Judging',
         board: RunProgress,
-    ) -> None:
+    ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """Poll until the judging is *finished*, publishing runs as they arrive.
 
         **Finished is `end_time`, not a verdict.** DOMjudge sets
@@ -381,11 +503,16 @@ class DomjudgeRunner:
         Per-testcase results are still handed out the moment they appear, so
         waiting for `end_time` costs the *report* nothing: it only decides when a
         testcase that never arrived is finally called SKIPPED.
+
+        Hands back the finished judgement and the last run list it read, which is
+        what the cache stores: the judge's own answer, rather than anything
+        derived from it. See `_store_cached_judgement`.
         """
         assert self._api is not None
         assert self._contest is not None
 
         judgement_id: Optional[str] = None
+        runs: List[Dict[str, Any]] = []
         # Real elapsed, not `attempt * interval`. Each attempt also spends a
         # request or two, so the nominal figure understates the wait -- by more
         # the busier the judge is, which is exactly when a setter reads it to
@@ -422,7 +549,7 @@ class DomjudgeRunner:
                     RunnerChip(f'#{submission_id}'),
                     RunnerChip(str(verdict or 'done')),
                 )
-                return
+                return judgement, runs
 
             await asyncio.sleep(JUDGEMENT_POLL_INTERVAL_SECONDS)
 
@@ -493,6 +620,69 @@ class DomjudgeRunner:
                 f'The extensions it does accept are: {known}.'
             )
         return language_id
+
+    def _cache_key(
+        self, solution: 'SolutionSkeleton', language_id: str, content: bytes
+    ) -> str:
+        """What makes a cached judging *the same measurement* as a fresh one.
+
+        Everything the judge's answer depended on, and nothing else:
+
+        - **the package the judge holds**, as `prepare`'s `_directory_fingerprint`
+          of the built probe. Everything the submission is measured *against* is
+          in there -- the testcases, the output validator, `problem.yaml`, and the
+          pinned limit -- so a package that fingerprints equal is a problem
+          configured identically. Reusing that fingerprint rather than inventing
+          a second key is what stops the cache and the upload fast path
+          disagreeing about what "the same package" means.
+        - **the exact bytes submitted**, not the solution's path and not its
+          mtime. `solution_content` amalgamates, so a change in an included
+          header changes the program without touching the file rbx names -- and,
+          the other way round, a whitespace-only edit that amalgamates to the
+          same bytes really is the same submission.
+        - **the language it was submitted under**, because that is what DOMjudge
+          compiles it with. Very nearly implied by the file name, but it is the
+          instance's own answer (`cpp` here, `cxx` elsewhere) and it is what the
+          judgehost acted on.
+        - **the server and the problem id**, because a timing is a measurement of
+          a park, and two instances holding the same package are two different
+          measurements. The problem id is very nearly implied by the fingerprint,
+          but it is where the numbers were actually observed.
+
+        **The limit needs no term of its own.** It is written into
+        `domjudge-problem.ini`, which the fingerprint covers -- so the validation
+        phase, which re-stages at `ceil(TL_lang x timeLimitToTle)`, misses on
+        every solution by construction, which is right: a timing taken under a
+        2.5s kill is not a timing under a 4s one. A picker round trip that lands
+        back on a limit already probed hits the cache instead.
+
+        **What this cannot see** is the park itself: its hardware, its load, a
+        judgehost joining or leaving, or somebody uploading over the probe
+        problem between two runs. A cached timing is a measurement from whenever
+        it was taken. That is why the cache lives in the disposable problem
+        cache, where throwing the observations away is one `rm -rf`.
+        """
+        assert self._api is not None
+        assert self._contest is not None
+        assert self._problem_id is not None
+        assert self._fingerprint is not None
+
+        digest = hashlib.sha256()
+        # Framed with lengths, like `_directory_fingerprint`, so no field can be
+        # made to look like part of the next one.
+        for part in (
+            f'v{JUDGEMENT_CACHE_VERSION}'.encode(),
+            self._api.server.encode(),
+            self._contest.encode(),
+            self._problem_id.encode(),
+            self._fingerprint.encode(),
+            solution.path.name.encode(),
+            language_id.encode(),
+            content,
+        ):
+            digest.update(f'{len(part)}:'.encode())
+            digest.update(part)
+        return digest.hexdigest()
 
     def _say(
         self, board: RunProgress, solution: 'SolutionSkeleton', *chips: RunnerChip
@@ -628,6 +818,16 @@ class _Judging:
             if self._failure is not None:
                 raise self._failure
             return self._runs.get(ordinal)
+
+    @property
+    def mismatched(self) -> bool:
+        """Whether the run list grew past the testset, so nothing may be paired.
+
+        Read by the cache before it writes anything: an entry that cannot be
+        paired is not a measurement of this testset, and remembering it would
+        turn one confusing run into every run after it.
+        """
+        return self._mismatched
 
     def chips(self) -> Tuple[RunnerChip, ...]:
         """What the progress board says about how far along the judging is.
@@ -829,17 +1029,249 @@ def _probe_timelimit_ms(ctx: RunContext) -> int:
 _DEFAULT_PROBE_TIMELIMIT_MS = 10_000
 
 
-def _package_fingerprint(ctx: RunContext) -> str:
-    """A short, stable name for "this package's testset".
+# -- the upload record -----------------------------------------------------------
+#
+# What this machine last staged, per server and problem id, so a re-run does not
+# push the same package onto a server that already holds it. `stage_problem` is
+# four requests and a zip upload, and the two `rbx time` phases alternate over and
+# over as the picker narrows -- so this is the difference between a re-run that
+# costs nothing and one that re-uploads the whole testset every time.
+#
+# Keyed by server as well as by problem id, unlike MOJ's equivalent: `rbxt-` ids
+# are derived from the package, so the same id on a staging instance and on a
+# production one is two entirely different problems.
 
-    Part of the remote problem id, so two problems on one server do not collide.
-    Derived from the package name and the testset shape rather than from the
-    built bytes: it only has to separate problems, and a content hash would move
-    on every regeneration and leave a trail of dead problems behind.
+
+def _upload_state_path() -> pathlib.Path:
+    return package.get_problem_cache_dir() / UPLOAD_STATE_NAME
+
+
+def _upload_state_key(server: str, problem_id: str) -> str:
+    return f'{server}|{problem_id}'
+
+
+def _read_upload_state() -> Dict[str, str]:
+    """Every problem this machine has staged to, and what it last sent.
+
+    A **map**, not a single record: `rbx time` stages one problem per phase, and
+    a single record would have each phase evict the other's -- which would make
+    the fast path unreachable in exactly the run that needs it most. Anything
+    unreadable or of an unrecognised shape reads as empty; the only cost is a
+    redundant upload, and that is the direction to fail in.
     """
-    pkg = package.find_problem_package_or_die()
-    material = f'{pkg.name}:{len(ctx.skeleton.entries)}'
-    return hashlib.sha256(material.encode()).hexdigest()[:8]
+    path = _upload_state_path()
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text())
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    return {
+        key: value
+        for key, value in payload.items()
+        if isinstance(key, str) and isinstance(value, str)
+    }
+
+
+def _write_upload_state(state: Dict[str, str]) -> None:
+    try:
+        _upload_state_path().write_text(json.dumps(state, indent=2) + '\n')
+    except OSError:
+        # A record that cannot be written is a record that is not there: the next
+        # run re-uploads. Nothing about the package just staged is affected, and
+        # there is nothing the setter would do about it.
+        return
+
+
+def _recorded_fingerprint(server: str, problem_id: str) -> Optional[str]:
+    return _read_upload_state().get(_upload_state_key(server, problem_id))
+
+
+def _record_upload(server: str, problem_id: str, fingerprint: str) -> None:
+    state = _read_upload_state()
+    state[_upload_state_key(server, problem_id)] = fingerprint
+    _write_upload_state(state)
+
+
+def _forget_upload(server: str, problem_id: str) -> None:
+    """Drop what is recorded for one problem, leaving every other one intact."""
+    state = _read_upload_state()
+    if state.pop(_upload_state_key(server, problem_id), None) is None:
+        return
+    _write_upload_state(state)
+
+
+def _directory_fingerprint(path: pathlib.Path) -> str:
+    """A digest over every file in the built package, path and contents.
+
+    Deterministic across machines (sorted relative POSIX paths, lengths framed so
+    a rename cannot be absorbed into a neighbouring file's bytes) and covers
+    exactly what the upload sends: change a testcase, the limit, `problem.yaml`
+    or the output validator, and this moves.
+    """
+    digest = hashlib.sha256()
+    for file_path in sorted(p for p in path.rglob('*') if p.is_file()):
+        rel = file_path.relative_to(path).as_posix().encode()
+        content = file_path.read_bytes()
+        digest.update(f'{len(rel)}:'.encode())
+        digest.update(rel)
+        digest.update(f'{len(content)}:'.encode())
+        digest.update(content)
+    return digest.hexdigest()
+
+
+# -- the judgement cache ---------------------------------------------------------
+#
+# `rbx time` is a command a setter runs *again*: tweak a solution, re-estimate,
+# change the profile, look at the table once more. Every re-run used to re-submit
+# every solution, including ones whose source had not changed by a byte -- and a
+# submission occupies the whole judgehost for as long as the solution takes on
+# every test, with `MAX_INFLIGHT_SUBMISSIONS = 1` making that strictly serial. So
+# a finished judging is remembered, keyed (see `_cache_key`) so that a hit is
+# provably the same measurement rather than merely a similar one.
+#
+# **There is no `--no-cache` flag**, deliberately. The two questions a flag would
+# answer both have better answers already: "I changed something" is what the key
+# is for, and it covers everything rbx can observe; "I want to see the variance"
+# is not a workflow this backend supports at all, since `nruns > 1` is refused
+# outright (`RunnerCapabilities.supports_nruns`). What is left is the blind spot
+# no flag can fix either -- a park whose hardware or load changed underneath the
+# numbers -- and for that the honest escape hatch is to throw the observations
+# away, which is one `rm -rf` of a directory under the problem cache.
+#
+# No expiry, no size cap, no eviction, for want of a problem they would solve: an
+# entry is a few hundred bytes of JSON, entries are only written for packages that
+# were really staged, and a stale entry is unreachable rather than wrong -- its
+# key names a package fingerprint no later run will ever produce again.
+
+
+def _judgement_cache_dir() -> pathlib.Path:
+    path = package.get_problem_cache_dir() / JUDGEMENT_CACHE_DIR_NAME
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _is_cacheable(
+    judgement: Dict[str, Any], runs: List[Dict[str, Any]], mismatched: bool
+) -> bool:
+    """Whether this judging is a measurement worth remembering.
+
+    Three refusals, and every one of them is a thing the setter is about to
+    *fix*, where answering the next run from the cache would make the fix appear
+    to change nothing:
+
+    - **no runs at all.** The submission never entered the testset: a compile
+      error, a judgehost that fell over, a judging that died. This is the
+      analogue of MOJ's `ran_nothing` check, and it is what keeps a `CE` out of
+      the cache -- the one a setter is guaranteed to hit, and the one that would
+      be maddening to have remembered.
+    - **a run list rbx refused to pair** (more runs than the testset). Nothing
+      was attributed to anything, so there is nothing to remember.
+    - **a verdict rbx cannot read.** `_evaluation_for` raises on it by name so
+      the fix is a one-line table entry; caching the response would mean the fix
+      did nothing until the cache was cleared.
+
+    A non-accepted judging **is** cached, on purpose. A WA, an RE or a TLE is a
+    legitimate, reproducible measurement of a solution that is *supposed* to fail
+    -- the validation phase exists to measure exactly those -- and its timings are
+    as real as an accepted solution's. Only "rbx could not read this" is refused,
+    never "the judge did not like the solution".
+    """
+    if mismatched or not runs:
+        return False
+    if str(judgement.get('judgement_type_id') or '') == COMPILATION_ERROR_VERDICT:
+        # Belt and braces: DOMjudge reports a compile error with no runs, so the
+        # check above already covers it. It stays because the rule being applied
+        # here is "never remember a build failure", and leaving that to be
+        # inferred from an empty list is how such a rule gets lost.
+        return False
+    return all(
+        str(run.get('judgement_type_id') or '') in _OUTCOMES
+        for run in runs
+        if run.get('ordinal') is not None
+    )
+
+
+def _load_cached_judgement(
+    key: str,
+) -> Optional[Tuple[str, Dict[str, Any], List[Dict[str, Any]]]]:
+    """The submission id, judgement and runs remembered under `key`, if any.
+
+    Anything unreadable -- absent, truncated, not JSON, not the shape it was
+    written in, written by a version of this code that meant something else by it
+    -- reads as a miss. That is the direction to fail in: a miss costs one
+    redundant submission, while trusting a half-written file costs a wrong timing
+    in the number `rbx time` is about to write into a limits profile.
+    """
+    path = _judgement_cache_dir() / f'{key}.json'
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text())
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    submission = payload.get('submission')
+    judgement = payload.get('judgement')
+    runs = payload.get('runs')
+    if not isinstance(submission, str) or not submission:
+        return None
+    if not isinstance(judgement, dict) or not isinstance(runs, list):
+        return None
+    if not all(isinstance(run, dict) for run in runs):
+        return None
+    return submission, judgement, runs
+
+
+def _store_cached_judgement(
+    key: str,
+    submission_id: str,
+    judgement: Dict[str, Any],
+    runs: List[Dict[str, Any]],
+) -> None:
+    """Remember a judging rbx was able to read in full.
+
+    **Only ever called for a judging that passed `_is_cacheable`**, which is what
+    keeps a failure out of the cache.
+
+    What is stored is the API's own answer -- the judgement object and the run
+    list -- rather than the evaluations derived from them. The derivation depends
+    on which testcases *this* run asked about, so storing its output would bake
+    one run's testset into an entry the next run reuses. Storing the input instead
+    means a hit re-derives, through the same `_Judging`, against whatever the
+    current run asked for.
+
+    Written whole and then moved into place, because a poll interrupted mid-write
+    would otherwise leave a truncated JSON file under a key that says it describes
+    a real measurement. `_load_cached_judgement` tolerates that anyway; this makes
+    it not happen.
+    """
+    directory = _judgement_cache_dir()
+    path = directory / f'{key}.json'
+    payload = {
+        'submission': submission_id,
+        'judgement': judgement,
+        'runs': runs,
+    }
+    try:
+        # Same directory, so the replace is atomic on every filesystem rbx runs
+        # on.
+        with tempfile.NamedTemporaryFile(
+            'w', dir=directory, prefix=f'.{key}-', suffix='.tmp', delete=False
+        ) as tmp:
+            tmp.write(json.dumps(payload, indent=2) + '\n')
+            temporary = pathlib.Path(tmp.name)
+        temporary.replace(path)
+    except OSError:
+        # A cache that cannot be written is a cache that is not there. The
+        # measurement in hand is unaffected, and saying anything here would be
+        # said from a background task, about something the setter did not ask for
+        # and cannot act on.
+        return
 
 
 # Re-exported so `registry` can name the class without knowing the module layout.

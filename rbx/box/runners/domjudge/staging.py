@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from rbx.box.runners.base import RunnerCapabilityError, RunPurpose
 from rbx.box.runners.domjudge.api import DomjudgeApi
+from rbx.box.runners.problem_id import RBXT_PREFIX
 
 # The contest every probe problem lives in. One contest, many problems: a
 # problem is per package and per purpose, while the contest is just the place
@@ -65,15 +66,21 @@ def probe_label(problem_id: str) -> str:
     return problem_id
 
 
-def probe_problem_id(fingerprint: str, purpose: RunPurpose) -> str:
+def probe_problem_id(slug: str, purpose: RunPurpose) -> str:
     """The remote problem this package, for this purpose, belongs to.
+
+    `slug` is the package's one identity on any remote judge, out of `.rbx-id` --
+    the same slug MOJ renders `<login>#rbxt-<slug>` from. It used to be a hash of
+    the package name and its testcase count, which moved every time a testcase
+    was added: the run then staged a fresh problem and left the previous one
+    behind, and two packages that happened to agree on both collided.
 
     Purpose is part of the id because the two `rbx time` phases pin *different*
     time limits, and the limits live in the package. Sharing one remote problem
     would make every alternation between phases a fresh upload -- exactly the
     thrash `RunPurpose` was introduced to prevent.
     """
-    return f'rbxt-{fingerprint}-{_purpose_suffix(purpose)}'
+    return f'{RBXT_PREFIX}{slug}-{_purpose_suffix(purpose)}'
 
 
 def _purpose_suffix(purpose: RunPurpose) -> str:
