@@ -2,7 +2,10 @@
 
 `rbx issues` is meant to be instant -- it computes nothing, it reads what the
 last run already wrote. So this module reads `.rbx/runs` and nothing else: no
-package is loaded, no testcases are extracted, no sandbox is touched.
+package is loaded, no testcases are extracted, no sandbox is touched. The one
+step past the two YAML files is `size_stderr_artifacts`, which `stat()`s the
+`.err` files already sitting in that directory; it lives here rather than in the
+detector that needs it so the detectors stay pure over the state they are given.
 
 That is also why it does not import `rbx.box.solutions` to parse `skeleton.yml`.
 That module is thousands of lines and pulls in most of the box, and paying for
@@ -13,7 +16,7 @@ together so the narrow read cannot silently drift from the real model.
 """
 
 import pathlib
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import yaml
 from pydantic import BaseModel
@@ -22,6 +25,12 @@ from rbx.box import run_report
 from rbx.box.compilation_findings import SolutionCompilation
 
 SKELETON_FILENAME = 'skeleton.yml'
+
+# Stderr artifacts that belong to something other than the solution. A
+# communication run writes the interactor's stderr beside the solution's, and
+# every run may keep the checker's; both end in `.err` and neither says anything
+# about how noisy the *solution* is.
+_NON_SOLUTION_STDERR_SUFFIXES = ('.checker.err', '.int.err')
 
 
 class UnsupportedReportVersion(Exception):
@@ -53,12 +62,24 @@ class SkeletonView(BaseModel):
     compilation: List[SolutionCompilation] = []
 
 
+class StderrArtifact(BaseModel):
+    """The largest stderr one solution's run wrote, and how large it was."""
+
+    # Relative to the runs dir, e.g. `0/main/001.err`.
+    path: pathlib.Path
+    size: int  # bytes
+
+
 class RunState(BaseModel):
     """One package's last run, as the detectors see it."""
 
     report: run_report.RunReport
     skeleton: SkeletonView
     runs_dir: pathlib.Path
+    # The noisiest stderr artifact per solution index, when the solution wrote
+    # one at all. Sized here rather than in the detector so the detectors stay
+    # pure over the state they are handed -- see `size_stderr_artifacts`.
+    stderr: Dict[int, StderrArtifact] = {}
     # `report.yml`'s mtime, as a POSIX timestamp. When the run happened, near
     # enough: the report is rewritten as each solution lands, so it is stamped
     # at the end of the run rather than the start.
@@ -80,6 +101,50 @@ def _load_yaml(path: pathlib.Path) -> Optional[dict]:
     except yaml.YAMLError:
         return None
     return data if isinstance(data, dict) else None
+
+
+def _is_solution_stderr(path: pathlib.Path) -> bool:
+    name = path.name
+    if not name.endswith('.err'):
+        return False
+    return not any(name.endswith(suffix) for suffix in _NON_SOLUTION_STDERR_SUFFIXES)
+
+
+def size_stderr_artifacts(
+    runs_dir: pathlib.Path, indices: List[int]
+) -> Dict[int, StderrArtifact]:
+    """The noisiest stderr each of `indices` wrote, by `stat()`-ing the runs dir.
+
+    The one place `rbx issues` looks at the run beyond its two YAML files. It is
+    done here, eagerly, rather than inside the detector: a detector that stats
+    is a detector that needs a populated directory tree to test, which is
+    exactly the coupling the detectors were pulled out of the issue stack to
+    escape. The cost is a `stat()` per testcase artifact, which is the same
+    order as reading the report itself.
+
+    Only the indices the report names are walked, so a stale directory left by a
+    longer previous run is never sized.
+    """
+    sizes: Dict[int, StderrArtifact] = {}
+    for index in indices:
+        solution_dir = runs_dir / str(index)
+        if not solution_dir.is_dir():
+            continue
+        largest: Optional[StderrArtifact] = None
+        for path in solution_dir.rglob('*.err'):
+            if not _is_solution_stderr(path):
+                continue
+            try:
+                size = path.stat().st_size
+            except OSError:
+                # A run cleaned up underneath us reads as no artifact at all,
+                # for the same reason a half-written report reads as no run.
+                continue
+            if largest is None or size > largest.size:
+                largest = StderrArtifact(path=path.relative_to(runs_dir), size=size)
+        if largest is not None:
+            sizes[index] = largest
+    return sizes
 
 
 def load_run_state(runs_dir: pathlib.Path) -> Optional[RunState]:
@@ -109,5 +174,8 @@ def load_run_state(runs_dir: pathlib.Path) -> Optional[RunState]:
         report=report,
         skeleton=SkeletonView.model_validate(skeleton_data),
         runs_dir=runs_dir,
+        stderr=size_stderr_artifacts(
+            runs_dir, [solution.index for solution in report.solutions]
+        ),
         ran_at=run_report.report_path(runs_dir).stat().st_mtime,
     )
