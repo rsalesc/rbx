@@ -619,208 +619,128 @@ class TestYamlRoundtrip:
         assert reconstructed_model.metadata == original_model.metadata
 
 
-class TestEnvironUtils:
-    """Tests for environment utility functions in rbx.utils."""
+class TestDotenvUtils:
+    """Tests for .env loading in rbx.utils."""
 
-    def test_environ_returns_os_environ_copy_when_no_envrc_files(
-        self, tmp_path, monkeypatch
-    ):
-        """Test that environ() returns a copy of os.environ when no .envrc files exist."""
-        from rbx.utils import environ
+    @pytest.fixture(autouse=True)
+    def _clear_dotenv_cache(self):
+        from rbx.utils import _read_dotenv_at
 
-        # Change to a temporary directory with no .envrc files
+        _read_dotenv_at.cache_clear()
+        yield
+        _read_dotenv_at.cache_clear()
+
+    def test_load_dotenv_injects_env_file_into_os_environ(self, tmp_path, monkeypatch):
+        """load_dotenv() puts the variables of a .env file into os.environ."""
+        from rbx.utils import load_dotenv
+
+        (tmp_path / '.env').write_text('ENV_VAR=env_value')
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv('ENV_VAR', raising=False)
+
+        load_dotenv()
+
+        assert os.environ['ENV_VAR'] == 'env_value'
+
+    def test_load_dotenv_overrides_the_shell_environment(self, tmp_path, monkeypatch):
+        """A variable set in .env wins over one inherited from the shell."""
+        from rbx.utils import load_dotenv
+
+        (tmp_path / '.env').write_text('SHARED_VAR=from_env_file')
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv('SHARED_VAR', 'from_shell')
+
+        load_dotenv()
+
+        assert os.environ['SHARED_VAR'] == 'from_env_file'
+
+    def test_load_dotenv_prefers_env_local_over_env(self, tmp_path, monkeypatch):
+        """.env.local overrides .env for variables defined in both."""
+        from rbx.utils import load_dotenv
+
+        (tmp_path / '.env').write_text('COMMON_VAR=from_env\nENV_ONLY=env_only_value')
+        (tmp_path / '.env.local').write_text(
+            'COMMON_VAR=from_local\nLOCAL_ONLY=local_only_value'
+        )
         monkeypatch.chdir(tmp_path)
 
-        # Set some environment variables
-        monkeypatch.setenv('TEST_VAR', 'test_value')
-        monkeypatch.setenv('ANOTHER_VAR', 'another_value')
+        load_dotenv()
 
-        # Clear the cache to ensure fresh execution
-        from rbx.utils import _read_envrc_at
+        assert os.environ['COMMON_VAR'] == 'from_local'
+        assert os.environ['ENV_ONLY'] == 'env_only_value'
+        assert os.environ['LOCAL_ONLY'] == 'local_only_value'
 
-        _read_envrc_at.cache_clear()
+    def test_load_dotenv_walks_up_the_directory_tree(self, tmp_path, monkeypatch):
+        """The nearest .env up the tree is the one that is loaded."""
+        from rbx.utils import load_dotenv
 
-        result = environ()
-
-        # Should contain os.environ variables
-        assert result['TEST_VAR'] == 'test_value'
-        assert result['ANOTHER_VAR'] == 'another_value'
-
-        # Should be a copy (modifying result shouldn't affect os.environ)
-        result['NEW_VAR'] = 'new_value'
-        assert 'NEW_VAR' not in os.environ
-
-    def test_environ_with_envrc_in_current_directory(self, tmp_path, monkeypatch):
-        """Test that environ() reads .envrc file in current directory."""
-        from rbx.utils import environ
-
-        # Create .envrc file
-        envrc_content = """
-ENVRC_VAR=envrc_value
-SHARED_VAR=from_envrc
-"""
-        envrc_path = tmp_path / '.envrc'
-        envrc_path.write_text(envrc_content.strip())
-
-        # Change to the test directory
-        monkeypatch.chdir(tmp_path)
-
-        # Set an environment variable
-        monkeypatch.setenv('OS_VAR', 'os_value')
-
-        # Clear the cache
-        from rbx.utils import _read_envrc_at
-
-        _read_envrc_at.cache_clear()
-
-        result = environ()
-
-        # Should contain both os.environ and .envrc variables
-        assert result['OS_VAR'] == 'os_value'
-        assert result['ENVRC_VAR'] == 'envrc_value'
-        assert result['SHARED_VAR'] == 'from_envrc'
-
-    def test_environ_with_envrc_local_in_current_directory(self, tmp_path, monkeypatch):
-        """Test that environ() reads .envrc.local file in current directory."""
-        from rbx.utils import environ
-
-        # Create .envrc.local file
-        envrc_local_content = """
-LOCAL_VAR=local_value
-SHARED_VAR=from_local
-"""
-        envrc_local_path = tmp_path / '.envrc.local'
-        envrc_local_path.write_text(envrc_local_content.strip())
-
-        # Change to the test directory
-        monkeypatch.chdir(tmp_path)
-
-        # Set an environment variable
-        monkeypatch.setenv('OS_VAR', 'os_value')
-
-        # Clear the cache
-        from rbx.utils import _read_envrc_at
-
-        _read_envrc_at.cache_clear()
-
-        result = environ()
-
-        # Should contain both os.environ and .envrc.local variables
-        assert result['OS_VAR'] == 'os_value'
-        assert result['LOCAL_VAR'] == 'local_value'
-        assert result['SHARED_VAR'] == 'from_local'
-
-    def test_environ_with_both_envrc_files_local_overrides(self, tmp_path, monkeypatch):
-        """Test that .envrc.local overrides .envrc for same variables."""
-        from rbx.utils import environ
-
-        # Create .envrc file
-        envrc_content = """
-COMMON_VAR=from_envrc
-ENVRC_ONLY=envrc_only_value
-"""
-        envrc_path = tmp_path / '.envrc'
-        envrc_path.write_text(envrc_content.strip())
-
-        # Create .envrc.local file
-        envrc_local_content = """
-COMMON_VAR=from_local
-LOCAL_ONLY=local_only_value
-"""
-        envrc_local_path = tmp_path / '.envrc.local'
-        envrc_local_path.write_text(envrc_local_content.strip())
-
-        # Change to the test directory
-        monkeypatch.chdir(tmp_path)
-
-        # Clear the cache
-        from rbx.utils import _read_envrc_at
-
-        _read_envrc_at.cache_clear()
-
-        result = environ()
-
-        # .envrc.local should override .envrc for common variables
-        assert result['COMMON_VAR'] == 'from_local'
-        assert result['ENVRC_ONLY'] == 'envrc_only_value'
-        assert result['LOCAL_ONLY'] == 'local_only_value'
-
-    def test_environ_walks_up_directory_tree(self, tmp_path, monkeypatch):
-        """Test that environ() walks up the directory tree looking for .envrc files."""
-        from rbx.utils import environ
-
-        # Create nested directory structure
-        parent_dir = tmp_path
-        child_dir = parent_dir / 'child'
+        child_dir = tmp_path / 'child'
         grandchild_dir = child_dir / 'grandchild'
         grandchild_dir.mkdir(parents=True)
 
-        # Create .envrc in parent directory
-        parent_envrc = parent_dir / '.envrc'
-        parent_envrc.write_text('PARENT_VAR=parent_value')
+        (tmp_path / '.env').write_text('ROOT_VAR=root_value\nSHARED_VAR=from_root')
+        (child_dir / '.env').write_text('CHILD_VAR=child_value\nSHARED_VAR=from_child')
 
-        # Create .envrc in child directory
-        child_envrc = child_dir / '.envrc'
-        child_envrc.write_text('CHILD_VAR=child_value\nSHARED_VAR=from_child')
-
-        # Create .envrc.local in grandchild directory
-        grandchild_envrc_local = grandchild_dir / '.envrc.local'
-        grandchild_envrc_local.write_text(
-            'GRANDCHILD_VAR=grandchild_value\nSHARED_VAR=from_grandchild'
-        )
-
-        # Change to grandchild directory
         monkeypatch.chdir(grandchild_dir)
+        monkeypatch.delenv('ROOT_VAR', raising=False)
 
-        # Clear the cache
-        from rbx.utils import _read_envrc_at
+        load_dotenv()
 
-        _read_envrc_at.cache_clear()
+        # The child .env is the nearest one, so it shadows the root one entirely.
+        assert os.environ['CHILD_VAR'] == 'child_value'
+        assert os.environ['SHARED_VAR'] == 'from_child'
+        assert 'ROOT_VAR' not in os.environ
 
-        result = environ()
+    def test_load_dotenv_finds_env_local_of_another_directory(
+        self, tmp_path, monkeypatch
+    ):
+        """.env and .env.local are looked up independently of each other."""
+        from rbx.utils import load_dotenv
 
-        # Should contain variables from all levels
-        assert result['PARENT_VAR'] == 'parent_value'
-        assert result['CHILD_VAR'] == 'child_value'
-        assert result['GRANDCHILD_VAR'] == 'grandchild_value'
-        assert result['SHARED_VAR'] == 'from_grandchild'
+        child_dir = tmp_path / 'child'
+        child_dir.mkdir()
 
-    def test_environ_caching_behavior(self, tmp_path, monkeypatch):
-        """Test that _read_envrc_at uses functools.cache properly."""
-        from rbx.utils import _read_envrc_at, environ
+        (tmp_path / '.env.local').write_text('COMMON_VAR=from_root_local')
+        (child_dir / '.env').write_text('COMMON_VAR=from_child')
 
-        # Create .envrc file
-        envrc_path = tmp_path / '.envrc'
-        envrc_path.write_text('CACHED_VAR=original_value')
+        monkeypatch.chdir(child_dir)
 
-        # Change to the test directory
+        load_dotenv()
+
+        assert os.environ['COMMON_VAR'] == 'from_root_local'
+
+    def test_load_dotenv_ignores_envrc_files(self, tmp_path, monkeypatch):
+        """.envrc files are no longer read -- everything lives in .env."""
+        from rbx.utils import load_dotenv
+
+        (tmp_path / '.envrc').write_text('ENVRC_VAR=envrc_value')
+        (tmp_path / '.envrc.local').write_text('ENVRC_LOCAL_VAR=envrc_local_value')
         monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv('ENVRC_VAR', raising=False)
+        monkeypatch.delenv('ENVRC_LOCAL_VAR', raising=False)
 
-        # Clear the cache
-        _read_envrc_at.cache_clear()
+        load_dotenv()
 
-        # First call
-        result1 = environ()
-        assert result1['CACHED_VAR'] == 'original_value'
+        assert 'ENVRC_VAR' not in os.environ
+        assert 'ENVRC_LOCAL_VAR' not in os.environ
 
-        # Modify the file
-        envrc_path.write_text('CACHED_VAR=modified_value')
+    def test_load_dotenv_is_a_noop_without_env_files(self, tmp_path, monkeypatch):
+        """Running where there is no .env leaves the environment untouched."""
+        from rbx.utils import load_dotenv
 
-        # Second call should return cached result (same as first)
-        result2 = environ()
-        assert result2['CACHED_VAR'] == 'original_value'  # Still cached
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv('OS_VAR', 'os_value')
+        before = os.environ.copy()
 
-        # Clear cache and call again
-        _read_envrc_at.cache_clear()
-        result3 = environ()
-        assert result3['CACHED_VAR'] == 'modified_value'  # Now reads new value
+        load_dotenv()
 
-    def test_environ_with_various_dotenv_formats(self, tmp_path, monkeypatch):
-        """Test that environ() handles various dotenv file formats correctly."""
-        from rbx.utils import environ
+        assert os.environ == before
 
-        # Create .envrc with various formats
-        envrc_content = """# Comment line
+    def test_load_dotenv_handles_various_dotenv_formats(self, tmp_path, monkeypatch):
+        """Comments, quotes and odd values are parsed the way dotenv does it."""
+        from rbx.utils import load_dotenv
+
+        (tmp_path / '.env').write_text("""# Comment line
 SIMPLE_VAR=simple_value
 QUOTED_VAR="quoted value"
 SINGLE_QUOTED_VAR='single quoted'
@@ -830,80 +750,77 @@ EMPTY_VAR=
 MULTILINE_VAR="line1
 line2"
 VAR_WITH_EQUALS=key=value=more
-"""
-        envrc_path = tmp_path / '.envrc'
-        envrc_path.write_text(envrc_content)
-
-        # Change to the test directory
+""")
         monkeypatch.chdir(tmp_path)
 
-        # Clear the cache
-        from rbx.utils import _read_envrc_at
+        load_dotenv()
 
-        _read_envrc_at.cache_clear()
+        assert os.environ['SIMPLE_VAR'] == 'simple_value'
+        assert os.environ['QUOTED_VAR'] == 'quoted value'
+        assert os.environ['SINGLE_QUOTED_VAR'] == 'single quoted'
+        assert os.environ['VAR_WITH_SPACES'] == 'value with spaces'
+        assert os.environ['EMPTY_VAR'] == ''
+        assert os.environ['MULTILINE_VAR'] == 'line1\nline2'
+        assert os.environ['VAR_WITH_EQUALS'] == 'key=value=more'
+
+    def test_environ_returns_a_copy_of_os_environ(self, tmp_path, monkeypatch):
+        """environ() hands out a copy, not os.environ itself."""
+        from rbx.utils import environ
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv('TEST_VAR', 'test_value')
 
         result = environ()
 
-        # Test various formats are parsed correctly
-        assert result['SIMPLE_VAR'] == 'simple_value'
-        assert result['QUOTED_VAR'] == 'quoted value'
-        assert result['SINGLE_QUOTED_VAR'] == 'single quoted'
-        assert result['VAR_WITH_SPACES'] == 'value with spaces'
-        assert result['EMPTY_VAR'] == ''
-        assert 'line1' in result['MULTILINE_VAR'] and 'line2' in result['MULTILINE_VAR']
-        assert result['VAR_WITH_EQUALS'] == 'key=value=more'
+        assert result['TEST_VAR'] == 'test_value'
+        result['NEW_VAR'] = 'new_value'
+        assert 'NEW_VAR' not in os.environ
 
-    def test_environ_os_environ_overrides_envrc(self, tmp_path, monkeypatch):
-        """Test that os.environ variables are not overridden by .envrc files."""
+    def test_environ_sees_env_files_without_load_dotenv(self, tmp_path, monkeypatch):
+        """environ() reads the .env files itself, for callers outside the CLI."""
         from rbx.utils import environ
 
-        # Create .envrc file with a variable
-        envrc_content = 'SHARED_VAR=from_envrc'
-        envrc_path = tmp_path / '.envrc'
-        envrc_path.write_text(envrc_content)
+        (tmp_path / '.env').write_text('ENV_VAR=env_value')
+        (tmp_path / '.env.local').write_text('LOCAL_VAR=local_value')
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv('ENV_VAR', raising=False)
+        monkeypatch.setenv('OS_VAR', 'os_value')
 
-        # Set the same variable in os.environ
-        monkeypatch.setenv('SHARED_VAR', 'from_os_environ')
+        result = environ()
 
-        # Change to the test directory
+        assert result['OS_VAR'] == 'os_value'
+        assert result['ENV_VAR'] == 'env_value'
+        assert result['LOCAL_VAR'] == 'local_value'
+        # It does not leak into the process environment.
+        assert 'ENV_VAR' not in os.environ
+
+    def test_environ_ignores_envrc_files(self, tmp_path, monkeypatch):
+        """environ() no longer reads .envrc either."""
+        from rbx.utils import environ
+
+        (tmp_path / '.envrc').write_text('ENVRC_VAR=envrc_value')
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv('ENVRC_VAR', raising=False)
+
+        result = environ()
+
+        assert 'ENVRC_VAR' not in result
+
+    def test_dotenv_files_are_read_only_once_per_directory(self, tmp_path, monkeypatch):
+        """The parsed .env files are cached, keyed by the directory they were read from."""
+        from rbx.utils import _read_dotenv_at, environ
+
+        env_path = tmp_path / '.env'
+        env_path.write_text('CACHED_VAR=original_value')
         monkeypatch.chdir(tmp_path)
 
-        # Clear the cache
-        from rbx.utils import _read_envrc_at
+        assert environ()['CACHED_VAR'] == 'original_value'
 
-        _read_envrc_at.cache_clear()
+        env_path.write_text('CACHED_VAR=modified_value')
+        assert environ()['CACHED_VAR'] == 'original_value'
 
-        result = environ()
-
-        # os.environ should NOT be overridden by .envrc (envrc updates are applied after copy)
-        assert result['SHARED_VAR'] == 'from_envrc'  # .envrc overrides os.environ
-
-    def test_environ_with_nonexistent_directory(self, monkeypatch):
-        """Test environ() behavior when current directory doesn't exist (edge case)."""
-        import tempfile
-
-        from rbx.utils import environ
-
-        # Create a temporary directory and then delete it
-        with tempfile.TemporaryDirectory():
-            pass  # Directory is automatically deleted
-
-        # Try to change to the deleted directory (this will fail gracefully)
-        # Instead, test with a directory that exists but has no .envrc files
-        monkeypatch.chdir(pathlib.Path.home())
-
-        # Clear the cache
-        from rbx.utils import _read_envrc_at
-
-        _read_envrc_at.cache_clear()
-
-        # Set an environment variable
-        monkeypatch.setenv('HOME_TEST_VAR', 'home_value')
-
-        result = environ()
-
-        # Should contain os.environ variables even without .envrc files
-        assert result['HOME_TEST_VAR'] == 'home_value'
+        _read_dotenv_at.cache_clear()
+        assert environ()['CACHED_VAR'] == 'modified_value'
 
 
 class TestIsValidSemver:

@@ -134,11 +134,46 @@ DOTENV_FILES = ['.env', '.env.local']
 PathOrStr = Union[pathlib.Path, str]
 
 
+def _find_dotenv_at(path: pathlib.Path, name: str) -> Optional[pathlib.Path]:
+    while True:
+        candidate = path / name
+        if candidate.is_file():
+            return candidate
+        if path.parent == path:
+            return None
+        path = path.parent
+
+
+@functools.cache
+def _read_dotenv_at(path: pathlib.Path) -> Dict[str, str]:
+    """Parse the dotenv files nearest to `path`, walking up the directory tree.
+
+    Later entries of `DOTENV_FILES` override earlier ones, and each of them is
+    looked up independently -- a `.env.local` further up still overrides a
+    `.env` sitting right next to `path`.
+    """
+    res: Dict[str, str] = {}
+    for name in DOTENV_FILES:
+        file = _find_dotenv_at(path, name)
+        if file is None:
+            continue
+        res.update(
+            {
+                key: value
+                for key, value in dotenv.dotenv_values(file).items()
+                if value is not None
+            }
+        )
+    return res
+
+
 def load_dotenv():
-    for dotenv_file in DOTENV_FILES:
-        file = dotenv.find_dotenv(dotenv_file, usecwd=True)
-        if file:
-            dotenv.load_dotenv(file, override=True)
+    """Inject the variables of the nearest dotenv files into the environment.
+
+    This is called once from the `rbx` root callback, so every command already
+    sees the dotenv variables in plain `os.environ`.
+    """
+    os.environ.update(_read_dotenv_at(pathlib.Path.cwd()))
 
 
 class SemVerCompatibility(enum.Enum):
@@ -650,27 +685,17 @@ class StatusProgress(rich.status.Status):
         self.keep = False
 
 
-@functools.cache
-def _read_envrc_at(path: pathlib.Path) -> Dict[str, str]:
-    entries = []
-    while os.path.dirname(str(path)) != str(path):
-        envrc = path / '.envrc'
-        envrc_local = path / '.envrc.local'
-        if envrc_local.is_file():
-            entries.append(dotenv.dotenv_values(envrc_local))
-        if envrc.is_file():
-            entries.append(dotenv.dotenv_values(envrc))
-        path = path.parent
-
-    res = {}
-    for entry in reversed(entries):
-        res.update(entry)
-    return res
-
-
 def environ() -> Dict[str, str]:
+    """The environment as seen by rbx, dotenv files included.
+
+    `load_dotenv()` already puts these variables in `os.environ` for every CLI
+    invocation, so plain `os.environ` is enough almost everywhere. This is for
+    the few callers that may also run outside the root callback, or from a
+    directory nested below the one it ran in; it does not touch the process
+    environment.
+    """
     res = os.environ.copy()
-    res.update(_read_envrc_at(pathlib.Path.cwd()))
+    res.update(_read_dotenv_at(pathlib.Path.cwd()))
     return res
 
 
