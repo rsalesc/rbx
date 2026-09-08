@@ -432,7 +432,9 @@ class DomjudgePackager(BasePackager):
         """
         if solution.path.suffix.lower() in _AMALGAMATABLE_SUFFIXES:
             try:
-                result = amalgamate(utils.abspath(solution.path))
+                result = amalgamate(
+                    utils.abspath(solution.path), relative_to=package.find_problem()
+                )
             except AmalgamationError as e:
                 console.console.print(
                     f'[error]Cannot package {solution.href()} for DOMjudge.[/error]\n'

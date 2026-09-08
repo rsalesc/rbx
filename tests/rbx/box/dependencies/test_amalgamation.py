@@ -126,3 +126,55 @@ def test_amalgamated_output_compiles(tmp_path):
         text=True,
     )
     assert proc.returncode == 0, proc.stderr
+
+
+def test_provenance_is_absolute_without_relative_to(tmp_path):
+    (tmp_path / 'lib.h').write_text('int helper();\n')
+    root = tmp_path / 'main.cpp'
+    root.write_text('#include "lib.h"\nint main(){}\n')
+
+    text = amalgamate(root).content.decode()
+
+    assert f'// amalgamated from {(tmp_path / "lib.h").resolve()}\n' in text
+
+
+def test_provenance_is_relative_to_the_given_anchor(tmp_path):
+    (tmp_path / 'sols').mkdir()
+    (tmp_path / 'sols' / 'lib.h').write_text('int helper();\n')
+    root = tmp_path / 'sols' / 'main.cpp'
+    root.write_text('#include "lib.h"\nint main(){}\n')
+
+    text = amalgamate(root, relative_to=tmp_path).content.decode()
+
+    assert '// amalgamated from sols/lib.h\n' in text
+    assert str(tmp_path) not in text
+
+
+def test_provenance_of_a_builtin_header_is_labelled(tmp_path):
+    builtin = tmp_path / 'app' / 'resources'
+    builtin.mkdir(parents=True)
+    (builtin / 'testlib.h').write_text('int testlib_marker;\n')
+    pkg = tmp_path / 'pkg'
+    pkg.mkdir()
+    root = pkg / 'main.cpp'
+    root.write_text('#include "testlib.h"\nint main(){}\n')
+
+    text = amalgamate(root, extra_roots=[builtin], relative_to=pkg).content.decode()
+
+    assert '// amalgamated from <builtin>/testlib.h\n' in text
+    assert str(tmp_path) not in text
+
+
+def test_provenance_outside_every_root_is_reduced_to_a_name(tmp_path):
+    outside = tmp_path / 'secret-contest-2026'
+    outside.mkdir()
+    (outside / 'lib.h').write_text('int helper();\n')
+    pkg = tmp_path / 'pkg'
+    pkg.mkdir()
+    root = pkg / 'main.cpp'
+    root.write_text('#include "../secret-contest-2026/lib.h"\nint main(){}\n')
+
+    text = amalgamate(root, relative_to=pkg).content.decode()
+
+    assert '// amalgamated from <external>/lib.h\n' in text
+    assert 'secret-contest-2026' not in text

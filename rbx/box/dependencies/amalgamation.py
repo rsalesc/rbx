@@ -84,12 +84,39 @@ def _resolve(
     return None
 
 
+def _render_provenance(
+    target: pathlib.Path,
+    relative_to: Optional[pathlib.Path],
+    extra_roots: Sequence[pathlib.Path],
+) -> str:
+    """How an inlined file is named in the ``// amalgamated from`` comment.
+
+    Absolute when there is no anchor, which is what a caller inspecting a build on
+    the machine that produced it wants. With an anchor -- packagers pass the package
+    root -- the comment must not leak anything about that machine, since it travels
+    inside the shipped package: a file under the anchor is named relative to it, one
+    coming from an ``extra_roots`` search directory is labelled ``<builtin>/``, and
+    anything else is reduced to its bare name under ``<external>/`` rather than to a
+    ``../..`` path that would still spell out the directories above the package.
+    """
+    if relative_to is None:
+        return str(target)
+    for root, label in [(relative_to, ''), *((r, '<builtin>') for r in extra_roots)]:
+        try:
+            relative = target.relative_to(utils.abspath(root))
+        except ValueError:
+            continue
+        return f'{label}/{relative.as_posix()}' if label else relative.as_posix()
+    return f'<external>/{target.name}'
+
+
 def amalgamate(
     root: pathlib.Path,
     *,
     extra_roots: Sequence[pathlib.Path] = (),
     keep: Optional[Callable[[str], bool]] = None,
     scanner: Optional[DependencyScanner] = None,
+    relative_to: Optional[pathlib.Path] = None,
 ) -> AmalgamationResult:
     """Reduce ``root`` and its dependency closure to one self-contained source.
 
@@ -103,6 +130,11 @@ def amalgamate(
     A directive that cannot be resolved raises :class:`AmalgamationError` naming the
     including file and the spelling, unless ``keep`` returns ``True`` for it, in which
     case the directive survives verbatim.
+
+    ``relative_to`` anchors the ``// amalgamated from`` provenance comments, which
+    are absolute paths on the running machine without it. Callers that ship the
+    result -- packagers -- must pass one, or the setter's own directory layout
+    travels inside the package; see :func:`_render_provenance`.
 
     ``extra_roots`` are extra search directories for otherwise unresolvable spellings.
     This is how callers make builtin headers (``testlib.h``, ``rbx.h``) inlinable
@@ -145,7 +177,8 @@ def amalgamate(
                         'drop the reference.'
                     )
             else:
-                out += f'// amalgamated from {target}\n'.encode()
+                provenance = _render_provenance(target, relative_to, extra_roots)
+                out += f'// amalgamated from {provenance}\n'.encode()
                 out += render(target)
                 out += b'\n'
             pos = end
