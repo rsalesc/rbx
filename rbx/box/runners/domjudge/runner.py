@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import typer
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import package, tasks
 from rbx.box.deferred import Deferred
 from rbx.box.exception import RbxException
@@ -166,7 +166,7 @@ class DomjudgeRunner:
         self._slots: Optional[asyncio.Semaphore] = None
         # Every submission this run dispatched, held so a task in flight cannot
         # be garbage-collected out from under the judge.
-        self._jobs: List['asyncio.Task[_JudgedSubmission]'] = []
+        self._jobs: List['asyncio.Task[None]'] = []
 
     # -- prepare --------------------------------------------------------------
 
@@ -282,8 +282,9 @@ class DomjudgeRunner:
 
         self._say(ctx.progress_board, solution, RunnerChip('waiting for a slot'))
 
+        judging = _Judging(total=len(entries))
         job = asyncio.create_task(
-            self._submit_and_poll(solution, len(entries), ctx.progress_board)
+            self._poll_into(solution, judging, ctx.progress_board)
         )
         job.add_done_callback(_retrieve_exception)
         self._jobs.append(job)
@@ -295,18 +296,51 @@ class DomjudgeRunner:
                 # iteration: a late-bound `entry` would give every deferred the
                 # last testcase's evaluation.
                 lambda entry=entry, ordinal=ordinal: self._evaluation_from_job(
-                    job, solution, entry, ordinal
+                    judging, solution, entry, ordinal
                 )
             )
             for entry, ordinal in zip(entries, ordinals)
         ]
 
+    async def _poll_into(
+        self,
+        solution: 'SolutionSkeleton',
+        judging: '_Judging',
+        board: RunProgress,
+    ) -> None:
+        """Run the submission, and make sure the waiters are released either way.
+
+        The deferreds block on `judging`, not on this task, so nothing here may
+        return without the judging being settled -- a poll that raised or was
+        cancelled would otherwise leave every deferred waiting on a condition
+        nobody will notify again, turning an error into a hang.
+
+        `CancelledError` is re-raised after settling, because `close` awaits
+        these tasks and a task that swallowed its cancellation never finishes.
+        """
+        try:
+            await self._submit_and_poll(solution, judging, board)
+        except asyncio.CancelledError as cancelled:
+            await judging.fail(cancelled)
+            raise
+        except BaseException as failure:
+            await judging.fail(failure)
+            raise
+
     async def _submit_and_poll(
         self,
         solution: 'SolutionSkeleton',
-        total: int,
+        judging: '_Judging',
         board: RunProgress,
-    ) -> '_JudgedSubmission':
+    ) -> None:
+        """Submit, then publish each testcase's run into `judging` as it lands.
+
+        The whole point of polling `/runs` on every tick rather than once at the
+        end is that DOMjudge exposes only runs whose `endtime` is set, so the
+        list *grows* as judging proceeds. Reading it live turns a submission from
+        one long silence into a testcase-by-testcase report, which is what a
+        local run looks like.
+        """
         assert self._api is not None
         assert self._contest is not None
         assert self._problem_id is not None
@@ -328,63 +362,73 @@ class DomjudgeRunner:
             )
             submission_id = str(submission['id'])
 
-            judgement = await self._wait_for_judgement(solution, submission_id, board)
+            await self._poll_until_judged(solution, submission_id, judging, board)
 
-        judgement_id = str(judgement['id'])
-        runs = await self._api.runs(self._contest, judgement_id)
-
-        self._say(
-            board,
-            solution,
-            RunnerChip(f'#{submission_id}'),
-            RunnerChip(str(judgement.get('judgement_type_id') or 'done')),
-        )
-        return _JudgedSubmission(
-            submission_id=submission_id,
-            judgement=judgement,
-            runs=_runs_by_ordinal(runs, total),
-        )
-
-    async def _wait_for_judgement(
+    async def _poll_until_judged(
         self,
         solution: 'SolutionSkeleton',
         submission_id: str,
+        judging: '_Judging',
         board: RunProgress,
-    ) -> Dict[str, Any]:
-        """Poll until the judging is *finished*, not merely until it has a verdict.
+    ) -> None:
+        """Poll until the judging is *finished*, publishing runs as they arrive.
 
-        **This is the subtlety of the whole runner.** DOMjudge sets
+        **Finished is `end_time`, not a verdict.** DOMjudge sets
         `judgement_type_id` as soon as the verdict is decided -- on the first
-        failing testcase -- and goes on judging the rest. A poll that stops there
-        reads `max_run_time: null` and a run list holding only the testcases
-        judged so far, and reports a solution with no timing and missing
-        testcases as though that were the answer.
+        failing testcase -- and goes on judging the rest. Stopping there would
+        leave the later testcases unreported and `max_run_time` null.
 
-        `end_time` is the field that means finished, so that is what this waits
-        for.
+        Per-testcase results are still handed out the moment they appear, so
+        waiting for `end_time` costs the *report* nothing: it only decides when a
+        testcase that never arrived is finally called SKIPPED.
         """
         assert self._api is not None
         assert self._contest is not None
 
-        for attempt in range(JUDGEMENT_POLL_ATTEMPTS):
-            judgements = await self._api.judgements(self._contest, submission_id)
-            if judgements and judgements[0].get('end_time'):
-                return judgements[0]
+        judgement_id: Optional[str] = None
+        # Real elapsed, not `attempt * interval`. Each attempt also spends a
+        # request or two, so the nominal figure understates the wait -- by more
+        # the busier the judge is, which is exactly when a setter reads it to
+        # decide whether to give up.
+        elapsed = utils.Elapsed()
 
-            verdict = judgements[0].get('judgement_type_id') if judgements else None
+        for _ in range(JUDGEMENT_POLL_ATTEMPTS):
+            judgements = await self._api.judgements(self._contest, submission_id)
+            judgement = judgements[0] if judgements else None
+            if judgement is not None:
+                judgement_id = str(judgement['id'])
+
+            # A judging with no id yet has not been picked up, and asking for its
+            # runs would be a request that can only answer nothing.
+            if judgement_id is not None:
+                runs = await self._api.runs(self._contest, judgement_id)
+                await judging.publish(runs)
+
+            verdict = judgement.get('judgement_type_id') if judgement else None
             self._say(
                 board,
                 solution,
                 RunnerChip(f'#{submission_id}'),
+                *judging.chips(),
                 RunnerChip(str(verdict) if verdict else 'queued'),
-                RunnerChip(f'{attempt * JUDGEMENT_POLL_INTERVAL_SECONDS:.0f}s'),
+                RunnerChip(str(elapsed)),
             )
+
+            if judgement is not None and judgement.get('end_time'):
+                await judging.finish(judgement)
+                self._say(
+                    board,
+                    solution,
+                    RunnerChip(f'#{submission_id}'),
+                    RunnerChip(str(verdict or 'done')),
+                )
+                return
+
             await asyncio.sleep(JUDGEMENT_POLL_INTERVAL_SECONDS)
 
-        waited = JUDGEMENT_POLL_ATTEMPTS * JUDGEMENT_POLL_INTERVAL_SECONDS
         raise DomjudgeRunnerError(
             f'DOMjudge did not finish judging `{solution.path}` (submission '
-            f'{submission_id}) after {waited:.0f}s. The submission may still be '
+            f'{submission_id}) after {elapsed}. The submission may still be '
             f'queued behind other work, or its judging may have failed; check '
             f'{self._api.server} and try again.'
         )
@@ -393,13 +437,21 @@ class DomjudgeRunner:
 
     async def _evaluation_from_job(
         self,
-        job: 'asyncio.Task[_JudgedSubmission]',
+        judging: '_Judging',
         solution: 'SolutionSkeleton',
         entry: GenerationTestcaseEntry,
         ordinal: int,
     ) -> Evaluation:
-        judged = await job
-        return _evaluation_for(solution, entry, judged.runs.get(ordinal))
+        """Wait for *this testcase*, not for the whole submission.
+
+        This is what makes the report tick: the deferred for testcase 1 resolves
+        as soon as DOMjudge has judged testcase 1, while the rest are still
+        running. Only a testcase the judging ended without ever reporting waits
+        the full length of the submission -- and it has to, because "not judged
+        yet" and "never going to be" are the same thing until `end_time`.
+        """
+        run = await judging.run_for(ordinal)
+        return _evaluation_for(solution, entry, run)
 
     def _solution_content(self, solution: 'SolutionSkeleton') -> bytes:
         """The exact bytes submitted for this solution.
@@ -503,18 +555,90 @@ class DomjudgeRunner:
 # -- helpers ---------------------------------------------------------------------
 
 
-class _JudgedSubmission:
-    """What one finished submission told us, before it is split per testcase."""
+class _Judging:
+    """One submission's results, handed out per testcase as they arrive.
 
-    def __init__(
-        self,
-        submission_id: str,
-        judgement: Dict[str, Any],
-        runs: Dict[int, Dict[str, Any]],
-    ):
-        self.submission_id = submission_id
-        self.judgement = judgement
-        self.runs = runs
+    The seam between the single polling task and the N deferreds waiting on it.
+    A deferred asks for *its* ordinal and blocks only until that testcase is
+    judged, rather than until the whole submission is -- which is the difference
+    between a report that ticks and a report that sits still for minutes.
+
+    **An `asyncio.Condition`, not an Event per ordinal.** Runs arrive in batches
+    (a poll returns every testcase finished since the last one), the set of
+    ordinals is not known to be contiguous, and every waiter has to re-check the
+    same two conditions -- its run arrived, or the judging ended without it. One
+    condition with a predicate loop is exactly that shape; a map of Events would
+    be the same logic plus bookkeeping to keep it consistent.
+
+    Both ends run on the one event loop, so the lock is uncontended and only
+    exists to make `wait` correct.
+    """
+
+    def __init__(self, total: int):
+        self._total = total
+        self._runs: Dict[int, Dict[str, Any]] = {}
+        self._finished = False
+        self._failure: Optional[BaseException] = None
+        # Set when the run list grew past the testset. See `publish`.
+        self._mismatched = False
+        self._condition = asyncio.Condition()
+        self.judgement: Optional[Dict[str, Any]] = None
+
+    async def publish(self, runs: List[Dict[str, Any]]) -> None:
+        """Record the runs reported so far and wake whoever they unblock."""
+        async with self._condition:
+            if len(runs) > self._total:
+                # More runs than the testset rbx thinks it uploaded: the remote
+                # problem holds testcases this run does not know about, so no
+                # ordinal means what it appears to. Refusing to pair leaves every
+                # testcase SKIPPED rather than mispaired.
+                self._mismatched = True
+                self._runs.clear()
+            elif not self._mismatched:
+                for run in runs:
+                    ordinal = run.get('ordinal')
+                    if ordinal is not None:
+                        self._runs[int(ordinal)] = run
+            self._condition.notify_all()
+
+    async def finish(self, judgement: Dict[str, Any]) -> None:
+        """The judging ended. Every ordinal still missing is never coming."""
+        async with self._condition:
+            self.judgement = judgement
+            self._finished = True
+            self._condition.notify_all()
+
+    async def fail(self, failure: BaseException) -> None:
+        """The poll gave up or blew up; hand the reason to every waiter.
+
+        Without this a failed poll would leave the deferreds blocked forever on a
+        condition nothing will ever notify -- a hang in place of the error the
+        setter needs to see.
+        """
+        async with self._condition:
+            self._failure = failure
+            self._finished = True
+            self._condition.notify_all()
+
+    async def run_for(self, ordinal: int) -> Optional[Dict[str, Any]]:
+        """This testcase's run, or None once the judging ended without it."""
+        async with self._condition:
+            while ordinal not in self._runs and not self._finished:
+                await self._condition.wait()
+            if self._failure is not None:
+                raise self._failure
+            return self._runs.get(ordinal)
+
+    def chips(self) -> Tuple[RunnerChip, ...]:
+        """What the progress board says about how far along the judging is.
+
+        Read without the lock: a plain dict `len` on the one event loop cannot
+        observe a half-applied write, and the board is a status line -- a count
+        one poll stale is not worth making the reporter await a lock for.
+        """
+        if self._mismatched or not self._runs:
+            return ()
+        return (RunnerChip(f'judged {len(self._runs)}/{self._total}'),)
 
 
 def _retrieve_exception(task: 'asyncio.Task') -> None:
@@ -550,26 +674,6 @@ def _ordinals_for(entries: List[GenerationTestcaseEntry]) -> List[int]:
     for ordinal, index in enumerate(samples + secrets, start=1):
         ordinals[index] = ordinal
     return ordinals
-
-
-def _runs_by_ordinal(
-    runs: List[Dict[str, Any]], total: int
-) -> Dict[int, Dict[str, Any]]:
-    """Index the runs by ordinal, or refuse to index them at all.
-
-    A run list shorter than the testset means DOMjudge stopped early -- lazy
-    evaluation that the probe problem's `lazy_eval_results` was supposed to turn
-    off, or a judging that failed part-way. Pairing what did arrive would be
-    *fine* here, since ordinals are explicit; what would not be fine is treating
-    a missing ordinal as a measurement, so the caller renders those as SKIPPED.
-
-    A list *longer* than the testset is a package/testset mismatch: the uploaded
-    problem holds testcases this run does not know about, so no pairing is
-    trustworthy and none is offered.
-    """
-    if len(runs) > total:
-        return {}
-    return {int(run['ordinal']): run for run in runs if run.get('ordinal') is not None}
 
 
 def _evaluation_for(
