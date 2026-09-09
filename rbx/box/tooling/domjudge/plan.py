@@ -56,6 +56,12 @@ _ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
 _PLACEHOLDER_RE = re.compile(r'\{[a-zA-Z_][a-zA-Z0-9_]*\}')
 
+# The one skip reason that needs a sentence rather than a phrase. Named so
+# `configure.py` can say that sentence once, under the table, instead of once
+# per language -- there are usually three of these and two real changes, and
+# repeating it drowns the changes.
+WRAPPER_REASON = 'runs via a wrapper'
+
 # The `env.rbx.yml` limit -> DOMjudge configuration key mapping, with the unit
 # conversion each one needs. DOMjudge keeps `memory_limit` in kB; the other
 # three are already in the units rbx spells them in.
@@ -240,17 +246,18 @@ def build_compile_script(
     that would otherwise be *accepted* by DOMjudge and then fail every
     submission: the endpoint answers 204 to any zip, and a wrapper that leaves
     the wrong kind of artifact at `$DEST` only shows up as a judging error.
+
+    Reasons are **short phrases**, because they are read in a table cell beside
+    the languages that *are* being changed -- which are the point of the run. The
+    one that needs explaining, `WRAPPER_REASON`, is explained once below the
+    table rather than repeated in every row it applies to.
+
+    The checks are ordered most-specific-first so each language is refused for
+    the most informative reason it qualifies for: Python is "not compiled"
+    rather than "runs via a wrapper", though it is both.
     """
     if not extension.compile:
-        return None, 'compile is false in extensions.domjudge'
-
-    if not runs_the_binary_directly(environment, language):
-        return (
-            None,
-            'rbx does not run this language by executing its build product, so '
-            "DOMjudge's own compile script has to keep producing the wrapper it "
-            'execs',
-        )
+        return None, 'compile: false'
 
     command = extension.compileCommand
     if command is None:
@@ -258,31 +265,23 @@ def build_compile_script(
             language.compilation.commands if language.compilation is not None else None
         )
         if not commands:
-            return None, 'language is not compiled'
+            return None, 'not compiled'
         if len(commands) > 1:
-            return (
-                None,
-                f'compilation.commands has {len(commands)} commands, and DOMjudge '
-                'takes a single one',
-            )
+            return None, f'{len(commands)} compile steps'
         command = commands[0]
 
+    if not runs_the_binary_directly(environment, language):
+        return None, WRAPPER_REASON
+
     if '{compilable}' not in command or '{executable}' not in command:
-        return (
-            None,
-            'the compilation command does not use both {compilable} and {executable}',
-        )
+        return None, 'no {compilable}/{executable}'
 
     translated = command.replace('{executable}', '"$DEST"').replace(
         '{compilable}', '"$@"'
     )
     leftover = _PLACEHOLDER_RE.findall(translated)
     if leftover:
-        return (
-            None,
-            f'the compilation command uses {", ".join(sorted(set(leftover)))}, which '
-            'has no DOMjudge equivalent',
-        )
+        return None, f'uses {", ".join(sorted(set(leftover)))}'
 
     return (
         CompileScript(

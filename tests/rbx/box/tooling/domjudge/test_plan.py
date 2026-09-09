@@ -24,7 +24,11 @@ from rbx.box.tooling.domjudge.extension import (
     DomjudgeExtension,
     DomjudgeLanguageExtension,
 )
-from rbx.box.tooling.domjudge.plan import build_plan, config_payload
+from rbx.box.tooling.domjudge.plan import (
+    WRAPPER_REASON,
+    build_plan,
+    config_payload,
+)
 
 
 def language(
@@ -211,11 +215,11 @@ def test_compile_command_overrides_the_environments_own():
         ({}, 'not compiled'),
         (
             {'commands': ['javac {compilable}', 'jar cvf {executable} *.class']},
-            'single one',
+            '2 compile steps',
         ),
         (
             {'commands': ['kotlinc -d {executable} -include-runtime {other}']},
-            'both {compilable} and {executable}',
+            'no {compilable}/{executable}',
         ),
         (
             {
@@ -223,14 +227,14 @@ def test_compile_command_overrides_the_environments_own():
                     'javac -o {executable} {compilable} -cp {javaClass}',
                 ]
             },
-            '{javaClass}',
+            'uses {javaClass}',
         ),
         (
             {
                 'commands': ['g++ -o {executable} {compilable}'],
                 'domjudge': DomjudgeLanguageExtension(compile=False),
             },
-            'compile is false',
+            'compile: false',
         ),
     ],
 )
@@ -331,4 +335,4 @@ def test_keeps_the_compile_script_of_a_language_whose_artifact_is_not_the_progra
     entry = find(plan, 'kt')
     assert entry.language_id == 'kotlin'
     assert entry.compile_script is None
-    assert 'executing its build product' in (entry.compile_skipped or '')
+    assert entry.compile_skipped == WRAPPER_REASON

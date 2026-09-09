@@ -17,7 +17,7 @@ from rich.table import Table
 
 from rbx import console
 from rbx.box.runners.domjudge.api import DomjudgeApi
-from rbx.box.tooling.domjudge.plan import Plan, config_payload
+from rbx.box.tooling.domjudge.plan import WRAPPER_REASON, Plan, config_payload
 
 
 def print_plan(api: DomjudgeApi, plan: Plan) -> None:
@@ -42,7 +42,7 @@ def print_plan(api: DomjudgeApi, plan: Plan) -> None:
                     f'[success]push[/success] {language.compile_script.command}'
                 )
             else:
-                compile_cell = f'[info]keep[/info] ({language.compile_skipped})'
+                compile_cell = f'[info]keep — {language.compile_skipped}[/info]'
             if language.added_extensions:
                 extensions = '[success]+{}[/success] {}'.format(
                     ', '.join(language.added_extensions),
@@ -63,6 +63,17 @@ def print_plan(api: DomjudgeApi, plan: Plan) -> None:
                 compile_cell,
             )
         console.console.print(table)
+
+    # Said once, under the table, rather than in every row it applies to: it is
+    # the same sentence for three languages in a typical environment, and the
+    # two languages actually being changed are what the table is for.
+    if any(language.compile_skipped == WRAPPER_REASON for language in plan.languages):
+        console.console.print(
+            '[info]DOMjudge execs whatever the compile script leaves at '
+            '`$DEST`, so a language rbx runs through an interpreter or a jar '
+            "keeps the server's own script -- that script is what writes the "
+            'wrapper DOMjudge runs.[/info]'
+        )
 
     if plan.preserved:
         console.console.print(
