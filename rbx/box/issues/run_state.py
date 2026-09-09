@@ -1,11 +1,13 @@
 """The on-disk state the detectors run over.
 
 `rbx issues` is meant to be instant -- it computes nothing, it reads what the
-last run already wrote. So this module reads `.rbx/runs` and nothing else: no
-package is loaded, no testcases are extracted, no sandbox is touched. The one
-step past the two YAML files is `size_stderr_artifacts`, which `stat()`s the
-`.err` files already sitting in that directory; it lives here rather than in the
-detector that needs it so the detectors stay pure over the state they are given.
+last run already wrote. So this module reads the package cache and nothing else:
+no package is loaded, no testcases are extracted, no sandbox is touched. Two
+steps go past the two YAML files -- `size_stderr_artifacts`, which `stat()`s the
+`.err` files already sitting in the runs dir, and `locate_sanitizer_logs`, which
+looks for the sanitizer output beside it. Both live here rather than in the
+detectors that need them so the detectors stay pure over the state they are
+given.
 
 That is also why it does not import `rbx.box.solutions` to parse `skeleton.yml`.
 That module is thousands of lines and pulls in most of the box, and paying for
@@ -23,8 +25,14 @@ from pydantic import BaseModel
 
 from rbx.box import run_report
 from rbx.box.compilation_findings import SolutionCompilation
+from rbx.box.sanitizers import warning_stack
 
 SKELETON_FILENAME = 'skeleton.yml'
+
+# Where the sanitizer logs sit, relative to the runs dir. Beside it rather than
+# inside it because the run writes them through `warning_stack`, whose home is
+# the package cache dir -- of which the runs dir is another child.
+SANITIZER_LOGS_DIR = pathlib.Path('..') / warning_stack.WARNINGS_DIR_NAME
 
 # Stderr artifacts that belong to something other than the solution. A
 # communication run writes the interactor's stderr beside the solution's, and
@@ -80,6 +88,10 @@ class RunState(BaseModel):
     # one at all. Sized here rather than in the detector so the detectors stay
     # pure over the state they are handed -- see `size_stderr_artifacts`.
     stderr: Dict[int, StderrArtifact] = {}
+    # The kept sanitizer output per solution path, for the solutions that have
+    # one on disk. Located here rather than in the detector for the reason the
+    # stderr sizes are -- see `locate_sanitizer_logs`.
+    sanitizer_logs: Dict[str, pathlib.Path] = {}
     # `report.yml`'s mtime, as a POSIX timestamp. When the run happened, near
     # enough: the report is rewritten as each solution lands, so it is stamped
     # at the end of the run rather than the start.
@@ -147,6 +159,34 @@ def size_stderr_artifacts(
     return sizes
 
 
+def locate_sanitizer_logs(
+    runs_dir: pathlib.Path, paths: List[str]
+) -> Dict[str, pathlib.Path]:
+    """The kept sanitizer output for each of `paths` that still has one.
+
+    `report.yml` records only *that* a sanitizer fired, so the log has to be
+    found by name -- which `warning_stack.sanitizer_log_name` answers, so the
+    reader cannot drift from the writer that put it there.
+
+    Like `size_stderr_artifacts` this happens here, eagerly, rather than inside
+    the detector: a detector that stats is a detector that needs a populated
+    directory to test.
+
+    Only the paths the caller names are looked up, and a missing log is simply
+    absent -- `warning_stack` clears its directory at the start of every process
+    that writes one, so a `rbx compile` between the run and the read leaves the
+    report's flag standing with no file behind it.
+    """
+    logs: Dict[str, pathlib.Path] = {}
+    for path in paths:
+        relative = SANITIZER_LOGS_DIR / warning_stack.sanitizer_log_name(
+            pathlib.Path(path)
+        )
+        if (runs_dir / relative).is_file():
+            logs[path] = relative
+    return logs
+
+
 def load_run_state(runs_dir: pathlib.Path) -> Optional[RunState]:
     """The last run in `runs_dir`, or None when there was not one.
 
@@ -176,6 +216,14 @@ def load_run_state(runs_dir: pathlib.Path) -> Optional[RunState]:
         runs_dir=runs_dir,
         stderr=size_stderr_artifacts(
             runs_dir, [solution.index for solution in report.solutions]
+        ),
+        sanitizer_logs=locate_sanitizer_logs(
+            runs_dir,
+            [
+                solution.path
+                for solution in report.solutions
+                if solution.sanitizerWarnings
+            ],
         ),
         ran_at=run_report.report_path(runs_dir).stat().st_mtime,
     )

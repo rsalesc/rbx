@@ -13,6 +13,7 @@ Two levels, and the *same* renderer serves both surfaces at each level:
 """
 
 import json
+import os
 import pathlib
 import time
 from enum import Enum
@@ -40,6 +41,7 @@ from rbx.box.issues.schema import (
     NoisyStderrIssue,
     NoSamplesIssue,
     NoValidatorIssue,
+    SanitizerFindingIssue,
     TightTimeMarginIssue,
     UnexpectedScoreIssue,
     UnmetExpectationIssue,
@@ -96,10 +98,14 @@ def _resolve(path: pathlib.Path, runs_dir: Optional[str]) -> pathlib.Path:
 
     Compilation logs are stored relative so a package read on another host still
     resolves them; a terminal hyperlink needs the other form.
+
+    Normalized because not every relative path points *into* the runs dir: a
+    sanitizer log is kept beside it, so joining gives `.rbx/runs/../warnings/x`,
+    which is right but reads as noise and wraps a terminal line for no reason.
     """
     if runs_dir is None:
         return path
-    return pathlib.Path(runs_dir) / path
+    return pathlib.Path(os.path.normpath(pathlib.Path(runs_dir) / path))
 
 
 def _solution_of(issue: Issue) -> Optional[str]:
@@ -146,6 +152,8 @@ def summarize(issue: Issue) -> str:
         )
     if isinstance(issue, NoisyStderrIssue):
         return f'wrote {get_formatted_memory(issue.size)} to stderr on one test'
+    if isinstance(issue, SanitizerFindingIssue):
+        return 'a sanitizer fired while running this solution'
     if isinstance(issue, UntunedLimitsIssue):
         return 'the time limit may not be tuned to this machine'
     if isinstance(issue, NoAcceptedSolutionIssue):
@@ -230,6 +238,17 @@ def explain(issue: Issue, runs_dir: Optional[str] = None) -> List[str]:
             'that produces it.',
             f'stderr: {href(_resolve(issue.path, runs_dir))}',
         ]
+    if isinstance(issue, SanitizerFindingIssue):
+        lines = [
+            'ASAN or UBSAN found something -- an out-of-bounds access, signed '
+            'overflow, an uninitialised read -- while this solution ran. The '
+            'verdict may well be fine here and undefined on the judge.'
+        ]
+        if issue.groups:
+            lines.append(f'groups:   {", ".join(issue.groups)}')
+        if issue.log is not None:
+            lines.append(f'log: {href(_resolve(issue.log, runs_dir))}')
+        return lines
     if isinstance(issue, UntunedLimitsIssue):
         return [
             'Solutions failed their expectations by being too fast or too slow, '
