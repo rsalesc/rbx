@@ -25,6 +25,7 @@ from rbx.box.issues.schema import (
     Issue,
     IssueSeverity,
     NoisyStderrIssue,
+    SanitizerFindingIssue,
     TightTimeMarginIssue,
     UnexpectedScoreIssue,
     UnmetExpectationIssue,
@@ -215,6 +216,36 @@ def detect_noisy_stderr(state: RunState) -> List[Issue]:
     return issues
 
 
+def detect_sanitizer_findings(state: RunState) -> List[Issue]:
+    """Solutions a sanitizer had something to say about.
+
+    Not filtered to the runs that passed, even though those are the case this
+    exists for: on a solution that failed, an ASAN or UBSAN finding is very
+    often *why* it failed, and dropping it there would hide the one line that
+    explains the verdict.
+
+    The flag is read off the report rather than pooled from the groups, for the
+    reason `run_report` gives for publishing it: rbx pools over the evaluations
+    it actually ran, and a subset run or a `--fail-fast` abort leaves that set
+    and the one a reader finds on disk disagreeing. The groups only *name* where
+    it fired.
+    """
+    issues: List[Issue] = []
+    for solution in state.report.solutions:
+        if not solution.sanitizerWarnings:
+            continue
+        issues.append(
+            SanitizerFindingIssue(
+                solution=solution.path,
+                groups=[
+                    group.name for group in solution.groups if group.sanitizerWarnings
+                ],
+                log=state.sanitizer_logs.get(solution.path),
+            )
+        )
+    return issues
+
+
 def detect_untuned_limits(state: RunState) -> List[Issue]:
     """Timing failures on a package whose limits were never tuned here.
 
@@ -236,6 +267,7 @@ DETECTORS: List[Callable[[RunState], List[Issue]]] = [
     detect_unmet_expectations,
     detect_unexpected_scores,
     detect_compilation,
+    detect_sanitizer_findings,
     detect_borderline_tle,
     detect_hidden_verdicts,
     detect_tight_time_margin,

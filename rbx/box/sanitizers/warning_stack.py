@@ -14,6 +14,21 @@ if TYPE_CHECKING:
     from rbx.box.linters.linter import LinterMessage
 
 
+WARNINGS_DIR_NAME = 'warnings'
+
+
+def sanitizer_log_name(path: pathlib.Path) -> pathlib.Path:
+    """The name a first-party file's sanitizer log is kept under.
+
+    Public, and pure, so the reader side resolves a log exactly the way the
+    writer side put it there: `rbx issues` links these logs off a `report.yml`
+    that records only that a sanitizer fired, so it has to rebuild the name from
+    the solution's path. A second copy of the rule would be a second thing to
+    keep in step.
+    """
+    return path.with_suffix(path.suffix + '.log')
+
+
 class WarningStack:
     def __init__(self, root: pathlib.Path):
         self.root = root
@@ -33,7 +48,7 @@ class WarningStack:
         if code.path in self.sanitizer_warnings:
             return
         dest_path = _get_warning_runs_dir(self.root).joinpath(
-            code.path.with_suffix(code.path.suffix + '.log')
+            sanitizer_log_name(code.path)
         )
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         f = await reference.get_file(cacher)
@@ -73,7 +88,7 @@ def _get_cache_dir(root: pathlib.Path) -> pathlib.Path:
 
 @functools.cache
 def _get_warning_runs_dir(root: pathlib.Path) -> pathlib.Path:
-    dir = _get_cache_dir(root) / 'warnings'
+    dir = _get_cache_dir(root) / WARNINGS_DIR_NAME
     shutil.rmtree(dir, ignore_errors=True)
     dir.mkdir(parents=True, exist_ok=True)
     return dir

@@ -22,7 +22,8 @@ from rbx.box.issues import config_detectors, detectors, rendering, run_state, sc
 from rbx.box.issues import config_state as config_state_module
 from rbx.box.issues.contest import build_report
 from rbx.box.run_report import RunGroupReport, RunReport, RunSolutionReport
-from rbx.box.schema import ExpectedOutcome, Solution
+from rbx.box.sanitizers import warning_stack
+from rbx.box.schema import CodeItem, ExpectedOutcome, Solution
 from rbx.grading.steps import Outcome
 
 
@@ -30,12 +31,14 @@ def make_state(
     solutions=None,
     compilation=None,
     stderr=None,
+    sanitizer_logs=None,
 ) -> run_state.RunState:
     return run_state.RunState(
         report=RunReport(solutions=solutions or []),
         skeleton=run_state.SkeletonView(compilation=compilation or []),
         runs_dir=pathlib.Path('.rbx/runs'),
         stderr=stderr or {},
+        sanitizer_logs=sanitizer_logs or {},
         ran_at=time.time(),
     )
 
@@ -367,6 +370,89 @@ class TestNoisyStderr:
         assert issue.severity == schema.IssueSeverity.WARNING
 
 
+class TestSanitizerFindings:
+    def test_flags_a_solution_that_passed_but_tripped_a_sanitizer(self):
+        """The case the flag exists for: `status` is OK and nothing else says so."""
+        state = make_state(
+            [
+                solution(
+                    path='sol/main.cpp',
+                    sanitizerWarnings=True,
+                    groups=[
+                        RunGroupReport(name='samples'),
+                        RunGroupReport(name='big', sanitizerWarnings=True),
+                    ],
+                )
+            ]
+        )
+
+        issues = detectors.detect_sanitizer_findings(state)
+
+        assert kinds(issues) == ['sanitizer_finding']
+        assert issues[0].solution == 'sol/main.cpp'
+        assert issues[0].groups == ['big']
+        assert issues[0].severity == schema.IssueSeverity.WARNING
+
+    def test_stays_quiet_when_nothing_tripped(self):
+        assert detectors.detect_sanitizer_findings(make_state([solution()])) == []
+
+    def test_reports_a_solution_that_also_failed_its_expectation(self):
+        """A sanitizer finding on a failing solution is usually the cause of it.
+
+        Suppressing it there would hide the one line that explains the verdict.
+        """
+        state = make_state(
+            [
+                solution(
+                    path='sol/wa.cpp',
+                    status='UNEXPECTED_VERDICTS',
+                    matchesExpectation=False,
+                    pooledMatchesExpectation=False,
+                    outcome=Outcome.WRONG_ANSWER,
+                    sanitizerWarnings=True,
+                )
+            ]
+        )
+
+        assert kinds(detectors.detect_sanitizer_findings(state)) == [
+            'sanitizer_finding'
+        ]
+
+    def test_carries_the_log_that_was_kept_for_the_solution(self):
+        state = make_state(
+            [solution(path='sol/main.cpp', sanitizerWarnings=True)],
+            sanitizer_logs={
+                'sol/main.cpp': pathlib.Path('../warnings/sol/main.cpp.log')
+            },
+        )
+
+        (issue,) = detectors.detect_sanitizer_findings(state)
+
+        assert issue.log == pathlib.Path('../warnings/sol/main.cpp.log')
+
+    def test_reports_the_finding_even_when_the_log_is_gone(self):
+        """The report says a sanitizer fired; a missing log does not unsay it."""
+        state = make_state([solution(sanitizerWarnings=True)])
+
+        (issue,) = detectors.detect_sanitizer_findings(state)
+
+        assert issue.log is None
+
+    def test_names_no_groups_when_only_the_solution_level_flag_is_set(self):
+        state = make_state(
+            [
+                solution(
+                    sanitizerWarnings=True,
+                    groups=[RunGroupReport(name='samples')],
+                )
+            ]
+        )
+
+        (issue,) = detectors.detect_sanitizer_findings(state)
+
+        assert issue.groups == []
+
+
 class TestDetectAll:
     def test_puts_errors_before_warnings(self):
         state = make_state(
@@ -513,6 +599,60 @@ class TestStderrSizing:
         assert state.stderr[0].size == 30
 
 
+class TestSanitizerLogLocation:
+    """The sanitizer logs sit beside the runs dir, not inside it."""
+
+    def _write_log(self, runs_dir: pathlib.Path, name: str) -> pathlib.Path:
+        path = runs_dir.parent / 'warnings' / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('==1==ERROR: AddressSanitizer\n')
+        return path
+
+    def test_finds_the_log_a_run_kept_for_a_solution(self, tmp_path: pathlib.Path):
+        runs_dir = tmp_path / 'runs'
+        runs_dir.mkdir()
+        self._write_log(runs_dir, 'sol/main.cpp.log')
+
+        logs = run_state.locate_sanitizer_logs(runs_dir, ['sol/main.cpp'])
+
+        assert logs == {'sol/main.cpp': pathlib.Path('../warnings/sol/main.cpp.log')}
+
+    def test_says_nothing_about_a_solution_with_no_log(self, tmp_path: pathlib.Path):
+        runs_dir = tmp_path / 'runs'
+        runs_dir.mkdir()
+
+        assert run_state.locate_sanitizer_logs(runs_dir, ['sol/main.cpp']) == {}
+
+    def test_resolves_the_log_the_way_the_run_wrote_it(self, tmp_path: pathlib.Path):
+        """The reader and the writer must agree on where the log went."""
+        code = CodeItem(path=pathlib.Path('sol/main.cpp'))
+        written = warning_stack.sanitizer_log_name(code.path)
+
+        assert written == pathlib.Path('sol/main.cpp.log')
+
+    def test_load_run_state_locates_the_logs(self, tmp_path: pathlib.Path):
+        runs_dir = tmp_path / 'runs'
+        runs_dir.mkdir()
+        run_report.write_report(
+            run_report.report_path(runs_dir),
+            RunReport(
+                solutions=[
+                    solution(path='sol/a.cpp', index=0, sanitizerWarnings=True),
+                    solution(path='sol/b.cpp', index=1),
+                ]
+            ),
+        )
+        self._write_log(runs_dir, 'sol/a.cpp.log')
+        self._write_log(runs_dir, 'sol/b.cpp.log')
+
+        state = run_state.load_run_state(runs_dir)
+
+        assert state is not None
+        # Only the solutions the report says tripped a sanitizer are looked up:
+        # a log left behind by an earlier run says nothing about this one.
+        assert list(state.sanitizer_logs) == ['sol/a.cpp']
+
+
 class TestSkeletonViewDoesNotDrift:
     def test_parses_a_real_skeleton(self):
         """`SkeletonView` is a narrow read of a model it does not import.
@@ -614,6 +754,24 @@ class TestRendering:
 
         assert any('/pkg/.rbx/runs/compilation/0.log' in line for line in lines)
 
+    def test_a_sanitizer_log_link_leaves_the_runs_dir_cleanly(self):
+        """It is kept beside the runs dir, so the joined path has a `..` in it."""
+        issue = schema.SanitizerFindingIssue(
+            solution='sols/main.cpp',
+            log=pathlib.Path('../warnings/sols/main.cpp.log'),
+        )
+
+        lines = rendering.explain(issue, runs_dir='/pkg/.rbx/runs')
+
+        assert any('/pkg/.rbx/warnings/sols/main.cpp.log' in line for line in lines)
+
+    def test_a_sanitizer_finding_without_a_log_says_nothing_about_one(self):
+        issue = schema.SanitizerFindingIssue(solution='sols/main.cpp')
+
+        lines = rendering.explain(issue, runs_dir='/pkg/.rbx/runs')
+
+        assert not any('log:' in line for line in lines)
+
     def test_every_kind_has_a_summary_and_a_severity(self):
         """A new kind must not fall through to 'unknown issue'."""
         samples = [
@@ -631,6 +789,7 @@ class TestRendering:
             schema.NoisyStderrIssue(
                 solution='s', path=pathlib.Path('0/main/1.err'), size=1
             ),
+            schema.SanitizerFindingIssue(solution='s'),
             schema.UntunedLimitsIssue(),
             schema.NoAcceptedSolutionIssue(),
             schema.NoValidatorIssue(),
