@@ -278,7 +278,7 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
-                    'help': 'Where to run the solutions (local, moj).',
+                    'help': 'Where to run the solutions (local, moj, domjudge).',
                     'kind': 'option',
                     'multiple': False,
                     'names': ['--runner'],
@@ -451,7 +451,7 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
-                    'help': 'Where to run the solutions being timed (local, moj).',
+                    'help': 'Where to run the solutions being timed (local, moj, domjudge).',
                     'kind': 'option',
                     'multiple': False,
                     'names': ['--runner'],
@@ -585,7 +585,7 @@ SPEC = {
                     'value': {'completer': 'profile', 'kind': 'completer'},
                 },
                 {
-                    'help': 'Where to run the solutions being timed (local, moj).',
+                    'help': 'Where to run the solutions being timed (local, moj, domjudge).',
                     'kind': 'option',
                     'multiple': False,
                     'names': ['--runner'],
@@ -3498,6 +3498,40 @@ SPEC = {
                     'help': 'Inspect MOJ packaging for a contest.',
                     'is_group': True,
                     'name': 'moj',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'children': [
+                        {
+                            'help': 'Configure a DOMjudge server from the...',
+                            'is_group': False,
+                            'name': 'configure, config',
+                            'panel': None,
+                            'params': [
+                                {
+                                    'help': 'Show this message and exit.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--help'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                }
+                            ],
+                        }
+                    ],
+                    'help': 'Configure a DOMjudge server from this...',
+                    'is_group': True,
+                    'name': 'domjudge',
                     'panel': None,
                     'params': [
                         {
