@@ -167,6 +167,18 @@ async def verify(
     if verification < VerificationLevel.FAST_SOLUTIONS.value:
         return True
 
+    # A solution's expected outcome is a claim about the whole testset: a TLE
+    # solution is *supposed* to pass the samples and only die on the big tests.
+    # Judging it against a subset would fail exactly the packages that are
+    # right, so a partial build stops at validation.
+    if groups is not None:
+        console.console.print(
+            '[warning]Skipping solution verification: only the '
+            f'[item]{", ".join(sorted(groups))}[/item] group(s) were built, and '
+            'expected outcomes only hold for the whole testset.[/warning]'
+        )
+        return True
+
     tracked_solutions = None
     if verification < VerificationLevel.ALL_SOLUTIONS.value:
         tracked_solutions = {
