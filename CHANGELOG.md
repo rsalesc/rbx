@@ -1,3 +1,9 @@
+## 1.4.3 (2026-09-16)
+
+### Fix
+
+- **packaging**: do not judge solutions on a samples-only build (#866)
+
 ## 1.4.2 (2026-08-29)
 
 ### Fix
