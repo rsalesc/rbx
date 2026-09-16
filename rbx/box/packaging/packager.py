@@ -264,8 +264,8 @@ async def run_packager(
     # `build/`.
     #
     # `--samples-only` restricts the build to one group, which the checksum
-    # detects and answers at its light level -- the solutions still get checked,
-    # the tests do not.
+    # detects and answers at its light level -- the solution sources still get
+    # checksummed, the tests do not.
     estimation_checksum.warn_if_stale(packager_cls.name())
 
     testcase_entries = await extract_generation_testcases_from_groups(built_groups)
