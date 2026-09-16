@@ -172,11 +172,6 @@ async def verify(
     # Judging it against a subset would fail exactly the packages that are
     # right, so a partial build stops at validation.
     if groups is not None:
-        console.console.print(
-            '[warning]Skipping solution verification: only the '
-            f'[item]{", ".join(sorted(groups))}[/item] group(s) were built, and '
-            'expected outcomes only hold for the whole testset.[/warning]'
-        )
         return True
 
     tracked_solutions = None

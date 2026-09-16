@@ -32,8 +32,6 @@ The main entry point in `packager.py`. Pipeline:
 
 **Packaging always requires a full build first.** The packagers only read pre-built artifacts.
 
-`rbx package polygon -u` is the exception: it passes `samples_only=True` (Polygon regenerates the tests server-side, so only the samples and statements are built) and `skip_packaging=True`. A samples-only `builder.verify()` builds and validates but **does not run the solutions** -- expected outcomes only hold for the whole testset (a TLE solution is supposed to pass the samples), and judging them against one group failed every upload with a non-AC solution (#865). `--upload-tests-raw` forces the full build and verification back on.
-
 ### Contest Orchestration (`contest_main.py`)
 
 `run_contest_packager()` iterates over each problem in the contest, calls `run_packager()` per problem, then calls the contest packager.
