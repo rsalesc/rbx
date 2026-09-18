@@ -192,7 +192,7 @@ $(wt_name_help '  ')
                         is, else code)
   -f, --folder <path>   folder the development host opens; defaults to the
                         current directory when it holds a problem.rbx.yml or a
-                        contest.rbx.yml, else nothing
+                        contest.rbx.yml, else the demo contest in vscode/demo
   -n, --no-build        do not build first (use with 'npm run watch')
   -c, --clean           disable your other extensions in the development host
       --no-pin-rbx      use your normal profile, and whatever rbx the extension
@@ -274,10 +274,15 @@ fi
 # --- resolve the folder the host opens --------------------------------------
 # A development host with no folder open activates nothing: the extension is
 # only awake once it sees a package. Defaulting to the current directory means
-# running this from a problem is enough.
+# running this from a problem is enough; from anywhere else, the demo contest
+# that ships with the extension (vscode/demo/) -- taken from the same checkout
+# as the extension, so a branch that changes what the extension reads can
+# adapt the fixture it is demonstrated on in the same commit.
 if [ -z "$_re_folder" ]; then
   if [ -f "$PWD/problem.rbx.yml" ] || [ -f "$PWD/contest.rbx.yml" ]; then
     _re_folder="$PWD"
+  elif [ -f "$_re_ext/demo/contest.rbx.yml" ]; then
+    _re_folder="$_re_ext/demo"
   fi
 elif [ ! -d "$_re_folder" ]; then
   echo "$WT_PROG: no such folder: $_re_folder" >&2

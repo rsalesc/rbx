@@ -1,0 +1,211 @@
+name: sum-of-pairs
+timeLimit: 1000
+memoryLimit: 256
+
+# Points, not binary: it gives every group its own verdict and score, which is
+# what makes the extension's tree worth looking at (and is what `outcomePerGroup`
+# below needs).
+scoring: points
+
+# Reads its bounds from `vars` below, so each group is checked against its own
+# ceiling. That is what the Tests view's constraint-coverage table reports on.
+validator:
+  path: validator.cpp
+
+# The bounds the validator enforces, and the values the coverage table shows
+# beside each row. Package-level values are the widest the problem allows; the
+# groups below narrow them.
+vars:
+  A:
+    min: 0
+    max: 2147483647
+  B:
+    min: 0
+    max: 2147483647
+
+  # Statement-only, and here purely so the editor's inline var hints have
+  # something whose `sci` actually abbreviates. `A.max` does not: 2147483647
+  # leaves a remainder, so `sci` declines and prints the digits -- correct, and
+  # useless as a demonstration. The validator never reads these.
+  DEMO:
+    n: "py`10**5`"
+    big: "py`2 * 10**5`"
+    mod: "py`10**18 + 7`"
+
+# Drawn for every testcase by `rbx build --visualize`, and shown in the Tests
+# panel's gallery. Two of them, because the manifest keeps the input and output
+# channels apart and one of each is the only way to see that.
+visualizer:
+  path: vis/input.cpp
+  extension: svg
+
+solutionVisualizer:
+  path: vis/answer.cpp
+  extension: svg
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  # One solution per verdict the run view can draw, so the tree shows the whole
+  # icon set at once.
+  - path: sols/main.cpp
+    outcome: ac
+  - path: sols/slow-ok.cpp
+    outcome: ac or tle
+  - path: sols/partial.cpp
+    # Right on the small groups, overflows on the ones with large values.
+    outcome: incorrect
+    outcomePerGroup:
+      samples: ac
+      main: ac
+      edge: wa
+      big: wa
+  - path: sols/wa.cpp
+    outcome: wa
+  - path: sols/tle.cpp
+    outcome: tle
+  - path: sols/ile.cpp
+    # ILE, not TLE: it sleeps rather than spins. `tle` covers both -- the
+    # expectation matches anything `is_slow()`.
+    outcome: tle
+  - path: sols/rte.cpp
+    outcome: rte
+  - path: sols/mle.cpp
+    outcome: mle
+
+  # --- Solutions that PASS, and that rbx warns about anyway. ------------------
+  # `rbx run` defaults to -v4, which judges at TWICE the time limit: a run over
+  # the limit is rewritten to TLE, but rbx remembers how long it really took and
+  # what it would have answered. These three meet their `tle` declaration -- the
+  # run is green -- while rbx prints a WARNING about each in the terminal.
+
+  # Slow, but only just: fits inside double TL. Borderline rather than
+  # decisively slow, so the testset does not really prove it should fail.
+  - path: sols/double-tl.cpp
+    outcome: tle
+  # Fits inside double TL and is WRONG underneath. Slow is not why it fails, so
+  # the `tle` label documents a bug it does not have and hides the one it does.
+  - path: sols/double-tl-wa.cpp
+    outcome: tle
+  # Both of the above at once, from two different groups: `edge` is slow but
+  # right, `big` is slow and wrong. The two facts are independent, and each
+  # warning names only the group that raised it (#607).
+  - path: sols/double-tl-groups.cpp
+    outcome: tle
+    outcomePerGroup:
+      samples: ac
+      main: ac
+      edge: tle
+      big: tle
+
+  # Correct everywhere, and undefined behaviour everywhere the sum leaves int
+  # range. Under `rbx run -s` UBSAN reports the overflow and recovers, so the
+  # solution answers right, meets its `ac` declaration, and is warned about
+  # anyway -- a third kind of warning on a green run, alongside the two above.
+  #
+  # Declared `ac` deliberately: a sanitized run with no solutions named runs
+  # ONLY the accepted ones, so anything else would never be reached by `-s`.
+  # It fires on `edge` (one testcase of three) and `big` (both), which is what
+  # makes the per-group and per-testcase marks worth looking at.
+  - path: sols/sanitizer.cpp
+    outcome: ac
+
+  # --- Solutions the COMPILER has something to say about. ---------------------
+  # Everything else in this file is about running a solution. These two are
+  # about the phase before that, and they are what the Compilation Findings
+  # panel under the run view draws.
+
+  # Compiles with warnings, then passes. The run is green and its row in the
+  # tree says nothing is wrong -- because nothing is: the compiler is the only
+  # one with a complaint. Yellow badge, yellow row, two flags when expanded.
+  - path: sols/warns.cpp
+    outcome: ac
+  # Does not compile at all. Declared `ac` on purpose: this is the mid-edit
+  # case, where rbx drops the solution from the run and the sidebar used to
+  # lose the row with nothing saying why. Red badge, and the panel opens by
+  # itself the first time a run reports it.
+  - path: sols/broken.cpp
+    outcome: ac
+
+  # --- Solutions that MISS what they declare. ---------------------------------
+  # Everything above behaves as the package says it should, so none of it is a
+  # problem however red its verdict looks. These three are the actual problems,
+  # and the run view has to tell them apart from the rest at a glance.
+
+  # Declared correct, overflows on `big`: expected AC, got WA.
+  - path: sols/optimistic.cpp
+    outcome: ac
+  # Declared wrong, is correct: expected WA, got AC. Just as broken -- it means
+  # the testset never catches the bug this solution exists to demonstrate.
+  - path: sols/too-pessimistic.cpp
+    outcome: wa
+  # Pooled `incorrect` HOLDS (it does fail on `big`); only the per-group layer
+  # catches it, because it is not slow anywhere. Reporting this as
+  # "expected INCORRECT, got WA" would accuse an expectation that was met.
+  - path: sols/mislabeled-groups.cpp
+    outcome: incorrect
+    outcomePerGroup:
+      '*': tle
+testcases:
+  - name: samples
+    # Tiny ceiling, and `1 2` touches neither end of it: this group's
+    # column is the all-unhit case.
+    vars:
+      A:
+        max: 10
+      B:
+        max: 10
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 1 2
+  - name: main
+    score: 30
+    # Same story one order of magnitude up -- 3..200 against 0..1000.
+    vars:
+      A:
+        max: 1000
+      B:
+        max: 1000
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 3 4
+          - name: gen
+            args: 5 6
+          - name: gen
+            args: 100 200
+  # Handwritten inputs rather than generated ones, so some testcases show a
+  # "Copied from" line in their tooltip instead of a generator call.
+  - name: edge
+    score: 30
+    # No `vars`: the package-wide bounds apply, and these handwritten
+    # inputs are the only ones that touch them. `0 0` hits both minima and
+    # `2147483647 1` hits A's maximum. Nothing anywhere hits B's maximum,
+    # which is exactly the gap the coverage roll-up is meant to report.
+    testcaseGlob: tests/*.in
+  # Depends on `main`, so a solution that fails there has this group skipped
+  # instead of run -- that is where the SKIP icon comes from.
+  - name: big
+    score: 40
+    deps:
+      - main
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 2147483647 1
+          - name: gen
+            args: 2000000000 2000000000
+
+# Declared so the extension treats the file as a statement: the inline var
+# hints are gated on the manifest, not on the filename.
+statements:
+  - language: 'en'
+    title: 'Sum of Pairs'
+    file: 'statement/statement.rbx.tex'
+    type: 'rbxTeX'

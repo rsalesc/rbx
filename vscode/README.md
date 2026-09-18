@@ -569,7 +569,8 @@ and starts a development host on it:
 ./run-extension.sh -e code -e cursor   # ... in both at once
 ```
 
-Run it from a problem directory and the host opens that problem. It takes the
+Run it from a problem directory and the host opens that problem; run it from
+anywhere else and it opens the demo contest in `vscode/demo/`. It takes the
 worktree, branch or pull request URL `./activate-venv.sh` takes, in the same
 way, so the branch you are reviewing runs in one command:
 
@@ -604,6 +605,23 @@ mise run vscode:typecheck
 mise run vscode:test
 mise run vscode:package
 ```
+
+### The demo contest
+
+`vscode/demo/` is a two-problem contest built for looking at the extension
+rather than for testing rbx: every solution, group and visualizer in it exists
+to light up one surface described above -- the whole verdict icon set at once,
+a skipped group, compiler warnings and a solution that does not compile, the
+double-TL and sanitizer warnings on a green run, both shapes of the
+constraint-coverage table, SVG and HTML visualizers, and a problem order that
+disagrees with the directory order. The comments in its `problem.rbx.yml` and
+`contest.rbx.yml` say which is which.
+
+It is a manual fixture: nothing builds or judges it in CI. The one test over it
+(`tests/rbx/box/vscode/demo_test.py`) only parses the three manifests, so a
+schema change that breaks the demo is caught by `pytest` rather than in an
+editor the next time someone opens it. When you change it, keep the comments
+honest about what each piece is there to show.
 
 ## What it reads
 

@@ -1,0 +1,23 @@
+%# The negative control. This package declares no `vars` at all, so no
+%# reference here can resolve and the editor should draw NO hints anywhere --
+%# including on the last line, which is spelled exactly like a real one.
+
+%- block legend
+Two baskets hold $A$ and $B$ apples. Determine how many there are in total.
+%- endblock
+
+%- block input
+A single line with two integers, $A$ and $B$.
+%- endblock
+
+%- block output
+Print one integer: the total number of apples.
+%- endblock
+
+%- block notes
+%# NOT BADGED: `apples` has no vars, so this name resolves to nothing. Compare
+%# with the same spelling in problem A, where it does. Nothing is guessed --
+%# an absent hint is never wrong.
+%# \VAR{A.max}
+No notes.
+%- endblock
