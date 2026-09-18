@@ -250,6 +250,40 @@ class NoisyStderrIssue(_RunIssue):
         return IssueSeverity.WARNING
 
 
+class SanitizerFindingIssue(_RunIssue):
+    """A sanitizer fired on one of this solution's runs.
+
+    ASAN or UBSAN found something -- a buffer overrun, signed overflow, an
+    uninitialised read -- while the solution was doing whatever it was declared
+    to do. The run itself usually *passes*, which is exactly why this needs
+    saying: `status` is OK and `matchesExpectation` is true, so a client reading
+    only those draws a clean row for a solution rbx is printing a WARNING about.
+
+    Reported whether or not the expectation held. On a solution that failed, the
+    finding is very often the cause of the failure, and suppressing it there
+    would hide the one line that explains the verdict.
+    """
+
+    kind: Literal['sanitizer_finding'] = 'sanitizer_finding'
+    solution: str
+    # The groups that tripped it, empty when only the solution-wide flag is set.
+    groups: List[str] = []
+    # The kept sanitizer output, relative to the runs dir --
+    # `../warnings/sol/main.cpp.log`. Relative for the reason a compilation log
+    # is, and outside the runs dir because the run writes it through
+    # `warning_stack`, whose home is the package cache dir.
+    #
+    # Absent when the log is gone: `warning_stack` clears its directory at the
+    # start of every process that writes one, so a `rbx compile` between the run
+    # and the read leaves the finding standing with nothing to open.
+    log: Optional[pathlib.Path] = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        return IssueSeverity.WARNING
+
+
 class UntunedLimitsIssue(_RunIssue):
     """Expectations failed on timing, and the limits were never tuned here.
 
@@ -388,6 +422,7 @@ Issue = Annotated[
         HiddenVerdictIssue,
         TightTimeMarginIssue,
         NoisyStderrIssue,
+        SanitizerFindingIssue,
         UntunedLimitsIssue,
         NoAcceptedSolutionIssue,
         NoValidatorIssue,
