@@ -1,0 +1,20 @@
+---
+# A two-problem contest for exercising the Run view's problem selector.
+#
+# The directory names deliberately DISAGREE with the contest order: `apples`
+# sorts before `sum-of-pairs`, so a view that ordered problems by path would
+# show B before A. Seeing `A` then `B` in the dropdown is the proof that the
+# order comes from this file rather than from the filesystem.
+#
+# The two colours also cover both spellings rbx accepts: a hex value and an
+# X11 colour name.
+name: 'vscode-selector-demo'
+titles:
+  en: 'VS Code Selector Demo'
+problems:
+  - short_name: 'A'
+    path: 'sum-of-pairs'
+    color: '#e74c3c'
+  - short_name: 'B'
+    path: 'apples'
+    color: 'blue'

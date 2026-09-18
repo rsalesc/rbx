@@ -1,0 +1,68 @@
+name: apples
+timeLimit: 1000
+memoryLimit: 256
+
+# Deliberately smaller than problem A: three solutions and two groups, so
+# switching between the two problems in the Run view is obviously a switch and
+# not a redraw of the same rows.
+scoring: points
+
+# No `vars`, unlike problem A: nothing here is group-specific, so rbx reports
+# one merged set of hit bounds instead of a column per group. The two problems
+# cover the two shapes the coverage table can take.
+validator:
+  path: validator.cpp
+
+# HTML, the third thing a visualizer can produce and the one setters reach for
+# most: a self-contained page, drawn from the input and the answer, that the
+# gallery renders inline in a sandboxed <iframe> and `rbx ui` opens in the
+# browser. Problem A covers images (two SVGs); the `samples` group below still
+# covers the extension the panel has no viewer for.
+visualizer:
+  path: vis/baskets.cpp
+  extension: html
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+  - path: sols/wa.cpp
+    outcome: wa
+  - path: sols/tle.cpp
+    outcome: tle
+
+testcases:
+  - name: samples
+    # The one group that keeps the plain-text visualizer, overriding the
+    # package-level HTML one: an extension the panel has no viewer for must
+    # offer to open the file rather than guess at it. Having both in one
+    # testset is the point -- a single `rbx build --visualize` now draws an
+    # iframe cell and an "open in editor" cell side by side.
+    visualizer:
+      path: vis/ascii.cpp
+      extension: txt
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 1 2
+  - name: main
+    score: 100
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 7 8
+          - name: gen
+            args: 42 58
+
+# Declared for the same reason as problem A's, but this package has no `vars`,
+# so its statement is the case where the editor must draw nothing at all.
+statements:
+  - language: 'en'
+    title: 'Apples'
+    file: 'statement/statement.rbx.tex'
+    type: 'rbxTeX'

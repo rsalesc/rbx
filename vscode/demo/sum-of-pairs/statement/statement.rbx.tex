@@ -1,0 +1,56 @@
+%# A dummy statement whose only job is to exercise the inline var hints.
+%# Every line below is annotated with what the editor should (or should not)
+%# draw beside it. The file still builds: nothing here is deliberately broken.
+
+%- block legend
+Given two integers $A$ and $B$, determine the value of $A + B$.
+%- endblock
+
+%- block input
+%# BADGED. The shorthand and the long form are the same var, so both get a hint.
+The input is a single line with two integers $A$ and $B$, where
+$\VAR{A.min} \le A \le \VAR{A.max}$ and
+$\VAR{vars.B.min} \le B \le \VAR{vars.B.max}$.
+
+%# BADGED through the filter. rbx renders the whole expression, so the hint
+%# shows what the statement will typeset, not the raw digits.
+%#
+%# `A.max` is a poor demonstration: 2147483647 leaves a remainder, so `sci`
+%# declines to abbreviate it and hint and value agree. That is the filter
+%# working, not failing.
+Neither value exceeds $\VAR{A.max | sci}$.
+
+%# These are the ones to look at. Hints: 10^5, 2x10^5, 10^18 + 7 -- rendered
+%# with superscript digits, because an inlay hint cannot typeset maths.
+For scale, $\VAR{DEMO.n | sci}$, $\VAR{DEMO.big | sci}$ and
+$\VAR{DEMO.mod | rsci}$.
+
+%# BADGED, unfiltered, and exact: 1000000000000000007 survives the trip whole.
+%# A JSON number would have arrived as ...000, a wrong badge shown with
+%# confidence, which is why rbx hands the extension display strings.
+The modulus is $\VAR{DEMO.mod}$.
+%- endblock
+
+%- block output
+Print one integer: the sum of $A$ and $B$.
+%- endblock
+
+%- block notes
+%# NOT BADGED. `g` is the loop variable, so this line renders a different
+%# value on every pass -- one hint would have to lie or name a group.
+%- for g in problem.groups
+Group \VAR{g.name}: up to $\VAR{g.vars.A.max}$ (shorthand: $\VAR{g.A.max}$).
+%- endfor
+
+%# NOT BADGED either: addressing a group by name is still group scope.
+The samples group stops at $\VAR{problem.groups.samples.vars.A.max}$.
+
+%# NOT BADGED: a commented-out reference is not a reference. \VAR{A.max}
+
+%# Things worth trying by hand, none of which are in the file because each
+%# would break the build:
+%#   - misspell one, e.g. \VAR{A.mx}  -> the hint disappears, which is how a
+%#     typo shows up: it is the only reference on the line without one.
+%#   - write an expression, e.g. \VAR{A.max + 1} -> no hint, nothing is guessed.
+%#   - toggle `rbx.statementVarHints`, or VS Code's own inlay-hints setting.
+%- endblock
