@@ -386,8 +386,9 @@ class MojPackager(BasePackager):
         reference_only: bool = False,
     ):
         super().__init__(testcase_entries)
-        # A MOJ package holds ONE statement, so the language is chosen here and
-        # used for both the body and `display_title` -- see `_get_main_statement`.
+        # The language of the statement that fills MOJ's canonical slot, used for
+        # both the body and `display_title`; the others ship as translations.
+        # See `_select_statements`.
         self.main_language = main_language
         # How the time limits are settled: pinned from the profile, measured by the
         # judge, or pinned to what a timing run asked for. See `_time_limit_lines`.
@@ -468,18 +469,24 @@ class MojPackager(BasePackager):
 
     # -- metadata -------------------------------------------------------------
 
-    def _get_main_statement(self) -> Optional[Statement]:
-        """The single statement this package ships; `--language` picks it.
+    def _select_statements(self) -> moj_statement.StatementSelection:
+        """The statements this package ships: the main one for the canonical
+        slot (`--language` picks it) plus one translation per language MOJ
+        supports.
 
         Shared with `rbx tooling moj summary`, which reports the title a MOJ
         upload would carry without building anything -- see
-        `moj_statement.get_main_statement`.
+        `moj_statement.select_statements`.
         """
-        return moj_statement.get_main_statement(self.main_language)
+        return moj_statement.select_statements(self.main_language)
 
     def _display_title(self) -> str:
-        """MOJ's `display_title`, resolved from `_get_main_statement`."""
+        """MOJ's `display_title`, resolved from the main statement."""
         return moj_statement.get_display_title(self.main_language)
+
+    def _translated_titles(self) -> Dict[str, str]:
+        """MOJ's `titles`, one per shipped translation whose title differs."""
+        return moj_statement.get_translated_titles(self.main_language)
 
     def _submission_languages(self) -> List[str]:
         """The MOJ ids to allow submissions in: the languages the environment
@@ -635,12 +642,17 @@ class MojPackager(BasePackager):
         """Write `.moj-meta.json`.
 
         On a tar upload the server treats this file in two tiers: the *content* fields
-        (`display_title`, `collections`, `languages`) are taken from it, while the
-        *access* fields (`public`, `public_at`, `owner`) are never accepted from a tar
-        and only move through dedicated API routes. So rbx writes the content fields it
-        can know and omits everything else:
+        (`display_title`, `titles`, `collections`, `languages`) are taken from it,
+        while the *access* fields (`public`, `public_at`, `owner`) are never accepted
+        from a tar and only move through dedicated API routes. So rbx writes the
+        content fields it can know and omits everything else:
 
         - `display_title` is required and never empty.
+        - `titles` names each translation's title (`statement-langs.sh` shows
+          `titles[<lang>]`, else `display_title`). Only the differing ones are
+          written, and the key is omitted when none differs, so a problem with
+          one title carries it once. The `moj` CLI itself synthesizes this field
+          into the tar from `.moj-id`, which is how it is known to be read.
         - `languages` restricts who may submit what; see `_submission_languages`.
           Omitted when empty, since absent means "server preserves what it has"
           whereas an empty list is a meaningless no-op.
@@ -652,6 +664,9 @@ class MojPackager(BasePackager):
           problem into an index served to anonymous users.
         """
         meta: Dict[str, object] = {'display_title': self._display_title()}
+        titles = self._translated_titles()
+        if titles:
+            meta['titles'] = titles
         languages = self._submission_languages()
         if languages:
             meta['languages'] = languages
@@ -681,12 +696,14 @@ class MojPackager(BasePackager):
         self._write_statement(into_path)
 
     def _write_statement(self, into_path: pathlib.Path) -> None:
-        """Write `docs/enunciado.md`, its assets and the per-sample notes.
+        """Write `docs/enunciado.md`, its translations, their assets and notes.
 
         The whole shape is dictated by mojtools; see
-        `rbx.box.packaging.moj.statement`. A package that declares no statement
-        falls back to `DUMMY_STATEMENT`: MOJ hard-requires the two headings, and
-        a statement-less package must still package.
+        `rbx.box.packaging.moj.statement`. The main statement fills the canonical
+        slot and each translation lands beside it with a `.<lang>` suffix, the
+        notes included. A package that declares no statement falls back to
+        `DUMMY_STATEMENT`: MOJ hard-requires the two headings, and a
+        statement-less package must still package.
 
         **A probe package always takes that fallback**, and this is what makes it
         buildable at all outside `run_packager`. The real path reads `blocks.sub.yml`
@@ -702,14 +719,40 @@ class MojPackager(BasePackager):
         docs_path = into_path / 'docs'
         docs_path.mkdir(parents=True, exist_ok=True)
 
-        main_statement = None if self.probe is not None else self._get_main_statement()
-        if main_statement is None:
-            (docs_path / 'enunciado.md').write_text(DUMMY_STATEMENT)
+        selection = (
+            moj_statement.StatementSelection(main=None, translations={}, skipped=[])
+            if self.probe is not None
+            else self._select_statements()
+        )
+        if selection.main is None:
+            (into_path / moj_statement.enunciado_path()).write_text(DUMMY_STATEMENT)
             return
 
+        moj_statement.report_skipped(selection)
+        self._write_statement_documents(into_path, selection.main, language=None)
+        for language, statement in selection.translations.items():
+            self._write_statement_documents(into_path, statement, language=language)
+
+    def _write_statement_documents(
+        self,
+        into_path: pathlib.Path,
+        statement: Statement,
+        *,
+        language: Optional[str],
+    ) -> None:
+        """Write one statement's body and notes, suffixed with `language` if any.
+
+        Each statement goes through the whole sequence on its own -- bundle,
+        materialize, rasterize, convert, write, discard -- so a translation that
+        fails the MOJ gate is reported under its own language. In the inlining
+        mode (the default) the assets are discarded at the end of each pass, so
+        two statements citing a figure under the same name never meet on disk;
+        with `INLINE_IMAGES_AS_BASE64` off, the later statement's copy wins.
+        """
+        docs_path = into_path / 'docs'
         try:
             bundle = export.build_statement_bundle(
-                main_statement, layout=moj_statement.moj_layout()
+                statement, layout=moj_statement.moj_layout()
             )
         except export.StatementExportError as e:
             console.console.print(f'[error]{e}[/error]')
@@ -725,20 +768,20 @@ class MojPackager(BasePackager):
             # both calls come after materialize + rasterize above.
             body = moj_statement.build_enunciado(
                 bundle.blocks,
-                language=main_statement.language,
+                language=statement.language,
                 docs_root=docs_path,
             )
             notes = moj_statement.build_notes(bundle.explanations, docs_root=docs_path)
         except MojGateError as e:
             console.console.print(
-                f'[error]Cannot package this statement for MOJ.[/error]\n'
-                f'[error]{e}[/error]'
+                f'[error]Cannot package the [item]{statement.language}[/item] '
+                f'statement for MOJ.[/error]\n[error]{e}[/error]'
             )
             raise typer.Exit(1) from e
 
-        (docs_path / 'enunciado.md').write_text(body)
+        (into_path / moj_statement.enunciado_path(language)).write_text(body)
         for name, content in notes.items():
-            note_path = into_path / moj_statement.note_path(name)
+            note_path = into_path / moj_statement.note_path(name, language)
             note_path.parent.mkdir(parents=True, exist_ok=True)
             note_path.write_text(content)
 

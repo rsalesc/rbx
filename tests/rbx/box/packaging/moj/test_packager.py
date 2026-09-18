@@ -15,6 +15,7 @@ from rbx.config import get_default_app_path
 from tests.rbx.box.packaging.moj.conftest import (
     CHECKER,
     EN_AND_PT_BLOCKS,
+    MULTILANG_BLOCKS,
     PT_BLOCKS,
     SLOW_SOL,
     WRONG_SOL,
@@ -849,3 +850,188 @@ def test_an_unknown_language_is_an_error(testing_pkg, tmp_path, monkeypatch):
             build_entries(tmp_path, ['samples']),
             main_language='fr',
         )
+
+
+# -- translations -----------------------------------------------------------
+
+
+def _multilang_package(testing_pkg, tmp_path, monkeypatch, **kwargs):
+    minimal_package(testing_pkg)
+    with_statements(
+        testing_pkg,
+        monkeypatch,
+        MULTILANG_BLOCKS,
+        languages=('pt', 'en', 'es', 'ru'),
+        titles={'pt': 'Soma', 'en': 'Sum', 'ru': 'Сумма'},
+        explanations={0: 'Explicação em português.'},
+        explanations_by_language={'en': {0: 'Explanation in English.'}},
+    )
+    return run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples']), **kwargs
+    )
+
+
+def test_ships_every_supported_language(testing_pkg, tmp_path, monkeypatch):
+    """`statement-langs.sh` finds the canonical statement at `docs/enunciado.md`
+    and a translation at `docs/enunciado.<lang>.md`, for `en` and `es` only."""
+    into_path = _multilang_package(testing_pkg, tmp_path, monkeypatch)
+    docs = into_path / 'docs'
+
+    assert 'Em português.' in (docs / 'enunciado.md').read_text()
+    en = (docs / 'enunciado.en.md').read_text()
+    assert 'In English.' in en
+    assert '## Input' in en
+    es = (docs / 'enunciado.es.md').read_text()
+    assert 'En español.' in es
+    assert '## Salida' in es
+    assert not (docs / 'enunciado.pt.md').exists()
+    assert not (docs / 'enunciado.ru.md').exists()
+
+
+def test_warns_about_a_language_moj_does_not_support(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    _multilang_package(testing_pkg, tmp_path, monkeypatch)
+    out = capsys.readouterr().out
+    assert 'ru' in out
+    assert 'MOJ' in out
+
+
+def test_translated_notes_carry_the_language_suffix(testing_pkg, tmp_path, monkeypatch):
+    """A translation's note lands at `docs/notes/<sample>.<lang>.md`; MOJ falls
+    back to the Portuguese note for a translation that ships none."""
+    into_path = _multilang_package(testing_pkg, tmp_path, monkeypatch)
+    notes = into_path / 'docs' / 'notes'
+
+    assert 'em português' in (notes / 'sample001.md').read_text()
+    assert 'in English' in (notes / 'sample001.en.md').read_text()
+    assert 'em português' in (notes / 'sample001.es.md').read_text()
+    assert not (notes / 'sample001.ru.md').exists()
+
+
+def test_titles_are_emitted_only_when_they_differ(testing_pkg, tmp_path, monkeypatch):
+    """MOJ falls back to `display_title` for a translation without a title of
+    its own, so an identical entry would be noise."""
+    into_path = _multilang_package(testing_pkg, tmp_path, monkeypatch)
+    meta = json.loads((into_path / '.moj-meta.json').read_text())
+
+    assert meta['display_title'] == 'Soma'
+    # `es` has no title of its own and resolves to the same one; `ru` is not shipped.
+    assert meta['titles'] == {'en': 'Sum'}
+
+
+def test_no_titles_key_without_a_differing_translation(
+    testing_pkg, tmp_path, monkeypatch
+):
+    minimal_package(testing_pkg)
+    with_statements(testing_pkg, monkeypatch, EN_AND_PT_BLOCKS, languages=('pt', 'en'))
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+    meta = json.loads((into_path / '.moj-meta.json').read_text())
+    assert 'titles' not in meta
+
+
+def test_the_portuguese_statement_takes_the_canonical_slot_by_default(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """Declared order does not matter: without `--language`, `pt` is the main
+    statement, since MOJ ignores an `enunciado.pt.md`."""
+    minimal_package(testing_pkg)
+    with_statements(
+        testing_pkg,
+        monkeypatch,
+        EN_AND_PT_BLOCKS,
+        languages=('en', 'pt'),
+        titles={'pt': 'Soma', 'en': 'Sum'},
+    )
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+
+    assert 'Em português.' in (into_path / 'docs' / 'enunciado.md').read_text()
+    assert 'In English.' in (into_path / 'docs' / 'enunciado.en.md').read_text()
+    meta = json.loads((into_path / '.moj-meta.json').read_text())
+    assert meta['display_title'] == 'Soma'
+    assert meta['titles'] == {'en': 'Sum'}
+
+
+def test_language_option_drops_the_portuguese_statement(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    """`--language en` puts English in the canonical slot. MOJ has no
+    `enunciado.pt.md`, so Portuguese is dropped with a warning rather than
+    shipped where nothing reads it."""
+    into_path = _multilang_package(
+        testing_pkg, tmp_path, monkeypatch, main_language='en'
+    )
+    docs = into_path / 'docs'
+
+    assert 'In English.' in (docs / 'enunciado.md').read_text()
+    assert 'En español.' in (docs / 'enunciado.es.md').read_text()
+    assert not (docs / 'enunciado.en.md').exists()
+    assert not (docs / 'enunciado.pt.md').exists()
+    meta = json.loads((into_path / '.moj-meta.json').read_text())
+    assert meta['display_title'] == 'Sum'
+    assert 'titles' not in meta
+    assert 'pt' in capsys.readouterr().out
+
+
+def test_without_a_portuguese_statement_the_first_declared_is_main(
+    testing_pkg, tmp_path, monkeypatch
+):
+    minimal_package(testing_pkg)
+    with_statements(
+        testing_pkg,
+        monkeypatch,
+        MULTILANG_BLOCKS,
+        languages=('es', 'en'),
+        titles={'es': 'Suma', 'en': 'Sum'},
+    )
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+
+    assert 'En español.' in (into_path / 'docs' / 'enunciado.md').read_text()
+    assert 'In English.' in (into_path / 'docs' / 'enunciado.en.md').read_text()
+    meta = json.loads((into_path / '.moj-meta.json').read_text())
+    assert meta['display_title'] == 'Suma'
+    assert meta['titles'] == {'en': 'Sum'}
+
+
+def test_one_statement_per_language_the_topmost_wins(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    minimal_package(testing_pkg)
+    with_statements(testing_pkg, monkeypatch, EN_AND_PT_BLOCKS, languages=('pt', 'en'))
+    # A second English variant, declared after the first.
+    statements = list(testing_pkg.yml.statements)
+    statements.append(
+        statements[1].model_copy(update={'variant': 'short', 'title': 'Sum (short)'})
+    )
+    testing_pkg.yml.statements = statements
+    testing_pkg.save()
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+
+    meta = json.loads((into_path / '.moj-meta.json').read_text())
+    assert 'titles' not in meta
+    assert (into_path / 'docs' / 'enunciado.en.md').exists()
+    assert 'short' in capsys.readouterr().out
+
+
+def test_a_translation_failing_the_gate_names_itself(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    minimal_package(testing_pkg)
+    blocks = {
+        **EN_AND_PT_BLOCKS,
+        'en': {**EN_AND_PT_BLOCKS['en'], 'legend': '\\section{Examples}\nLeaked.'},
+    }
+    with_statements(testing_pkg, monkeypatch, blocks, languages=('pt', 'en'))
+
+    with pytest.raises(typer.Exit):
+        run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
+    assert 'en' in capsys.readouterr().out

@@ -409,12 +409,43 @@ What the packager owes the gate (`validate-problem.sh`):
   not](#samples-are-optional-leaking-them-is-not)). `check_moj_gate` refuses to
   package rather than shipping a statement that warns.
 
-### `--language`
+### Languages: one main statement, translations beside it
 
-`rbx package moj --language <lang>` picks the statement, mirroring
-`rbx package polygon --language`; unset means the topmost one. `display_title`
-resolves from **the same** statement, so the body and the rendered `<h1>` can
-never come from different languages.
+MOJ knows three statement languages (`STMT_LANGS_ALL="pt en es"` in mojtools'
+`statement-langs.sh`, the single source of language discovery) and reads them from
+fixed paths:
+
+```
+docs/enunciado.md              Portuguese -- the canonical slot, required
+docs/enunciado.<lang>.md       en / es translation
+docs/notes/<sample>.<lang>.md  the translation's note; absent => the Portuguese one
+.moj-meta.json titles[<lang>]  the translation's title; absent => display_title
+```
+
+`select_statements(main_language)` decides what goes where, and `_write_statement`
+runs the whole per-statement sequence (bundle → materialize → rasterize → convert →
+write → discard) once per shipped statement:
+
+- **Main.** `--language` picks it; without the flag the `pt` statement is preferred,
+  else the topmost declared. It fills `enunciado.md` *whatever its language* -- an
+  English-only problem still packages, labelled `pt-BR` by MOJ -- and
+  `display_title` resolves from it, so body and `<h1>` never disagree.
+- **Translations.** Every other statement whose subtag is `en` or `es`, one per
+  language (topmost wins, the rest are warned about). A `pt` statement that is not
+  the main one is dropped with a warning too: MOJ has no `enunciado.pt.md`.
+- **Skipped.** Any other language, with a warning naming it. Nothing dead ships.
+- **`titles`.** Emitted for a translation only when it has a title *of its own*
+  (`Statement.title` or `pkg.titles[lang]`) that differs from `display_title`.
+  `naming.get_problem_title`'s last resort -- the package *name* -- is deliberately
+  not taken here: MOJ falls back to `display_title` on its own, and the name would
+  replace that with something the setter never meant as a title.
+
+`validate-problem.sh` applies the heading gate to every translation, and accepts
+`salida` alongside `saída|saida|output`, so `_HEADINGS` carries `es`. With
+`INLINE_IMAGES_AS_BASE64` off, two statements citing a figure under the same name
+overwrite each other under `docs/assets` (later wins); the default inlines and
+discards per pass, so they never meet. Design:
+`docs/plans/2026-09-19-moj-multilang-statements-design.md`.
 
 ### The `docs/` remap base — read before touching `moj_layout()`
 
@@ -499,8 +530,8 @@ name); an absent or blank-once-stripped var falls back to `Unknown`, since an em
 
 On a tar upload the server treats this file in **two tiers**:
 
-- **Content fields** — `display_title`, `collections`, `languages` — are read from the
-  tar. Absent or empty means *the server preserves what it already has*, not "reset".
+- **Content fields** — `display_title`, `titles`, `collections`, `languages` — are read
+  from the tar. Absent or empty means *the server preserves what it already has*, not "reset".
 - **Access fields** — `public`, `public_at`, `owner` — are **never** accepted from a
   tar; only dedicated API routes change them.
 
@@ -509,6 +540,7 @@ So the packager writes the content fields it can know and omits the rest:
 | Field | Emitted? | Why |
 |---|---|---|
 | `display_title` | always | Required and never empty. Resolved with `naming.get_problem_title(...)`, the same helper BOCA uses — statement title override, then the package title, then `pkg.name`, with an actionable error when a package has several titles and no statement to disambiguate. |
+| `titles` | when a translation has its own, differing title | Per-language titles of the shipped translations; see [Languages](#languages-one-main-statement-translations-beside-it). The current `moj upload` synthesizes this field into the tar itself, which is how it is known to be read from one. |
 | `languages` | when non-empty | The languages **`env.rbx.yml` declares** — see below. |
 | `collections` | never | rbx has no notion of them; absent keeps the server's. |
 | `public`, `public_at`, `owner`, `gitea` | never | Server-owned and ignored from a tar. `public` is additionally **fail-closed** in `gen-problem-json.sh` (absent = private); emitting it is how an unpublished problem leaks into an index served to anonymous users. |

@@ -69,15 +69,27 @@ running.
 MOJ renders statements with pandoc, so {{rbx}} converts your {{rbxtex}} statement into Markdown
 and ships that, together with one file per sample explanation.
 
-If you have multiple statements, you can pick which one goes into the package with the `-l` or
-`--language` flag:
+MOJ shows each reader the statement in their language, and it knows three: Portuguese, which
+is the main one, plus English and Spanish translations. {{rbx}} maps your statements onto that
+directly: the Portuguese statement becomes the main one, and every other statement you declare
+in `en` or `es` ships as a translation, sample explanations included. A statement in a language
+MOJ doesn't know is left out, and {{rbx}} tells you which one.
+
+Each translation carries its own title, taken from the statement's `title` (or the package's
+`titles`), so the reader sees it in their language too. A translation without a title of its
+own simply shows the main one.
+
+If your problem has no Portuguese statement, the topmost declared one takes the main slot
+instead. You can also pick which statement is the main one with the `-l` or `--language`
+flag:
 
 ```bash
 rbx package moj -l en
 ```
 
 The rendered problem title comes from the very same statement, so the body and the title can
-never disagree.
+never disagree. Since MOJ only reads Portuguese from the main slot, a Portuguese statement that
+isn't the main one is left out too.
 
 A few things to keep in mind:
 
@@ -88,7 +100,7 @@ A few things to keep in mind:
   {{rbx}} tells MOJ so explicitly, and warns you when it does -- left to its own devices, MOJ
   would fall back to publishing your first two *secret* tests as the examples.
 - MOJ requires an **input** and an **output** section, and {{rbx}} always emits them, even when
-  the corresponding block is empty.
+  the corresponding block is empty -- in every translation, each in its own language.
 - Figures are embedded into the rendered HTML, so a PDF figure (which is what TikZ
   externalization produces) is rasterized to PNG for you. That needs `pdftoppm`, from poppler; a
   statement with PDF figures and no poppler installed refuses to package, naming the figures.
@@ -242,7 +254,8 @@ problem configures none).
 
 Every value is resolved the way `rbx package moj` resolves it, so the table is a preview of the
 upload rather than a second guess at it. The title in particular comes from the very statement
-the package would ship -- the topmost declared one, or the one you name with `--language` / `-l`:
+the package would ship as the main one -- the Portuguese one, else the topmost declared, or the
+one you name with `--language` / `-l`:
 
 ```bash
 rbx tooling moj summary -l en

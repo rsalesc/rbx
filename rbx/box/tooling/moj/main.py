@@ -24,8 +24,8 @@ async def summary_cmd(
         '--language',
         '-l',
         help='If set, will report the title of the statement in the given language. '
-        'Leave unset if you want to use the language of the topmost statement, '
-        'which is the one `rbx package moj` would upload.',
+        'Leave unset to use the Portuguese statement, or the topmost one without '
+        'it -- the one `rbx package moj` would upload as the main statement.',
         autocompletion=annotations._adapt('language'),  # noqa: SLF001
     ),
     porcelain: bool = typer.Option(
