@@ -52,6 +52,24 @@ def test_default_preset_other_languages_use_their_own_template(monkeypatch):
     assert boca_language_utils.get_boca_template_name('kt') == 'kt'
 
 
+def test_default_preset_flags_live_on_languages(monkeypatch):
+    env = _load_default_env()
+    monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
+    monkeypatch.setattr(
+        boca_language_utils,
+        'get_extension_or_default',
+        lambda name, cls: getattr(env.extensions, name) or cls(),
+    )
+
+    # The preset no longer carries the legacy env-level dict.
+    assert env.extensions is not None and env.extensions.boca is not None
+    assert env.extensions.boca.flags == {}
+    # Both C++ ids follow the `cpp` language; `c` keeps its own.
+    assert boca_language_utils.get_boca_flags('cc') == '-std=c++20 -O2 -lm -static'
+    assert boca_language_utils.get_boca_flags('cpp') == '-std=c++20 -O2 -lm -static'
+    assert boca_language_utils.get_boca_flags('c') == '-O2 -static'
+
+
 def test_default_preset_template_dirs_exist_on_disk():
     """Every template the default preset relies on must exist under
     rbx/resources/packagers/boca/{compile,run,interactive}/ — otherwise the

@@ -1,7 +1,8 @@
 from unittest import mock
 
 from rbx.box.packaging.boca import boca_language_utils
-from rbx.box.packaging.boca.extension import BocaLanguageExtension
+from rbx.box.packaging.boca.boca_language_utils import DEFAULT_FLAGS
+from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguageExtension
 
 
 def _mk_language(name: str, ext: BocaLanguageExtension | None = None):
@@ -141,3 +142,76 @@ def test_get_boca_template_name_falls_back_to_boca_language(monkeypatch):
     )
 
     assert boca_language_utils.get_boca_template_name('cc') == 'cc'
+
+
+def _patch_flags_env(monkeypatch, languages, legacy_flags=None):
+    env = _mk_env(languages)
+    monkeypatch.setattr(boca_language_utils, 'get_environment', lambda: env)
+    monkeypatch.setattr(
+        boca_language_utils, 'get_language_by_extension_or_nil', lambda _: None
+    )
+    monkeypatch.setattr(
+        boca_language_utils,
+        'get_extension_or_default',
+        lambda _name, _cls: BocaExtension(flags=legacy_flags or {}),
+    )
+
+
+def test_flags_prefer_the_emitting_language(monkeypatch):
+    _patch_flags_env(
+        monkeypatch,
+        [
+            _mk_language(
+                'cpp',
+                BocaLanguageExtension(
+                    languages=['cc', 'cpp'], template='cc', flags='-O3'
+                ),
+            )
+        ],
+        legacy_flags={'cc': '-O1'},
+    )
+
+    # Both emitted ids share the language's flags, and the legacy dict loses.
+    assert boca_language_utils.get_boca_flags('cc') == '-O3'
+    assert boca_language_utils.get_boca_flags('cpp') == '-O3'
+
+
+def test_flags_fall_back_to_legacy_env_level_dict(monkeypatch):
+    _patch_flags_env(
+        monkeypatch,
+        [
+            _mk_language(
+                'cpp', BocaLanguageExtension(languages=['cc', 'cpp'], template='cc')
+            )
+        ],
+        legacy_flags={'cc': '-O1'},
+    )
+
+    assert boca_language_utils.get_boca_flags('cc') == '-O1'
+    # The legacy dict is keyed by BOCA id, so 'cpp' is not covered and uses the
+    # template default.
+    assert boca_language_utils.get_boca_flags('cpp') == DEFAULT_FLAGS['cc']
+
+
+def test_flags_default_by_template(monkeypatch):
+    _patch_flags_env(
+        monkeypatch,
+        [
+            _mk_language(
+                'cpp', BocaLanguageExtension(languages=['cpp'], template='cc')
+            ),
+            _mk_language(
+                'py', BocaLanguageExtension(languages=['py3'], template='py3')
+            ),
+        ],
+    )
+
+    assert boca_language_utils.get_boca_flags('cpp') == DEFAULT_FLAGS['cc']
+    # Templates without a compiler have no default flags.
+    assert boca_language_utils.get_boca_flags('py3') == ''
+
+
+def test_flags_default_for_zero_config_name_fallback(monkeypatch):
+    _patch_flags_env(monkeypatch, [_mk_language('c', BocaLanguageExtension())])
+
+    assert boca_language_utils.get_boca_flags('c') == DEFAULT_FLAGS['c']

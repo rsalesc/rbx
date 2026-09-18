@@ -46,3 +46,24 @@ scenarios:
             entries:
               limits/cpp: "/(?ms)^echo 2.000$.*^echo 1$.*^echo 512$/"
               limits/cc: "/(?ms)^echo 2.000$.*^echo 1$.*^echo 512$/"
+
+  - name: package-boca-per-language-flags
+    description: >
+      Compilation flags live on each rbx language's BOCA extension. The
+      default preset sets them for `cpp` (emitted as both `cc` and `cpp`)
+      and for `c`, and the compile scripts must substitute them in.
+    steps:
+      - cmd: build
+      - cmd: time -s inherit -p boca
+      - cmd: pkg boca
+        expect:
+          zip_file_contains:
+            path: build/*.zip
+            entries:
+              compile/cc: "-std=c++20 -O2 -lm -static"
+              compile/cpp: "-std=c++20 -O2 -lm -static"
+              compile/c: "-O2 -static"
+              # The checker is embedded into every compile script and compiled
+              # with the flags of the language emitting `cc`, so even the
+              # Python script carries the C++ flags.
+              compile/py3: "-std=c++20 -O2 -lm -static"
