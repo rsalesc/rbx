@@ -91,3 +91,99 @@ exactly.
 !!! note
     Solutions in `submissions/mixed/` trigger a harmless "result does not match
     directory" message on import; this is expected and does not block anything.
+
+## Configuring the server
+
+A package says nothing about which languages a DOMjudge instance accepts, or how it
+compiles them: both live in the server's own configuration, not in the problem. So a
+package built against `-std=c++20` can still fail to compile on a judge whose C++
+script passes no `-std` at all — the stock one does not.
+
+`rbx tool domjudge configure` closes that gap by pushing your environment to the
+server:
+
+```bash
+export RBX_DOMJUDGE_SERVER=https://judge.example.com/
+export RBX_DOMJUDGE_USERNAME=...
+export RBX_DOMJUDGE_PASSWORD=...
+
+rbx tool domjudge configure
+```
+
+It prints everything it is about to change before changing it.
+
+!!! warning
+    Every setting here is **instance-wide** and needs an admin account. DOMjudge has
+    no per-contest equivalent for languages, compilation or limits, so this
+    reconfigures the whole server — every contest on it, including other people's.
+
+Three things are pushed.
+
+**Which languages accept submissions.** Each language in `env.rbx.yml` is matched
+against the server's language list by file extension, and the result is enabled.
+Languages the server has enabled that {{rbx}} does not know about stay enabled, and
+{{rbx}} only ever *adds* file extensions to a language, never removes one.
+
+Matching by extension only sees languages that are currently enabled — a disabled one
+is invisible to DOMjudge's API. Name it explicitly to switch it back on:
+
+```yaml
+languages:
+  - name: "py"
+    extension: "py"
+    extensions:
+      domjudge:
+        languages: ["python3"]
+        timeFactor: 3.0
+```
+
+The id here is DOMjudge's *external* id, which is not always the one the admin
+interface shows: `py3` is externally `python3`, `pas` is `pascal`, `rs` is `rust`.
+An id that matches nothing is silently ignored by DOMjudge, so {{rbx}} re-reads the
+language list afterwards and tells you which entries did not land.
+
+`timeFactor` is the multiplier DOMjudge applies to every problem's time limit for that
+language. It is only ever pushed when you set it here: nothing in `env.rbx.yml` means
+the same thing, so there is nothing to derive it from.
+
+**How they are compiled.** For a language whose compilation is a single command that
+produces the program {{rbx}} then executes — C and C++, in the default preset — the
+command is translated into DOMjudge's compile wrapper and uploaded:
+
+```sh
+g++ -std=c++20 -O2 -o "$DEST" "$@"
+```
+
+Anything else keeps the script the server already has, and the summary says why:
+Java compiles in two steps, Python compiles not at all, and Kotlin leaves a jar rather
+than a program, so DOMjudge's own script has to go on producing the wrapper it runs.
+
+Use `compileCommand` when the judge needs flags your machine does not, `-static` being
+the usual one, or `compile: false` to enable a language and leave its script alone:
+
+```yaml
+    extensions:
+      domjudge:
+        compileCommand: "g++ -std=c++20 -O2 -static -o {executable} {compilable}"
+```
+
+**Server limits.** Only the ones you declare, so that running the command does not
+quietly change a limit you never thought about:
+
+```yaml
+extensions:
+  domjudge:
+    memoryLimit: 2048      # MiB
+    outputLimit: 8192      # KiB
+    processLimit: 64
+    sourceSizeLimit: 256   # KiB
+```
+
+These are the defaults for problems that carry none of their own; a package built by
+`rbx package domjudge` always ships its own time and memory limits.
+
+!!! note "There is no stack limit to configure"
+    DOMjudge's sandbox always sets the stack size to unlimited and enforces memory
+    through cgroups instead, so a submission's stack is bounded only by the memory
+    limit. That matches an `env.rbx.yml` with no `stackLimit` set; a *finite*
+    `stackLimit` has no equivalent on DOMjudge and cannot be pushed.

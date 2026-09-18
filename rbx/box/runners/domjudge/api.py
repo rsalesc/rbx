@@ -186,6 +186,16 @@ class DomjudgeApi:
     async def languages(self, contest: str) -> List[Dict[str, Any]]:
         return await self._acall('GET', f'/contests/{contest}/languages')
 
+    async def all_languages(self) -> List[Dict[str, Any]]:
+        """Every language the instance will accept a submission in.
+
+        Not a contest-scoped question despite the CLICS spelling: DOMjudge
+        answers both routes from the same query, filtered only by `allow_submit`.
+        A language with submission disabled is absent here and cannot be listed
+        any other way through the API -- `GET /languages/{id}` 404s for it too.
+        """
+        return await self._acall('GET', '/languages')
+
     async def problems(self, contest: str) -> List[Dict[str, Any]]:
         return await self._acall('GET', f'/contests/{contest}/problems')
 
@@ -269,6 +279,57 @@ class DomjudgeApi:
             f'/contests/{contest}/problems/{problem_id}',
             json_body={'label': label, 'lazy_eval_results': lazy_eval_results},
         )
+
+    async def configure_languages(
+        self, entries: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Declare the instance's submittable languages, and return the result.
+
+        Three things about this endpoint that the payload has to be built for,
+        all of them instance-wide and none of them reversible by a second call:
+
+        - It **disables submission for every language not in `entries`**. There
+          is no partial update; the caller sends the whole set it wants enabled.
+        - It matches an entry's `id` against the language's `externalid`, which
+          is not always the langid an admin sees (`py3` is `python3`). An id
+          that matches nothing is **silently skipped** -- the 200 says nothing
+          about whether an entry landed, so callers re-read the list to check.
+        - It cannot create a language. Only an existing one is reconfigured.
+        """
+        payload = json.dumps(entries).encode()
+        return await self._acall(
+            'POST',
+            '/languages',
+            files={'json': ('languages.json', payload)},
+        )
+
+    async def update_language_executable(
+        self, language_id: str, zip_bytes: bytes
+    ) -> None:
+        """Replace the compile script DOMjudge runs for `language_id`.
+
+        The zip holds a flat `run` (the compile wrapper itself, called with the
+        destination path, the memory limit and the sources) and a `build` stub,
+        both marked executable in the zip's unix attributes.
+
+        It writes through to the shared `Executable` row, so two languages that
+        point at the same compile script both change.
+        """
+        await self._acall(
+            'POST',
+            f'/languages/{language_id}/executable',
+            files={'executable': (f'{language_id}.zip', zip_bytes)},
+            timeout=UPLOAD_TIMEOUT_SECONDS,
+        )
+
+    async def update_config(self, values: Dict[str, Any]) -> Dict[str, Any]:
+        """Write instance-wide configuration, and return the whole config back.
+
+        An unknown key is accepted with a 200 and silently dropped, so the
+        answer -- which is the full configuration, not just what was sent -- is
+        the only way to tell whether a write landed.
+        """
+        return await self._acall('PUT', '/config', json_body=values)
 
     async def submit(
         self,
