@@ -168,8 +168,9 @@ async def moj(
         None,
         '--language',
         '-l',
-        help='If set, will build the statement in the given language. '
-        'Leave unset if you want to use the language of the topmost statement.',
+        help='If set, will use the statement in the given language as the main '
+        'one. Leave unset to use the Portuguese statement, or the topmost one '
+        'without it. Every other `en`/`es` statement ships as a translation.',
         autocompletion=annotations._adapt('language'),  # noqa: SLF001
     ),
     calibrate: bool = typer.Option(

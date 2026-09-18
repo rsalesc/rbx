@@ -44,6 +44,14 @@ def test_headings_follow_the_statement_language():
     assert '## Output' in doc
 
 
+def test_spanish_headings_pass_the_gate():
+    """validate-problem.sh also accepts `salida`, so a Spanish statement reads
+    Spanish and still passes."""
+    doc = statement.build_enunciado(BLOCKS, language='es')
+    assert '## Entrada' in doc
+    assert '## Salida' in doc
+
+
 def test_an_unknown_language_falls_back_to_portuguese():
     doc = statement.build_enunciado(BLOCKS, language='de')
     assert '## Entrada' in doc
@@ -84,6 +92,21 @@ def test_a_block_leaking_examples_is_rejected():
         statement.build_enunciado(
             {**BLOCKS, 'legend': '\\section*{Exemplos}'}, language='pt-br'
         )
+
+
+def test_document_paths_carry_the_language_suffix():
+    """`statement-langs.sh` finds a translation at `docs/enunciado.<lang>.md` and
+    its notes at `docs/notes/<sample>.<lang>.md`; the canonical slot has no suffix."""
+    assert str(statement.enunciado_path()) == 'docs/enunciado.md'
+    assert str(statement.enunciado_path('en')) == 'docs/enunciado.en.md'
+    assert str(statement.note_path('sample001')) == 'docs/notes/sample001.md'
+    assert str(statement.note_path('sample001', 'es')) == 'docs/notes/sample001.es.md'
+
+
+def test_moj_language_is_the_subtag():
+    assert statement.moj_language('pt-br') == 'pt'
+    assert statement.moj_language('EN') == 'en'
+    assert statement.moj_language('es') == 'es'
 
 
 def test_explanations_are_written_per_sample_by_test_name():

@@ -1,22 +1,31 @@
-"""The MOJ statement documents: `docs/enunciado.md` and `docs/notes/<sample>.md`.
+"""The MOJ statement documents: `docs/enunciado.md` and `docs/notes/<sample>.md`,
+plus their translations at `docs/enunciado.<lang>.md` and
+`docs/notes/<sample>.<lang>.md`.
 
-Everything here is dictated by what `mojtools` does with the files, so the three
+Everything here is dictated by what `mojtools` does with the files, so the four
 facts worth carrying in your head:
 
 - **The renderer is pandoc** (`render-statement.sh`), the same one the editor's
   *Pré-visualizar* runs. So pandoc-flavored Markdown is the target dialect, and
   `$…$` reaches the student as MathML with no conversion.
 - **The title comes from the field, not the document.** `render-statement.sh`
-  injects an `<h1>` from `.moj-meta.json`'s `display_title` and strips a legacy
-  `% Title` first line, so the document must carry no title of its own.
+  injects an `<h1>` from `.moj-meta.json`'s `display_title` (or `titles[<lang>]`
+  for a translation) and strips a legacy `% Title` first line, so the document
+  must carry no title of its own.
 - **`## Entrada`/`## Saída` are the release gate.** `validate-problem.sh` greps
   them out of the RAW file as `^\\s*#{1,3}\\s*(entrada|input)` and
-  `…(saída|saida|output)`, so they are emitted unconditionally -- a statement
-  that simply has no input section still needs the heading.
+  `…(saída|saida|salida|output)`, so they are emitted unconditionally -- a
+  statement that simply has no input section still needs the heading. The gate
+  applies to every translation too.
+- **Portuguese is the canonical slot, and the languages are an allowlist.**
+  `statement-langs.sh` reads `docs/enunciado.md` as Portuguese and looks for a
+  translation only at `docs/enunciado.<lang>.md` for `<lang>` in `pt en es` --
+  so an `enunciado.pt.md` or an `enunciado.ru.md` is never read.
 """
 
+import dataclasses
 import pathlib
-from typing import Callable, Dict, Mapping, Optional
+from typing import Callable, Dict, List, Mapping, Optional
 
 import typer
 
@@ -32,17 +41,61 @@ from rbx.box.statements.schema import Statement
 # `sample%03d`), but `naming.testcase_name` still wants a group.
 SAMPLES_GROUP = 'samples'
 
-# `validate-problem.sh` matches `entrada|input` and `saída|saida|output` case
-# insensitively, so an English statement passes the gate with English headings
-# and a reader never sees a section titled in the wrong language.
+# `validate-problem.sh` matches `entrada|input` and `saída|saida|salida|output`
+# case insensitively, so a translated statement passes the gate with its own
+# headings and a reader never sees a section titled in the wrong language.
 _HEADINGS = {
     'pt': {'input': 'Entrada', 'output': 'Saída', 'notes': 'Notas'},
     'en': {'input': 'Input', 'output': 'Output', 'notes': 'Notes'},
+    'es': {'input': 'Entrada', 'output': 'Salida', 'notes': 'Notas'},
 }
 
 # MOJ is a Brazilian judge and its own tooling is Portuguese, so an
 # unrecognized language falls back to it rather than to English.
 _DEFAULT_HEADING_LANGUAGE = 'pt'
+
+# The language of the canonical, unsuffixed slot (`docs/enunciado.md`). A
+# statement in this language is never a translation: MOJ has no
+# `enunciado.pt.md`, so one would simply never be read.
+CANONICAL_LANGUAGE = 'pt'
+
+# `STMT_LANGS_ALL` in mojtools' `statement-langs.sh`. A translation in any other
+# language lands in the package and is ignored by every reader.
+SUPPORTED_LANGUAGES = ('pt', 'en', 'es')
+
+
+def moj_language(language: Optional[str]) -> str:
+    """The MOJ language id of an rbx statement language: its ISO 639-1 subtag.
+
+    rbx language codes may be region-qualified (`pt-br`), and MOJ's allowlist
+    and gate care only about the word.
+    """
+    return (language or '').split('-')[0].lower()
+
+
+def enunciado_path(language: Optional[str] = None) -> pathlib.PurePosixPath:
+    """Where a statement body lands, relative to the package root.
+
+    The canonical slot for no language, `docs/enunciado.<lang>.md` for a
+    translation -- exactly the two spellings `statement-langs.sh` looks for.
+    """
+    suffix = f'.{language}' if language else ''
+    return pathlib.PurePosixPath('docs') / f'enunciado{suffix}.md'
+
+
+@dataclasses.dataclass(frozen=True)
+class StatementSelection:
+    """Which statements a MOJ package ships, and where.
+
+    `main` fills the canonical slot; `translations` is one statement per MOJ
+    language, keyed by that language; `skipped` are the statements the package
+    drops, each paired with the reason the setter is told.
+    """
+
+    main: Optional[Statement]
+    translations: Dict[str, Statement]
+    skipped: List[tuple[Statement, str]]
+
 
 # How the statement's figures travel to MOJ. A code-level switch on purpose: both
 # shapes are valid packages, MOJ shows the reader the same statement either way,
@@ -106,28 +159,30 @@ def _headings(language: Optional[str]) -> Dict[str, str]:
     Matched on the language *subtag* (`pt-br` -> `pt`), since rbx language codes
     are region-qualified and MOJ's gate cares only about the word.
     """
-    subtag = (language or '').split('-')[0].lower()
-    return _HEADINGS.get(subtag, _HEADINGS[_DEFAULT_HEADING_LANGUAGE])
+    return _HEADINGS.get(moj_language(language), _HEADINGS[_DEFAULT_HEADING_LANGUAGE])
 
 
-def get_main_statement(main_language: Optional[str] = None) -> Optional[Statement]:
-    """The single statement a MOJ package ships.
+def _select_main(
+    statements: List[Statement], main_language: Optional[str]
+) -> Statement:
+    """The statement for the canonical slot.
 
-    MOJ holds one statement per problem, so this is the one choice that matters:
-    the body and `display_title` both resolve from it, and they must never come
-    from different languages. `main_language` picks it; without one, the topmost
-    declared statement wins, as everywhere else in rbx.
+    `main_language` picks it, and naming a language the problem has none in is
+    an error. Without one, the Portuguese statement is preferred, since that is
+    what the slot *means* to MOJ and a Portuguese statement anywhere else would
+    never be read; only a problem with none falls back to the topmost declared
+    statement, as everywhere else in rbx.
     """
-    pkg = package.find_problem_package_or_die()
-    if not pkg.expanded_statements:
-        return None
     if main_language is None:
-        return pkg.expanded_statements[0]
-    for statement in pkg.expanded_statements:
+        for statement in statements:
+            if moj_language(statement.language) == CANONICAL_LANGUAGE:
+                return statement
+        return statements[0]
+    for statement in statements:
         if statement.language == main_language:
             return statement
     available = '[/item], [item]'.join(
-        sorted({statement.language for statement in pkg.expanded_statements})
+        sorted({statement.language for statement in statements})
     )
     console.console.print(
         f'[error]No statement in language [item]{main_language}[/item].'
@@ -137,21 +192,118 @@ def get_main_statement(main_language: Optional[str] = None) -> Optional[Statemen
     raise typer.Exit(1)
 
 
-def get_display_title(main_language: Optional[str] = None) -> str:
-    """MOJ's `display_title`, resolved through the shared naming helper.
+def select_statements(main_language: Optional[str] = None) -> StatementSelection:
+    """Which statements a MOJ package ships, and where each lands.
+
+    The main statement fills `docs/enunciado.md` whatever its language, and the
+    body and `display_title` both resolve from it, so they can never come from
+    different languages. Every other statement in a language MOJ supports ships
+    as a translation, one per language (the topmost declared wins); the rest are
+    skipped, each with the reason the packager reports.
+
+    A Portuguese statement that is not the main one is skipped too: MOJ reads
+    Portuguese only from the canonical slot, so shipping it as
+    `enunciado.pt.md` would be shipping a file nothing reads.
+    """
+    pkg = package.find_problem_package_or_die()
+    statements = pkg.expanded_statements
+    if not statements:
+        return StatementSelection(main=None, translations={}, skipped=[])
+
+    main = _select_main(statements, main_language)
+    main_moj_language = moj_language(main.language)
+    translations: Dict[str, Statement] = {}
+    skipped: List[tuple[Statement, str]] = []
+    for statement in statements:
+        if statement is main:
+            continue
+        language = moj_language(statement.language)
+        if language not in SUPPORTED_LANGUAGES:
+            supported = '[/item], [item]'.join(SUPPORTED_LANGUAGES)
+            skipped.append(
+                (statement, f'MOJ supports only [item]{supported}[/item] statements')
+            )
+        elif language == CANONICAL_LANGUAGE:
+            skipped.append(
+                (
+                    statement,
+                    'MOJ reads Portuguese only from [item]docs/enunciado.md[/item], '
+                    f'which the [item]{main.language}[/item] statement fills',
+                )
+            )
+        elif language == main_moj_language:
+            skipped.append(
+                (statement, f'the main statement is already in [item]{language}[/item]')
+            )
+        elif language in translations:
+            skipped.append(
+                (
+                    statement,
+                    f'MOJ takes one [item]{language}[/item] statement, and '
+                    f'[item]{translations[language].variant}[/item] was declared first',
+                )
+            )
+        else:
+            translations[language] = statement
+    return StatementSelection(main=main, translations=translations, skipped=skipped)
+
+
+def get_main_statement(main_language: Optional[str] = None) -> Optional[Statement]:
+    """The statement that fills `docs/enunciado.md`; see `select_statements`."""
+    return select_statements(main_language).main
+
+
+def _title_of(statement: Optional[Statement]) -> str:
+    """A statement's title, resolved through the shared naming helper.
 
     `naming.get_problem_title` is what BOCA uses: it honors a statement's own
     `title` override, falls back to the package title and then to the package
     name, and raises an actionable error when a package has several titles and no
     statement to disambiguate them.
-
-    The statement it resolves against is `get_main_statement`'s, so anything
-    reporting what a MOJ upload would be titled -- the packager, `rbx tooling moj
-    summary` -- agrees with the package that eventually gets built.
     """
-    statement = get_main_statement(main_language)
     language = statement.language if statement is not None else None
     return box_naming.get_problem_title(language, statement, fallback_to_title=True)
+
+
+def get_display_title(main_language: Optional[str] = None) -> str:
+    """MOJ's `display_title`, resolved from the main statement.
+
+    Anything reporting what a MOJ upload would be titled -- the packager, `rbx
+    tooling moj summary` -- resolves through here, so they agree with the package
+    that eventually gets built.
+    """
+    return _title_of(get_main_statement(main_language))
+
+
+def get_translated_titles(main_language: Optional[str] = None) -> Dict[str, str]:
+    """MOJ's `titles`: the title of each shipped translation, by MOJ language.
+
+    A translation contributes an entry only when it has a title *of its own* --
+    the statement's `title`, else the package's `titles[<lang>]` -- and that
+    title differs from `display_title`. `statement-langs.sh` falls back to
+    `display_title` for a translation with no entry, so an identical one is
+    noise, and `naming.get_problem_title`'s last resort (the package *name*) is
+    deliberately not taken: it would replace that fallback with a name the
+    setter never meant as a title.
+    """
+    pkg = package.find_problem_package_or_die()
+    selection = select_statements(main_language)
+    display_title = _title_of(selection.main)
+    titles = {}
+    for language, statement in selection.translations.items():
+        title = statement.title or pkg.titles.get(statement.language)
+        if title is not None and title != display_title:
+            titles[language] = title
+    return titles
+
+
+def report_skipped(selection: StatementSelection) -> None:
+    """Warn about every statement the package drops, and why."""
+    for statement, reason in selection.skipped:
+        console.console.print(
+            f'[warning]Not shipping the [item]{statement.language}[/item] '
+            f'statement ([item]{statement.variant}[/item]): {reason}.[/warning]'
+        )
 
 
 def moj_layout() -> statement_assets.RasterizingLayout:
@@ -277,10 +429,13 @@ def build_notes(
     return notes
 
 
-def note_path(name: str) -> pathlib.PurePosixPath:
+def note_path(name: str, language: Optional[str] = None) -> pathlib.PurePosixPath:
     """Where a note file lands, relative to the package root.
 
-    Note this is NOT the layout's `document_dir` for the slot: the file lives in
+    `docs/notes/<sample>.<lang>.md` for a translation's note (`stmt_note_file`
+    prefers it and falls back to the unsuffixed Portuguese one). Note this is
+    NOT the layout's `document_dir` for the slot: the file lives in
     `docs/notes/`, while its image references resolve against `docs/`.
     """
-    return pathlib.PurePosixPath('docs') / 'notes' / f'{name}.md'
+    suffix = f'.{language}' if language else ''
+    return pathlib.PurePosixPath('docs') / 'notes' / f'{name}{suffix}.md'

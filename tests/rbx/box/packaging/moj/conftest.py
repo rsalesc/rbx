@@ -135,12 +135,16 @@ def with_statements(
     explanations=None,
     languages=('pt',),
     titles=None,
+    explanations_by_language=None,
 ) -> None:
     """Declare statements and fake the artifacts a statement build would leave.
 
     The export pipeline reads `blocks.sub.yml` and the TikZ PDFs out of the v2
     standalone overlay, which only a real statement build (pdflatex included)
     writes. Faking those three reads keeps these tests about the packager.
+
+    `explanations` are shared by every language; `explanations_by_language`
+    overrides them for the languages it names.
     """
     statement_dir = testing_pkg.root / 'statement'
     statement_dir.mkdir(parents=True, exist_ok=True)
@@ -167,7 +171,11 @@ def with_statements(
     def _blocks(statement, normalize=True):
         return StatementBlocks(
             blocks=dict(blocks.get(statement.language, blocks['pt'])),
-            explanations=dict(explanations or {}),
+            explanations=dict(
+                (explanations_by_language or {}).get(
+                    statement.language, explanations or {}
+                )
+            ),
         )
 
     monkeypatch.setattr(export, 'get_statement_dir', lambda statement: overlay)
@@ -186,6 +194,12 @@ PT_BLOCKS = {
 EN_AND_PT_BLOCKS = {
     'pt': {'legend': 'Em português.', 'input': 'Entrada.', 'output': 'Saída.'},
     'en': {'legend': 'In English.', 'input': 'Input.', 'output': 'Output.'},
+}
+
+MULTILANG_BLOCKS = {
+    **EN_AND_PT_BLOCKS,
+    'es': {'legend': 'En español.', 'input': 'Entrada.', 'output': 'Salida.'},
+    'ru': {'legend': 'По-русски.', 'input': 'Ввод.', 'output': 'Вывод.'},
 }
 
 

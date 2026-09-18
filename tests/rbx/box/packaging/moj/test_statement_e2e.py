@@ -43,11 +43,29 @@ def _mojtools() -> pathlib.Path:
     return path
 
 
+ES_BLOCKS = {
+    **PT_BLOCKS,
+    'es': {
+        'legend': 'Dados los enteros $a$ y $b$. \\includegraphics{fig}',
+        'input': 'Una línea con $a$ y $b$.',
+        'output': 'La suma.',
+    },
+}
+
+
 @pytest.fixture
 def packaged(testing_pkg, tmp_path, monkeypatch) -> pathlib.Path:
-    """A package carrying a statement figure and a sample explanation."""
+    """A package carrying a statement figure, a sample explanation and a
+    Spanish translation of both."""
     minimal_package(testing_pkg)
-    with_statements(testing_pkg, monkeypatch, PT_BLOCKS, explanations={0: EXPLANATION})
+    with_statements(
+        testing_pkg,
+        monkeypatch,
+        ES_BLOCKS,
+        explanations={0: EXPLANATION},
+        languages=('pt', 'es'),
+        titles={'pt': 'Soma', 'es': 'Suma'},
+    )
     # mojtools derives the problem id from the package directory's name.
     return run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
 
@@ -89,8 +107,46 @@ def test_validate_problem_passes_the_statement_gate(packaged, tmp_path):
         assert check['ok'], f'{name}: {check["detail"]}'
 
     # And nothing soft either: no leaked LaTeX, no examples section, no fence, and
-    # no note left unpaired with a sample.
+    # no note left unpaired with a sample -- nor, since the translation ships its
+    # own note, a `nota-sem-traducao`.
     assert report['render_warnings'] == ''
+
+
+def test_validate_problem_passes_the_translation_gate(packaged, tmp_path):
+    """The gate applies to every `docs/enunciado.<lang>.md` too, and the Spanish
+    headings (`## Entrada`/`## Salida`) are what it accepts."""
+    mojtools = _mojtools()
+    report = _validate(mojtools, packaged, tmp_path)
+
+    for name in ('html_builds_es', 'secao_entrada_es', 'secao_saida_es'):
+        check = _check(report, name)
+        assert check['ok'], f'{name}: {check["detail"]}'
+
+
+def test_render_statement_renders_the_translation(packaged, tmp_path):
+    """`gen-problem-json.sh` renders a translation with its language and the
+    title from `titles[<lang>]`; the figure travels with it."""
+    mojtools = _mojtools()
+    meta = json.loads((packaged / '.moj-meta.json').read_text())
+    assert meta['titles'] == {'es': 'Suma'}
+    result = subprocess.run(
+        [
+            'bash',
+            str(mojtools / 'render-statement.sh'),
+            str(packaged / 'docs' / 'enunciado.es.md'),
+            'md',
+            '',
+            meta['titles']['es'],
+            'es',
+        ],
+        capture_output=True,
+        text=True,
+    )
+    html = result.stdout
+    assert 'lang="es"' in html
+    assert 'src="data:image/png;base64,' in html
+    assert '<h1 class="moj-title">Suma</h1>' in html
+    assert 'Salida' in html
 
 
 def test_render_statement_embeds_the_figure(packaged, tmp_path):
