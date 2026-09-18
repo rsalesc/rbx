@@ -69,3 +69,12 @@ def test_min_running_time_rejects_non_positive():
 
 def test_min_running_time_accepts_positive_ms():
     assert BocaExtension(minRunningTime=1000).minRunningTime == 1000
+
+
+def test_language_flags_default_to_none():
+    assert BocaLanguageExtension(languages=['cc'], template='cc').flags is None
+
+
+def test_language_flags_accept_string():
+    ext = BocaLanguageExtension(languages=['cc'], template='cc', flags='-O3')
+    assert ext.flags == '-O3'

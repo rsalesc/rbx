@@ -25,3 +25,19 @@ scenarios:
             path: build/*.zip
             entries:
               limits/cc: "/(?ms)^echo 1.200$.*^echo 4$/"
+
+  - name: package-boca-legacy-env-level-flags
+    description: >
+      The env-level `extensions.boca.flags` dict is superseded by the
+      per-language `flags`, but it is still read as a silent fallback.
+      The local env sets it (and no per-language `flags`), so the `cc`
+      compile script must carry its marker.
+    steps:
+      - cmd: build
+      - cmd: time -s inherit -p boca
+      - cmd: pkg boca
+        expect:
+          zip_file_contains:
+            path: build/*.zip
+            entries:
+              compile/cc: "-DRBX_LEGACY_FLAGS"

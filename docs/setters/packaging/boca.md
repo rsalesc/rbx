@@ -55,6 +55,26 @@ Older BOCA versions call the C++ language `cc` while newer ones call it `cpp`. {
 both variants, and both inherit the time and memory limits of the rbx `cpp` language, so the two
 always get identical limits regardless of which name your BOCA server uses.
 
+## Compilation flags
+
+The compile scripts {{rbx}} ships for C and C++ take their flags from each language's BOCA
+extension in `env.rbx.yml`. Leave `flags` unset to get the defaults (`-std=c++20 -O2 -lm -static`
+for C++), or override them per language:
+
+```yaml
+languages:
+  - name: "cpp"
+    # ...
+    extensions:
+      boca:
+        languages: ["cc", "cpp"]
+        template: "cc"
+        flags: "-std=c++17 -O2 -lm -static"
+```
+
+The checker and the interactor are compiled with the flags of the language emitting `cc`, so
+they follow your `cpp` language too.
+
 ## Interactive problems
 
 Interactive problems can be easily packaged for BOCA with {{rbx}}. There are some limitations to it, though:

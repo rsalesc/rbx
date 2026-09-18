@@ -10,6 +10,9 @@ BocaLanguage = typing.Literal['c', 'cpp', 'cc', 'kt', 'java', 'py2', 'py3']
 class BocaExtension(RejectsRemovedFields):
     model_config = ConfigDict(extra='forbid')
 
+    # Legacy: compilation flags keyed by BOCA language id. Superseded by the
+    # per-language `flags` on `BocaLanguageExtension`; still read as a fallback when a
+    # language leaves its own `flags` unset.
     flags: typing.Dict[BocaLanguage, str] = {}
     # Optional floor (in milliseconds) on the TOTAL BOCA time budget. When set, the
     # solution is run ceil(minRunningTime / timeLimit) times so the accumulated budget
@@ -35,15 +38,6 @@ class BocaExtension(RejectsRemovedFields):
         ),
     )
 
-    def flags_with_defaults(self) -> typing.Dict[BocaLanguage, str]:
-        res: typing.Dict[BocaLanguage, str] = {
-            'c': '-std=gnu11 -O2 -lm -static',
-            'cpp': '-std=c++20 -O2 -lm -static',
-            'cc': '-std=c++20 -O2 -lm -static',
-        }
-        res.update(self.flags)
-        return res
-
 
 class BocaLanguageExtension(RejectsRemovedFields):
     model_config = ConfigDict(extra='forbid')
@@ -56,6 +50,11 @@ class BocaLanguageExtension(RejectsRemovedFields):
     # interactive}/) to source per-language scripts from. Required whenever `languages`
     # is set.
     template: typing.Optional[str] = None
+    flags: typing.Optional[str] = Field(
+        default=None,
+        description='Compilation flags substituted into the template. Leave unset to '
+        "use the template's own default.",
+    )
 
     # Removed in rbx v1 (see the "Migrating to rbx v1" troubleshooting guide).
     bocaLanguage: typing.Annotated[typing.Optional[str], Removed()] = Field(

@@ -11,6 +11,7 @@ from rbx.box.environment import get_extension_or_default
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging import flattening
 from rbx.box.packaging.boca.boca_language_utils import (
+    get_boca_flags,
     get_boca_template_name,
     get_emitted_boca_languages,
     get_rbx_language_from_boca_language,
@@ -198,9 +199,7 @@ class BocaPackager(BasePackager):
 
     def _replace_common(self, text: str, lang: str) -> str:
         extension = get_extension_or_default('boca', BocaExtension)
-        flags = extension.flags_with_defaults()
-        if lang in flags:
-            text = text.replace('{{rbxFlags}}', flags[lang])
+        text = text.replace('{{rbxFlags}}', get_boca_flags(lang))
         text = text.replace(
             '{{rbxPython3}}', 'pypy3' if extension.usePypy else 'python3'
         )
