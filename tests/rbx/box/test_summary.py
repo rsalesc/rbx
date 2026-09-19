@@ -1,5 +1,6 @@
 import json
 import pathlib
+from typing import Dict, Optional
 from unittest import mock
 
 import pytest
@@ -12,6 +13,8 @@ from rbx.box.issues import schema as issues_schema
 from rbx.box.schema import (
     CodeItem,
     ExpectedOutcome,
+    LimitModifiers,
+    LimitsProfile,
     Package,
     Solution,
     TaskType,
@@ -22,7 +25,10 @@ from rbx.box.summary import (
     ContestProblemSummary,
     ProblemFlags,
     ProblemSummary,
+    ProfileLimits,
     TestcaseCounts,
+    build_contest_profile_tables,
+    build_contest_summary_table,
     count_testcases,
     get_contest_problem_summary,
     get_outcome_bucket,
@@ -31,6 +37,7 @@ from rbx.box.summary import (
     get_solution_counts,
     print_checks_section,
     summary_to_json,
+    time_limit_varies_by_language,
 )
 from rbx.box.testcase_schema import TestcaseEntry
 
@@ -245,6 +252,74 @@ class TestGetContestProblemSummary:
         assert total_bucketed == 2
         assert result.solution_counts_bucketed[ExpectedOutcome.ACCEPTED] == 1
         assert result.solution_counts_bucketed[ExpectedOutcome.WRONG_ANSWER] == 1
+        assert result.time_limit_varies_by_language is False
+        assert result.profile_limits == {}
+
+    def test_flags_a_package_whose_languages_disagree_on_the_time_limit(self):
+        pkg = _make_package(modifiers={'py': LimitModifiers(timeMultiplier=3)})
+
+        result = get_contest_problem_summary(pkg, [], [], short_name='A')
+
+        assert result.time_limit_varies_by_language is True
+
+    def test_carries_the_limits_of_every_saved_profile(self):
+        pkg = _make_package()
+        profiles = {
+            # An expanded profile, as `limits_info` hands them out: base limits
+            # filled in, modifiers merged with the package's.
+            'moj': LimitsProfile(
+                timeLimit=3000,
+                memoryLimit=512,
+                modifiers={'java': LimitModifiers(time=6000)},
+            ),
+            'boca': LimitsProfile(timeLimit=2000, memoryLimit=256),
+        }
+
+        result = get_contest_problem_summary(pkg, [], [], 'A', profiles=profiles)
+
+        assert result.profile_limits == {
+            'moj': ProfileLimits(
+                time_limit_ms=3000,
+                memory_limit_mb=512,
+                time_limit_varies_by_language=True,
+            ),
+            'boca': ProfileLimits(
+                time_limit_ms=2000,
+                memory_limit_mb=256,
+                time_limit_varies_by_language=False,
+            ),
+        }
+
+
+class TestTimeLimitVariesByLanguage:
+    def test_no_modifiers(self):
+        assert time_limit_varies_by_language(LimitsProfile(timeLimit=1000)) is False
+
+    def test_memory_only_modifier_does_not_count(self):
+        profile = LimitsProfile(
+            timeLimit=1000, modifiers={'py': LimitModifiers(memory=512)}
+        )
+        assert time_limit_varies_by_language(profile) is False
+
+    def test_time_override_counts(self):
+        profile = LimitsProfile(
+            timeLimit=1000, modifiers={'py': LimitModifiers(time=3000)}
+        )
+        assert time_limit_varies_by_language(profile) is True
+
+    def test_multiplier_counts(self):
+        profile = LimitsProfile(
+            timeLimit=1000, modifiers={'py': LimitModifiers(timeMultiplier=2)}
+        )
+        assert time_limit_varies_by_language(profile) is True
+
+    def test_override_equal_to_base_does_not_count(self):
+        # A modifier that resolves to the base limit is not a difference the
+        # reader needs warning about: every language still runs under 1000 ms.
+        profile = LimitsProfile(
+            timeLimit=1000, modifiers={'py': LimitModifiers(time=1000)}
+        )
+        assert time_limit_varies_by_language(profile) is False
 
 
 class TestSummaryJson:
@@ -315,3 +390,110 @@ class TestChecksSection:
         out = self._render([issues_schema.NoAcceptedSolutionIssue()], detailed=True)
 
         assert 'unverified' in out
+
+
+def _make_contest_summary(
+    short_name: str,
+    time_limit_ms: int = 2000,
+    varies: bool = False,
+    profiles: Optional[Dict[str, ProfileLimits]] = None,
+) -> ContestProblemSummary:
+    return ContestProblemSummary(
+        short_name=short_name,
+        name=f'problem-{short_name.lower()}',
+        time_limit_ms=time_limit_ms,
+        memory_limit_mb=256,
+        time_limit_varies_by_language=varies,
+        profile_limits=profiles or {},
+        testcase_counts=TestcaseCounts(samples=1, hidden=2),
+        flags=ProblemFlags(
+            is_interactive=False, has_validator=True, has_custom_checker=False
+        ),
+        solution_counts_bucketed={},
+        total_solutions=0,
+    )
+
+
+def _render(*renderables) -> str:
+    recorder = rich.console.Console(record=True, width=200)
+    for renderable in renderables:
+        recorder.print(renderable)
+    return recorder.export_text()
+
+
+class TestContestSummaryTable:
+    def test_marks_a_time_limit_that_varies_by_language(self):
+        out = _render(
+            build_contest_summary_table(
+                'ctest',
+                [
+                    _make_contest_summary('A', time_limit_ms=1000, varies=True),
+                    _make_contest_summary('B', time_limit_ms=3000),
+                ],
+            )
+        )
+
+        assert '1000 ms*' in out
+        assert '3000 ms*' not in out
+        # The marker is explained on the table it appears on.
+        assert '* TL differs between languages' in out
+
+    def test_no_marker_and_no_caption_when_every_language_agrees(self):
+        out = _render(
+            build_contest_summary_table('ctest', [_make_contest_summary('A')])
+        )
+
+        assert '*' not in out
+
+
+class TestContestProfileTables:
+    def test_nothing_when_no_problem_saved_a_profile(self):
+        assert build_contest_profile_tables([_make_contest_summary('A')]) == []
+
+    def test_one_table_per_profile_across_the_contest(self):
+        summaries = [
+            _make_contest_summary(
+                'A',
+                profiles={
+                    'moj': ProfileLimits(time_limit_ms=4000, memory_limit_mb=512)
+                },
+            ),
+            _make_contest_summary(
+                'B',
+                profiles={
+                    'boca': ProfileLimits(
+                        time_limit_ms=1500,
+                        memory_limit_mb=256,
+                        time_limit_varies_by_language=True,
+                    )
+                },
+            ),
+        ]
+
+        tables = build_contest_profile_tables(summaries)
+
+        # Sorted by name, so the order is stable across runs.
+        assert [t.title for t in tables] == ['Profile: boca', 'Profile: moj']
+        boca, moj = (_render(t) for t in tables)
+        assert '1500 ms*' in boca
+        assert '4000 ms' in moj
+        assert '512 MiB' in moj
+
+    def test_a_problem_without_the_profile_falls_back_to_package_limits(self):
+        summaries = [
+            _make_contest_summary(
+                'A',
+                profiles={
+                    'moj': ProfileLimits(time_limit_ms=4000, memory_limit_mb=512)
+                },
+            ),
+            _make_contest_summary('B', time_limit_ms=2000),
+        ]
+
+        (moj,) = build_contest_profile_tables(summaries)
+        out = _render(moj)
+
+        # B is still listed, under its package limits, and the caption says so.
+        assert 'problem-b' in out
+        assert '2000 ms' in out
+        assert 'package limits (no moj profile)' in out

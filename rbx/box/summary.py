@@ -8,12 +8,25 @@ from rich.table import Table
 from rich.text import Text
 
 from rbx import console
-from rbx.box import cd, issues, package, package_utils, testcase_extractors
+from rbx.box import (
+    cd,
+    issues,
+    limits_info,
+    package,
+    package_utils,
+    testcase_extractors,
+)
 from rbx.box.contest.schema import Contest
 from rbx.box.formatting import get_formatted_memory, get_formatted_time
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.issues import Issue
-from rbx.box.schema import ExpectedOutcome, Package, Solution, TaskType
+from rbx.box.schema import (
+    ExpectedOutcome,
+    LimitsProfile,
+    Package,
+    Solution,
+    TaskType,
+)
 
 # Independent of `ISSUES_FORMAT_VERSION` on purpose: the `ProblemSummary` shape
 # and the `Issue` shape change for unrelated reasons, and pinning both to one
@@ -61,11 +74,26 @@ class ProblemSummary(BaseModel):
     solution_counts: Dict[ExpectedOutcome, int]
 
 
+class ProfileLimits(BaseModel):
+    """The limits one problem resolves to under one saved limits profile."""
+
+    time_limit_ms: int
+    memory_limit_mb: int
+    # Whether some language's time limit differs from the base one, so the
+    # single figure above is not the whole story.
+    time_limit_varies_by_language: bool = False
+
+
 class ContestProblemSummary(BaseModel):
     short_name: str
     name: str
     time_limit_ms: int
     memory_limit_mb: int
+    time_limit_varies_by_language: bool = False
+    # Keyed by profile name (`moj`, `boca`, ...): the limits this problem is
+    # judged under when packaged for that system, as opposed to the package
+    # limits above.
+    profile_limits: Dict[str, ProfileLimits] = {}
     testcase_counts: TestcaseCounts
     flags: ProblemFlags
     solution_counts_bucketed: Dict[ExpectedOutcome, int]
@@ -142,6 +170,20 @@ def get_solution_counts(
     return counts
 
 
+def time_limit_varies_by_language(profile: LimitsProfile) -> bool:
+    """Whether some language resolves to a time limit other than the base one.
+
+    Resolved rather than inferred from the modifier keys: a modifier that only
+    touches memory, or that overrides the time limit with the base value, still
+    runs every language under one limit.
+    """
+    base = profile.timelimit_for_language(None)
+    return any(
+        profile.timelimit_for_language(language) != base
+        for language in profile.modifiers
+    )
+
+
 def get_problem_flags(pkg: Package) -> ProblemFlags:
     return ProblemFlags(
         is_interactive=pkg.type == TaskType.COMMUNICATION,
@@ -172,17 +214,42 @@ def get_problem_summary(
     )
 
 
+def _get_profile_limits(profile: LimitsProfile) -> ProfileLimits:
+    # An expanded profile always carries its base limits; only a raw saved
+    # profile leaves them None.
+    assert profile.timeLimit is not None
+    assert profile.memoryLimit is not None
+    return ProfileLimits(
+        time_limit_ms=profile.timeLimit,
+        memory_limit_mb=profile.memoryLimit,
+        time_limit_varies_by_language=time_limit_varies_by_language(profile),
+    )
+
+
 def get_contest_problem_summary(
     pkg: Package,
     solutions: List[Solution],
     testcase_entries: List[GenerationTestcaseEntry],
     short_name: str,
+    profiles: Optional[Dict[str, LimitsProfile]] = None,
 ) -> ContestProblemSummary:
+    """``profiles`` are the problem's saved limits profiles, already expanded
+    against the package (see `limits_info.get_available_limits_profiles`)."""
+    package_profile = LimitsProfile(
+        timeLimit=pkg.timeLimit,
+        memoryLimit=pkg.memoryLimit,
+        modifiers=pkg.modifiers,
+    )
     return ContestProblemSummary(
         short_name=short_name,
         name=pkg.name,
         time_limit_ms=pkg.timeLimit,
         memory_limit_mb=pkg.memoryLimit,
+        time_limit_varies_by_language=time_limit_varies_by_language(package_profile),
+        profile_limits={
+            name: _get_profile_limits(profile)
+            for name, profile in (profiles or {}).items()
+        },
         testcase_counts=count_testcases(testcase_entries),
         flags=get_problem_flags(pkg),
         solution_counts_bucketed=get_solution_counts(solutions, bucketize=True),
@@ -441,8 +508,43 @@ async def print_problem_summary(
     print_checks_section(config_issues or [], detailed=detailed)
 
 
-async def print_contest_summary(contest: Contest, problems: List[Package]):
-    table = Table(title=f'Contest: {contest.name}')
+# Suffix on a TL cell whose languages do not all share that limit. One
+# constant so the marker and the caption explaining it cannot drift apart.
+VARIES_MARKER = '*'
+
+
+def _format_time_limit(time_limit_ms: int, varies: bool) -> str:
+    text = get_formatted_time(time_limit_ms)
+    if varies:
+        text += VARIES_MARKER
+    return text
+
+
+def _varies_caption(rows_vary: bool) -> Optional[str]:
+    if not rows_vary:
+        return None
+    return f'{VARIES_MARKER} TL differs between languages.'
+
+
+def _set_caption(table: Table, lines: List[str]) -> None:
+    """Attach footnotes to a table, one per line.
+
+    Rich wraps a caption at the table's width, and the profile tables are
+    narrow enough that a one-sentence footnote came out folded in two. Widening
+    the table to the longest line keeps each note on its own row.
+    """
+    if not lines:
+        table.caption = None
+        return
+    table.caption = '\n'.join(lines)
+    # Plus the table's outer border, one cell on each side.
+    table.min_width = max(Text.from_markup(line).cell_len for line in lines) + 2
+
+
+def build_contest_summary_table(
+    contest_name: str, summaries: List[ContestProblemSummary]
+) -> Table:
+    table = Table(title=f'Contest: {contest_name}')
     table.add_column('#', justify='center', style='bold cyan')
     table.add_column('Problem', style='bold')
     table.add_column('TL', justify='right')
@@ -463,36 +565,15 @@ async def print_contest_summary(contest: Contest, problems: List[Package]):
 
     table.add_column('Total', justify='right')
 
-    for i, problem in enumerate(problems):
-        row_data: list[str] = []
-        short_name = contest.problems[i].short_name
-
-        # `get_path()`, never the raw `path`: it is None for a problem that
-        # relies on the default `./{short_name}/` layout, and reading the field
-        # directly sent every such problem to the contest root -- where no
-        # package is found, so the row was dropped and the table came out empty.
-        problem_path = contest.problems[i].get_path()
-
-        row_data.append(short_name)
-        row_data.append(problem.name)
-        row_data.append(get_formatted_time(problem.timeLimit))
-        row_data.append(get_formatted_memory(problem.memoryLimit * 1024 * 1024))
-
-        try:
-            with cd.new_package_cd(problem_path):
-                package_utils.clear_package_cache()
-                entries = (
-                    await testcase_extractors.extract_generation_testcases_from_groups()
-                )
-                expanded_solutions = package.get_solutions()
-                summary = get_contest_problem_summary(
-                    problem, expanded_solutions, entries, short_name
-                )
-        except Exception:
-            console.console.print(
-                f'[error]Failed to summarize problem [item]{short_name} - {problem.name}[/item][/error]'
-            )
-            continue
+    for summary in summaries:
+        row_data: list[str] = [
+            summary.short_name,
+            summary.name,
+            _format_time_limit(
+                summary.time_limit_ms, summary.time_limit_varies_by_language
+            ),
+            get_formatted_memory(summary.memory_limit_mb * 1024 * 1024),
+        ]
 
         tc = summary.testcase_counts
         row_data.append(f'{tc.samples} samples, {tc.hidden} hidden tests')
@@ -507,4 +588,106 @@ async def print_contest_summary(contest: Contest, problems: List[Package]):
 
         table.add_row(*row_data)
 
-    console.console.print(table)
+    varies_caption = _varies_caption(
+        any(s.time_limit_varies_by_language for s in summaries)
+    )
+    _set_caption(table, [varies_caption] if varies_caption else [])
+    return table
+
+
+def build_contest_profile_tables(
+    summaries: List[ContestProblemSummary],
+) -> List[Table]:
+    """One table per limits profile saved by any problem of the contest.
+
+    The main table shows the package limits, which is what a setter reasons
+    about; but a package sent to a judge runs under that judge's profile (`moj`,
+    `boca`, ...) when one is saved, and those can differ per problem. A problem
+    without the profile falls back to its package limits when packaged, so its
+    row is still filled in, dimmed to say the figure was not chosen for that
+    judge.
+    """
+    profile_names = sorted({name for s in summaries for name in s.profile_limits})
+    tables: List[Table] = []
+    for profile_name in profile_names:
+        table = Table(title=f'Profile: {profile_name}')
+        table.add_column('#', justify='center', style='bold cyan')
+        table.add_column('Problem', style='bold')
+        table.add_column('TL', justify='right')
+        table.add_column('ML', justify='right')
+
+        any_varies = False
+        any_fallback = False
+        for summary in summaries:
+            limits = summary.profile_limits.get(profile_name)
+            is_fallback = limits is None
+            if limits is None:
+                limits = ProfileLimits(
+                    time_limit_ms=summary.time_limit_ms,
+                    memory_limit_mb=summary.memory_limit_mb,
+                    time_limit_varies_by_language=summary.time_limit_varies_by_language,
+                )
+            any_varies = any_varies or limits.time_limit_varies_by_language
+            any_fallback = any_fallback or is_fallback
+            tl = _format_time_limit(
+                limits.time_limit_ms, limits.time_limit_varies_by_language
+            )
+            ml = get_formatted_memory(limits.memory_limit_mb * 1024 * 1024)
+            if is_fallback:
+                tl = f'[dim]{tl}[/dim]'
+                ml = f'[dim]{ml}[/dim]'
+            table.add_row(summary.short_name, summary.name, tl, ml)
+
+        caption_lines: List[str] = []
+        varies_caption = _varies_caption(any_varies)
+        if varies_caption is not None:
+            caption_lines.append(varies_caption)
+        if any_fallback:
+            caption_lines.append(
+                f'[dim]dimmed[/dim]: package limits (no {profile_name} profile).'
+            )
+        _set_caption(table, caption_lines)
+        tables.append(table)
+    return tables
+
+
+async def get_contest_summaries(
+    contest: Contest, problems: List[Package]
+) -> List[ContestProblemSummary]:
+    summaries: List[ContestProblemSummary] = []
+    for i, problem in enumerate(problems):
+        short_name = contest.problems[i].short_name
+
+        # `get_path()`, never the raw `path`: it is None for a problem that
+        # relies on the default `./{short_name}/` layout, and reading the field
+        # directly sent every such problem to the contest root -- where no
+        # package is found, so the row was dropped and the table came out empty.
+        problem_path = contest.problems[i].get_path()
+
+        try:
+            with cd.new_package_cd(problem_path):
+                package_utils.clear_package_cache()
+                entries = (
+                    await testcase_extractors.extract_generation_testcases_from_groups()
+                )
+                expanded_solutions = package.get_solutions()
+                profiles = limits_info.get_available_limits_profiles()
+                summaries.append(
+                    get_contest_problem_summary(
+                        problem, expanded_solutions, entries, short_name, profiles
+                    )
+                )
+        except Exception:
+            console.console.print(
+                f'[error]Failed to summarize problem [item]{short_name} - {problem.name}[/item][/error]'
+            )
+            continue
+    return summaries
+
+
+async def print_contest_summary(contest: Contest, problems: List[Package]):
+    summaries = await get_contest_summaries(contest, problems)
+    console.console.print(build_contest_summary_table(contest.name, summaries))
+    for table in build_contest_profile_tables(summaries):
+        console.console.print()
+        console.console.print(table)

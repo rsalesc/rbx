@@ -212,6 +212,26 @@ script or any other tool that can't answer a TUI.
     command it wraps -- and before the problem selector too, on `rbx on`:
     `rbx on -k A,C time -p boca --auto`.
 
+## Read the three numbers together
+
+The sweep wrote a `.limits/boca.yml` into each problem, and the command Step 1 ended on
+is the place to read them side by side:
+
+```bash
+rbx contest summary
+```
+
+The main table is unchanged -- those are still the package limits, the ones each author
+typed. Below it there is now one extra table per profile any problem saved, so a
+`Profile: boca` table lists what every problem will actually be judged under on the park.
+A problem the sweep skipped shows up there too, dimmed, under its package limits: that is
+the fallback packaging would use, and the dimming is the reminder that nobody measured it.
+
+A time limit followed by `*` is one that differs between languages -- the group picker
+gave some language more time than the base, so the single figure in the cell is the base
+and not the whole story. `rbx summary --detailed` inside that problem lists the
+per-language limits.
+
 ## Verify under the limits you just wrote
 
 New limits are a new judgment on every solution you have, and the fastest way to find out

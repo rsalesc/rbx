@@ -1,5 +1,6 @@
 """Tests for `rbx contest` Typer commands."""
 
+import asyncio
 import os
 import pathlib
 from unittest import mock
@@ -227,6 +228,67 @@ class TestContestList:
         div1_line = next(line for line in result.output.splitlines() if 'div1' in line)
         assert '*' not in default_line
         assert '*' in div1_line
+
+
+class TestContestSummary:
+    @pytest.fixture(autouse=True)
+    def _event_loop(self):
+        # `summary` is an async command bridged by `syncer`, which needs a
+        # current event loop that a bare `CliRunner` does not provide.
+        try:
+            asyncio.get_event_loop()
+        except RuntimeError:
+            asyncio.set_event_loop(asyncio.new_event_loop())
+
+    def _write_contest(self, root: pathlib.Path) -> None:
+        (root / 'contest.rbx.yml').write_text(
+            'name: ctt\nproblems:\n  - short_name: A\n  - short_name: B\n'
+        )
+        _write_minimal_problem(root / 'A', 'prob-a')
+        _write_minimal_problem(root / 'B', 'prob-b')
+
+    def test_renders_a_table_per_saved_profile(
+        self,
+        runner: CliRunner,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        clear_package_caches,
+    ):
+        monkeypatch.chdir(tmp_path)
+        self._write_contest(tmp_path)
+        # Only A carries a `moj` profile, and under it Python gets more time.
+        (tmp_path / 'A' / '.limits').mkdir()
+        (tmp_path / 'A' / '.limits' / 'moj.yml').write_text(
+            'timeLimit: 3000\nmodifiers:\n  py:\n    timeMultiplier: 2\n'
+        )
+
+        result = runner.invoke(contest_main.app, ['summary'])
+
+        assert result.exit_code == 0, result.output
+        assert 'Profile: moj' in result.output
+        assert '3000 ms*' in result.output
+        assert '* TL differs between languages.' in result.output
+        # B has no `moj` profile: it is still listed, under its package limits.
+        assert 'package limits (no moj profile).' in result.output
+        # Nobody saved a `local` profile, so no table is started for it.
+        assert 'Profile: local' not in result.output
+
+    def test_no_profile_tables_when_nothing_is_saved(
+        self,
+        runner: CliRunner,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        clear_package_caches,
+    ):
+        monkeypatch.chdir(tmp_path)
+        self._write_contest(tmp_path)
+
+        result = runner.invoke(contest_main.app, ['summary'])
+
+        assert result.exit_code == 0, result.output
+        assert 'Contest: ctt' in result.output
+        assert 'Profile:' not in result.output
+        assert '*' not in result.output
 
 
 class TestContestAddVariant:
