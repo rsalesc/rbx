@@ -120,12 +120,14 @@ keeps its meaning (filter what to build).
 
 Non-breaking. JSON schemas pick the new fields up automatically.
 
-The bundled default preset keeps its concrete `language: en` entries for now.
-Converting it to wildcards means renaming `statement/statement.rbx.tex` to
-`statement-en.rbx.tex`, which every getting-started page, a recorded cast, the
-vscode demo and the cast fixtures refer to; that churn is a follow-up of its
-own. Until then `rbx lang add` on a package with no wildcard statements errors
-out explaining what to declare, rather than listing a language nothing renders.
+The bundled default preset moves to wildcard entries with `languages: ["en"]`,
+which renames `statement/statement.rbx.tex` to `statement-en.rbx.tex` (and the
+editorial likewise). Packages already created from it are untouched: their
+concrete `language: en` entries keep loading as before. `rbx lang add` on such a
+package (no wildcard statements) errors out explaining what to declare, rather
+than listing a language nothing renders. The `create-problem` cast installs the
+preset from the registry, so it shows the old file name until a release ships
+this and it is re-recorded.
 
 For v2 the natural follow-up is to make the wildcard form the only form:
 `statements:` becomes a single recipe and the language list the sole

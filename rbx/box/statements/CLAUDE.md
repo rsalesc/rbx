@@ -57,7 +57,7 @@ languages of the concrete entries. `{lang}` is substituted in `name`/`file`/temp
 `assets`/`params`; a concrete entry with the same key beats the expansion. A wildcard
 with no languages in effect is a `WildcardExpansionError`. `language_packs.py` reads
 the same wildcard entries to know which files belong to each language (creation
-pruning, `rbx lang`); the bundled default preset still uses concrete entries.
+pruning, `rbx lang`); the bundled default preset ships `languages: ["en"]` with wildcard entries.
 
 ## v2 engine modules
 
