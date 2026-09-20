@@ -316,6 +316,42 @@ wholesale. Cycles and dangling references are errors.
 Problem statements extend by language instead. See [Reusing a recipe across
 languages](writing.md#reusing-a-recipe-across-languages).
 
+## Declaring every language at once
+
+When the chrome is shared (one sheet template that switches its wording on the
+language), the contest entries differ only by `name` and `language`. Declare
+them once with a wildcard language, and list the contest's languages in one
+place:
+
+```yaml title="contest.rbx.yml"
+languages: ["en", "pt"]
+statements:
+  - name: "statement-{lang}"                     # (1)!
+    language: "*"
+    file: statements/problem-sheet.rbx.tex       # (2)!
+    standaloneProblemTemplate: statements/problem.rbx.tex
+    contestProblemTemplate: statements/problem-fragment.rbx.tex
+documents:
+  - name: "info-{lang}"
+    language: "*"
+    file: statements/info.jinja.tex
+    type: jinja-tex
+```
+
+1.  `{lang}` in the name, so the expansion yields `statement-en` and
+    `statement-pt`, which is what `rbx contest st b statement-pt` selects.
+2.  Shared chrome: the same file for every language. Put `{lang}` in the path
+    instead if you keep one sheet per language.
+
+Every problem in the contest that declares no `languages` of its own follows
+this list, so its own wildcard statements expand to the same languages. A
+problem may still declare its own list to differ from the contest, and a
+concrete entry for a language wins over the wildcard on either side.
+
+Adding a language to the contest is then `rbx lang add <lang>` from the contest
+root, which appends to the list and grafts each problem's files for it. See
+[Adding a language later](../presets/index.md#adding-a-language-later).
+
 ## When a problem cannot be rendered
 
 Contest statements are built independently of each other, so a broken English

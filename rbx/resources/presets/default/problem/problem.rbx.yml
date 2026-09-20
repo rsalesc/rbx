@@ -3,6 +3,7 @@
 name: "new-problem"
 timeLimit: 1000 # ms
 memoryLimit: 256 # MiB
+languages: ["en"] # Statement languages. Add one with `rbx lang add <lang>`.
 titles:
   en: "New problem"
 checker: {path: "wcmp.cpp"} # Download others from testlib with `rbx download checker`
@@ -29,14 +30,14 @@ solutions:
   - path: "sols/fail-*.*"
     outcome: "INCORRECT"
 statements:
-  - language: "en"
-    file: "statement/statement.rbx.tex" # Open this file to edit your statement.
+  - language: "*" # One statement per language listed in `languages`.
+    file: "statement/statement-{lang}.rbx.tex" # Open statement-en.rbx.tex to edit your statement.
     type: "rbxTeX"
     params:
       show_limits: true # Set to false to hide the time/memory limits.
 tutorials:
-  - language: "en"
-    file: "statement/editorial.rbx.tex" # Open this file to edit your editorial.
+  - language: "*" # One statement per language listed in `languages`.
+    file: "statement/editorial-{lang}.rbx.tex" # Open editorial-en.rbx.tex to edit your editorial.
     type: "rbxTeX"
 # Variables usable in the validator, checker, interactor, stress tests and statement.
 vars:

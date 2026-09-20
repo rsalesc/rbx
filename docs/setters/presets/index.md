@@ -252,6 +252,71 @@ and the `name` field of the `contest.rbx.yml` file, which will be changed to mat
     You can run {{rbx}} commands freely inside the contest template folder to test your template:
     any {{rbx}} internal folders will be ignored when inheriting from the preset.
 
+### Shipping several languages
+
+A preset written for three languages used to mean three of everything: three
+statement entries, three skeletons, three contest sheets. And every problem created from
+it carried all three, whether the contest needed them or not.
+
+There is no extra preset manifest for this. Write the templates as real
+multi-language packages, with a `languages` list and wildcard statements as described in
+[Declaring every language at once](../statements/writing.md#declaring-every-language-at-once):
+
+```yaml title="problem/problem.rbx.yml"
+titles:
+  en: "New problem"
+  pt: "Novo problema"
+  es: "Nuevo problema"
+languages: ["en", "pt", "es"]
+statements:
+  - language: "*"
+    file: statement/statement-{lang}.rbx.tex
+tutorials:
+  - language: "*"
+    file: statement/editorial-{lang}.rbx.tex
+```
+
+and ship one skeleton per language: `statement/statement-en.rbx.tex`,
+`statement/statement-pt.rbx.tex`, and so on. The list says which languages the preset
+supports; the wildcard entries say which files belong to each of them (the ones their
+`{lang}` fields resolve to). Everything else in the template is language-neutral. Do the
+same in `contest/contest.rbx.yml`, listing the same languages.
+
+#### Choosing languages at creation
+
+When the template ships more than one language, `rbx create` and `rbx contest create`
+ask which ones to keep, and `--languages` (`-l`) answers without the prompt:
+
+```bash
+rbx contest create --path my-contest --preset your-preset -l en,pt
+```
+
+The created package lists only the chosen languages, and the other languages' files and
+titles are gone. A problem added with `rbx contest add` follows the contest's list and
+carries no `languages` of its own, so the whole contest has a single place that says
+which languages it ships.
+
+#### Adding a language later
+
+A late request to support one more language is the other half of the story. From the
+contest root:
+
+```bash
+rbx lang add es
+```
+
+appends `es` to the contest's list, then visits every problem and copies the preset's
+Spanish skeleton and title into it. It never overwrites a file that exists, so re-running
+it only fills in what is missing. The next `rbx contest st b` renders Spanish too.
+
+When the preset does not ship the language, `rbx lang add` says so and lists what it
+does ship. Pass `--from en` to clone the English files instead and translate them in
+place.
+
+`rbx lang ls` shows each language and its files, flagging the ones that are missing, and
+`rbx lang rm es` unlists a language again, keeping its files unless you pass
+`--delete-files`. Both commands work in a standalone problem as well.
+
 ### Setting up the environment
 
 The environment file will be used to configure the execution environment of {{rbx}} to be used

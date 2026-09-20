@@ -1,0 +1,24 @@
+---
+name: "new-contest"
+titles:
+  en: "New contest"
+  pt: "Novo contest"
+  es: "Nuevo contest"
+languages: ["en", "pt", "es"]
+statements:
+  - name: "statement-{lang}"
+    language: "*"
+    file: "statements/problem-sheet.rbx.tex"
+    standaloneProblemTemplate: "statements/problem.rbx.tex"
+    contestProblemTemplate: "statements/problem-fragment.rbx.tex"
+tutorials:
+  - name: "editorial-{lang}"
+    language: "*"
+    file: "statements/editorial-sheet.rbx.tex"
+    standaloneProblemTemplate: "statements/editorial-standalone.rbx.tex"
+    contestProblemTemplate: "statements/editorial-fragment.rbx.tex"
+documents:
+  - name: "info-{lang}"
+    language: "*"
+    file: "statements/info.jinja.tex"
+    type: "JinjaTeX"

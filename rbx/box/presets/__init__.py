@@ -943,6 +943,63 @@ def pick_variant(
     return None if answer == 'default' else answer
 
 
+def pick_languages(
+    template: ResolvedTemplate, *, is_contest: bool, languages: Optional[List[str]]
+) -> Optional[List[str]]:
+    """Which of the template's languages the new package keeps, prompting when
+    the template ships more than one. None means keep every language (no
+    pruning). An explicit `languages` always wins and is only checked against
+    what the template ships; never prompts when stdin is not a TTY."""
+    import questionary
+
+    # Lazy import: language_packs loads the package schemas, which import us.
+    from rbx.box import language_packs
+
+    shipped = language_packs.template_languages(template.path, is_contest=is_contest)
+    if languages is not None:
+        unknown = [lang for lang in languages if lang not in shipped]
+        if unknown:
+            console.console.print(
+                f'[error]Template does not ship language(s) '
+                f'[item]{", ".join(unknown)}[/item].[/error]'
+            )
+            console.console.print(
+                f'Available languages: [item]{", ".join(shipped) or "none"}[/item].'
+            )
+            raise typer.Exit(1)
+        return list(languages)
+    if len(shipped) <= 1 or not sys.stdin.isatty():
+        return None
+
+    answer = questionary.checkbox(
+        'Which languages should this package ship? (space toggles, enter confirms)',
+        choices=[
+            questionary.Choice(title=lang, value=lang, checked=True) for lang in shipped
+        ],
+    ).ask()
+    if not answer:
+        raise typer.Exit(1)
+    return list(answer)
+
+
+def _prune_languages(
+    template: ResolvedTemplate,
+    dest_pkg: pathlib.Path,
+    *,
+    is_contest: bool,
+    languages: Optional[List[str]],
+    inherit: bool,
+) -> None:
+    from rbx.box import language_packs
+
+    keep = pick_languages(template, is_contest=is_contest, languages=languages)
+    if keep is None:
+        return
+    language_packs.prune_languages(
+        dest_pkg, keep, is_contest=is_contest, inherit=inherit
+    )
+
+
 def all_templates(
     preset: Preset,
     preset_path: pathlib.Path,
@@ -1449,8 +1506,12 @@ def install_contest(
     fetch_info: Optional[PresetFetchInfo] = None,
     materialize: bool = True,
     variant: Optional[str] = None,
+    languages: Optional[List[str]] = None,
 ) -> ResolvedTemplate:
     """Install a contest package from the preset, returning the template used.
+
+    `languages` restricts a multi-language template to those languages (see
+    `pick_languages`; None prompts, or keeps all when there is no terminal).
 
     Callers MUST pass the returned template to `generate_lock`, so the lock can
     never claim a different template than the one that was installed.
@@ -1481,6 +1542,9 @@ def install_contest(
         build_dir=get_preset_build_dir(get_preset_environment_path(dest_pkg)),
     )
     _pin_schema_header(dest_pkg / 'contest.rbx.yml', 'contest', dest_pkg)
+    _prune_languages(
+        template, dest_pkg, is_contest=True, languages=languages, inherit=False
+    )
     if materialize:
         materialize_libraries(template.libraries, dest_pkg)
     return template
@@ -1491,8 +1555,15 @@ def install_problem(
     fetch_info: Optional[PresetFetchInfo] = None,
     materialize: bool = True,
     variant: Optional[str] = None,
+    languages: Optional[List[str]] = None,
+    inherit_languages: bool = False,
 ) -> ResolvedTemplate:
     """Install a problem package from the preset, returning the template used.
+
+    `languages` restricts a multi-language template to those languages (see
+    `pick_languages`; None prompts, or keeps all when there is no terminal).
+    With `inherit_languages` the problem is left without a `languages:` list,
+    following its contest's instead (`rbx contest add`).
 
     Callers MUST pass the returned template to `generate_lock`, so the lock can
     never claim a different template than the one that was installed.
@@ -1522,6 +1593,13 @@ def install_problem(
         build_dir=get_preset_build_dir(get_preset_environment_path(dest_pkg)),
     )
     _pin_schema_header(dest_pkg / 'problem.rbx.yml', 'problem', dest_pkg)
+    _prune_languages(
+        template,
+        dest_pkg,
+        is_contest=False,
+        languages=languages,
+        inherit=inherit_languages,
+    )
     if materialize:
         materialize_libraries(template.libraries, dest_pkg)
     return template

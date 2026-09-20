@@ -315,6 +315,54 @@ references are errors.
 Contest statements extend by `name` instead, and carry the two templates along.
 See [Reusing a recipe with extends](contest.md#reusing-a-recipe-with-extends).
 
+## Declaring every language at once
+
+`extends` trims the repetition, but you still write one entry per language,
+and adding a fourth language means touching every problem's `problem.rbx.yml`.
+When the languages differ only by their source file, declare the statement
+**once** and let the language be a wildcard:
+
+```yaml title="problem.rbx.yml"
+languages: ["en", "pt"]                          # (1)!
+statements:
+  - language: "*"                                # (2)!
+    file: statement/statement-{lang}.rbx.tex     # (3)!
+tutorials:
+  - language: "*"
+    file: statement/editorial-{lang}.rbx.tex
+```
+
+1.  The languages this problem ships. Order matters: the first one is the
+    default wherever {{rbx}} has to pick a single language.
+2.  A wildcard entry stands for one statement per language in the list.
+3.  `{lang}` is substituted with each language, here into
+    `statement/statement-en.rbx.tex` and `statement/statement-pt.rbx.tex`. It
+    works in `file`, `assets` globs and `params` values.
+
+That is exactly equivalent to writing the two `en`/`pt` entries by hand, and
+the two forms mix freely: a concrete entry for a language **wins** over the
+wildcard, so you can still special-case one language.
+
+```yaml title="problem.rbx.yml"
+languages: ["en", "pt", "es"]
+statements:
+  - language: "*"
+    file: statement/statement-{lang}.rbx.tex
+  - language: "es"                             # (1)!
+    extends: "en"
+    file: statement/statement-es.rbx.md
+    type: rbx-md
+```
+
+1.  Spanish is written in Markdown; `en` and `pt` still come from the wildcard.
+    Wildcards expand before `extends` runs, so extending an expanded language
+    works as usual.
+
+Inside a contest, a problem can leave `languages` out altogether and follow the
+[contest's list](contest.md#declaring-every-language-at-once). That is what
+makes adding a language to a whole contest a single command, which we cover in
+[Adding a language later](../presets/index.md#adding-a-language-later).
+
 ## Writing in a format other than rbxTeX
 
 {{rbxtex}} is the default, and for the vast majority of problems it is all you

@@ -295,11 +295,13 @@ Of course, last but not least, we have to update the statement of our problem. {
 has its own statement format, called {{rbxTeX}}. The format itself is simple, but the ecosystem
 behind it is complex and provides a lot of flexibility for setters.
 
-For now, you just need to know the body and meat of the statement is written at `statement/statement.rbx.tex`.
+For now, you just need to know the body and meat of the statement is written at
+`statement/statement-en.rbx.tex` (one file per language: the `-en` is the English one, and
+the only one the preset ships).
 If you open it, you will find something like the following:
 
 
-=== "statement/statement.rbx.tex"
+=== "statement/statement-en.rbx.tex"
     ```tex
     %- block legend
     Given two integers $A$ and $B$, determine the value of $A + B$.
@@ -333,7 +335,7 @@ these blocks will be pieced together to form the final statement.
 
 Let's change each corresponding block to match our new problem description.
 
-=== "statement/statement.rbx.tex"
+=== "statement/statement-en.rbx.tex"
     ```tex
     %- block legend
     Given $N$ integers, print their sum.

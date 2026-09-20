@@ -71,7 +71,12 @@ def find_problem_package(root: pathlib.Path = pathlib.Path()) -> Optional[Packag
     problem_yaml_path = find_problem_yaml(root)
     if not problem_yaml_path:
         return None
-    return load_yaml_model(problem_yaml_path, Package)
+    pkg = load_yaml_model(problem_yaml_path, Package)
+    # Lazy import: contest_package imports this module.
+    from rbx.box.contest.contest_package import find_contest_languages
+
+    pkg.set_inherited_languages(find_contest_languages(problem_yaml_path.parent))
+    return pkg
 
 
 def find_problem_package_or_die(root: pathlib.Path = pathlib.Path()) -> Package:

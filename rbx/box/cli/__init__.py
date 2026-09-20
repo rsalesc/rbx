@@ -226,6 +226,13 @@ _GROUPS = [
         is_group=True,
     ),
     LazyCommand(
+        'lang, languages',
+        'rbx.box.languages_cli:app',
+        help='Manage statement languages of a problem or contest (sub-command).',
+        rich_help_panel='Management',
+        is_group=True,
+    ),
+    LazyCommand(
         'testcases, tc, t',
         'rbx.box.testcases.main:app',
         help='Manage testcases (sub-command).',

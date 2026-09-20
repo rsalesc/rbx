@@ -48,11 +48,12 @@ statement: |
       `contest/statements/`, so that every problem in a contest is typeset the
       same way. See [Contest statements](/setters/statements/contest).
 
-statement/statement.rbx.tex: |
+statement/statement-en.rbx.tex: |
   The body of the statement, written in {{rbxTeX}}. This is the file you open
-  to describe your problem.
+  to describe your problem. One file per language: `rbx lang add pt` adds a
+  `statement-pt.rbx.tex` next to it.
 
-statement/editorial.rbx.tex: |
+statement/editorial-en.rbx.tex: |
   The editorial, in the same format. Built separately, with `rbx tutorials build`.
 
 statement/samples: |

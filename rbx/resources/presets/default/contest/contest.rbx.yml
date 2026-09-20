@@ -2,19 +2,22 @@
 # yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Contest.json
 # Add problems by running `rbx contest add`
 name: "new-contest"
+# Statement languages of the whole contest; problems follow this list.
+# Add one with `rbx lang add <lang>` (the chrome below is shared across languages).
+languages: ["en"]
 titles:
   en: "New contest"
 # Task sheet (built with `rbx contest st b`).
 statements:
-  - name: "statement-en"
-    language: "en"
+  - name: "statement-{lang}"
+    language: "*"
     file: "statements/problem-sheet.rbx.tex"
     standaloneProblemTemplate: "statements/problem.rbx.tex"
     contestProblemTemplate: "statements/problem-fragment.rbx.tex"
 # Tutorials are the editorials (built with `rbx contest tut b`).
 tutorials:
-  - name: "editorial-en"
-    language: "en"
+  - name: "editorial-{lang}"
+    language: "*"
     file: "statements/editorial-sheet.rbx.tex"
     standaloneProblemTemplate: "statements/editorial-standalone.rbx.tex"
     contestProblemTemplate: "statements/editorial-fragment.rbx.tex"
@@ -22,8 +25,8 @@ tutorials:
       watermark: true
 documents:
   # Information sheet: a per-problem limits table.
-  - name: "info-en"
-    language: "en"
+  - name: "info-{lang}"
+    language: "*"
     file: "statements/info.jinja.tex"
     type: "JinjaTeX"
 vars:
