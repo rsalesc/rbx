@@ -3215,6 +3215,106 @@ SPEC = {
         {
             'children': [
                 {
+                    'help': 'List the statement languages of the...',
+                    'is_group': False,
+                    'name': 'ls, list',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'help': 'Add a statement language to the package(s).',
+                    'is_group': False,
+                    'name': 'add',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': None,
+                            'kind': 'argument',
+                            'multiple': False,
+                            'names': [],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': "Clone this existing language's files instead of "
+                            'the preset skeleton.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--from'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Remove a statement language from the...',
+                    'is_group': False,
+                    'name': 'rm, remove',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': None,
+                            'kind': 'argument',
+                            'multiple': False,
+                            'names': [],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': "Also delete the language's files. By default "
+                            'they are kept and reported as orphaned.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--delete-files'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+            ],
+            'help': 'Manage statement languages of a problem or...',
+            'is_group': True,
+            'name': 'lang, languages',
+            'panel': 'Management',
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
+        {
+            'children': [
+                {
                     'help': 'View a testcase in your default editor.',
                     'is_group': False,
                     'name': 'view, v',

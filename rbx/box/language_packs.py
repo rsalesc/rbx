@@ -278,7 +278,12 @@ def remove_language(
     as orphaned, or deleted when `delete_files`."""
     edit = _Edit(root, is_contest)
     languages = edit.languages
-    if languages is None or lang not in languages:
+    # A problem without a list follows its contest: judge membership by the
+    # effective languages and leave the (absent) list alone.
+    listed = (
+        languages if languages is not None else _effective_languages(root, is_contest)
+    )
+    if lang not in listed:
         return []
     files = [
         f for f in pack_files(root, lang, is_contest=is_contest) if (root / f).is_file()
@@ -286,7 +291,8 @@ def remove_language(
     if delete_files:
         for file in files:
             (root / file).unlink()
-    edit.set_languages([lg for lg in languages if lg != lang])
+    if languages is not None:
+        edit.set_languages([lg for lg in languages if lg != lang])
     edit.drop_title(lang)
     edit.save()
     return files
