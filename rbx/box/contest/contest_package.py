@@ -189,6 +189,23 @@ def find_contest_package(
     return contest
 
 
+@functools.cache
+def find_contest_languages(
+    root: pathlib.Path = pathlib.Path(),
+) -> Optional[List[str]]:
+    """The selected contest's `languages:` for the package at `root`, or None
+    outside a contest or when the contest declares none.
+
+    Loads the contest yml *without* the problem-folder validation that
+    `find_contest_package` performs: that validation loads every problem, and
+    the problem loader calls back into here, so going through it would recurse.
+    """
+    contest_yaml_path = find_contest_yaml(root)
+    if contest_yaml_path is None:
+        return None
+    return load_yaml_model(contest_yaml_path, Contest).languages
+
+
 def _die_no_contest(root: pathlib.Path) -> NoReturn:
     """Errors with a contextual message when no contest is resolved."""
     abs_root = utils.abspath(root)
