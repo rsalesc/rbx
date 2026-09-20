@@ -116,6 +116,10 @@ def create(
             help='Whether to use a preset from the local version of rbx, instead of the global one (not recommended).',
         ),
     ] = False,
+    languages: Annotated[
+        Optional[List[str]],
+        typer.Option('--languages', '-l', help=creation.LANGUAGES_OPTION_HELP),
+    ] = None,
 ):
     console.console.print(f'Creating new contest at [item]{path}[/item]...')
 
@@ -133,7 +137,12 @@ def create(
             )
             raise typer.Exit(1)
 
-    template = presets.install_contest(dest_path, fetch_info, variant=variant)
+    template = presets.install_contest(
+        dest_path,
+        fetch_info,
+        variant=variant,
+        languages=creation.split_languages(languages),
+    )
 
     with cd.new_package_cd(dest_path):
         contest_utils.clear_all_caches()

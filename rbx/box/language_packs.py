@@ -51,8 +51,15 @@ def _wildcards(pkg: Union[Package, Contest]) -> List[BaseStatement]:
 
 
 def template_languages(root: pathlib.Path, *, is_contest: bool) -> List[str]:
-    """The `languages:` a template (or package) declares; empty when unset."""
-    return list(_load(root, is_contest).languages or [])
+    """The `languages:` a template (or package) declares; empty when unset, or
+    when the template ships no yml at all (a legal, minimal template).
+
+    A raw key read rather than a model load: installing from a template never
+    validated its yml, and a template that fails validation must keep failing
+    where it always did (when the created package is first loaded)."""
+    if not (root / _yaml_name(is_contest)).is_file():
+        return []
+    return list(_Edit(root, is_contest).languages or [])
 
 
 def pack_files(

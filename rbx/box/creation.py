@@ -1,5 +1,5 @@
 import pathlib
-from typing import Annotated, Optional
+from typing import Annotated, List, Optional
 
 import pydantic
 import typer
@@ -7,6 +7,22 @@ import typer
 from rbx import console, utils
 from rbx.box import package, presets
 from rbx.box.schema import Package
+
+
+def split_languages(values: Optional[List[str]]) -> Optional[List[str]]:
+    """Normalize a repeatable `--languages` option that also accepts
+    comma-separated values (`-l en,pt` == `-l en -l pt`)."""
+    if values is None:
+        return None
+    return [
+        lang.strip() for value in values for lang in value.split(',') if lang.strip()
+    ]
+
+
+LANGUAGES_OPTION_HELP = (
+    'Languages to keep from a multi-language preset (e.g. `-l en,pt`). '
+    'Omit to be prompted when the preset ships more than one language.'
+)
 
 
 def create(
@@ -42,8 +58,25 @@ def create(
             help='Whether to fetch the init preset from the local version of rbx, instead of the remote one (not recommended).',
         ),
     ] = False,
+    languages: Annotated[
+        Optional[List[str]],
+        typer.Option('--languages', '-l', help=LANGUAGES_OPTION_HELP),
+    ] = None,
 ):
     dest_path = path or pathlib.Path(name)
+    languages = split_languages(languages)
+
+    # A problem created inside a contest (`rbx contest add`) follows the
+    # contest's language list rather than carrying one of its own.
+    from rbx.box.contest.contest_package import (
+        find_contest_languages,
+        find_contest_yaml,
+    )
+
+    inherit_languages = find_contest_yaml() is not None
+    if inherit_languages and languages is None:
+        find_contest_languages.cache_clear()
+        languages = find_contest_languages()
 
     # The problem name is the basename of the destination folder, even when a
     # relative path is given (e.g. `problems/my-problem` -> `my-problem`).
@@ -71,7 +104,13 @@ def create(
         )
         raise typer.Exit(1)
 
-    template = presets.install_problem(dest_path, fetch_info, variant=variant)
+    template = presets.install_problem(
+        dest_path,
+        fetch_info,
+        variant=variant,
+        languages=languages,
+        inherit_languages=inherit_languages,
+    )
 
     # Change problem name.
     ru, problem = package.get_ruyaml(dest_path)

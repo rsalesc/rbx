@@ -6,7 +6,7 @@ there too.
 """
 
 import pathlib
-from typing import Annotated, Optional
+from typing import Annotated, List, Optional
 
 import typer
 
@@ -70,6 +70,10 @@ def create(
             help='Whether to use a preset from the local version of rbx, instead of the global one (not recommended).',
         ),
     ] = False,
+    languages: Annotated[
+        Optional[List[str]],
+        typer.Option('--languages', '-l', help=creation.LANGUAGES_OPTION_HELP),
+    ] = None,
 ):
     if find_contest_yaml() is not None:
         console.console.print(
@@ -80,4 +84,6 @@ def create(
         )
         raise typer.Exit(1)
 
-    creation.create(name, preset=preset, variant=variant, local=local)
+    creation.create(
+        name, preset=preset, variant=variant, local=local, languages=languages
+    )
