@@ -213,6 +213,18 @@ def add_language(
         console.console.print(f'[error]{exc}[/error]')
         raise typer.Exit(1) from None
 
+    if not _wildcards(_load(root, is_contest)):
+        console.console.print(
+            '[error]This package declares no wildcard statements '
+            '([item]language: "*"[/item]), so there is nothing to add a language '
+            'to: a listed language would have no statement behind it.[/error]'
+        )
+        console.console.print(
+            'Declare the statements once with [item]language: "*"[/item] and '
+            '[item]{lang}[/item] in their file names, then re-run.'
+        )
+        raise typer.Exit(1)
+
     shipped = template_languages(template, is_contest=is_contest)
     if from_lang is None and lang not in shipped:
         _die_unshipped(lang, shipped)

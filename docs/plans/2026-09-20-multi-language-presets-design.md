@@ -118,9 +118,14 @@ keeps its meaning (filter what to build).
 
 ### 5. Compatibility and v2
 
-Non-breaking. The bundled default preset moves to wildcard entries with
-`languages: [en]`; that changes its files, not what it produces. JSON schemas
-pick the new fields up automatically.
+Non-breaking. JSON schemas pick the new fields up automatically.
+
+The bundled default preset keeps its concrete `language: en` entries for now.
+Converting it to wildcards means renaming `statement/statement.rbx.tex` to
+`statement-en.rbx.tex`, which every getting-started page, a recorded cast, the
+vscode demo and the cast fixtures refer to; that churn is a follow-up of its
+own. Until then `rbx lang add` on a package with no wildcard statements errors
+out explaining what to declare, rather than listing a language nothing renders.
 
 For v2 the natural follow-up is to make the wildcard form the only form:
 `statements:` becomes a single recipe and the language list the sole

@@ -188,6 +188,22 @@ class TestAdd:
         with pytest.raises(typer.Exit):
             lp.add_language(problem, preset / 'problem', 'fr', is_contest=False)
 
+    def test_package_without_wildcards_errors(self, cleandir, preset, capsys):
+        # A package whose statements are all concrete (e.g. the bundled default
+        # preset) has no packs to add to; adding a language would list it with
+        # no statement behind it.
+        (cleandir / 'problem.rbx.yml').write_text(
+            'name: "prob"\ntimeLimit: 1000\nmemoryLimit: 256\n'
+            'statements:\n  - language: "en"\n    file: "st.rbx.tex"\n'
+        )
+
+        with pytest.raises(typer.Exit):
+            lp.add_language(
+                cleandir, preset / 'problem', 'pt', is_contest=False, from_lang='en'
+            )
+
+        assert 'language: "*"' in capsys.readouterr().out
+
     def test_invalid_language_code_errors(self, problem, preset):
         with pytest.raises(typer.Exit):
             lp.add_language(problem, preset / 'problem', 'french', is_contest=False)
