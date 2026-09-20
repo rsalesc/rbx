@@ -140,3 +140,105 @@ def test_concrete_languages_dedupes_in_order_and_skips_wildcards():
         Statement(language='pt', variant='short', file=pathlib.Path('d.tex')),
     ]
     assert concrete_languages(sts) == ['pt', 'en']
+
+
+class TestEffectiveLanguages:
+    """`expanded_*` on the models run wildcard expansion against the package's
+    effective languages, then `extends`."""
+
+    @staticmethod
+    def _pkg(**kwargs):
+        from rbx.box.schema import Package
+
+        return Package(name='prob', timeLimit=1000, memoryLimit=256, **kwargs)
+
+    def test_package_prefers_own_list(self):
+        pkg = self._pkg(languages=['pt'])
+        pkg.set_inherited_languages(['en'])
+        assert pkg.effective_languages == ['pt']
+
+    def test_package_inherits_from_contest(self):
+        pkg = self._pkg(
+            statements=[Statement(language='*', file=pathlib.Path('s-{lang}.tex'))]
+        )
+        pkg.set_inherited_languages(['en', 'pt'])
+        assert pkg.effective_languages == ['en', 'pt']
+        assert [s.language for s in pkg.expanded_statements] == ['en', 'pt']
+
+    def test_package_derives_from_concrete_entries(self):
+        pkg = self._pkg(
+            statements=[Statement(language='pt', file=pathlib.Path('a.tex'))],
+            tutorials=[Statement(language='en', file=pathlib.Path('b.tex'))],
+        )
+        assert pkg.effective_languages == ['pt', 'en']
+
+    def test_package_wildcard_then_extends(self):
+        pkg = self._pkg(
+            languages=['en', 'pt'],
+            statements=[
+                Statement(
+                    language='*',
+                    file=pathlib.Path('s-{lang}.tex'),
+                    params={'x': 1},
+                ),
+                # Concrete wins over the wildcard, and inherits en's recipe.
+                Statement(language='pt', extends='en'),
+            ],
+        )
+        out = pkg.expanded_statements
+        assert [(s.language, str(s.file), s.params) for s in out] == [
+            ('en', 's-en.tex', {'x': 1}),
+            ('pt', 's-en.tex', {'x': 1}),
+        ]
+
+    def test_package_tutorials_expand(self):
+        pkg = self._pkg(
+            languages=['en'],
+            tutorials=[Statement(language='*', file=pathlib.Path('t-{lang}.tex'))],
+        )
+        assert [str(s.file) for s in pkg.expanded_tutorials] == ['t-en.tex']
+
+    def test_contest_expands_with_own_list(self):
+        from rbx.box.contest.schema import Contest
+
+        contest = Contest(
+            name='contest',
+            languages=['en', 'pt'],
+            statements=[
+                ContestStatement(
+                    name='st-{lang}', language='*', file=pathlib.Path('a.rbx.tex')
+                )
+            ],
+            tutorials=[
+                ContestStatement(
+                    name='tut-{lang}', language='*', file=pathlib.Path('b.rbx.tex')
+                )
+            ],
+            documents=[
+                Document(
+                    name='info-{lang}',
+                    language='*',
+                    file=pathlib.Path('i.tex'),
+                    type='tex',
+                )
+            ],
+        )
+        assert [s.name for s in contest.expanded_statements] == ['st-en', 'st-pt']
+        assert [s.name for s in contest.expanded_tutorials] == ['tut-en', 'tut-pt']
+        assert [d.name for d in contest.expanded_documents] == ['info-en', 'info-pt']
+
+    def test_contest_derives_languages_when_unset(self):
+        from rbx.box.contest.schema import Contest
+
+        contest = Contest(
+            name='contest',
+            statements=[
+                ContestStatement(name='aaa', language='pt', file=pathlib.Path('a.tex'))
+            ],
+            documents=[
+                Document(
+                    name='info', language='en', file=pathlib.Path('i.tex'), type='tex'
+                )
+            ],
+        )
+        assert contest.effective_languages == ['pt', 'en']
