@@ -1,3 +1,4 @@
+import re
 from typing import TYPE_CHECKING, Annotated, Dict, Optional, TypeVar, Union
 
 from deepmerge import always_merger
@@ -18,6 +19,23 @@ def FNameField(**kwargs):
     return Field(
         pattern=r'^[a-zA-Z0-9][a-zA-Z0-9\-_]*$', min_length=3, max_length=128, **kwargs
     )
+
+
+def validate_statement_name(name: str) -> str:
+    """An FNameField that may also carry the literal `{lang}` placeholder of a
+    wildcard statement (substituted at expansion time). Any other brace is
+    rejected, so a typo like `{lng}` fails loudly instead of leaking into a
+    file name."""
+    if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9\-_]*$', name.replace('{lang}', 'x')):
+        raise ValueError(
+            f'Invalid name: {name!r}. Names may contain letters, digits, dashes, '
+            'underscores and the `{lang}` placeholder.'
+        )
+    return name
+
+
+def StatementNameField(**kwargs):
+    return Field(min_length=3, max_length=128, **kwargs)
 
 
 T = TypeVar('T', bound=BaseModel)

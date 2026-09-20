@@ -34,7 +34,12 @@ from rbx.box.fields import (
 )
 from rbx.box.formatting import href
 from rbx.box.statements.expander import expand_problem_statements
-from rbx.box.statements.schema import Statement, is_unique_problem_statements
+from rbx.box.statements.schema import (
+    LanguagesField,
+    LanguagesList,
+    Statement,
+    is_unique_problem_statements,
+)
 from rbx.grading.steps import Outcome
 
 
@@ -1342,6 +1347,8 @@ class Package(BaseModel):
         description='Titles for the problem in each language. '
         'Languages should be specified as lowercase ISO 639-1 codes.',
     )
+
+    languages: LanguagesList = LanguagesField()
 
     type: TaskType = Field(
         default=TaskType.BATCH, description='The type of the problem.'

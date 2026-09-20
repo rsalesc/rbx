@@ -15,14 +15,21 @@ from rbx.box.fields import (
     CheckedStatementRecVars,
     FNameField,
     NameField,
+    StatementNameField,
     Vars,
     expand_vars,
+    validate_statement_name,
 )
 from rbx.box.statements.expander import expand_contest_statements
 from rbx.box.statements.schema import (
     DOCUMENT_TYPES,
     BaseStatement,
+    LanguagesField,
+    LanguagesList,
 )
+
+# A contest statement/document name: an FName that may carry `{lang}`.
+StatementName = Annotated[str, AfterValidator(validate_statement_name)]
 
 Alias = Annotated[str, NameField()]
 
@@ -42,8 +49,9 @@ class ContestStatement(BaseStatement):
     """A contest-level statement. Owns the templates used to render problems both
     standalone and inside the contest join (design §3.2)."""
 
-    name: str = FNameField(
-        description='Name of this statement. Unique within the contest.'
+    name: StatementName = StatementNameField(
+        description='Name of this statement. Unique within the contest. May '
+        'carry `{lang}` on a wildcard (`language: "*"`) statement.'
     )
 
     extends: Optional[str] = FNameField(
@@ -94,8 +102,9 @@ class Document(BaseStatement):
     """A contest-level document (infosheet, etc.). Shares the statement model but
     NEVER joins on problems, so it is restricted to non-rbx types (design §3.2)."""
 
-    name: str = FNameField(
-        description='Name of this document. Unique within the contest.'
+    name: StatementName = StatementNameField(
+        description='Name of this document. Unique within the contest. May '
+        'carry `{lang}` on a wildcard (`language: "*"`) document.'
     )
 
     extends: Optional[str] = FNameField(
@@ -238,6 +247,8 @@ class Contest(BaseModel):
         'Languages should be specified as lowercase ISO 639-1 codes.',
     )
 
+    languages: LanguagesList = LanguagesField()
+
     problems: List[ContestProblem] = Field(
         default=[], description='List of problems in this contest.'
     )
@@ -250,6 +261,7 @@ class Contest(BaseModel):
             for field in (
                 'name',
                 'titles',
+                'languages',
                 'problems',
                 'statements',
                 'tutorials',
