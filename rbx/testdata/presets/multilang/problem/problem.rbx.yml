@@ -1,0 +1,18 @@
+---
+name: "new-problem"
+timeLimit: 1000
+memoryLimit: 256
+# Titles per language.
+titles:
+  en: "New problem"
+  pt: "Novo problema"
+  es: "Nuevo problema"
+languages: ["en", "pt", "es"]
+statements:
+  - language: "*"
+    file: "statement/statement-{lang}.rbx.tex" # Per-language statement.
+    type: "rbxTeX"
+tutorials:
+  - language: "*"
+    file: "statement/editorial-{lang}.rbx.tex"
+    type: "rbxTeX"

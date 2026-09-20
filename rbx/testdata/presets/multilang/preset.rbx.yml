@@ -1,0 +1,7 @@
+---
+name: "multilang"
+description: "A preset shipping statements in three languages."
+uri: "test/multilang"
+problem: "problem"
+contest: "contest"
+env: "env.rbx.yml"
