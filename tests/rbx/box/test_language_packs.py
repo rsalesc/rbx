@@ -100,6 +100,14 @@ class TestPrune:
         # Selection order is honoured: it becomes the default-language order.
         assert list(_load(problem)['languages']) == ['pt', 'en']
 
+    def test_keeps_document_start_quotes_and_flow_style(self, problem):
+        lp.prune_languages(problem, ['pt', 'en'], is_contest=False)
+
+        text = (problem / 'problem.rbx.yml').read_text()
+        assert text.startswith('---\n')
+        assert 'name: "new-problem"' in text
+        assert 'languages: ["pt", "en"]' in text
+
     def test_inherit_drops_the_list(self, problem):
         lp.prune_languages(problem, ['en'], is_contest=False, inherit=True)
 

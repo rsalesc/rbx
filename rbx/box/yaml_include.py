@@ -441,23 +441,33 @@ class EditSession:
     def __init__(self, path: pathlib.Path):
         self.root_path = path.resolve()
         self.yaml = make_yaml()
+        # A targeted edit must not restyle the rest of the file: keep the
+        # author's quotes, and (see `_render`) their explicit document start.
+        self.yaml.preserve_quotes = True
         self._trees: dict = {}
+        self._explicit_start: Set[pathlib.Path] = set()
         # What each tree rendered to when first loaded. `save` re-renders and
         # writes only where the result differs, so reading a value cannot
         # rewrite (and reformat) a file nothing changed -- there is no way to
         # observe an in-place mutation of a round-trip node otherwise.
         self._baseline: dict = {}
 
-    def _render(self, tree: Any) -> str:
+    def _render(self, tree: Any, path: pathlib.Path) -> str:
         buffer = io.StringIO()
         self.yaml.dump(tree, buffer)
-        return buffer.getvalue()
+        text = buffer.getvalue()
+        if path in self._explicit_start and not text.startswith('---'):
+            text = '---\n' + text
+        return text
 
     def tree(self, path: pathlib.Path) -> Any:
         path = path.resolve()
         if path not in self._trees:
-            self._trees[path] = self.yaml.load(path.read_text())
-            self._baseline[path] = self._render(self._trees[path])
+            source = path.read_text()
+            if source.lstrip().startswith('---'):
+                self._explicit_start.add(path)
+            self._trees[path] = self.yaml.load(source)
+            self._baseline[path] = self._render(self._trees[path], path)
         return self._trees[path]
 
     def set_tree(self, path: pathlib.Path, value: Any) -> None:
@@ -470,7 +480,7 @@ class EditSession:
         return {
             path
             for path, tree in self._trees.items()
-            if self._render(tree) != self._baseline.get(path)
+            if self._render(tree, path) != self._baseline.get(path)
         }
 
     def _follow_includes(
@@ -555,9 +565,9 @@ class EditSession:
         so one unwritable file does not leave a multi-file change half applied.
         """
         pending = {
-            path: self._render(tree)
+            path: self._render(tree, path)
             for path, tree in self._trees.items()
-            if self._render(tree) != self._baseline.get(path)
+            if self._render(tree, path) != self._baseline.get(path)
         }
         for path in pending:
             if path.exists() and not os.access(path, os.W_OK):

@@ -15,6 +15,9 @@ import pathlib
 import shutil
 from typing import List, Optional, Tuple, Union
 
+import ruyaml
+import ruyaml.comments
+import ruyaml.scalarstring
 import typer
 from pydantic import ValidationError
 
@@ -108,6 +111,12 @@ def list_languages(
     ]
 
 
+def _quoted(value: str) -> ruyaml.scalarstring.DoubleQuotedScalarString:
+    """A scalar rendered with double quotes, matching how the bundled presets
+    spell their strings."""
+    return ruyaml.scalarstring.DoubleQuotedScalarString(value)
+
+
 class _Edit:
     """A comment-preserving edit of `languages:` and `titles:` in the package's
     yml (or the fragment that owns them)."""
@@ -121,17 +130,25 @@ class _Edit:
         return None if value is None else list(value)
 
     def set_languages(self, languages: Optional[List[str]]) -> None:
-        owner, parent, key = self.session.resolve(('languages',))
+        _, parent, key = self.session.resolve(('languages',))
         if languages is None:
             if parent is not None and key in parent:
                 del parent[key]
             return
-        self.session.target('languages').replace(list(languages))
+        existing = self.session.target('languages').value
+        if isinstance(existing, ruyaml.comments.CommentedSeq):
+            # Mutate in place: the node keeps its (flow) style and comments.
+            existing.clear()
+            existing.extend(_quoted(lang) for lang in languages)
+            return
+        seq = ruyaml.comments.CommentedSeq(_quoted(lang) for lang in languages)
+        seq.fa.set_flow_style()
+        self.session.target('languages').replace(seq)
 
     def set_title(self, lang: str, title: str) -> None:
         target = self.session.target('titles', lang)
         if target.value is None:
-            target.replace(title)
+            target.replace(_quoted(title))
 
     def get_title(self, lang: str) -> Optional[str]:
         return self.session.target('titles', lang).value
