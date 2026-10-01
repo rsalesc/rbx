@@ -1,3 +1,9 @@
+## 1.4.4 (2026-10-01)
+
+### Fix
+
+- **polygon**: stop the TeX converter from duplicating environment args (#875)
+
 ## 1.4.3 (2026-09-16)
 
 ### Fix
