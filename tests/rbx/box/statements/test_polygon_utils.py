@@ -389,3 +389,127 @@ def test_convert_unwraps_mbox():
     assert convert_to_polygon_tex(r'\mbox{\( x \)}') == r'$ x $'
     # Multiple mboxes
     assert convert_to_polygon_tex(r'\mbox{a} and \mbox{b}') == 'a and b'
+
+
+def test_convert_does_not_duplicate_environment_arguments():
+    r"""TexSoup lists an environment's argument contents in ``node.contents``
+    ahead of its body, so ``\begin{tabular}{|c|c|}`` used to come out as
+    ``\begin{tabular}{|c|c|}|c|c|}`` -- the argument re-emitted as body text."""
+    from rbx.box.statements.polygon_utils import convert_to_polygon_tex
+
+    latex = '\\begin{center}\n\\begin{tabular}{|c|c|}\n\\hline\n$1$ & $3$ \\\\ \\hline\n\\end{tabular}\n\\end{center}'
+    converted = convert_to_polygon_tex(latex)
+    assert converted == (
+        '\\begin{center}\\begin{tabular}{|c|c|}\\hline\n'
+        '$1$ & $3$ \\\\ \\hline\\end{tabular}\\end{center}'
+    )
+
+
+@pytest.mark.parametrize(
+    'latex',
+    [
+        r'\begin{tabular}[t]{cc}a & b\end{tabular}',
+        r'\begin{tabular}{cc}\end{tabular}',
+        r'\begin{enumerate}[a)]\item x\end{enumerate}',
+        r'\begin{itemize}\item[a)] First\end{itemize}',
+    ],
+)
+def test_convert_does_not_duplicate_arguments(latex):
+    from rbx.box.statements.polygon_utils import convert_to_polygon_tex
+
+    assert convert_to_polygon_tex(latex) == latex
+
+
+@pytest.mark.parametrize(
+    'latex, expected',
+    [
+        (r'\textbf  {a} b', r'\textbf{a} b'),
+        (
+            r'\begin{itemize}\item [b] x\end{itemize} y',
+            r'\begin{itemize}\item[b] x\end{itemize} y',
+        ),
+        (
+            r'\begin{enumerate}[\textbf  {a})]\item x\end{enumerate}',
+            r'\begin{enumerate}[\textbf{a})]\item x\end{enumerate}',
+        ),
+        (
+            r'\begin{tabular}{@{\hspace  {1em}}c}a\end{tabular}',
+            r'\begin{tabular}{@{\hspace{1em}}c}a\end{tabular}',
+        ),
+    ],
+)
+def test_convert_survives_whitespace_before_arguments(latex, expected):
+    r"""TexSoup prints ``\cmd  {x}`` as ``\cmd{x}``, shorter than its source
+    span; the text restored between nodes must not re-emit the node's tail."""
+    from rbx.box.statements.polygon_utils import convert_to_polygon_tex
+
+    assert convert_to_polygon_tex(latex) == expected
+
+
+@pytest.mark.parametrize(
+    'latex, expected',
+    [
+        (
+            r'\begin{tabular}{cc}\it a & b\end{tabular}',
+            r'\begin{tabular}{cc}{\it a }& b\end{tabular}',
+        ),
+        (
+            r'\begin{tabular}{c}\bf a \\ b\end{tabular}',
+            r'\begin{tabular}{c}{\bf a }\\ b\end{tabular}',
+        ),
+        (
+            r'\begin{tabular}{c}\bf a\tabularnewline b\end{tabular}',
+            r'\begin{tabular}{c}{\bf a}\tabularnewline b\end{tabular}',
+        ),
+        # An escaped \& is text, not a cell separator.
+        (
+            r'\begin{tabular}{cc}\it a \& b & c\end{tabular}',
+            r'\begin{tabular}{cc}{\it a \& b }& c\end{tabular}',
+        ),
+        # Outside an alignment, \\ is a line break and the switch carries on.
+        (r'\it a \\ b', r'{\it a \\ b}'),
+    ],
+)
+def test_convert_font_switch_stops_at_table_cell(latex, expected):
+    from rbx.box.statements.polygon_utils import convert_to_polygon_tex
+
+    assert convert_to_polygon_tex(latex) == expected
+
+
+@pytest.mark.parametrize(
+    'latex',
+    [
+        r'\begin{minipage}[t]{0.5\textwidth}hello\end{minipage}',
+        r'\begin{figure}hello\end{figure}',
+        r'\begin{quote}\textbf{a} b\end{quote}',
+    ],
+)
+def test_convert_keeps_unsupported_environments(latex):
+    r"""Environments outside Polygon's allowlist must keep their
+    ``\begin``/``\end`` -- the validator reports them; the converter must not
+    turn ``\begin{figure}x\end{figure}`` into ``\figurex``."""
+    from rbx.box.statements.polygon_utils import convert_to_polygon_tex
+
+    assert convert_to_polygon_tex(latex) == latex
+
+
+@pytest.mark.parametrize(
+    'latex, expected',
+    [
+        (
+            '\\begin{itemize}\\item[a)] x %note\n\\item y\\end{itemize}',
+            '\\begin{itemize}\\item[a)] x %note\n\\item y\\end{itemize}',
+        ),
+        (
+            '\\begin{itemize}\\item x %note\n\\end{itemize}',
+            '\\begin{itemize}\\item x %note\n\\end{itemize}',
+        ),
+        ('a %note\n  b', 'a %note\n  b'),
+    ],
+)
+def test_convert_keeps_the_newline_ending_a_comment(latex, expected):
+    r"""TexSoup keeps a comment's text but not the newline ending it; dropping
+    that newline comments out whatever the converter emits next."""
+    from rbx.box.statements.polygon_utils import convert_to_polygon_tex
+
+    assert convert_to_polygon_tex(latex) == expected

@@ -1,7 +1,7 @@
 import dataclasses
 from typing import List, NamedTuple, Optional, Set, Tuple
 
-from TexSoup.data import BracketGroup, TexCmd, TexNode, Token
+from TexSoup.data import BracketGroup, TexCmd, TexNamedEnv, TexNode, Token
 
 from rbx.box.exception import RbxException
 from rbx.box.statements.texsoup_utils import (
@@ -124,6 +124,22 @@ BARRIERS = {
     'end',
     'par',
 }
+
+# Inside these, a font switch also stops at a cell or row separator (``&``,
+# ``\\``, ``\tabularnewline``): a ``{...}`` group cannot span table cells.
+ALIGNMENT_ENVIRONMENTS = {
+    'tabular',
+    'tabular*',
+    'tabularx',
+    'longtable',
+}
+
+ROW_BARRIERS = {
+    'tabularnewline',
+}
+
+# Marks the end of a comment in the converted text; see ``convert_to_polygon_tex``.
+_COMMENT_END = '\ue002'
 
 MACRO_COMMANDS = {
     'newcommand',
@@ -340,8 +356,6 @@ def convert_to_polygon_tex(latex_code: str, ignore_macros: bool = False) -> str:
         err.print(f'Failed to parse LaTeX for conversion: {e}')
         raise err from e
 
-    config = PolygonTeXConfig.default()
-
     # Identify verbatim-like environments to skip
     VERBATIM_LIKE = {'verb', 'lstlisting', 'verbatim', 'spverbatim', 'minted'}
 
@@ -351,7 +365,9 @@ def convert_to_polygon_tex(latex_code: str, ignore_macros: bool = False) -> str:
             return None
         return node_pos + len(str(node))
 
-    def transform_nodes(nodes) -> str:
+    def transform_nodes(nodes, in_alignment: bool = False) -> str:
+        """``in_alignment`` is set for the direct body of a tabular-like
+        environment, where a font switch must not span a cell separator."""
         result = []
         i = 0
         node_list = list(nodes)
@@ -369,7 +385,13 @@ def convert_to_polygon_tex(latex_code: str, ignore_macros: bool = False) -> str:
                 and node_pos is not None
                 and node_pos > last_original_end
             ):
-                result.append(latex_code[last_original_end:node_pos])
+                # ``last_original_end`` is an estimate: TexSoup prints
+                # ``\textbf  {a}`` as ``\textbf{a}``, so it can land inside the
+                # previous node. Only whitespace is ever dropped *between*
+                # nodes, so keep just the gap's trailing whitespace run and
+                # never re-emit that node's tail.
+                gap = latex_code[last_original_end:node_pos]
+                result.append(gap[len(gap.rstrip()) :])
 
         def _update_end(node):
             """Update last_original_end after processing a node."""
@@ -391,7 +413,14 @@ def convert_to_polygon_tex(latex_code: str, ignore_macros: bool = False) -> str:
             # Helper to handle non-TexNodes (Tokens, strings)
             if not isinstance(node, TexNode):
                 # Just append string representation
-                result.append(str(node))
+                text = str(node)
+                result.append(text)
+                # TexSoup keeps a comment's text but not the newline ending
+                # it, and that newline is not always restored as a gap (not at
+                # the end of a body, say). Without it the comment swallows
+                # whatever is emitted next -- an ``\item``, an ``\end{...}``.
+                if text.startswith('%'):
+                    result.append(_COMMENT_END)
                 _update_end(node)
                 i += 1
                 continue
@@ -452,19 +481,34 @@ def convert_to_polygon_tex(latex_code: str, ignore_macros: bool = False) -> str:
                     if isinstance(next_node, TexNode):
                         if next_node.name in BARRIERS:
                             break
-                    # Tokens/strings are captured
+                        if in_alignment and next_node.name in ROW_BARRIERS:
+                            break
+                    elif in_alignment:
+                        # A group cannot span table cells. ``\\`` and ``\&``
+                        # are tokens of their own, so an ``&`` inside any other
+                        # text token is always a cell separator: capture up to it
+                        # and leave the rest for the main loop.
+                        text = str(next_node)
+                        if text == '\\\\':
+                            break
+                        cell_end = -1 if text.startswith('\\') else text.find('&')
+                        if cell_end >= 0:
+                            if cell_end > 0:
+                                captured_nodes.append(next_node[:cell_end])
+                            node_list[j] = next_node[cell_end:]
+                            break
 
                     captured_nodes.append(next_node)
                     j += 1
 
                 # Transform captured segment
-                transformed_segment = transform_nodes(captured_nodes)
+                transformed_segment = transform_nodes(captured_nodes, in_alignment)
 
                 # Result is { \switch transformed... }
                 if captured_nodes:
                     result.append(f'{{{switch_cmd}{transformed_segment}}}')
                     # Update end to the last captured node
-                    _update_end(node_list[j - 1])
+                    _update_end(captured_nodes[-1])
                 else:
                     result.append(f'{{{switch_cmd}}}')
                     _update_end(node)
@@ -484,11 +528,15 @@ def convert_to_polygon_tex(latex_code: str, ignore_macros: bool = False) -> str:
 
             # --- Default Recursive Step ---
 
-            # Identify "true contents" (children that are not arguments)
-            # This logic avoids duplicating argument text if TexSoup puts it in contents
-            # args_set = set(node.args) # BraceGroup unhashable
+            # Identify "true contents" (children that are not arguments).
+            # TexSoup's ``node.contents`` yields every argument's *contents*
+            # (not the argument groups themselves) ahead of the body, so they
+            # cannot be filtered by identity: skip as many leading items as the
+            # arguments hold, or ``\begin{tabular}{|c|}`` re-emits ``|c|``
+            # (plus the closing brace, via the gap fill) as body text.
             args_list = list(node.args)
-            true_contents = [c for c in node.contents if c not in args_list]
+            arg_items = sum(len(list(arg.contents)) for arg in args_list)
+            true_contents = list(node.contents)[arg_items:]
 
             # Reconstruct arguments
             transformed_args = []
@@ -515,15 +563,15 @@ def convert_to_polygon_tex(latex_code: str, ignore_macros: bool = False) -> str:
                 i += 1
                 continue
 
-            # Reconstruct Environment vs Command
-            is_env = node_name in config.allowed_environments or node_name in (
-                'math',
-                'displaymath',
-            )
-
-            if is_env:
+            # Reconstruct Environment vs Command. Ask the parser rather than the
+            # Polygon allowlist: an unsupported ``\begin{figure}x\end{figure}``
+            # must survive as an environment (the validator reports it), not
+            # turn into the command ``\figurex``.
+            if isinstance(node.expr, TexNamedEnv):
                 # Environment
-                body = transform_nodes(node.contents)
+                body = transform_nodes(
+                    true_contents, in_alignment=node_name in ALIGNMENT_ENVIRONMENTS
+                )
                 result.append(
                     f'\\begin{{{node_name}}}{args_str}{body}\\end{{{node_name}}}'
                 )
@@ -549,4 +597,9 @@ def convert_to_polygon_tex(latex_code: str, ignore_macros: bool = False) -> str:
 
         return ''.join(result)
 
-    return unescape_from_texsoup(transform_nodes(soup.contents))
+    converted = transform_nodes(soup.contents)
+    # A comment's newline is restored only where nothing already follows it
+    # with one, so it never opens a paragraph break of its own.
+    converted = converted.replace(_COMMENT_END + '\n', '\n')
+    converted = converted.replace(_COMMENT_END, '\n')
+    return unescape_from_texsoup(converted)
