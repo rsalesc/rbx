@@ -6,10 +6,18 @@ import pytest
 import typer
 
 from rbx.box.packaging.moj import mojtools
+from rbx.box.packaging.moj import packager as moj_packager
 from rbx.box.packaging.moj.packager import MojPackager
 from rbx.box.schema import TaskType
+from rbx.box.testcase_sample_utils import SampleTestcaseInteraction, StatementSample
+from rbx.box.testcase_utils import TestcaseInteractionEntry
 from rbx.config import get_default_app_path
-from tests.rbx.box.packaging.moj.conftest import build_entries, run_packager
+from tests.rbx.box.packaging.moj.conftest import (
+    PT_BLOCKS,
+    build_entries,
+    run_packager,
+    with_statements,
+)
 
 # Reads the hidden number from the input and one guess from the contestant.
 INTERACTOR = """#include "testlib.h"
@@ -215,3 +223,54 @@ def test_arbiter_reports_an_interactor_failure_as_a_judge_error(arbiter, tmp_pat
     code, last = _judge(arbiter, tmp_path, 'not-a-number\n', '7\n')
     assert code != 0
     assert not last.startswith(('OK', 'WRONG'))
+
+
+# -- the samples, written into the statement ----------------------------------
+
+
+def _statement_sample(entry, interaction):
+    testcase = entry.metadata.copied_to
+    return StatementSample(
+        entry=entry,
+        inputPath=testcase.inputPath,
+        outputPath=testcase.outputPath,
+        interaction=SampleTestcaseInteraction(
+            entries=[
+                TestcaseInteractionEntry(data=data, pipe=pipe)
+                for pipe, data in interaction
+            ],
+            chunks=[],
+        ),
+    )
+
+
+@pytest.fixture
+def interactive_with_samples(testing_pkg, tmp_path, monkeypatch):
+    """Package an interactive problem whose two samples have recorded
+    interactions and the first an explanation. Returns the package tree."""
+    _interactive_package(testing_pkg)
+    with_statements(testing_pkg, monkeypatch, PT_BLOCKS, explanations={0: 'Primeiro.'})
+    entries = build_entries(tmp_path, ['samples', 'tests'])
+    samples = [
+        _statement_sample(entries[0], [(0, '10'), (1, '! 10')]),
+        _statement_sample(entries[1], [(0, '7'), (1, '3'), (0, '>='), (1, '! 7')]),
+    ]
+
+    async def get_statement_samples():
+        return samples
+
+    monkeypatch.setattr(moj_packager, 'get_statement_samples', get_statement_samples)
+    return run_packager(testing_pkg, tmp_path, entries)
+
+
+def test_samples_are_written_into_the_statement(interactive_with_samples):
+    text = (interactive_with_samples / 'docs' / 'enunciado.md').read_text()
+
+    assert '## Exemplo' in text
+    assert '### Exemplo 1\n\n```\n    10\n! 10\n```\n\nPrimeiro.' in text
+    assert '### Exemplo 2\n\n```\n    7\n3\n    >=\n! 7\n```' in text
+
+
+def test_samples_ship_no_notes(interactive_with_samples):
+    # With SAMPLE=no MOJ renders no sample notes; the explanation is in the text.
+    assert not (interactive_with_samples / 'docs' / 'notes').exists()

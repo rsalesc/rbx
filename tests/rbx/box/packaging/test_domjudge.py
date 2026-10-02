@@ -281,7 +281,7 @@ def test_write_testcases_routes_samples_and_secret(testing_pkg, tmp_path):
     assert (data_path / 'secret' / '002.ans').read_text() == 'MAIN1'
 
 
-def test_package_smoke(testing_pkg, tmp_path):
+async def test_package_smoke(testing_pkg, tmp_path):
     testing_pkg.yml.statements = [
         Statement(file=pathlib.Path('st.pdf'), type=StatementType.PDF)
     ]
@@ -304,7 +304,7 @@ def test_package_smoke(testing_pkg, tmp_path):
     build_path.mkdir()
     into_path.mkdir()
 
-    result = packager.package(build_path, into_path, [built_statement])
+    result = await packager.package(build_path, into_path, [built_statement])
 
     assert result.is_file()
     with zipfile.ZipFile(result) as zf:

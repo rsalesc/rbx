@@ -175,6 +175,11 @@ its own, and {{rbx}} will **refuse to package**:
     `rbx time -p moj` estimated don't include them, so a tight limit can turn a crash or a wrong
     answer into a time limit. Give interactive problems a comfortable margin.
 
+MOJ doesn't show examples for an interactive problem, since a test's input is the interactor's
+secret. So {{rbx}} writes your samples into the statement itself, under an **Example** section:
+each sample's interaction goes in a single block, with the interactor's lines indented and your
+program's lines as they are, followed by the sample's explanation.
+
 Last but not least, MOJ settles two situations differently from {{rbx}}:
 
 - A solution that **crashes** mid-interaction gets a wrong answer on MOJ, not a runtime error,

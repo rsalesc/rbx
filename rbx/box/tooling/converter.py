@@ -70,7 +70,7 @@ async def convert(
                 )
 
         with tempfile.TemporaryDirectory() as td:
-            result_path = packager.package(
+            result_path = await packager.package(
                 package.get_build_path(), pathlib.Path(td), built_statements
             )
             return result_path

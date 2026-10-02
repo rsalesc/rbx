@@ -7,6 +7,9 @@ import pytest
 
 from rbx.box.packaging.moj import naming, statement
 from rbx.box.statements import export, markdown_export
+from rbx.box.testcase_sample_utils import SampleTestcaseInteraction, StatementSample
+from rbx.box.testcase_utils import TestcaseInteractionEntry
+from tests.rbx.box.packaging.moj.conftest import build_entries
 
 BLOCKS = {
     'legend': 'Given two integers $a$ and $b$, compute their sum.',
@@ -321,3 +324,105 @@ def test_layout_rasterizes_pdf_assets():
         rel=pathlib.PurePosixPath('artifacts/tikz_figures/i_0.pdf'),
     )
     assert layout.place_asset(asset).suffix == '.png'
+
+
+# -- the `## Exemplo` section of a SAMPLE=no package -----------------------------
+
+
+def _sample(tmp_path, index, interaction=None, input_text='1\n', output_text='2\n'):
+    entry = build_entries(tmp_path, ['samples'])[index]
+    testcase = entry.metadata.copied_to
+    testcase.inputPath.write_text(input_text)
+    testcase.outputPath.write_text(output_text)
+    return StatementSample(
+        entry=entry,
+        inputPath=testcase.inputPath,
+        outputPath=testcase.outputPath,
+        interaction=SampleTestcaseInteraction(
+            entries=[
+                TestcaseInteractionEntry(data=data, pipe=pipe)
+                for pipe, data in interaction
+            ],
+            chunks=[],
+        )
+        if interaction is not None
+        else None,
+    )
+
+
+GUESS = [(0, '10'), (1, '6'), (0, '<'), (1, '! 3')]
+
+
+def test_examples_render_each_interaction_in_one_block(tmp_path):
+    text = statement.build_examples(
+        [_sample(tmp_path, 0, GUESS), _sample(tmp_path, 1, [(0, '8'), (1, '! 8')])],
+        {},
+        language='pt',
+    )
+
+    assert text == (
+        '## Exemplo\n\n'
+        'Linhas recuadas são do árbitro; as demais, do seu programa.\n\n'
+        '### Exemplo 1\n\n'
+        '```\n    10\n6\n    <\n! 3\n```\n\n'
+        '### Exemplo 2\n\n'
+        '```\n    8\n! 8\n```'
+    )
+
+
+def test_examples_are_labelled_in_the_statement_language(tmp_path):
+    text = statement.build_examples([_sample(tmp_path, 0, GUESS)], {}, language='en')
+    assert text.startswith(
+        "## Example\n\nIndented lines are the interactor's; the others are your "
+        "program's.\n\n### Example 1\n\n"
+    )
+
+
+def test_examples_leave_the_program_stderr_out(tmp_path):
+    text = statement.build_examples(
+        [_sample(tmp_path, 0, [(0, '10'), (2, 'debug'), (1, '! 3')])],
+        {},
+        language='pt',
+    )
+    assert 'debug' not in text
+    assert '```\n    10\n! 3\n```' in text
+
+
+def test_examples_fence_cannot_be_closed_by_the_transcript(tmp_path):
+    text = statement.build_examples(
+        [_sample(tmp_path, 0, [(1, '```')])], {}, language='pt'
+    )
+    assert '````\n```\n````' in text
+
+
+def test_examples_without_an_interaction_show_input_and_output(tmp_path):
+    text = statement.build_examples(
+        [_sample(tmp_path, 0, None, input_text='3 10\n', output_text='3\n')],
+        {},
+        language='pt',
+    )
+    assert '**Entrada**\n\n```\n3 10\n```\n\n**Saída**\n\n```\n3\n```' in text
+    # Nothing is indented, so there is nothing to explain.
+    assert 'recuadas' not in text
+
+
+def test_examples_carry_each_explanation_under_its_sample(tmp_path):
+    text = statement.build_examples(
+        [_sample(tmp_path, 0, GUESS), _sample(tmp_path, 1, GUESS)],
+        {1: 'O segundo exemplo.'},
+        language='pt',
+    )
+    assert text.index('### Exemplo 2') < text.index('O segundo exemplo.')
+
+
+def test_no_samples_no_examples_section():
+    assert statement.build_examples([], {}, language='pt') == ''
+
+
+def test_enunciado_ends_with_the_examples():
+    text = statement.build_enunciado(
+        {'legend': 'L.', 'input': 'I.', 'output': 'O.'},
+        language='pt',
+        examples='## Exemplo\n\nx',
+    )
+    assert text.endswith('## Saída\n\nO.\n\n## Exemplo\n\nx\n')

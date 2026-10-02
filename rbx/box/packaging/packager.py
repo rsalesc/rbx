@@ -123,7 +123,7 @@ class BasePackager(ABC):
         return []
 
     @abstractmethod
-    def package(
+    async def package(
         self,
         build_path: pathlib.Path,
         into_path: pathlib.Path,
@@ -320,7 +320,7 @@ async def run_packager(
         if into_dir is None:
             into_dir = pathlib.Path(stack.enter_context(tempfile.TemporaryDirectory()))
         stack.enter_context(limits_info.use_profile(packager_cls.name()))
-        result_path = packager.package(
+        result_path = await packager.package(
             package.get_build_path(), into_dir, built_statements
         )
 

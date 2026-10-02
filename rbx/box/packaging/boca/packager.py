@@ -389,7 +389,7 @@ class BocaPackager(BasePackager):
     def name(cls) -> str:
         return 'boca'
 
-    def package(
+    async def package(
         self,
         build_path: pathlib.Path,
         into_path: pathlib.Path,

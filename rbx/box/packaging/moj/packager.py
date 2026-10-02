@@ -46,6 +46,7 @@ from rbx.box.statements.schema import (
     TexToPDF,
     rbxToTeX,
 )
+from rbx.box.testcase_sample_utils import StatementSample, get_statement_samples
 from rbx.config import get_default_app_path, get_testlib
 
 # The package var the setter puts their name in. rbx has no first-class author field,
@@ -409,6 +410,9 @@ class MojPackager(BasePackager):
         # MOJ's own driver files, fetched from upstream mojtools on first use. See
         # `_mojtools_files`.
         self._mojtools: Optional[mojtools.MojtoolsFiles] = None
+        # Only an interactive package reads these: it renders them into the
+        # statement's `## Exemplo` section. Filled by `package`.
+        self._statement_samples: List[StatementSample] = []
 
         # The two axes are separate arguments because they are separate questions --
         # but of their product only one cell is legal. A probe pinned from the profile
@@ -773,12 +777,27 @@ class MojPackager(BasePackager):
         try:
             # `docs_root` is what an inlining build reads the figures out of, so
             # both calls come after materialize + rasterize above.
+            if self._is_interactive():
+                # `SAMPLE=no` hides MOJ's examples box and its sample notes, so the
+                # examples -- explanations included -- go into the text instead.
+                examples = moj_statement.build_examples(
+                    self._statement_samples,
+                    bundle.explanations,
+                    language=statement.language,
+                    docs_root=docs_path,
+                )
+                notes = {}
+            else:
+                examples = ''
+                notes = moj_statement.build_notes(
+                    bundle.explanations, docs_root=docs_path
+                )
             body = moj_statement.build_enunciado(
                 bundle.blocks,
                 language=statement.language,
                 docs_root=docs_path,
+                examples=examples,
             )
-            notes = moj_statement.build_notes(bundle.explanations, docs_root=docs_path)
         except MojGateError as e:
             console.console.print(
                 f'[error]Cannot package the [item]{statement.language}[/item] '
@@ -1586,13 +1605,19 @@ class MojPackager(BasePackager):
 
     # -- entry point ----------------------------------------------------------
 
-    def package(
+    async def package(
         self,
         build_path: pathlib.Path,
         into_path: pathlib.Path,
         built_statements: List[BuiltStatement],
     ) -> pathlib.Path:
         into_path.mkdir(parents=True, exist_ok=True)
+
+        if self._is_interactive() and self.probe is None:
+            # The samples the same way every statement and Polygon reads them. An
+            # interactive package sets `SAMPLE=no`, so they are written into the
+            # statement text rather than shown by MOJ; see `build_examples`.
+            self._statement_samples = await get_statement_samples()
 
         self._check_tests_do_not_leak()
         self._write_metadata(into_path)

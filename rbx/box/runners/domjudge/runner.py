@@ -236,7 +236,7 @@ class DomjudgeRunner:
         problem_id = staging.probe_problem_id(slug, ctx.purpose)
         self._problem_id = problem_id
 
-        packager, zip_path, fingerprint = self._build_probe(
+        packager, zip_path, fingerprint = await self._build_probe(
             ctx, problem_id, timelimit_ms
         )
         self._packager = packager
@@ -300,7 +300,7 @@ class DomjudgeRunner:
         problems = await self._api.problems(self._contest)
         return any(problem.get('id') == problem_id for problem in problems)
 
-    def _build_probe(
+    async def _build_probe(
         self, ctx: RunContext, problem_id: str, timelimit_ms: int
     ) -> Tuple[DomjudgePackager, pathlib.Path, str]:
         """Build the throwaway package this run measures against.
@@ -322,7 +322,7 @@ class DomjudgeRunner:
         build_dir = pathlib.Path(tempfile.mkdtemp(prefix='rbx-domjudge-probe-'))
         into_dir = build_dir / 'package'
         try:
-            zip_path = packager.package(build_dir, into_dir, [])
+            zip_path = await packager.package(build_dir, into_dir, [])
         except typer.Exit as e:
             # `DomjudgePackager` reports a setter mistake -- a solution that does
             # not reduce to one translation unit, a non-C++ checker -- by

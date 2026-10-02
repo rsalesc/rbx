@@ -230,7 +230,7 @@ class PolygonPackager(BasePackager):
     def name(cls) -> str:
         return 'polygon'
 
-    def package(
+    async def package(
         self,
         build_path: pathlib.Path,
         into_path: pathlib.Path,
