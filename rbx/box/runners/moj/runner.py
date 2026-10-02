@@ -586,7 +586,7 @@ class MojRunner:
 
             if ctx.progress:
                 ctx.progress.update('Building the MOJ probe package...')
-            self._build_probe(ctx, package_path, build_path, pin)
+            await self._build_probe(ctx, package_path, build_path, pin)
 
             fingerprint = _directory_fingerprint(package_path)
             self._fingerprint = fingerprint
@@ -1319,7 +1319,7 @@ class MojRunner:
             f'fresh `rbxt-` problem of its own.'
         )
 
-    def _build_probe(
+    async def _build_probe(
         self,
         ctx: RunContext,
         package_path: pathlib.Path,
@@ -1350,7 +1350,7 @@ class MojRunner:
         self._packager = packager
         self._names_by_entry = _names_by_entry(packager)
         try:
-            packager.package(build_path, package_path, [])
+            await packager.package(build_path, package_path, [])
         except typer.Exit as e:
             # `MojPackager` reports setter mistakes by printing to the console and
             # raising `typer.Exit` -- a CLI control-flow exception. It has already

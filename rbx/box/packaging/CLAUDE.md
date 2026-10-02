@@ -28,7 +28,7 @@ The main entry point in `packager.py`. Pipeline:
 2. Apply packager-specific limits profile (`limits_info.use_profile(packager_name)`)
 3. **Full build + verify** (`builder.verify()`) -- generates tests, validates, runs solutions
 4. Build statements (produce PDFs via `execute_build_on_statements()`)
-5. Call `packager.package()` to produce the final zip
+5. Await `packager.package()` (async, so a packager can read async helpers such as `get_statement_samples()`) to produce the final zip
 
 **Packaging always requires a full build first.** The packagers only read pre-built artifacts.
 

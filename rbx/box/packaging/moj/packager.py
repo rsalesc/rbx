@@ -14,7 +14,7 @@ from rbx.box.dependencies import graph as deps_graph
 from rbx.box.dependencies.amalgamation import AmalgamationError, amalgamate
 from rbx.box.dependencies.scanner import DependencyKind
 from rbx.box.generation_schema import GenerationTestcaseEntry
-from rbx.box.packaging.moj import naming
+from rbx.box.packaging.moj import mojtools, naming
 from rbx.box.packaging.moj import statement as moj_statement
 from rbx.box.packaging.moj import timing as moj_timing
 from rbx.box.packaging.moj.extension import MojLanguageExtension
@@ -46,6 +46,7 @@ from rbx.box.statements.schema import (
     TexToPDF,
     rbxToTeX,
 )
+from rbx.box.testcase_sample_utils import StatementSample, get_statement_samples
 from rbx.config import get_default_app_path, get_testlib
 
 # The package var the setter puts their name in. rbx has no first-class author field,
@@ -104,6 +105,10 @@ DEFAULT_FLAGS = {
     'c': '-std=gnu11 -O2 -lm -static',
     'cpp': '-std=c++20 -O2 -lm -static',
 }
+
+# The testlib switch that makes `quit` throw its exit code rather than exit, which
+# is what lets the MOJ arbiter run the interactor in-process.
+_THROW_EXIT_MACRO = b'TESTLIB_THROW_EXIT_EXCEPTION_INSTEAD_OF_EXIT'
 
 # Suffixes the amalgamator can reduce to a single translation unit.
 _AMALGAMATABLE_SUFFIXES = {'.c', '.cc', '.cpp', '.cxx'}
@@ -402,6 +407,12 @@ class MojPackager(BasePackager):
         # --reference-only`, to keep the calibration MOJ runs on upload short.
         # See `_solutions_to_ship`.
         self.reference_only = reference_only
+        # MOJ's own driver files, fetched from upstream mojtools on first use. See
+        # `_mojtools_files`.
+        self._mojtools: Optional[mojtools.MojtoolsFiles] = None
+        # Only an interactive package reads these: it renders them into the
+        # statement's `## Exemplo` section. Filled by `package`.
+        self._statement_samples: List[StatementSample] = []
 
         # The two axes are separate arguments because they are separate questions --
         # but of their product only one cell is legal. A probe pinned from the profile
@@ -423,10 +434,10 @@ class MojPackager(BasePackager):
 
     @classmethod
     def task_types(cls) -> List[TaskType]:
-        # MOJ's interactive support uses its own arbiter protocol (test in argv[1],
-        # last stderr line `WRONG <reason>`, FIFO driver), not a testlib interactor.
-        # Interactive problems are not supported yet; it deserves its own design.
-        return [TaskType.BATCH]
+        # An interactive problem ships its testlib interactor as MOJ's arbiter,
+        # adapted to MOJ's protocol (test in argv[1], last stderr line
+        # `WRONG <reason>`). See `_write_interactive`.
+        return [TaskType.BATCH, TaskType.COMMUNICATION]
 
     # NOTE: `statement_types()` is overridden below ONLY to return nothing for a
     # probe package, which carries no statement at all. Every package a setter builds
@@ -766,12 +777,27 @@ class MojPackager(BasePackager):
         try:
             # `docs_root` is what an inlining build reads the figures out of, so
             # both calls come after materialize + rasterize above.
+            if self._is_interactive():
+                # `SAMPLE=no` hides MOJ's examples box and its sample notes, so the
+                # examples -- explanations included -- go into the text instead.
+                examples = moj_statement.build_examples(
+                    self._statement_samples,
+                    bundle.explanations,
+                    language=statement.language,
+                    docs_root=docs_path,
+                )
+                notes = {}
+            else:
+                examples = ''
+                notes = moj_statement.build_notes(
+                    bundle.explanations, docs_root=docs_path
+                )
             body = moj_statement.build_enunciado(
                 bundle.blocks,
                 language=statement.language,
                 docs_root=docs_path,
+                examples=examples,
             )
-            notes = moj_statement.build_notes(bundle.explanations, docs_root=docs_path)
         except MojGateError as e:
             console.console.print(
                 f'[error]Cannot package the [item]{statement.language}[/item] '
@@ -806,6 +832,19 @@ class MojPackager(BasePackager):
             f'ULIMITS[-f]={OUTPUT_ULIMIT_KB}',
             '',
         ]
+        if self._is_interactive():
+            lines.extend(
+                [
+                    '# Interactive: the driver runs the contestant AND the arbiter (plus',
+                    '# `time`, `stdbuf`) in the same jail, so the process cap must allow it.',
+                    'ULIMITS[-u]=10000',
+                    '',
+                    "# And no example box: a test's input is the interactor's, which the",
+                    '# contestant never sees.',
+                    'SAMPLE=no',
+                    '',
+                ]
+            )
         lines.extend(self._time_limit_lines())
         lines.extend(self._stopwhen_lines())
         lines.extend(self._parallelism_lines())
@@ -952,6 +991,15 @@ class MojPackager(BasePackager):
             limits_info.render_limits_table(
                 profile, title='MOJ time limits (per language group)'
             )
+            if self._is_interactive():
+                console.console.print(
+                    '[warning]MOJ judges an interactive problem by the wall time of '
+                    'the contestant AND the interactor, process startup included, '
+                    'while the pinned limits above were estimated from the solution '
+                    'alone.[/warning]\n'
+                    '[warning]Leave them headroom, or a crash or a wrong answer can '
+                    'come back as a time limit.[/warning]'
+                )
             return
         typing.assert_never(self.timing_mode)
 
@@ -1295,18 +1343,100 @@ class MojPackager(BasePackager):
         scripts_path = into_path / 'scripts'
         scripts_path.mkdir(parents=True, exist_ok=True)
 
+        if self._is_interactive():
+            self._write_interactive(scripts_path)
+            return
+
         (scripts_path / 'checker.cpp').write_bytes(self._amalgamate_checker())
 
         # The compare driver runs on the judge HOST, where mojtools exists, so the
         # package ships the canonical stub rather than a copy of the bridge. A
         # bundled bridge copy is what spread one bwrap bug across 198 packages.
-        stub_path = (
-            get_default_app_path() / 'packagers' / 'moj' / 'scripts' / 'compare.sh'
+        self._mojtools_files().write(
+            mojtools.CHECKER_COMPARE_STUB, scripts_path / 'compare.sh'
         )
-        compare_path = scripts_path / 'compare.sh'
-        shutil.copyfile(stub_path, compare_path)
-        # Without +x the judge gets "Permission denied" and every test is a judge error.
-        compare_path.chmod(0o755)
+
+    def _mojtools_files(self) -> mojtools.MojtoolsFiles:
+        """MOJ's own driver files this package needs, resolved once per package.
+
+        Fetched from upstream mojtools, falling back to the copy rbx bundles; see
+        `rbx.box.packaging.moj.mojtools`.
+        """
+        if self._mojtools is None:
+            paths = (
+                [
+                    mojtools.INTERACTIVE_COMPARE_STUB,
+                    mojtools.INTERACTIVE_PREP_STUB,
+                    mojtools.INTERACTIVE_RUN,
+                ]
+                if self._is_interactive()
+                else [mojtools.CHECKER_COMPARE_STUB]
+            )
+            self._mojtools = mojtools.resolve(paths)
+        return self._mojtools
+
+    # -- interactive ----------------------------------------------------------
+
+    def _is_interactive(self) -> bool:
+        return package.find_problem_package_or_die().type == TaskType.COMMUNICATION
+
+    def _interactive_template(self, name: str) -> pathlib.Path:
+        return get_default_app_path() / 'packagers' / 'moj' / 'interactive' / name
+
+    def _write_interactive(self, scripts_path: pathlib.Path) -> None:
+        interactor = package.get_interactor()
+        if interactor.path.suffix.lower() not in _AMALGAMATABLE_SUFFIXES:
+            console.console.print(
+                f'[error]Cannot package {interactor.href()} for MOJ: the interactor '
+                'must be C++, since MOJ compiles the arbiter from one file.[/error]'
+            )
+            raise typer.Exit(1)
+
+        if interactor.legacy:
+            # MOJ never hands the arbiter the answer file and runs no checker after
+            # the interaction, so a legacy interactor has nowhere to put its verdict.
+            console.console.print(
+                f'[error]Cannot package {interactor.href()} for MOJ: legacy '
+                'interactors (an interactor plus a checker) are not supported.[/error]'
+                '\n[error]MOJ runs no checker after the interaction. Have the '
+                'interactor decide the verdict itself and drop '
+                '[item]legacy: true[/item].[/error]'
+            )
+            raise typer.Exit(1)
+
+        amalgamated = self._amalgamate(interactor, 'interactor')
+        if _THROW_EXIT_MACRO not in amalgamated:
+            # Without it testlib calls exit() itself, and the arbiter never gets to
+            # turn the exit code into MOJ's verdict line.
+            console.console.print(
+                f'[error]Cannot package {interactor.href()} for MOJ: its testlib '
+                'is too old to support '
+                f'[item]{_THROW_EXIT_MACRO.decode()}[/item].[/error]\n'
+                "[error]Update the problem's testlib.h, or drop it to use rbx's "
+                'own.[/error]'
+            )
+            raise typer.Exit(1)
+
+        # The interactor IS the arbiter: testlib throws its exit code instead of
+        # exiting, and the epilogue's `main` turns it into MOJ's verdict line.
+        parts = [
+            self._interactive_template('arbiter_prologue.cpp').read_bytes(),
+            amalgamated,
+            b'\n',
+            self._interactive_template('arbiter_epilogue.cpp').read_bytes(),
+        ]
+        (scripts_path / 'arbitro.cpp').write_bytes(b''.join(parts))
+
+        self._mojtools_files().write(
+            mojtools.INTERACTIVE_COMPARE_STUB, scripts_path / 'compare.sh'
+        )
+
+    def _install_interactive_driver(self, lang_path: pathlib.Path) -> None:
+        """Swap a language's run.sh for MOJ's interactive driver, and add the prep
+        stub that materializes the arbiter. compile.sh stays rbx's own."""
+        files = self._mojtools_files()
+        files.write(mojtools.INTERACTIVE_RUN, lang_path / 'run.sh')
+        files.write(mojtools.INTERACTIVE_PREP_STUB, lang_path / 'prep.sh')
 
     # -- solutions ------------------------------------------------------------
 
@@ -1453,6 +1583,8 @@ class MojPackager(BasePackager):
             dest_path = scripts_path / language
             shutil.copytree(src_path, dest_path, dirs_exist_ok=True)
             self._expand_language_vars(language, template, dest_path)
+            if self._is_interactive():
+                self._install_interactive_driver(dest_path)
 
     def _expand_language_vars(
         self, language: str, template: str, dest_path: pathlib.Path
@@ -1473,13 +1605,19 @@ class MojPackager(BasePackager):
 
     # -- entry point ----------------------------------------------------------
 
-    def package(
+    async def package(
         self,
         build_path: pathlib.Path,
         into_path: pathlib.Path,
         built_statements: List[BuiltStatement],
     ) -> pathlib.Path:
         into_path.mkdir(parents=True, exist_ok=True)
+
+        if self._is_interactive() and self.probe is None:
+            # The samples the same way every statement and Polygon reads them. An
+            # interactive package sets `SAMPLE=no`, so they are written into the
+            # statement text rather than shown by MOJ; see `build_examples`.
+            self._statement_samples = await get_statement_samples()
 
         self._check_tests_do_not_leak()
         self._write_metadata(into_path)

@@ -16,9 +16,8 @@ rbx each package moj
 MOJ has no contest-level package, so `rbx each package moj` is as far as it goes -- you'll
 get one package per problem.
 
-Only **batch** problems are supported. Interactive problems are not: MOJ has an interaction
-protocol of its own, which is structurally unlike a {{testlib}} interactor and doesn't map
-onto one.
+Both **batch** and **interactive** problems are supported, though interactive ones come with a
+few caveats -- see [Interactive problems](#interactive-problems).
 
 The MOJ packager uses the `moj` [limits profile](../profiling/profiles.md), so create it with
 `rbx time -p moj` before packaging.
@@ -150,6 +149,43 @@ You don't have to do anything about it: {{rbx}} amalgamates your checker and eve
 includes into a single file before shipping it. What it will do is **refuse to package** when
 that isn't possible, rather than hand you a package that fails on every test. The same applies
 to the solutions it ships, since MOJ compiles a submission from a single file too.
+
+## Interactive problems
+
+*If you haven't read the [Interactors section](../grading/interactors.md) yet, you should read it
+before proceeding.*
+
+MOJ runs interactive problems through an interaction protocol of its own, and doesn't know what a
+{{testlib}} interactor is. You don't have to do anything about it: {{rbx}} ships your interactor
+in a form MOJ understands, and the verdicts it reports -- accepted, wrong answer, the message your
+interactor gave -- come out on MOJ just like they do in `rbx run`.
+
+What you *do* have to keep in mind is that MOJ never runs a checker after the interaction, and
+never shows your interactor the expected output. So the interactor must decide the verdict on
+its own, and {{rbx}} will **refuse to package**:
+
+- an interactor that relies on a checker (`legacy: true`, see
+  [Do I need to write a checker?](../grading/interactors.md#do-i-need-to-write-a-checker));
+- an interactor that isn't written in C++;
+- a problem whose own `testlib.h` is too old -- drop it, and {{rbx}} uses its own.
+
+!!! warning "Leave headroom in the time limits"
+    MOJ measures an interactive solution by the **wall time** of the whole interaction: your
+    interactor and the language runtime's startup count against the limit too. The limits
+    `rbx time -p moj` estimated don't include them, so a tight limit can turn a crash or a wrong
+    answer into a time limit. Give interactive problems a comfortable margin.
+
+MOJ doesn't show examples for an interactive problem, since a test's input is the interactor's
+secret. So {{rbx}} writes your samples into the statement itself, under an **Example** section:
+each sample's interaction goes in a single block, with the interactor's lines indented and your
+program's lines as they are, followed by the sample's explanation.
+
+Last but not least, MOJ settles two situations differently from {{rbx}}:
+
+- A solution that **crashes** mid-interaction gets a wrong answer on MOJ, not a runtime error,
+  since your interactor sees the conversation end early and rejects it.
+- A solution that **hangs** after your interactor already rejected it gets a time limit, since
+  MOJ waits for the solution to finish.
 
 ## Uploading to MOJ
 
@@ -400,3 +436,20 @@ single test.
 {{rbx}} therefore pins that limit high (100 MiB) and accepts the cost: a runaway solution is cut
 off there instead of at your threshold. {{rbx}} still enforces `outputLimit` locally, so a
 solution that overruns it shows up in `rbx run` long before MOJ would say anything.
+
+### rbx warns about mojtools when packaging
+
+A MOJ package carries a few scripts that belong to MOJ itself rather than to {{rbx}}: the
+small pointers that tell the judge to use its own checker bridge, and the driver that runs an
+interactive problem. To keep them current, {{rbx}} downloads them from
+[mojtools](https://github.com/cd-moj/mojtools), the judge's toolkit, every time it builds a
+package.
+
+You may see one of two warnings about it:
+
+- **It could not fetch from mojtools.** You're probably offline. {{rbx}} falls back to the
+  copy it ships with and names the mojtools version that copy came from. The package still
+  works, but it may carry an older driver than MOJ's current one, so package again once
+  you're online if you can.
+- **mojtools changed since the copy bundled with rbx.** Nothing for you to do: the package
+  already uses the current upstream files. It only means a newer {{rbx}} will catch up.

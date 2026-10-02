@@ -499,7 +499,7 @@ class DomjudgePackager(BasePackager):
             )
             dest_path.write_text(source + annotation)
 
-    def package(
+    async def package(
         self,
         build_path: pathlib.Path,
         into_path: pathlib.Path,

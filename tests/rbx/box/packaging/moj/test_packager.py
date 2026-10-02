@@ -7,11 +7,11 @@ import subprocess
 import pytest
 import typer
 
+from rbx.box.packaging.moj import mojtools
 from rbx.box.packaging.moj import statement as moj_statement
 from rbx.box.packaging.moj.packager import JudgeCalibrated, MojPackager
 from rbx.box.schema import ScoreType, TaskType
 from rbx.box.statements.schema import ConversionType, StatementType
-from rbx.config import get_default_app_path
 from tests.rbx.box.packaging.moj.conftest import (
     CHECKER,
     EN_AND_PT_BLOCKS,
@@ -28,10 +28,9 @@ from tests.rbx.box.packaging.moj.conftest import (
 # -- shape ------------------------------------------------------------------
 
 
-def test_only_supports_batch_problems():
-    # MOJ's interactive support uses its own arbiter protocol, not a testlib
-    # interactor, so the legacy `moj` packager keeps those.
-    assert MojPackager.task_types() == [TaskType.BATCH]
+def test_supports_batch_and_interactive_problems():
+    # Interactive problems are covered in test_interactive.py.
+    assert MojPackager.task_types() == [TaskType.BATCH, TaskType.COMMUNICATION]
 
 
 def test_builds_pdf_statements_even_though_it_consumes_blocks():
@@ -415,8 +414,7 @@ def test_checker_is_a_single_self_contained_file(moj_package):
 
 def test_compare_is_the_canonical_stub(moj_package):
     emitted = moj_package / 'scripts' / 'compare.sh'
-    bundled = get_default_app_path() / 'packagers' / 'moj' / 'scripts' / 'compare.sh'
-    assert emitted.read_bytes() == bundled.read_bytes()
+    assert emitted.read_bytes() == mojtools.vendored(mojtools.CHECKER_COMPARE_STUB)
     # Without +x the judge gets "Permission denied" and every test is a judge error.
     assert emitted.stat().st_mode & 0o111
 

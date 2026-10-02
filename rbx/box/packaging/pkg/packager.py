@@ -56,7 +56,7 @@ class PkgPackager(BasePackager):
             dest_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(str(solution.path), dest_path)
 
-    def package(
+    async def package(
         self,
         build_path: pathlib.Path,
         into_path: pathlib.Path,

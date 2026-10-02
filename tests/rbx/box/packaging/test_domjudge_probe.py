@@ -66,7 +66,7 @@ def test_a_real_package_still_builds_its_statement(testing_pkg):
     ]
 
 
-def test_a_probe_ships_no_submissions(testing_pkg, tmp_path):
+async def test_a_probe_ships_no_submissions(testing_pkg, tmp_path):
     """The finding that is easiest to miss and costliest to miss.
 
     DOMjudge *submits* everything under `submissions/` for real on import -- it
@@ -79,16 +79,16 @@ def test_a_probe_ships_no_submissions(testing_pkg, tmp_path):
 
     packager = DomjudgePackager(testcase_entries=[], probe=PROBE)
     into_path = tmp_path / 'package'
-    packager.package(tmp_path, into_path, [])
+    await packager.package(tmp_path, into_path, [])
 
     assert not (into_path / 'submissions').exists()
 
 
-def test_a_real_package_still_ships_submissions(testing_pkg, tmp_path):
+async def test_a_real_package_still_ships_submissions(testing_pkg, tmp_path):
     with_a_solution(testing_pkg)
 
     packager = DomjudgePackager(testcase_entries=[])
     into_path = tmp_path / 'package'
-    packager.package(tmp_path, into_path, [])
+    await packager.package(tmp_path, into_path, [])
 
     assert (into_path / 'submissions' / 'accepted' / 'sol.cpp').is_file()

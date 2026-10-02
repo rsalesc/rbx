@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import pathlib
 from typing import Dict, List, Optional
@@ -102,13 +103,16 @@ def run_packager(
     into_path = tmp_path / 'package'
     build_path = tmp_path / 'build'
     build_path.mkdir(parents=True, exist_ok=True)
-    MojPackager(
-        testcase_entries=entries,
-        main_language=main_language,
-        timing_mode=timing_mode,
-        probe=probe,
-        reference_only=reference_only,
-    ).package(build_path, into_path, [])
+    # `package` is async; the hundreds of tests built on this helper are not.
+    asyncio.run(
+        MojPackager(
+            testcase_entries=entries,
+            main_language=main_language,
+            timing_mode=timing_mode,
+            probe=probe,
+            reference_only=reference_only,
+        ).package(build_path, into_path, [])
+    )
     return into_path
 
 

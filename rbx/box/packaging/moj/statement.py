@@ -25,7 +25,8 @@ facts worth carrying in your head:
 
 import dataclasses
 import pathlib
-from typing import Callable, Dict, List, Mapping, Optional
+import re
+from typing import Callable, Dict, List, Mapping, Optional, Sequence
 
 import typer
 
@@ -36,6 +37,7 @@ from rbx.box.packaging.moj import naming, statement_assets
 from rbx.box.statements import export
 from rbx.box.statements.markdown_export import check_moj_gate, tex_to_markdown
 from rbx.box.statements.schema import Statement
+from rbx.box.testcase_sample_utils import StatementSample
 
 # The group rbx reserves for samples. Sample test names ignore it (they are
 # `sample%03d`), but `naming.testcase_name` still wants a group.
@@ -49,6 +51,38 @@ _HEADINGS = {
     'en': {'input': 'Input', 'output': 'Output', 'notes': 'Notes'},
     'es': {'input': 'Entrada', 'output': 'Salida', 'notes': 'Notas'},
 }
+
+# The examples a problem with `SAMPLE=no` writes into its own text, under the
+# `## Exemplo` section MOJ's docs prescribe for it (docs/PACOTE.html, "Problema sem
+# exemplo"). The input/output words are the ones MOJ's own examples box uses
+# (`stmt_label` in mojtools' statement-langs.sh).
+_EXAMPLE_LABELS = {
+    'pt': {
+        'section': 'Exemplo',
+        'sample': 'Exemplo {}',
+        'input': 'Entrada',
+        'output': 'Saída',
+        'legend': 'Linhas recuadas são do árbitro; as demais, do seu programa.',
+    },
+    'en': {
+        'section': 'Example',
+        'sample': 'Example {}',
+        'input': 'Input',
+        'output': 'Output',
+        'legend': "Indented lines are the interactor's; the others are your program's.",
+    },
+    'es': {
+        'section': 'Ejemplo',
+        'sample': 'Ejemplo {}',
+        'input': 'Entrada',
+        'output': 'Salida',
+        'legend': 'Las líneas con sangría son del árbitro; las demás, de tu programa.',
+    },
+}
+
+# How far an interactor line is pushed right in a transcript, so the two sides of
+# the conversation read apart inside one code block.
+INTERACTOR_INDENT = ' ' * 4
 
 # MOJ is a Brazilian judge and its own tooling is Portuguese, so an
 # unrecognized language falls back to it rather than to English.
@@ -151,6 +185,12 @@ def discard_inlined_assets(bundle: export.StatementBundle, root: pathlib.Path) -
     """
     if INLINE_IMAGES_AS_BASE64:
         statement_assets.discard_assets(bundle, root)
+
+
+def _example_labels(language: Optional[str]) -> Dict[str, str]:
+    return _EXAMPLE_LABELS.get(
+        moj_language(language), _EXAMPLE_LABELS[_DEFAULT_HEADING_LANGUAGE]
+    )
 
 
 def _headings(language: Optional[str]) -> Dict[str, str]:
@@ -360,8 +400,12 @@ def build_enunciado(
     language: Optional[str],
     title: Optional[str] = None,
     docs_root: Optional[pathlib.Path] = None,
+    examples: str = '',
 ) -> str:
     """Render `docs/enunciado.md` from a bundle's blocks.
+
+    `examples` is a `build_examples` section, appended last -- where MOJ injects
+    its own examples box for a problem that has one.
 
     `title` is accepted and deliberately unused: it documents that the caller's
     title has a home (`display_title` in `.moj-meta.json`) and that this
@@ -388,7 +432,74 @@ def build_enunciado(
     if notes:
         parts.append(f'## {headings["notes"]}\n\n{notes}')
 
+    parts.append(examples)
+
     return '\n\n'.join(part.strip() for part in parts if part.strip()) + '\n'
+
+
+def _fenced(text: str) -> str:
+    """`text` in a code block whose fence no run of backticks in it can close."""
+    longest = max((len(run) for run in re.findall(r'`+', text)), default=0)
+    fence = '`' * max(3, longest + 1)
+    return f'{fence}\n{text.rstrip(chr(10))}\n{fence}'
+
+
+def _transcript(sample: StatementSample) -> Optional[str]:
+    """The sample's interaction as one block: the program's lines as they are,
+    the interactor's indented by `INTERACTOR_INDENT`. `None` without one."""
+    if sample.interaction is None:
+        return None
+    lines: List[str] = []
+    for entry in sample.interaction.entries:
+        if entry.pipe == 2:
+            # The program's stderr is not part of the conversation.
+            continue
+        indent = INTERACTOR_INDENT if entry.pipe == 0 else ''
+        lines.extend(indent + line for line in entry.data.split('\n'))
+    return '\n'.join(lines)
+
+
+def build_examples(
+    samples: Sequence[StatementSample],
+    explanations: Mapping[int, str],
+    *,
+    language: Optional[str],
+    docs_root: Optional[pathlib.Path] = None,
+) -> str:
+    """The `## Exemplo` section of a problem whose package sets `SAMPLE=no`.
+
+    MOJ then shows no examples box and no sample notes, so the examples live in
+    the statement text instead. Each sample gets a numbered heading and its
+    interaction in a single code block -- the program's lines as they are, the
+    interactor's indented -- followed by its explanation. A sample with no
+    recorded interaction shows its input and output instead, as statements do.
+
+    Empty when there are no samples.
+    """
+    if not samples:
+        return ''
+    labels = _example_labels(language)
+    rewrite = _image_rewriter(docs_root)
+    parts = [f'## {labels["section"]}']
+    if any(sample.interaction is not None for sample in samples):
+        parts.append(labels['legend'])
+    for index, sample in enumerate(samples):
+        parts.append(f'### {labels["sample"].format(index + 1)}')
+        transcript = _transcript(sample)
+        if transcript is not None:
+            parts.append(_fenced(transcript))
+        else:
+            parts.append(f'**{labels["input"]}**')
+            parts.append(_fenced(sample.inputPath.read_text()))
+            if sample.hasOutput and sample.outputPath.is_file():
+                parts.append(f'**{labels["output"]}**')
+                parts.append(_fenced(sample.outputPath.read_text()))
+        explanation = (explanations.get(index) or '').strip()
+        if explanation:
+            markdown = tex_to_markdown(explanation, rewrite_image_url=rewrite).strip()
+            check_moj_gate(markdown, block_name=f'explanation for example {index + 1}')
+            parts.append(markdown)
+    return '\n\n'.join(parts)
 
 
 def sample_note_name(index: int) -> str:

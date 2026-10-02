@@ -3,6 +3,7 @@ import subprocess
 
 import pytest
 
+from rbx.box.packaging.moj import mojtools
 from rbx.config import get_default_app_path
 
 TEMPLATES = ['c', 'cpp', 'py', 'java', 'kt']
@@ -13,7 +14,7 @@ def _scripts():
 
 
 def test_compare_stub_delegates_to_mojtools():
-    text = (_scripts() / 'compare.sh').read_text()
+    text = mojtools.vendored(mojtools.CHECKER_COMPARE_STUB).decode()
     # The bridge must stay upstream: the package carries a pointer, never a copy.
     assert 'MOJTOOLS_DIR' in text
     assert 'checker-bridge.sh' in text
@@ -109,6 +110,8 @@ def test_compile_templates_never_print_an_unquoted_bin_name(template):
 
 def test_compare_stub_is_valid_bash():
     proc = subprocess.run(
-        ['bash', '-n', str(_scripts() / 'compare.sh')], capture_output=True, text=True
+        ['bash', '-n', str(mojtools.vendored_root() / mojtools.CHECKER_COMPARE_STUB)],
+        capture_output=True,
+        text=True,
     )
     assert proc.returncode == 0, proc.stderr
