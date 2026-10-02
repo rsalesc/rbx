@@ -1,3 +1,9 @@
+## 1.6.2 (2026-10-03)
+
+### Feat
+
+- **packaging**: align MOJ interactor lines in their own column (#879)
+
 ## 1.6.1 (2026-10-02)
 
 ### Feat
