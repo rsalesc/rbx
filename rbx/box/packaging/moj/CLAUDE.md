@@ -29,10 +29,9 @@ the judge **host** (`scripts/compare.sh`) ships as a ~10-line stub pointing at
 mojtools; only what enters the **jail** (`scripts/<lang>/{compile,run}.sh`) is a real
 copy, because mojtools does not exist in there. A package carrying its own bridge
 copy is what replicated one `bwrap` bug into **198 packages**, where the fix in
-mojtools reached none of them. `scripts/compare.sh` is therefore a byte-copy of
-mojtools' canonical `compare-stub.sh`, vendored at
-`rbx/resources/packagers/moj/scripts/compare.sh` — a test asserts the emitted
-file is byte-identical to it.
+mojtools reached none of them. `scripts/compare.sh` is therefore mojtools' own
+canonical `testlib/compare-stub.sh` — see [MOJ's own files come from
+mojtools](#mojs-own-files-come-from-mojtools) for where rbx gets it.
 
 **2. The checker is one file.** `checker-bridge.sh` compiles the package's checker
 under `bwrap` with **only** `checker.cpp` and `testlib.h` bound into `/tmp`, and
@@ -43,6 +42,43 @@ and **refuses to package** when that cannot be done. `scripts/testlib.h` is
 deliberately *not* shipped: a local copy takes precedence in the bridge.
 
 Solutions get the same treatment, since MOJ compiles a submission from one file too.
+
+## MOJ's own files come from mojtools
+
+The stubs and the interactive driver are mojtools' files, not rbx's, and a copy that
+lags behind upstream is the very failure the stub rule exists to prevent. So
+[`mojtools.py`](mojtools.py) **fetches them from mojtools' `master`** on GitHub
+(`raw.githubusercontent.com/cd-moj/mojtools/master/<path>`, public, no login) every
+time a package is built:
+
+| mojtools path | Goes to | When |
+|---|---|---|
+| `testlib/compare-stub.sh` | `scripts/compare.sh` | batch |
+| `interactive/compare-stub.sh` | `scripts/compare.sh` | interactive |
+| `interactive/prep-stub.sh` | `scripts/<lang>/prep.sh` | interactive |
+| `interactive/run.sh` | `scripts/<lang>/run.sh` | interactive |
+
+The fallback is the snapshot bundled at `rbx/resources/packagers/moj/mojtools/`,
+mirroring upstream's layout byte for byte, with the commit it was taken from in
+`COMMIT` (GPLv2, like mojtools). Three outcomes, all decided once per package:
+
+- **Fetched and identical to the snapshot**: silent.
+- **Fetched and different**: the package ships upstream's, and a warning names the
+  files. That is the signal to refresh the snapshot (copy the files and bump
+  `COMMIT`).
+- **Any fetch failed** (offline, timeout, HTTP error): **every** file comes from the
+  snapshot, with a warning naming its commit. It is all-or-nothing so a package never
+  mixes two mojtools versions.
+
+Why GitHub and not MOJ's own `GET /problems/script-templates` (which serves the same
+files resolved from the server's mojtools, and matched the snapshot when checked):
+it needs a login, and rbx never talks to the MOJ API itself — the `moj` CLI does, and
+it has no command for templates. `master` may run ahead of what the judge park has
+deployed; the stubs only point at `$MOJTOOLS_DIR/...` paths, so that only matters for
+`run.sh`, and a newer driver is what a fresh `moj interactive` would install anyway.
+
+Tests never reach the network: an autouse fixture in `tests/rbx/box/conftest.py`
+makes "upstream" serve the snapshot, and `test_mojtools.py` overrides it.
 
 ## Time limits: pinned, or calibrated on demand
 
@@ -567,8 +603,7 @@ what compiles `arbitro.cpp`), while every `scripts/<lang>/run.sh` is a **copy** 
 the driver `interactive/run.sh`, because it runs in the jail. rbx keeps its own
 `compile.sh` per language; the driver picks the run command from `$BIN`'s extension
 (ELF, `.py`, `.jar`, ...), which rbx's compile scripts already produce. The three
-driver files are vendored from mojtools `f62a2105` (GPLv2, like `compare.sh`), and
-tests pin the emitted files to be byte-identical to them.
+driver files come from mojtools like the batch stub does — see below.
 
 **`conf`** gains `ULIMITS[-u]=10000` (the jail holds the contestant, the arbiter,
 `time` and `stdbuf`) and `SAMPLE=no` (a test's input is the interactor's, which the

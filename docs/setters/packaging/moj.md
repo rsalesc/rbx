@@ -431,3 +431,20 @@ single test.
 {{rbx}} therefore pins that limit high (100 MiB) and accepts the cost: a runaway solution is cut
 off there instead of at your threshold. {{rbx}} still enforces `outputLimit` locally, so a
 solution that overruns it shows up in `rbx run` long before MOJ would say anything.
+
+### rbx warns about mojtools when packaging
+
+A MOJ package carries a few scripts that belong to MOJ itself rather than to {{rbx}}: the
+small pointers that tell the judge to use its own checker bridge, and the driver that runs an
+interactive problem. To keep them current, {{rbx}} downloads them from
+[mojtools](https://github.com/cd-moj/mojtools), the judge's toolkit, every time it builds a
+package.
+
+You may see one of two warnings about it:
+
+- **It could not fetch from mojtools.** You're probably offline. {{rbx}} falls back to the
+  copy it ships with and names the mojtools version that copy came from. The package still
+  works, but it may carry an older driver than MOJ's current one, so package again once
+  you're online if you can.
+- **mojtools changed since the copy bundled with rbx.** Nothing for you to do: the package
+  already uses the current upstream files. It only means a newer {{rbx}} will catch up.

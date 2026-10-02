@@ -11,6 +11,7 @@ from rbx import testing_utils
 from rbx.box import package, setter_config
 from rbx.box.environment import VerificationLevel
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
+from rbx.box.packaging.moj import mojtools
 from rbx.box.schema import ScoreType, Solution, Testcase
 from rbx.box.solutions import (
     GroupSkeleton,
@@ -341,3 +342,11 @@ def mock_pdflatex(monkeysession):
             pdf=b'',
         ),
     )
+
+
+@pytest.fixture(autouse=True)
+def mojtools_upstream_matches_vendored(monkeypatch):
+    """Never reach GitHub from a test: building a MOJ package fetches mojtools'
+    driver files, so "upstream" serves exactly the copy rbx bundles. Tests about
+    fetching and its fallback override this."""
+    monkeypatch.setattr(mojtools, 'fetch_upstream', mojtools.vendored)

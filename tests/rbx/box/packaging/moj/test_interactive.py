@@ -5,6 +5,7 @@ import subprocess
 import pytest
 import typer
 
+from rbx.box.packaging.moj import mojtools
 from rbx.box.packaging.moj.packager import MojPackager
 from rbx.box.schema import TaskType
 from rbx.config import get_default_app_path
@@ -58,7 +59,7 @@ def test_ships_the_interactor_as_the_arbiter_instead_of_a_checker(
 
 def test_compare_is_the_interactive_stub(moj_interactive_package):
     emitted = moj_interactive_package / 'scripts' / 'compare.sh'
-    assert emitted.read_bytes() == (INTERACTIVE_DIR / 'compare-stub.sh').read_bytes()
+    assert emitted.read_bytes() == mojtools.vendored(mojtools.INTERACTIVE_COMPARE_STUB)
     assert emitted.stat().st_mode & 0o111
 
 
@@ -70,8 +71,8 @@ def test_every_language_runs_under_the_interactive_driver(moj_interactive_packag
     for lang_dir in lang_dirs:
         run = lang_dir / 'run.sh'
         prep = lang_dir / 'prep.sh'
-        assert run.read_bytes() == (INTERACTIVE_DIR / 'run.sh').read_bytes()
-        assert prep.read_bytes() == (INTERACTIVE_DIR / 'prep-stub.sh').read_bytes()
+        assert run.read_bytes() == mojtools.vendored(mojtools.INTERACTIVE_RUN)
+        assert prep.read_bytes() == mojtools.vendored(mojtools.INTERACTIVE_PREP_STUB)
         # rbx's own compile step is kept: the driver only replaces how it runs.
         assert (lang_dir / 'compile.sh').is_file()
         for script in (run, prep):

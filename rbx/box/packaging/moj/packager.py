@@ -14,7 +14,7 @@ from rbx.box.dependencies import graph as deps_graph
 from rbx.box.dependencies.amalgamation import AmalgamationError, amalgamate
 from rbx.box.dependencies.scanner import DependencyKind
 from rbx.box.generation_schema import GenerationTestcaseEntry
-from rbx.box.packaging.moj import naming
+from rbx.box.packaging.moj import mojtools, naming
 from rbx.box.packaging.moj import statement as moj_statement
 from rbx.box.packaging.moj import timing as moj_timing
 from rbx.box.packaging.moj.extension import MojLanguageExtension
@@ -406,6 +406,9 @@ class MojPackager(BasePackager):
         # --reference-only`, to keep the calibration MOJ runs on upload short.
         # See `_solutions_to_ship`.
         self.reference_only = reference_only
+        # MOJ's own driver files, fetched from upstream mojtools on first use. See
+        # `_mojtools_files`.
+        self._mojtools: Optional[mojtools.MojtoolsFiles] = None
 
         # The two axes are separate arguments because they are separate questions --
         # but of their product only one cell is legal. A probe pinned from the profile
@@ -1330,13 +1333,28 @@ class MojPackager(BasePackager):
         # The compare driver runs on the judge HOST, where mojtools exists, so the
         # package ships the canonical stub rather than a copy of the bridge. A
         # bundled bridge copy is what spread one bwrap bug across 198 packages.
-        stub_path = (
-            get_default_app_path() / 'packagers' / 'moj' / 'scripts' / 'compare.sh'
+        self._mojtools_files().write(
+            mojtools.CHECKER_COMPARE_STUB, scripts_path / 'compare.sh'
         )
-        compare_path = scripts_path / 'compare.sh'
-        shutil.copyfile(stub_path, compare_path)
-        # Without +x the judge gets "Permission denied" and every test is a judge error.
-        compare_path.chmod(0o755)
+
+    def _mojtools_files(self) -> mojtools.MojtoolsFiles:
+        """MOJ's own driver files this package needs, resolved once per package.
+
+        Fetched from upstream mojtools, falling back to the copy rbx bundles; see
+        `rbx.box.packaging.moj.mojtools`.
+        """
+        if self._mojtools is None:
+            paths = (
+                [
+                    mojtools.INTERACTIVE_COMPARE_STUB,
+                    mojtools.INTERACTIVE_PREP_STUB,
+                    mojtools.INTERACTIVE_RUN,
+                ]
+                if self._is_interactive()
+                else [mojtools.CHECKER_COMPARE_STUB]
+            )
+            self._mojtools = mojtools.resolve(paths)
+        return self._mojtools
 
     # -- interactive ----------------------------------------------------------
 
@@ -1390,17 +1408,16 @@ class MojPackager(BasePackager):
         ]
         (scripts_path / 'arbitro.cpp').write_bytes(b''.join(parts))
 
-        compare_path = scripts_path / 'compare.sh'
-        shutil.copyfile(self._interactive_template('compare-stub.sh'), compare_path)
-        compare_path.chmod(0o755)
+        self._mojtools_files().write(
+            mojtools.INTERACTIVE_COMPARE_STUB, scripts_path / 'compare.sh'
+        )
 
     def _install_interactive_driver(self, lang_path: pathlib.Path) -> None:
         """Swap a language's run.sh for MOJ's interactive driver, and add the prep
         stub that materializes the arbiter. compile.sh stays rbx's own."""
-        for src, dest in [('run.sh', 'run.sh'), ('prep-stub.sh', 'prep.sh')]:
-            dest_path = lang_path / dest
-            shutil.copyfile(self._interactive_template(src), dest_path)
-            dest_path.chmod(0o755)
+        files = self._mojtools_files()
+        files.write(mojtools.INTERACTIVE_RUN, lang_path / 'run.sh')
+        files.write(mojtools.INTERACTIVE_PREP_STUB, lang_path / 'prep.sh')
 
     # -- solutions ------------------------------------------------------------
 
