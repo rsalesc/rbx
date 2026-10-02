@@ -84,7 +84,7 @@ _EXAMPLE_LABELS = {
 # The gap between the program's column and the interactor's in a transcript: an
 # interactor line starts this far past the program's widest line, so the two
 # sides of the conversation read apart inside one code block.
-INTERACTOR_GAP = ' ' * 4
+INTERACTOR_GAP = ' ' * 5
 
 # MOJ is a Brazilian judge and its own tooling is Portuguese, so an
 # unrecognized language falls back to it rather than to English.

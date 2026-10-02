@@ -267,8 +267,8 @@ def test_samples_are_written_into_the_statement(interactive_with_samples):
     text = (interactive_with_samples / 'docs' / 'enunciado.md').read_text()
 
     assert '## Exemplo' in text
-    assert '### Exemplo 1\n\n```\n        10\n! 10\n```\n\nPrimeiro.' in text
-    assert '### Exemplo 2\n\n```\n       7\n3\n       >=\n! 7\n```' in text
+    assert '### Exemplo 1\n\n```\n         10\n! 10\n```\n\nPrimeiro.' in text
+    assert '### Exemplo 2\n\n```\n        7\n3\n        >=\n! 7\n```' in text
 
 
 def test_samples_ship_no_notes(interactive_with_samples):
