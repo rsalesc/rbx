@@ -46,10 +46,32 @@ SAMPLES_GROUP = 'samples'
 # `validate-problem.sh` matches `entrada|input` and `saída|saida|salida|output`
 # case insensitively, so a translated statement passes the gate with its own
 # headings and a reader never sees a section titled in the wrong language.
+#
+# `interaction` titles an interactive statement's `interaction` block, and
+# `see_interaction` stands in for the input/output sections such a statement
+# usually leaves empty -- the gate still wants both headings.
 _HEADINGS = {
-    'pt': {'input': 'Entrada', 'output': 'Saída', 'notes': 'Notas'},
-    'en': {'input': 'Input', 'output': 'Output', 'notes': 'Notes'},
-    'es': {'input': 'Entrada', 'output': 'Salida', 'notes': 'Notas'},
+    'pt': {
+        'input': 'Entrada',
+        'output': 'Saída',
+        'interaction': 'Interação',
+        'see_interaction': 'Veja a seção Interação.',
+        'notes': 'Notas',
+    },
+    'en': {
+        'input': 'Input',
+        'output': 'Output',
+        'interaction': 'Interaction',
+        'see_interaction': 'See the Interaction section.',
+        'notes': 'Notes',
+    },
+    'es': {
+        'input': 'Entrada',
+        'output': 'Salida',
+        'interaction': 'Interacción',
+        'see_interaction': 'Vea la sección Interacción.',
+        'notes': 'Notas',
+    },
 }
 
 # The examples a problem with `SAMPLE=no` writes into its own text, under the
@@ -423,10 +445,19 @@ def build_enunciado(
     rewrite = _image_rewriter(docs_root)
     parts = [_convert(blocks, 'legend', rewrite)]
 
+    # An interactive statement describes its protocol in an `interaction` block,
+    # and usually leaves `input`/`output` empty.
+    interaction = _convert(blocks, 'interaction', rewrite)
+    pointer = headings['see_interaction'] if interaction else ''
+
     # Emitted unconditionally, empty block or not: these two headings ARE the
     # release gate, grepped out of the raw file by validate-problem.sh.
-    parts.append(f'## {headings["input"]}\n\n{_convert(blocks, "input", rewrite)}')
-    parts.append(f'## {headings["output"]}\n\n{_convert(blocks, "output", rewrite)}')
+    input_md = _convert(blocks, 'input', rewrite) or pointer
+    output_md = _convert(blocks, 'output', rewrite) or pointer
+    parts.append(f'## {headings["input"]}\n\n{input_md}')
+    parts.append(f'## {headings["output"]}\n\n{output_md}')
+    if interaction:
+        parts.append(f'## {headings["interaction"]}\n\n{interaction}')
 
     notes = _convert(blocks, 'notes', rewrite)
     if notes:

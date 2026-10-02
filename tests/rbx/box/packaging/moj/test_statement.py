@@ -426,3 +426,39 @@ def test_enunciado_ends_with_the_examples():
         examples='## Exemplo\n\nx',
     )
     assert text.endswith('## Saída\n\nO.\n\n## Exemplo\n\nx\n')
+
+
+# -- the `interaction` block of an interactive statement ------------------------
+
+
+def test_interaction_block_becomes_a_section_after_the_output():
+    doc = statement.build_enunciado(
+        {
+            'legend': 'Guess.',
+            'input': 'In.',
+            'output': 'Out.',
+            'interaction': 'Ask, then answer.',
+        },
+        language='pt',
+    )
+    assert doc.endswith(
+        '## Entrada\n\nIn.\n\n## Saída\n\nOut.\n\n## Interação\n\nAsk, then answer.\n'
+    )
+
+
+def test_an_interaction_only_statement_points_its_io_sections_at_it():
+    # The preset's interactive template has no input/output blocks, but MOJ's gate
+    # still requires both headings.
+    doc = statement.build_enunciado(
+        {'legend': 'Guess.', 'interaction': 'Ask, then answer.'}, language='en'
+    )
+    assert (
+        '## Input\n\nSee the Interaction section.\n\n'
+        '## Output\n\nSee the Interaction section.\n\n'
+        '## Interaction\n\nAsk, then answer.'
+    ) in doc
+
+
+def test_no_interaction_section_without_the_block():
+    doc = statement.build_enunciado(BLOCKS, language='pt')
+    assert 'Interação' not in doc

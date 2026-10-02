@@ -4,17 +4,16 @@ type: communication
 timeLimit: 1000
 memoryLimit: 256
 outputLimit: 100 # 100 kb
-checker:
-  path: "checker.cpp"
 interactor:
   path: "interactor.cpp"
-  legacy: true
 generators:
   - name: "gen"
     path: "gen.cpp"
 validator:
   path: "validator.cpp"
 testcases:
+  - name: "samples"
+    testcaseGlob: "manual_tests/samples/*.in"
   - name: "tests"
     generatorScript:
       path: "testplan.txt"
@@ -75,6 +74,10 @@ solutions:
     outcome: AC
 statements:
   - language: "en"
-    title: "New Problem"
-    file: "dummy.pdf"
-    type: "PDF"
+    title: "Guess The Number"
+    file: "statement/statement.rbx.tex"
+    type: "rbxTeX"
+vars:
+  N:
+    min: 1
+    max: 1000000

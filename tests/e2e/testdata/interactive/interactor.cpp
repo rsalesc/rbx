@@ -44,8 +44,11 @@ int main(int argc, char *argv[]) {
 
     if (is_answer) {
       if (last == x && lf == rg) {
-        tout << queries << endl;
-        quitf(_ok, "number is guessed.");
+        if (queries > 25)
+          quitf(_wa, "Limit is %d, but solution have made %d queries", 25,
+                queries);
+        quitf(_ok, "Number %d is guessed successfully (range [1..%d]) with %d queries",
+              x, n, queries);
       } else if (last == x && lf != rg)
         quitf(_wa, "number is but it was made in a random way");
       else

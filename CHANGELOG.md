@@ -1,3 +1,11 @@
+## 1.6.0 (2026-10-02)
+
+### Feat
+
+- **packaging**: write interactive MOJ samples into the statement
+- **packaging**: fetch MOJ's driver files from mojtools when packaging
+- **packaging**: package interactive problems for MOJ
+
 ## 1.5.0 (2026-10-02)
 
 ### BREAKING CHANGE

@@ -2,13 +2,13 @@ scenarios:
   - name: run
     description: >
       End-to-end migration of the legacy `test_interactive_problem`
-      CLI test. The fixture is a copy of
-      `rbx/testdata/problems/interactive/`, exercising the full
-      interactor pipeline: generators, validator, interactor, checker,
-      and a wide variety of solutions across C++/Python/Java/Kotlin.
-      The original test asserted exit 0 plus `'FAILED' not in stdout`;
-      we strengthen that to a verdict-by-solution check on the main
-      AC reference.
+      CLI test, exercising the full interactor pipeline: generators,
+      validator, samples, interactor, and a wide variety of solutions
+      across C++/Python/Java/Kotlin. The interactor is a modern one: it
+      decides every verdict itself, the 25-query limit included, with no
+      checker behind it. The original test asserted exit 0 plus
+      `'FAILED' not in stdout`; we strengthen that to a
+      verdict-by-solution check on the main AC reference.
     steps:
       - cmd: run
         expect:
@@ -33,14 +33,13 @@ scenarios:
 
   - name: package-domjudge
     description: >
-      DOMjudge runs a single validator program, so this package -- whose
-      interactor is a legacy one, writing an output a separate checker
-      grades -- can only be shipped by chaining the two. The scenario pins
-      the shape that chaining takes: `validation: custom interactive` (which
-      is what makes DOMjudge treat the validator as the problem's *run*
-      script and hand it a pipe to the submission), both programs under
-      `output_validators/`, and a `build` that compiles each and writes the
-      `run` bridge between them.
+      DOMjudge runs a single validator program, and a modern interactor
+      is exactly that: it is the sole judge of the interaction. The
+      scenario pins the shape: `validation: custom interactive` (which is
+      what makes DOMjudge treat the validator as the problem's *run*
+      script and hand it a pipe to the submission), the interactor alone
+      under `output_validators/` with no checker beside it, and a `build`
+      that compiles it straight into `run`.
     steps:
       - cmd: package domjudge
         expect:
@@ -48,14 +47,14 @@ scenarios:
             path: build/*.zip
             entries:
               - output_validators/interactor.cpp
-              - output_validators/checker.cpp
               - output_validators/build
               - output_validators/testlib.h
+          zip_not_contains:
+            path: build/*.zip
+            entries:
+              - output_validators/checker.cpp
           zip_file_contains:
             path: build/*.zip
             entries:
               problem.yaml: "validation: custom interactive"
-              # Compiles both, then writes the bridge that runs the
-              # interactor against the submission and feeds its output to
-              # the checker.
-              output_validators/build: "/(?ms)-o interactor interactor\\.cpp.*-o checker checker\\.cpp.*interactor\" \"\\$1\" \"\\$OUT\".*checker\" \"\\$1\" \"\\$2\" \"\\$3\" <\"\\$OUT\"/"
+              output_validators/build: "/-o run interactor\\.cpp/"
