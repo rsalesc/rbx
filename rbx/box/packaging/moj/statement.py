@@ -29,6 +29,7 @@ import re
 from typing import Callable, Dict, List, Mapping, Optional, Sequence
 
 import typer
+from rich import cells
 
 from rbx import console
 from rbx.box import naming as box_naming
@@ -80,9 +81,10 @@ _EXAMPLE_LABELS = {
     },
 }
 
-# How far an interactor line is pushed right in a transcript, so the two sides of
-# the conversation read apart inside one code block.
-INTERACTOR_INDENT = ' ' * 4
+# The gap between the program's column and the interactor's in a transcript: an
+# interactor line starts this far past the program's widest line, so the two
+# sides of the conversation read apart inside one code block.
+INTERACTOR_GAP = ' ' * 4
 
 # MOJ is a Brazilian judge and its own tooling is Portuguese, so an
 # unrecognized language falls back to it rather than to English.
@@ -445,17 +447,27 @@ def _fenced(text: str) -> str:
 
 
 def _transcript(sample: StatementSample) -> Optional[str]:
-    """The sample's interaction as one block: the program's lines as they are,
-    the interactor's indented by `INTERACTOR_INDENT`. `None` without one."""
+    """The sample's interaction as one block, in two left-aligned columns: the
+    program's lines as they are, the interactor's pushed past the program's widest
+    line by `INTERACTOR_GAP`. `None` without one."""
     if sample.interaction is None:
         return None
+    # The program's stderr is not part of the conversation.
+    entries = [entry for entry in sample.interaction.entries if entry.pipe != 2]
+    width = max(
+        (
+            cells.cell_len(line)
+            for entry in entries
+            if entry.pipe == 1
+            for line in entry.data.split('\n')
+        ),
+        default=0,
+    )
+    indent = ' ' * width + INTERACTOR_GAP
     lines: List[str] = []
-    for entry in sample.interaction.entries:
-        if entry.pipe == 2:
-            # The program's stderr is not part of the conversation.
-            continue
-        indent = INTERACTOR_INDENT if entry.pipe == 0 else ''
-        lines.extend(indent + line for line in entry.data.split('\n'))
+    for entry in entries:
+        prefix = indent if entry.pipe == 0 else ''
+        lines.extend(prefix + line for line in entry.data.split('\n'))
     return '\n'.join(lines)
 
 

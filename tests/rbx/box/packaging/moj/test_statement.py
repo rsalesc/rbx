@@ -364,9 +364,9 @@ def test_examples_render_each_interaction_in_one_block(tmp_path):
         '## Exemplo\n\n'
         'Linhas recuadas são do árbitro; as demais, do seu programa.\n\n'
         '### Exemplo 1\n\n'
-        '```\n    10\n6\n    <\n! 3\n```\n\n'
+        '```\n       10\n6\n       <\n! 3\n```\n\n'
         '### Exemplo 2\n\n'
-        '```\n    8\n! 8\n```'
+        '```\n       8\n! 8\n```'
     )
 
 
@@ -385,7 +385,39 @@ def test_examples_leave_the_program_stderr_out(tmp_path):
         language='pt',
     )
     assert 'debug' not in text
-    assert '```\n    10\n! 3\n```' in text
+    assert '```\n       10\n! 3\n```' in text
+
+
+def test_examples_put_the_interactor_in_a_column_past_the_widest_program_line(
+    tmp_path,
+):
+    text = statement.build_examples(
+        [
+            _sample(
+                tmp_path,
+                0,
+                [(0, '5'), (1, '? 1 2\n? 100 200'), (0, '1\n2'), (1, '! 3')],
+            )
+        ],
+        {},
+        language='pt',
+    )
+    pad = ' ' * len('? 100 200') + statement.INTERACTOR_GAP
+    assert f'```\n{pad}5\n? 1 2\n? 100 200\n{pad}1\n{pad}2\n! 3\n```' in text
+
+
+def test_examples_column_counts_wide_characters_by_their_cells(tmp_path):
+    text = statement.build_examples(
+        [_sample(tmp_path, 0, [(1, '漢字'), (0, 'ok')])], {}, language='pt'
+    )
+    assert f'```\n漢字\n{" " * 4}{statement.INTERACTOR_GAP}ok\n```' in text
+
+
+def test_examples_without_program_lines_only_shift_by_the_gap(tmp_path):
+    text = statement.build_examples(
+        [_sample(tmp_path, 0, [(0, 'hello')])], {}, language='pt'
+    )
+    assert f'```\n{statement.INTERACTOR_GAP}hello\n```' in text
 
 
 def test_examples_fence_cannot_be_closed_by_the_transcript(tmp_path):

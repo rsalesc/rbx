@@ -616,7 +616,8 @@ exemplo") say the example then belongs in the text, under `## Exemplo`.
 MOJ injects its box for a problem that has one), in the statement's own language:
 
 - one `### Exemplo N` per sample, with its **interaction in a single code block**:
-  the program's lines as they are, the interactor's indented by `INTERACTOR_INDENT`,
+  the program's lines as they are, the interactor's in a second left-aligned column
+  that starts `INTERACTOR_GAP` past the program's widest line (per sample),
   stderr dropped, and a one-line legend saying which is which;
 - a sample with no recorded interaction shows its input and output instead;
 - each sample's explanation right under its block -- no `docs/notes/` files are
