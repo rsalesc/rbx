@@ -32,12 +32,12 @@ and limitations:
 |                         |                     | :x: Solution verification                                 |
 +-------------------------+---------------------+-----------------------------------------------------------+
 | [MOJ](moj.md)           | MOJ                 |                                                           |
+|                         |                     | :white_check_mark: Interactive problems (without checker) |
 |                         |                     | :white_check_mark: Batch problems                         |
 |                         |                     | :white_check_mark: Test grouping                          |
 |                         |                     | :white_check_mark: Limits per language                    |
 |                         |                     | :white_check_mark: Solution verification                  |
 |                         |                     | :white_check_mark: Package upload                         |
-|                         |                     | :x: Interactive problems                                  |
 +-------------------------+---------------------+-----------------------------------------------------------+
 | [Polygon](polygon.md)   | Codeforces, Polygon |                                                           |
 |                         |                     | :white_check_mark: Interactive problems (with checker)    |

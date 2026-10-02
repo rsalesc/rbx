@@ -28,10 +28,9 @@ from tests.rbx.box.packaging.moj.conftest import (
 # -- shape ------------------------------------------------------------------
 
 
-def test_only_supports_batch_problems():
-    # MOJ's interactive support uses its own arbiter protocol, not a testlib
-    # interactor, so the legacy `moj` packager keeps those.
-    assert MojPackager.task_types() == [TaskType.BATCH]
+def test_supports_batch_and_interactive_problems():
+    # Interactive problems are covered in test_interactive.py.
+    assert MojPackager.task_types() == [TaskType.BATCH, TaskType.COMMUNICATION]
 
 
 def test_builds_pdf_statements_even_though_it_consumes_blocks():

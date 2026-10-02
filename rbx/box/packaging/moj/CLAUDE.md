@@ -18,8 +18,9 @@ checker bridge that MOJ banned, emitted `docs/enunciado.pdf` (not a recognized
 format), and named every test `001`/`002`, so a package had **no samples** and MOJ
 published its first two secret tests as the statement's examples (see [Samples are
 optional, leaking them is not](#samples-are-optional-leaking-them-is-not)).
-Interactive problems are the one thing it covered that this one does not yet — see
-[Out of scope](#out-of-scope).
+It also covered interactive problems by smuggling its own run script and interactor
+build into the package; this one uses MOJ's own interactive driver instead -- see
+[Interactive problems](#interactive-problems).
 
 ## The two rules that shape everything
 
@@ -519,11 +520,76 @@ stringified (`vars` is untyped by design, and a name that parses as a number is 
 name); an absent or blank-once-stripped var falls back to `Unknown`, since an empty
 `author: ""` must not travel through as an empty file that `validate-problem.sh` rejects.
 
+## Interactive problems
+
+MOJ judges an interactive problem with its own driver, `mojtools/interactive/`
+(upstream since mid-2025; a mojtools checkout older than that has no such dir). There
+is no `conf` flag: a problem is interactive because its scripts say so.
+
+**MOJ's protocol.** The driver's `run.sh` starts the contestant and `arbitro /tmp/in`
+in the **same jail**, wired through two FIFOs. The arbiter gets the test input and
+nothing else -- never `tests/output/N` -- and reports through the **last non-empty
+line of its stderr**: `WRONG <reason>` is WA, any other line is AC, and a non-zero
+exit without a `WRONG` line is a judge error (or RE, when the contestant died). No
+checker runs after the interaction. The interactive `compare.sh` then reads that line.
+
+**The interactor *is* the arbiter.** `scripts/arbitro.cpp` is the problem's testlib
+interactor, amalgamated like the checker, between two vendored pieces:
+
+```
+interactive/arbiter_prologue.cpp   #define TESTLIB_THROW_EXIT_EXCEPTION_INSTEAD_OF_EXIT
+                                   #define main rbx_interactor_main
+<the interactor, testlib inlined>
+interactive/arbiter_epilogue.cpp   #undef main + the real main()
+```
+
+That testlib switch makes `quit`/`quitf` **throw** its exit code instead of calling
+`exit()`, so the epilogue's `main` gets control back in the same process -- no fork.
+It calls the interactor with `/dev/null` as the output file, captures testlib's stderr
+to a file meanwhile, then relays it and prints the verdict as the last line (`OK`,
+`WRONG <testlib message>`, or a non-zero exit for `_fail`/`_points`). It ends in
+`_exit()`, because testlib's static finalize guard would otherwise get a say, and
+flushes `std::cout` first, since `_exit` skips that. It also ignores `SIGPIPE`, so a
+contestant that closes its pipe early surfaces as a testlib read error, i.e. WA.
+
+The packager **refuses**:
+
+- a **legacy** interactor (`legacy: true`, interactor + checker): MOJ runs no checker
+  after the interaction and never hands the arbiter the answer file;
+- a **non-C++** interactor: MOJ compiles `arbitro.cpp` itself, from one file;
+- a **testlib without the throw switch** (a problem-local `testlib.h` too old):
+  testlib would `exit()` before the epilogue could print the verdict.
+
+**Scripts.** Following "stub on the host, copy in the jail": `scripts/compare.sh` is
+`interactive/compare-stub.sh` and every `scripts/<lang>/prep.sh` is
+`interactive/prep-stub.sh` (both run on the host and call into mojtools; `prep` is
+what compiles `arbitro.cpp`), while every `scripts/<lang>/run.sh` is a **copy** of
+the driver `interactive/run.sh`, because it runs in the jail. rbx keeps its own
+`compile.sh` per language; the driver picks the run command from `$BIN`'s extension
+(ELF, `.py`, `.jar`, ...), which rbx's compile scripts already produce. The three
+driver files are vendored from mojtools `f62a2105` (GPLv2, like `compare.sh`), and
+tests pin the emitted files to be byte-identical to them.
+
+**`conf`** gains `ULIMITS[-u]=10000` (the jail holds the contestant, the arbiter,
+`time` and `stdbuf`) and `SAMPLE=no` (a test's input is the interactor's, which the
+contestant never sees).
+
+**Time limits are the trap.** MOJ times the whole jail's **wall clock** -- contestant,
+arbiter and interpreter startup together -- while `rbx time -p moj` estimated the
+solution alone. Measured on the judge: a Python solution that crashed after 0.05s of
+CPU took 0.11s of wall and came back TLE under a pinned 100ms limit. The packager
+warns about it whenever it pins interactive limits; it does not add the headroom
+itself.
+
+**Verdicts that differ from rbx, by MOJ's driver (not fixable from the arbiter):**
+
+- A contestant that **crashes** makes the interactor hit EOF and say `WRONG`; the
+  driver keeps the `WRONG`, so it is **WA**, not RE.
+- An interactor that has decided WA while the contestant **hangs** is overridden by
+  the wall-clock **TLE**: the driver waits for the contestant.
+
 ## Out of scope
 
-- **Interactive.** `task_types()` is `[BATCH]`. MOJ's arbiter protocol (test in
-  `argv[1]`, last stderr line `WRONG <reason>`, FIFO driver, per-language SIGPIPE
-  handling) is structurally unlike a testlib interactor and deserves its own design.
 - **Collections and access control.** See `.moj-meta.json` below.
 
 ## `.moj-meta.json`
