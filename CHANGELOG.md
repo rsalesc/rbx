@@ -1,3 +1,55 @@
+## 1.5.0 (2026-10-02)
+
+### BREAKING CHANGE
+
+- `.envrc` and `.envrc.local` are no longer read by rbx;
+move those variables to `.env`/`.env.local` (or keep using direnv, which
+exports them into the shell environment anyway).
+
+### Feat
+
+- **summary**: show saved limits profiles in the contest summary (#871)
+- **vscode**: ship the demo contest used for manual testing in vscode/demo (#869)
+- **packaging**: ship MOJ statements in every language it supports (#868)
+- **boca**: move compilation flags onto each language's boca extension (#867)
+- **tooling**: configure a DOMjudge server from env.rbx.yml (#863)
+- **issues**: add a sanitizer-finding detector (#864)
+- **issues**: migrate the too-much-stderr check to a detector (#862)
+- **runners**: cache DOMjudge judgements and uploads across runs (#859)
+- **runners**: add a DOMjudge remote runner (#857)
+- **packaging**: package communication problems for DOMjudge (#856)
+- **packaging**: add DOMjudge problem packager (#598)
+- **scripts**: add a one-command local DOMjudge test server (#853)
+- **issues**: add config-level checks as a second detector family (#846)
+- **crash**: write a report file when rbx crashes (#849)
+- **contest**: share config between contests with !include fragments (#831)
+- **issues**: add `rbx issues` and `rbx contest issues` (#834)
+- **contest**: run `rbx on`/`rbx each` inline with --inline (#842)
+- **timing**: checksum what a time limit was estimated from (#832)
+- **vscode**: badge statement vars of a named test group (#833)
+- **vscode**: show expanded var values inline in statements (#803)
+- **moj**: refuse packages whose secret tests mojtools would leak (#821)
+- **grading**: cap the address space of programs on Linux (#818)
+
+### Fix
+
+- **polygon**: stop the TeX converter from duplicating environment args (#875)
+- **packaging**: do not judge solutions on a samples-only build (#866)
+- **packaging**: stop leaking absolute setter paths into packages (#858)
+- **docs**: stop committing the generated CLI reference (#852)
+- **ui**: stop mouse text selection from crashing the explorer screens (#851)
+- **crash**: report crashes that happen inside the textual apps (#850)
+- **stress**: report a missing solution in a finder cleanly (#848)
+- **schema**: tolerate unknown fields in a limits profile (#841)
+- **moj**: read reran testcases and tolerate CE/NT verdicts (#827)
+- **polygon**: retry and rate-limit requests when the API throttles (#830)
+- **polygon**: rename sources to names Polygon keeps verbatim (#829)
+- **polygon**: upload empty tests with a placeholder input (#828)
+
+### Refactor
+
+- **utils**: consolidate .envrc loading into .env (#861)
+
 ## 1.4.2 (2026-08-29)
 
 ### Fix

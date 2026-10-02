@@ -115,6 +115,6 @@
   "[ignore]": {
     "editor.defaultFormatter": "foxundermoon.shell-format"
   },
-  "python.languageServer": "None",
+  "python.languageServer": "Default",
   "basedpyright.analysis.typeCheckingMode": "basic"
 }
