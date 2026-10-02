@@ -1,3 +1,9 @@
+## 1.6.1 (2026-10-02)
+
+### Feat
+
+- **packaging**: package interactive problems for MOJ (#876)
+
 ## 1.5.0 (2026-10-02)
 
 ### BREAKING CHANGE
