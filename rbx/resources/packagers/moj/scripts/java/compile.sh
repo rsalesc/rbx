@@ -35,7 +35,9 @@ klass=$(basename "$SRC" .java)
 [[ -n "$klass" ]] || klass=Main
 
 export _JAVA_OPTIONS="-Xmx700M -Xms64M"
-javac *.java || exit 1
+# javac reads sources in the jail locale's charset; pin UTF-8 so an accented
+# literal compiles to the same string everywhere.
+javac -encoding UTF-8 *.java || exit 1
 
 # Name the entry point in the jar manifest so run.sh is just `java -jar`. Electing the
 # class at runtime -- grep the sources for a main declaration, else `ls *.class` -- is

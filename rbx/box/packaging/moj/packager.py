@@ -79,6 +79,12 @@ DEFAULT_AUTHOR = 'Unknown'
 # solution is cut off here instead of at the setter's threshold. rbx still enforces
 # `outputLimit` locally, and a solution that overruns it is a package bug the setter
 # sees in `rbx run` long before MOJ would have said anything.
+#
+# Re-checked against mojtools `f62a210` (2026-09-30): `bc6cdef` stopped applying `-f`
+# to the judging harness itself, but `cage-run.sh` still applies it to everything that
+# runs in the jail -- the compile included -- so the reason above stands. MOJ's own
+# default is now 256000 KB; this stays tighter on purpose, and emitted explicitly so
+# a change of upstream default never changes what a package does.
 OUTPUT_ULIMIT_KB = 100 * 1024
 
 # The group name rbx reserves for samples. MOJ requires them to be named `sample*`,
@@ -702,7 +708,10 @@ class MojPackager(BasePackager):
 
     def _write_metadata(self, into_path: pathlib.Path) -> None:
         (into_path / 'author').write_text(self._author() + '\n')
-        (into_path / 'tags').write_text('')
+        # No `tags` file, deliberately: an uploaded tar that carries one -- even an
+        # empty one -- REPLACES the tags on the server, while one without it keeps
+        # them. rbx knows no tags, so every re-upload would wipe the ones a setter
+        # curated on the web (PACOTE.html, `tags`).
         self._write_moj_meta(into_path)
         self._write_statement(into_path)
 
@@ -831,6 +840,10 @@ class MojPackager(BasePackager):
             '# Compilation Error. See OUTPUT_ULIMIT_KB.',
             f'ULIMITS[-f]={OUTPUT_ULIMIT_KB}',
             '',
+            '# Stack, in MB. MOJ defaults to 128 MB (mirrored into the JVM -Xss), while',
+            '# rbx runs solutions with the stack bounded only by memory.',
+            f'STACKLIMITMB={self._stack_limit_mb()}',
+            '',
         ]
         if self._is_interactive():
             lines.extend(
@@ -841,6 +854,15 @@ class MojPackager(BasePackager):
                     '',
                     "# And no example box: a test's input is the interactor's, which the",
                     '# contestant never sees.',
+                    'SAMPLE=no',
+                    '',
+                ]
+            )
+        elif not self._has_samples():
+            lines.extend(
+                [
+                    '# No samples group: MOJ requires a tests/input/sample* or this',
+                    '# declaration, and shows no examples box.',
                     'SAMPLE=no',
                     '',
                 ]
@@ -1213,13 +1235,11 @@ class MojPackager(BasePackager):
         outputs_path.mkdir(parents=True, exist_ok=True)
 
         seen_groups: List[str] = []
-        has_sample = False
 
         for entry, name in self.testcase_names():
             group_name = entry.group_entry.group
             if group_name not in seen_groups:
                 seen_groups.append(group_name)
-            has_sample = has_sample or entry.is_sample()
 
             testcase = entry.metadata.copied_to
             shutil.copyfile(testcase.inputPath, inputs_path / name)
@@ -1228,37 +1248,45 @@ class MojPackager(BasePackager):
             else:
                 (outputs_path / name).touch()
 
-        if not has_sample:
-            self._write_empty_samples_pin(into_path)
-
         return seen_groups
 
-    def _write_empty_samples_pin(self, into_path: pathlib.Path) -> None:
-        """Pin the statement to *no* examples, for a package with no samples.
+    def _has_samples(self) -> bool:
+        """Whether any built testcase is a sample.
 
-        MOJ does not require samples -- `validate-problem.sh` only asks for at least
-        one input/output pair, of any name. What it does is pick the statement's
-        examples in three tiers (`gen-problem-json.sh`):
-
-            1. the names listed in the package's root `samples` file, else
-            2. `tests/input/sample*` (all of them), else
-            3. the FIRST `SAMPLE_LIMIT` (default 2) entries of `tests/input`.
-
-        Tier 3 is the trap: with no samples, MOJ publishes two *secret* tests --
-        input and expected output both -- as the statement's worked examples. An
-        empty `samples` file takes tier 1 with an empty list, so no examples are
-        rendered and no test leaks. Only emitted when there are no samples; with
-        samples, tier 2 already picks exactly the right tests, and a `samples` file
-        would be one more thing that can drift out of sync with the test names.
+        MOJ takes a statement's examples from `tests/input/sample*` only, and
+        `validate-problem.sh` hard-fails `examples_present` unless there is one or
+        `conf` declares `SAMPLE=no` (mojtools `0366e17`). So a package without
+        samples gets that declaration from `_write_conf`, and the warning here.
         """
-        (into_path / 'samples').write_text('')
-        console.console.print(
-            '[warning]This problem has no testcases in the [item]samples[/item] '
-            'group, so its MOJ statement will show no examples.[/warning]\n'
-            '[warning]Emitted an empty [item]samples[/item] file to say so: without '
-            'it, MOJ would publish the first two [item]secret[/item] tests as the '
-            'statement examples.[/warning]'
-        )
+        if any(entry.is_sample() for entry in self.get_built_testcase_entries()):
+            return True
+        if self.probe is None:
+            console.console.print(
+                '[warning]This problem has no testcases in the [item]samples[/item] '
+                'group, so its MOJ statement will show no examples '
+                '([item]SAMPLE=no[/item]).[/warning]'
+            )
+        return False
+
+    def _stack_limit_mb(self) -> int:
+        """`STACKLIMITMB`: the loosest stack any language gets from rbx locally.
+
+        rbx runs a solution with the env's `stackLimit` for its language, or an
+        unlimited stack when none is set -- bounded either way by the memory
+        limit. MOJ has one stack for the whole problem and defaults it to 128 MB,
+        which a deep recursion that passes locally can overflow. So take each
+        language's effective stack, capped by the memory limit, and pin the
+        loosest: no language gets less than it had in `rbx run`.
+        """
+        memory = package.find_problem_package_or_die().memoryLimit
+        stacks = []
+        for language in environment.get_environment().languages:
+            sandbox = environment.get_execution_config(
+                language.name, solution=True
+            ).sandbox
+            stack = sandbox.stackLimit if sandbox is not None else None
+            stacks.append(memory if stack is None else min(stack, memory))
+        return max(stacks, default=memory)
 
     def _write_score(self, into_path: pathlib.Path, seen_groups: List[str]) -> None:
         """Write `tests/score` for POINTS problems.

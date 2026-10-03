@@ -115,3 +115,19 @@ def test_compare_stub_is_valid_bash():
         text=True,
     )
     assert proc.returncode == 0, proc.stderr
+
+
+def test_jvm_templates_pin_the_locale_and_stdio_charset():
+    # Mirrors mojtools' own lang/java and lang/kt (78c73dc, b0ce127): under a judge
+    # rootfs with LANG=pt_BR, Scanner.nextDouble() rejects `5.5`, and without UTF-8
+    # stdio accented output comes out as `?`.
+    for template in ['java', 'kt']:
+        text = (_scripts() / template / 'run.sh').read_text()
+        for flag in [
+            '-Duser.language=en',
+            '-Duser.country=US',
+            '-Dstdout.encoding=UTF-8',
+            '-Dstderr.encoding=UTF-8',
+        ]:
+            assert flag in text, (template, flag)
+    assert 'javac -encoding UTF-8' in (_scripts() / 'java' / 'compile.sh').read_text()

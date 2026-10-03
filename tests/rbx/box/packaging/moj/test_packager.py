@@ -7,6 +7,7 @@ import subprocess
 import pytest
 import typer
 
+from rbx import testing_utils
 from rbx.box.packaging.moj import mojtools
 from rbx.box.packaging.moj import statement as moj_statement
 from rbx.box.packaging.moj.packager import JudgeCalibrated, MojPackager
@@ -62,7 +63,13 @@ def test_packager_is_named_moj():
 
 def test_writes_the_mandatory_metadata_files(moj_package):
     assert (moj_package / 'author').read_text().strip() != ''
-    assert (moj_package / 'tags').exists()
+
+
+def test_does_not_ship_a_tags_file(moj_package):
+    # An uploaded `tags` file -- even an empty one -- REPLACES the server's tags,
+    # while a tar without it keeps them. rbx knows no tags, so shipping the file
+    # would wipe the ones a setter curated on the web on every re-upload.
+    assert not (moj_package / 'tags').exists()
 
 
 def test_writes_the_author_from_vars(testing_pkg, tmp_path):
@@ -323,6 +330,43 @@ def test_the_file_ulimit_is_fixed_and_does_not_track_the_output_limit(
     assert 'ULIMITS[-f]=100\n' not in conf
 
 
+def test_stack_limit_defaults_to_the_memory_limit(testing_pkg, tmp_path):
+    # rbx runs solutions with an unlimited stack, bounded by memory; MOJ defaults
+    # to 128 MB, which a recursion that passes locally can overflow.
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.add_testgroup_with_manual_testcases('samples', [])
+    testing_pkg.yml.memoryLimit = 512
+    testing_pkg.save()
+
+    pkg_path = run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
+
+    assert 'STACKLIMITMB=512' in (pkg_path / 'conf').read_text().splitlines()
+
+
+def test_stack_limit_follows_a_stack_limit_set_in_the_environment(
+    testing_pkg, tmp_path
+):
+    env_path = testing_pkg.preset.path('env.rbx.yml')
+    env = env_path.read_text()
+    anchor = 'defaultExecution:\n  sandbox:\n'
+    assert anchor in env
+    env_path.write_text(env.replace(anchor, anchor + '    stackLimit: 64\n'))
+    testing_utils.clear_all_functools_cache()
+
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.add_testgroup_with_manual_testcases('samples', [])
+    testing_pkg.yml.memoryLimit = 512
+    testing_pkg.save()
+
+    pkg_path = run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
+
+    assert 'STACKLIMITMB=64' in (pkg_path / 'conf').read_text().splitlines()
+
+
 def test_binary_problems_halt_at_the_first_failure(moj_binary_package):
     conf = (moj_binary_package / 'conf').read_text()
     assert 'STOPWHEN_WA=y' in conf
@@ -369,14 +413,11 @@ def test_every_input_has_a_paired_output(moj_package):
     assert inputs == outputs
 
 
-def test_packages_without_samples_pinning_the_statement_to_no_examples(
-    testing_pkg, tmp_path, capsys
-):
-    # MOJ does not require samples: `validate-problem.sh` only asks for one
-    # input/output pair, of any name. But `gen-problem-json.sh` falls back to
-    # publishing the first two tests as the statement's examples, so a sample-less
-    # package leaks two SECRET tests. An empty root `samples` file takes the
-    # explicit-list branch with an empty list, and no example is rendered.
+def test_packages_without_samples_declare_sample_no(testing_pkg, tmp_path, capsys):
+    # MOJ takes a statement's examples from `tests/input/sample*` only, and
+    # `validate-problem.sh` hard-fails `examples_present` unless there is one or
+    # `conf` says `SAMPLE=no` (mojtools 0366e17). The root `samples` file the
+    # packager used to emit is no longer read at all.
     testing_pkg.add_file('check.cpp').write_text(CHECKER)
     testing_pkg.set_checker('check.cpp')
     testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
@@ -384,9 +425,8 @@ def test_packages_without_samples_pinning_the_statement_to_no_examples(
 
     into_path = run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['easy']))
 
-    samples = into_path / 'samples'
-    assert samples.is_file()
-    assert samples.read_text() == ''
+    assert 'SAMPLE=no' in (into_path / 'conf').read_text().splitlines()
+    assert not (into_path / 'samples').exists()
     # The tests themselves are still packaged, and none of them is a sample.
     names = {path.name for path in (into_path / 'tests' / 'input').iterdir()}
     assert names
@@ -394,9 +434,10 @@ def test_packages_without_samples_pinning_the_statement_to_no_examples(
     assert 'no examples' in capsys.readouterr().out
 
 
-def test_package_with_samples_does_not_pin_the_example_list(moj_package):
-    # With samples present MOJ's `tests/input/sample*` branch already picks exactly
-    # the right tests; a `samples` file would be a second source of truth to drift.
+def test_package_with_samples_lets_moj_show_them(moj_package):
+    # With samples present MOJ's `tests/input/sample*` branch picks exactly the
+    # right tests, and `SAMPLE=no` would hide them.
+    assert 'SAMPLE=no' not in (moj_package / 'conf').read_text()
     assert not (moj_package / 'samples').exists()
 
 

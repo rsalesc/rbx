@@ -5,10 +5,8 @@ from typing import List, Sequence
 from rbx.box.exception import RbxException
 
 # Samples must be named `sample*`: MOJ picks the statement's examples from
-# tests/input/sample*. A package with no samples is legal -- `validate-problem.sh`
-# only requires one input/output pair, of any name -- but then MOJ falls back to
-# publishing the first two tests as examples, so the packager pins that case with an
-# empty `samples` file (see `MojPackager._write_empty_samples_pin`).
+# tests/input/sample* and nothing else. A package with no samples is legal, but must
+# declare `SAMPLE=no` in `conf` (see `MojPackager._has_samples`).
 SAMPLE_PREFIX = 'sample'
 SAMPLES_GLOB = 'sample*'
 

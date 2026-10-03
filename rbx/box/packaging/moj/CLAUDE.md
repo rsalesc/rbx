@@ -17,7 +17,8 @@ accepts: it authored a time limit MOJ *measures*, bundled a private copy of the
 checker bridge that MOJ banned, emitted `docs/enunciado.pdf` (not a recognized
 format), and named every test `001`/`002`, so a package had **no samples** and MOJ
 published its first two secret tests as the statement's examples (see [Samples are
-optional, leaking them is not](#samples-are-optional-leaking-them-is-not)).
+optional, but say so with
+`SAMPLE=no`](#samples-are-optional-but-say-so-with-sampleno)).
 It also covered interactive problems by smuggling its own run script and interactor
 build into the package; this one uses MOJ's own interactive driver instead -- see
 [Interactive problems](#interactive-problems).
@@ -280,6 +281,24 @@ cut off at 100 MiB instead of the setter's threshold. rbx still enforces `output
 locally, so a solution that overruns it shows up in `rbx run` long before MOJ would have
 said anything. See `OUTPUT_ULIMIT_KB` in [`packager.py`](packager.py).
 
+Re-checked against mojtools `f62a210`: `bc6cdef` (2026-08-29) moved `-f` off the
+judging harness -- a team's 79 MB of stderr per test was killing `build-and-test.sh`
+itself -- but `cage-run.sh` still applies it to everything jailed, the compile
+included, so the linker failure above would come straight back. MOJ's own default
+is now 256000 KB; rbx keeps 100 MiB and emits it explicitly, so a changed upstream
+default never changes what a package does.
+
+### `STACKLIMITMB`
+
+MOJ gives every language a 128 MB stack unless `conf` says otherwise (the JVM gets it
+as `-Xss`), while `rbx run` gives a solution the env's `stackLimit` for its language,
+or an unlimited stack -- bounded either way by the memory limit. A recursion that
+passes locally could therefore overflow on MOJ. `conf` emits
+`STACKLIMITMB=<_stack_limit_mb()>`: each env language's effective stack, capped by
+`memoryLimit`, taking the loosest, since MOJ has one stack for the whole problem and no
+language should get less than it had locally. `STACKLIMITMB` wins over `ULIMITS[-s]`
+in `build-and-test.sh`.
+
 ## Test naming (`naming.py`)
 
 Samples are `sample001…`; everything else is `t<NN>_<group>_<NNN>` with `NN` the
@@ -293,23 +312,22 @@ group's index in `problem.rbx.yml`. Two properties are load-bearing:
   digits (`t01_easy_001` → `t01_easy_`) and compares against `${PAT%\**}` of each glob
   (`t01_easy_*` → `t01_easy_`), then falls back to a real glob match.
 
-### Samples are optional, leaking them is not
+### Samples are optional, but say so with `SAMPLE=no`
 
-MOJ does **not** require samples. `validate-problem.sh` checks `examples_present`,
-which counts any `tests/input`/`tests/output` pair of any name -- it has never looked
-at `sample*`. What does look is `gen-problem-json.sh`, which picks the statement's
-examples in three tiers:
+MOJ takes a statement's examples from `tests/input/sample*` and nothing else, and
+`validate-problem.sh` hard-fails `examples_present` unless there is at least one
+`sample*` pair **or** `conf` declares `SAMPLE=no`. So `_write_conf` emits `SAMPLE=no`
+for a package with no samples (`_has_samples`), and a warning says the statement
+shows no examples.
 
-1. the names listed in the package's root **`samples`** file, else
-2. `tests/input/sample*` (all of them), else
-3. the **first `SAMPLE_LIMIT` (default 2) entries** of `tests/input`.
-
-Tier 3 is the trap: a sample-less package gets two *secret* tests -- input and
-expected output both -- rendered into the public statement. So `_write_tests` emits an
-**empty `samples` file** when, and only when, the package has no samples: tier 1 with
-an empty list means no examples and no leak. With samples, tier 2 already picks
-exactly the right tests, and a `samples` file would be a second source of truth to
-drift out of sync with `naming.testcase_name`.
+This replaced an empty root `samples` file. Until mojtools `0366e17` (2026-09-23),
+`gen-problem-json.sh` picked examples from that file, else `sample*`, else the
+**first two tests of any name** -- so a sample-less package leaked two secret tests
+into the statement unless the empty file pinned the list. Upstream dropped both the
+file and that fallback (a hidden test never becomes an example now) and tightened
+`examples_present` from "any input/output pair" to the rule above, so the old empty
+file made every sample-less package fail the gate. `SAMPLE` is excluded from
+`tl-checksum`, so the declaration never forces a recalibration.
 
 There is a second leak on the same theme: `build-and-test.sh` echoes the raw input of
 a failing test back to the submitter when `$INPUT` contains `sample` or `example` --
@@ -318,10 +336,6 @@ A group named `examples` or a problem named `sample-tree` therefore leaks every
 secret test it touches (upstream bug; see issue #804). `package()` refuses such a
 package up front via `naming.check_secret_test_path`, rather than renaming tests
 behind the author's back.
-
-Tier 1 is an undocumented branch of `gen-problem-json.sh` -- mojtools' README only
-ever documents examples as `tests/input/sample*` -- so it is worth re-checking against
-upstream when the packager is next revised.
 
 ## Scoring
 
@@ -375,6 +389,14 @@ Java and Kotlin build a **manifest jar** so `run.sh` is just `java -jar`. This f
 `rbx/resources/packagers/boca/compile/java` and is deliberately *better* than MOJ's own
 `lang/java/compile.sh`, which elects the main class by grepping for `main` and falling
 back to `ls *.class` — locale-dependent once javac emits nested `Main$X.class`.
+
+**The JVM's locale and stdio charset are pinned**, as mojtools' own `lang/java` and
+`lang/kt` do since `78c73dc`/`b0ce127`: `run.sh` passes `-Duser.language=en
+-Duser.country=US -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8`, and javac gets
+`-encoding UTF-8`. Without them a judge rootfs with `LANG=pt_BR` makes
+`Scanner.nextDouble()` reject `5.5`, and accented output comes out as `?`. rbx ships
+its own templates, so upstream's fix only reaches a package through this copy.
+(Interactive packages run mojtools' driver `run.sh`, which already carries them.)
 
 **Java sources are renamed to their public type inside the jail**, by
 `scripts/java/compile.sh`, before javac runs. javac is the only party that requires the
@@ -442,8 +464,8 @@ What the packager owes the gate (`validate-problem.sh`):
   strips a legacy `% Title` first line.
 - **No examples section and no ``` fence** -- both land in `render_warnings`,
   since MOJ builds the examples itself from `tests/input/sample*` (or from none at
-  all; see [Samples are optional, leaking them is
-  not](#samples-are-optional-leaking-them-is-not)). `check_moj_gate` refuses to
+  all; see [Samples are optional, but say so with
+  `SAMPLE=no`](#samples-are-optional-but-say-so-with-sampleno)). `check_moj_gate` refuses to
   package rather than shipping a statement that warns.
 
 ### Languages: one main statement, translations beside it
@@ -555,6 +577,13 @@ say the name, and the package and the statement cannot drift. Any primitive is
 stringified (`vars` is untyped by design, and a name that parses as a number is still a
 name); an absent or blank-once-stripped var falls back to `Unknown`, since an empty
 `author: ""` must not travel through as an empty file that `validate-problem.sh` rejects.
+
+## No `tags`
+
+A `tags` file is deliberately **not** shipped. MOJ treats tags as curation: an uploaded
+tar that carries the file -- even empty -- **replaces** the server's tags, and one
+without it keeps them (PACOTE.html, `tags`). rbx knows no tags, so the empty file it
+used to write wiped whatever a setter had set on the web at every re-upload.
 
 ## Interactive problems
 

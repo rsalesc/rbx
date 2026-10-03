@@ -8,5 +8,11 @@ source binfile.sh
 
 # kotlinc already named the entry point in the manifest. JVM threads ignore the main
 # thread's `ulimit -s`, so the problem's stack has to be mirrored into -Xss.
-exec java -Xms10m -Xmx${MOJ_MEMLIMITMB:-500}m -Xss${MOJ_STACKKB:-131072}k \
+
+# Fixed locale and stdio charset (as mojtools' own lang/java does, since 78c73dc):
+# under a judge rootfs with LANG=pt_BR, Scanner.nextDouble() rejects `5.5` and
+# String.format prints `5,50`; without UTF-8 stdio, accented output becomes `?`.
+exec java -Duser.language=en -Duser.country=US \
+     -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 \
+     -Xms10m -Xmx${MOJ_MEMLIMITMB:-500}m -Xss${MOJ_STACKKB:-131072}k \
      -jar "$BIN" < /tmp/in > /tmp/out
