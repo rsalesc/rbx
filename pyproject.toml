@@ -117,7 +117,7 @@ exclude = ["rbx/testdata", "docs"]
 artifacts = ["rbx/resources/vscode/*.vsix"]
 
 [tool.hatch.build.targets.sdist]
-exclude = ["rbx/testdata", ".claude", ".worktrees", "docs", "vscode/node_modules"]
+exclude = ["rbx/testdata", ".claude", ".worktrees", "docs", "vscode/node_modules", "mkdocs-review"]
 # Also here, not just on the wheel: `uv build` builds the sdist first and then
 # the wheel *from that sdist*, so a vsix dropped here never reaches the wheel
 # however the wheel target is configured.
