@@ -6,23 +6,23 @@ below summarizes them, and the sections that follow cover each one.
 +-------------------------------------------+---------------------------------------------------------------+
 |                  Feature                  |                          Description                          |
 +===========================================+===============================================================+
-| [Validators](validators.md)               | Check whether your test inputs are conforming the to the      |
-|                                           | format you expect.                                            |
+| [Validators](validators.md)               | Check whether your test inputs conform to the format you      |
+|                                           | expect.                                                       |
 +-------------------------------------------+---------------------------------------------------------------+
-| [Unit tests](unit-tests.md)               | Check whether your checker and/or validator are behaving      |
-|                                           | as expected against manually defined inputs.                  |
+| [Unit tests](unit-tests.md)               | Check whether your checker and/or validator behave correctly  |
+|                                           | on manually defined inputs.                                   |
 +-------------------------------------------+---------------------------------------------------------------+
 | [Stress testing](/setters/stress-testing) | Check whether your validators, checkers and correct solutions |
-|                                           | are behaving as expected against randomly generated inputs.   |
+|                                           | behave correctly on randomly generated inputs.                |
 +-------------------------------------------+---------------------------------------------------------------+
 
-## Verification Level
+## Verification level
 
 A verification level says how strict verification should be when building your testset and
 running solutions. You usually specify it on the command itself.
 
 ```bash
-rbx build -v{0,1}  # defaults to 1
+rbx build -v{0,1}  # any level above 0 validates; defaults to validating
 rbx run -v{0,1,2,3,4}  # defaults to 4
 rbx package -v{0,1,2,3,4}  # defaults to 4
 ```
@@ -61,7 +61,6 @@ below exit with status `1` when a check they ran did not pass, and `0` otherwise
 report tells you which problems are broken rather than stopping at the first one.
 
 !!! warning "Behavior change"
-
     Up to and including `1.0.0`, `rbx build` and `rbx run` exited `0` even when they printed a
     failing report. A CI job that is silently green today on a broken package will start failing
     once you upgrade. That is the point, but it may surprise you.

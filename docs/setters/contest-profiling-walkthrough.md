@@ -10,19 +10,23 @@ verifying under the result, and committing it.
     `B` and `C` sitting in `problems/chocolate`, `problems/gardens` and
     `problems/sum-of-n`. If you haven't gone through it yet, start there.
 
-Step 1 ended on `rbx contest summary`, and that table printed a time limit for every
-problem. Look at where those numbers came from: each one is the `timeLimit` its author
-typed into their own `problem.rbx.yml`, on their own laptop, at whatever moment the
-problem felt about right. Three problems, three machines, three guesses.
+Since the last page, `gardens` has gained more solutions: accepted ones in C++ and Python,
+and `sols/quadratic.cpp`, declared `outcome: tle`. `chocolate` doesn't declare any slow solution.
+Your own problems will print different numbers, but you read the output the same way.
+
+[Scaffolding a contest](/setters/contest-scaffolding-walkthrough) ended on `rbx contest summary`, and that table printed a time limit for every
+problem. Each of those numbers is the `timeLimit` its author typed into `problem.rbx.yml`
+on their own laptop, picked because it felt about right at the time. So we have three
+guesses, made on three different machines.
 
 The judge is none of those machines. Let's replace all three numbers with numbers measured
 for it.
 
 ## One limit per judge, not one per problem
 
-The limit a problem ships with is not a property of the problem. It's a property of the
-problem *on some hardware*, and a contest usually has at least two: the laptop you develop
-on, and the park that runs the event.
+A time limit isn't a property of the problem alone. It belongs to the problem *on some
+hardware*, and a contest usually involves at least two: the laptop you develop on, and the
+judge park (the machines that run the event).
 
 {{rbx}} keeps them apart in **limits profiles** -- a named set of limits stored in a file
 under `.limits/`, one per target:
@@ -37,23 +41,23 @@ problems/gardens/
 
 Notice `.limits/` sits *beside* `problem.rbx.yml`, inside the problem. There is no
 contest-level profile: every problem gets its own `.limits/boca.yml`, because every problem
-needs its own measurement. What's contest-wide here is the **name**, and keeping it
-identical across the set is the whole trick of this page.
+needs its own measurement. Only the **name** is contest-wide, and this page is about
+keeping it identical across the set.
 
 That name is not yours to invent. Each packager looks for a profile called after itself, so
 the profile that `rbx package boca` will read is the one named `boca` -- which is why we
-profile into that name now, several steps before packaging comes up in
+profile into that name now, one page before packaging comes up in
 [Packaging a problem](/setters/packaging-walkthrough).
 
 !!! info
-    What a profile holds, every command that reads one, and the profiles that *don't*
+    What a profile contains, every command that reads one, and the profiles that *don't*
     measure anything (`inheritFromPackage`) are covered in
     [Limits profiles](/setters/profiling/profiles).
 
 ## Profiling one problem
 
-Let's do `B` first, by hand, because the numbers are worth understanding once before you
-let them be produced unattended.
+Let's do `B` first, by hand, so you understand the numbers before letting {{rbx}}
+produce them unattended.
 
 ```bash
 cd problems/gardens
@@ -62,17 +66,17 @@ rbx time -p boca
 
 {{ asciinema("contest-time-profile") }}
 
-The command opens on the limits `gardens` carries today -- `1000 ms`, straight out of its
-`problem.rbx.yml` -- and then asks how you want the new limit defined. The highlighted
+The command first shows the current limits of `gardens` (`1000 ms`, read from its
+`problem.rbx.yml`), and then asks how you want the new limit defined. The highlighted
 default is the one we want: measure the accepted solutions and apply the rules the
 environment configures.
 
-Then the run goes quiet for a while. {{rbx}} is timing both accepted solutions before it
-has anything to bucket, so the **language-group screen only appears once the run reports
-are done**. That gap is measurement, not a stall.
+Then nothing new appears on screen for a while. {{rbx}} is timing both accepted solutions
+before it has anything to bucket, so the **language-group screen only appears once the run
+reports are done**. The command hasn't stalled; it's measuring.
 
 The screen that follows asks how to group the languages. Take the default here -- pressing
-++enter++ accepts it -- and read the table it settles on. `gardens` lands on a `timeLimit`
+++enter++ accepts it -- and read the resulting table. `gardens` gets a `timeLimit`
 of `100`, and the `java, kt` row reads `×2.0 of cpp` against a count of zero solutions:
 that limit came from a rule in the environment rather than from anything measured, because
 `gardens` has no Java solution to measure. The `(base)` row above it is the limit for
@@ -101,7 +105,7 @@ against is still a guess.
     In this problem the C++ solution runs in under `30 ms` and the Python one in under
     `50 ms`, the environment asks for twice the slowest accepted solution, and the result
     rounds up to the nearest `100 ms`. The `1000` was the author's guess; the `100` is a
-    measurement. Your own problems will land wherever *their* solutions land.
+    measurement. Your own problems will get whatever limit *their* solutions call for.
 
 ## Reading the profile you got
 
@@ -111,7 +115,7 @@ The estimate is a file, and you can open it:
 head -18 .limits/boca.yml
 ```
 
-The head of it is the part you'll actually read -- the limit, the per-language `modifiers`
+The top of the file is the part you'll read: the limit, the per-language `modifiers`
 that express the grouping, and the `multipliers` ratios it was estimated under:
 
 ```yaml title=".limits/boca.yml"
@@ -134,15 +138,14 @@ or derived by `multiplier` from another group, how many solutions it was drawn f
 what the upper-bound check found. That record is written **for** you. Read it when a number
 surprises you; don't hand-maintain it, because the next `rbx time` rewrites it wholesale.
 
-The two things worth editing by hand are the limits themselves. If you know something the
-measurement can't (the judge park is being replaced next month, or a language's solutions in
-this problem are unrepresentative), set `timeLimit` or a `modifiers` entry directly and the
-file stands. Re-running `rbx time -p boca` overwrites it, which is the point: a
-hand-edit is a decision you're making until the next measurement, not a permanent one.
+You can edit the limits themselves by hand. Maybe the judge park is being replaced next
+month, or a language's solutions in this problem are unrepresentative. In cases like
+these, set `timeLimit` or a `modifiers` entry directly, and {{rbx}} uses your value until
+you re-run `rbx time -p boca`, which overwrites it.
 
 ## The rest of the contest
 
-`gardens` is done. Two problems to go, and neither needs you to sit through a strategy menu
+`gardens` is done. The other two problems don't need you to sit through a strategy menu
 again, so let's stop answering prompts. Back at the contest root:
 
 ```bash
@@ -152,29 +155,28 @@ rbx each time -p boca --auto
 {{ asciinema("contest-time-sweep") }}
 
 `--auto` skips **both** questions: it takes the environment's configured strategy, and it
-takes the environment's own language partition instead of opening the picker. That's the
-trade this page is built around: go interactive once, on one problem, until you understand
-what the numbers mean, then run the whole set unattended.
+takes the environment's own language partition instead of opening the picker. This is the
+approach we recommend: profile one problem interactively until you understand the numbers,
+then run the whole set unattended.
 
 `rbx each` opens the command app: a sidebar listing every problem on the left, the selected
-problem's output on the right. Three things about it are worth knowing before you watch it
-work.
+problem's output on the right. A few things to know before you watch it run:
 
 - **The pane does not follow the sweep.** The selection stays on `A` from start to finish.
-  `B` and `C` announce themselves only by their sidebar marks turning from a ring into a
-  tick. Move between them with the arrow keys; each tab keeps its own scrollback, already
-  scrolled to the end of its run, so nothing is lost by having looked elsewhere.
+  You only see `B` and `C` finish when their sidebar marks turn from a ring into a
+  tick. Move between them with the arrow keys. Each tab has its own scrollback, already
+  scrolled to the end of its run, so you lose nothing by looking elsewhere.
 - **The app doesn't exit when the sweep finishes.** It sits there. Press ++q++ to quit.
 - **A failure in one problem doesn't stop the others.** Every problem runs; the ones that
   broke are the ones with a red mark when it's over.
 
-The pane is still on `A`, so compare it against `B`. `chocolate` declares no solution as too slow, so
-there is no upper bound to derive and no upper bound to check -- its report simply ends
-after the limits table, with no "confirmed too slow" line. That absence is the *healthy*
-outcome for a problem shaped like that, not a step that failed silently -- worth knowing,
-because the ratios it prints still recite the upper-bound rule that, here, nothing triggers.
+The pane is still on `A`, so compare it against `B`. `chocolate` doesn't declare any
+solution as too slow, so there is no upper bound to derive or check, and its report ends
+after the limits table, with no "confirmed too slow" line. For a problem like this, that's
+the *expected* outcome, and no step failed silently. The ratios it prints still mention the
+upper-bound rule, even though nothing triggers it here.
 
-Three files exist now, one per problem:
+There is now one file per problem:
 
 ```
 problems/chocolate/.limits/boca.yml
@@ -189,8 +191,8 @@ rbx on A,C time -p boca --auto   # two problems, in the command app
 rbx on B time -p boca --auto     # one problem, straight in your terminal
 ```
 
-A single problem is a single command, so {{rbx}} skips the app entirely and runs it in
-place. Two or more and you get the sidebar again.
+With one problem there is only one command to run, so {{rbx}} skips the app and runs it in
+place. With two or more, you get the sidebar again.
 
 `-i` (`--inline`) makes that the rule rather than the exception. It runs every problem's
 chain straight in your terminal, one after another, printing which command is running for
@@ -201,10 +203,10 @@ rbx on -i A,C time -p boca --auto
 rbx each --inline time -p boca --auto
 ```
 
-You lose the sidebar and the per-problem scrollback, and you get plain, scrollable output
-you can pipe or read in a log -- plus an exit code that is non-zero if any command failed.
-That makes it the mode to reach for over a handful of problems, and the one to use from a
-script or any other tool that can't answer a TUI.
+You give up the sidebar and the per-problem scrollback; in return you get plain output you
+can pipe or keep in a log, and a non-zero exit code if any command failed. Use it when
+you're working on a few problems, and from a script or any other tool that can't drive a
+TUI.
 
 !!! tip
     `-k` (`--keep-going`) keeps a problem's chain running after one of its commands fails.
@@ -212,10 +214,10 @@ script or any other tool that can't answer a TUI.
     command it wraps -- and before the problem selector too, on `rbx on`:
     `rbx on -k A,C time -p boca --auto`.
 
-## Read the three numbers together
+## Reading the three numbers together
 
-The sweep wrote a `.limits/boca.yml` into each problem, and the command Step 1 ended on
-is the place to read them side by side:
+The sweep wrote a `.limits/boca.yml` into each problem, and the command the scaffolding
+page ended on is the place to read them side by side:
 
 ```bash
 rbx contest summary
@@ -227,12 +229,12 @@ typed. Below it there is now one extra table per profile any problem saved, so a
 A problem the sweep skipped shows up there too, dimmed, under its package limits: that is
 the fallback packaging would use, and the dimming is the reminder that nobody measured it.
 
-A time limit followed by `*` is one that differs between languages -- the group picker
-gave some language more time than the base, so the single figure in the cell is the base
-and not the whole story. `rbx summary --detailed` inside that problem lists the
-per-language limits.
+In the summary, `*` means something else: a time limit followed by it is one that differs
+between languages. The group picker gave some language more time than the base, and the
+figure in the cell is only the base limit. `rbx summary --detailed` inside that problem
+lists the per-language limits.
 
-## Verify under the limits you just wrote
+## Verifying under the new limits
 
 New limits are a new judgment on every solution you have, and the fastest way to find out
 whether they hold is to run against them:
@@ -242,28 +244,26 @@ rbx each run -p boca
 ```
 
 Same app, same three tabs, and this time every solution in the contest is judged under
-`.limits/boca.yml` rather than under `problem.rbx.yml`. What you want is what you had
-before profiling: every solution getting the outcome it declares.
+`.limits/boca.yml` rather than under `problem.rbx.yml`. As before profiling, every
+solution should get the outcome it declares.
 
-An {{tags.accepted}} solution that now fails is the interesting case, and it means the
-limit is tighter than that solution can live with. Two ways out, and they are genuinely
-different decisions:
+If an {{tags.accepted}} solution now fails, the limit is too tight for it. You can fix this
+in one of two ways, and they mean different things:
 
 - **Re-profile.** If the machine was loaded, or the solution changed since the estimate,
   the measurement was bad. Run `rbx time -p boca` again -- and see
   [running each solution several times](/setters/profiling/estimating#running-each-solution-several-times)
-  for the flag that makes a noisy machine's samples usable.
+  for the flag that makes samples from a machine with unstable timings usable.
 - **Raise that language's limit.** If the measurement was fine and the language is simply
   slower than its group's estimate allows for, the grouping is what's wrong. Bump its
   `modifiers` entry, or regroup it in the picker.
 
-What you should *not* do is widen the base limit until the failure goes away. The
-upper-bound check exists to catch exactly that, and it will.
+Don't keep widening the base limit until the failure goes away. The upper-bound check
+exists to catch exactly that, and it will.
 
-## Make it stick
+## Committing the profiles
 
-A profile is only worth measuring if it survives the walk from your machine to whoever
-builds the packages. Commit it:
+Whoever builds the packages needs the profile you measured, so commit it:
 
 ```bash
 git add problems/*/.limits/boca.yml
@@ -274,13 +274,15 @@ You won't have to fight `.gitignore` for it. The default preset's problem `.giti
 ignores one profile and one only:
 
 ```gitignore title="problems/gardens/.gitignore"
+# ...
 .limits/local.yml
+# ...
 ```
 
-That asymmetry is deliberate. `local` is the throwaway: measured on whichever laptop
-happened to run `rbx time`, meaningless to anyone else, and rewritten constantly. Every
-other profile is a claim about a real judge, and belongs in the repository the moment it's
-written. `boca.yml` is tracked from birth.
+The preset ignores `local` on purpose. It's measured on whichever laptop happened to
+run `rbx time`, so it means nothing to anyone else and gets rewritten all the time. Every
+other profile describes a real judge, and belongs in the repository as soon as it's
+written. `boca.yml` is tracked from the start.
 
 Which leaves the question of *where* you measured. A limit is a claim about hardware, so
 the honest place to run `rbx time` is the judging machine itself: log into it, clone the
@@ -289,14 +291,14 @@ enormously better than the number an author guessed, as long as you know which m
 profile is describing.
 
 !!! info
-    There's a third option for judges that expose their own CLI: `rbx time --runner` runs
-    the measurements **on the judge park** while you stay at your desk. It's MOJ-only
-    today, and needs judge access. See
+    There's a third option for some judges: `rbx time --runner` runs the measurements
+    **on the judge itself** while you stay at your desk. It supports MOJ and DOMjudge today
+    (not BOCA), and needs access to the judge. See
     [Measuring on the judge itself](/setters/profiling/remote).
 
 ## Next steps
 
-Every problem in the contest now carries limits measured for the judge, and the packagers
+Every problem in the contest now has limits measured for the judge, and the packagers
 know where to find them.
 
 <div class="grid cards" markdown>

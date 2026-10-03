@@ -11,8 +11,8 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | ---- | ------- |
 | Show help message | `rbx --help` |
 | Show the installed version | `rbx --version` |
-| Open {{rbx}} configuration for editing | `rbx config edit` |
-| Create a new package in folder `package` [:material-open-in-new:](/setters/first-steps) | `rbx create` |
+| Open the setter configuration | `rbx config edit` |
+| Create a new problem (prompts for its name) [:material-open-in-new:](/setters/first-steps) | `rbx create` |
 | Compile a file given its path | `rbx compile my/file.cpp` |
 | Compile every asset of the package | `rbx compile -a` |
 | Compile a file with extra compiler flags | `rbx compile my/file.cpp -- -DLOCAL -g` |
@@ -26,21 +26,21 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | Print the expanded variables of the problem [:material-open-in-new:](/setters/variables#seeing-the-expanded-values) | `rbx vars` |
 | Print the expanded variables as JSON | `rbx vars --json` |
 | Print what statement expressions read from stdin render to [:material-open-in-new:](/setters/variables#seeing-the-expanded-values) | `rbx vars --render` |
-| Use dynamic timing to estimate time limits [:material-open-in-new:](/setters/profiling) | `rbx time` |
-| Estimate time limits skipping the language picker [:material-open-in-new:](/setters/profiling#language-groups) | `rbx time -a` |
-| Estimate limits and write them into a profile [:material-open-in-new:](/setters/profiling#limits-profiles) | `rbx time -p icpc -i` |
+| Estimate a time limit [:material-open-in-new:](/setters/profiling) | `rbx time` |
+| Estimate time limits skipping the language picker [:material-open-in-new:](/setters/profiling/language-groups) | `rbx time -a` |
+| Estimate limits into a named profile [:material-open-in-new:](/setters/profiling/profiles) | `rbx time -p icpc` |
+| Copy a profile's limits into `problem.rbx.yml` [:material-open-in-new:](/setters/profiling/profiles#integrating-a-profile-into-the-package) | `rbx time -i -p icpc` |
 | Run all solutions and check their tags [:material-open-in-new:](/setters/running) | `rbx run` |
 | Run all solutions with sanitizer | `rbx run -s` |
-| Run all solutions with dynamic timing | `rbx run -t` |
 | Run all solutions except the slow ones [:material-open-in-new:](/setters/verification#verification-level) | `rbx run -v2` |
 | Run all solutions without checking [:material-open-in-new:](/setters/grading/checkers) | `rbx run --no-check` |
 | Run a single solution [:material-open-in-new:](/setters/running#running-solutions-on-the-whole-testset) | `rbx run sols/my-solution.cpp` |
 | Run only the main solution | `rbx run @main` |
 | Choose solutions and run | `rbx run -c` |
 | Run only the solutions expected to be too slow | `rbx run -o tle` |
-| Run only the solutions carrying a [tag](#tag-a-solution) | `rbx run --tag brute-force` |
+| Run only the solutions with a [tag](#tag-a-solution) | `rbx run --tag brute-force` |
 | Stop a solution at its first non-accepted verdict [:material-open-in-new:](/setters/running#failing-fast) | `rbx run --ff` |
-| Run against a timing profile [:material-open-in-new:](/setters/profiling#using-profiles-when-running-solutions) | `rbx run -p icpc` |
+| Run against a limits profile [:material-open-in-new:](/setters/profiling/profiles#running-solutions-against-a-profile) | `rbx run -p icpc` |
 | Report how long the checker spent judging [:material-open-in-new:](/setters/running#benchmarking-the-judging-time) | `rbx run -b1` |
 | Copy the run report to the clipboard [:material-open-in-new:](/setters/running#sharing-a-report) | `rbx run --share png` |
 | Run a submission downloaded from {{boca}} | `rbx run @boca/123` |
@@ -48,14 +48,14 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | Run all solutions interactively [:material-open-in-new:](/setters/running#running-tests-with-custom-inputs) | `rbx irun` |
 | Choose solutions and run interactively | `rbx irun -c` |
 | Run solutions in a single testcase | `rbx irun -t samples/0` |
-| Run solutions in a generator testcase [:material-open-in-new:](/setters/testset/generators#generator-call) | `rbx irun -g gen 5 10` |
+| Run solutions in a generator testcase [:material-open-in-new:](/setters/testset/generators#generator-call) | `rbx irun -g "gen 5 10"` |
 | Run interactively and print the outputs | `rbx irun -p` |
 | Print the outputs with stderr interleaved | `rbx irun -p -e` |
 | Interactively visualize outputs of a recent run [:material-open-in-new:](/setters/testset/visualizers) | `rbx ui` |
 | Run the validator interactively [:material-open-in-new:](/setters/verification/validators) | `rbx validate` |
 | Run the validator over an existing test | `rbx validate -p tests/manual/000.in` |
 | Run a stress test with name `break` [:material-open-in-new:](/setters/stress-testing) | `rbx stress break` |
-| Run a stress test for a generator [:material-open-in-new:](/setters/stress-testing#running-a-stress-test) | `rbx stress gen -g "[1..10]" -f "[sols/main.cpp ~ INCORRECT]"` |
+| Run a stress test for a generator [:material-open-in-new:](/setters/stress-testing#running-a-stress-test) | `rbx stress -g "gen [1..10] @" -f "[sols/main.cpp] ~ INCORRECT"` |
 | Run unit tests for validator and checker [:material-open-in-new:](/setters/verification/unit-tests) | `rbx unit` |
 | Download all libraries declared by the preset [:material-open-in-new:](/setters/presets#libraries) | `rbx download lib` |
 | Download {{testlib}} to the current folder [:material-open-in-new:](/setters/testset/generators) | `rbx download testlib` |
@@ -68,7 +68,7 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | Build all statements [:material-open-in-new:](/setters/statements) | `rbx statements build` |
 | Build a specific variant [:material-open-in-new:](/setters/statements#keeping-two-recipes-for-one-language) | `rbx statements build <variant>` |
 | Build statements for English [:material-open-in-new:](/setters/statements#building-only-some-languages) | `rbx statements build --languages en` |
-| Build statements against a timing profile [:material-open-in-new:](/setters/statements#rendering-against-a-timing-profile) | `rbx statements build -p icpc` |
+| Build statements against a limits profile [:material-open-in-new:](/setters/statements#rendering-against-a-timing-profile) | `rbx statements build -p icpc` |
 | Build statements without samples | `rbx statements build --no-samples` |
 | Build all tutorials (editorials) [:material-open-in-new:](/setters/statements/tutorials) | `rbx tutorials build` |
 | Package problem for {{polygon}} [:material-open-in-new:](/setters/packaging/polygon) | `rbx package polygon` |
@@ -87,19 +87,19 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | ----------------------------------------------- | ------------------------------------- |
 | Show help message                               | `rbx contest --help`                  |
 | Create a new contest                            | `rbx contest create`                  |
-| Add a new problem to the contest with letter A  | `rbx contest add`                     |
+| Add a new problem (prompts for folder and letter) | `rbx contest add`                     |
 | Remove a problem from the contest               | `rbx contest remove A`                |
-| Remove a problem at a certain path              | `rbx contest remove path/to/problem`  |
+| Remove a problem by its path                    | `rbx contest remove path/to/problem`  |
 | Open the contest configuration in a text editor | `rbx contest edit`                    |
 | Build all statements                            | `rbx contest statements build`        |
 | Build a specific statement                      | `rbx contest statements build <name>` |
 | Build statements for English                    | `rbx contest statements build --languages en` |
-| Build statements against a timing profile       | `rbx contest statements build -p icpc` |
+| Build statements against a limits profile       | `rbx contest statements build -p icpc` |
 | Build all tutorials (editorials)                | `rbx contest tutorials build`         |
 | Package contest for {{polygon}}                 | `rbx contest package polygon`         |
 | Package contest for {{boca}}                    | `rbx contest package boca`            |
 | Build each problem in the contest               | `rbx contest each build`              |
-| Build each problem, not stopping at failures    | `rbx contest each -k build`           |
+| Keep running a problem's chain after a failure  | `rbx contest each -k build :: run`    |
 | Package each problem in the contest             | `rbx contest each package boca`       |
 | Build problem A in the contest                  | `rbx contest on A build`              |
 | Build a problem by name, alias or folder        | `rbx contest on knapsack build`       |
@@ -152,7 +152,7 @@ modifiers:
     time: 5000  # Override time for Java
 ```
 
-### Add testlib assets
+### Add {{testlib}} assets
 
 #### Set a built-in {{testlib}} checker
 
@@ -166,7 +166,7 @@ checker:
 ```
 
 !!! tip
-    Find [here](https://github.com/MikeMirzayanov/testlib/tree/master/checkers) a full list of existing built-in {{testlib}} checkers.
+    The [{{testlib}} checkers folder](https://github.com/MikeMirzayanov/testlib/tree/master/checkers) has the full list of built-in checkers.
 
 #### Set a custom checker
 
@@ -175,7 +175,7 @@ checker:
   path: "my-checker.cpp"
 ```
 
-See [here](https://codeforces.com/blog/entry/18431) how to write a custom {{testlib}} checker.
+See [how to write a {{testlib}} checker](https://codeforces.com/blog/entry/18431) on {{codeforces}}.
 
 #### Add a generator
 
@@ -188,7 +188,7 @@ generators:
     path: "my-gen.cpp"
 ```
 
-See [here](https://codeforces.com/blog/entry/18291) how to write a {{testlib}}-based generator.
+See [how to write a {{testlib}} generator](https://codeforces.com/blog/entry/18291) on {{codeforces}}.
 
 !!! tip
     To actually generate tests with this new generator, you have to add testcase groups
@@ -198,10 +198,10 @@ See [here](https://codeforces.com/blog/entry/18291) how to write a {{testlib}}-b
 
 ```yaml
 validator:
-  path: 'my-validator.cpp`
+  path: 'my-validator.cpp'
 ```
 
-See [here](https://codeforces.com/blog/entry/18426) how to write a {{testlib}}-based validator.
+See [how to write a {{testlib}} validator](https://codeforces.com/blog/entry/18426) on {{codeforces}}.
 
 #### Set an interactor
 
@@ -210,11 +210,11 @@ interactor:
   path: 'my-interactor.cpp'
 ```
 
-See [here](https://codeforces.com/blog/entry/18455) how to write a {{testlib}}-based interactor.
+See [how to write a {{testlib}} interactor](https://codeforces.com/blog/entry/18455) on {{codeforces}}.
 
 ### Add a new solution
 
-Implement your solution (for instance, a wrong solution in `sols/my-wa-solution.cpp`) and add it to the `solutions` field.
+Write your solution (for instance, a wrong solution in `sols/my-wa-solution.cpp`) and add it to the `solutions` field.
 
 ```yaml
 solutions:
@@ -222,7 +222,7 @@ solutions:
     outcome: WRONG_ANSWER
 ```
 
-You can see the list of possible expected outcomes [here][rbx.box.schema.ExpectedOutcome].
+See the [list of expected outcomes][rbx.box.schema.ExpectedOutcome].
 
 #### Tag a solution
 
@@ -362,11 +362,12 @@ vars:
 
 #### Use variables
 
-=== "In testlib components"
+=== "In C++ components"
     ```cpp
+    #include "testlib.h"
     #include "rbx.h"
 
-    int32_t main() {
+    int main(int argc, char *argv[]) {
       registerValidation(argc, argv);
 
       int MIN_N = getVar<int>("N.min"); // Read from package vars.
@@ -402,7 +403,7 @@ statements:
 
 2. Free-form values passed to the template as `params.*`.
 
-3. Extra globs shipped alongside the statement on export (e.g. to {{polygon}}); files next to `file` are staged automatically.
+3. Extra globs shipped alongside the statement on export (for example, to {{polygon}}); files next to `file` are staged automatically.
 
 #### Reuse another statement with `extends`
 
@@ -463,7 +464,7 @@ stresses:
     finder: "[sols/my-potentially-slow-sol.cpp] ~ TLE"
 ```
 
-1. The `@` at the end of the `args` string appends a random string to it. This is necessary here because `gen 100000` would return the same testcase over and over, since {{testlib}} rng is seeded from its command line argc and argv.
+1. The `@` at the end of the `args` string appends a random string to it. This is necessary here because `gen 1000000` would return the same testcase over and over, since {{testlib}} rng is seeded from its command line argc and argv.
 
 ### Add unit tests
 
@@ -488,7 +489,7 @@ unitTests:
 
 ## `contest.rbx.yml`
 
-A contest is a roster of problems plus the chrome that wraps them. The problems keep living in
+A contest is a roster of problems plus the chrome that wraps them. The problems stay in
 their own folders, each with its own `problem.rbx.yml`; the contest file only says which ones are
 in, in which order, and how the joined book is built. The [Contest CLI](#contest-cli) table above
 lists the commands that act on it, and the [contest reference](reference/contest/index.md) has the
@@ -523,7 +524,7 @@ problems:
     The order of this list is the order of the contest.
 
 2. Path to the problem, relative to the contest folder. Defaults to `./{short_name}/`, so a
-    problem living in `A/` needs no `path` at all.
+    problem in `A/` needs no `path`.
 
 3. Optional. A hex color or an [X11 color name](https://en.wikipedia.org/wiki/X11_color_names),
     used for balloons and in statements.
@@ -539,8 +540,8 @@ for the full selector syntax, including ranges and exclusions.
 
 ### Add a contest statement
 
-Contest statements are keyed by `name`, and each one owns the templates used to render the
-problems inside it. See [contest statements](statements/contest.md).
+Contest statements are keyed by `name`, and each one defines the templates used to render
+the problems inside it. See [contest statements](statements/contest.md).
 
 ```yaml
 statements:
@@ -552,8 +553,8 @@ statements:
     params: { show_limits: true }                  # (5)!
 ```
 
-1. Required, and unique within the contest. It names the output PDF and is what you pass to
-    `rbx contest statements build main-en`.
+1. Required, and unique within the contest. It sets the name of the output PDF and is what you
+    pass to `rbx contest statements build main-en`.
 
 2. The joining document, the one that iterates over the problems.
 
@@ -579,9 +580,10 @@ statements:
 ```
 
 1. Contest statements extend **by `name`**, not by language. `main-pt` inherits the build recipe
-    -- `type`, `params`, `assets` and both templates -- and keeps its own identity.
+    -- `type`, `params`, `assets` and both templates -- and keeps its own `name` and `language`.
 
-2. Everything not spelled out here is inherited.
+2. Any recipe field not spelled out here (`type`, `assets`, `params` and both templates) is
+    inherited. `language` is not, so always set it.
 
 ### Add a tutorial (editorial)
 
@@ -626,8 +628,8 @@ vars:
   location: "Porto, Portugal"
 ```
 
-Contest variables sit one level down from the problem's own, so a template reaches them as
-`\VAR{contest.vars.year}` while plain `\VAR{vars.year}` still means the problem's. See
+Contest variables are nested one level down from the problem's own: a template reads them as
+`\VAR{contest.vars.year}`, while plain `\VAR{vars.year}` still means the problem's. See
 [template context](statements/context.md).
 
 ### Split the contest into variants
@@ -648,9 +650,9 @@ put each real contest in a sibling file.
         path: "../easy-problem"
     ```
 
-1. A sentinel: with `use_variants` on, no other field may be set in this file. You can also skip
-    it and keep a real contest here, in which case that one is the default and the siblings are
-    extra variants.
+1. With `use_variants` on, this file only dispatches and can't set any other field. You can also
+    leave `use_variants` out and keep a real contest here, in which case that one is the default
+    and the siblings are extra variants.
 
 2. Each `contest.<id>.rbx.yml` is a full contest. Select one with `rbx -C div2 ...` or
     `RBX_CONTEST=div2`, and scaffold one with `rbx contest add_variant div2`. A selected
@@ -658,15 +660,15 @@ put each real contest in a sibling file.
 
 ## `env.rbx.yml`
 
-The environment is installed globally, not carried inside the package, so it is shared by every
-problem you work on. The sections below are ordered by how often you will touch them.
+The environment comes from the package's preset: `.local.rbx/env.rbx.yml` for a package made
+with `rbx create`. Without a preset, {{rbx}} uses its global default. `rbx environment` prints
+which one is in use and where it lives. The sections below are ordered by how often you will
+touch them.
 
 | Task                                       | Command                                 |
 | ------------------------------------------ | --------------------------------------- |
 | Show which environment is in use           | `rbx environment`                       |
-| Install an environment from a file         | `rbx environment my-env -i env.rbx.yml` |
-| Switch to another installed environment    | `rbx environment my-env`                |
-| List the languages the environment defines | `rbx languages`                         |
+| List all languages available in the environment | `rbx languages`                    |
 
 ### Change how time limits are estimated
 
@@ -701,7 +703,7 @@ timing:
   inferenceTimeout: 20000  # (1)!
 ```
 
-1. In milliseconds; defaults to 10s. An accepted solution that hits it is an error.
+1. In milliseconds; defaults to 10 seconds. An accepted solution that hits it is an error.
 
 #### Estimate a separate limit per group of languages
 
@@ -717,7 +719,7 @@ timing:
 1. Used only when the group has no solutions: 3x the limit of the group holding `cpp`.
    Add `increment: 500` for a constant offset, in milliseconds.
 
-   Languages in no group share a single leftover pool.
+   Languages in no group share one leftover pool.
 
 #### Give slow languages more wall time
 
@@ -736,7 +738,7 @@ languages:
 
 ### Raise the sandbox limits
 
-Bounds the programs that carry no limits of their own — compilers, checkers, validators,
+Bounds the programs that have no limits of their own: compilers, checkers, validators and
 generators. Raise them on a slow machine.
 
 ```yaml
@@ -783,7 +785,7 @@ languages:
         - "javac -Xlint -encoding UTF-8 {compilable}"
         - "jar cvf {executable} @glob:*.class"  # (1)!
     execution:
-      command: "java -Xss100m -Xmx{{memory}}m -cp {executable} Main"
+      command: "java -Xss100m -Xmx{memory}m -cp {executable} Main"
     fileMapping:  # (2)!
       compilable: "Main.java"
       executable: "Main.jar"
@@ -825,7 +827,7 @@ languages:
 1. Shorthand form: applies to every asset kind the linter supports.
 2. Full form: `applies_to` restricts the linter to specific asset kinds.
 
-Warnings are surfaced; errors abort the build. To silence a linter for a whole file:
+Warnings are surfaced; errors abort the build. To turn off a linter for a whole file:
 
 ```cpp
 // testlib-linter: disable

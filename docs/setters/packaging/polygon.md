@@ -35,13 +35,15 @@ This command will build a single `.zip` file with all problems in the contest.
 
 ## Uploading to Codeforces Gym
 
-There are two totally different ways of uploading Polygon packages to Codeforces Gym.
+There are two ways to get Polygon packages into the Codeforces Gym: through the Polygon API, or
+by uploading a contest package to the Taskbook FTP.
 
 ### Using the Polygon API
 
-You can also upload your problem packages to Polygon, gather them into a Polygon contest, and import them in the Gym.
+Upload your problems to Polygon, gather them into a Polygon contest, and import them in the Gym.
 
-This is a process that is a bit more complicated, and has a few limitations, but that usually gives you a better result.
+This is a process that is a bit more complicated, and has a few
+[limitations](#limitations-of-the-api), but that usually gives you a better result.
 The pros of using this method are:
 
 - You'll get a Polygon problem instance for each problem in your contest. This means you can access the problem in Polygon,
@@ -67,8 +69,17 @@ export POLYGON_API_SECRET=<your-api-secret>
 rbx contest each package polygon -u
 ```
 
+Feel free to keep those variables in your `.bashrc` (or equivalent in other shells) file if you want.
+
+This will create a Polygon problem for each problem in your contest following the pattern `<contest-name>-<problem-shortname>-<problem-name>` (example: `my-contest-a-my-problem` for a contest named `my-contest` with a problem named `my-problem` which has the letter `A`). A problem outside a contest is uploaded under its own name.
+
+This problem will contain the validator, checker, interactor, and any other files you added to the problem. The time and memory limits will also be synced with Polygon, but often it's a good idea to tune them manually in the Polygon interface.
+
+The statement blocks will also be uploaded to Polygon, along with all model solutions.
+
+Testcases are also uploaded. If your package uses generators, the generators are uploaded and the script is updated in Polygon to generate the tests. Manual tests (without generators) are uploaded as files.
+
 You can also use the `--upload-as-english` flag to force the main statement to be uploaded as the English statement in Polygon, regardless of its actual language. This is useful because Codeforces uses a different -- not so good -- LaTeX renderer for statements in languages other than English.
-Thus, it's often useful to use the English renderer regardless of the actual statement language.
 
 ```bash
 rbx contest each package polygon -u --upload-as-english
@@ -76,9 +87,9 @@ rbx contest each package polygon -u --upload-as-english
 
 #### Step 3: (Optional) Tune your time limits and statements to Polygon
 
-This is the optional part that we **highly recommend** following. There are two components in Polygon
-that might not work right out of the box when you upload your problem, and it's worth checking them
-and tuning them if necessary.
+This is the optional part that we **highly recommend** following. Time limits and statements
+might not work right out of the box when you upload your problem to Polygon, so check them
+and tune them if necessary.
 
 1. **Time limits**: The time limits might not work well in the Polygon machines. We recommend you to
    fire up a custom invocation in the *Invocations* section, and tune your time limit based on that
@@ -108,12 +119,12 @@ In the following page, paste the contest UID in Polygon, and click the button. Y
 
 #### Iterating on the Polygon problem
 
-You can always follow step (2) again in to update the problem in Polygon after doing modifications to it. Sometimes, though, this process is too slow, and you might want to use
+You can always repeat [Step 2](#step-2-upload-all-your-problems-to-polygon-using-the-api) to update the problem in Polygon after doing modifications to it. Sometimes, though, this process is too slow, and you might want to use
 faster methods.
 
-##### Partial Uploads
+##### Partial uploads
 
-If you want to upload only specific parts of the problem (e.g. only statements, or only source files), you can use the `--upload-only` flag. Conversely, if you want to skip certain parts, you can use `--upload-skip` (or `--dont-upload` internally, but exposed as skip).
+If you want to upload only specific parts of the problem (for example, only statements, or only source files), you can use the `--upload-only` flag. Conversely, if you want to skip some parts, you can use `--upload-skip`.
 
 Supported values are: `statements`, `solutions`, `tests`, `files`.
 
@@ -125,28 +136,17 @@ rbx contest each package polygon -u --upload-only statements --upload-only files
 rbx contest each package polygon -u --upload-skip tests
 ```
 
-Feel free to keep those variables in your `.bashrc` (or equivalent in other shells) file if you want.
-
-This will create a Polygon problem for each problem in your contest following the pattern `<contest-name>-<problem-shortname>-<problem-name>` (example: `my-contest-a-my-problem` for a contest named `my-contest` with a problem named `my-problem` which has the letter `A`).
-
-This problem will contain the validator, checker, interactor, and any other files you added to the problem. The time and memory limits will also be synced with Polygon, but often it's a good idea to tune them manually in the Polygon interface.
-
-The statement blocks will also be uploaded to Polygon, along with all model solutions. Solutions that are no longer present in the package will be removed from Polygon (marked as deleted).
-
-Testcases are also uploaded. If your package uses generators, the generators are uploaded and the script is updated in Polygon to generate the tests. Manual tests (without generators) are uploaded as files.
-
-
 ##### When Polygon throttles you
 
 An upload is a burst of API calls -- one per file, per test, per solution -- and Polygon
-limits how fast a single API key may call it. When you cross that limit, it starts
-answering with errors instead of results: an HTTP 429, an error page, or a plain
+limits how fast one API key may call it. Once you exceed that limit, it answers with errors
+instead of results: an HTTP 429, an error page, or a plain
 *"Too many requests. Please, wait a few seconds and try again."*
 
-{{rbx}} handles this for you. It spaces out its API calls, and whenever Polygon pushes
-back, it waits and tries the same call again -- widening the spacing between calls as it
-goes, so the rest of the upload proceeds more gently. You'll see a warning per retry, and
-the upload carries on where it left off. Real errors (a checker that doesn't compile, a
+{{rbx}} handles this for you. It spaces out its API calls, and whenever Polygon refuses
+one, it waits and retries the same call. Each retry also widens the spacing between the
+calls that follow. You'll see a warning per retry, and the upload continues from where it
+stopped. Real errors (a checker that doesn't compile, a
 problem you can't write to) are still reported immediately, without retrying.
 
 If your uploads still get throttled, you can make {{rbx}} slower and more patient through
@@ -164,10 +164,28 @@ these environment variables:
 RBX_POLYGON_MIN_INTERVAL=1 RBX_POLYGON_MAX_RETRIES=10 rbx contest each package polygon -u
 ```
 
+#### Limitations of the API
+
+The Polygon API has a few limitations. The main two, which have huge implications on how {{rbx}} uploads your problems, are:
+
+- The API doesn't allow you to remove solutions from a problem;
+- The API doesn't allow you to remove manual tests from a problem.
+
+So when you remove a manual test or a solution and re-upload, delete the old one in Polygon by
+hand. {{rbx}} will successfully replace every test index that still exists, and also the solutions that exist,
+but it won't do anything to remove old ones.
+
+Instead, {{rbx}} will just mark the removed solutions as deleted and ensure they're not run, but
+they'll still show in Polygon.
+
+Also notice that whenever you tune your time limits or statements in Polygon and re-issue an upload, those modifications
+you did will be overridden. You have to be extra careful with that. Preferably, you should replicate all your statement
+changes in {{rbx}} before uploading to Polygon.
+
 ### Using the Taskbook FTP (flaky)
 
 You can upload a contest package to Codeforces Gym by first building it with the command above, and then
-using the Codeforces Taskbook FTP (taskbook.codeforces.com) to upload your zip file to your contest.
+using the Codeforces Taskbook FTP (`taskbook.codeforces.com`) to upload your zip file to your contest.
 
 You can read more about the Taskbook by enabling coach mode, creating a new contest in the Gym, and looking
 at the "Coach mode on" section on the right side of the contest page. It will look like the image below:
@@ -185,28 +203,4 @@ Follow the instructions to upload your contest ZIP.
 
 !!! danger
     Quite often the Taskbook FTP will be down. It seems this endpoint is not very reliable anymore.
-    Refer to the option below, which is a bit more complicated but more reliable.
-
-#### Caveats
-
-!!! warning
-    The caveats in this section are probably the main reason you should consider using {{polygon}} directly
-    if your main goal is to hold a Gym contest.
-
-The Polygon API has a few limitations. The main two, which have huge implications on how {{rbx}} uploads your problems, are:
-
-- The API doesn't allow you to remove solutions from a problem;
-- The API doesn't allow you to remove manual tests from a problem.
-
-This means that, whenever you remove a few manual tests from a problem, or a solution, and re-upload, you have to manually
-get rid of them. {{rbx}} will successfully replace every test index that still exists, and also the solutions that exist,
-but it won't do anything to remove old ones.
-
-Instead, {{rbx}} will just mark the removed solutions as deleted and ensure they're not run, but
-they'll still show in Polygon.
-
-Also notice that whenever you tune your time limits or statements in Polygon and re-issue an upload, those modifications
-you did will be overridden. You have to be extra careful with that. Preferrably, you should replicate all your statement
-changes in {{rbx}} before uploading to Polygon.
-
-
+    Use the [Polygon API](#using-the-polygon-api) instead: more steps, but reliable.

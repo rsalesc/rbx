@@ -1,15 +1,15 @@
 # Statements
 
-A **statement** is the document a contestant reads: the story, the input and
-output format, the constraints, the samples. In {{rbx}} it is part of the
+A **statement** is the document a contestant reads, with the story, the input
+and output format, the constraints and the samples. In {{rbx}} it's part of the
 package, declared in `problem.rbx.yml` next to the solutions and the testset,
 and built into a PDF by a command.
 
 Think of the last contest you prepared without a tool like this. You lowered
 `N` from $10^9$ to $10^5$ two days before the contest, changed the validator,
-changed the generators, and forgot the statement. Or you had an English and a
-Portuguese version, and fixed a typo in one of them. Or you spent the last night
-pasting eight problems into a single `.tex` by hand, and the samples went stale
+changed the generators, and forgot the statement. Or the English PDF said 2
+seconds and the Portuguese one still said 1. Or you spent the last night
+pasting eight problems into one `.tex` by hand, and the samples went stale
 the moment someone regenerated the tests.
 
 {{rbx}} takes those three jobs off your hands. Constraints come from the same
@@ -17,9 +17,9 @@ the moment someone regenerated the tests.
 from the testset every time you build. And the contest book is assembled from
 the problems themselves, in as many languages as you declare.
 
-In the sections below, we'll build the mental model first, then walk through the
-commands, and finish with the flags you'll reach for once the basics are in
-place.
+In the sections below, we'll build a first statement, then cover the model behind
+it and the build commands, and finish with the flags you'll need once the basics
+work.
 
 ## Building your first statement
 
@@ -32,7 +32,7 @@ statements:
     file: statements/statement.rbx.tex
 ```
 
-And the file itself holds the content, in named **blocks**:
+The file has the content, split into named **blocks**:
 
 ```latex title="statements/statement.rbx.tex"
 %- block legend
@@ -49,7 +49,7 @@ A single line with the sum of $A$ and $B$.
 ```
 
 Notice there is no `\documentclass` in there, and no section titles. The blocks
-carry *what the problem says*; a template decides *how it looks*, and the
+hold *what the problem says*, and a template decides *how it looks*. The
 template is not your problem's business. Build it:
 
 <!--termynal-->
@@ -59,22 +59,22 @@ $ rbx statements build   # alias: rbx st b
 
 {{ asciinema("statement-build") }}
 
-The PDF lands in `build/statement-en.pdf`. The recording above runs the command
+{{rbx}} writes the PDF to `build/statement-en.pdf`. The recording above runs the command
 from inside problem `A` of a contest, which is why it builds two languages and
-picks up the contest's own layout; we get to [contest
-statements](contest.md) further down.
+picks up the contest's own layout. [Contest statements](contest.md) covers
+that.
 
 !!! tip
     Keep the sources and their images in a subdirectory such as `statements/`,
     so they don't clutter the package root.
 
-## What a statement is
+## Declaring a statement
 
-Under the hood, a statement is a `(language, variant)` source of some `type`,
-rendered to a PDF. Four fields carry all of it:
+A statement is a `(language, variant)` source of some `type`, rendered to a
+PDF. These fields define it:
 
-- **`language`** is an ISO 639-1 code (`en`, `pt`, ...). You declare **one entry
-  per `(language, variant)` pair**.
+- **`language`** is an ISO 639-1 code (`en`, `pt`, ...) that defaults to `en`.
+  You declare **one entry per `(language, variant)` pair**.
 - **`variant`** is an optional label that defaults to `default`. It lets you keep
   more than one recipe for the same language, and we come back to it
   [below](#keeping-two-recipes-for-one-language).
@@ -86,31 +86,19 @@ Everything else is optional.
 
 !!! info
     See the [package schema](../reference/package/schema.md) for the exhaustive
-    field list. This guide covers what you reach for; the schema covers
-    everything.
-
-## Where statements are declared
+    field list. This guide covers the fields you use most often.
 
 Problem statements live in `problem.rbx.yml`, keyed only by `(language,
-variant)`:
+variant)`, and have **no `name`**. The entry in [Building your first
+statement](#building-your-first-statement) is already complete: it omits
+`type` and `variant` and takes their defaults. That's all a problem needs: a
+file per entry, plus a language when it isn't English.
 
-```yaml title="problem.rbx.yml"
-statements:
-  - language: en
-    file: statements/statement-en.rbx.tex # (1)!
-  - language: pt
-    file: statements/statement-pt.rbx.tex
-```
-
-1.  The source file, relative to the package root. `type` defaults to `rbx-tex`
-    and `variant` defaults to `default`, so both are omitted. Problem statements
-    have **no `name`**.
-
-That is the whole problem side: point at a file, name a language.
-
-Contest statements live in `contest.rbx.yml` instead. They carry everything a
-problem statement does, plus the templates that wrap each problem into the book,
-because the contest owns the chrome:
+Contest statements live in `contest.rbx.yml` instead. They have every field a
+problem statement has, plus the templates that wrap each problem into the book.
+That's because the contest defines the **chrome**: the document setup, styling
+and cover pages around the problems. Here's a contest statement that declares
+both templates:
 
 ```yaml title="contest.rbx.yml"
 statements:
@@ -121,28 +109,31 @@ statements:
     contestProblemTemplate: statements/problem-in-contest.rbx.tex # (4)!
 ```
 
-1.  Contest statements and documents **require** a `name`. It identifies the
-    entry and keys the output PDF.
+1.  Every contest entry (statements, tutorials and documents) **requires** a
+    `name`. It identifies the entry and keys the output PDF.
 2.  The joining document, which is the contest book itself.
 3.  Full-document template used to render each problem on its own (`rbx st b`).
 4.  Fragment template used when problems are joined into the book
     (`rbx contest st b`).
 
-Those two templates are where contest statements get interesting, and
-[Contest statements](contest.md) walks through both of them.
+!!! note "Building without a contest template"
+    Run `rbx st b` with no contest, or with no matching standalone template, and
+    {{rbx}} falls back to a bundled default template and **warns**. It won't fail
+    on you.
 
-## The three kinds
+[Contest statements](contest.md) explains both templates in detail.
+
+## Statements, tutorials and documents
 
 A contest build stitches every problem's statement into one booklet: a cover,
 then problem A, then B, and so on. That stitching is the **join**. Some kinds of
 statement take part in it and one does not.
 
-The one that does not is a **document**: a contest-only page that stands on its
-own and never pulls in a problem's statement. It is how you make the extra pages
-a contest needs but a single problem cannot produce, such as an infosheet with
-every problem's limits, or a cover page. A **tutorial**, meanwhile, is an
-editorial: the write-up explaining how to *solve* a problem rather than how to
-read it.
+The one that doesn't is a **document**, a contest-only page that never pulls
+in a problem's statement. Use documents for pages that belong to the contest as
+a whole, like a cover page or an infosheet with every problem's limits. A
+**tutorial** is an editorial, the write-up that explains how to *solve* a
+problem.
 
 Each of the three is its own list:
 
@@ -152,28 +143,27 @@ Each of the three is its own list:
 | `tutorials`  | problem + contest | yes                      | editorials                    |
 | `documents`  | contest only      | no                       | infosheets, cover pages       |
 
-Notice that `statements` and `tutorials` are the same thing under the hood. Same
-source model, same build pipeline. They live in different lists and produce
-differently named PDFs, and that is the extent of it.
+Notice that `statements` and `tutorials` work the same way. They share the
+source model and the build pipeline, and only differ in which list they're
+declared in and how their PDFs are named.
 
 ## Formats at a glance
 
-You pick one `type` per statement, and the choice matters: only the `rbx-*`
-types carry blocks and can **join** into a contest book. The rest are simpler
-passthroughs.
+You pick one `type` per statement. Only the `rbx-*` types have blocks and can
+**join** into a contest book. The rest are simpler passthroughs.
 
 | `type`      | When to use                                      | Joins? |
 | ----------- | ------------------------------------------------ | ------ |
 | `rbx-tex`   | **Default.** {{latex}} with blocks + {{Jinja2}}. | yes    |
 | `rbx-md`    | Markdown with blocks + {{Jinja2}}.               | yes    |
-| `jinja-tex` | {{latex}} with {{Jinja2}} only, no blocks.       | no     |
-| `jinja-md`  | Markdown with {{Jinja2}} only.                   | no     |
+| `jinja-tex` | {{latex}} with {{Jinja2}}, no blocks. Jinja runs only in contest-level entries (documents, or a contest statement of this type). | no |
+| `jinja-md`  | Markdown with {{Jinja2}} only. Jinja runs only in contest-level entries (documents, or a contest statement of this type). | no |
 | `tex`       | Plain {{latex}}, passed through untouched.       | no     |
 | `md`        | Plain Markdown, passed through untouched.        | no     |
 | `pdf`       | A pre-built PDF, copied through as-is.           | no     |
 
 [Writing in a format other than rbxTeX](writing.md#writing-in-a-format-other-than-rbxtex)
-covers when each one earns its place.
+covers when to use each one.
 
 !!! note
     `type` is case- and hyphen-insensitive, and you can omit it entirely for the
@@ -196,18 +186,14 @@ $ rbx contest statements build  # alias: rbx contest st b
 $ rbx tutorials build           # alias: rbx tut b
 ```
 
-Built PDFs land in the `build/` directory:
+Built PDFs go to the `build/` directory:
 
 - **Standalone**: `build/statement-<lang>[-<variant>][-<profile>].pdf`, and
   tutorials use `build/tutorial-…`.
 - **Contest**: `build/<statement-name>[-<profile>].pdf`, keyed by the contest
   statement's `name`, **not** by its language.
 
-## The pipeline
-
-Whatever the format, every statement flows through the same pipeline on its way
-to a PDF, and you can stop at the intermediate {{latex}} if that is all you
-need:
+Every statement goes through the same pipeline, whatever its format:
 
 ```mermaid
 graph LR
@@ -215,12 +201,7 @@ graph LR
     TeX -->|pdfLaTeX / pandoc| PDF["PDF"]
 ```
 
-!!! note "The contest owns the chrome"
-    The template that wraps a problem into a full document lives on the
-    **contest** statement, not on the problem. Run `rbx st b` with no contest,
-    or with no matching standalone template, and {{rbx}} falls back to a bundled
-    default template and **warns**. It will not fail on you. See
-    [Contest statements](contest.md) for the details.
+To stop at the generated `.tex`, pass `--output tex` to `rbx st b`.
 
 ## Building only some languages
 
@@ -239,7 +220,7 @@ The flag works the same way on `rbx contest st b` and `rbx tut b`.
 
 ## Rendering against a timing profile
 
-The time limit printed in a statement is whichever limit the package carries. If
+The time limit printed in a statement is the one set in the package. If
 you package the same problem for two judges with different limits, you want each
 PDF to say the right number. The `-p` / `--profile` flag renders the statement
 against a saved [limits profile](../profiling/profiles.md):
@@ -283,7 +264,7 @@ Build one variant by naming it positionally:
 rbx st b short
 ```
 
-The variant also lands in the filename, so the two entries above build to
+The variant also goes into the filename, so the entries above build to
 `build/statement-en.pdf` and `build/statement-en-short.pdf`. On the contest side
 the variant is half of the [join key](contest.md#the-language-variant-join), so a
 contest statement declared as `(en, short)` joins each problem's `short` variant.
@@ -294,6 +275,9 @@ Statements are built **independently of each other**. If your problem has an
 English and a Portuguese statement and the English one fails, the Portuguese one
 is still built. The command lists everything that failed at the end and exits
 non-zero. One broken language never blocks the others.
+
+The exception is the samples. They're built once, before any statement, and if
+that fails the command stops without building any of them.
 
 Inside a *contest* build the rule tightens, deliberately: a problem that cannot
 be rendered fails the whole statement rather than quietly dropping out of the
@@ -320,7 +304,7 @@ From here, pick the guide that matches what you are doing.
 
     ---
 
-    Every value a statement or a template can reach: the `params`, `vars`,
+    Every value a statement or a template can use: the `params`, `vars`,
     `problem` and `contest` namespaces, the per-sample handles and the filters.
 
     [:octicons-arrow-right-24: Template context](/setters/statements/context)
@@ -338,8 +322,7 @@ From here, pick the guide that matches what you are doing.
 
     ---
 
-    Tutorials are the same model in a separate list. Here is what carries over
-    and the one thing that doesn't.
+    Tutorials are the same model in a separate list, built to their own PDFs.
 
     [:octicons-arrow-right-24: Tutorials](/setters/statements/tutorials)
 

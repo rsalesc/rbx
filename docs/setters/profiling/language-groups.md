@@ -6,13 +6,14 @@ of [`rbx time`](estimating.md).
 
 ## Why group languages
 
-Estimate a single limit from every accepted solution pooled together and two things go wrong at
+Estimate one limit from every accepted solution pooled together and two things go wrong at
 once. The limit is too generous for C++, because Python dragged it up. And it is too tight for
 any language nothing was written in.
 
-That second one is the real trap, and our problem has it. It is solved in C++ and Python, and
-nothing stops a contestant submitting Java — which is not represented in the measurements at
-all, and would inherit whatever the pooled estimate happened to be.
+The second one is the real trap, and our problem has it. It is solved in C++ and Python, but a
+contestant can still submit Java. Java isn't represented in the measurements, so it gets a
+limit measured from other languages, which may well be faster. The fix is a relative rule,
+covered in [Configuring groups in the environment](#configuring-groups-in-the-environment).
 
 ## Bucketing languages
 
@@ -21,33 +22,33 @@ preview of the limits your current bucketing would produce. The preview updates 
 
 {{ asciinema("time-language-groups") }}
 
-Each language sits in one of three states:
+Each language is in one of three states:
 
 - **Grouped** `[N]` — in numbered group `N`. Languages in a group are estimated together from
   their pooled timings. Put `c` with `cpp`, and `java` with `kt`.
 - **Singleton** `[X]` — a bucket of its own, toggled with ++space++.
 - **Unbucketed** `[ ]` — the default. Every unbucketed language joins one **leftover pool**,
-  estimated together. Its row is listed first and marked with a `*`.
+  estimated together. Its row is listed right after the base row and marked with a `*`.
 
-The leftover pool is what stops an unrepresented language from falling back to the base limit:
-it inherits the pool's estimate, which is drawn from languages that *were* measured.
+An unbucketed language with no solutions gets the pool's estimate instead of the bare base
+limit. If that estimate is too tight, give the language a relative rule (see [Configuring groups
+in the environment](#configuring-groups-in-the-environment)).
 
 Press ++enter++ to accept, or pass `--auto` to take the environment's groups without being
 asked.
 
 !!! warning "A language on its own with nothing to measure"
-
     Watch what happens in the recording above when `java` is pulled into a bucket of its own. It
     has no solutions and it is no longer covered by a rule, so there is nothing to estimate from
-    and it lands on the base limit, flagged `DEFAULTED`. `kt` in the row beneath still derives
-    from `cpp`. Splitting a language out is only an improvement if something in its new bucket
-    was actually measured.
+    and it falls back to the base limit, flagged `DEFAULTED`. `kt` in the row beneath still
+    derives from `cpp`. Splitting a language out only helps if its new bucket has measured
+    solutions.
 
 ## Forcing a relative limit
 
 Sometimes you want a group's limit derived from another group rather than from its own
-measurements — the Java solutions you have are unrepresentative, say, but you know Java should
-get twice what C++ gets.
+measurements. Say the Java solutions you have are unrepresentative, but you know Java should get
+twice what C++ gets.
 
 Press ++r++ on a language to open an inline editor and define its group's limit as
 `multiplier × reference + increment`. The reference can be another group or the base estimate,
@@ -56,15 +57,13 @@ commits, ++esc++ cancels, and ++c++ clears the rule. ++shift+r++ resets the whol
 to what the environment defines.
 
 !!! danger "A derived limit can be one the group's own solutions cannot meet"
-
     A forced rule **overrides** the measurements completely. Derive `java` from `cpp` at `×1.0`
     and Java gets C++'s limit however slow the Java solutions actually are.
 
     {{rbx}} checks every derived limit against the group's own measurements and flags the row
-    when they disagree — red when the group's accepted solutions would not pass at all, yellow
-    when they pass without the margin the ratios ask for. It is a warning, not an error: the
-    limit is written as you asked, so regroup or drop the reference if it was not what you
-    meant.
+    when they disagree: red when the group's accepted solutions would not pass at all, yellow
+    when they pass without the margin the ratios ask for. The flag is only a warning. The limit
+    is written as you asked, so regroup or drop the reference if it wasn't what you meant.
 
 ## Configuring groups in the environment
 
@@ -75,14 +74,14 @@ there:
 timing:
   groups:
     - languages: ["py"]
-      whenEmpty: {relativeTo: "cpp", multiplier: 3.0}   # (1)!
+      whenEmpty: {relativeTo: "cpp", multiplier: 3.0}
     - languages: ["java", "kt"]
-      whenEmpty: {relativeTo: "cpp", multiplier: 2.0}
+      whenEmpty: {relativeTo: "cpp", multiplier: 2.0}   # (1)!
 ```
 
-1. What to do when this group has **no** accepted solutions to measure: follow `cpp` at three
-   times its limit. This is the rule that gave `java` its limit in our problem.
+1. What to do when this group has **no** accepted solutions to measure: follow `cpp` at twice
+   its limit. This is the rule that gave `java` its `×2.0 of cpp` limit in our problem.
 
 `whenEmpty` and a forced relative rule are not the same thing. `whenEmpty` applies *only* when
-the group has nothing to measure; a forced rule always wins. The [Environment
-reference](../reference/environment/#language-groups) has the full schema.
+the group has nothing to measure; a forced rule applies even when it does. The [Environment
+reference](../reference/environment/index.md#language-groups) has the full schema.

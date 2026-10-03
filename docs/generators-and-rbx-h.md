@@ -1,19 +1,20 @@
 # Generators and `rbx.h`
 
-`rbx` refuses to build a problem when a **generator** depends on `rbx.h`. This
-page explains why, and how to opt out.
+With the default environment, {{rbx}} refuses to build a problem when a **generator**
+depends on `rbx.h`. This page explains why, and how to opt out.
 
 ## Why this is an error
 
 `rbx.h` exposes `getVar<T>("NAME")`, which reads the problem's
-[variables](setters/variables.md), your constraints, at compile time. That is what a
-**validator** wants. A **generator** is different: its job is to produce a fixed,
-reproducible testset.
+[variables](setters/variables.md), your constraints, at compile time. This is useful in a
+**validator**, which has to check those constraints. A **generator** is different: its job
+is to produce a fixed, reproducible testset.
 
-If a generator reads a constraint through `getVar`, changing that constraint
-silently changes every test the generator produces. A test that used to stress
-`N = 10^5` quietly becomes `N = 10^6`, solutions that were once correctly judged
-may flip, and nothing in your diff hints at why.
+If a generator reads a constraint through `getVar`, changing that constraint also
+changes every test the generator produces. A test that used to stress `N = 10^5`
+becomes an `N = 10^6` test, and solutions that were judged correctly before may get a
+different verdict. Your diff shows the constraint change, but not the tests that
+changed with it.
 
 ### Example
 
@@ -31,8 +32,8 @@ int main(int argc, char* argv[]) {
 ```
 
 Bump `MAX_N` in `problem.rbx.yml` and this generator now emits a different test,
-invisibly. Instead, pass the size explicitly as a generator argument so the
-testset is pinned by your generator calls:
+although you didn't change the generator or its calls. Instead, pass the size
+explicitly as a generator argument, so the testset is pinned by your generator calls:
 
 ```cpp
 // gen_max.cpp — DO: size comes from the call
@@ -40,7 +41,7 @@ testset is pinned by your generator calls:
 
 int main(int argc, char* argv[]) {
     registerGen(argc, argv, 1);
-    int n = atoi(argv[1]);          // value is fixed by the generator call
+    int n = opt<int>(1);            // value is fixed by the generator call
     println(n);
     return 0;
 }
@@ -51,8 +52,11 @@ int main(int argc, char* argv[]) {
 generators:
   - name: "gen_max"
     path: "gen_max.cpp"
-# ...
-  - generator: { name: "gen_max", args: "100000" }
+testcases:
+  - name: "secret"
+    generators:
+      - name: "gen_max"
+        args: "100000"
 ```
 
 ## Escape hatches

@@ -1,34 +1,10 @@
 # Template context
 
 Every value a statement prints, and every value the [template](contest.md) that
-wraps it reaches for, comes from one of a handful of **namespaces** exposed to
-`\VAR{...}` and to the `%- ...` {{Jinja2}} statements. This page is the
-reference for what lives in each one.
+wraps it uses, comes from one of a few **namespaces** exposed to `\VAR{...}` and
+to the `%- ...` {{Jinja2}} statements. This page lists what each one contains.
 
 ## Where a value comes from
-
-Three namespaces carry almost everything you will print, and each answers a
-different question:
-
-- **`params`** holds the presentation knobs of the statement entry being
-  rendered.
-- **`vars`** holds the package's data: the problem's `vars` in a problem
-  render, the contest's in a contest join.
-- **`contest`** holds the contest's metadata, with the contest's own variables
-  one level down, under `contest.vars`.
-
-Each namespace keeps its own names, so a key in one never shadows a key in
-another. Reaching a value means knowing which namespace it belongs to:
-
-```latex
-\VAR{params.show_limits}   %# the statement's own param
-\VAR{vars.author}          %# a problem/package var
-\VAR{contest.title}        %# contest metadata
-\VAR{contest.vars.year}    %# a contest var
-```
-
-That costs you a prefix, and it buys a statement whose numbers you can trace: a
-value prints wrong, and the namespace in front of it says which file to open.
 
 The exact set of top-level names depends on **what is being rendered**:
 
@@ -36,7 +12,7 @@ The exact set of top-level names depends on **what is being rendered**:
 | :--- | :--- | :--- |
 | `params` | this render's own statement `params` | all renders |
 | `vars` | the problem/package `vars` (problem render) or the contest `vars` (contest join) | all renders |
-| `contest` | `contest.title`, `contest.vars.*`, and when set `contest.location` / `contest.date` | all renders |
+| `contest` | `contest.title` and `contest.vars.*`. Each contest var is also reachable directly as `contest.<key>`. | all renders |
 | `problem` | `title`, `limits`, `profiles`, `groups`, `samples`, `vars`, `params`, `blocks`, and when set `short_name`, `import_dir`, `import_file` | problem renders |
 | `problems` | a list of the above, full in a contest join and metadata-only in a document | contest join; documents |
 | `lang`, `languages`, `keyed_languages` | environment languages | all renders |
@@ -50,19 +26,26 @@ The exact set of top-level names depends on **what is being rendered**:
     `limits`, `profiles` and `groups`, with no `blocks`, `samples` or import
     handles.
 
+Each namespace keeps its own names, so a key in one never shadows a key in
+another. The long form spells out the namespace:
+
+```latex
+\VAR{params.show_limits}   %# the statement's own param
+\VAR{vars.author}          %# a problem/package var
+\VAR{contest.title}        %# contest metadata
+\VAR{contest.vars.year}    %# a contest var
+```
+
+Spelled out this way, every number is traceable: if a value prints wrong, the
+namespace in front of it tells you which file to open. The short form, which
+[Writing statements](writing.md#spelling-out-the-namespace) recommends for problem
+statements, works too; the long form is most useful in contest templates.
+
 ## `params` vs `vars`
 
-They answer two different questions, which is why they sit in two different
-namespaces.
-
-- **`vars`** is *your problem's own data*: constraints, an author name, a flag
-  your statement text keys off. It comes from `vars` in `problem.rbx.yml`, or
-  from the contest's `vars` in a contest join.
-- **`params`** are *knobs for the presentation*, such as whether to draw the
-  limits box. They come from the `params` of the statement entry being rendered.
-
-Let's put them side by side. The author name is data; the "show limits" toggle
-is a presentation knob:
+`vars` is *your problem's own data*, and `params` are *knobs for the
+presentation*, which is why they're separate namespaces. Let's put them side by
+side. The author name is data; the "show limits" toggle is a presentation knob:
 
 === "statement.rbx.tex"
 
@@ -86,18 +69,9 @@ is a presentation knob:
           show_limits: true   # a presentation knob -> params.*
     ```
 
-Notice that `author` and `show_limits` sit in the *same* `problem.rbx.yml`, and
-the template reaches each one under the namespace that owns it: `vars.author`
-and `params.show_limits`.
-
-The contest's variables sit one level down, under `contest.vars`, while
-top-level `vars` means the *problem's* vars in a problem render. So these two
-point at different values in a single render:
-
-```latex
-\VAR{vars.author}        %# the problem's var
-\VAR{contest.vars.year}  %# a contest var
-```
+Notice that `author` and `show_limits` sit in the *same* `problem.rbx.yml`, but
+the template reads each one under its own namespace: `vars.author` and
+`params.show_limits`.
 
 ## The `problem` namespace
 
@@ -160,8 +134,8 @@ Each item is a **sample handle**:
 
 `sample.input` and `sample.output` are **path strings meant for verbatim
 printing**, so feed them straight to `\VerbatimInput`. The explanation is a
-separate file you `\subimport` from `sample.dir`, and you should guard it, since
-not every sample has one:
+separate file you `\subimport` from `sample.dir`. Guard it with `is not none`,
+since not every sample has one:
 
 ```latex
 %- for sample in problem.samples
@@ -169,7 +143,7 @@ not every sample has one:
 %- if sample.has_output
 \VerbatimInput{\VAR{sample.output}}
 %- endif
-%- if sample.explanation_file is defined
+%- if sample.explanation_file is not none
 \subimport{\VAR{sample.dir}}{\VAR{sample.explanation_file}}
 %- endif
 %- endfor
@@ -179,29 +153,29 @@ not every sample has one:
     `sample.input` and `sample.output` are **root-relative**, because
     `\VerbatimInput` ignores the `\subimport` base. `sample.dir` and
     `sample.explanation_file` are **import-base-relative**, for `\subimport`.
-    You don't have to think about it; use each handle as shown above.
+    You don't have to think about it: use each handle as in the snippet above.
 
 ## Filters
 
 Any `\VAR{...}` value can be piped through a **filter** with `|`, as in
 {{Jinja2}}. On top of the standard {{Jinja2}} filters, {{rbx}} registers a few
-LaTeX-aware ones you will reach for constantly:
+LaTeX-aware ones:
 
 - **`sci`** renders a round integer in scientific notation:
-  `\VAR{N.max | sci}` prints `1000000000` as `10^9`.
+  `\VAR{N.max | sci}` prints `1000000000` as `10^{9}`.
 - **`rsci`** is `sci` with the remainder kept: `\VAR{MOD | rsci}` prints
-  `1000000007` as `10^9 + 7`.
+  `1000000007` as `10^{9} + 7`.
 - **`escape`** LaTeX-escapes a string (`_`, `%`, `&`, ...):
   `\VAR{author | escape}`.
-- **`parent`** takes a path's parent directory: `\VAR{sample.input | parent}`.
-- **`stem`** takes a path's filename without its extension:
-  `\VAR{sample.input | stem}`.
+- **`parent`** takes a path's parent directory, and **`stem`** takes a path's
+  filename without its extension. Both expect a path object, so they don't
+  apply to the `sample.*` handles, which are plain strings.
 
 The standard {{Jinja2}} filters (`upper`, `join`, `default`, ...) work too.
 
 ## Building a subtasks table from testgroup vars
 
-A scored problem usually wants a table of its subtasks, and the constraints in
+A scored problem usually has a table of its subtasks, and the constraints in
 that table are the ones the validator enforces for each group. {{rbx}} exposes
 them: the variables of each testgroup, after applying its [per-testgroup
 overrides](../verification/validators.md#varying-constraints-per-test-group), are
@@ -226,7 +200,7 @@ So the whole table is a loop:
     ```yaml
     vars:
       N:
-        min: 1
+        min: 2
         max: 1000
     testcases:
       - name: "small"
@@ -243,21 +217,23 @@ So the whole table is a loop:
 
 The loop above prints `50` for `small` and `1000` for `large`. These are the
 **resolved** values, so a testgroup that overrides nothing still renders the
-package-level number, and you never have to restate a constraint you did not
+package-level number, and you never have to repeat a constraint you didn't
 change. `\VAR{g.N.max}` reads that group's own vars, the same way `\VAR{N.max}`
 reads the package's.
 
 ## Import handles
 
-`problem.import_dir` and `problem.import_file` are the `\subimport` handle for a
-problem being pulled into a contest book. They exist **only** in a contest-join
-fragment, and are absent in a standalone `rbx st b` render, so guard them:
+`problem.import_dir` and `problem.import_file` locate the fragment {{rbx}}
+rendered for one problem of a contest book. You use them in the contest `file`,
+on each entry of `problems`:
 
 ```latex
-%- if problem.import_dir is defined
+%- for problem in problems
 \subimport{\VAR{problem.import_dir}}{\VAR{problem.import_file}}
-%- endif
+%- endfor
 ```
+
+They're unset in a standalone `rbx st b` render.
 
 See [Contest statements](contest.md#the-language-variant-join) for the full join
 pattern.
@@ -266,7 +242,7 @@ pattern.
 
 For an [interactive problem](../grading/interactors.md), a sample is a
 conversation rather than an input and an output file. Iterate
-`sample.interaction.chunks` instead of printing plain I/O, and each chunk carries
+`sample.interaction.chunks` instead of printing plain I/O. Each chunk has
 `.path`, `.pipe` and `.data`:
 
 ```latex
@@ -281,10 +257,8 @@ conversation rather than an input and an output file. Iterate
 
 ## Full field reference
 
-The tables above cover what you reach for day to day. For the exhaustive field
-list, every attribute on `limits`, `profiles`, `groups` and the statement entry
-itself, consult the auto-generated schemas rather than a restatement of them
-here:
+For every attribute on `limits`, `profiles`, `groups` and the statement entry,
+see the generated schemas:
 
 - [Package schema](../reference/package/schema.md) for problems, statements,
   `vars`, `params`, samples and limits.

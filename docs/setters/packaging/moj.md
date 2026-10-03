@@ -13,14 +13,14 @@ Or, if you want to build the package for all problems in your contest:
 rbx each package moj
 ```
 
-MOJ has no contest-level package, so `rbx each package moj` is as far as it goes -- you'll
+MOJ has no contest-level package, so `rbx each package moj` is as far as it goes: you'll
 get one package per problem.
 
 Both **batch** and **interactive** problems are supported, though interactive ones come with a
-few caveats -- see [Interactive problems](#interactive-problems).
+few caveats. See [Interactive problems](#interactive-problems).
 
-The MOJ packager uses the `moj` [limits profile](../profiling/profiles.md), so create it with
-`rbx time -p moj` before packaging.
+The MOJ packager requires the `moj` [limits profile](../profiling/profiles.md): packaging fails
+without it, so create it with `rbx time -p moj` first.
 
 !!! tip
     You can also point `rbx run` and `rbx time` at MOJ itself, and have your solutions run on the
@@ -33,7 +33,7 @@ MOJ traditionally **measures** the time limit itself: it runs your accepted solu
 judge machine and derives the limit from the worst time it sees.
 
 By default, {{rbx}} doesn't let it. It **pins** the limits you estimated with `rbx time -p moj`
-into the package -- a base limit, plus a per-language limit for every language whose limit
+into the package: a base limit, plus a per-language limit for every language whose limit
 differs from it. The limit a solution gets on MOJ is then the one you profiled, and the same one
 MOJ shows everywhere it displays a time limit.
 
@@ -43,15 +43,15 @@ there to remove.
 
 ### Letting MOJ calibrate instead
 
-If you'd rather have the limits measured on the judge machine -- which is, after all, the machine
-that will judge the contest -- pass `--calibrate`:
+If you'd rather have the limits measured on the judge machine, which is, after all, the machine
+that will judge the contest, pass `--calibrate`:
 
 ```bash
 rbx package moj --calibrate
 ```
 
 MOJ then measures your accepted solutions and multiplies the worst time by the same ratio
-{{rbx}} would have used locally, so the limit lands where `rbx time` would have put it, but
+{{rbx}} would have used locally. You get the limit `rbx time` would have picked, but
 measured on the judge park.
 
 !!! warning
@@ -74,9 +74,9 @@ directly: the Portuguese statement becomes the main one, and every other stateme
 in `en` or `es` ships as a translation, sample explanations included. A statement in a language
 MOJ doesn't know is left out, and {{rbx}} tells you which one.
 
-Each translation carries its own title, taken from the statement's `title` (or the package's
-`titles`), so the reader sees it in their language too. A translation without a title of its
-own simply shows the main one.
+Each translation has its own title, taken from the statement's `title` (or the package's
+`titles`), and the reader sees it in their language too. A translation without a title of its
+own shows the main one.
 
 If your problem has no Portuguese statement, the topmost declared one takes the main slot
 instead. You can also pick which statement is the main one with the `-l` or `--language`
@@ -95,11 +95,11 @@ A few things to keep in mind:
 - MOJ **builds the examples section itself** from the sample tests, so your statement must not
   have one of its own. {{rbx}} refuses to package a statement MOJ would render with warnings,
   rather than shipping it and letting you find out on the server.
-- A problem **without sample tests** packages fine, and its statement simply shows no examples.
-  {{rbx}} tells MOJ so explicitly, and warns you when it does -- left to its own devices, MOJ
+- A problem **without sample tests** packages fine, and its statement doesn't show any examples.
+  {{rbx}} tells MOJ so explicitly, and warns you when it does. Left to its own devices, MOJ
   would fall back to publishing your first two *secret* tests as the examples.
 - MOJ requires an **input** and an **output** section, and {{rbx}} always emits them, even when
-  the corresponding block is empty -- in every translation, each in its own language.
+  the statement's input or output block is empty -- in every translation, each in its own language.
 - Figures are embedded into the rendered HTML, so a PDF figure (which is what TikZ
   externalization produces) is rasterized to PNG for you. That needs `pdftoppm`, from poppler; a
   statement with PDF figures and no poppler installed refuses to package, naming the figures.
@@ -108,10 +108,10 @@ A few things to keep in mind:
 
 Test groups are supported, and translate into MOJ's own scoring file for problems that score by
 subtasks -- the ones whose `scoring` is set to `points` in `problem.rbx.yml`, with a `score` per
-group. ICPC-style problems (`scoring: binary`, the default) ship no scoring file at all: MOJ
+group. ICPC-style problems (`scoring: binary`, the default) don't ship a scoring file at all: MOJ
 scores them by percentage of tests passed, and {{tags.accepted}} still requires all of them.
 
-Two constraints come from MOJ's side, and {{rbx}} checks both before packaging:
+MOJ also imposes these constraints, and {{rbx}} checks them before packaging:
 
 - Group **weights must be integers**. MOJ's parser strips everything that isn't a digit, so a
   `40.5` would be read as `405`.
@@ -124,7 +124,7 @@ Two constraints come from MOJ's side, and {{rbx}} checks both before packaging:
 ## Submission languages
 
 MOJ keeps a whitelist of the languages a problem accepts, and {{rbx}} derives it from the
-languages your environment declares in `env.rbx.yml` -- the same ones it ships compile and run
+languages your environment declares in `env.rbx.yml`, the same ones it ships compile and run
 scripts for in the package. Packaging prints the list, so you always see what a student may
 submit.
 
@@ -133,7 +133,7 @@ solution in a language to enable it: the time limits are pinned from the `moj` l
 which covers every language your environment declares.
 
 The exception is [`--calibrate`](#letting-moj-calibrate-instead), where MOJ
-measures the limits itself -- from the accepted solutions the package ships. A whitelisted
+measures the limits itself, from the accepted solutions the package ships. A whitelisted
 language with no accepted solution then falls back to the *tightest* limit MOJ measured,
 usually the C++ one, which no Python submission is going to survive. Packaging warns by name
 when that's the case; the fixes are an accepted solution in that language, or pinning the
@@ -146,9 +146,10 @@ MOJ compiles the checker in an isolated environment where only the checker itsel
 wouldn't find it, and would report a judge error on *every* test.
 
 You don't have to do anything about it: {{rbx}} amalgamates your checker and everything it
-includes into a single file before shipping it. What it will do is **refuse to package** when
-that isn't possible, rather than hand you a package that fails on every test. The same applies
-to the solutions it ships, since MOJ compiles a submission from a single file too.
+includes into a single file before shipping it, and does the same for C and C++ solutions,
+since MOJ compiles a submission from one file too. When that isn't possible, or a solution in
+another language spans several files, {{rbx}} **refuses to package** rather than hand you a
+package that fails on every test.
 
 ## Interactive problems
 
@@ -160,8 +161,8 @@ MOJ runs interactive problems through an interaction protocol of its own, and do
 in a form MOJ understands, and the verdicts it reports -- accepted, wrong answer, the message your
 interactor gave -- come out on MOJ just like they do in `rbx run`.
 
-What you *do* have to keep in mind is that MOJ never runs a checker after the interaction, and
-never shows your interactor the expected output. So the interactor must decide the verdict on
+MOJ does differ in one way: it never runs a checker after the interaction,
+and never shows your interactor the expected output. So the interactor must decide the verdict on
 its own, and {{rbx}} will **refuse to package**:
 
 - an interactor that relies on a checker (`legacy: true`, see
@@ -226,19 +227,21 @@ extensions:
     nobody else can see. {{rbx}} warns you when that happens, but it's much better to hear it
     here than from a co-setter.
 
-The org itself is *not* created for you: uploading to an org that doesn't exist fails.
+{{rbx}} doesn't create the org for you: uploading to an org that doesn't exist fails.
 
 Uploading also queues the calibration right after it, whether or not you passed `--calibrate`:
 a package is only judgeable once a judge has calibrated it, so there's nothing to gain from
 uploading one and leaving it uncalibrated. It's a long server-side job and {{rbx}} doesn't wait
-for it -- check on it with `moj check <org>#<problem>` whenever you want.
+for it: check on it with `moj check <org>#<problem>` whenever you want.
 
 The calibration is queued on **every judge in the park**, not just on the first one free. MOJ's
 judges aren't identical machines, and it publishes the time limit as the *maximum* across the
-judges that calibrated -- so a package measured on one machine is judged, on every other one,
-against a limit nothing ever measured there. Calibrating everywhere makes the published limit
-the one that holds on the slowest judge a submission can land on. When no judge is reachable at
-all, {{rbx}} says so and falls back to a single calibration rather than leaving your uploaded
+judges that calibrated. So a package measured on one machine is judged, on every other one,
+against a limit nothing ever measured there.
+
+Calibrating everywhere makes the published limit
+the one that holds on the slowest judge a submission can be sent to. When no judge is reachable at
+all, {{rbx}} says so and falls back to one calibration rather than leaving your uploaded
 package unjudgeable; re-run `moj calibrate <org>#<problem> --all-judges` once the park is back.
 
 ## Iterating faster with a single solution
@@ -247,8 +250,8 @@ Calibration runs **every solution the package ships**: the accepted ones to meas
 then the rest to check they get the verdict you declared. On a problem with a dozen solutions
 that's the slowest part of an upload, and it's paid again on every re-upload.
 
-While you're still iterating -- fixing a statement, re-cutting the tests, re-uploading over and
-over -- `--reference-only` (or `-ro`) ships just the reference solution, your main one, and
+While you're still iterating (fixing a statement, re-cutting the tests, re-uploading over and
+over), `--reference-only` (or `-ro`) ships just the reference solution, your main one, and
 drops the rest:
 
 ```bash
@@ -284,7 +287,7 @@ rbx tooling moj summary
 └───┴───────────┴───────────────────┴────────────────┘
 ```
 
-One row per problem: its short name in the contest, the title MOJ would display, the
+Each row shows a problem's short name in the contest, the title MOJ would display, the
 `<org>#<problem>` it would be created as, and the color the contest gives it (empty when the
 problem configures none).
 
@@ -303,8 +306,8 @@ that only happens when no org is configured.
 
 ### Copying the list out
 
-Add `--porcelain` when the list is going somewhere else -- a message to a co-setter, a
-spreadsheet, a shell loop. You get one tab-separated line per problem, no table and no colors:
+Add `--porcelain` when the list is going somewhere else, such as a message to a co-setter, a
+spreadsheet or a shell loop. You get one tab-separated line per problem, no table and no colors:
 
 ```bash
 rbx tooling moj summary --porcelain
@@ -324,7 +327,7 @@ rbx tooling moj summary --porcelain | cut -f3
 ```
 
 Warnings go to stderr in this mode, and a problem that couldn't be read is reported there
-instead of taking a line -- so whatever consumes the output never sees a problem pointing at an
+instead of taking a line. Whatever consumes the output never sees a problem pointing at an
 empty id.
 
 ## Downloading a submission
@@ -349,12 +352,13 @@ export MOJ_CONTEST=sbc2026
 rbx run @moj/d89e6b7735c675fd7b50b3354ba64097
 ```
 
-Prefer the long form in `problem.rbx.yml`. A reference you commit is read months later on
-someone else's machine, where nothing says which contest was meant.
+A solution's `path` in `problem.rbx.yml` can be one of these references too, and {{rbx}}
+downloads it when it needs the source. Prefer the long form there, because someone may read a
+committed reference months later on a machine that doesn't know which contest you meant.
 
 ### Logging in to a contest
 
-Downloading needs a session **for that contest**, which is not the one `moj login` creates --
+Downloading needs a session **for that contest**, which is not the one `moj login` creates:
 that one covers the training area alone. Contest accounts are handed out by whoever runs the
 contest, and they log in through a second CLI, `moj-contest`:
 
@@ -377,8 +381,8 @@ credentials.
 judge or an admin, any submission id in that contest downloads.
 
 **Everyone else sees only their own.** A submission id that isn't yours is reported as not found
-rather than downloaded, and {{rbx}} says which of the two cases it hit -- reading someone else's
-code needs a judge account, not a different reference.
+rather than downloaded, and {{rbx}} says which of the two cases it hit. To read someone else's
+code, you need a judge account; changing the reference won't help.
 
 ## Troubleshooting
 
@@ -395,7 +399,7 @@ bash 4, and macOS still ships bash **3.2** as `/bin/bash` -- it has for well ove
 it isn't going to change.
 
 Installing a newer one is only half the fix. `moj` starts with `#!/usr/bin/env bash`, so the
-shell that runs it is whichever `bash` comes **first on your `PATH`** -- and Homebrew installs
+shell that runs it is whichever `bash` comes **first on your `PATH`**, and Homebrew installs
 its own without touching the system one. If `/opt/homebrew/bin` (or `/usr/local/bin`, on Intel)
 isn't ahead of `/bin`, you get 3.2 no matter what you installed.
 
@@ -412,7 +416,7 @@ bash --version   # should say 5.x, not 3.2
 moj whoami
 ```
 
-`moj-contest` carries the same requirement, and the same fix covers it.
+`moj-contest` has the same requirement, and the same fix covers it.
 
 #### If you can't change your `PATH`
 
@@ -428,20 +432,20 @@ and it does nothing for the times you run `moj` yourself. Prefer the `PATH`.
 
 ### My problem has a tight `outputLimit`, but MOJ doesn't enforce it
 
-It doesn't, and that's on purpose. MOJ applies a single file-size limit to both the *compilation*
+It doesn't, and that's on purpose. MOJ applies one file-size limit to both the *compilation*
 and the *execution* of a submission, so a problem with a small `outputLimit` made the linker fail
 to write the executable -- every submission came back as a compilation error without reaching a
 single test.
 
-{{rbx}} therefore pins that limit high (100 MiB) and accepts the cost: a runaway solution is cut
+{{rbx}} therefore pins that limit high (100 MiB), even though a runaway solution is then cut
 off there instead of at your threshold. {{rbx}} still enforces `outputLimit` locally, so a
 solution that overruns it shows up in `rbx run` long before MOJ would say anything.
 
-### rbx warns about mojtools when packaging
+### {{rbx}} warns about mojtools when packaging
 
-A MOJ package carries a few scripts that belong to MOJ itself rather than to {{rbx}}: the
+A MOJ package includes a few scripts that belong to MOJ itself rather than to {{rbx}}: the
 small pointers that tell the judge to use its own checker bridge, and the driver that runs an
-interactive problem. To keep them current, {{rbx}} downloads them from
+interactive problem. To get the latest versions, {{rbx}} downloads them from
 [mojtools](https://github.com/cd-moj/mojtools), the judge's toolkit, every time it builds a
 package.
 
@@ -449,7 +453,7 @@ You may see one of two warnings about it:
 
 - **It could not fetch from mojtools.** You're probably offline. {{rbx}} falls back to the
   copy it ships with and names the mojtools version that copy came from. The package still
-  works, but it may carry an older driver than MOJ's current one, so package again once
+  works, but it may include an older driver than MOJ's current one, so package again once
   you're online if you can.
 - **mojtools changed since the copy bundled with rbx.** Nothing for you to do: the package
   already uses the current upstream files. It only means a newer {{rbx}} will catch up.
