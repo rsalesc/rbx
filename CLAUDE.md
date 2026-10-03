@@ -62,6 +62,8 @@ The docs site (`docs/`, built with mkdocs) is written in a specific, consistent 
 
 **You MUST use the `docs-style` skill ([`.claude/skills/docs-style/SKILL.md`](.claude/skills/docs-style/SKILL.md)) whenever you write, edit or review anything under `docs/`.** It runs [Vale](https://vale.sh) (`.vale.ini`: the Google developer documentation style guide, the AI-prose detectors `vale-llm-slop` and `vale-ai-tells`, and the house rules in `.vale/styles/rbx/`, via `mise run docs:lint [paths]`) and then the adversarial [`docs-style-reviewer`](.claude/agents/docs-style-reviewer.md) agent. Where a package and the house guide disagree, the house guide wins; the skill lists each conflict. Vale is pinned in `mise.toml` (`mise install`, needs mise >= 2025.8.0).
 
+**When you open a PR that changes `docs/` or `mkdocs.yml`, hand the reviewer the command to review it rendered:** add a `## Review the rendered docs` section to the PR body containing `mise run docs:review <PR number>`, and repeat that command in your final report to the user. It builds both sides with mkdocs, shows them side by side with the changes highlighted, and posts the reviewer's comments back to the PR (see [`mkdocs-review/README.md`](mkdocs-review/README.md)). Don't run it as a stand-in for that review: it serves until interrupted and opens a browser.
+
 The CLI reference (`docs/setters/reference/cli.md`) and the JSON schemas (`docs/schemas/`) are **generated** during the build by the `gen-files` scripts listed in `mkdocs.yml`, and are deliberately not tracked. Never commit them: to document a new flag, change the command's help text or its `@annotations.docs`, and the reference picks it up on the next build.
 
 ## Git Commits
@@ -78,6 +80,7 @@ For complex modules, see the inner CLAUDE.md files:
 - [`rbx/box/packaging/CLAUDE.md`](rbx/box/packaging/CLAUDE.md) -- Packaging for judge systems: Polygon (with API upload), BOCA, MOJ, PKG
 - [`rbx/box/statements/CLAUDE.md`](rbx/box/statements/CLAUDE.md) -- Statement building: rbxTeX/LaTeX/Jinja pipeline, conversion steps, templates
 - [`casts/README.md`](casts/README.md) -- Documentation asciinema recordings: specs, fixtures, `mise run record`
+- [`mkdocs-review/README.md`](mkdocs-review/README.md) -- Side-by-side review of rendered docs changes (`mise run docs:review`). A standalone package meant to move to its own repository: it has its own `pyproject.toml`, venv and tests (`cd mkdocs-review && uv run pytest`), and must never import `rbx`
 
 ## Releases and Backports
 
