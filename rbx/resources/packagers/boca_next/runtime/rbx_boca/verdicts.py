@@ -6,6 +6,12 @@ from typing import Optional
 # disambiguate from the compare-phase AC=4 in compare_verdict, which is unrelated.
 _INTERACTOR_JUDGE_ERROR = 4
 
+# safeexec's exit code for a solution killed by SIGPIPE in an interactive run
+# (EXIT_INTERACTIVE_SIGPIPE in rbx/resources/packagers/boca/safeexec.c).
+_SAFEEXEC_INTERACTIVE_SIGPIPE = 10
+# safeexec's exit code for a solution killed by any other signal.
+_SAFEEXEC_SIGNALED = 2
+
 
 @dataclass(frozen=True)
 class PipeLog:
@@ -75,6 +81,13 @@ def interactive_run_decision(first_tag: int, ecsf: int, ecint: int) -> RunDecisi
     which beats a solution RTE.
     """
     interactor_first = first_tag == 2
+    if ecsf == _SAFEEXEC_INTERACTIVE_SIGPIPE:
+        # The solution wrote into a pipe the interactor had already closed, so
+        # the interactor's verdict wins even when the solution really exited
+        # first (testlib closes its input before it exits). Beyond that it is a
+        # plain runtime error, the only kind BOCA knows.
+        interactor_first = True
+        ecsf = _SAFEEXEC_SIGNALED
     is_testlib = 0 <= ecint <= 4
 
     # 1. interactor crashed before solution
