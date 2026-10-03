@@ -79,6 +79,13 @@ const EXPECTED: Record<string, ExpectationDisplay> = {
     glyph: '⧖',
     badge: '⧖!',
   },
+  TLE_OR_MLE: {
+    label: 'TLE or MLE',
+    hue: 'yellow',
+    bold: false,
+    glyph: '⧖',
+    badge: '⧖M',
+  },
   JUDGE_FAILED: {
     label: 'FL',
     hue: 'purple',

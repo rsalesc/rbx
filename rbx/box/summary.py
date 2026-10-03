@@ -132,7 +132,11 @@ def get_outcome_bucket(outcome: ExpectedOutcome) -> Optional[ExpectedOutcome]:
         return ExpectedOutcome.ACCEPTED
     if outcome in (ExpectedOutcome.WRONG_ANSWER, ExpectedOutcome.INCORRECT):
         return ExpectedOutcome.WRONG_ANSWER
-    if outcome in (ExpectedOutcome.TIME_LIMIT_EXCEEDED, ExpectedOutcome.TLE_OR_RTE):
+    if outcome in (
+        ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+        ExpectedOutcome.TLE_OR_RTE,
+        ExpectedOutcome.TLE_OR_MLE,
+    ):
         return ExpectedOutcome.TIME_LIMIT_EXCEEDED
     if outcome in (
         ExpectedOutcome.RUNTIME_ERROR,

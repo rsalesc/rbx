@@ -81,11 +81,12 @@ Outcomes that allow more than one verdict go to `submissions/mixed/` with an
 | `memory limit exceeded` | `RUN-ERROR, TIMELIMIT` (*)                             |
 | `accepted or tle`       | `CORRECT, TIMELIMIT`                                   |
 | `tle or rte`            | `TIMELIMIT, RUN-ERROR`                                 |
+| `tle or mle`            | `TIMELIMIT, RUN-ERROR` (*)                             |
 | `incorrect`             | every non-`CORRECT` verdict                            |
 | `any`                   | every verdict                                          |
 
 (*) DOMjudge has no memory-limit verdict — an over-memory run surfaces as a runtime
-error (sometimes a time limit). This is the one outcome that can't be expressed
+error (sometimes a time limit). These are the outcomes that can't be expressed
 exactly.
 
 !!! note

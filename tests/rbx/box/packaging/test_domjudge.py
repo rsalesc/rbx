@@ -198,6 +198,9 @@ def test_submissions_ambiguous_outcomes_use_mixed_dir_with_annotation(
     testing_pkg.add_solution('sols/tlrte.cpp', ExpectedOutcome.TLE_OR_RTE).write_text(
         'TLRTE'
     )
+    testing_pkg.add_solution('sols/tlmle.cpp', ExpectedOutcome.TLE_OR_MLE).write_text(
+        'TLMLE'
+    )
     testing_pkg.add_solution('sols/bad.cpp', ExpectedOutcome.INCORRECT).write_text(
         'BAD'
     )
@@ -220,6 +223,10 @@ def test_submissions_ambiguous_outcomes_use_mixed_dir_with_annotation(
     assert (
         mixed / 'tlrte.cpp'
     ).read_text() == 'TLRTE\n// @EXPECTED_RESULTS@: TIMELIMIT, RUN-ERROR\n'
+    # TLE stays TLE; the MLE half surfaces the way MLE alone does.
+    assert (
+        mixed / 'tlmle.cpp'
+    ).read_text() == 'TLMLE\n// @EXPECTED_RESULTS@: TIMELIMIT, RUN-ERROR\n'
     assert (
         '@EXPECTED_RESULTS@: WRONG-ANSWER, RUN-ERROR' in (mixed / 'bad.cpp').read_text()
     )

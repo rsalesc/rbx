@@ -32,8 +32,8 @@ _DJ_OUTPUT_LIMIT = 'OUTPUT-LIMIT'
 
 # Every rbx outcome maps to the set of DOMjudge verdict tokens that satisfy it,
 # so no solution is ever dropped from the package. DOMjudge has no memory-limit
-# verdict (an over-memory run surfaces as RTE, sometimes TLE), so MLE is the one
-# lossy mapping; everything else is exact. `ANY` lists every runtime verdict
+# verdict (an over-memory run surfaces as RTE, sometimes TLE), so MLE and
+# TLE_OR_MLE are the lossy mappings; everything else is exact. `ANY` lists every runtime verdict
 # (anything but a compile error is acceptable).
 _EXPECTED_RESULTS: Dict[ExpectedOutcome, List[str]] = {
     ExpectedOutcome.ACCEPTED: [_DJ_CORRECT],
@@ -44,6 +44,7 @@ _EXPECTED_RESULTS: Dict[ExpectedOutcome, List[str]] = {
     ExpectedOutcome.MEMORY_LIMIT_EXCEEDED: [_DJ_RUN_ERROR, _DJ_TIMELIMIT],
     ExpectedOutcome.ACCEPTED_OR_TLE: [_DJ_CORRECT, _DJ_TIMELIMIT],
     ExpectedOutcome.TLE_OR_RTE: [_DJ_TIMELIMIT, _DJ_RUN_ERROR],
+    ExpectedOutcome.TLE_OR_MLE: [_DJ_TIMELIMIT, _DJ_RUN_ERROR],
     ExpectedOutcome.INCORRECT: [
         _DJ_WRONG_ANSWER,
         _DJ_RUN_ERROR,

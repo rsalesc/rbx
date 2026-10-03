@@ -106,6 +106,7 @@ class TestGetOutcomeBucket:
             (ExpectedOutcome.INCORRECT, ExpectedOutcome.WRONG_ANSWER),
             (ExpectedOutcome.TIME_LIMIT_EXCEEDED, ExpectedOutcome.TIME_LIMIT_EXCEEDED),
             (ExpectedOutcome.TLE_OR_RTE, ExpectedOutcome.TIME_LIMIT_EXCEEDED),
+            (ExpectedOutcome.TLE_OR_MLE, ExpectedOutcome.TIME_LIMIT_EXCEEDED),
             (ExpectedOutcome.RUNTIME_ERROR, ExpectedOutcome.RUNTIME_ERROR),
             (ExpectedOutcome.MEMORY_LIMIT_EXCEEDED, ExpectedOutcome.RUNTIME_ERROR),
             (ExpectedOutcome.OUTPUT_LIMIT_EXCEEDED, ExpectedOutcome.RUNTIME_ERROR),

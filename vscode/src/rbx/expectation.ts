@@ -112,6 +112,13 @@ const DISPLAY: Record<string, ExpectationDisplay> = {
     glyph: HOURGLASS,
     badge: HOURGLASS + CRASH,
   },
+  TLE_OR_MLE: {
+    label: 'TLE or MLE',
+    hue: 'yellow',
+    bold: false,
+    glyph: HOURGLASS,
+    badge: `${HOURGLASS}M`,
+  },
   JUDGE_FAILED: {
     label: 'FL',
     hue: 'purple',
