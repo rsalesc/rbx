@@ -36,6 +36,12 @@ ATOMIC_TAGS = frozenset(['pre', 'table'])
 SKIP_TAGS = frozenset(['script', 'style', 'template', 'noscript'])
 
 DEFAULT_SELECTORS = ('article', '[role=main]', 'main', 'body')
+# Theme decorations that are not part of the text, such as heading permalinks.
+CHROME_CLASSES = frozenset(['headerlink'])
+
+
+def _is_chrome(el: Tag) -> bool:
+    return not CHROME_CLASSES.isdisjoint(el.get('class') or ())
 
 
 def find_main(soup: Tag, selectors: Sequence[str] = DEFAULT_SELECTORS) -> Tag:
@@ -53,7 +59,7 @@ def own_text_nodes(block: Tag) -> List[NavigableString]:
     def walk(el: Tag):
         for child in el.children:
             if isinstance(child, Tag):
-                if child.name in SKIP_TAGS:
+                if child.name in SKIP_TAGS or _is_chrome(child):
                     continue
                 if child.name in BLOCK_TAGS and block.name not in ATOMIC_TAGS:
                     continue

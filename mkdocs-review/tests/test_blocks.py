@@ -46,6 +46,11 @@ def test_own_text_ignores_scripts_and_normalizes_whitespace():
     assert own_text(extract_blocks(soup)[0]) == 'a b c'
 
 
+def test_own_text_ignores_heading_permalinks():
+    soup = _soup('<h2 id="x">Setup<a class="headerlink" href="#x">#</a></h2>')
+    assert own_text(extract_blocks(soup)[0]) == 'Setup'
+
+
 def test_block_key_includes_tag():
     soup = _soup('<h2>Same</h2><p>Same</p>')
     assert [block_key(b) for b in extract_blocks(soup)] == ['h2:Same', 'p:Same']
