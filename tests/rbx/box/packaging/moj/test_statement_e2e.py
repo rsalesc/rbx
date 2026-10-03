@@ -112,6 +112,22 @@ def test_validate_problem_passes_the_statement_gate(packaged, tmp_path):
     assert report['render_warnings'] == ''
 
 
+def test_validate_problem_counts_the_samples(packaged, tmp_path):
+    check = _check(_validate(_mojtools(), packaged, tmp_path), 'examples_present')
+    assert check['ok'], check['detail']
+
+
+def test_validate_problem_accepts_a_package_without_samples(testing_pkg, tmp_path):
+    # `examples_present` is HARD: a `sample*` test, or `SAMPLE=no` in `conf`
+    # (mojtools 0366e17). Any other input/output pair no longer counts.
+    mojtools = _mojtools()
+    minimal_package(testing_pkg)
+    package = run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['easy']))
+
+    check = _check(_validate(mojtools, package, tmp_path), 'examples_present')
+    assert check['ok'], check['detail']
+
+
 def test_validate_problem_passes_the_translation_gate(packaged, tmp_path):
     """The gate applies to every `docs/enunciado.<lang>.md` too, and the Spanish
     headings (`## Entrada`/`## Salida`) are what it accepts."""
