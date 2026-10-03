@@ -1,0 +1,49 @@
+# Replaces Google.Headings (switched off in .vale.ini). Same sentence-case
+# check, but it knows this project's proper nouns, and it allows the capital
+# after a colon that the house guide uses in "Step 1: Profile the time limit"
+# and "Packaging: Polygon".
+extends: capitalization
+message: "'%s' should use sentence-style capitalization."
+link: https://developers.google.com/style/capitalization#capitalization-in-titles-and-headings
+level: warning
+scope: heading
+match: $sentence
+indicators:
+  - ':'
+exceptions:
+  - API
+  - BOCA
+  - C
+  - 'C\+\+'
+  - CLI
+  - Codeforces
+  - DOMjudge
+  - Docker
+  - FAQ
+  - GitHub
+  - Git
+  - HTML
+  - I
+  - ICPC
+  - Java
+  - Jinja
+  - Jngen
+  - JSON
+  - LaTeX
+  - Linux
+  - macOS
+  - Markdown
+  - MOJ
+  - PDF
+  - Polygon
+  - Python
+  - rbx
+  - rbxTeX
+  - TLE
+  - Tgen
+  - TUI
+  - VS
+  - Code
+  - WSL
+  - Windows
+  - YAML

@@ -1,3 +1,11 @@
+# mise < 2025.8.0 asks a retired registry URL for vale and fails every task
+# with "400 Bad Request". Upgrade with `mise self-update`.
+min_version = "2025.8.0"
+
+[tools]
+# Prose linter for docs/ (.vale.ini, `mise run docs:lint`).
+vale = "3.24.0"
+
 [tasks.sync]
 description = "Install/sync all dependencies"
 run = "uv sync --all-groups"
@@ -146,3 +154,11 @@ run = "npm run package"
 description = "Build the extension .vsix that ships inside the wheel"
 dir = "vscode"
 run = "npm run package && npm run vsix"
+
+[tasks."docs:lint"]
+description = "Lint docs prose with Vale (Google style + house rules, see .vale.ini)"
+# Vale comes from [tools] above. `vale sync` fetches the style packages listed
+# in .vale.ini into the gitignored .vale/styles/. Pass paths to lint a subset,
+# e.g. `mise run docs:lint docs/setters/first-steps.md`.
+usage = 'arg "[paths]..." help="Files or directories to lint" default="docs/"'
+run = 'vale sync >/dev/null && vale ${usage_paths?}'

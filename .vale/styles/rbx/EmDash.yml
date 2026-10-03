@@ -1,0 +1,10 @@
+# Replaces Google.EmDash (switched off in .vale.ini). The house guide accepts
+# both a spaced em dash and `--`, but rations them (§13): agent-written prose
+# reaches for one every other sentence. Rewrite the sentence; swapping in a
+# comma is not the fix.
+extends: existence
+message: "Em dashes are rationed. Can this sentence be rewritten without one?"
+level: suggestion
+nonword: true
+tokens:
+  - '\s(?:—|--)\s'

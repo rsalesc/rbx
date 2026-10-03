@@ -1,0 +1,10 @@
+# docs-writing-style-guide.md §7: "Project macros — use them, never hardcode
+# the names." Macro calls are in TokenIgnores and code spans are skipped, so
+# anything this matches is a hand-typed name in prose.
+extends: substitution
+message: "Use the '%s' macro instead of a hardcoded '%s'."
+level: warning
+ignorecase: false
+swap:
+  rbx: '{{rbx}}'
+  testlib: '{{testlib}}'

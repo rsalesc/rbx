@@ -1,0 +1,12 @@
+# docs-writing-style-guide.md §13: no hype adjectives. Say what the feature
+# does and let the reader judge. Slop.Overused covers the rest of the list
+# (robust, seamless, cutting-edge, leverage, utilize, ...).
+extends: existence
+message: "Drop '%s': say what it does instead of how good it is."
+level: warning
+ignorecase: true
+tokens:
+  - blazing(?:ly)?[- ]fast
+  - effortless(?:ly)?
+  - game[- ]chang(?:er|ing)
+  - powerful

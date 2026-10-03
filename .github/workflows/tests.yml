@@ -68,7 +68,9 @@ jobs:
           pandoc --version | head -1
       - uses: jdx/mise-action@v2
         with:
-          version: 2024.12.14 # [default: latest] mise version to install
+          # [default: latest] mise version to install. mise.toml's min_version
+          # (2025.8.0, needed to install vale) must not exceed this.
+          version: 2026.10.0
       - name: Run tests
         run: |
           source .venv/bin/activate
