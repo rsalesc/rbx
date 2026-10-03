@@ -84,6 +84,17 @@ echo "interactor exitcode $ECINT" >>stderr0
 echo "solution exitcode $ECSF" >>stderr0
 echo "exit first $EXITFIRST" >>stderr0
 
+# safeexec reports a solution killed by SIGPIPE with its own code. It wrote into
+# a pipe the interactor had already closed, so the interactor's verdict wins even
+# when the solution really exited first (testlib closes its input before it
+# exits). From here on it is a plain runtime error (2), the only one BOCA knows.
+SAFEEXEC_INTERACTIVE_SIGPIPE=10
+if [[ $ECSF -eq $SAFEEXEC_INTERACTIVE_SIGPIPE ]]; then
+  echo "solution died of SIGPIPE, judging as if the interactor exited first" >>stderr0
+  EXITFIRST=interactor
+  ECSF=2
+fi
+
 # Recover permissions.
 chmod 644 stdin0 stdout0
 

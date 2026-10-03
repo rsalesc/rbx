@@ -17,6 +17,8 @@
 #define MAX_EVENTS 2
 #define SOLUTION_TAG 1
 #define INTERACTOR_TAG 2
+// safeexec's exit code for a solution killed by SIGPIPE in an interactive run.
+#define SAFEEXEC_INTERACTIVE_SIGPIPE 10
 
 struct process_args {
   int argc;
@@ -344,9 +346,13 @@ int main(int argc, char *argv[]) {
     if (pid == solution_pid) {
       solution_status = bash_like_status(status);
       if (args.verbose) fprintf(stderr, "solution status: %d\n", solution_status);
-      if (solution_status) if (kill(interactor_pid, SIGTERM)) {
-        fprintf(stderr, "term interactor failed: %s\n", strerror(errno));
-      }
+      // A SIGPIPE'd solution means the interactor already closed its input and
+      // is on its way out with a verdict; terminating it now would erase that
+      // verdict. Its own watchdog still bounds it.
+      if (solution_status && solution_status != SAFEEXEC_INTERACTIVE_SIGPIPE)
+        if (kill(interactor_pid, SIGTERM)) {
+          fprintf(stderr, "term interactor failed: %s\n", strerror(errno));
+        }
     } else {
       interactor_status = bash_like_status(status);
       if (args.verbose) fprintf(stderr, "interactor status: %d\n", interactor_status);

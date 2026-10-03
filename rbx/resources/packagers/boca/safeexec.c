@@ -57,6 +57,10 @@ int process_group = 0;
 const char vers[] = "1.5.1";
 int notification_fd = -1;
 
+/* Interactive runs only: the program was killed by SIGPIPE. 10 is the one code
+   the "exit code + 10" scheme can never produce, since a zero exit reports 0. */
+#define EXIT_INTERACTIVE_SIGPIPE 10
+
 #define BUFFSIZE 256
 char curdir[BUFFSIZE], rootdir[BUFFSIZE], saida[BUFFSIZE], entrada[BUFFSIZE], erro[BUFFSIZE];
 
@@ -95,6 +99,7 @@ void exitandkill(int ret) {
 		case 4: fprintf(stderr,"safeexec: ERROR! internal error\n"); break;
 		case 3: fprintf(stderr,"safeexec: time limit exceeded\n"); break;
 		case 2: fprintf(stderr,"safeexec: runtime error\n"); break;
+		case EXIT_INTERACTIVE_SIGPIPE: fprintf(stderr,"safeexec: runtime error (broken pipe)\n"); break;
 		case 9: fprintf(stderr,"safeexec: runtime error\n"); break;
 	}
 	exit(ret);
@@ -475,6 +480,12 @@ Use -U and -G for that, but you might need to have root privilegies.\n");
 		fprintf (stderr, "safeexec: RUN-TIME SIGNAL REPORTED BY THE PROGRAM %s: %d\n", argv[optind], WTERMSIG(status));
       fflush(stderr);
 //      raise(WTERMSIG(status));
+      // In an interactive run (-D), a SIGPIPE means the program wrote into a
+      // pipe the interactor had already closed, so the interactor's verdict
+      // must win even if the program exited first. Report it apart from other
+      // signals so the run script can tell.
+      if(notification_fd != -1 && WTERMSIG(status) == SIGPIPE)
+        exitandkill(EXIT_INTERACTIVE_SIGPIPE);
       exitandkill(2);
     }
 

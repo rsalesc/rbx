@@ -1,4 +1,5 @@
 import pathlib
+import signal
 from abc import abstractmethod
 from typing import List, Optional, Tuple
 
@@ -449,10 +450,15 @@ async def check_communication(
         # carrying a timing would invite the benchmark report to print one.
         return CheckerResult(outcome=Outcome.INTERNAL_ERROR)
 
+    # A solution killed by SIGPIPE wrote into a pipe whose reader -- the
+    # interactor, directly or through a capture tee -- was already gone. When
+    # both die at once the sandbox may reap the solution first, so the exit
+    # order alone would wrongly blame the solution.
+    solution_sigpiped = run_log is not None and run_log.exitcode == -signal.SIGPIPE
     interactor_first = (
         interactor_run_log is not None
         and run_log is not None
-        and interactor_run_log.exitindex < run_log.exitindex
+        and (interactor_run_log.exitindex < run_log.exitindex or solution_sigpiped)
     )
 
     # 1. Check if the interactor crashed.

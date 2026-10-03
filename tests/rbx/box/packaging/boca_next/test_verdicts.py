@@ -80,6 +80,15 @@ D = verdicts.RunDecision
         (1, 0, 1, D(run_exit=0, testlib_code=1)),
         (1, 0, 5, D(run_exit=4, testlib_code=None)),
         (1, 0, 0, D(run_exit=0, testlib_code=None)),
+        # Solution SIGPIPE'd (safeexec 10): the interactor's verdict wins even
+        # when the solution exited first...
+        (1, 10, 2, D(run_exit=0, testlib_code=2)),
+        (2, 10, 1, D(run_exit=0, testlib_code=1)),
+        # ...a crashed interactor is still a judge error...
+        (1, 10, 139, D(run_exit=4, testlib_code=None)),
+        # ...and against an accepting interactor it is a plain runtime error.
+        (1, 10, 0, D(run_exit=2, testlib_code=None)),
+        (2, 10, 0, D(run_exit=2, testlib_code=None)),
     ],
 )
 def test_interactive_run_decision(first_tag, ecsf, ecint, expected):
