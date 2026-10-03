@@ -29,10 +29,13 @@ Never flag something the house guide explicitly asks for.
 ## Procedure
 
 1. **Run Vale** on each file, from the repository root:
-   `vale --output=line <files>`. If `vale` is missing, say so in the report
-   and continue. If styles are missing, run `vale sync` first. Report alerts
-   on changed lines only (use `git diff -U0 main -- <file>` to find them);
-   summarize the rest as a count.
+   `vale --output=line <files>`. If `vale` is missing, try `mise install`;
+   if it is still missing, say so in the report and continue. If styles are
+   missing, run `vale sync` first. Report alerts on changed lines only (use
+   `git diff -U0 main -- <file>` to find them); summarize the rest as a count.
+   `Slop.*` and `ai-tells.*` alerts flag AI-sounding prose. Two or more
+   warnings from them in one changed paragraph is a MAJOR finding ("reads as
+   machine-written"), even when each one alone would be defensible.
 2. **Verify every checkable claim.** For each command, flag, YAML key,
    default value, file name or behavior the page states, find its source in
    `rbx/` (Grep the option name, read the Typer command or the Pydantic field).

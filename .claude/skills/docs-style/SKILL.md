@@ -8,8 +8,9 @@ description: Use when writing, editing, restyling or reviewing any user-facing d
 Docs in this repository answer to two layers. Both run on every docs change:
 
 1. **Vale** (`.vale.ini`) -- mechanical checks: the upstream **Google developer
-   documentation style guide** plus `rbx`, the checkable subset of the house
-   voice (`.vale/styles/rbx/`).
+   documentation style guide**; two AI-prose detectors, **Slop**
+   (`vale-llm-slop`) and **ai-tells** (`vale-ai-tells`); and `rbx`, the
+   checkable subset of the house voice (`.vale/styles/rbx/`).
 2. **The `docs-style-reviewer` agent** -- an adversarial reviewer for what a
    linter cannot see: accuracy against the code, introduce-before-use, page
    architecture, and the Google and house rules that need judgment.
@@ -31,9 +32,12 @@ everywhere else, Google applies.
 ## Setup (once per machine)
 
 ```bash
-brew install vale     # or a binary from https://vale.sh/docs/install
-vale sync             # fetches Google into the gitignored .vale/styles/Google
+mise install          # Vale is pinned in mise.toml's [tools]; needs mise >= 2025.8.0
+vale sync             # fetches the packages in .vale.ini into the gitignored .vale/styles/
 ```
+
+`mise run docs:lint` runs `vale sync` itself, so a package bump in `.vale.ini`
+reaches you on the next lint.
 
 If the Vale Claude Code plugin is installed, its `PostToolUse` hook lints every
 `.md` you `Edit`/`Write` and hands **errors** back automatically. That hook is
@@ -48,6 +52,10 @@ yourself.
    `mise run docs:lint docs/path/page.md` (or `vale docs/path/page.md`).
    - **Errors:** fix all of them in lines you wrote or edited.
    - **Warnings:** fix them, or be ready to justify each one to the reviewer.
+     Most `ai-tells.*` warnings are AI-prose heuristics that also fire on
+     human prose here. Treat a cluster of them in one paragraph as a sign to
+     rewrite it, and a lone hit as a judgment call. Slop and ai-tells overlap,
+     so one phrase often draws a pair of alerts. Fix the phrase once.
    - **Suggestions:** read them; `Google.Passive`, `Google.Will`, `rbx.Filler`
      and `rbx.EmDash` are judgment calls, not orders.
 3. **Dispatch the `docs-style-reviewer` agent** (Agent tool,
@@ -71,8 +79,12 @@ the findings. Don't fix anything you weren't asked to.
   it can start a sentence). **Never** add `rbx` or `testlib`: vocabulary terms
   are exempt from every rule, which would switch off `rbx.Macros`.
 - A rule that is wrong for this project: change `.vale.ini` with a comment
-  citing the house-guide section that overrides Google. Never edit the synced
-  `.vale/styles/Google/`.
+  citing the house-guide section that overrides it. Never edit a synced style
+  (`Google`, `Slop`, `STE`, `ai-tells` under `.vale/styles/`).
+- Packages are pinned by release URL in `.vale.ini`. When you bump
+  `vale-ai-tells`, regenerate its override block. Every ai-tells rule that
+  fires on the current `docs/` is set to `warning`, and the rest stay
+  `error`. Keep the `NO` list as is unless the house guide changed.
 - Never raise `MinAlertLevel`, and never disable a rule to clear an alert you
   produced.
 

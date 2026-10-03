@@ -188,7 +188,12 @@ node_modules/
 rbx/resources/vscode/
 
 # Vale: packages fetched by `vale sync` are build output. The house style
-# (.vale/styles/rbx) and the vocabulary (.vale/styles/config) are source.
+# (.vale/styles/rbx) and our vocabulary (.vale/styles/config/vocabularies/rbx)
+# are source; packages may sync their own files into config/ too.
 .vale/styles/*
 !.vale/styles/rbx/
 !.vale/styles/config/
+.vale/styles/config/*
+!.vale/styles/config/vocabularies/
+.vale/styles/config/vocabularies/*
+!.vale/styles/config/vocabularies/rbx/
