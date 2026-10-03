@@ -9,7 +9,7 @@ rbx time
 
 ## What a run does
 
-A run moves through four stages, and the middle two are where your attention is worth spending:
+A run moves through four stages. The middle two are where your decisions come in:
 
 1. **Timing.** The accepted solutions run against every testcase. This is the measurement
    everything else is derived from, and it is the slow part.
@@ -17,8 +17,8 @@ A run moves through four stages, and the middle two are where your attention is 
    them. See [Language groups](language-groups.md).
 3. **Estimating.** The rules your environment configures turn those timings into a limit — one
    per group. See [How the limit is computed](computing.md).
-4. **Checking.** Each solution you declared too slow is run against the limit, to confirm it
-   really is. See [Checking the upper bound](#checking-the-upper-bound).
+4. **Checking.** Each solution you declared too slow is run at the limit times the upper-bound
+   ratio, to confirm it times out. See [Checking the upper bound](#checking-the-upper-bound).
 
 A fifth stage runs the solutions none of these needed, but only if you
 [ask for it](#checking-the-rest-of-the-package).
@@ -37,15 +37,15 @@ Before it measures anything, `rbx time` asks how you want the limit defined:
 | **Estimate with custom formula** | Times the solutions, then applies a [formula](computing.md#time-limit-formulas) you type in. |
 | **Custom time limit** | Asks you for a number of milliseconds and writes that. |
 
-Skip the prompt by naming the strategy, or by taking the configured one:
+Skip the prompt by passing the strategy, or by taking the configured one:
 
 ```bash
 rbx time --strategy=estimate
 rbx time --auto              # (1)!
 ```
 
-1. `--auto` uses the configured strategy and answers every prompt with its default, including
-   the language-group picker. This is the form to reach for in a script.
+1. `--auto` picks **Estimate**, and answers every other prompt with its default, including the
+   language-group picker. Use this form in scripts.
 
 ## Which solutions bound which side
 
@@ -71,8 +71,8 @@ solutions:
     inference: upper      # (2)!
 ```
 
-1. Left out of estimation entirely, and not run. Use this for a solution whose timings you do
-   not trust.
+1. Left out of estimation entirely, and not run while estimating. Use this for a solution
+   whose timings you do not trust.
 2. Opted in as an upper bound, which its outcome would not have done on its own.
 
 `inference: lower` on a solution declared too slow is rejected: a solution meant to time out
@@ -80,44 +80,42 @@ cannot argue that the limit should be *larger*.
 
 ## The estimation cap
 
-While the limit is being estimated there is no limit yet to enforce, so a solution left alone
-could run forever. `timing.inferenceTimeout` is the ceiling every accepted solution runs under
-during `rbx time`:
+While `rbx time` estimates the limit there's no limit to enforce yet, so an accepted solution
+could run forever. `timing.inferenceTimeout` caps every accepted solution:
 
 ```yaml title="env.rbx.yml"
 timing:
   inferenceTimeout: 10000   # ms
 ```
 
-An accepted solution that *hits* the cap is an error, not a data point: its measured time was
-cut short, so it cannot honestly bound the limit from below. The solution stops there and its
-remaining testcases are skipped, since they would measure nothing usable. Raise the cap, or make
-the solution faster.
+If an accepted solution *hits* the cap, {{rbx}} treats it as an error: its measured time was
+cut short, and a cut-short time can't bound the limit from below. The solution stops there and
+its remaining testcases are skipped. Raise the cap, or make the solution faster.
 
-A single problem can raise it for itself:
+A problem can raise it for itself:
 
 ```yaml title="problem.rbx.yml"
 timing:
   inferenceTimeout: 60000
 ```
 
-The cap does not apply to the solutions declared too slow — they are never measured, so raising
+The cap does not apply to the solutions declared too slow. They are never measured, so raising
 it does nothing for them.
 
 ## Checking the upper bound
 
 A solution declared too slow only has to answer one question: is it slower than the limit
-allows? Running it *at* that bound answers it, without waiting to find out how slow it really
-is.
+allows? Running it at `limit × timeLimitToTle` (see [How the limit is computed](computing.md))
+answers that, without waiting to find out how slow it really is.
 
 So once the limit is decided, {{rbx}} runs each of those solutions against it and reads the
 verdict:
 
-- It **runs out of time** — confirmed. Its remaining testcases are skipped; one timeout settles
+- It **runs out of time**: confirmed. Its remaining testcases are skipped; one timeout settles
   the question.
-- It **finishes** — the bound is violated, and now there is a real time to report it with.
+- It **finishes**: the bound is violated, and now there is a real time to report it with.
   {{rbx}} names the solution and what it took.
-- It **fails some other way**, a crash or a wrong answer — evidence of nothing either way, and
+- It **fails some other way**, a crash or a wrong answer: evidence of nothing either way, and
   an error. Fix it, or set `inference: false`.
 
 A violation does not end the run. The language-group picker reopens, now knowing what the check
@@ -126,10 +124,10 @@ found, so its preview shows which groupings cannot work:
 {{ asciinema("time-upper-bound-violation") }}
 
 From there you can regroup to satisfy the bound, press ++f++ to keep the limits anyway, or
-cancel. Nothing is written until you pick one.
+cancel. The profile isn't written until you choose.
 
-Where there is no picker to reopen — under `--auto`, or in a problem with a single language —
-the violation is reported and recorded in the profile, and the limit is written anyway.
+Under `--auto`, or in an environment with only one language, there's no picker to reopen. The
+limit is then written anyway, with the violation reported and recorded in the profile.
 
 ## Skipping the upper-bound check
 
@@ -137,9 +135,10 @@ the violation is reported and recorded in the profile, and the limit is written 
 rbx time --skip-slow
 ```
 
-The estimate is written with its upper bound unchecked. Useful when the check is the expensive
-part, as it is [on a remote judge](remote.md). If the environment sets no upper-bound ratio
-there is nothing to check, and this phase never runs.
+The estimate is written with its upper bound unchecked. It pays off when the check is the
+expensive part, as on [a remote judge](remote.md). Without `timeLimitToTle`
+([ratios](computing.md#time-limit-ratios)) there's nothing to check anyway, and this phase never
+runs.
 
 ## Running each solution several times
 
@@ -158,40 +157,41 @@ and the right one for a limit.
 rbx time --dry
 ```
 
-Everything a normal run does — the measurement, the picker, the estimation, the upper-bound
-check — happens, and the profile it arrives at is printed instead of saved. Nothing on disk
-changes, so the [limits profile](profiles.md) you already have survives the rehearsal.
+The run goes through every normal step (the measurement, the picker, the estimation and the
+upper-bound check), but prints the resulting profile instead of saving it. Nothing on disk
+changes, and the [limits profile](profiles.md) you already have stays as it is.
 
-That makes it the flag to reach for when the question is whether the estimation *works* —
-a ratio you just changed, a solution you just declared too slow, a remote judge you are trying
-for the first time — rather than what limit to commit to. It applies to every strategy, and to
-`--integrate` as well, which leaves `problem.rbx.yml` untouched under it.
+Use it to check that the estimation *works* before you commit to a limit: after changing a
+ratio or declaring another solution too slow, or when trying a remote judge for the first time.
+It applies to every strategy, and to `--integrate` as well, which leaves `problem.rbx.yml`
+untouched under it.
 
 ## Checking the rest of the package
 
-The four stages above run only the solutions the limit depends on: the accepted ones, and the
-slow ones the check had to ask about. Everything else — the solutions you expect to be wrong,
-and any slow one the check could skip — has no verdict at all when the run ends.
+The stages above run only the solutions the limit depends on: the accepted ones, and the slow
+ones the check had to ask about. Everything else (the solutions you expect to be wrong, and any
+slow one the check could skip) has no verdict when the run ends.
 
 ```bash
 rbx time --run-all
 ```
 
 A fifth stage then runs exactly those, at the limit that was just written, and the command
-fails if any of them does not behave as `problem.rbx.yml` says it does. The solutions that
-already ran are not run again: an accepted one was measured under a far looser cap, and a slow
-one timed out at a bound above the limit, so both answers already hold.
+fails if any of them does not behave as `problem.rbx.yml` says it does. Solutions that
+already ran aren't run again, because their verdicts at the written limit already follow: an
+accepted one was measured under a far looser cap, and a slow one timed out at a bound above the
+limit.
 
 This stage judges rather than measures, so it runs them exactly as
 [`rbx run`](../running/index.md) would: with twice the time limit, and with the warning that
-appears when a TLE solution passes within `2*TL`. The verdicts are the ones the limit itself
-produces — anything past `1*TL` is still a TLE — so the extra headroom only buys the report
-those warnings. The four stages before it never double anything: their caps are what the
-estimate is measured against, and a doubled cap is a corrupted measurement.
+appears when a TLE solution passes within `2*TL`. The verdicts still come from the limit itself
+(anything past `1*TL` is a TLE); the extra headroom only adds those warnings to the report. The
+earlier stages never double anything: their caps are what the estimate is measured against, and
+a doubled cap corrupts the measurement.
 
 Add `--fail-fast` (or `--ff`) to stop each of those solutions at its first non-accepted
-verdict. It applies to this stage only, it is for quick experimentation, and the report drops
-its timing summary under it — a solution that stopped early was not timed on the testcases that
+verdict. It applies to this stage only and is meant for quick experiments. Under it, the report
+drops its timing summary, since a solution that stopped early has no timings for the testcases it
 never ran.
 
 ### `rbx preship`
@@ -201,9 +201,9 @@ rbx preship
 ```
 
 `rbx time --auto --run-all` under a name that says what it is for: estimate the limit, check it,
-and check every solution against it. It takes the rest of `rbx time`'s flags — `--dry`,
-`--runs`, `--profile`, `--runner`, `--skip-slow`, `--fail-fast`, `--share` — but not the ones
-`--auto` settles (`--strategy`, `--integrate`).
+and check every solution against it. It takes `rbx time`'s flags except `--strategy`,
+`--auto`, `--integrate` and `--run-all`; see [`rbx preship` in the CLI
+reference](../reference/cli.md#rbx-preship).
 
 Both commands also take the `rbx run` flags about how a run is reported, and apply them to every
 stage: `-b` for a [judging-time benchmark](../running/index.md#benchmarking-the-judging-time),
@@ -223,6 +223,6 @@ wherever the argument about a time limit is happening.
 
 ## Every flag
 
-The sections above cover the flags worth explaining. For the exhaustive list, with its short
-forms and defaults, see [`rbx time` in the CLI reference](../reference/cli.md#rbx-time) — it is
-generated from the command itself, so it cannot fall behind.
+The sections above cover the flags that need some explanation. For the full list, with short
+forms and defaults, see [`rbx time` in the CLI reference](../reference/cli.md#rbx-time). It is
+generated from the command itself, so it is always up to date.

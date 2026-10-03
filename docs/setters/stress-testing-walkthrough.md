@@ -3,9 +3,11 @@
 !!! note
     This page picks up the sum-of-N-integers problem from [First steps](first-steps.md),
     where `sols/main.cpp` is correct and `sols/wa-overflow.cpp` accumulates the sum into
-    an `int32_t` that silently overflows.
+    an `int32_t` that silently overflows. If you followed
+    [Adding a custom checker](custom-checker-walkthrough.md), you mutated that problem along
+    the way. Go back to the sum-of-N version before continuing.
 
-Our goal: ask {{rbx}} to find a **tiny** input that breaks `sols/wa-overflow.cpp`.
+Let's ask {{rbx}} to find a **tiny** input that breaks `sols/wa-overflow.cpp`.
 
 ## Describing the search
 
@@ -30,8 +32,8 @@ tests/gen [1..5] <A.max> @
   different testcase.
 
 Why is such a small range enough? An `int32_t` overflows once the sum passes ~2.1×10⁹.
-With `A.max` up at ~10⁹, a handful of large numbers already pushes the true sum past that
-line. That is why the counterexample comes out tiny.
+With `A.max` up at ~10⁹, as few as three large numbers can push the true sum past that, so
+the counterexample can be tiny.
 
 Our finder expression is:
 
@@ -57,8 +59,8 @@ match. You can tune both the number of findings and the timeout with `-n` and `-
 
 ## Inspecting the counterexample
 
-When a match is found, `rbx stress` prints a report and shows the exact generator call
-that produced the failing testcase, along with the input itself.
+When a match is found, `rbx stress` prints a report with the exact generator call that
+produced the failing testcase, and a link to the folder where the failing input is saved.
 
 It's a small input: a few large numbers whose sum overflows `int32_t`, so
 `sols/wa-overflow.cpp` prints the wrong value while `sols/main.cpp` gets it right. That
@@ -66,7 +68,7 @@ divergence is what {{rbx}} flagged as `INCORRECT`.
 
 ## Making it stick
 
-A counterexample is only useful if it survives into your testset. Right after a match,
+A counterexample is only useful once it's part of your testset. Right after a match,
 `rbx stress` asks:
 
 > Do you want to add the tests that were found to a test group?
@@ -85,18 +87,18 @@ new `corner` test group to `problem.rbx.yml`:
 
     testcases:
     - name: 'samples'
-        testcaseGlob: 'statement/samples/*.in'
+      testcaseGlob: 'statement/samples/*.in'
     - name: 'testplan'
-        generatorScript:
-            path: 'tests/testplan.txt'
+      generatorScript:
+        path: 'tests/testplan.txt'
     - name: 'corner'  # (1)!
-        generatorScript:
-            path: 'tests/corner.txt'  # (2)!
+      generatorScript:
+        path: 'tests/corner.txt'  # (2)!
     ```
 
     1.  The new group `corner` takes its name from the script's filename.
     2.  The path {{rbx}} records is the one you typed, resolved from the package
-        root -- the same anchoring every other `path` in `problem.rbx.yml` uses.
+        root. Every other `path` in `problem.rbx.yml` is resolved the same way.
 
 === "tests/corner.txt"
     ```

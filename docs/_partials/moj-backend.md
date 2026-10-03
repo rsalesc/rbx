@@ -14,17 +14,16 @@
   page as literal text.
 -->
 
-You must be logged in to the [`moj` CLI](https://github.com/cd-moj/moj-cli) — {{rbx}} reuses
+You must be logged in to the [`moj` CLI](https://github.com/cd-moj/moj-cli). {{rbx}} reuses
 its session and never handles your credentials. On macOS the CLI also needs a bash newer than
 the one the system ships; if it refuses to start, see
 [The MOJ CLI needs bash 4 or newer](/setters/packaging/moj#the-moj-cli-needs-bash-4-or-newer).
 
 {{rbx}} uploads a **throwaway problem** of its own, named `<your login>#rbxt-<slug>` from the
-slug in `.rbx-id` at the package root — the one identity your package has on any remote judge,
-shared with the DOMjudge backend. The slug is
-minted once and then kept, so every later run reuses the same problem instead of orphaning one;
-commit `.rbx-id` if you want a co-setter to reach that problem too. The id is also written to
-`.moj-id`, which is what the `moj` CLI itself reads.
+slug in `.rbx-id` at the package root, the one identity your package has on any remote judge
+(the DOMjudge backend uses it too). The slug is created once and then kept, and every later run
+reuses the same problem. Commit `.rbx-id` if you want a co-setter to use that problem too. The
+id is also written to `.moj-id`, which is what the `moj` CLI itself reads.
 
 It never touches a problem it did not create: a package already bound to a real MOJ problem is
 refused by name rather than overwritten.
@@ -37,6 +36,3 @@ your solution wrote, so some of what a local run shows you has no counterpart at
 - `--runs` greater than one, a sanitizer, and interactive (`communication`) problems are
   **refused by name** before anything is uploaded — each would produce a report answering a
   different question than the one you asked.
-
-{{rbx}} refuses whatever it cannot answer honestly on a given backend, rather than quietly
-reporting less than you asked for.

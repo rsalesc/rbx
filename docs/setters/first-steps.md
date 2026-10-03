@@ -1,8 +1,8 @@
 # First steps
 
-`rbx` is the CLI tool {{rbx}} provides for setters to prepare contests and problems.
+{{rbx}} is a command-line tool for preparing problems and contests; you run it as `rbx`.
 
-This document focus on a very specific and simple user journey to highlight the most
+This document follows one simple scenario from start to finish to highlight the most
 common features of {{rbx}}. Feel free to explore the rest of the documentation on the sidebar
 to get more information about the other features.
 
@@ -24,11 +24,11 @@ pick one from the registry. Choosing the default preset clones it and materializ
 
 {{ asciinema("create-problem") }}
 
-This is how the directory structure of the pre-initialized problem preset will look like:
+Here's the directory structure the default preset creates:
 
 {{ preset_tree() }}
 
-The `testlib.h`, `jngen.h` and `tgen.h` you saw being materialized above sit alongside these,
+The `testlib.h`, `jngen.h` and `tgen.h` you saw being materialized above are in the folder too,
 but they are libraries {{rbx}} fetched rather than files the preset ships, so they are not
 listed here.
 
@@ -47,7 +47,7 @@ build
         └── ...
 ```
 
-You can notice it created several folders inside a `tests` directory, each of which contains the tests for a specific testgroup. For this preset in particular, we have two testsets: `samples` and `testplan`.
+You can notice it created several folders inside a `tests` directory, each of which contains the tests for a specific test group. For this preset in particular, we have two test groups: `samples` and `testplan`.
 
 !!! note
     The `testplan` group ships empty because `tests/testplan.txt` is fully commented
@@ -68,11 +68,11 @@ $ rbx run
 
 {{ asciinema("run-basic") }}
 
-You can see this command prints a full run report: it shows for each testcase of each testgroup whether a certain solution passed or not. There are also links for the outputs of each problem.
+You can see this command prints a full run report, showing whether each solution passed on each testcase. There are also links for the outputs of each problem.
 
 !!! tip
     You can notice when you call `rbx run` again, the testcases were built really fast.
-    That's because {{rbx}} caches certain calls based on the hash tree of your package
+    That's because {{rbx}} caches its work based on the hash tree of your package
     (similar to Makefile). You can explicitly clear this cache by calling `rbx clean`.
 
     Below, the same `rbx build` runs twice in a row. Nothing about the package changed
@@ -83,11 +83,11 @@ You can see this command prints a full run report: it shows for each testcase of
 
 ## Modifying the package
 
-As you can see from the solutions and the statement, the pre-initialized preset simply implements a problem where you have to add up two numbers `A` and `B`. Let's modify the problem to _compute the sum of N numbers_.
+As you can see from the solutions and the statement, the pre-initialized preset is a problem where you have to add up two numbers `A` and `B`. Let's modify the problem to _compute the sum of N numbers_.
 
 ### Rewrite solutions
 
-The lean preset ships a single solution, `sols/main.cpp`. Let's start by rewriting it to
+The default preset ships only one solution, `sols/main.cpp`. Let's start by rewriting it to
 sum `N` numbers, and then **add a second, deliberately buggy** solution so we have something
 to catch later on.
 
@@ -135,22 +135,17 @@ We can develop the following {{tags.accepted}} solution (rewriting `sols/main.cp
     ```
 
 Notice that we didn't have to touch `problem.rbx.yml` to register `sols/wa-overflow.cpp`.
+The preset's `solutions` section matches files by name and expects `sols/main*` and
+`sols/ac-*` to be {{tags.accepted}}, `sols/wa-*` to be {{tags.wrong_answer}}, `sols/tle-*`
+to exceed the time limit, and so on. Naming a file with one of these prefixes is enough to
+register it. Edit the `solutions` section yourself only when you need something bespoke.
 
-By default, the `solutions` section is configured to use the file name to determine the outcome of that solution,
-example: if the file name starts with `ac-`, its outcome should be `ACCEPTED`, and if it starts with `wa-`, its outcome
-should be `WRONG_ANSWER`, etc. The preset already declares the `sols/wa-*` → {{tags.wrong_answer}} pattern,
-so simply creating a file whose name starts with `wa-` is enough for {{rbx}} to pick it up with the
-right expected outcome.
-
-If you want to add or delete solutions from our package, you can just make the changes to the files
-(matching one of these prefixes), or manually edit the `solutions` section if you want a bespoke setup.
-
-You can find the full list of expected outcomes [here][rbx.box.schema.ExpectedOutcome].
+The full list of outcomes is in the [`ExpectedOutcome` reference][rbx.box.schema.ExpectedOutcome].
 
 ### Write the validator
 
 The new input limits have to be updated in `problem.rbx.yml`. The `vars` section should look
-like this — the preset already declares `N`, so `A` is the one you add:
+like this. The preset already declares `N`: lower its `max` to 1000 and add `A`:
 
 === "problem.rbx.yml"
     ```yaml
@@ -158,7 +153,7 @@ like this — the preset already declares `N`, so `A` is the one you add:
       author: "John Doe" # (1)!
       N:
         min: 1
-        max: 1000000000
+        max: 1000
       A:
         min: 1
         max: 1000000000
@@ -201,17 +196,41 @@ The {{testlib}} validator is implemented by `validator.cpp` and will look like t
         in the validator. It allows you to change the constraints of the problem,
         and instantly replicate the change in validators and statements.
 
+### Update the samples
+
+The preset's samples are still `A B` pairs, and the new validator rejects them. Let's rewrite
+both inputs in the new format:
+
+=== "statement/samples/000.in"
+    ```
+    3
+    1 2 3
+    ```
+
+=== "statement/samples/001.in"
+    ```
+    5
+    1000000000 1000000000 1000000000 1000000000 1000000000
+    ```
+
+=== "statement/samples/000.rbx.tex"
+    ```tex
+    %- block en
+    In the first sample, $N = 3$, so the answer is $1 + 2 + 3 = 6$.
+    %- endblock
+    ```
+
+`000.rbx.tex` is the explanation printed below the first sample in the statement, so it
+needs the same update. Notice the second sample sums to 5×10⁹, which doesn't fit in an
+`int32_t`: `sols/wa-overflow.cpp` already fails on it.
+
 ### Generating random testcases
 
-Now, let's rewrite our random generator to generate `N` numbers instead of only two.
-
-We have to actually call this generator and generate testcases into the `testplan` testgroup.
-
-The preset already declares a `testplan` group backed by `tests/testplan.txt`, but that file
-ships fully commented out, so the group starts empty. Let's fill it in with 10 random tests by
-uncommenting/adding calls to the generator. We can either spell the calls out by hand in a
-static generator script (`tests/testplan.txt`) or have a program print them for us as a
-dynamic generator script (here shown as `tests/testplan.py`).
+Now, let's rewrite our random generator to produce `N` numbers instead of two, and call it
+from the `testplan` group. The preset already declares that group, backed by
+`tests/testplan.txt`, but the file ships fully commented out. Let's fill it with 10 random
+tests, either spelled out by hand in a static generator script (`tests/testplan.txt`) or
+printed by a program as a dynamic generator script (here, `tests/testplan.py`):
 
 === "tests/gen.cpp"
     ```c++
@@ -232,7 +251,7 @@ dynamic generator script (here shown as `tests/testplan.py`).
     }
     ```
 
-    1.  The generator now receive two parameters `N.max` (accessed through `#!c++ opt<int>(1)`) and `A.max` (accessed through `#!c++ opt<int>(2)`).
+    1.  The generator now receives the upper bounds for `N` (accessed through `#!c++ opt<int>(1)`) and for each number (accessed through `#!c++ opt<int>(2)`).
 
 === "tests/testplan.txt (static)"
     ```
@@ -256,7 +275,7 @@ dynamic generator script (here shown as `tests/testplan.py`).
 
     1.  This line defines 10 random calls to the generator `gen`, 
         which will in turn generate testcases with `N` randomly varying
-        from 1 to 1000 and the numbers to be added varying from 1 to `1e9`.
+        from 1 to 1000 and the numbers to be added varying from 1 to 10⁹.
 
         !!! tip
             Notice the trailing `{i}` being printed in every generator script line.
@@ -273,30 +292,23 @@ dynamic generator script (here shown as `tests/testplan.py`).
 
     testcases:
     - name: 'samples'
-        testcaseGlob: 'statement/samples/*.in'
+      testcaseGlob: 'statement/samples/*.in'
     - name: 'testplan'  # (1)!
-        generatorScript:
-            path: 'tests/testplan.txt'  # or 'tests/testplan.py', in case you want to use a dynamic generator
+      generatorScript:
+        path: 'tests/testplan.txt'  # or 'tests/testplan.py', in case you want to use a dynamic generator
     ```
     
     1.  Here, `testplan` would contain the 10 tests defined in `tests/testplan.txt` or `tests/testplan.py`.
 
-Our newly defined generator `gen.cpp` will receive two positional arguments, `N` and `A`, and generate
-a list of `N` integers, each of which is at most `A`.
-
-Then, our generator script will call this generator 10 times to generate 10 different tests with
-`N` integers ranging from 1 to `A`.
-
-Now, if we run `rbx build`, we'd get our brand new generated tests.
+Now run `rbx run` again. Each new test adds up to 1000 numbers of up to 10⁹, so
+`sols/wa-overflow.cpp`, which already failed on the second sample, gets
+{{tags.wrong_answer}} on them too, exactly the outcome its `wa-` prefix declares.
 
 ### Update the statement
 
-Of course, last but not least, we have to update the statement of our problem. {{rbx}}
-has its own statement format, called {{rbxTeX}}. The format itself is simple, but the ecosystem
-behind it is complex and provides a lot of flexibility for setters.
-
-For now, you just need to know the body and meat of the statement is written at `statement/statement.rbx.tex`.
-If you open it, you will find something like the following:
+Of course, last but not least, we have to update the statement of our problem. {{rbx}} has
+its own statement format, {{rbxTeX}}. The statement is in `statement/statement.rbx.tex`;
+open it and you'll find something like this:
 
 
 === "statement/statement.rbx.tex"
@@ -323,7 +335,7 @@ If you open it, you will find something like the following:
         you to access variables defined in `problem.rbx.yml`, similar to how you
         accessed these in the {{testlib}} validator.
 
-        The template engine used to expand `\VAR{...}` is Jinja2. This means we can also
+        The template engine used to expand `\VAR{...}` is Jinja2, so we can also
         use filters. Here in particular, we're using a pre-defined filter implemented
         by {{rbxTeX}} called `sci`. This filter converts numbers with lots of zeroes (for instance, 100000), into their scientific notations (`10^5`).
 
@@ -340,9 +352,8 @@ Let's change each corresponding block to match our new problem description.
     %- endblock
 
     %- block input
-    The input has a single line containing $N$ 
-    ($1 \leq N \leq \VAR{vars.N.max | sci}$) numbers. 
-    These numbers range from 1 to $\VAR{vars.A.max | sci}$.
+    The first line contains an integer $N$ ($1 \leq N \leq \VAR{vars.N.max | sci}$).
+    The second line contains $N$ integers, each between 1 and $\VAR{vars.A.max | sci}$.
     %- endblock
 
     %- block output
@@ -353,6 +364,9 @@ Let's change each corresponding block to match our new problem description.
     No notes.
     %- endblock
     ```
+
+The preset's `statement/editorial.rbx.tex` still describes the A + B problem too, so give it
+the same update.
 
 ## Next steps
 

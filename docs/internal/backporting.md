@@ -2,7 +2,7 @@
 
 Sometimes a bug is reported against a released version that `main` has long
 moved past -- someone is on `0.38.0` while `main` is already at `1.0.0`. The fix
-needs to reach **both** lines: a patch release on the old line for the people
+has to ship on **both** lines: a patch release on the old line for the people
 stuck there, and `main` so the bug does not come back.
 
 This page is the runbook for that. It is written to be followed literally,
@@ -12,7 +12,7 @@ including by an agent that has never done a release here.
 
 **Fix forward first, cherry-pick down, never merge back.**
 
-The fix lands on `main` first, always. Only then is it ported to a maintenance
+The fix is merged into `main` first, always. Only then is it ported to a maintenance
 branch cut from the old tag. The maintenance branch is a one-way destination:
 it accumulates `bump:` commits and a truncated `CHANGELOG.md` that must never
 flow back into `main`, or commitizen's version derivation gets confused.
@@ -26,7 +26,8 @@ in the next major. Do not do it in the other order.
 Read this before touching anything, because the mechanics decide what is safe.
 
 - Versioning is [commitizen](https://commitizen-tools.github.io/commitizen/)
-  driven. `cz bump` reads the current version from `pyproject.toml`, derives
+  driven. `cz bump` reads the current version from the `uv` version provider
+  (`pyproject.toml`), derives
   the next one from the conventional-commit types since the last tag, and
   writes it to every entry in `tool.commitizen.version_files` --
   `pyproject.toml`, `rbx/__version__.py`, and the default preset's
@@ -43,12 +44,14 @@ Read this before touching anything, because the mechanics decide what is safe.
   commitizen derived. Maintenance branches still bump with `cz bump` directly
   (see below), so this front-end does not apply there.
 
-That last point is the trap, because **GitHub Actions runs the workflow files
-as they existed at the tagged commit**, not as they exist on `main`. Older tags
-predate the change, so their `release.yml` still has the tag trigger *active*.
-Pushing a `0.38.1` tag built on top of `0.38.0` therefore fires that old
-workflow and publishes to PyPI automatically -- the opposite of how `main`
-behaves today.
+The missing release CI on `main` looks like a trap at first, because **GitHub
+Actions runs the workflow files as they existed at the tagged commit**, not as
+they exist on `main`. Older tags predate the change, so their `release.yml`
+still has the tag trigger *active*. Even so, that trigger doesn't fire, since
+the release workflow is also disabled on GitHub itself (state
+`disabled_manually`) for every ref. So pushing an old tag does **not**
+auto-publish, and while the workflow is disabled, every backport is published
+by hand.
 
 So before releasing an old line, work out which mode it is in, and do not do
 both. Double-publishing is not catastrophic (the CI action passes
@@ -57,9 +60,12 @@ will fail noisily.
 
 ## Pre-flight: work out how the old tag releases
 
-Five minutes here saves an afternoon:
+Run these checks before anything else:
 
 ```bash
+# 0. Is the release workflow enabled on GitHub at all?
+gh api repos/rsalesc/rbx/actions/workflows --jq '.workflows[] | "\(.name) | \(.state)"'
+
 # 1. Is the tag-push trigger live in the release workflow at that tag?
 git show 0.38.0:.github/workflows/release.yml | head -30
 
@@ -67,20 +73,24 @@ git show 0.38.0:.github/workflows/release.yml | head -30
 git show 0.38.0:.github/workflows/tests.yml | head -20
 ```
 
+While check 0 reports the release workflow as `disabled_manually`, nothing runs on a
+tag push, whatever the old `release.yml` says, so you publish by hand. The rest of
+this section only matters if someone re-enables the workflow.
+
 If the trigger **is** live, the old `release.yml` gates PyPI publishing behind
 `lewagon/wait-on-check-action`, which blocks until checks matching
-`^ubuntu-latest - Python \d+\.\d+\.x$` report on the tag ref. Two ways that
-hangs forever and publishes nothing:
+`^ubuntu-latest - Python \d+\.\d+\.x$` report on the tag ref. The release then
+hangs forever and publishes nothing if either of these holds:
 
 - `tests.yml` at that tag does not trigger on tag pushes; or
-- the test matrix job name at that tag does not match that regexp.
+- the name of the test matrix job at that tag does not match that regexp.
 
 If the trigger is **not** live -- anything tagged after `ci: disable release
 workflow in favor of mise release`, which landed just after `1.0.0` -- nothing
 happens on tag push and you publish by hand.
 
 Also note what the old `release.yml` is *missing*. Anything added to the
-release pipeline after that tag simply will not run -- for example, the
+release pipeline after that tag will not run -- for example, the
 schema-publish job did not exist before `1.0.0`, so a `0.38.x` release cannot
 publish schemas. That is fine, but know it in advance instead of discovering it
 as a missing artifact.
@@ -116,8 +126,8 @@ by hand on the branch instead**, with the same commit message. A backport is
 allowed to have a different diff from its origin commit; it is not allowed to
 have different behaviour.
 
-Whatever you do, run the tests on the branch. The old line's test suite is the
-only thing that knows whether the port is correct in that context.
+Whatever you do, run the tests on the branch. Only the old line's test suite can
+tell whether the port is correct in that context.
 
 ### 4. Bump on the branch
 
@@ -134,23 +144,25 @@ The bump also rewrites `min_version` in the default preset to `0.38.1`, which
 is correct for that line.
 
 !!! warning "Do not run `mise run release` on a maintenance branch"
-
     It runs `mise run publish-schemas`, which may not exist -- or may not
     behave -- at that point in history, and it may double up with the old
     tag-triggered CI. Bump and publish as separate, deliberate steps.
 
 ### 5. Publish, in whichever mode the pre-flight established
 
-- **Old tag-triggered CI is live** (any line before the trigger was disabled):
-  the `git push --tags` above already started it. Do nothing else; watch the
-  run.
-- **No release CI at that tag**: publish by hand from the branch checkout with
+- **Release workflow disabled on GitHub** (check 0 reads `disabled_manually`,
+  the current state): publish by hand from the branch checkout with
   `mise run publish`.
+- **Workflow enabled, the old tag trigger is live, and the pre-flight showed
+  the checks will match**: the `git push --tags` above already started it. Do
+  nothing else; watch the run.
+- **Workflow enabled, but no release trigger at that tag**: publish by hand
+  from the branch checkout with `mise run publish`.
 
 Either way, confirm PyPI actually received the new version before telling
 anyone it shipped.
 
-## What this does *not* break
+## What this does not break
 
 - **PyPI ordering.** Uploading `0.38.1` after `1.0.0` is fine. `pip install
   rbx-cp` still resolves to the newest overall version; people on the old line
@@ -158,7 +170,7 @@ anyone it shipped.
 - **The published schemas.** `latest/` on the schemas site is computed as the
   greatest version directory present, not as "the last one published", so an
   out-of-order publish cannot regress it. (See [JSON schemas](schemas.md).) In
-  practice a pre-`1.0.0` line publishes no schemas at all.
+  practice, a pre-`1.0.0` line doesn't publish schemas at all.
 
 ## Afterwards
 

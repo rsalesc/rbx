@@ -11,10 +11,12 @@ The only required field of a contest is its `name`.
 A barebones package would look something like:
 
 ```yaml
-name: "my-problem"
+name: "my-contest"
 ```
-## Contest problem
 
+## Contest problems
+
+**Field**: `problems`
 **Schema**: `List[`[`ContestProblem`][rbx.box.contest.schema.ContestProblem]`]`
 
 ```yaml
@@ -22,33 +24,33 @@ name: "my-contest"
 problems:
   - short_name: "A"
     path: "A"
-    color: "ff0000"
-    aliases: ["apple"]   # Optional; refer to this problem as "A" or "apple" in e.g. rbx on <name> run
+    color: "#ff0000"     # a `#rrggbb`/`#rgb` hex or an X11 color name
+    aliases: ["apple"]   # optional; `rbx on apple run` now selects A
   - short_name: "B"
     path: "B"
-    color: "00ff00"
+    color: "#00ff00"
 ```
 
 ## Selecting problems
 
-Commands that act on part of a contest -- `rbx on` above all -- take a **problem
-selector**: a comma-separated list of entries, each naming one or more problems.
+Commands that act on part of a contest, such as `rbx on`, take a **problem
+selector**: a comma-separated list of entries, each matching one or more problems.
 
-An entry can name a problem in four ways, and they're tried in this order:
+An entry can match a problem in four ways, tried in this order:
 
 1. its `short_name` (`A`);
 2. the `name` it declares in its own `problem.rbx.yml` (`knapsack`);
 3. one of its `aliases` (`apple`);
-4. the basename of the folder it lives in (`day1/knapsack` matches `knapsack`).
+4. the basename of its folder (`day1/knapsack` matches `knapsack`).
 
 The order matters when two problems disagree. If `B` is one problem's letter and
-another problem's alias, `rbx on B run` runs the first one -- the letter wins, and
-the alias is never even looked at.
+another problem's alias, `rbx on B run` runs the first one, because letters are tried
+before aliases.
 
 Matching is case-insensitive, so `rbx on apple` and `rbx on APPLE` are the same
 command.
 
-On top of a plain entry, a selector understands ranges, wildcards and exclusions:
+Besides plain entries, a selector supports ranges, wildcards and exclusions:
 
 | Selector | Selects |
 | :--- | :--- |
@@ -59,15 +61,15 @@ On top of a plain entry, a selector understands ranges, wildcards and exclusions
 | `*,!C` | every problem but `C` |
 | `!C` | the same -- a selector made only of exclusions starts from every problem |
 
-Note that a range is written with **two dots**. A single dash is just a character
-like any other, since a problem may well be named `two-sum`.
+A range is written with **two dots**. A single dash is a regular character, since a
+problem may be named `two-sum`.
 
-Your shell will happily expand `*` and `!` before {{rbx}} ever sees them, so quote
+Your shell may expand `*` and `!` before {{rbx}} sees them, so quote
 any selector that uses them:
 
 ```bash
 rbx on '*,!C' run
 ```
 
-Finally, an entry that matches no problem is an error, and the whole command stops
-there. A typo in one letter of a list never quietly runs on the rest.
+Finally, an entry that matches no problem is an error. One bad entry stops the whole
+command: a typo never runs it on just the other problems.

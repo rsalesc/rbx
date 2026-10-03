@@ -24,7 +24,7 @@ problem.yaml              # memory/output limits, validation settings
 problem.pdf               # the problem statement, built by rbx
 data/sample/              # sample testcases (001.in/001.ans, ...)
 data/secret/              # all other testcases
-output_validators/        # custom checker, when needed (see below)
+output_validators/        # checker (or interactor), with a patched testlib.h
 submissions/              # jury solutions, judged by DOMjudge on import
 ```
 
@@ -36,28 +36,42 @@ submissions/              # jury solutions, judged by DOMjudge on import
 
 ## Time and memory limits
 
-The DOMjudge packager uses the `domjudge` [limits profile](../profiling/index.md) when
+The DOMjudge packager uses the `domjudge` [limits profile](../profiling/profiles.md) when
 one exists (create it with `rbx time -p domjudge`), and falls back to the package
-limits otherwise. DOMjudge has a single time limit per problem, so per-language
+limits otherwise. DOMjudge has one time limit per problem, so per-language
 modifiers are not emitted; the time limit is written with exact fractional seconds
-(e.g. a `1234 ms` limit becomes `1.234`).
+(for example, a `1234 ms` limit becomes `1.234`).
 
 ## Checkers
 
-{{rbx}} **always ships your problem's checker** as a custom output validator
+For a batch problem, {{rbx}} **always ships your problem's checker** as a custom output validator
 (`validation: custom`), so DOMjudge judges with exactly the same checker {{rbx}} uses
-locally — it never falls back to DOMjudge's built-in default validators. The checker
+locally, and never with DOMjudge's built-in default validators. The checker
 is shipped under `output_validators/` together with a `testlib.h` patched to speak the
 DOMjudge validator protocol (exit codes 42/43, team output on stdin, feedback
-directory), since that protocol differs from testlib's. This applies to the builtin
+directory), since that protocol differs from {{testlib}}'s. This applies to the builtin
 checkers (`wcmp`, `ncmp`, …) as well as your own.
 
-Checkers must be written in C++ (testlib).
+Checkers must be written in C++ ({{testlib}}).
+
+## Interactive problems
+
+Interactive problems are packaged with `validation: custom interactive`, and the interactor
+takes the checker's place under `output_validators/`:
+
+- A modern interactor judges the interaction on its own, so it becomes DOMjudge's output
+  validator.
+- A [legacy interactor](../grading/interactors.md#do-i-need-to-write-a-checker) paired with a
+  checker (`legacy: true`) ships together with that checker,
+  and a generated `run` script chains the two, so both still run.
+
+Either way, the interactor (and the checker, when there is one) must be written in C++
+({{testlib}}).
 
 ## Jury solutions
 
 Every solution is placed under `submissions/` so DOMjudge judges it on import. **No
-solution is dropped** — each one carries a faithful expected verdict. DOMjudge derives
+solution is dropped**, and each one is shipped with its expected verdict. DOMjudge derives
 the expected verdict from the submission directory name when that name is a verdict
 (the directories below), and from an `@EXPECTED_RESULTS@` annotation that {{rbx}} adds
 to the source otherwise. Mismatches are surfaced on DOMjudge's jury *Judging verifier*
@@ -65,7 +79,7 @@ page; they never block the import.
 
 Single-verdict outcomes go to the matching directory (no annotation needed):
 
-| rbx outcome             | DOMjudge directory      |
+| Expected outcome        | DOMjudge directory      |
 | ----------------------- | ----------------------- |
 | `accepted`              | `accepted`              |
 | `wrong answer`          | `wrong_answer`          |
@@ -76,7 +90,7 @@ Single-verdict outcomes go to the matching directory (no annotation needed):
 Outcomes that allow more than one verdict go to `submissions/mixed/` with an
 `@EXPECTED_RESULTS@` annotation listing every acceptable verdict:
 
-| rbx outcome             | `@EXPECTED_RESULTS@` tokens                            |
+| Expected outcome        | `@EXPECTED_RESULTS@` tokens                            |
 | ----------------------- | ------------------------------------------------------ |
 | `memory limit exceeded` | `RUN-ERROR, TIMELIMIT` (*)                             |
 | `accepted or tle`       | `CORRECT, TIMELIMIT`                                   |
@@ -84,7 +98,7 @@ Outcomes that allow more than one verdict go to `submissions/mixed/` with an
 | `incorrect`             | every non-`CORRECT` verdict                            |
 | `any`                   | every verdict                                          |
 
-(*) DOMjudge has no memory-limit verdict — an over-memory run surfaces as a runtime
+(*) DOMjudge has no memory-limit verdict: it reports an over-memory run as a runtime
 error (sometimes a time limit). This is the one outcome that can't be expressed
 exactly.
 
@@ -95,11 +109,11 @@ exactly.
 ## Configuring the server
 
 A package says nothing about which languages a DOMjudge instance accepts, or how it
-compiles them: both live in the server's own configuration, not in the problem. So a
+compiles them: both are part of the server's own configuration. So a
 package built against `-std=c++20` can still fail to compile on a judge whose C++
-script passes no `-std` at all — the stock one does not.
+script passes no `-std` at all, and the stock script doesn't pass one.
 
-`rbx tool domjudge configure` closes that gap by pushing your environment to the
+`rbx tool domjudge configure` fixes this by pushing your environment to the
 server:
 
 ```bash
@@ -117,15 +131,15 @@ It prints everything it is about to change before changing it.
     no per-contest equivalent for languages, compilation or limits, so this
     reconfigures the whole server — every contest on it, including other people's.
 
-Three things are pushed.
+It pushes the following settings.
 
 **Which languages accept submissions.** Each language in `env.rbx.yml` is matched
 against the server's language list by file extension, and the result is enabled.
-Languages the server has enabled that {{rbx}} does not know about stay enabled, and
+Languages the server has enabled that are missing from `env.rbx.yml` stay enabled, and
 {{rbx}} only ever *adds* file extensions to a language, never removes one.
 
-Matching by extension only sees languages that are currently enabled — a disabled one
-is invisible to DOMjudge's API. Name it explicitly to switch it back on:
+Matching by extension only sees languages that are currently enabled, because DOMjudge's
+API doesn't list disabled ones. Name it explicitly to switch it back on:
 
 ```yaml
 languages:
@@ -139,14 +153,14 @@ languages:
 
 The id here is DOMjudge's *external* id, which is not always the one the admin
 interface shows: `py3` is externally `python3`, `pas` is `pascal`, `rs` is `rust`.
-An id that matches nothing is silently ignored by DOMjudge, so {{rbx}} re-reads the
-language list afterwards and tells you which entries did not land.
+DOMjudge silently ignores an id that doesn't match any language, so {{rbx}} re-reads the
+language list afterwards and tells you which entries weren't applied.
 
 `timeFactor` is the multiplier DOMjudge applies to every problem's time limit for that
 language. It is only ever pushed when you set it here: nothing in `env.rbx.yml` means
 the same thing, so there is nothing to derive it from.
 
-**How they are compiled.** For a language whose compilation is a single command that
+**How they are compiled.** For a language whose compilation is one command that
 produces the program {{rbx}} then executes — C and C++, in the default preset — the
 command is translated into DOMjudge's compile wrapper and uploaded:
 
@@ -179,7 +193,7 @@ extensions:
     sourceSizeLimit: 256   # KiB
 ```
 
-These are the defaults for problems that carry none of their own; a package built by
+These are the defaults for problems that don't set their own; a package built by
 `rbx package domjudge` always ships its own time and memory limits.
 
 !!! note "There is no stack limit to configure"

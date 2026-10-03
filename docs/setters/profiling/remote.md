@@ -18,8 +18,8 @@ a judge machine carries. The margin you thought you left may not be there.
 Measuring on the park removes the guess: the timings are the judge's own, so the limit is
 derived from the machine that will enforce it.
 
-If what you want is a *verdict* rather than a limit, reach for [`rbx run
---runner`](../running/remote.md) instead. The two commands share everything below.
+If what you want is a *verdict* rather than a limit, use [`rbx run
+--runner`](../running/remote.md) instead. Both commands share everything below.
 
 ## Timing on MOJ
 
@@ -27,14 +27,14 @@ If what you want is a *verdict* rather than a limit, reach for [`rbx run
 
 {% include "_partials/moj-backend.md" %}
 
-## The two phases, and the two uploads
+### Two phases, two uploads on MOJ
 
 MOJ enforces the time limit from inside the package, so the limit {{rbx}} is measuring under has
-to be *in* what it uploads. The two phases of a run measure under different limits, and
-therefore need different packages:
+to be *in* what it uploads. A run has two phases that measure under different limits, and so
+need different packages:
 
 1. **Estimating** runs the accepted solutions under the [estimation
-   cap](estimating.md#the-estimation-cap) — one limit for every language.
+   cap](estimating.md#the-estimation-cap): one limit for every language.
 2. **[Checking the upper bound](estimating.md#checking-the-upper-bound)** runs the too-slow
    solutions at the bound the estimate demands of them, which differs per language group.
 
@@ -49,8 +49,8 @@ one-upload path:
 rbx time -p moj --runner moj --skip-slow
 ```
 
-Each command uploads to a throwaway problem of its own — `…-run` for `rbx run`, `…` and
-`…-slow` for the two phases of `rbx time` — so alternating between the commands never costs a
+Each command uploads to a throwaway problem of its own (`…-run` for `rbx run`, `…` and
+`…-slow` for the two phases of `rbx time`), so alternating between the commands never costs a
 re-upload.
 
 ## Timing on DOMjudge
@@ -63,9 +63,9 @@ rbx time -p domjudge --runner domjudge
 
 {% include "_partials/domjudge-backend.md" %}
 
-### The two phases, and the two uploads
+### Two phases, two uploads on DOMjudge
 
-DOMjudge enforces the time limit from inside the package, so — exactly as on MOJ — the two
+DOMjudge enforces the time limit from inside the package, so, exactly as on MOJ, the two
 phases measure under different limits and therefore need different packages. Each phase uploads
 to a problem of its own, `rbxt-…-estimation` and `rbxt-…-validation`, so alternating between
 them never costs a re-upload.
@@ -76,8 +76,8 @@ that matter most.
 
 Finished judgings are cached, and so is the upload: re-running `rbx time`, or regrouping back
 onto limits already probed, re-submits only the solutions whose source changed, and re-uploads
-the package only when the package itself changed. A judging {{rbx}} could not read — a compile
-error above all — is never cached, so fixing it and running again really does try again.
+the package only when the package itself changed. A judging {{rbx}} could not read (a compile
+error, most often) is never cached, so fixing it and running again really does try again.
 
 `--skip-slow` stops after the estimate, which is the one-upload path:
 

@@ -5,7 +5,7 @@
     through it yet, start there — we pick up right where it left off.
 
 In [First steps](first-steps.md) we built a problem that asks for the **sum of `N` integers**.
-That problem has a single correct answer, so {{rbx}}'s default checker does the job: `wcmp`
+That problem has only one correct answer, so {{rbx}}'s default checker does the job: `wcmp`
 compares the participant's output token-by-token against the model answer.
 
 But not every problem has a unique answer. Let's mutate our problem into one that doesn't, and
@@ -26,7 +26,7 @@ We need a checker that *verifies the property* (`a + b = N`) instead of comparin
 
 ### The solutions
 
-Here's an {{tags.accepted}} solution and a {{tags.wrong_answer}} solution. As in step 1, the
+Here's an {{tags.accepted}} solution and a {{tags.wrong_answer}} solution. As in [First steps](first-steps.md), the
 filename prefix (`wa-`) tells {{rbx}} the expected outcome.
 
 === "sols/main.cpp"
@@ -54,8 +54,8 @@ filename prefix (`wa-`) tells {{rbx}} the expected outcome.
     ```
 
 !!! note "What about the validator, generator and statement?"
-    Switching problems also means updating the input validator, the generator and the
-    statement. The input is now a single integer `N`, and the mechanics are the ones from
+    Switching problems also means updating the input validator, the generator, the samples
+    and the statement. The input is now one integer `N`, and the mechanics are the ones from
     [First steps](first-steps.md), so we keep the spotlight on the checker instead of
     re-walking them.
 
@@ -112,7 +112,7 @@ the model answer.
     4.  `quitf(_ok, ...)` ends the checker with an {{tags.accepted}} verdict.
 
 !!! tip "When you *do* need the model answer"
-    Some problems (e.g. "find the **shortest** path") can only be checked by comparing against
+    Some problems (for example, "find the **shortest** path") can only be checked by comparing against
     the jury's solution via the `ans` stream. For that pattern, see the
     [Checkers](grading/checkers.md) feature guide and its *output + answer* example.
 
@@ -130,12 +130,12 @@ new file instead:
 
 ## Running it
 
-Now run `rbx run` again. Two things change compared to step 1:
+Now run `rbx run` again. Two things change compared to [First steps](first-steps.md):
 
-- Your `main.cpp` passes on every test, even when it prints a different pair than the model
-  solution, because the checker verifies the *property* rather than the tokens.
+- `main.cpp` is still {{tags.accepted}}, but now the checker is what says so. It verifies the
+  *property*, so any other solution that prints a different valid pair passes too.
 - `wa-offbyone.cpp` fails, and instead of an opaque token diff you get the checker's custom
-  message, e.g. `a + b = 11, expected 10`.
+  message, for example `a + b = 11, expected 10`.
 
 {{ asciinema("run-custom-checker") }}
 

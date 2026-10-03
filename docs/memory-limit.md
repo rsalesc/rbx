@@ -1,15 +1,16 @@
 # Memory limit
 
-The memory limit of a problem is the `memoryLimit` you declare in `problem.rbx.yml`, in MiB, and it
-is the limit {{rbx}} enforces on every program it runs -- solutions, checkers, validators and
-generators alike.
+The memory limit of a problem is the `memoryLimit` you declare in `problem.rbx.yml`, in MiB.
+{{rbx}} enforces it on every solution it runs, and on the interactor in interactive problems.
+Checkers, validators and generators run under the environment's `defaultExecution` sandbox
+limit instead.
 
 ```yaml title="problem.rbx.yml"
 memoryLimit: 256  # 256 MiB
 ```
 
-How that limit is *applied*, though, differs between operating systems, and the difference is
-visible in the verdicts you get. This page is about that difference.
+How that limit is *applied*, though, differs between operating systems, and you can see the
+difference in the verdicts you get.
 
 ## How the limit is enforced
 
@@ -18,13 +19,13 @@ On **Linux**, {{rbx}} caps the program's address space with `RLIMIT_AS` -- the s
 allocation past the limit *fails inside the program*: `malloc` returns null, `new` throws
 `std::bad_alloc`, Python raises `MemoryError`.
 
-On **MacOS**, `RLIMIT_AS` is not imposed. Instead, {{rbx}} samples the program's resident memory
+On **macOS**, `RLIMIT_AS` is not imposed. Instead, {{rbx}} samples the program's resident memory
 while it runs and kills it once it goes over the limit.
 
 !!! warning
-    This means the same solution can get a **different verdict** on the two systems. A C++ solution
-    that allocates too much gets `RTE` on Linux, because it dies from a failed allocation, and
-    `MLE` on MacOS, because {{rbx}} is the one that killed it.
+    The same solution can therefore get a **different verdict** on the two systems. A C++
+    solution that allocates too much gets `RTE` on Linux, because a failed allocation crashes it,
+    and `MLE` on macOS, because {{rbx}} killed it.
 
     A solution declared with `outcome: memory limit exceeded` will therefore fail on Linux. Use
     `outcome: mle+rte` instead, which accepts either and still rules out every other verdict:
@@ -36,14 +37,12 @@ while it runs and kills it once it goes over the limit.
     ```
 
 !!! note
-    There is a stronger consequence for Linux, and it is worth stating plainly: because
-    `RLIMIT_AS` bounds the address space, a program's resident memory can never exceed the limit
-    either. The watchdog has nothing left to catch, so **`MLE` is not a verdict you will see on
-    Linux** for anything but a JVM language -- which is exempt from the cap, and whose
-    `OutOfMemoryError` is an `RTE` anyway.
+    On Linux the consequence goes further. Because `RLIMIT_AS` bounds the address space, a
+    program's resident memory can never exceed the limit either. The watchdog has nothing left
+    to catch, so **`MLE` is not a verdict you will see on Linux** for anything but a JVM
+    language -- which is exempt from the cap, and whose `OutOfMemoryError` is an `RTE` anyway.
 
-The Linux behavior is the one most online judges have, so it is the more faithful of the two. It
-also has a consequence worth knowing about.
+The Linux behavior is the one most online judges have, so it's the more faithful of the two.
 
 ## Reserved memory counts on Linux
 
@@ -54,7 +53,7 @@ it. A program that reserves far more than it uses is charged for the reservation
 int big[100'000'000];  // 400 MiB of .bss, never touched
 ```
 
-Under a 256 MiB limit, this program will not even start on Linux, while on MacOS it runs happily,
+Under a 256 MiB limit, this program will not even start on Linux, while on macOS it runs fine,
 because the pages it never touches never become resident.
 
 This is rarely a problem for solutions, which tend to use what they allocate. It matters for
@@ -70,7 +69,7 @@ is what `{memory}` is, in the run command of the bundled `env.rbx.yml`:
 command: "java -Xss100m -Xmx{memory}m -Xms{initialMemory}m -cp {executable} {javaClass}"
 ```
 
-A Java solution that exceeds the limit therefore dies with an `OutOfMemoryError`, and gets `RTE`
+A Java solution that exceeds the limit therefore fails with an `OutOfMemoryError`, and gets `RTE`
 on every system.
 
 **Sanitized builds.** Sanitizers reserve enormous amounts of address space by design, so {{rbx}}
@@ -92,19 +91,18 @@ and the good, answer). To raise it, open `/etc/security/limits.conf` and add:
 ```
 
 !!! note
-    Containers are the common case where this bites. If you run {{rbx}} inside Docker with
-    `--memory`, the container's own limit sits below anything you configure, and every program
-    runs under it.
+    A container memory cap (`docker --memory`) isn't an address-space limit. {{rbx}} can't see
+    it, and a program over it is killed by the kernel.
 
 ## Compilation has its own limit
 
 Compilers are memory-hungry, and on Linux they are capped too -- but by the `memoryLimit` of the
-*compilation* sandbox, not by the problem's. It lives in your `env.rbx.yml`:
+*compilation* sandbox, not by the problem's. It is set in your `env.rbx.yml`:
 
 ```yaml title="env.rbx.yml"
 defaultCompilation:
   sandbox:
-    memoryLimit: 1024 # 1gb
+    memoryLimit: 1024 # 1 GiB
 ```
 
 If a compilation starts failing with `virtual memory exhausted` after an upgrade -- heavy template
