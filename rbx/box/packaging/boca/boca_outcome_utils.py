@@ -8,4 +8,6 @@ def simplify_rbx_expected_outcome(outcome: ExpectedOutcome) -> ExpectedOutcome:
         ExpectedOutcome.MLE_OR_RTE,
     ]:
         return ExpectedOutcome.RUNTIME_ERROR
+    if outcome == ExpectedOutcome.TLE_OR_MLE:
+        return ExpectedOutcome.TLE_OR_RTE
     return outcome

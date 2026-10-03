@@ -27,6 +27,7 @@ const EVERY_MEMBER: readonly string[] = [
   'MEMORY_LIMIT_EXCEEDED',
   'OUTPUT_LIMIT_EXCEEDED',
   'TLE_OR_RTE',
+  'TLE_OR_MLE',
   'JUDGE_FAILED',
   'COMPILATION_ERROR',
 ];

@@ -200,6 +200,14 @@ class ExpectedOutcome(AutoEnum):
     the solution is killed once its resident memory crosses the limit. Use this to
     declare a solution that exceeds the memory limit without pinning it to one of them."""
 
+    TLE_OR_MLE = alias('tle or mle', 'tle/mle', 'tle+mle', 'tl or ml', 'tl+ml')  # type: ignore
+    """Expected outcome for solutions that finish with either TLE or MLE.
+
+    Especially useful for brute force solutions, which run out of whichever resource
+    the test exhausts first. On Linux the address space is capped, so a solution that
+    runs out of memory dies of a runtime error instead; declare it `TLE_OR_RTE` if it
+    must pass there."""
+
     JUDGE_FAILED = alias('judge failed', 'jf')  # type: ignore
     """Expected outcome for solutions that finish with a judge failed verdict.
     
@@ -260,7 +268,11 @@ class ExpectedOutcome(AutoEnum):
         return f'{icon} {name}'
 
     def is_slow(self) -> bool:
-        return self in [ExpectedOutcome.TIME_LIMIT_EXCEEDED, ExpectedOutcome.TLE_OR_RTE]
+        return self in [
+            ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+            ExpectedOutcome.TLE_OR_RTE,
+            ExpectedOutcome.TLE_OR_MLE,
+        ]
 
     def matches_tle_and_is_incorrect(self) -> bool:
         return self.match(Outcome.TIME_LIMIT_EXCEEDED) and not self.match(
@@ -301,6 +313,8 @@ class ExpectedOutcome(AutoEnum):
             return outcome == Outcome.MEMORY_LIMIT_EXCEEDED
         if self == ExpectedOutcome.TLE_OR_RTE:
             return outcome in {Outcome.RUNTIME_ERROR} or outcome.is_slow()
+        if self == ExpectedOutcome.TLE_OR_MLE:
+            return outcome in {Outcome.MEMORY_LIMIT_EXCEEDED} or outcome.is_slow()
         if self == ExpectedOutcome.MLE_OR_RTE:
             return outcome in {
                 Outcome.RUNTIME_ERROR,

@@ -1079,3 +1079,44 @@ class TestMleOrRte:
         # Unlike TLE_OR_RTE, nothing here is a timing verdict, so it must not be
         # excluded from time-limit estimation as a slow expectation.
         assert not ExpectedOutcome.MLE_OR_RTE.is_slow()
+
+
+class TestTleOrMle:
+    """The expectation for a solution that exhausts either time or memory --
+    typically a brute force, whose verdict depends on which resource runs out
+    first on the test (#873)."""
+
+    @pytest.mark.parametrize(
+        'outcome',
+        [
+            Outcome.TIME_LIMIT_EXCEEDED,
+            Outcome.IDLENESS_LIMIT_EXCEEDED,
+            Outcome.MEMORY_LIMIT_EXCEEDED,
+        ],
+    )
+    def test_matches_either_resource_running_out(self, outcome: Outcome):
+        assert ExpectedOutcome.TLE_OR_MLE.match(outcome)
+
+    @pytest.mark.parametrize(
+        'outcome',
+        [
+            Outcome.ACCEPTED,
+            Outcome.WRONG_ANSWER,
+            Outcome.RUNTIME_ERROR,
+            Outcome.OUTPUT_LIMIT_EXCEEDED,
+        ],
+    )
+    def test_does_not_match_anything_else(self, outcome: Outcome):
+        assert not ExpectedOutcome.TLE_OR_MLE.match(outcome)
+
+    @pytest.mark.parametrize(
+        'value', ['TLE_OR_MLE', 'tle or mle', 'tle/mle', 'tle+mle', 'tl or ml', 'tl+ml']
+    )
+    def test_every_declared_spelling_resolves(self, value: str):
+        assert ExpectedOutcome(value) == ExpectedOutcome.TLE_OR_MLE
+
+    def test_it_is_reported_as_slow(self):
+        # Like TLE_OR_RTE, it allows a timeout, so it is an upper-bound solution
+        # and must be left out of time-limit estimation.
+        assert ExpectedOutcome.TLE_OR_MLE.is_slow()
+        assert ExpectedOutcome.TLE_OR_MLE.matches_tle_and_is_incorrect()
