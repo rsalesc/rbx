@@ -430,7 +430,10 @@ class StupidSandbox(SandboxBase):
                     assert interactor_tee.pipes.output is not None
                     interactor_tee.pipes.output.close()
 
-                if idx == 0 and program_result.exitcode != 0:
+                # Kill the solution if it is still running, whatever was reaped
+                # before: a capture tee may exit (and be reaped) ahead of the
+                # interactor it reads from.
+                if results[0] is None and program_result.exitcode != 0:
                     try:
                         os.killpg(group_id, signal.SIGKILL)
                     except Exception:

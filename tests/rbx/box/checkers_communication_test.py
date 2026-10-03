@@ -457,6 +457,56 @@ class TestCheckCommunicatedSolutionCrashedFirst:
 
         assert result.outcome == Outcome.TIME_LIMIT_EXCEEDED
 
+    async def test_check_communication_sol_sigpipe_reaped_first_and_wa(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        # Both died at once and the solution happened to be reaped first. Its
+        # SIGPIPE still means the interactor had already gone away.
+        run_log.exitcode = -signal.SIGPIPE
+        run_log.exitstatus = SandboxBase.EXIT_SIGNAL
+        interactor_run_log.exitcode = 1
+        interactor_run_log.exitstatus = SandboxBase.EXIT_NONZERO_RETURN
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.WRONG_ANSWER
+
+    async def test_check_communication_sol_sigpipe_reaped_first_and_interactor_ok(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        run_log.exitcode = -signal.SIGPIPE
+        run_log.exitstatus = SandboxBase.EXIT_SIGNAL
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.RUNTIME_ERROR
+
 
 class TestCheckCommunicatedSolutionExitedOkFirst:
     async def test_check_communication_sol_ok_interactor_wa(

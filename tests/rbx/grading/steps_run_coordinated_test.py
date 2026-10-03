@@ -453,6 +453,54 @@ class TestStepsRunCoordinated:
 
         assert merged_content == expected_content
 
+    async def test_run_coordinated_kills_solution_when_tee_reaped_before_interactor(
+        self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
+    ):
+        """A failing interactor must kill the solution even when a capture tee
+        is reaped before it."""
+        interactor_file = (
+            testdata_path / 'steps_run_test' / 'closes_stdout_then_fails_interactor.py'
+        )
+        solution_file = testdata_path / 'steps_run_test' / 'hanging_solution.py'
+
+        artifacts = GradingArtifacts(root=cleandir)
+        artifacts.inputs.extend(
+            [
+                GradingFileInput(
+                    src=interactor_file, dest=pathlib.Path('interactor.py')
+                ),
+                GradingFileInput(src=solution_file, dest=pathlib.Path('solution.py')),
+            ]
+        )
+        artifacts.logs = GradingLogsHolder()
+
+        interactor_params = CoordinatedRunParams(
+            command=f'{sys.executable} interactor.py',
+            params=SandboxParams(timeout=5000, wallclock_timeout=10000),
+        )
+
+        solution_params = CoordinatedRunParams(
+            command=f'{sys.executable} solution.py',
+            params=SandboxParams(timeout=5000, wallclock_timeout=10000),
+        )
+
+        solution_log, interactor_log = await steps.run_coordinated(
+            interactor_params,
+            solution_params,
+            artifacts,
+            sandbox,
+            merged_capture=pathlib.Path('merged.log'),
+        )
+
+        assert solution_log is not None
+        assert interactor_log is not None
+        assert interactor_log.exitstatus == SandboxBase.EXIT_NONZERO_RETURN
+        assert interactor_log.exitindex < solution_log.exitindex
+        # Killed right after the interactor exited, not left to hang.
+        assert solution_log.exitstatus == SandboxBase.EXIT_SIGNAL
+        assert solution_log.wall_time is not None
+        assert solution_log.wall_time < 3
+
     async def test_run_coordinated_with_merged_capture_and_stderr(
         self, sandbox: SandboxBase, cleandir: pathlib.Path, testdata_path: pathlib.Path
     ):
