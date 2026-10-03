@@ -175,6 +175,8 @@ junit.xml
 build_log.txt
 
 agents/
+# ...but not Claude Code project agents (e.g. the docs-style reviewer).
+!.claude/agents/
 
 .worktrees/
 # The VS Code extension is an npm project; hatchling only honours the *root*
@@ -184,3 +186,9 @@ node_modules/
 
 # Built by `mise run vscode:vsix`, shipped in the wheel via hatch artifacts.
 rbx/resources/vscode/
+
+# Vale: packages fetched by `vale sync` are build output. The house style
+# (.vale/styles/rbx) and the vocabulary (.vale/styles/config) are source.
+.vale/styles/*
+!.vale/styles/rbx/
+!.vale/styles/config/

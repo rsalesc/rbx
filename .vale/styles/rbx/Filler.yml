@@ -1,0 +1,13 @@
+# docs-writing-style-guide.md §13: cut filler. A suggestion, not a warning --
+# "just" is sometimes the right word ("just two groups"), and the reviewer
+# decides which.
+extends: existence
+message: "Consider cutting '%s'."
+level: suggestion
+ignorecase: true
+tokens:
+  - actually
+  - basically
+  - simply
+  - just
+  - really

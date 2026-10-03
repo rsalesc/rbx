@@ -1,0 +1,12 @@
+# docs-writing-style-guide.md §13: never close a section with a victory lap.
+# Point onward instead ("Read more about ... in the [X] section.").
+extends: existence
+message: "Drop the victory lap '%s'; end by pointing onward."
+level: warning
+ignorecase: true
+tokens:
+  - and that's (?:it|all)
+  - that's all there is to it
+  - now you're (?:ready|all set)
+  - you're all set
+  - voil[aà]

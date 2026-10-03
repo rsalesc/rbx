@@ -1,0 +1,15 @@
+# docs-writing-style-guide.md §13: no hype adjectives. Say what the feature
+# does and let the reader judge.
+extends: existence
+message: "Drop '%s': say what it does instead of how good it is."
+level: warning
+ignorecase: true
+tokens:
+  - blazing(?:ly)?[- ]fast
+  - cutting[- ]edge
+  - effortless(?:ly)?
+  - game[- ]chang(?:er|ing)
+  - powerful
+  - robust
+  - seamless(?:ly)?
+  - state[- ]of[- ]the[- ]art

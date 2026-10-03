@@ -146,3 +146,10 @@ run = "npm run package"
 description = "Build the extension .vsix that ships inside the wheel"
 dir = "vscode"
 run = "npm run package && npm run vsix"
+
+[tasks."docs:lint"]
+description = "Lint docs prose with Vale (Google style + house rules, see .vale.ini)"
+# Vale itself is not pinned here (`brew install vale`); `vale sync` fetches the
+# Google package into the gitignored .vale/styles/Google. Pass paths to lint a
+# subset, e.g. `mise run docs:lint docs/setters/first-steps.md`.
+run = "vale sync >/dev/null && vale {{arg(name='paths', var=true, required=false, default='docs/')}}"
