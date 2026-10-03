@@ -26,12 +26,12 @@ rbx unit
 
 {{ asciinema("unit-tests") }}
 
-In the next sections, we'll go through what each of these fields mean, and how to define
+In the next sections, we'll go through what each of these fields means, and how to define
 the actual test inputs.
 
 ## Testing validators
 
-Let's say we have a validator that checks if the input contains a connected graph in the format.
+Let's say we have a validator that checks if the input contains a connected graph in the following format:
 
 ```
 N M
@@ -83,31 +83,29 @@ To check the tests are working properly, let's create the following files in the
     2 4
     ```
 
-Now, when you run `rbx unit`, you should see all the three tests passing if the validator
-is implemented correctly, and we should see failures if the validator does not behave as expected.
+Now, when you run `rbx unit`, all three tests should pass if the validator is correct. If it
+isn't, you'll see failures instead.
 
-{{ asciinema("unit-tests") }}
-
-The failing case is the one worth knowing by sight. Below, the validator is the same one,
-except the connectivity check has been dropped — so `invalid_NOT_CONNECTED.in` passes
-validation when the `unitTests` entry says it must not. {{rbx}} reports the test that broke,
+It's good to know what a failure looks like. Below, the validator is the same one, except
+the connectivity check has been dropped, so `invalid_NOT_CONNECTED.in` passes validation
+even though the `unitTests` entry says it must not. {{rbx}} reports the test that broke,
 what it expected, and what it actually got:
 
 {{ asciinema("unit-validator-failure") }}
 
-Note the other two tests still pass: the input that violates the declared bounds is still
-rejected by {{testlib}} itself. That is the sort of hole unit tests are for — a validator
-can look healthy on the tests you happen to generate and still be missing a constraint.
+Notice the other two tests still pass: {{testlib}} itself rejects the input that violates
+the declared bounds. Unit tests are there to catch this kind of hole, since a validator can
+accept every test you happen to generate and still be missing a constraint.
 
 ## Testing checkers
 
 Now, let's say we have a checker that checks whether the output of the participant is a path
 between two vertices 1 and `N` in a graph with `N` vertices and `M` edges.
 
-Let's say we have a checker that expects a number `K` in the first line, and then `K` numbers
-on the second line, which are the vertices on the path.
+The checker reads a number `K` in the first line, and then `K` numbers on the second line,
+which are the vertices on the path.
 
-**The checker code is omitted for simplicity. You can check the complete code in the [Checkers](../grading/checkers.md) section.**
+*The checker code is omitted here; the complete version is in the [Checkers](../grading/checkers.md) section.*
 
 We can create unit tests for this checker by defining the following in our `problem.rbx.yml` file:
 
@@ -120,8 +118,8 @@ unitTests:
       outcome: WRONG_ANSWER
 ```
 
-These will define the general skeleton of our checker unit tests. Remember that checkers
-are a bit more complex than validators, and accept three different files as input:
+These define the general skeleton of our checker unit tests. Checkers are a bit more
+complex than validators, and accept three different files as input:
 
 - `<file>.in`: The input file for this testcase.
 - `<file>.out`: The output file of the participant for this testcase.
@@ -146,10 +144,10 @@ Let's say we have the following files in the `unit/checker` directory:
     1 2 3
     ```
 
-Here, we don't even set a `.ans` file, because the aforementioned checker will simply ignore it
-anyways. If you run `rbx unit`, this test should pass, because the checker will indeed return {{tags.accepted}} for this output.
+Here, we don't even set a `.ans` file, because our checker ignores it
+anyway. If you run `rbx unit`, this test should pass, because the checker returns {{tags.accepted}} for this output.
 
-Let's test now that the checker fails when the output is not a valid path on the output.
+Let's test now that the checker fails when the output is not a valid path in the input graph.
 
 === "wa_NON_EXISTING_EDGE.in"
     ```title="unit/checker/wa_NON_EXISTING_EDGE.in"
@@ -164,7 +162,7 @@ Let's test now that the checker fails when the output is not a valid path on the
     1 2 3
     ```
 
-If you run `rbx unit`, this test should also pass, because the checker will indeed return {{tags.wrong_answer}}
+If you run `rbx unit`, this test should also pass, because the checker returns {{tags.wrong_answer}}
 for this output, since the participant's output uses an edge that does not exist in the input.
 
 In problems where the model solution output is consumed by the checker, we can additionally
@@ -172,7 +170,7 @@ define the `.ans` file as well, and the checker will consume it.
 
 ## Testing extra validators
 
-You can test extra validators in the same way as the main validator by simply specifying the validator that should be testedin the `unitTests` field. By default, the main validator will be tested.
+You can test extra validators in the same way as the main validator by specifying the validator that should be tested in the `unitTests` field. By default, the main validator will be tested.
 
 ```yaml title="problem.rbx.yml" hl_lines="9 12"
 unitTests:
@@ -183,15 +181,15 @@ unitTests:
       outcome: INVALID
     - glob: unit/extra-validator/valid_*.in
       outcome: VALID
-      validator: extra-validator.cpp
+      validator: {path: extra-validator.cpp}
     - glob: unit/extra-validator/invalid_*.in
       outcome: INVALID
-      validator: extra-validator.cpp
+      validator: {path: extra-validator.cpp}
 ```
 
 ## Using test plans
 
-While defining tests using glob patterns is simple and works well for file-based tests, it can be cumbersome if you have many small unit tests and don't want to create a separate file for each one. For this use case, {{rbx}} supports **test plans**.
+Glob patterns work well for file-based tests, but they get cumbersome when you have many small unit tests and don't want to create a separate file for each one. For this case, {{rbx}} supports **test plans**.
 
 A test plan is a single file that contains multiple unit tests defined using a special syntax. You can define test plans in your `problem.rbx.yml` file:
 
@@ -226,7 +224,7 @@ The `@test` block is the most general way to define a test. It allows you to spe
 ```
 
 - `name` (optional): The name of the test case.
-- `EXPECTATION`: The expected outcome (e.g., `VALID`, `INVALID` for validators; `ACCEPTED`, `WRONG_ANSWER`, etc. for checkers).
+- `EXPECTATION`: The expected outcome (for example, `VALID`, `INVALID` for validators; `ACCEPTED`, `WRONG_ANSWER`, etc. for checkers).
 
 #### Simplified `@input` syntax
 

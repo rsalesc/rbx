@@ -6,9 +6,9 @@ This documentation goes over how each field (or group of fields) in `problem.rbx
 
 **Schema**: [rbx.box.schema.Package][]
 
-The three main required fields in a `problem.rbx.yml` package are:
+The required fields in a `problem.rbx.yml` package are:
 
-- `name`: supports anything matching the regex `^[a-zA-Z0-9\-]+$`
+- `name`: 3 to 32 characters, letters, digits, `-` and `_`, starting with a letter or digit.
 - `timeLimit`: the time limit of your problem, in milliseconds.
 - `memoryLimit`: the memory limit of your problem, in megabytes.
 
@@ -20,7 +20,7 @@ timeLimit: 1000  # 1 second TL
 memoryLimit: 256  # 256 MB ML
 ```
 
-## Language Modifiers
+## Language modifiers
 
 You can add extra language-based limit modifiers to problems.
 
@@ -34,7 +34,7 @@ modifiers:
     memory: 512  # 512 MB ML for Java
 ```
 
-## Task Type
+## Task type
 
 **Field**: `type`
 **Schema**: [rbx.box.schema.TaskType][]
@@ -52,7 +52,7 @@ memoryLimit: 256  # 256 MB ML
 ## Variables
 
 **Field**: `vars`
-**Schema**: `#!python Dict[str, Union[str, int, float, bool]]`
+**Schema**: nested mapping of names to `str | int | float | bool`
 
 In the package definition you can define variables that can be referenced in statements, validators, checkers, interactors and stress tests.
 
@@ -80,20 +80,24 @@ int main() {
 
 If you're not using C++ for your components, consider doing so as the {{rbx}} experience is tightly integrated with {{testlib}}.
 
-If not, you can still use the variables in validators, see the [Validators](#validators) section for more information.
+Components in other languages can't include `rbx.h`, but validators still receive every variable on the command line (see [Validators](#validators)).
 
 !!! warning
-    Refrain from using variables in generators. Although it is tempting to use `rbx.h` in there, it is not recommended to do so.
+    Refrain from using variables in generators: by default {{rbx}} refuses to build a generator
+    that includes `rbx.h`. See [Generators and `rbx.h`](../../../generators-and-rbx-h.md).
 
     Read more on the [Generators](#generators) section.
 
 !!! note
-    Variable names should be valid Python identifiers.
+    Top-level variables can't be named `group`, `help`, `testCase`, `testCaseFileName`,
+    `testMarkupFileName`, `testOverviewLogFileName` or `testset`. Variables are passed to
+    validators as `--name=value`, so these names would collide with {{testlib}} and {{rbx}}
+    command-line flags. Nest them under another key instead (as in `limits.group`).
 
 ## Checker
 
 **Field**: `checker`
-**Schema**: [rbx.box.schema.CodeItem][]
+**Schema**: [rbx.box.schema.Checker][]
 
 Checkers are also a very important part of your problem package, and define how the output of a solution will be judged.
 
@@ -101,7 +105,7 @@ The checker is controlled through the top-level parameter `checker`, and is opti
 
 {{rbx}} is **tightly integrated** with {{testlib}}, and thus you can either specify:
 
-1. The name of any checker in defined in [testlib's checkers folder](https://github.com/MikeMirzayanov/testlib/tree/master/checkers). The checker will be automatically downloaded when running solutions and building the package.
+1. The name of any checker defined in the [`checkers` folder](https://github.com/MikeMirzayanov/testlib/tree/master/checkers) of {{testlib}}. The checker will be automatically downloaded when running solutions and building the package.
 
     ```yaml
     checker:
@@ -123,9 +127,9 @@ The checker is controlled through the top-level parameter `checker`, and is opti
 
     !!! success "Recommended"
         This is usually the recommended solution when building a custom checker, as {{rbx}} provides a clear integration with {{testlib}}
-        and you can use include `rbx.h` in your checker to read variables.
+        and you can include `rbx.h` in your checker to read variables.
 
-3. A custom checker (not necessarily using {{testlib}}). It can even be in other language, in which case we suggest specifying the `language` property.
+3. A custom checker (not necessarily using {{testlib}}). It can even be in another language, in which case we suggest specifying the `language` property.
 
     ```yaml
     checker:
@@ -181,7 +185,7 @@ You can also specify a set of testcase generators that can be re-used in differe
 
 Again, we encourage the use of {{testlib}}-based generators, but give you the flexibility to develop however you like.
 
-After implementing a generator, you can define it in `problem.rbx.yml` similar to how you define a checker, but you also have to name it to be able to reference it down the line.
+You declare a generator in `problem.rbx.yml` the same way you declare a checker, plus a `name` that other fields use to reference it.
 
 ```yaml
 generators:
@@ -189,14 +193,11 @@ generators:
     path: "my-gen.cpp"
 ```
 
-Notice also how the `generators` field is a list, and as such you can define multiple generators.
+Notice also how the `generators` field is a list, so you can define multiple generators.
 
 !!! danger
-    Refrain from using [Variables](#variables) in generators. Although it is tempting to depend on them, it is not a good practice.
-    
-    This will make your generator sensible to the changes you make to the `vars` field, meaning if you found a testcase that breaks
-    a specific solution, but it depends on a `vars` entry and you change it, you might end up with a totally different test. Instead,
-    you should be able to describe all your generator parameters through static variables.
+    Refrain from using [Variables](#variables) in generators. See
+    [Generators and `rbx.h`](../../../generators-and-rbx-h.md) for why.
 
 
 
@@ -219,16 +220,16 @@ solutions:
     outcome: wa
 ```
 
-Also, you **have to define** an accepted solution. The first accepted solution in this list will be considered the main solution to generate answers for the testcases.
+Also, you **have to define** an accepted solution. The first solution must be {{tags.accepted}}, since it's the main solution: its outputs become the answers for the testcases.
 
-For a full list of expected outcomes, see [here][rbx.box.schema.ExpectedOutcome].
+See [`ExpectedOutcome`][rbx.box.schema.ExpectedOutcome] for the full list of expected outcomes.
 
 ## Testcase groups
 
 **Field**: `testcases`
 **Schema**: `List[`[`TestcaseGroup`][rbx.box.schema.TestcaseGroup]`]`
 
-You can define multiple testgroups for you problem. For each testgroup, you can define tests for it in five (5) different ways:
+You can define multiple testgroups for your problem. For each testgroup, you can define tests for it in five different ways:
 
 1. Specifying a sequence of manually defined testcases present in your package's directory with the `testcases` field.
 
@@ -238,7 +239,7 @@ You can define multiple testgroups for you problem. For each testgroup, you can 
         testcases:
           - inputPath: "manual-tests/1.in"
             outputPath: "manual-tests/1.ans"
-          - inputPath: "manual-tests/1.in"
+          - inputPath: "manual-tests/2.in"
     ```
 
     !!! note
@@ -304,7 +305,7 @@ You can define multiple testgroups for you problem. For each testgroup, you can 
         ```
 
     === "script.py"
-        ```bash
+        ```py
         # Generates 10 different cases with different parameters.
         for i in range(10):
           print(f'gen 1000 {i}')
@@ -352,7 +353,7 @@ You can specify validators in two places:
 
 You can pass variables to validators in two different ways.
 
-1. (C++ only) Include the `rbx.h` header and using the `getVar` accessor.
+1. (C++ only) Include the `rbx.h` header and use the `getVar` function.
 
     ```cpp
     #include "testlib.h"
@@ -376,9 +377,9 @@ You can pass variables to validators in two different ways.
     !!! success "Recommended"
         This is the recommended approach of passing variables to validators.
 
-1. Read the variables from the command line.
+2. Read the variables from the command line.
 
-    {{rbx}} passes all the variables defined in the `vars` section to the validator through `--{name}={value}` parameters. You are
+    {{rbx}} passes every variable defined in the `vars` section to the validator through `--{name}={value}` parameters. You are
     responsible for writing code to parse them.
 
     ```python
@@ -424,16 +425,16 @@ testcases:
     # No override: the package-level values apply.
 ```
 
-The merge is done leaf by leaf, so a partial override keeps its siblings, and the keys
-need not exist at package level -- a variable meaningful only inside one testgroup can be
-declared there alone. Only top-level testgroups can declare `vars`; subgroups cannot,
+Overrides are merged leaf by leaf: a partial override keeps its sibling keys. The keys
+don't need to exist at package level either, and a variable used only inside one testgroup
+can be declared there alone. Only top-level testgroups can declare `vars`; subgroups cannot,
 because {{rbx}} only passes the top-level testgroup name to the validator.
 
 The resolved values are also readable in statements as `problem.groups.<name>.vars.<key>`.
 
 !!! success "Recommended"
-    This is the recommended way of varying constraints between subtasks -- it beats both a
-    testgroup-specific validator and a branch on the testgroup's name. See
+    This is the recommended way of varying constraints between subtasks. Prefer it over a
+    testgroup-specific validator or a branch on the testgroup's name. See
     [Varying constraints per test group](../../verification/validators.md#varying-constraints-per-test-group).
 
 ### Extra validators
@@ -481,7 +482,7 @@ stresses:
     - You can pass variables defined in the `vars` section with something like `<N.max>`.
     - You can pass a random choice by writing something like `(a|b|c)`.
     - You can pass a random hex string by passing `@`.
-- `finder`: a [finder expression](/setters/stress-testing#finder-expressions) that, when evaluated to true, consider the given generated test as a match
+- `finder`: a [finder expression](/setters/stress-testing#finder-expressions). A generated test is a match when the expression evaluates to true.
 
 ## Unit tests
 
@@ -520,6 +521,6 @@ Checker globs are a bit more complex, since they accept three different paramete
 - A `.out` file, the output of the participant's program;
 - A `.ans` file, the output of the main solution.
 
-Thus, to test a checker, you should provide a subset of these three (3) files. The checker unit test definition expects a glob that matches the names of these three files. Thus, the glob `unit/checker/ac*` will match, for instance, `unit/checker/ac.in`, `unit/checker/ac.out` and `unit/checker/ac.ans`.
+Thus, to test a checker, you should provide a subset of these three files. Each checker unit test takes a glob that matches the names of these three files. Thus, the glob `unit/checker/ac*` will match, for instance, `unit/checker/ac.in`, `unit/checker/ac.out` and `unit/checker/ac.ans`.
 
 Not all three files must exist, only those required by the checker.

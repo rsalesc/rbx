@@ -4,16 +4,13 @@
 problem statement in {{rbx}}, and this page is a tour of it.
 
 An {{rbxtex}} file is a set of named **blocks** of content, sprinkled with
-{{Jinja2}} for variables and logic. It is a superset of {{latex}}: anything you
-can write in LaTeX, you can write here. What it takes away is the document
-around your text. No `\documentclass`, no packages, no section titles, no
-`\begin{document}`. Those belong to a [template](contest.md), and the template
-belongs to the contest.
+{{Jinja2}} for variables and logic. It's a superset of {{latex}}, so any LaTeX
+you write works here. Leave out the document around your text: the
+`\documentclass`, packages, section titles and `\begin{document}` belong to a
+[template](contest.md), and the template belongs to the contest.
 
-That separation is worth the trouble for two reasons. You can restyle a whole
-contest by changing one template, without opening a single problem. And a
-problem written for one contest drops into the next one, with different chrome,
-unchanged.
+That way, one template restyles the whole contest, and a problem moves between
+contests unchanged.
 
 ## Motivational problem
 
@@ -38,8 +35,8 @@ vars:
     max: 1000
 ```
 
-By the end of this page, the statement will print those same bounds, and the
-graph picture next to them, without repeating a single number.
+By the end of this page, the statement will print those same bounds next to a
+picture of the graph, and you won't type a single number twice.
 
 ## Writing the statement
 
@@ -98,8 +95,8 @@ A block is a chunk of content between `%- block <name>` and `%- endblock`. Block
 names are **free-form**. There is no fixed list, and `%- block whatever` is a
 perfectly valid block; it is up to a template whether it gets rendered and where.
 
-That said, the bundled default template, and every preset that inherits it,
-renders this set of blocks by convention:
+By convention, the bundled default template renders the blocks below, and so
+does any preset that inherits it:
 
 | Block | Renders as |
 | :--- | :--- |
@@ -112,8 +109,10 @@ renders this set of blocks by convention:
 | `preamble` | extra preamble injected into the document head |
 | `explanation_<i>` | inline explanation for sample #i (0-indexed) |
 
-Reusing these names keeps your statement portable across templates, and a few of
-them get special treatment when packaging for {{polygon}}.
+If you reuse these names, your statement works with any template that follows
+this convention. When you package for {{polygon}}, `legend`, `input`, `output`,
+`interaction` and `notes` also fill the matching sections of the {{polygon}}
+statement.
 
 Want a section of your own? Write the block here, and wire it into the page from
 the [template](contest.md#custom-blocks):
@@ -126,9 +125,8 @@ Think about a breadth-first search.
 
 ## Printing constraints from vars
 
-Here is where the statement stops being a text file. Any value from
-`problem.rbx.yml` can be interpolated with `\VAR{...}`, and your problem's
-`vars` are in scope by name:
+This is where `vars` pay off. Any value from `problem.rbx.yml` can be
+interpolated with `\VAR{...}`, and your problem's `vars` are in scope by name:
 
 === "statements/statement.rbx.tex"
 
@@ -158,15 +156,17 @@ Large bounds read better in scientific notation, and the `sci` **filter** does
 that for you:
 
 ```latex
-$\VAR{N.min} \le N \le \VAR{N.max | sci}$   %# 1000000000 renders as 10^9
+$\VAR{N.min} \le N \le \VAR{N.max | sci}$
 ```
 
-`sci` is one of a handful of LaTeX-aware filters {{rbx}} registers on top of the
+If `N.max` were `1000000000`, this would render `10^{9}`.
+
+`sci` is one of the LaTeX-aware filters {{rbx}} registers on top of the
 standard {{Jinja2}} ones. [Template context](context.md#filters) lists them all.
 
 !!! danger "Never type a bound twice"
-    A hard-coded `10^9` in a statement is the single most common way a package
-    goes out of sync. If a number appears in both the statement and the
+    A hard-coded `10^9` in a statement is the most common way a package goes out
+    of sync. If a number appears in both the statement and the
     validator, it belongs in `vars`.
 
 ### Spelling out the namespace
@@ -178,13 +178,12 @@ a longer form that names where it came from. Both always work:
 | Shorthand | Long form |
 |---|---|
 | `\VAR{N.max}` | `\VAR{vars.N.max}` |
-| `\VAR{problem.N.max}` | `\VAR{problem.vars.N.max}` |
-| `\VAR{contest.year}` | `\VAR{contest.vars.year}` |
-| `\VAR{g.N.max}` (for a group `g`) | `\VAR{g.vars.N.max}` |
 
-Prefer the short one. Reach for the long one when you want the reader of your
+Prefer the short one. Use the long one when you want the reader of your
 template to see which namespace a value came from, which is mostly a
-[contest template](contest.md) concern.
+[contest template](contest.md) concern. Templates also see `problem`, `contest`
+and per-group namespaces, each with the same short and long forms.
+[Template context](context.md) covers them.
 
 ## Branching and looping in a statement
 
@@ -201,21 +200,20 @@ There is a single test case per file.
 ```
 
 The snippet above prints one line or the other depending on `vars.multitest`, so
-a single statement file covers both the single-case and the multi-case flavor of
+one statement file covers both the single-case and the multi-case flavor of
 your problem. Loops work the same way, and the
-[template context](context.md) page is where the interesting things to loop over
-live.
+[template context](context.md) page lists the values you can loop over.
 
 !!! tip
     `%#` starts a comment that is stripped before compilation. Plain `%` is a
-    normal LaTeX comment and survives into the generated `.tex`, which is handy
+    normal LaTeX comment and stays in the generated `.tex`, which is handy
     when you are debugging the output.
 
 ## Explaining a sample
 
-Samples are loaded from your testset and printed by the template, so they show
-up without you doing anything. To *explain* one, {{rbx}} looks in three places,
-in descending priority. For the same sample, a higher source wins.
+Samples are the tests of the [`samples` group](../testset/index.md), and the
+template prints them without you doing anything. To *explain* a
+sample, {{rbx}} looks in three places, in descending priority.
 
 1. **An inline `explanation_<i>` block** in the statement file (`explanation_0`
    for the first sample). Because the statement is built per language, this text
@@ -240,8 +238,8 @@ in descending priority. For the same sample, a higher source wins.
 
 3. **A language-agnostic `000.tex`**, which is the same text for every language.
 
-We recommend the sibling file: the explanation sits next to the sample it
-explains, and all the languages of one sample stay in one place.
+We recommend the sibling file. The explanation is next to the sample it
+explains, and all the languages of one sample are in one file.
 
 !!! warning "One explanation file per sample"
     A sample may not have **both** `000.rbx.tex` and `000.tex`. That is a hard
@@ -252,8 +250,8 @@ per-language blocks, or `000.md` for a language-agnostic one.
 
 ## Shipping images and other resources
 
-The golden rule: put images, `.sty` files and PDFs **in the same directory as
-your `.tex`**, and reference them by a plain relative path.
+Put images, `.sty` files and PDFs **in the same directory as your `.tex`**, and
+reference them by a plain relative path.
 
 ```latex title="statements/statement.rbx.tex"
 \includegraphics{graph.png}   % graph.png sits next to statement.rbx.tex
@@ -269,7 +267,8 @@ is staged for you.
 
 The `assets` field is a different concern: it is about **packaging**, not the
 local build. It lists extra globs, relative to the package root, to ship with
-the statement when you export the package, notably to {{polygon}}. Use it for
+the statement when you export the package (the {{polygon}} upload and
+the {{moj}} packager read it). Use it for
 resources that live **outside** the statement's directory, since those are not
 picked up by the mirroring above:
 
@@ -312,55 +311,64 @@ The merge is an allowlist of the build recipe: `type`, `file`, `params` and
 single source renders under two different `params`. Cycles and dangling
 references are errors.
 
-Contest statements extend by `name` instead, and carry the two templates along.
+Contest statements extend by `name` instead, and also inherit the two templates.
 See [Reusing a recipe with extends](contest.md#reusing-a-recipe-with-extends).
 
 ## Writing in a format other than rbxTeX
 
-{{rbxtex}} is the default, and for the vast majority of problems it is all you
-will touch. Still, `type` accepts a few alternatives. The one thing to keep in
-mind is that only `rbx-tex` and `rbx-md` process blocks and can **join into a
-contest statement**. The rest are standalone-only, meant for
+{{rbxtex}} is the default, and for most problems it's all you need. Still,
+`type` accepts a few alternatives. Only `rbx-tex` and `rbx-md` process blocks
+and can **join into a contest statement**. The rest are standalone-only, meant for
 [`documents`](contest.md#cover-pages-and-infosheets) or for drop-in files.
 
 ### Markdown (`rbx-md`)
 
-The same block, variable and {{Jinja2}} machinery as {{rbxtex}}, except you write
-the body in Markdown (`.rbx.md`). Reach for it when you are targeting HTML or
-Markdown output and still want the block structure.
+The same block structure as {{rbxtex}}, with the body in Markdown (`.rbx.md`)
+and standard {{Jinja2}} delimiters for blocks and variables:
+
+{% raw %}
+```markdown title="statements/statement.rbx.md"
+{% block legend %}
+Given $N$ integers ($1 \le N \le {{ N.max }}$), print their sum.
+{% endblock %}
+```
+{% endraw %}
+
+{{rbx}} converts each block to {{latex}} with pandoc. That's how the same
+templates render it. Use it if you'd rather write prose in Markdown.
 
 ### Jinja (`jinja-tex` / `jinja-md`)
 
-Full control of the whole document. You write the `\documentclass`, the
-`\begin{document}` and everything else, with `\VAR{...}` and `%- ...` available
-for interpolation and logic:
+These types are for contest-level entries:
+[`documents`](contest.md#cover-pages-and-infosheets), or a contest statement of
+this type. You write the whole document yourself, and {{rbx}} renders it with
+the contest's `vars`, `params` and the metadata-only `problems` list:
 
 ```latex
 \documentclass{article}
 \begin{document}
-\title{\VAR{problem.title}}
-\maketitle
-%- for sample in problem.samples
-  \subsection*{Sample \VAR{loop.index}}
+\section*{Problems}
+%- for problem in problems
+\VAR{problem.short_name}. \VAR{problem.title} \\
 %- endfor
 \end{document}
 ```
 
-The document above is self-contained: it declares its own `\documentclass` and
-loops over `problem.samples` by hand. You get the interpolation and none of the
-block structure, which is why it cannot join a contest. This is the type most
-[`documents`](contest.md#cover-pages-and-infosheets) use.
+The document above declares its own `\documentclass` and loops over `problems`
+by hand. You get the interpolation and none of the block structure, which is
+why it cannot join a contest. A problem statement of these types is compiled
+as-is, without Jinja.
 
 ### Plain LaTeX or Markdown (`tex` / `md`)
 
 The file is treated as a **static** document: no blocks, no variables, no
-templating. Reach for these when you already have a finished `.tex` or `.md` and
+templating. Use these when you already have a finished `.tex` or `.md` and
 want {{rbx}} to compile it as-is.
 
 ### PDF (`pdf`)
 
 A pre-built PDF. The build is a copy, with no templating, variable substitution
-or asset processing. Handy for statements produced by an external tool, or
+or asset processing. Use it for statements produced by an external tool, or
 pulled out of an old archive:
 
 ```yaml title="problem.rbx.yml"
@@ -370,5 +378,5 @@ statements:
     type: "pdf"
 ```
 
-Now that the source side is covered, [Template context](context.md) is the
-reference for every value your blocks and templates can reach.
+[Template context](context.md) lists every value your blocks and templates can
+use.

@@ -8,7 +8,7 @@ your testset.
 
 ## Generator call
 
-In {{rbx}}, generators are programs that produce a testplan **from a given list of arguments**.
+In {{rbx}}, generators are programs that produce a testcase **from a list of arguments**.
 
 Let's say we have an executable `generator.exe`. Calling it should produce a testcase into the stdout.
 
@@ -34,16 +34,15 @@ A valid generator call for the generator above would be `generator 123`.
 
 ## Idempotency
 
-Generators should be idempotent. This means that two equal generator calls should always produce the same output.
+Generators should be idempotent: two equal generator calls should always produce the same output.
 
 {{testlib}} `rnd` library is designed to be used in an idempotent way. In fact, the seed number
 for the `rnd` object's random number generator is a hash of the generator call.
 
-This means that using the `rnd` object in a generator as the only source of randomness will
-guarantee idempotency.
+So, using the `rnd` object as the only source of randomness in a generator
+guarantees idempotency.
 
 !!! tip "Introducing randomness"
-
     If you need to generate a testcase with the same set of parameters, but with a different seed,
     simply append a few random characters to the generator call.
 
@@ -55,15 +54,15 @@ guarantee idempotency.
     gen 100 abc
     ```
 
-    The two generator calls above might produce the different testcases for a generator expecting a single
+    The two generator calls above may produce different testcases for a generator expecting a single
     positional argument, as long as `rnd` is used by the generator to define its output.
 
     The trailing `abc` piece is just used to produce a different seed.
 
 ## Writing a generator
 
-You can read more about generators in the [testlib documentation](https://codeforces.com/blog/entry/18291).
-It's very thorough and show a bunch of details about the APIs.
+You can read more about generators in the {{testlib}} [documentation](https://codeforces.com/blog/entry/18291).
+It's very thorough and shows a bunch of details about the APIs.
 
 ```cpp
 #include "testlib.h"
@@ -88,19 +87,17 @@ separated by spaces.
 {{testlib}} provides the `opt<...>()` function to parse command line arguments, in two variants:
 
 - `opt<>(int i)`: Parses a positional argument in the i-th position (1-indexed).
-- `opt<>(string name)`: Parses argument with the given name.
+- `opt<>(string name)`: Parses the argument called `name`.
 
-In the case above, a valid generator call would be:
+In the case above, a valid generator call that generates 10 random integers ranging from 1 to 1000 would be:
 
 ```bash
-./generator.exe 10 --MAX_A=1000
+./generator.exe 10 --MAX=1000
 ```
 
-To generate 10 random integers ranging from 1 to 1000.
+Random numbers can be generated using the `rnd` object. The `rnd.next()` function can be used to generate a random integer between two values, but there are also other overloads available for it.
 
-Random numbers can be generated using the `rnd` object. The `rnd.next()` function can be used to generate a random integer between two values, but there are also other overrides available for it.
-
-Take a look at the [testlib documentation](https://codeforces.com/blog/entry/18291) for more details, and
+Take a look at the {{testlib}} [documentation](https://codeforces.com/blog/entry/18291) for more details, and
 also at the examples on their [GitHub repository](https://github.com/MikeMirzayanov/testlib/tree/master/generators).
 
 !!! info
@@ -124,15 +121,13 @@ also at the examples on their [GitHub repository](https://github.com/MikeMirzaya
 {{rbx}} also has a built-in integration with [jngen](https://github.com/ifsmirnov/jngen). This is a
 test generation library implemented by Ivan Smirnov.
 
-Jngen is a very powerful library that can generate all sorts of random objects: permutations, trees,
-graphs, strings, and more.
+Jngen generates all sorts of random objects: permutations, trees, graphs, strings, and more.
 
 It is a bit less mature and tested than {{testlib}}, but it's a great tool to have in your toolbox. Check it at [its GitHub repository](https://github.com/ifsmirnov/jngen).
 
-To implement a Jngen-based generator, it suffices to include the `jngen.h` header
+To write a Jngen-based generator, it suffices to include the `jngen.h` header.
 
 !!! danger "Under development"
-
     This section is under development. If you want to contribute, please
     send a PR to [our repository](https://github.com/rsalesc/rbx).
 
@@ -141,10 +136,11 @@ To implement a Jngen-based generator, it suffices to include the `jngen.h` heade
 {{rbx}} also has a built-in integration with [tgen](https://github.com/brunomaletta/tgen),
 a C++ header for writing random testcase generators quickly and safely, by Bruno Maletta.
 
-To implement a Tgen-based generator, it suffices to include the `tgen.h` header — {{rbx}}
-makes it available to every C++ compilation, just like {{testlib}} and {{jngen}}.
+To write a Tgen-based generator, it suffices to include the `tgen.h` header. The default
+preset makes it available to every C++ compilation, just like {{jngen}}. {{testlib}} is
+built into {{rbx}} itself, so it's available even without a preset.
 
-You can grab a local copy of the latest `tgen.h` with:
+You can grab a local copy of the preset's `tgen.h` with:
 
 ```bash
 rbx download tgen

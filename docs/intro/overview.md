@@ -6,7 +6,7 @@ Quick walkthroughs to get you started with {{rbx}}.
 
 <div class="grid cards" markdown>
 
--   :fontawesome-solid-box-open: **Get {{rbx}} running in a minute**
+-   :fontawesome-solid-box-open: **Get {{rbx}} running**
 
     ---
 
@@ -24,7 +24,7 @@ Quick walkthroughs to get you started with {{rbx}}.
 
 </div>
 
-## Feature Guide
+## Feature guide
 
 Learn how to use the different features of {{rbx}}.
 
@@ -85,8 +85,7 @@ Learn how to use the different features of {{rbx}}.
 
     Learn how to write multiple statements and build them.
 
-    <!-- TODO: add link -->
-    [:octicons-arrow-right-24: Statements](/setters/packaging)
+    [:octicons-arrow-right-24: Statements](/setters/statements)
 
 -   :fontawesome-solid-rocket: **Package and ship**
 
@@ -100,15 +99,13 @@ Learn how to use the different features of {{rbx}}.
 
 ## Reference
 
-Reference documentation for {{rbx}}.
-
 <div class="grid cards" markdown>
 
 -   :fontawesome-solid-clipboard-list: **Cheatsheet**
 
     ---
 
-    A one stop shop for all the commands and options available in {{rbx}}.
+    A one-stop reference for every command and option in {{rbx}}.
 
     [:octicons-arrow-right-24: Cheatsheet](/setters/cheatsheet)
 

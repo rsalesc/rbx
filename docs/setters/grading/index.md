@@ -8,25 +8,24 @@ is way simpler than in the case of running an actual contest.
 In contests, the judging system is usually much more complex, and has to:
 
 1. Give a fair verdict to the participant: TLE when the solution is too slow, WA when the solution is incorrect, etc.
-2. Protect the system: prevent participants from cheating, from crashing the server, doing prohibited
-  system calls, etc.
+2. Protect the system: prevent participants from cheating, crashing the server or making prohibited
+  system calls.
 
 !!! danger "Security"
-    In the case of setting problems, we can focus on the first point, and assume setters are trustful
+    In the case of setting problems, we can focus on the first point, and assume setters are trusted
     actors and ignore the second one. Thus, {{rbx}} does not provide any mechanism to protect the system
     against malicious code being run. Be aware of that, and only run code written by authors you trust!
 
-    Solutions will be run as the same user that run the `rbx` command. If you want to be extra careful,
+    Solutions will be run as the same user that ran the `rbx` command. If you want to be extra careful,
     you can run `rbx` inside a Docker container, or create an isolated user with limited permissions to
     run it.
 
 ## Running solutions
 
-Solutions run through {{rbx}} are executed through a wrapper script. This script
-applies memory and output limit constraints to the program through a mixture of `ulimit` calls
-and realtime resource usage monitoring.
+{{rbx}} runs solutions in a small Python sandbox. It sets CPU time, memory and output limits
+with `setrlimit` (the call behind `ulimit`) and monitors resource usage while the program runs.
 
-Different from judging systems, where sandboxes are usually written in C/C++ and are run as privileged users, this wrapper script is written in Python for better portability.
+Unlike judging systems, where sandboxes are usually written in C/C++ and are run as privileged users, this sandbox is written in Python for better portability.
 
 ## Outcomes
 
@@ -36,7 +35,7 @@ You can find the full list of outcomes in the table below.
 
 | Outcome                   | Short name | Description                                                  |
 | ------------------------- | ---------- | ------------------------------------------------------------ |
-| `ACCEPTED`                | `AC`       | The solution passed all the testcases.                       |
+| `ACCEPTED`                | `AC`       | The solution produced a correct output.                      |
 | `WRONG_ANSWER`            | `WA`       | The solution produced an incorrect output.                   |
 | `TIME_LIMIT_EXCEEDED`     | `TLE`      | The solution took too much time to execute.                  |
 | `MEMORY_LIMIT_EXCEEDED`   | `MLE`      | The solution used too much memory.                           |
@@ -47,15 +46,15 @@ You can find the full list of outcomes in the table below.
 | `INTERNAL_ERROR`          | `IE`       | An internal error occurred.                                  |
 
 
-All outcomes, except for `JUDGE_FAILED`, `WRONG_ANSWER` and `ACCEPTED` are all defined right after
+All outcomes, except for `JUDGE_FAILED`, `WRONG_ANSWER` and `ACCEPTED`, are defined right after
 the solution runs.
 
-There's a process that needs to be executed right after the solution runs, and it's called
-checking, and you can read more about it in the [Checkers](checkers.md) section.
+These three come from *checking*, a process that runs once the solution finishes. You can read
+more about it in the [Checkers](checkers.md) section.
 
 ## Limits
 
-All limits that are applied to a solution are defined in `problem.rbx.yml` under the `*limit` family of fields.
+The limits applied to a solution are defined in `problem.rbx.yml` under the `*limit` family of fields.
 
 ```yaml title="problem.rbx.yml"
 # ... rest of the problem.rbx.yml ...
@@ -64,10 +63,10 @@ memoryLimit: 256  # 256 MB
 ```
 
 Time is always defined in milliseconds, and memory is defined in megabytes. These limits are all
-applied by the wrapper script, and checked further after the solution is executed.
+applied by the sandbox, and checked again once the solution exits.
 
 !!! note
-    The memory limit is applied differently on Linux and on MacOS, and the difference shows up in
+    The memory limit is applied differently on Linux and on macOS, and the difference shows up in
     the verdict a memory-hungry solution gets. See [Memory limit](../../memory-limit.md) for what
     to expect, and for the exemptions that apply to Java, Kotlin and sanitized builds.
 
