@@ -6,6 +6,8 @@
 
   const app = {
     state: null,
+    base: null, // sha of the snapshot the head is compared against
+    pageWanted: null, // page to open once the base's pages are known
     drafts: [],
     anchors: new Map(), // draft id -> anchor or null
     page: null, // current page summary
@@ -29,8 +31,10 @@
 
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const short = (sha) => sha.slice(0, 10);
-  const byPath = (path) => app.state.pages.find((p) => p.path === path);
-  const changedPages = () => app.state.pages.filter((p) => p.status !== 'unchanged');
+  const allPages = () => (app.state && app.state.pages) || [];
+  const byPath = (path) => allPages().find((p) => p.path === path);
+  const changedPages = () => allPages().filter((p) => p.status !== 'unchanged');
+  const draftBase = (d) => d.base || app.state.default_base;
   const send = (side, msg) => frames[side].contentWindow && frames[side].contentWindow.postMessage(msg, location.origin);
 
   // ---- page list -------------------------------------------------------
@@ -38,7 +42,7 @@
 
   const renderPages = () => {
     const showAll = $('#show-all').checked;
-    const pages = showAll ? app.state.pages : changedPages();
+    const pages = showAll ? allPages() : changedPages();
     $('#pages-heading').textContent = showAll ? `All pages (${pages.length})` : `Changed pages (${pages.length})`;
     const draftsPer = new Map();
     app.drafts.forEach((d) => draftsPer.set(d.page, (draftsPer.get(d.page) || 0) + 1));
@@ -66,10 +70,10 @@
   $('#show-all').addEventListener('change', renderPages);
 
   // ---- panes -------------------------------------------------------------
-  const openPage = (path, { hunk = null, hash = '' } = {}) => {
+  const openPage = (path, { hunk = null, hash = '', force = false } = {}) => {
     const page = byPath(path);
     if (!page) return;
-    if (app.page && app.page.path === path) {
+    if (!force && app.page && app.page.path === path) {
       if (hunk !== null) gotoHunk(hunk);
       return;
     }
@@ -77,11 +81,100 @@
     app.hunk = -1;
     app.pendingHunk = hunk !== null && page.hunks.length ? hunk : null;
     app.loaded = { base: false, head: false };
-    for (const side of ['base', 'head']) frames[side].src = `/site/${side}/${path}${hash}`;
-    history.replaceState(null, '', `#${path}`);
+    for (const side of ['base', 'head']) frames[side].src = `/r/${app.base}/${side}/${path}${hash}`;
+    const params = new URLSearchParams({ page: path });
+    if (app.base !== app.state.default_base) params.set('base', short(app.base));
+    history.replaceState(null, '', `#${params}`);
     renderPages();
     updateHunkPos();
   };
+
+  // ---- base snapshot -------------------------------------------------------
+  const KIND = { base: 'merge base', commit: 'commit', 'force-push': 'force-pushed', head: 'head' };
+  const STATUS = { queued: '⏳ queued', building: '🔨 building', failed: '⚠ failed', unbuilt: '· not built' };
+
+  const snapshotText = (s) => [
+    KIND[s.kind],
+    short(s.sha),
+    s.subject.length > 50 ? `${s.subject.slice(0, 49)}…` : s.subject,
+    s.when,
+    ...s.notes,
+    STATUS[s.status] || '',
+  ].filter(Boolean).join(' · ');
+
+  const renderSnapshots = () => {
+    const select = $('#base-select');
+    const choices = app.state.snapshots.filter((s) => s.kind !== 'head');
+    select.innerHTML = choices.map((s) => `<option value="${s.sha}" ${s.sha === app.base ? 'selected' : ''}
+      title="${esc(s.error || s.subject)}">${esc(snapshotText(s))}</option>`).join('');
+    select.disabled = choices.length < 2;
+    const current = app.state.snapshots.find((s) => s.sha === app.base);
+    $('#base-sha').textContent = short(app.base);
+    $('#base-desc').textContent = current ? `${KIND[current.kind]} · ${current.subject}` : '';
+    const head = app.state.snapshots.find((s) => s.kind === 'head');
+    $('#head-desc').textContent = head ? [head.subject, ...head.notes].join(' · ') : '';
+  };
+
+  const showBuilding = (message) => {
+    const box = $('#building');
+    box.hidden = !message;
+    box.textContent = message || '';
+    if (message) {
+      frames.head.src = 'about:blank';
+      $('#pages').innerHTML = '<li class="muted">Waiting for the base to build…</li>';
+    }
+  };
+
+  let snapshotTimer = null;
+  const pollSnapshots = () => {
+    clearTimeout(snapshotTimer);
+    const busy = app.state.snapshots.some((s) => s.status === 'queued' || s.status === 'building');
+    if (!busy && app.state.pages) return;
+    snapshotTimer = setTimeout(async () => {
+      try {
+        app.state.snapshots = await api('GET', '/api/snapshots');
+        renderSnapshots();
+        if (!app.state.pages) {
+          const wanted = app.state.snapshots.find((s) => s.sha === app.base);
+          if (wanted && wanted.status === 'ready') return switchBase(app.base, { keepPage: true });
+          if (wanted && wanted.status === 'failed') {
+            showBuilding(`Building ${short(app.base)} failed: ${wanted.error || 'see the terminal'}`);
+          }
+        }
+      } catch (err) {
+        console.error('snapshot poll failed', err);
+      }
+      pollSnapshots();
+    }, 2000);
+  };
+
+  const switchBase = async (sha, { keepPage = true, hunk = 0 } = {}) => {
+    const wantedPage = app.pageWanted || (keepPage && app.page ? app.page.path : null);
+    app.base = sha;
+    const box = $('#building');
+    box.hidden = false;
+    box.textContent = `Comparing against ${short(sha)}…`;
+    const state = await api('GET', `/api/state?base=${sha}`);
+    app.state = state;
+    app.page = null;
+    renderSnapshots();
+    pushDraftMarkers('base');
+    if (!state.pages) {
+      app.pageWanted = wantedPage;
+      const snap = state.snapshots.find((s) => s.sha === sha);
+      showBuilding(`Building ${short(sha)} (${snap ? snap.subject : ''})… the review switches over when it is ready.`);
+      pollSnapshots();
+      return;
+    }
+    app.pageWanted = null;
+    showBuilding(null);
+    renderPages();
+    const target = byPath(wantedPage) || changedPages()[0] || allPages()[0];
+    if (target) openPage(target.path, { hunk, force: true });
+    pollSnapshots();
+  };
+
+  $('#base-select').addEventListener('change', (e) => switchBase(e.target.value));
 
   const updateHunkPos = () => {
     const n = app.page ? app.page.hunks.length : 0;
@@ -150,7 +243,15 @@
         if ($('#sync').checked) send(other[side], { type: 'scrollTo', pair: msg.pair, offset: msg.offset, atTop: msg.atTop });
         break;
       case 'comment':
-        openComposer({ page: app.page.path, side, block: msg.block, quote: msg.quote, selection: msg.selection || '' });
+        openComposer({
+          page: app.page.path,
+          side,
+          block: msg.block,
+          quote: msg.quote,
+          selection: msg.selection || '',
+          // Base-side block numbers only mean something within this base.
+          ...(side === 'base' ? { base: app.base } : {}),
+        });
         break;
       case 'navigate':
         if (byPath(msg.path)) openPage(msg.path, { hash: msg.hash });
@@ -170,6 +271,7 @@
     if (!app.page) return;
     const items = app.drafts
       .filter((d) => d.page === app.page.path && d.side === side)
+      .filter((d) => side === 'head' || draftBase(d) === app.base)
       .map((d) => ({ id: d.id, block: d.block }));
     send(side, { type: 'drafts', items });
   };
@@ -210,7 +312,7 @@
     const pageTitle = (path) => (byPath(path) || { title: path }).title;
     $('#draft-list').innerHTML = app.drafts.map((d) => `
       <li data-id="${esc(d.id)}" class="${app.focusedDraft === d.id ? 'focused' : ''}">
-        <div class="where"><span>${esc(pageTitle(d.page))}</span><span>${d.side}</span></div>
+        <div class="where"><span>${esc(pageTitle(d.page))}</span><span>${d.side === 'base' ? `base @ ${short(draftBase(d))}` : 'head'}</span></div>
         ${d.selection
           ? `<blockquote class="selection" title="${esc(d.quote || '')}">“${esc(d.selection)}”</blockquote>`
           : `<blockquote>${esc(d.quote || '')}</blockquote>`}
@@ -239,13 +341,21 @@
       openComposer(draft);
     } else {
       focusDraft(draft.id);
-      const page = byPath(draft.page);
       const show = () => send(draft.side, { type: 'goto', block: draft.block, smooth: true });
-      if (app.page && app.page.path === draft.page) show();
-      else if (page) {
-        openPage(draft.page);
+      const showWhenLoaded = () => {
         const wait = setInterval(() => { if (app.loaded[draft.side]) { clearInterval(wait); show(); } }, 100);
         setTimeout(() => clearInterval(wait), 5000);
+      };
+      if (draft.side === 'base' && draftBase(draft) !== app.base) {
+        // Reopen the snapshot the comment was made on.
+        app.pageWanted = draft.page;
+        await switchBase(draftBase(draft));
+        showWhenLoaded();
+      } else if (app.page && app.page.path === draft.page) {
+        show();
+      } else if (byPath(draft.page)) {
+        openPage(draft.page);
+        showWhenLoaded();
       }
     }
   });
@@ -327,23 +437,25 @@
   const boot = async () => {
     const [state, drafts] = await Promise.all([api('GET', '/api/state'), api('GET', '/api/drafts')]);
     app.state = state;
+    app.base = state.base;
     app.drafts = drafts;
     const link = $('#target-link');
     link.textContent = state.label;
     if (state.pr) link.href = state.pr.url; else link.removeAttribute('href');
     document.title = `${state.label} · mkdocs-review`;
-    $('#base-sha').textContent = short(state.base);
     $('#head-sha').textContent = short(state.head);
     $('#draft-count').textContent = drafts.length;
     resetSubmit();
     if (!state.can_submit) status.textContent = 'Comments stay local: submitting needs a pull request and the gh CLI.';
-    renderPages();
     renderDrafts();
     refreshAnchors();
     if (drafts.length) openDrawer();
-    const fromHash = decodeURIComponent(location.hash.slice(1));
-    const first = byPath(fromHash) || changedPages()[0] || state.pages[0];
-    if (first) openPage(first.path, { hunk: 0 });
+
+    const params = new URLSearchParams(location.hash.slice(1));
+    const wantedBase = params.get('base');
+    const match = wantedBase && state.snapshots.find((s) => s.sha.startsWith(wantedBase) && s.kind !== 'head');
+    app.pageWanted = params.get('page');
+    await switchBase(match ? match.sha : state.base, { keepPage: false });
   };
   boot().catch((err) => {
     document.body.innerHTML = `<p style="padding:16px">Failed to load the review: ${esc(err.message)}</p>`;

@@ -98,6 +98,25 @@ def resolve_target(repo: pathlib.Path, spec: str, remote: str = 'origin') -> Tar
     return resolve_range(repo, spec)
 
 
+def fetch_commits(repo: pathlib.Path, remote: str, shas: List[str]) -> List[str]:
+    """Fetch commits by sha (e.g. heads lost to a force-push); returns those
+    that are now available locally."""
+    available = []
+    for sha in shas:
+        if not _has_commit(repo, sha):
+            git(repo, 'fetch', '--no-tags', remote, sha, check=False)
+        if _has_commit(repo, sha):
+            available.append(sha)
+    return available
+
+
+def _has_commit(repo: pathlib.Path, sha: str) -> bool:
+    proc = subprocess.run(
+        ['git', 'cat-file', '-e', f'{sha}^{{commit}}'], cwd=repo, capture_output=True
+    )
+    return proc.returncode == 0
+
+
 def show_file(repo: pathlib.Path, sha: str, path: str) -> Optional[str]:
     proc = subprocess.run(
         ['git', 'show', f'{sha}:{path}'], cwd=repo, capture_output=True, text=True

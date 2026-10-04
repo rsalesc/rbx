@@ -39,6 +39,26 @@ serves the review on `localhost` and opens your browser.
 
 Submitting needs a pull request; for ranges, comments stay local.
 
+## Comparing against earlier versions
+
+The right pane always shows the latest head. The **Compare against** menu
+picks what the left pane shows:
+
+- **merge base**, the default: everything the change does;
+- any **commit** on the branch: what changed since then;
+- for a pull request, any head that was **force-pushed** away, so a rebased PR
+  keeps its history.
+
+Versions someone reviewed are marked `reviewed by <login>`, so "what changed
+since my last review" is one click. Every version is built in the background
+after startup, reviewed ones and the newest first, and the menu shows each
+one's progress. Picking one that is not built yet moves it to the front of the
+queue. Pass `--no-prebuild` to build versions only when you pick them.
+
+Comments still land on the pull request's diff. A comment on the left pane of
+an earlier version quotes the text you saw, since GitHub's old side is the
+merge base.
+
 ## Options
 
 | Option | Default | |
@@ -51,6 +71,7 @@ Submitting needs a pull request; for ranges, comments stay local.
 | `--port` / `--host` | any free port / `127.0.0.1` | Where to serve. |
 | `--rebuild` | | Ignore cached builds. Builds are cached per commit and build command in `~/.cache/mkdocs-review`. |
 | `--no-open` | | Do not open a browser. |
+| `--no-prebuild` | | Build earlier versions only when picked in **Compare against**, not all of them in the background. |
 
 Each side is built from a clean checkout, so the build command must work there.
 With uv, `--build-cmd "uv run mkdocs build"` sets up the environment on first

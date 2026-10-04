@@ -177,7 +177,7 @@
     }
     if (url.pathname === location.pathname) return; // in-page anchor
     e.preventDefault();
-    let path = url.pathname.replace(/^\/site\/(base|head)\//, '').replace(/^\//, '');
+    let path = url.pathname.replace(/^\/r\/[^/]+\/(base|head)\//, '').replace(/^\//, '');
     if (path === '' || path.endsWith('/')) path += 'index.html';
     post({ type: 'navigate', path, hash: url.hash });
   }, true);

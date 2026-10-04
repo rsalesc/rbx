@@ -102,3 +102,40 @@ def test_review_range_end_to_end(project, tmp_path):
     assert sum('Using cached build' in m for m in logs) == 2
     # The temporary worktrees are gone; only the project itself remains.
     assert len(_git(project, 'worktree', 'list').splitlines()) == 1
+
+
+def test_earlier_commits_are_built_in_the_background_and_usable_as_base(
+    project, tmp_path
+):
+    third = _commit(
+        project,
+        {
+            'docs/guide.md': '# Guide\n\nRun the newest command to build.\n\nKeep this.\n'
+        },
+        'third',
+    )
+    args = _parser().parse_args(
+        [
+            'HEAD~2..HEAD',
+            '--repo-dir',
+            str(project),
+            '--build-cmd',
+            f'{sys.executable} -m mkdocs build -q',
+            '--cache-dir',
+            str(tmp_path / 'cache'),
+        ]
+    )
+    session = create_session(args, log=lambda message: None)
+    assert [s.kind for s in session.snapshots] == ['base', 'commit', 'head']
+    assert session.snapshots[-1].sha == third
+    middle = session.snapshots[1].sha
+
+    # The middle commit was queued for a background build at startup.
+    assert session.builder.wait(middle, timeout=60) == 'ready'
+    statuses = {p['path']: p['status'] for p in session.state(middle)['pages']}
+    # Against the middle commit only the guide changed; extra.md already existed.
+    assert statuses == {
+        'index.html': 'unchanged',
+        'guide/index.html': 'modified',
+        'extra/index.html': 'unchanged',
+    }

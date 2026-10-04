@@ -1,8 +1,6 @@
 import pathlib
 import subprocess
 
-import pytest
-
 from mkdocs_review.gitops import build_command, ls_files, resolve_range, show_file
 
 
@@ -20,15 +18,6 @@ def _commit(repo: pathlib.Path, files: dict, message: str) -> str:
     _git(repo, 'add', '-A')
     _git(repo, 'commit', '-q', '-m', message)
     return _git(repo, 'rev-parse', 'HEAD')
-
-
-@pytest.fixture
-def repo(tmp_path):
-    _git(tmp_path, 'init', '-q', '-b', 'main')
-    _git(tmp_path, 'config', 'user.email', 't@example.com')
-    _git(tmp_path, 'config', 'user.name', 't')
-    _git(tmp_path, 'config', 'commit.gpgsign', 'false')
-    return tmp_path
 
 
 def test_resolve_range_forms(repo):

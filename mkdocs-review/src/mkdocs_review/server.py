@@ -9,14 +9,14 @@ import traceback
 import urllib.parse
 from typing import Optional, Tuple
 
-from mkdocs_review.session import SIDES, Session
+from mkdocs_review.session import SIDES, NotReady, Session
 
 STATIC = pathlib.Path(__file__).parent / 'static'
 
 MISSING_PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="/_mr/inject.css">
 <script src="/_mr/inject.js" data-side="{side}" defer></script></head>
-<body class="mr-missing-page"><p>This page does not exist on the <b>{side}</b> side.</p></body></html>"""
+<body class="mr-missing-page"><p>{message}</p></body></html>"""
 
 
 def _inside(root: pathlib.Path, rel: str) -> Optional[pathlib.Path]:
@@ -65,42 +65,65 @@ def make_handler(session: Session):
             length = int(self.headers.get('Content-Length') or 0)
             return json.loads(self.rfile.read(length) or b'null')
 
-        def _route(self) -> Tuple[str, str]:
-            return self.command, urllib.parse.unquote(
-                urllib.parse.urlsplit(self.path).path
-            )
+        def _route(self) -> Tuple[str, str, dict]:
+            parts = urllib.parse.urlsplit(self.path)
+            query = dict(urllib.parse.parse_qsl(parts.query))
+            return self.command, urllib.parse.unquote(parts.path), query
 
-        def _site(self, side: str, rel: str):
+        def _placeholder(self, side: str, message: str, status: int):
+            self._html(MISSING_PAGE.format(side=side, message=message), status)
+
+        def _site(self, base: str, side: str, rel: str):
             if rel == '' or rel.endswith('/'):
                 rel += 'index.html'
-            page = session.page(rel)
+            try:
+                comparison = session.comparison(base)
+            except KeyError:
+                return self._placeholder(side, 'Unknown snapshot.', 404)
+            except NotReady:
+                return self._placeholder(
+                    side, 'This snapshot is still being built.', 503
+                )
+            page = comparison.page(rel)
             if page is not None:
-                html = getattr(session.page_diff(rel), f'{side}_html')
+                html = getattr(comparison.page_diff(rel), f'{side}_html')
                 if html is None:
-                    self._html(MISSING_PAGE.format(side=side), 404)
-                else:
-                    self._html(html)
-                return
+                    return self._placeholder(
+                        side,
+                        f'This page does not exist on the <b>{side}</b> side.',
+                        404,
+                    )
+                return self._html(html)
             # Built assets never change for a commit; the UI's own files may.
-            self._file(_inside(session.sites[side], rel), cache=True)
+            self._file(_inside(comparison.sites[side].root, rel), cache=True)
 
         def _dispatch(self):
-            method, path = self._route()
+            method, path, query = self._route()
             if method in ('GET', 'HEAD'):
                 if path == '/':
                     return self._file(STATIC / 'index.html')
                 if path.startswith('/_mr/'):
                     return self._file(_inside(STATIC, path[len('/_mr/') :]))
-                if path.startswith('/site/'):
-                    side, _, rel = path[len('/site/') :].partition('/')
+                if path.startswith('/r/'):
+                    base, _, rest = path[len('/r/') :].partition('/')
+                    side, _, rel = rest.partition('/')
                     if side in SIDES:
-                        return self._site(side, rel)
+                        return self._site(base, side, rel)
                 if path == '/api/state':
-                    return self._json(session.state())
+                    try:
+                        return self._json(session.state(query.get('base')))
+                    except KeyError as exc:
+                        return self._json({'error': str(exc)}, 404)
+                if path == '/api/snapshots':
+                    return self._json(session.snapshot_states())
                 if path == '/api/drafts':
                     return self._json(session.drafts.load())
             if method == 'PUT' and path == '/api/drafts':
                 session.drafts.save(self._body())
+                return self._json({'ok': True})
+            if method == 'POST' and path == '/api/build':
+                base = session.resolve_base((self._body() or {}).get('base'))
+                session.builder.prioritize(base)
                 return self._json({'ok': True})
             if method == 'POST' and path == '/api/anchors':
                 return self._json(session.anchors(self._body()))
@@ -118,7 +141,22 @@ def make_handler(session: Session):
                 except (RuntimeError, ValueError) as exc:
                     return self._json({'error': str(exc)}, 400)
                 return self._json({'ok': True, 'url': review.get('html_url')})
+            if method in ('GET', 'HEAD') and self._from_pane(path):
+                return
             self._send(404, b'not found', 'text/plain')
+
+        def _from_pane(self, path: str) -> bool:
+            """Serve a root-absolute URL (`/assets/x.js`) requested by a page
+            in one of the panes from that pane's site."""
+            referer = urllib.parse.urlsplit(self.headers.get('Referer') or '').path
+            if not referer.startswith('/r/'):
+                return False
+            base, _, rest = referer[len('/r/') :].partition('/')
+            side = rest.partition('/')[0]
+            if side not in SIDES:
+                return False
+            self._site(base, side, path.lstrip('/'))
+            return True
 
         def _safe_dispatch(self):
             try:

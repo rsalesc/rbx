@@ -197,7 +197,9 @@ def build_review(items: Sequence[dict], head_sha: str, summary: str = '') -> dic
     Each item has `anchor` (an Anchor or None), `source` (the page's markdown
     path), `page`, `quote` (the rendered block text) and `body`, and may have
     `selection` (the part of the block the reviewer highlighted), which is
-    quoted in place of the whole block.
+    quoted in place of the whole block. `context` forces the page and quote
+    into the comment even when it lands on the page's own source, for text
+    the diff line does not show (e.g. from an intermediate snapshot).
     """
     comments = []
     loose = []
@@ -206,7 +208,7 @@ def build_review(items: Sequence[dict], head_sha: str, summary: str = '') -> dic
         if anchor is None:
             loose.append(_with_context(item))
             continue
-        if anchor.path == item['source']:
+        if anchor.path == item['source'] and not item.get('context'):
             body = _with_selection(item)
         else:
             body = _with_context(item)

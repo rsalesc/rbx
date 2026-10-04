@@ -6,7 +6,7 @@ import pathlib
 import re
 import shutil
 import subprocess
-from typing import Optional
+from typing import Dict, List, Optional
 
 _PR_URL = re.compile(r'^https?://([^/]+)/([^/]+/[^/]+)/pull/(\d+)')
 
@@ -57,6 +57,74 @@ def pr_view(repo: pathlib.Path, number: int) -> PullRequest:
         base_sha=data['baseRefOid'],
         head_sha=data['headRefOid'],
     )
+
+
+_FORCE_PUSHES = """
+query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      timelineItems(itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT], first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes { ... on HeadRefForcePushedEvent { beforeCommit { oid } } }
+      }
+    }
+  }
+}
+"""
+
+
+def force_pushed_heads(repo: pathlib.Path, pr: PullRequest) -> List[str]:
+    """Heads the PR had before each force-push, oldest first."""
+    owner, name = pr.slug.split('/', 1)
+    heads: List[str] = []
+    cursor = None
+    while True:
+        args = [
+            'api',
+            'graphql',
+            '--hostname',
+            pr.host,
+            '-f',
+            f'query={_FORCE_PUSHES}',
+            '-F',
+            f'owner={owner}',
+            '-F',
+            f'name={name}',
+            '-F',
+            f'number={pr.number}',
+        ]
+        if cursor:
+            args += ['-F', f'cursor={cursor}']
+        data = json.loads(_gh(repo, *args))
+        items = data['data']['repository']['pullRequest']['timelineItems']
+        heads += [
+            node['beforeCommit']['oid']
+            for node in items['nodes']
+            if node and node.get('beforeCommit')
+        ]
+        if not items['pageInfo']['hasNextPage']:
+            return heads
+        cursor = items['pageInfo']['endCursor']
+
+
+def review_commits(repo: pathlib.Path, pr: PullRequest) -> Dict[str, List[str]]:
+    """Commit sha -> logins that submitted a review on it."""
+    out = _gh(
+        repo,
+        'api',
+        '--hostname',
+        pr.host,
+        '--paginate',
+        f'repos/{pr.slug}/pulls/{pr.number}/reviews',
+        '--jq',
+        '.[] | [.commit_id, .user.login] | @tsv',
+    )
+    result: Dict[str, List[str]] = {}
+    for line in out.splitlines():
+        sha, _, login = line.partition('\t')
+        if sha and login and login not in result.setdefault(sha, []):
+            result[sha].append(login)
+    return result
 
 
 def post_review(repo: pathlib.Path, pr: PullRequest, payload: dict) -> dict:

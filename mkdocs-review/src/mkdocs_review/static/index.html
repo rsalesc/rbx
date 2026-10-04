@@ -12,6 +12,10 @@
     <span class="brand">mkdocs-review</span>
     <span class="target"><a id="target-link" target="_blank" rel="noopener"></a></span>
     <span class="spacer"></span>
+    <label class="base-picker" title="What the head is compared against">
+      <span class="muted">Compare against</span>
+      <select id="base-select"></select>
+    </label>
     <div class="hunk-nav">
       <button id="prev" title="Previous change (k)" aria-label="Previous change">↑</button>
       <span id="hunk-pos" class="muted">no changes</span>
@@ -32,11 +36,12 @@
 
     <main class="panes">
       <section class="pane">
-        <div class="pane-label"><span class="side-tag base">Base</span> <code id="base-sha"></code></div>
+        <div class="pane-label"><span class="side-tag base">Base</span> <code id="base-sha"></code> <span id="base-desc" class="muted"></span></div>
+        <div id="building" class="building" hidden></div>
         <iframe id="frame-base" title="Base version"></iframe>
       </section>
       <section class="pane">
-        <div class="pane-label"><span class="side-tag head">Head</span> <code id="head-sha"></code></div>
+        <div class="pane-label"><span class="side-tag head">Head</span> <code id="head-sha"></code> <span id="head-desc" class="muted"></span></div>
         <iframe id="frame-head" title="Head version"></iframe>
       </section>
     </main>

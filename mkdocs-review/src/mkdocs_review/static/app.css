@@ -79,6 +79,28 @@ button.ghost { background: transparent; border-color: transparent; }
 .target a { color: var(--accent); text-decoration: none; }
 .spacer { flex: 1; }
 .hunk-nav { display: flex; align-items: center; gap: 6px; }
+.base-picker { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.base-picker select {
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 6px;
+  max-width: 420px;
+}
+.building {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  padding: 16px;
+  text-align: center;
+}
+.building[hidden] { display: none; }
+.building + iframe { display: none; }
+.building[hidden] + iframe { display: block; }
 .toggle { display: flex; align-items: center; gap: 4px; user-select: none; }
 .toggle.small { font-size: 12px; color: var(--muted); }
 
