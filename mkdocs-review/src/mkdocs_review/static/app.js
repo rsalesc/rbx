@@ -150,7 +150,7 @@
         if ($('#sync').checked) send(other[side], { type: 'scrollTo', pair: msg.pair, offset: msg.offset, atTop: msg.atTop });
         break;
       case 'comment':
-        openComposer({ page: app.page.path, side, block: msg.block, quote: msg.quote });
+        openComposer({ page: app.page.path, side, block: msg.block, quote: msg.quote, selection: msg.selection || '' });
         break;
       case 'navigate':
         if (byPath(msg.path)) openPage(msg.path, { hash: msg.hash });
@@ -211,7 +211,9 @@
     $('#draft-list').innerHTML = app.drafts.map((d) => `
       <li data-id="${esc(d.id)}" class="${app.focusedDraft === d.id ? 'focused' : ''}">
         <div class="where"><span>${esc(pageTitle(d.page))}</span><span>${d.side}</span></div>
-        <blockquote>${esc(d.quote || '')}</blockquote>
+        ${d.selection
+          ? `<blockquote class="selection" title="${esc(d.quote || '')}">“${esc(d.selection)}”</blockquote>`
+          : `<blockquote>${esc(d.quote || '')}</blockquote>`}
         <div class="body">${esc(d.body)}</div>
         ${anchorText(d)}
         <div class="actions"><button data-act="edit">Edit</button><button data-act="delete">Delete</button></div>
@@ -252,8 +254,11 @@
   const composer = $('#composer');
   const openComposer = (draft) => {
     app.composing = draft;
-    $('#composer-where').textContent = `${byPath(draft.page).title} · ${draft.side}`;
-    $('#composer-quote').textContent = draft.quote || '';
+    const what = draft.selection ? 'selected text' : 'block';
+    $('#composer-where').textContent = `${byPath(draft.page).title} · ${draft.side} · ${what}`;
+    const quote = $('#composer-quote');
+    quote.classList.toggle('selection', Boolean(draft.selection));
+    quote.textContent = draft.selection ? `“${draft.selection}”` : draft.quote || '';
     $('#composer-body').value = draft.body || '';
     composer.showModal();
     $('#composer-body').focus();

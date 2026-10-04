@@ -52,14 +52,14 @@ def make_handler(session: Session):
         def _html(self, html: str, status: int = 200):
             self._send(status, html.encode(), 'text/html; charset=utf-8')
 
-        def _file(self, path: Optional[pathlib.Path]):
+        def _file(self, path: Optional[pathlib.Path], cache: bool = False):
             if path is None or not path.is_file():
                 self._send(404, b'not found', 'text/plain')
                 return
             content_type = (
                 mimetypes.guess_type(path.name)[0] or 'application/octet-stream'
             )
-            self._send(200, path.read_bytes(), content_type, cache=True)
+            self._send(200, path.read_bytes(), content_type, cache=cache)
 
         def _body(self):
             length = int(self.headers.get('Content-Length') or 0)
@@ -81,7 +81,8 @@ def make_handler(session: Session):
                 else:
                     self._html(html)
                 return
-            self._file(_inside(session.sites[side], rel))
+            # Built assets never change for a commit; the UI's own files may.
+            self._file(_inside(session.sites[side], rel), cache=True)
 
         def _dispatch(self):
             method, path = self._route()

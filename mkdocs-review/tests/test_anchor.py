@@ -175,3 +175,67 @@ def test_build_review():
     assert payload['body'] == (
         'Looks good overall.\n\n---\n\nOn `index.html`:\n> Some text\n\nUnclear.'
     )
+
+
+SELECTION_DIFF = """\
+diff --git a/docs/long.md b/docs/long.md
+--- a/docs/long.md
++++ b/docs/long.md
+@@ -1,3 +1,3 @@
+ A long paragraph starts on this line and
+-continues with an old middle part, then
++continues with a new middle part, then
+ ends on a third line about checkers.
+"""
+
+LONG_BLOCK = (
+    'A long paragraph starts on this line and continues with a new middle '
+    'part, then ends on a third line about checkers.'
+)
+
+
+def test_without_selection_the_changed_line_wins():
+    files = parse_unified_diff(SELECTION_DIFF)
+    anchor = anchor_comment(
+        files, side='head', source='docs/long.md', block_text=LONG_BLOCK, words=['new']
+    )
+    assert anchor == Anchor('docs/long.md', 2, 'RIGHT')
+
+
+def test_selection_steers_anchor_to_the_line_holding_it():
+    files = parse_unified_diff(SELECTION_DIFF)
+    anchor = anchor_comment(
+        files,
+        side='head',
+        source='docs/long.md',
+        block_text=LONG_BLOCK,
+        words=['new'],
+        selection='third line about checkers',
+    )
+    assert anchor == Anchor('docs/long.md', 3, 'RIGHT')
+
+
+def test_build_review_quotes_the_selection():
+    payload = build_review(
+        [
+            {
+                'anchor': Anchor('docs/guide.md', 3, 'RIGHT'),
+                'source': 'docs/guide.md',
+                'page': 'guide/index.html',
+                'quote': 'Run the new command to build your problem.',
+                'selection': 'new command',
+                'body': 'Which one?',
+            },
+            {
+                'anchor': None,
+                'source': 'docs/guide.md',
+                'page': 'guide/index.html',
+                'quote': 'Some long block',
+                'selection': 'long',
+                'body': 'Too long?',
+            },
+        ],
+        head_sha='abc',
+    )
+    assert payload['comments'][0]['body'] == '> new command\n\nWhich one?'
+    assert payload['body'] == 'On `guide/index.html`:\n> long\n\nToo long?'

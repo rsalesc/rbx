@@ -177,6 +177,7 @@ button.ghost { background: transparent; border-color: transparent; }
   max-height: 4.5em;
   overflow: hidden;
 }
+blockquote.selection { border-left-color: var(--accent); color: var(--fg); font-style: italic; }
 .drafts .body { white-space: pre-wrap; }
 .drafts .anchor { font-size: 11px; margin-top: 4px; }
 .drafts .anchor.loose { color: var(--chg); }

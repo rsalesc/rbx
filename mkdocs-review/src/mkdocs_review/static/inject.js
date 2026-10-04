@@ -30,6 +30,13 @@
     return { top: r.top + window.scrollY, left: r.left + window.scrollX, width: r.width, height: r.height };
   };
 
+  // A block's own text, without permalinks or nested blocks.
+  const blockText = (block) => {
+    const copy = block.cloneNode(true);
+    copy.querySelectorAll('.headerlink, [data-mr-block]').forEach((el) => el.remove());
+    return copy.textContent.replace(/\s+/g, ' ').trim().slice(0, 400);
+  };
+
   let hovered = null;
   document.addEventListener('mouseover', (e) => {
     if (e.target === plus) return;
@@ -45,13 +52,45 @@
     e.preventDefault();
     e.stopPropagation();
     if (!hovered) return;
-    const copy = hovered.cloneNode(true);
-    copy.querySelectorAll('.headerlink, [data-mr-block]').forEach((el) => el.remove());
-    post({
-      type: 'comment',
-      block: Number(hovered.dataset.mrBlock),
-      quote: copy.textContent.replace(/\s+/g, ' ').trim().slice(0, 400),
-    });
+    post({ type: 'comment', block: Number(hovered.dataset.mrBlock), quote: blockText(hovered) });
+  });
+
+  // Selecting text inside a block offers a comment on just that text.
+  const selButton = document.createElement('div');
+  selButton.className = 'mr-select';
+  selButton.textContent = '💬 Comment on selection';
+  overlay.appendChild(selButton);
+  let selection = null;
+  const hideSelButton = () => { selection = null; selButton.classList.remove('visible'); };
+  const elementOf = (node) => (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement);
+  document.addEventListener('mouseup', (e) => {
+    if (e.target === selButton) return;
+    setTimeout(() => {
+      const sel = window.getSelection();
+      const text = sel && !sel.isCollapsed ? sel.toString().replace(/\s+/g, ' ').trim() : '';
+      if (!text) return hideSelButton();
+      const range = sel.getRangeAt(0);
+      const block = elementOf(range.startContainer).closest('[data-mr-block]')
+        || elementOf(range.endContainer).closest('[data-mr-block]');
+      if (!block) return hideSelButton();
+      selection = { block, text: text.slice(0, 500) };
+      const rects = range.getClientRects();
+      const last = rects[rects.length - 1] || range.getBoundingClientRect();
+      selButton.style.top = `${last.bottom + window.scrollY + 4}px`;
+      selButton.style.left = `${Math.max(4, last.right + window.scrollX - 160)}px`;
+      selButton.classList.add('visible');
+    }, 0);
+  });
+  // Keep the selection alive while the button is pressed.
+  selButton.addEventListener('mousedown', (e) => e.preventDefault());
+  selButton.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selection) return;
+    const { block, text } = selection;
+    post({ type: 'comment', block: Number(block.dataset.mrBlock), quote: blockText(block), selection: text });
+    window.getSelection().removeAllRanges();
+    hideSelButton();
   });
 
   // Scroll sync: report the first visible paired block and its offset.

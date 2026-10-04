@@ -137,10 +137,19 @@ def anchor_comment(
     source: Optional[str],
     block_text: str,
     words: Sequence[str],
+    selection: str = '',
 ) -> Optional[Anchor]:
+    """Best diff line for a comment on a block, or None.
+
+    `words` are the block's changed words. A `selection` (text the reviewer
+    highlighted inside the block) takes over as the focus, and changed and
+    context lines of the source then compete on equal terms, since the
+    selection may point at unchanged text.
+    """
     block_words = set(_words(block_text))
-    focus = set(_words(' '.join(words)))
+    focus = set(_words(selection or ' '.join(words)))
     changed_kind, gh_side = ('+', 'RIGHT') if side == 'head' else ('-', 'LEFT')
+    passes = (changed_kind + ' ',) if selection else (changed_kind, ' ')
 
     def lines(diff: FileDiff, kinds: str):
         for ln in diff.lines:
@@ -152,7 +161,7 @@ def anchor_comment(
     if own is None and source:
         own = next((f for f in files.values() if f.old_path == source), None)
     if own is not None:
-        for kinds in (changed_kind, ' '):
+        for kinds in passes:
             found = _best(lines(own, kinds), block_words, focus, 1)
             if found:
                 return found
@@ -172,14 +181,23 @@ def _quote(text: str) -> str:
 
 
 def _with_context(item: dict) -> str:
-    return f'On `{item["page"]}`:\n{_quote(item["quote"])}\n\n{item["body"]}'
+    quote = item.get('selection') or item['quote']
+    return f'On `{item["page"]}`:\n{_quote(quote)}\n\n{item["body"]}'
+
+
+def _with_selection(item: dict) -> str:
+    if not item.get('selection'):
+        return item['body']
+    return f'{_quote(item["selection"])}\n\n{item["body"]}'
 
 
 def build_review(items: Sequence[dict], head_sha: str, summary: str = '') -> dict:
     """GitHub "create a review" payload for anchored and unanchored comments.
 
     Each item has `anchor` (an Anchor or None), `source` (the page's markdown
-    path), `page`, `quote` (the rendered block text) and `body`.
+    path), `page`, `quote` (the rendered block text) and `body`, and may have
+    `selection` (the part of the block the reviewer highlighted), which is
+    quoted in place of the whole block.
     """
     comments = []
     loose = []
@@ -188,7 +206,10 @@ def build_review(items: Sequence[dict], head_sha: str, summary: str = '') -> dic
         if anchor is None:
             loose.append(_with_context(item))
             continue
-        body = item['body'] if anchor.path == item['source'] else _with_context(item)
+        if anchor.path == item['source']:
+            body = _with_selection(item)
+        else:
+            body = _with_context(item)
         comments.append(
             {
                 'path': anchor.path,

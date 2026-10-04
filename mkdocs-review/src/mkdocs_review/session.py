@@ -140,6 +140,7 @@ class Session:
             page.source(draft['side']),
             block.text,
             block.words,
+            draft.get('selection') or '',
         )
 
     def anchors(self, drafts: Sequence[dict]) -> List[dict]:
@@ -164,6 +165,7 @@ class Session:
                     'source': page.source(draft['side']),
                     'page': draft['page'],
                     'quote': self._block(draft).text,
+                    'selection': draft.get('selection') or '',
                     'body': draft['body'],
                 }
             )
