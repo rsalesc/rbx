@@ -16,13 +16,13 @@ rbx each package boca
 
 Both **batch** problems and **interactive** problems are supported.
 
-The BOCA packager uses the `boca` [limits profile](../profiling/profiles.md), so create it with
-`rbx time -p boca` before packaging.
+The BOCA packager requires the `boca` [limits profile](../profiling/profiles.md): packaging fails
+without it, so create it with `rbx time -p boca` first.
 
 ## Time limits
 
 {{rbx}} emits the **exact** time limit for each language into the BOCA package — fractional
-seconds included (e.g. a `1234 ms` limit becomes `1.234`). There is no rounding or approximation:
+seconds included (for example, a `1234 ms` limit becomes `1.234`). There is no rounding or approximation:
 the limit a solution gets in BOCA matches the one you estimated.
 
 ### Minimum running time
@@ -30,8 +30,8 @@ the limit a solution gets in BOCA matches the one you estimated.
 By default each solution runs **once** against the exact time limit. Some setups prefer a larger
 per-run budget (for instance, to absorb startup jitter on a loaded autojudge). You can set a
 **minimum total running time** under the BOCA extension in `env.rbx.yml`; {{rbx}} then runs the
-solution enough times to reach it (`ceil(minRunningTime / timeLimit)` runs), keeping each run's
-limit exact:
+solution enough times to reach it (`ceil(minRunningTime / timeLimit)` runs). Each run still
+gets the exact limit:
 
 ```yaml
 extensions:
@@ -52,7 +52,7 @@ that pay JVM/interpreter startup costs. See
 ### C++ language variants
 
 Older BOCA versions call the C++ language `cc` while newer ones call it `cpp`. {{rbx}} packages
-both variants, and both inherit the time and memory limits of the rbx `cpp` language, so the two
+both variants, and both inherit the time and memory limits of the {{rbx}} `cpp` language, so the two
 always get identical limits regardless of which name your BOCA server uses.
 
 ## Compilation flags
@@ -77,9 +77,9 @@ they follow your `cpp` language too.
 
 ## Interactive problems
 
-Interactive problems can be easily packaged for BOCA with {{rbx}}. There are some limitations to it, though:
+Interactive problems are packaged for BOCA too, with a few limitations:
 
-- The BOCA package needs a checker. In case you don't provide one, the tool will automatically generate a dummy one,
+- The BOCA package needs a checker. In case you don't provide one, {{rbx}} generates a dummy one,
   one that returns AC for all inputs, as long as the interactor finishes successfully.
 - The messages exchanged between the interactor and the solution will not be captured, and thus will not be visible
   in the BOCA UI. If you want to inspect the interaction between them, you have to download the participant's
@@ -87,7 +87,9 @@ Interactive problems can be easily packaged for BOCA with {{rbx}}. There are som
 
 ## Uploading to BOCA
 
-You can upload the package to BOCA by setting the `--upload` / `-u` flag.
+You can upload the package to BOCA by setting the `--upload` / `-u` flag. Uploading only works
+for a problem that belongs to a contest, since {{rbx}} needs the problem's letter and color from
+the contest definition.
 
 ```bash
 rbx package boca -u
@@ -122,14 +124,13 @@ or in a `.env`/`.env.local` file in the root of your contest.
 BOCA_BASE_URL="https://your.boca.com/boca"
 BOCA_USERNAME="admin_username"
 BOCA_PASSWORD="admin_password"
-
-# Or, in case you provide a judge account instead of an admin account:
-BOCA_JUDGE_USERNAME="judge_username"
-BOCA_JUDGE_PASSWORD="judge_password"
 ```
 
-Notice the configured user must correspond to an admin of your contest, so {{rbx}} will have permissions to upload
-the package. Also, make sure the correct contest is activated in the BOCA server before running the command.
+The `BOCA_JUDGE_USERNAME`/`BOCA_JUDGE_PASSWORD` pair is read only when `BOCA_USERNAME` is unset,
+which suits `rbx tooling boca submit` and `rbx tooling boca scrape`. Uploads need the admin pair.
+
+Notice the configured user must be an admin of your contest, so {{rbx}} has permission to upload
+the package: a judge account can't upload problems. Also, make sure the correct contest is activated in the BOCA server before running the command.
 
 
 ## Troubleshooting

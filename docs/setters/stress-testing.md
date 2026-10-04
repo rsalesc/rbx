@@ -3,11 +3,9 @@
 Stress testing is a technique used to verify the correctness of a solution by generating random inputs
 and checking if the solution behaves as expected.
 
-Although the technique is often employed to prove (or disprove) the correctness of a solution, it's
-also often used to find tests that **break** a known incorrect solution.
-
-Thus, it can be used both as a problem verification tool, but also as a testset construction tool. In this section, we'll go through the process of writing and running a stress test, and how to use this tool to
-improve our testset or the confidence in our solutions.
+It works in both directions: it raises your confidence in a correct solution, and it finds
+tests that **break** a known incorrect one. You can then add those tests to your testset. On this page,
+we'll write and run a stress test, and use what it finds to improve the testset.
 
 ## Defining a stress test
 
@@ -37,7 +35,7 @@ gen 100
 # This will produce a different testcase each time, containing a random integer between 1 and 100.
 gen 100 @
 
-# Generates a number N between 1 and 100, and then generate a number between 1 and N.
+# Generates a number N between 1 and 100, and then a number between 1 and N.
 gen [1..100] @
 
 # Generates a number between 1 and N.max, where N.max is a variable defined for the problem.
@@ -78,7 +76,7 @@ sols/wa.cpp
 # Find a test that fails one incorrect solution and a TLE solution at the same time.
 [sols/wa.cpp] ~ INCORRECT && [sols/tle.cpp] ~ TLE
 
-# Find a test that fails one incorrect solution, but do not TLE other solution at the same time.
+# Find a test that fails one incorrect solution, but doesn't TLE the other solution.
 [sols/wa.cpp] ~ INCORRECT && [sols/tle.cpp] !~ TLE
 [sols/wa.cpp] ~ INCORRECT && !([sols/tle.cpp] ~ TLE)
 
@@ -148,13 +146,17 @@ with the `--findings / -n` and the `--timeout / -t` flags.
 ```sh
 # Runs for 2 minutes or stops after finding 3 matches.
 rbx stress -g "<generator-expression>" -f "<finder-expression>" -n 3 -t 120
+
+# Runs with the defaults: 10 seconds, stopping at the first match.
 rbx stress -g "gen 100 @" -f sols/main.cpp
+
+# The same finder written in full, with both limits tuned.
 rbx stress -g "gen 100 @" -f "[sols/main.cpp] ~ INCORRECT" -n 3 -t 120
 ```
 
-The command will show a summary of what tests were found, and in case there's at least one match, it will
-prompt you to inform a testplan to add it to. If you skip this part, you can always copy the generator calls
-that were found and add them later.
+The command prints a summary of the tests it found. If there's at least one match, it asks
+whether to add the findings to a test group. You can pick an existing `.txt` generator-script group or
+manual group, or create a new one. If you skip this, you can always copy the generator calls it printed and add them later.
 
 ## Saving a stress test
 
@@ -183,7 +185,7 @@ You can also use the `--fuzz` flag to stress test using variations of the genera
 # Fuzz all testgroups against the main solution
 rbx stress --fuzz
 
-# Fuzz specific testgroups (e.g. only 'random' and 'max')
+# Fuzz specific testgroups (for example, only 'random' and 'max')
 rbx stress --fuzz-on random --fuzz-on max
 
 rbx stress --fuzz -f sols/some-solution.cpp
@@ -210,7 +212,7 @@ Besides using stress tests for checking solution outcomes, you can be creative a
 
 For example, you can use it to test your checkers.
 
-```sh
+```py
 # Find a test where the checker returns something different than WA,
 # even though the given solution always WA.
 [sols/always-wa.cpp ON custom-checker.cpp] != WA
@@ -219,8 +221,5 @@ For example, you can use it to test your checkers.
 [sols/sol.cpp ON custom-checker.cpp] != [sols/sol.cpp ON brute-force-checker.cpp]
 ```
 
-Or you can even use it to test your validator and your interactor by simply stressing them to the limit.
-
-
-
-
+Every generated input also goes through your validator (unless you pass `--no-validate`), so a long
+stress run tests the validator on inputs you never wrote by hand.

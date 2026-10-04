@@ -4,7 +4,7 @@ Visualizers are small programs that transform a raw testcase input (and optional
 
 They are extremely useful for debugging geometry problems, game-theory problems, or any problem where the input is a complex structure that is hard to parse mentally.
 
-For instance, finding a bug in a Convex Hull algorithm is much easier if you can *see* the points and the hull, rather than staring at a list of coordinates.
+For instance, a bug in a convex hull algorithm is much easier to find if you can *see* the points and the hull.
 
 ## Configuration
 
@@ -33,20 +33,21 @@ The visualizer script itself receives the following arguments:
 -   `<output-file>` (optional): The path to the output file of the testcase (participant's output).
 -   `<answer-file>` (optional): The path to the answer file of the testcase (jury's output).
 
-### Input vs Solution Visualizers
+### Input and solution visualizers {: #input-vs-solution-visualizers }
 
 {{rbx}} distinguishes between two types of visualizers:
 
--   **Input visualizer**: Used to visualize a testcase -- and only the testcase. It receives only the `<input-file>` and the `<output-file>` is set to the model solution's output, if it is available.
--   **Solution visualizer**: Used to visualize the *output* of a solution in the context of a given testcase. Besides
-the `<input-file>`, it also receives an `<output-file>` which is the output of a solution for a testcase. Besides that, it can also receive an `<answer-file>`, pointing to the expected answer for this test,
-if it is available.
+-   **Input visualizer**: visualizes the testcase itself. It receives the `<input-file>` and, when one
+    exists, the model solution's output as `<output-file>`.
+-   **Solution visualizer**: visualizes one solution's *output* for a testcase. It receives the
+    `<input-file>`, that solution's output as `<output-file>` and, when available, the expected
+    answer as `<answer-file>`.
 
-Let's use as an example a convex hull problem. Think of a **input visualizer** as being useful for
+Let's use as an example a convex hull problem. Think of an **input visualizer** as being useful for
 seeing the points in the plane, as well as the expected convex hull polygon. **Solution visualizers**
 can then be used to render the polygon produced by a specific solution. 
 
-They're quite similar, but it's useful to allow them to be configured separately. By default, the `visualizer` field configures **both** input and solution visualizers. If you want to configure them separately, or if your solution visualizer is different from the input visualizer, you can use the `solutionVisualizer` field.
+They're quite similar, but it's useful to allow them to be configured separately. By default, the `visualizer` field configures **both** input and solution visualizers. If your solution visualizer is different from the input visualizer, use the `solutionVisualizer` field to configure it separately.
 
 ```yaml title="problem.rbx.yml"
 solutionVisualizer:
@@ -73,7 +74,7 @@ visualizer:
 
 !!! warning
     Be careful when using `stderr` to output the visualizable output. If you print too much into
-    the `stderr`, your program might slow down. In these cases, prefer the solution below.
+    the `stderr`, your program might slow down. In these cases, prefer a separate answer program, described below.
 
 Alternatively, you can specify a separate program that generates the answer for the visualizer:
 
@@ -83,7 +84,7 @@ visualizer:
   extension: 'png'
   answer_from:
     path: 'visualizers/generate_answer.cpp'
-    stderr: false  # Set to true if your program outputs into stderr of stdout
+    stderr: false  # true if the program writes the answer to stderr instead of stdout
 ```
 
 ## Writing a visualizer
@@ -125,9 +126,9 @@ plt.savefig(dest_path)
     In the LLM era, visualizers are particularly easy to be generated.
 
 !!! tip
-    Visualizers often require external libraries to function properly. Make sure that you fail gracefully
-    if a required library is not available. Other setter facing this issue will be able to quickly see
-    a dependency is missing and fix it.
+    Visualizers often require external libraries. If a required library is not available, print a
+    clear error message and exit, like the example above does. Other setters who hit this will
+    quickly see that a dependency is missing and fix it.
 
 ## Usage
 
@@ -144,13 +145,12 @@ opened in your default image viewer.
 
 #### Interactive mode
 
-When run from `rbx ui`, a visualizer takes an additional option `-i`, that tells it's being run
-in a interactive flow. This is useful for visualizers that want to open an interactive window
+When run from `rbx ui`, a visualizer receives an extra `-i` flag, which tells it that it runs
+interactively. This is useful for visualizers that want to open an interactive window
 to show the visualization (for instance, where the user can zoom).
 
-A visualizer can notify {{rbx}} that it was run in interactive mode and produced no file by exitting
-with code 42. In this case, {{rbx}} will not try to open any file, and rather just execute the program
-and wait to act interactively with the user.
+A visualizer can notify {{rbx}} that it was run in interactive mode and didn't produce a file by exiting
+with code 42. In this case, {{rbx}} doesn't try to open any file.
 
 ### In `rbx build`
 
@@ -160,9 +160,10 @@ You can also batch-generate visualizations for all testcases during the build pr
 rbx build --visualize
 ```
 
-This will generate input visualizations for all testcases and store them in the build directory, typically under `build/tests/<testgroup>/visualization`.
+This will generate input visualizations for all testcases and store them in the build directory, under `build/tests/<testgroup>/visualization`.
 
 ### In VS Code
 
-Once they are on disk, the [rbx extension](../../tools/vscode.md#visualizations) opens them from
-the testcase list -- one button per picture, and a gallery of the whole group.
+The {{rbx}} [VS Code extension](../../tools/vscode.md#visualizations) opens the generated
+visualizations from the testcase list. It shows one button per picture, plus a gallery for the
+whole group.

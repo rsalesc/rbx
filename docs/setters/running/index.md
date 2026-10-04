@@ -1,6 +1,8 @@
 # Running
 
-{{rbx}} offers several ways to run your solutions. The sections below cover each one.
+Running is how you find out whether each solution behaves as declared. `rbx run` builds the
+testset and judges your solutions against it, and `rbx irun` runs them on one input you choose.
+The sections below cover both, and the flags around them.
 
 ## Running solutions on the whole testset
 
@@ -39,7 +41,7 @@ You can also set the verification level.
 rbx run -v{0,1,2,3,4}
 ```
 
-You can read more about each verification level [here](/setters/verification/#verification-level).
+You can read more about the [verification levels](/setters/verification/#verification-level).
 
 By default, {{rbx}} runs solutions at the maximum verification level: tests are built and
 verified, every solution runs with twice the time limit, and a warning appears when a TLE
@@ -63,19 +65,19 @@ rbx run --fail-fast
 
 {{ asciinema("fail-fast") }}
 
-It is a shortcut for quick experimentation, and its report must not be trusted to validate a
-problem: the testcases that never ran are reported as **failed**, not as unmeasured, and the
-timing summary is omitted entirely, since a solution that stopped early was only timed on the
-testcases that ran.
+Use it for quick experiments, and don't use its report to validate a problem. The testcases
+that never ran are reported as skipped and count as **failed** rather than unmeasured, and the
+timing summary is left out, since a solution that stopped early was only timed on the testcases
+that ran.
 
 ## Reading what the checker said
 
-A checker's verdict line is only its **last** line. Everything it printed before that —
-differing tokens, a dump of the offending context, whatever debugging it does — is
-discarded, and even the line that survives is clipped when it is shown.
+A checker's verdict line is only its **last** line. Everything it printed before that
+(differing tokens, a dump of the offending context, any debugging output) is discarded, and
+even the last line is clipped when it is shown.
 
-`--keep-checker-stderr` keeps the whole thing. Every testcase then gets a `.checker.err`
-file next to its output, holding exactly what the checker wrote:
+`--keep-checker-stderr` keeps all of it. With the flag, each testcase gets a `.checker.err`
+file next to its output, with exactly what the checker wrote:
 
 ```bash
 rbx run --keep-checker-stderr
@@ -83,15 +85,15 @@ rbx irun sol.cpp -t samples/0 --keep-checker-stderr
 ```
 
 The report prints the path of the file for the testcase whose message it shows, and the
-run explorer (`rbx ui`) opens it with `4`. Nothing else changes: the verdict, the
+run explorer (`rbx ui`) opens it with `4`. The verdict, the
 message and every other artifact are exactly what they would have been without the flag.
 
-It is a debugging flag, not an everyday one — a `.checker.err` per testcase per solution
-adds up, and almost nobody reads them. Reach for it when a verdict surprises you.
+It's a debugging flag. A `.checker.err` per testcase per solution adds up and almost nobody
+reads them, so turn it on only when a verdict surprises you.
 
 !!! tip
     You do not have to decide up front. Checker runs are cached, so re-running the same
-    command *with* the flag after an unexpected verdict still writes the file — the
+    command *with* the flag after an unexpected verdict still writes the file: the
     checker's output is already in the cache, and the re-run is a cache hit.
 
 ## Running on the judge itself
@@ -127,9 +129,8 @@ rbx time --share png
 A few things to keep in mind:
 
 - `--share png` requires an **SVG-to-PNG converter** on your `PATH`. {{rbx}}
-  looks for `rsvg-convert`, then ImageMagick (`magick`/`convert`), then macOS
-  `qlmanage`. If none is found, the report is saved as an SVG file instead and
-  its path is printed.
+  looks for `rsvg-convert`, then ImageMagick (`magick` or `convert`). If none is
+  found, the report is saved as an SVG file instead and its path is printed.
 - Copying an **image** to the clipboard is supported on **macOS** and **Linux**
   (the latter needs `xclip` or `wl-copy`). On other platforms, or when no
   clipboard tool is available, the report is written to a file in your build
@@ -170,7 +171,7 @@ solution printed.
 
 ```bash
 # Interleave stderr with the output in true line order (requires -p)
-rbx irun <solution-name> -t sample/0 -p -e
+rbx irun <solution-name> -t samples/0 -p -e
 ```
 
 For [interactive (communication) problems](/setters/grading/interactors/), `-e` folds the solution's `stderr`
@@ -179,19 +180,19 @@ into the interaction view as a third stream, alongside the interactor and soluti
 !!! tip
     By default, the test you've written will be validated, so make sure you've typed it perfectly.
 
-    If you want to disable validation, you can pass the `-v0` flag to set the verification level to 0.
+    To skip validation, pass `--no-validate`.
 
-You can also specify a certain testcase of the testset to run using the `-t` flag followed by the *testcase notation*, which
-is composed of `<testgroup-name>/<testcase-index>`. For instance, `samples/0` is the first testcase in the `sample` testgroup,
-and `secret/10` is the 11th testcase in the `secret` testgroup.
+You can also specify a testcase of the testset to run using the `-t` flag followed by the *testcase notation*, which
+is composed of `<testgroup-name>/<testcase-index>`. For instance, `samples/0` is the first testcase in the `samples` testgroup,
+and `secret/10` is the eleventh testcase in the `secret` testgroup.
 
 ```bash
-rbx irun -t sample/0
+rbx irun -t samples/0
 ```
 
 {{ asciinema("irun-testcase") }}
 
-You can also name a [generator call](/setters/testset/generators/#generator-call) to produce the testcase.
+You can also pass a [generator call](/setters/testset/generators/#generator-call) with `-g` to produce the testcase.
 
 ```bash
 rbx irun -g "gen 100 123" -p
@@ -206,7 +207,7 @@ took. The checker, though, runs once per testcase per solution, and on a problem
 heavy checker it can dominate the wall clock of a whole run.
 
 `--benchmark` (`-b`) reports that cost. It takes a level, just like `-v`, and the level is
-required — a bare `-b` is an error:
+required, so a bare `-b` is an error:
 
 ```bash
 # 0 is the default: nothing is benchmarked, and the report is the one above
@@ -240,29 +241,29 @@ Slowest testcase to judge: 501 ms, secret/12
 ```
 
 Notice the durations follow the value: milliseconds below a second, seconds above it. A
-`-` means the value was never measured — no checker ran on that testcase, or the sandbox
-reported no clock — which is a different fact from a measured zero, and never rendered as
-one.
+`-` means the value was never measured: no checker ran on that testcase, or the sandbox didn't
+report a time. {{rbx}} keeps that apart from a measured zero, and never shows it as one.
 
 `rbx irun` takes `-b1` too. There, the checker (and interactor) time is printed on each
-testcase's block, along with the summary. There is no per-solution block: with a single
+testcase's block, along with the summary. There is no per-solution block: with only one
 testcase, "slowest test" would say nothing.
 
 !!! tip
-    These timings are captured on **every** run, benchmarked or not — `-b` only decides
+    These timings are captured on **every** run, benchmarked or not; `-b` only decides
     what gets printed. So `rbx ui` shows you the checker time of a run you've already
     done, without re-running anything.
 
 Checker runs are cached, and a cached checker reports the time it took when it actually
 ran. {{rbx}} never re-runs a checker to benchmark it: the stored measurement is the
-uncached cost, which is the number worth having.
+uncached cost, which is the number you want.
 
-Under `--fail-fast` every total is a **lower bound**, since a solution that stopped early
+With `--fail-fast`, every total is a **lower bound**, since a solution that stopped early
 was only judged on the testcases that ran. The report says so:
 
 ```{.bash .no-copy}
 Total judging: 3.1 s (checker: 400 ms) (over 7/40 tests judged)
 ```
 
-Unlike the timing summary, which `--ff` drops entirely because time limit inference reads
-it, the benchmark feeds no inference. A marked lower bound is more useful than nothing.
+Unlike the timing summary, which `--ff` drops because time-limit inference reads it and a
+stopped-early solution only measures a lower bound, the benchmark feeds no inference. A marked
+lower bound is more useful than nothing.

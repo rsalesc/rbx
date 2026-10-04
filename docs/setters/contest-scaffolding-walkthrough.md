@@ -6,13 +6,13 @@ before the real work starts.
 
 !!! note "Prerequisite"
     This page opens the **Delivering a contest** track, written for the person assembling
-    the whole event rather than a single problem. You don't need to have finished
+    the whole event rather than one problem. You don't need to have finished
     [First steps](/setters/first-steps), but we'll reuse the problem it builds near the
     end, so it helps to have it around.
 
-Until now, every command in these docs has run inside a single problem. A contest is the
-folder that sits one level above: it remembers which problems take part, in which order,
-under which letter, and it owns the statement chrome they all share.
+Until now, every command in these docs has run inside one problem. A contest is the
+folder one level above. It records which problems take part, in which order and under
+which letter, and it holds the statement chrome they all share.
 
 ## Creating the contest
 
@@ -23,7 +23,8 @@ rbx contest create --path contests/summer-cup
 ```
 
 If you leave `--path` out, {{rbx}} asks for it. The last component of the path is the
-folder it creates, and everything from here on happens inside it.
+folder it creates, and everything from here on happens inside it, so
+`cd contests/summer-cup` before going on.
 
 There's a second way in. `rbx contest init` scaffolds a contest **into the directory
 you're already standing in**, instead of creating a new one:
@@ -46,17 +47,18 @@ confirm first, since it's about to write into someone else's folder.
 
 ## Reading the contest folder
 
-Here's what the default preset just laid down:
+The default preset creates this layout:
 
 {{ contest_preset_tree() }}
 
 Notice what *isn't* there: any problem. A fresh contest is a configuration file plus a
 pile of {{latex}}, and the problems become sibling folders as you add them.
 
-Notice, too, where the statement chrome lives. In a problem package you'll find the
+Notice, too, where the statement chrome is. In a problem package you'll find the
 problem's own text and nothing else -- the templates, the style file and the cover page
-are all up here, decided once for the whole contest. That's what step 3 of this track is
-about; today we only need to know the folder exists.
+are all up here, decided once for the whole contest. Building the task sheet from it is
+covered in [Building contest statements](/setters/statements/contest); today we only need to
+know the folder exists.
 
 ## Reading `contest.rbx.yml`
 
@@ -84,18 +86,18 @@ vars:
   date: "2025-06-21"
 ```
 
-1.  An identifier, not a title. Keep it short and filename-friendly -- packagers reach for
-    it when they name what they build.
+1.  An identifier, used by packagers to name what they build. Make it short and
+    filename-friendly; the human-readable title goes in `titles`.
 
 2.  The human-readable title, one per language. The task sheet prints this one.
 
-3.  The task sheet: the document that joins every problem together. Statements are the
+3.  The task sheet, which is the document that joins every problem together. Statements are the
     subject of [Building contest statements](/setters/statements/contest), and we won't
     touch them here.
 
 4.  Editorials, built separately from the statements.
 
-5.  Contest-level documents that *never* join on problems -- the preset ships an
+5.  Contest-level documents that don't join problems together -- the preset ships an
     information sheet listing each problem's limits.
 
 6.  Variables shared by the whole contest. They reach the statement templates, so the year
@@ -121,7 +123,7 @@ step:
 rbx contest add --path problems/chocolate --short-name A
 ```
 
-Two things identify a problem, and the command asks for both:
+The command asks for the two things that identify a problem:
 
 - `--path`, where the problem folder goes, relative to the contest root. Its last component
   becomes the problem's `name` -- `problems/chocolate` creates a problem named `chocolate`.
@@ -144,9 +146,8 @@ problems:
     path: "problems/gardens"
 ```
 
-Notice that {{rbx}} keeps the list sorted by short name as it inserts. That ordering is
-load-bearing: it's the order problems appear in the task sheet, and the order that ranges
-like `A..C` walk.
+Notice that {{rbx}} inserts each problem in short-name order. This order matters: it's the
+order problems appear in the task sheet, and the order that ranges like `A..C` follow.
 
 !!! warning "Letters are letters"
     `short_name` has to match `^[A-Z]+[0-9]*$` and be at most four characters. `A`, `B1`
@@ -154,7 +155,7 @@ like `A..C` walk.
     `chocolate` on the command line, give it an **alias** -- see
     [Selecting problems](/setters/reference/contest#selecting-problems).
 
-Adding a letter that's already taken -- as a `short_name` *or* as someone's alias -- is
+Adding a letter that's already taken -- as a `short_name` or as someone's alias -- is
 refused, so you can't quietly end up with two problem `B`s.
 
 ## Bringing in a problem you already have
@@ -163,10 +164,10 @@ Quite often the problem exists before the contest does. Someone wrote it standal
 you're pulling last year's spare into this year's set. Say we want the sum-of-N problem
 from [First steps](/setters/first-steps) to be problem `C`.
 
-There's no single command for this today. It's two steps, and both are easy:
+There's no command for this today, but it only takes two steps. First, move the folder:
 
 ```bash
-mv ~/sum-of-n contests/summer-cup/problems/sum-of-n
+mv ~/sum-of-n problems/sum-of-n
 ```
 
 Then add it to the `problems` list by hand:
@@ -182,7 +183,7 @@ problems:
 ```
 
 That's all a registered problem is: a letter and a path. In fact `path` is optional -- drop
-it and {{rbx}} looks for a folder named after the short name, so a problem living in `C/`
+it and {{rbx}} looks for a folder named after the short name, so a problem stored in `C/`
 needs nothing but its `short_name`.
 
 !!! tip
@@ -193,28 +194,29 @@ needs nothing but its `short_name`.
 ## Reordering and removing problems
 
 Letters aren't stored anywhere except `contest.rbx.yml`, so relettering a contest is
-editing that file. Swap two `short_name` values and the problems swap places; there's no
-command for it, and none is needed.
+editing that file. Swap two `short_name` values, then swap the two entries so the list
+is still sorted. There's no command for it, and none is needed.
 
-Two things don't follow along automatically, and both bite:
+Watch out for what doesn't change automatically:
 
-- The **folder name** stays what it was. A problem in `problems/chocolate` can perfectly
+- The **folder name** doesn't change. A problem in `problems/chocolate` can perfectly
   well be problem `D`, and usually is by the time the set settles.
-- The **order of the list** is what the task sheet and `A..C` ranges read, so keep the
-  list sorted when you reletter.
+- The **order of the list** is what the task sheet and `A..C` ranges read.
 
-Removing is a command:
+`rbx contest remove` drops a problem. Let's add a spare and drop it again, since the next pages need all
+three problems:
 
 ```bash
-rbx contest remove B
+rbx contest add --path problems/spare --short-name D
+rbx contest remove D
 ```
 
 It takes a short name, an alias or a path, and drops the problem from `contest.rbx.yml`.
 
 !!! danger "It deletes the folder"
     `rbx contest remove` doesn't only unregister the problem -- it **deletes the problem
-    directory from disk**, and it doesn't ask first. If the problem isn't committed
-    anywhere, its tests, solutions and statement go with it. Commit before you prune.
+    directory from disk**, and it doesn't ask first. Any tests, solutions and statements
+    you haven't committed are lost. Commit before you prune.
 
 ## Checking the contest
 
@@ -233,15 +235,15 @@ the summary they add up to:
 
 {{ asciinema("contest-scaffold") }}
 
-Read the table as an answer to "is everything wired up?". A letter you don't recognize, a
-suspiciously empty test count, a problem with no {{tags.accepted}} solution -- they all
-show up here, at a glance, before you've spent an afternoon packaging. A problem that
-can't be summarized at all prints an error of its own and the rest of the table carries on,
-which is usually the fastest way to find the one folder you moved and forgot to re-point.
+Use the table to check that everything is wired up. A letter you don't recognize, an
+empty test count or a problem with no {{tags.accepted}} solution shows up here before
+you've spent an afternoon packaging. A problem that can't be summarized at all prints its
+own error, and {{rbx}} still prints the rest of the table. That error row is usually the
+fastest way to find the folder you moved without updating its `path` in `contest.rbx.yml`.
 
 !!! tip
     From here on, most commands you already know work across the contest.
-    `rbx contest each run` runs every problem's solutions, and `rbx contest on A,C run`
+    `rbx each run` runs every problem's solutions, and `rbx on A,C run`
     runs just two of them. The selector syntax is documented in
     [Selecting problems](/setters/reference/contest#selecting-problems).
 

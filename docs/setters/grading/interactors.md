@@ -4,7 +4,7 @@ Interactor is a concept introduced by {{testlib}} to play the role of an agent t
 communicates with the participant's solution through the pair `stdin`/`stdout` in
 interactive problems.
 
-You can read more about what is an interactive problem in this thorough [Codeforces blog post](https://codeforces.com/blog/entry/45307) written by Mike Mirzayanov.
+You can read more about what an interactive problem is in this thorough [Codeforces blog post](https://codeforces.com/blog/entry/45307) written by Mike Mirzayanov.
 
 In this section, we will see how to write an interactive problem and how to define an interactor for it in {{rbx}}.
 
@@ -22,18 +22,18 @@ In this section, we will see how to write an interactive problem and how to defi
 ## Motivational problem
 
 Let's assume we have a problem that asks you to find a number between 1 and `N`, where `N` is between 2 and 1000.
-You should find it with at most 10 guesses to the interactor. A guess is a line in the format `? X`, where `X` is a number between 1 and `N`.
+You should find it with at most 10 guesses to the interactor. A guess is a line with the number `X`, where `X` is between 1 and `N`.
 
-The interactor will first give you the value of `N`, and then respond each guess with `<`, `>` or `=` if the guess is less than, greater than or equal to the secret number, respectively. When responding with `=`, the game ends and the solution should finish execution.
+The interactor will first give you the value of `N`, and then respond to each guess with `<`, `>` or `=` if the guess is less than, greater than or equal to the secret number, respectively. When responding with `=`, the game ends and the solution should finish execution.
 
 Let's assume the secret number is 7. A possible interaction between the solution and the interactor is the following:
 
 | Agent       | Line  | Description                      |
 | ----------- | ----- | -------------------------------- |
 | Interactor  | `10`  | Tells participant that `N = 10`  |
-| Participant | `? 5` | The participant guesses 5        |
+| Participant | `5`   | The participant guesses 5        |
 | Interactor  | `<`   | 5 is less than the secret number |
-| Participant | `? 7` | The participant guesses 7        |
+| Participant | `7`   | The participant guesses 7        |
 | Interactor  | `=`   | 7 is equal to the secret number  |
 | -           |       | Both agents finish execution     |
 
@@ -42,14 +42,6 @@ Let's assume the secret number is 7. A possible interaction between the solution
 Let's first of all define an interactor for the problem. In most cases, the interactor should be the very first
 component to be written in an interactive problem, because it is particularly hard to write solutions and test them
 before having one defined.
-
-!!! tip
-    Of course, you can always interactively run your solution.
-
-    Feel free to use the `rbx compile <solution>` command to compile them, and run them by
-    executing `build/exe` from your project's root directory.
-
-    In this case, you will interactively write to the solution's `stdin`, essentially playing the role of the interactor.
 
 A {{testlib}} interactor consists of an executable that receives two arguments:
 
@@ -73,19 +65,18 @@ This structure is depicted in the following diagram:
 </center>
 
 Thus, even though the communication between the two agents is done through `stdin`/`stdout`, the interactor
-still has its own input and output files that can have a similar purpose to the inputs and outputs of an usual
+still has its own input and output files that can have a similar purpose to the inputs and outputs of a usual
 batch problem.
 
 For this problem, let's assume we have a testset containing some input files containing two numbers: `N` and
-the secret number `S`, with `1 <= S <= N <= 1000`. We can also assume we've written a validator for this file.
+the secret number `S`, with `2 <= N <= 1000` and `1 <= S <= N`. We can also assume we've written a validator for this file.
 
 !!! note
-
     Notice *validators* will receive the input file the interactor reads from, not the `stdin` of the participant's solution.
 
 ## The interactor
 
-*You can read more about {{testlib}} interactors in the [official testlib documentation](https://codeforces.com/blog/entry/18455).*
+*You can read more about {{testlib}} interactors in the [official documentation](https://codeforces.com/blog/entry/18455).*
 
 Now that we have our input formally defined, let's write a {{testlib}} interactor and set it up in our problem.
 
@@ -113,16 +104,18 @@ You can see in the commented code below how to read from each of the files avail
 
         int MAX_Q = getVar<int>("Q.max"); // (2)!
 
-        for(int i = 0; i < MAX_Q; i++) {
-          int X = ouf.readInt(1, N); // (3)!
+        cout << N << endl; // (3)!
 
-          if(X < S) { // (4)!
+        for(int i = 0; i < MAX_Q; i++) {
+          int X = ouf.readInt(1, N); // (4)!
+
+          if(X < S) { // (5)!
             cout << "<" << endl;
           } else if(X > S) {
             cout << ">" << endl;
           } else {
             cout << "=" << endl;
-            tout << i+1 << endl; // (5)!
+            tout << i+1 << endl; // (6)!
             quitf(_ok, "found the secret number in %d guesses", i + 1);
           }
         }
@@ -137,18 +130,21 @@ You can see in the commented code below how to read from each of the files avail
 
     2.  Reads the maximum number of guesses allowed from the {{rbx}} variables.
 
-        We defined this would be 10 in the statement above, but let's define this as a variable
+        We defined this would be 10 in the problem description above, but let's define this as a variable
         as a good practice.
 
-    3.  Reads the participant's guess from the `stdin` of the interactor / `stdout` of the solution.
+    3.  Sends `N` to the solution. The solution is waiting for this line, and `endl` flushes it
+        right away.
+
+    4.  Reads the participant's guess from the `stdin` of the interactor / `stdout` of the solution.
   
         Notice we also check it is within bounds.
 
-    4.  Writes back the response to the guess to the `stdout` of the interactor / `stdin` of the solution.
+    5.  Writes back the response to the guess to the `stdout` of the interactor / `stdin` of the solution.
 
         We use the common C++ `std::cout` stream for that.
 
-    5.  In case the solution is correct, writes the number of guesses to the output file for logging purposes (in some judging systems, you can inspect this file, for instance).
+    6.  In case the solution is correct, writes the number of guesses to the output file for logging purposes (in some judging systems, you can inspect this file, for instance).
 
         We use the C++ `tout` stream for that.
 
@@ -174,7 +170,6 @@ and `rbx irun` commands.
 Read more about them in the [Running solutions](/setters/running/) section.
 
 !!! warning
-
     When providing a custom input for `rbx irun`, you're actually providing the input to the interactor,
     **NOT** the solution.
 
@@ -195,12 +190,11 @@ rbx compile solution.cpp
 
 Short answer: no, you don't need to write a checker. In fact, the {{icpcformat}} doesn't support one.
 
-Instead, this format expects the interactor to both communicate with the solution and judge it. Other
-judging systems do support specifying a checker, and some even require one (e.g., {{polygon}}).
+Instead, in this format the interactor both communicates with the solution and judges it. Other
+judging systems do support specifying a checker, and some even require one (for example, {{polygon}}).
 However, this practice is not encouraged by {{rbx}}, as it is not part of the {{icpcformat}}.
 
 !!! tip
-
     {{rbx}} will automatically generate a dummy/no-op checker when you generate a package for a judging
     system that requires one. You should not worry about this!
 
@@ -217,14 +211,14 @@ checker:
   path: 'checker.cpp'
 ```
 
-The newly defined checker will read as the outputs for the participant's and the jury's solutions the `output_files`
+The newly defined checker receives, as the participant's and the jury's outputs, the `output_files`
 produced by their interactor runs (whatever was written into `tout`).
 
 <center markdown>
 ![Interactor with checker](interactor-checker.svg)
 </center>
 
-Then, you could split the previously defined interactor into two files as such:
+Then, you could split the previously defined interactor into two files like this:
 
 === "interactor.cpp"
 
@@ -239,8 +233,12 @@ Then, you could split the previously defined interactor into two files as such:
         int N = inf.readInt();
         int S = inf.readInt();
 
+        cout << N << endl;
+
+        int guesses = 0;
         while (true) {
           int X = ouf.readInt(1, N);
+          guesses++;
 
           if(X < S) {
             cout << "<" << endl;
@@ -248,10 +246,11 @@ Then, you could split the previously defined interactor into two files as such:
             cout << ">" << endl;
           } else {
             cout << "=" << endl;
-            tout << i+1 << endl;
+            break;
           }
         }
 
+        tout << guesses << endl;
         quitf(_ok, "ok"); // leave the query limit to the checker
     }
     ```
@@ -283,7 +282,6 @@ Then, you could split the previously defined interactor into two files as such:
     ```
 
 !!! danger "Incompatible with ICPC"
-
     This is not part of the {{icpcformat}}, and thus {{rbx}} will throw an error if you try to
     generate an ICPC package for an interactive problem that has a checker.
 

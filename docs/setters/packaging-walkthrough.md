@@ -15,15 +15,8 @@ expected outcomes match. If you're starting from scratch, follow the
     You create it by profiling the problem against the judge's hardware, which is what
     [Profiling time limits](/setters/contest-profiling-walkthrough) walks you through.
     If you haven't done that yet, start there and come back once `.limits/boca.yml` is
-    in place. Working on a single problem rather than a contest? Then `rbx time -p boca`
-    is the whole of it -- see [Profiling](/setters/profiling).
-
-## Overview
-
-Packaging a problem involves two main stages:
-
-1. **Packaging** -- Build the problem into a format the judge system understands.
-2. **Uploading** -- Get the package into the judge, either manually or automatically.
+    in place. Working on one problem rather than a contest? Then running `rbx time -p boca`
+    is all you need -- see [Profiling](/setters/profiling).
 
 ## Step 1: Build the package {: #packaging }
 
@@ -47,16 +40,17 @@ The resulting `.zip` is saved in the problem's `build/` directory.
 
 ### Verification levels
 
-By default, packaging runs at **verification level 4** (the maximum), which runs all
-solutions and checks their expected outcomes. You can lower this to speed things up
+By default, packaging runs at **verification level 4** (the maximum), which runs every
+solution and checks its expected outcome. It also confirms TLE solutions still fail at
+twice the limit. You can lower this to speed things up
 during development:
 
 ```bash
 rbx package boca -v0  # Only generate tests, no validation
 rbx package boca -v1  # Generate tests and validate inputs
-rbx package boca -v2  # Also run accepted solutions
-rbx package boca -v3  # Also run non-TLE solutions
-rbx package boca -v4  # Run all solutions (default)
+rbx package boca -v2  # Also run every non-TLE solution
+rbx package boca -v3  # Also run TLE solutions
+rbx package boca -v4  # Also check TLE solutions against twice the limit (default)
 ```
 
 See the [Packaging overview](/setters/packaging#rbx-package) for the full
@@ -66,7 +60,7 @@ verification level table.
 
 If you're working in a contest directory, `rbx each package boca` packages every problem
 at once, and `rbx on <selector> package boca` packages a subset of them. Both are the
-subject of the next step,
+subject of the next walkthrough,
 [Packaging the whole contest](/setters/contest-packaging-walkthrough).
 
 ## Step 2: Upload to BOCA {: #uploading }
@@ -77,8 +71,7 @@ the BOCA web interface.
 
 ### Option A: Automated upload with `-u` {: #automated-upload }
 
-The easiest approach is to use the `--upload` (or `-u`) flag, which builds the
-package **and** uploads it in a single step:
+To build and upload in one step, add `--upload` (or `-u`):
 
 ```bash
 rbx package boca -u
@@ -90,7 +83,7 @@ rbx package boca -u
 
 #### Set up BOCA credentials
 
-For the upload to work, {{rbx}} needs to know how to connect to your BOCA server.
+To upload, {{rbx}} needs the address of your BOCA server and an account to log in with.
 Set the following environment variables, either in your shell or in a `.env` /
 `.env.local` file at the root of your contest:
 
@@ -100,13 +93,13 @@ BOCA_USERNAME="admin_username"
 BOCA_PASSWORD="admin_password"
 ```
 
-If you're using a judge account instead of an admin account:
+The `BOCA_JUDGE_USERNAME`/`BOCA_JUDGE_PASSWORD` pair is for `rbx tooling boca submit`, not
+for uploads.
 
-```bash title=".env"
-BOCA_BASE_URL="https://your.boca.com/boca"
-BOCA_JUDGE_USERNAME="judge_username"
-BOCA_JUDGE_PASSWORD="judge_password"
-```
+Uploading needs the problem to belong to a contest: {{rbx}} files it under the letter and
+position the contest's `problems` list gives it (see
+[Scaffolding a contest](/setters/contest-scaffolding-walkthrough)). Otherwise, use
+[Option B](#manual-upload).
 
 !!! warning
     The configured user **must** be an admin of the contest in BOCA, otherwise the
@@ -128,8 +121,8 @@ from your machine, you can upload the package manually:
 
 3. **Log in** to the BOCA web interface as a contest admin.
 
-4. **Navigate** to the **Problems** tab and upload the `.zip` file for the
-   corresponding problem letter.
+4. **Navigate** to the **Problems** tab and upload the `.zip` file under the
+   problem's letter.
 
 !!! tip
     If you run into issues with BOCA packaging or uploading, check the

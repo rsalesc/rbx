@@ -8,8 +8,8 @@ be connected, or a tree, or a DAG, but there was a test in your testset that con
 Even experienced setters make these mistakes, and it's important to have extra guards to catch
 them.
 
-Similar to {{codeforces}}, {{rbx}} offers built-in support for {{testlib}} validators (and
-also encourages you to use it), but also provides the flexibility for you to write your own.
+Like {{codeforces}}, {{rbx}} has built-in support for {{testlib}} validators, and we encourage
+them, but you can also write your own.
 
 ## Motivational problem
 
@@ -39,7 +39,7 @@ does not violate these constraints.
 
 To use a {{testlib}} validator, you need to specify the path to the validator in the `validator` field.
 {{testlib}} validators are always written in C++ and should include the `testlib.h` header. {{rbx}} treats
-this header especially, and will automatically place it along your validator when compiling it.
+this header specially, and will automatically place it along your validator when compiling it.
 
 ```yaml title="problem.rbx.yml"
 validator:
@@ -121,8 +121,8 @@ Let's do the following modifications to our problem to make it safer:
         max: 1000
     ```
 
-{{rbx}} will automatically generate an `rbx.h` header file for you, which will include the variables
-you defined in your `problem.rbx.yml` file, that you can access in your validator with the `getVar<>()` function.
+{{rbx}} will automatically generate an `rbx.h` header file for you with the variables you defined
+in your `problem.rbx.yml` file. Your validator can read them with the `getVar<>()` function.
 
 To read more about variables, check the [Variables](/setters/variables) section.
 
@@ -189,7 +189,6 @@ int main(int argc, char *argv[]) {
 ```
 
 !!! tip
-
     You can always manually call a validator on a custom input with `rbx validate`.
 
     {{ asciinema("validate-input") }}
@@ -216,12 +215,19 @@ validator in the `validator` field.
     
     # ...
     ```
-    
+
+A custom validator reads the test from standard input and exits with status `0` to accept it,
+or returns a nonzero exit code to reject it. If it crashes instead (for example, killed by a
+signal), the build aborts. It also receives each variable as `--name=value` on the command
+line, plus `--group <name>` with the test group being validated and
+`--testOverviewLogFileName validator.log`, which you can ignore. Parse flags leniently, so unknown
+ones don't break your validator.
+
 !!! warning
     We strongly recommend using {{testlib}} validators.
 
-    They're not only easier to write, but also provides a set of tested utilites to read and
-    stricly check parts of the input, something you would've to do manually otherwise.
+    They're easier to write, and {{testlib}} gives you tested helpers to read and strictly check
+    each part of the input, which you'd otherwise write by hand.
 
 
 ## Defining additional validators
@@ -230,10 +236,10 @@ validator in the `validator` field.
 
 The first one is by using the `extraValidators` field in the `problem.rbx.yml` file.
 
-This allows you to, for instance, define validators that check for different properties of the input
-separately.
+You can use it, for instance, to check different properties of the input in separate
+validators.
 
-```yaml title="problem.rbx.yml" hl_lines="3-10"
+```yaml title="problem.rbx.yml" hl_lines="3-5"
 validator:
   path: 'validator.cpp'
 extraValidators:
@@ -244,7 +250,7 @@ extraValidators:
 Or define validators that check for common properties of the input file that you'd rather keep off
 of the main validator.
 
-```yaml title="problem.rbx.yml" hl_lines="3-10"
+```yaml title="problem.rbx.yml" hl_lines="3-6"
 validator:
   path: 'validator.cpp'
 extraValidators:
@@ -253,17 +259,17 @@ extraValidators:
   - path: 'no-consecutive-spaces.py'
 ```
 
-Another way of additional validators it to specify validators (or extra validators) for a specific test group in your problem.
+Another way of defining additional validators is to specify validators (or extra validators) for a specific test group in your problem.
 
 This is often useful for problems that have multiple subtasks with different constraints, but can also be
 useful for ICPC-style contests where you use the grouping feature to separate tests you've generated
 with a specific purpose in mind.
 
-Considering the problem above one more time, let's say we have a specific testplan focused on tests that contain a straight path from 1 to `N`, because we know that this
-is the largest solution a participant can get. We might want to have a validator to ensure tests coming from this testplan
+Considering the problem above one more time, let's say we have a specific testplan focused on tests that contain a straight path from 1 to `N`, because those tests give the
+longest possible answer. We want a validator that ensures tests coming from this testplan
 really have this property.
 
-```yaml title="problem.rbx.yml" hl_lines="10-20"
+```yaml title="problem.rbx.yml" hl_lines="13-14"
 # ... rest of the problem.rbx.yml ...
 validator:
   path: 'validator.cpp'
@@ -335,7 +341,7 @@ validated to every validator run, and the generated `rbx.h` resolves `getVar` ag
 it. A test that is legal in `large` and too big for `small` now fails in `small`, and
 `rbx build` reports it.
 
-A few details worth knowing:
+A few details:
 
 - **The merge is deep, at the leaf.** `vars: {N: {max: 50}}` overrides `N.max` and
   leaves every sibling (`N.min`, and every other variable) alone. You never have to
