@@ -45,10 +45,6 @@ argv: ["/Users/you/.local/bin/rbx", "build"]
 ...
 ```
 
-The fields you'll want most are `command`, the exact invocation (quoted so you can paste it
-straight back into a shell), and `cwd`, the directory it ran in. You'd otherwise have to
-remember both, and anyone looking at the crash will ask you for them first.
-
 The block at the top is valid YAML, so a script can parse the report too.
 
 ## Where to find it

@@ -12,24 +12,6 @@ without touching the rest.
     {{boca}} as the target judge, as
     [Packaging a problem](/setters/packaging-walkthrough) did.
 
-That page took one problem all the way to the judge. A contest is that, `N` times, on the
-morning of the event. The harder part is that the problems have to go up together, with
-the same limits profile everywhere and letters that match the statement. No problem can be
-left at yesterday's version by accident.
-
-## One command per problem, or one for the contest
-
-There are two commands here, and they do different jobs:
-
-| Command | Produces | What it's for |
-| :--- | :--- | :--- |
-| `rbx each package boca` | one package per problem, in each problem's own `build/` | shipping to the judge |
-| `rbx contest package boca` | one archive at the contest root's `build/` | handing the set over as one file |
-
-BOCA imports problems one at a time, and so does its upload form, so the command you'll
-run on contest morning is the first one. The second one only builds an archive, and is
-covered [at the end of this page](#the-contest-bundle).
-
 ## Packaging every problem
 
 From the contest root:
@@ -39,15 +21,9 @@ rbx each package boca
 ```
 
 `rbx each` runs the command once per problem, in the problem's own folder, in the command
-app you already met in [Profiling time limits](/setters/contest-profiling-walkthrough#the-rest-of-the-contest)
--- a sidebar of problems on the left, the selected problem's output on the right. Two of
-its habits matter more here than they did during profiling:
-
-- **A failure doesn't stop the sweep.** A problem whose solutions disagree with their
-  expected outcomes fails, goes red in the sidebar, and the other problems keep packaging.
-  You end up with a partial set, and the red mark tells you so.
-- **The report you need is the red one.** Arrow-key over to it; each tab keeps its own
-  scrollback.
+app you already met in [Profiling time limits](/setters/contest-profiling-walkthrough#the-rest-of-the-contest).
+A failure doesn't stop the others: a problem whose solutions disagree with their expected
+outcomes goes red in the sidebar, and the other problems keep packaging.
 
 When it's done, each problem folder has its own package:
 
@@ -57,22 +33,17 @@ problems/gardens/build/B_gardens.zip
 problems/sum-of-n/build/C_sum_of_n.zip
 ```
 
-Notice the letter in each filename. It isn't in the problem's `problem.rbx.yml` anywhere --
-{{rbx}} reads it from the contest's `problems` list, which is the first of several places
-where the contest, not the problem, decides what the judge sees.
+Notice the letter in each filename: {{rbx}} reads it from the contest's `problems` list.
 
 !!! info
-    {{rbx}} builds and verifies each problem from scratch, at verification level 4. That's
-    three full builds, and it's the slowest command in this track. The `-v` flags that
-    trade verification for speed are the same ones as in
-    [Packaging a problem](/setters/packaging-walkthrough#verification-levels) -- and `rbx each package boca -v0`
-    on the morning of the contest is a bad trade.
+    {{rbx}} verifies each problem at the highest
+    [verification level](/setters/packaging-walkthrough#verification-levels), which is slow.
+    For a faster build, pass `-v1`: it still validates the tests, but doesn't run the
+    solutions.
 
 ## Packaging a subset
 
-You will rarely re-package all of it. A test changes in `B` an hour before the contest, and
-what you want is `B` and nothing else, so `rbx on` takes the same command with a selector in
-front of it:
+To re-package only some problems, use `rbx on` with a selector:
 
 ```bash
 rbx on B package boca          # one problem, straight in your terminal
@@ -80,9 +51,6 @@ rbx on A,C package boca        # two of them, in the command app
 rbx on A..C package boca       # a range, in contest order
 rbx on '*,!B' package boca     # everything but B
 ```
-
-With one problem there is only one command to run, so {{rbx}} skips the app and runs it in
-place.
 
 !!! info
     The selector understands names, aliases and folders as well as letters, and quoting is
@@ -158,57 +126,16 @@ call the contest ready.
     default cap on uploaded files. That one has a fix, on the server side -- see
     [BOCA troubleshooting](/setters/packaging/boca#upload-is-taking-too-long-or-an-error-is-being-reported).
 
-## The contest bundle {: #the-contest-bundle }
-
-The other command packages the contest as a unit:
-
-```bash
-rbx contest package boca
-```
-
-{{ asciinema("contest-package-bundle") }}
-
-It builds every problem's package first -- the same three zips as above, in the same places
--- and then collects them into one archive at the contest root:
-
-```
-build/boca-contest.zip
-└── problems/
-    ├── A.zip
-    ├── B.zip
-    └── C.zip
-```
-
-There's no `-u` here, on purpose: BOCA can import problems, but not contests. Use the
-bundle when you need the set as one file, to hand it to whoever runs the judge or to
-archive what the contest shipped.
-
-BOCA, Polygon and PKG have a contest-level command, and each one writes a different
-archive:
-
-| Command | The archive it writes |
-| :--- | :--- |
-| `rbx contest package boca` | the problem packages, unchanged, side by side |
-| `rbx contest package polygon` | the problem packages plus the `contest.xml` and `contest.dat` descriptors Polygon reads |
-| `rbx contest package pkg` | the problem packages plus the contest's own statement |
-
-MOJ and DOMjudge have no contest-level command, so `rbx each package <format>` is all you
-need there.
-
 ## Shipping a contest to Polygon
 
-{{polygon}} works the other way around. There, you upload the *problems* over the API and
-**assemble the contest in the web interface**, so the bulk command you want is the
-per-problem one again, pointed at Polygon:
+With {{polygon}}, you upload the problems over the API and **assemble the contest in the web
+interface**, so you package and upload each problem:
 
 ```bash
 rbx each package polygon -u
 ```
 
-`rbx contest package polygon` is the offline counterpart, and it's a different job: the
-descriptors above describe the set to Polygon without any of it having gone through the API.
-The API route, all the way to the Gym import at the end of it, is laid out step by step in
-the [Polygon guide](/setters/packaging/polygon).
+The [Polygon guide](/setters/packaging/polygon) covers the rest, up to the Gym import.
 
 ## Next steps
 
@@ -230,7 +157,7 @@ The contest is on the judge. What's left is the part you can only do once it's t
 
     ---
 
-    Polygon, MOJ, DOMjudge and PKG, and what each format does and doesn't support.
+    Polygon, MOJ and DOMjudge, and what each format does and doesn't support.
 
     [:octicons-arrow-right-24: Packaging](/setters/packaging)
 

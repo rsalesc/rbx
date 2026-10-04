@@ -26,36 +26,10 @@ The account needs **admin** rights. {{rbx}} creates a private `rbx-timing` conte
 time it runs, uploads a throwaway `rbxt-…` problem into it, and submits as the built-in
 `domjudge` team. A plain jury account can't do any of these.
 
-The problem is named after the
-slug in `.rbx-id` at the package root, the one identity your package has on any remote judge
-(the MOJ backend uses it too). Re-running reuses that same problem as your testset grows,
-instead of creating a new one each time. The contest has no scoreboard
-anyone reads, and nothing {{rbx}} does there touches a real contest.
+Before uploading, {{rbx}} checks the instance and stops with an error if:
 
-Before uploading anything, {{rbx}} checks the instance and **refuses by name** what cannot
-work, rather than leaving you watching a run that will never finish:
-
-- **`verification_required` turned on.** It hides every judgement and run until a human
-  verifies it, so a timing run would poll an empty list until it gave up.
-- **No enabled judgehost**, or one that is enabled but has not asked for work recently. Either
-  way submissions would be stored and never judged — but the fix differs, so the two are
-  reported differently.
-
-A judge reports **less** than the local sandbox does. It hands back a verdict, not the bytes
-your solution wrote:
-
-- **No memory usage**, no `.out`/`.err` artifacts, and a verdict rather than the checker's own
-  message. DOMjudge has no memory-limit verdict at all, so a solution that runs out of memory
-  comes back as a runtime error.
-- **Times are CPU time**, not wall clock. A solution killed for exceeding the limit reports the
-  CPU it actually burned, which for a sleeping or I/O-bound solution is close to zero. The
-  verdict is what says it was too slow.
-- `--runs` greater than one and sanitizers are **refused by name** before anything is
-  uploaded — each would produce a report answering a different question than the one you asked.
-
-Interactive (`communication`) problems **do** work. DOMjudge runs the interactor {{rbx}} ships as
-the problem's run script, and the verdict comes from the same program that judges locally. A
-legacy interactor paired with a checker is chained so that both still run.
+- `verification_required` is on, since it hides every judgement until a human verifies it.
+- No judgehost is enabled, or none has asked for work recently.
 
 Solutions are submitted one at a time. A judgehost judges one submission at a time anyway, and
 two in flight on a multi-judgehost instance could be judged on different machines, whose timings

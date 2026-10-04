@@ -10,23 +10,20 @@ verifying under the result, and committing it.
     `B` and `C` sitting in `problems/chocolate`, `problems/gardens` and
     `problems/sum-of-n`. If you haven't gone through it yet, start there.
 
-Since the last page, `gardens` has gained more solutions: accepted ones in C++ and Python,
-and `sols/quadratic.cpp`, declared `outcome: tle`. `chocolate` doesn't declare any slow solution.
-Your own problems will print different numbers, but you read the output the same way.
+Since the last step of the guide, `gardens` has gained more solutions: accepted ones in C++
+and Python, and `sols/quadratic.cpp`, declared `outcome: tle`. `chocolate` doesn't declare
+any slow solution.
 
 [Scaffolding a contest](/setters/contest-scaffolding-walkthrough) ended on `rbx contest summary`, and that table printed a time limit for every
 problem. Each of those numbers is the `timeLimit` its author typed into `problem.rbx.yml`
-on their own laptop, picked because it felt about right at the time. So we have three
-guesses, made on three different machines.
-
-The judge is none of those machines. Let's replace all three numbers with numbers measured
-for it.
+on their own laptop, picked because it felt about right at the time. Let's replace all three
+with numbers measured for the judge.
 
 ## One limit per judge, not one per problem
 
 A time limit isn't a property of the problem alone. It belongs to the problem *on some
 hardware*, and a contest usually involves at least two: the laptop you develop on, and the
-judge park (the machines that run the event).
+judge's machines.
 
 {{rbx}} keeps them apart in **limits profiles** -- a named set of limits stored in a file
 under `.limits/`, one per target:
@@ -41,17 +38,13 @@ problems/gardens/
 
 Notice `.limits/` sits *beside* `problem.rbx.yml`, inside the problem. There is no
 contest-level profile: every problem gets its own `.limits/boca.yml`, because every problem
-needs its own measurement. Only the **name** is contest-wide, and this page is about
-keeping it identical across the set.
+needs its own measurement.
 
-That name is not yours to invent. Each packager looks for a profile called after itself, so
-the profile that `rbx package boca` will read is the one named `boca` -- which is why we
-profile into that name now, one page before packaging comes up in
-[Packaging a problem](/setters/packaging-walkthrough).
+Each packager looks for a profile named after itself, so `rbx package boca` reads the
+profile named `boca`. That's why we profile into that name now.
 
 !!! info
-    What a profile contains, every command that reads one, and the profiles that *don't*
-    measure anything (`inheritFromPackage`) are covered in
+    What a profile contains and every command that reads one are covered in
     [Limits profiles](/setters/profiling/profiles).
 
 ## Profiling one problem
@@ -71,24 +64,21 @@ The command first shows the current limits of `gardens` (`1000 ms`, read from it
 default is the one we want: measure the accepted solutions and apply the rules the
 environment configures.
 
-Then nothing new appears on screen for a while. {{rbx}} is timing both accepted solutions
-before it has anything to bucket, so the **language-group screen only appears once the run
-reports are done**. The command hasn't stalled; it's measuring.
+Then nothing new appears on screen for a while: {{rbx}} is timing both accepted solutions.
+The command hasn't stalled.
 
-The screen that follows asks how to group the languages. Take the default here -- pressing
-++enter++ accepts it -- and read the resulting table. `gardens` gets a `timeLimit`
-of `100`, and the `java, kt` row reads `×2.0 of cpp` against a count of zero solutions:
-that limit came from a rule in the environment rather than from anything measured, because
-`gardens` has no Java solution to measure. The `(base)` row above it is the limit for
-anything the groups don't cover, and the `*` marks the leftover pool -- the table prints a
-footnote saying so.
+Next, {{rbx}} asks how to group the languages. Languages in the same group share one time
+limit ([Language groups](/setters/profiling/language-groups) explains why). Press ++enter++
+to accept the default grouping. The table that follows shows:
 
-!!! info
-    Bucketing, the leftover pool and forcing a group's limit relative to another are all
-    taught in [Language groups](/setters/profiling/language-groups). The
-    strategy menu is in [Estimating a time limit](/setters/profiling/estimating), and the
-    arithmetic that turned the timings into `100` is in
-    [How the limit is computed](/setters/profiling/computing).
+- **The limit for `gardens`:** a `timeLimit` of `100`, estimated from the accepted
+  solutions. [How the limit is computed](/setters/profiling/computing) shows the arithmetic.
+- **The `java, kt` row:** it reads `×2.0 of cpp` with zero solutions. `gardens` has no Java
+  solution to measure, so this limit comes from a rule in the environment
+  ([Configuring groups in the environment](/setters/profiling/language-groups#configuring-groups-in-the-environment)).
+- **The `(base)` row:** the limit for languages outside every group.
+- **The `*`:** it marks the leftover pool, the languages you didn't put in a group
+  ([Bucketing languages](/setters/profiling/language-groups#bucketing-languages)).
 
 The run closes on the check that makes the number trustworthy:
 
@@ -135,10 +125,10 @@ multipliers:
 The file runs to about seventy lines, though. Below what's shown above, each group gets a
 record of *where its number came from*: whether it was `estimated` from its own solutions
 or derived by `multiplier` from another group, how many solutions it was drawn from, and
-what the upper-bound check found. That record is written **for** you. Read it when a number
-surprises you; don't hand-maintain it, because the next `rbx time` rewrites it wholesale.
+what the upper-bound check found. Don't edit that part by hand: the next `rbx time`
+overwrites it.
 
-You can edit the limits themselves by hand. Maybe the judge park is being replaced next
+You can edit the limits themselves by hand. Maybe the judge's machines are being replaced next
 month, or a language's solutions in this problem are unrepresentative. In cases like
 these, set `timeLimit` or a `modifiers` entry directly, and {{rbx}} uses your value until
 you re-run `rbx time -p boca`, which overwrites it.
@@ -163,9 +153,6 @@ then run the whole set unattended.
 problem's output on the right. A few things to know before you watch it run:
 
 - **The pane does not follow the sweep.** The selection stays on `A` from start to finish.
-  You only see `B` and `C` finish when their sidebar marks turn from a ring into a
-  tick. Move between them with the arrow keys. Each tab has its own scrollback, already
-  scrolled to the end of its run, so you lose nothing by looking elsewhere.
 - **The app doesn't exit when the sweep finishes.** It sits there. Press ++q++ to quit.
 - **A failure in one problem doesn't stop the others.** Every problem runs; the ones that
   broke are the ones with a red mark when it's over.
@@ -225,14 +212,9 @@ rbx contest summary
 
 The main table is unchanged -- those are still the package limits, the ones each author
 typed. Below it there is now one extra table per profile any problem saved, so a
-`Profile: boca` table lists what every problem will actually be judged under on the park.
+`Profile: boca` table lists what every problem will actually be judged under on the judge.
 A problem the sweep skipped shows up there too, dimmed, under its package limits: that is
 the fallback packaging would use, and the dimming is the reminder that nobody measured it.
-
-In the summary, `*` means something else: a time limit followed by it is one that differs
-between languages. The group picker gave some language more time than the base, and the
-figure in the cell is only the base limit. `rbx summary --detailed` inside that problem
-lists the per-language limits.
 
 ## Verifying under the new limits
 

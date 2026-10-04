@@ -13,13 +13,13 @@ You can install {{rbx}} with one command, either using `pip`, `pipx` or `uv`. Pr
 ## From PyPI
 
 ```bash
-$ uv tool install rbx-cp
+$ uv tool install rbx.cp
 ```
 
-To upgrade later:
+To upgrade later, install the latest version over it:
 
 ```bash
-$ uv tool upgrade rbx-cp
+$ uv tool install rbx.cp@latest
 ```
 
 ## From the repository

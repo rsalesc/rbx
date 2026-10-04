@@ -166,7 +166,7 @@ checker:
 ```
 
 !!! tip
-    The [{{testlib}} checkers folder](https://github.com/MikeMirzayanov/testlib/tree/master/checkers) has the full list of built-in checkers.
+    {{testlib}} lists every built-in checker in its [`checkers` folder](https://github.com/MikeMirzayanov/testlib/tree/master/checkers).
 
 #### Set a custom checker
 
@@ -175,7 +175,7 @@ checker:
   path: "my-checker.cpp"
 ```
 
-See [how to write a {{testlib}} checker](https://codeforces.com/blog/entry/18431) on {{codeforces}}.
+See the {{codeforces}} guide to [writing a checker](https://codeforces.com/blog/entry/18431) with {{testlib}}.
 
 #### Add a generator
 
@@ -188,7 +188,7 @@ generators:
     path: "my-gen.cpp"
 ```
 
-See [how to write a {{testlib}} generator](https://codeforces.com/blog/entry/18291) on {{codeforces}}.
+See the {{codeforces}} guide to [writing a generator](https://codeforces.com/blog/entry/18291) with {{testlib}}.
 
 !!! tip
     To actually generate tests with this new generator, you have to add testcase groups
@@ -201,7 +201,7 @@ validator:
   path: 'my-validator.cpp'
 ```
 
-See [how to write a {{testlib}} validator](https://codeforces.com/blog/entry/18426) on {{codeforces}}.
+See the {{codeforces}} guide to [writing a validator](https://codeforces.com/blog/entry/18426) with {{testlib}}.
 
 #### Set an interactor
 
@@ -210,7 +210,7 @@ interactor:
   path: 'my-interactor.cpp'
 ```
 
-See [how to write a {{testlib}} interactor](https://codeforces.com/blog/entry/18455) on {{codeforces}}.
+See the {{codeforces}} guide to [writing a interactor](https://codeforces.com/blog/entry/18455) with {{testlib}}.
 
 ### Add a new solution
 
