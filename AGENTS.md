@@ -50,6 +50,12 @@ uv run rbc  # Main CLI
 uv run rbx  # Box CLI
 ```
 
+### Reviewing docs changes
+When you open a PR that changes `docs/` or `mkdocs.yml`, add a `## Review the rendered docs` section to the PR body with the command below, and repeat it in your final report so the user can review the rendered pages side by side and comment on them. Don't run it yourself: it serves until interrupted. See `mkdocs-review/README.md`.
+```bash
+mise run docs:review <PR number>
+```
+
 ## Architecture Overview
 
 robox.io (rbx) is a CLI tool for competitive programming problem setters, designed to manage the entire lifecycle of competitive programming problems and contests.
