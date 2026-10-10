@@ -41,7 +41,7 @@ class TestLintingCoversVariants:
             """---
 name: "with-variant"
 uri: "test/with-variant"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 problemVariants:
   - id: interactive
@@ -63,7 +63,7 @@ problemVariants:
             """---
 name: "with-variant"
 uri: "test/with-variant"
-min_version: "1.0.0"
+min_version: "2.0.0"
 contest: "contest"
 contestVariants:
   - id: div1
@@ -85,7 +85,7 @@ contestVariants:
             """---
 name: "with-variant"
 uri: "test/with-variant"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 problemVariants:
   - id: empty
@@ -110,7 +110,7 @@ problemVariants:
             """---
 name: "with-variant"
 uri: "test/with-variant"
-min_version: "1.0.0"
+min_version: "2.0.0"
 contest: "contest"
 contestVariants:
   - id: div1
@@ -159,7 +159,7 @@ class TestLintingStaysInsideThePreset:
             """---
 name: "escaping"
 uri: "test/escaping"
-min_version: "1.0.0"
+min_version: "2.0.0"
 contest: "contest"
 """,
             ['contest'],
@@ -184,7 +184,7 @@ contest: "contest"
             """---
 name: "escaping"
 uri: "test/escaping"
-min_version: "1.0.0"
+min_version: "2.0.0"
 contest: "contest"
 contestVariants:
   - id: div1
@@ -214,7 +214,7 @@ class TestMissingPackageYamlIsReported:
             """---
 name: "with-variant"
 uri: "test/with-variant"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 """,
             ['problem'],
@@ -233,7 +233,7 @@ problem: "problem"
             """---
 name: "with-variant"
 uri: "test/with-variant"
-min_version: "1.0.0"
+min_version: "2.0.0"
 contest: "contest"
 """,
             ['contest'],

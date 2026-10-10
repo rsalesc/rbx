@@ -2,7 +2,7 @@
 name: "multilang"
 description: "A preset shipping statements in three languages."
 uri: "test/multilang"
-min_version: "1.4.2"
+min_version: "2.0.0"
 problem: "problem"
 contest: "contest"
 env: "env.rbx.yml"

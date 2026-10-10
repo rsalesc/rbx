@@ -124,7 +124,7 @@ def test_an_unknown_backend_is_refused_before_anything_runs(
     assert result.exit_code != 0
     assert isinstance(result.exception, UnknownRunnerError)
     assert str(result.exception) == (
-        'There is no runner called `mog`. The runners rbx knows are: `local`, `moj`.'
+        'There is no runner called `mog`. The runners rbx knows are: `local`, `moj`, `domjudge`.'
     )
     # Nothing was estimated, and nothing was written.
     assert calls == {}

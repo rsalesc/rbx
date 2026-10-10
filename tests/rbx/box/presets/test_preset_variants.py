@@ -325,7 +325,7 @@ class TestVariantMerging:
 PRESET_WITH_VARIANT = """---
 name: "with-variant"
 uri: "test/with-variant"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 problemVariants:
   - id: interactive
@@ -395,7 +395,7 @@ class TestResolveTemplate:
             """---
 name: "variant-only"
 uri: "test/variant-only"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problemVariants:
   - id: interactive
     path: "problem-interactive"
@@ -413,7 +413,7 @@ problemVariants:
             """---
 name: "with-variant"
 uri: "test/with-variant"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 problemVariants:
   - id: interactive
@@ -437,7 +437,7 @@ problemVariants:
             """---
 name: "with-variant"
 uri: "test/with-variant"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 tracking:
   problem:
@@ -517,7 +517,7 @@ problemVariants:
             """---
 name: "with-variant"
 uri: "test/with-variant"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 tracking:
   problem:
@@ -542,7 +542,7 @@ problemVariants:
             """---
 name: "with-variant"
 uri: "test/with-variant"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 contest: "contest"
 problemVariants:
@@ -585,7 +585,7 @@ problemVariants:
             """---
 name: "no-templates"
 uri: "test/no-templates"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 """,
         )
@@ -663,7 +663,7 @@ class TestVariantForPath:
             """---
 name: "nested"
 uri: "test/nested"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 problemVariants:
   - id: outer
@@ -708,7 +708,7 @@ problemVariants:
 PRESET_WITH_TRACKED_VARIANT = """---
 name: "with-variant"
 uri: "test/with-variant"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 tracking:
   problem:
@@ -722,7 +722,7 @@ problemVariants:
 PRESET_WITHOUT_VARIANT = """---
 name: "with-variant"
 uri: "test/with-variant"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 tracking:
   problem:
@@ -938,7 +938,7 @@ class TestLockVariant:
 CONTEST_PRESET_WITH_TRACKED_VARIANT = """---
 name: "with-variant"
 uri: "test/with-variant"
-min_version: "1.0.0"
+min_version: "2.0.0"
 contest: "contest"
 tracking:
   contest:
@@ -1018,7 +1018,7 @@ class TestAllTemplates:
             """---
 name: "with-variants"
 uri: "test/with-variants"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 problemVariants:
   - id: interactive
@@ -1045,7 +1045,7 @@ problemVariants:
             """---
 name: "plain"
 uri: "test/plain"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 """,
             ['problem'],
@@ -1062,7 +1062,7 @@ problem: "problem"
             """---
 name: "variant-only"
 uri: "test/variant-only"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problemVariants:
   - id: interactive
     path: "problem-interactive"
@@ -1083,7 +1083,7 @@ problemVariants:
             """---
 name: "problem-only"
 uri: "test/problem-only"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 """,
             ['problem'],
@@ -1100,7 +1100,7 @@ problem: "problem"
             """---
 name: "stale"
 uri: "test/stale"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem-gone"
 problemVariants:
   - id: interactive
@@ -1128,7 +1128,7 @@ problemVariants:
             """---
 name: "escaping"
 uri: "test/escaping"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 problemVariants:
   - id: interactive
@@ -1151,7 +1151,7 @@ problemVariants:
             """---
 name: "with-variant"
 uri: "test/with-variant"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 tracking:
   problem:
@@ -1182,7 +1182,7 @@ class TestInstallCleansVariantDirs:
     PRESET = """---
 name: "with-variants"
 uri: "test/with-variants"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 contest: "contest"
 problemVariants:
@@ -1423,7 +1423,7 @@ class TestInstallEnsuresSomeTemplate:
     VARIANTS_ONLY = """---
 name: "variants-only"
 uri: "test/variants-only"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problemVariants:
   - id: interactive
     path: "problem-interactive"
@@ -1432,7 +1432,7 @@ problemVariants:
     NO_PROBLEM = """---
 name: "contest-only"
 uri: "test/contest-only"
-min_version: "1.0.0"
+min_version: "2.0.0"
 contest: "contest"
 """
 
@@ -1454,7 +1454,7 @@ contest: "contest"
             """---
 name: "variants-only"
 uri: "test/variants-only"
-min_version: "1.0.0"
+min_version: "2.0.0"
 contestVariants:
   - id: div1
     path: "contest-div1"
@@ -1499,7 +1499,7 @@ contestVariants:
 _LS_PRESET = """---
 name: "ls-preset"
 uri: "test/ls-preset"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 contest: "contest"
 problemVariants:
@@ -1606,7 +1606,7 @@ class TestLsTemplates:
             """---
 name: "problem-only"
 uri: "test/problem-only"
-min_version: "1.0.0"
+min_version: "2.0.0"
 problem: "problem"
 """,
             ['problem'],
