@@ -7,6 +7,7 @@ inside it and point at the contest root instead; `ls` works anywhere.
 """
 
 import pathlib
+import sys
 from typing import Annotated, List, Optional, Tuple
 
 import rich.table
@@ -107,6 +108,50 @@ def ls():
         console.console.print(table)
 
 
+_YES_OPTION = typer.Option(
+    '--yes',
+    '-y',
+    help='Edit a fragment other contest configs also include without asking.',
+)
+
+
+def _confirm_shared_edits(targets: List[_Target], lang: str, yes: bool) -> None:
+    """Warn, and ask once before anything is touched, when the language list
+    lives in a fragment that other contest configs (variants) also include:
+    the edit changes them too. `--yes` skips the question; without a terminal
+    it is required."""
+    shared = [
+        (target, fragment, others)
+        for target in targets
+        for fragment, others in language_packs.shared_edits(
+            target.root, lang, is_contest=target.is_contest
+        )
+    ]
+    if not shared:
+        return
+    for target, fragment, others in shared:
+        try:
+            shown = fragment.relative_to(target.root.resolve())
+        except ValueError:
+            shown = fragment
+        names = ', '.join(sorted(path.name for path in others))
+        plural = 's' if len(others) != 1 else ''
+        console.console.print(
+            f'[warning]Editing [item]{shown}[/item], which is also included by '
+            f'{len(others)} other contest{plural}: {names}.[/warning]'
+        )
+    if yes:
+        return
+    if not sys.stdin.isatty():
+        console.console.print(
+            '[error]Refusing to edit a shared fragment without confirmation. '
+            'Re-run with [item]--yes[/item] to proceed.[/error]'
+        )
+        raise typer.Exit(1)
+    if not typer.confirm('Proceed?', default=True):
+        raise typer.Exit(1)
+
+
 @app.command('add', help='Add a statement language to the package(s).')
 def add(
     lang: Annotated[str, typer.Argument(help='Language to add (ISO 639-1).')],
@@ -117,8 +162,11 @@ def add(
             help="Clone this existing language's files instead of the preset skeleton.",
         ),
     ] = None,
+    yes: Annotated[bool, _YES_OPTION] = False,
 ):
-    for target in _resolve_targets(mutate=True):
+    targets = _resolve_targets(mutate=True)
+    _confirm_shared_edits(targets, lang, yes)
+    for target in targets:
         created = language_packs.add_language(
             target.root,
             _template_for(target),
@@ -149,11 +197,14 @@ def rm(
             'and reported as orphaned.',
         ),
     ] = False,
+    yes: Annotated[bool, _YES_OPTION] = False,
 ):
+    targets = _resolve_targets(mutate=True)
+    _confirm_shared_edits(targets, lang, yes)
     orphaned: List[Tuple[str, pathlib.Path]] = []
     # Problems before the contest: an inheriting problem decides what it has by
     # the contest's list, which must still name the language at that point.
-    for target in reversed(_resolve_targets(mutate=True)):
+    for target in reversed(targets):
         files = language_packs.remove_language(
             target.root, lang, is_contest=target.is_contest, delete_files=delete_files
         )

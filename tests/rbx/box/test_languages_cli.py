@@ -3,12 +3,14 @@ statement languages across a contest and its problems."""
 
 import os
 import pathlib
+from unittest import mock
 
 import pytest
 import ruyaml
+import typer
 from typer.testing import CliRunner
 
-from rbx.box import creation, languages_cli, presets
+from rbx.box import creation, languages_cli, presets, yaml_include
 from rbx.box.contest import contest_utils
 from rbx.box.presets.fetch import PresetFetchInfo
 
@@ -148,6 +150,93 @@ class TestRemove:
         assert result.exit_code == 0, result.output
         assert not (contest / 'alpha/statement/statement-pt.rbx.tex').exists()
         assert not (contest / 'beta/editorial-pt.rbx.tex').exists()
+
+
+@pytest.fixture
+def shared_contest(contest: pathlib.Path) -> pathlib.Path:
+    """The contest fixture in the #887 layout: everything but `problems` in
+    `shared.rbx.yml`, merged by the canonical contest and a warmup variant."""
+    head, problems = (contest / 'contest.rbx.yml').read_text().split('\nproblems:\n')
+    (contest / 'shared.rbx.yml').write_text(head + '\n')
+    (contest / 'contest.rbx.yml').write_text(
+        '<<: !include_deep shared.rbx.yml\nproblems:\n' + problems
+    )
+    (contest / 'contest.warmup.rbx.yml').write_text(
+        '<<: !include_deep shared.rbx.yml\nvars:\n  warmup: true\nproblems: []\n'
+    )
+    contest_utils.clear_all_caches()
+    return contest
+
+
+class TestSharedFragment:
+    """#887: languages that reach contest.rbx.yml only via `<<: !include_deep`
+    are edited in the fragment, after confirming the blast radius."""
+
+    def _shared(self, contest: pathlib.Path):
+        return yaml_include.make_yaml().load((contest / 'shared.rbx.yml').read_text())
+
+    def test_yes_edits_the_fragment_for_every_contest(self, runner, shared_contest):
+        canonical = (shared_contest / 'contest.rbx.yml').read_text()
+
+        result = runner.invoke(languages_cli.app, ['add', 'pt', '--yes'])
+
+        assert result.exit_code == 0, result.output
+        assert 'contest.warmup.rbx.yml' in result.output
+        assert list(self._shared(shared_contest)['languages']) == ['en', 'pt']
+        assert self._shared(shared_contest)['titles']['pt'] == 'Novo contest'
+        assert (shared_contest / 'contest.rbx.yml').read_text() == canonical
+        assert (shared_contest / 'alpha/statement/statement-pt.rbx.tex').exists()
+
+        result = runner.invoke(languages_cli.app, ['rm', 'pt', '-y'])
+
+        assert result.exit_code == 0, result.output
+        assert list(self._shared(shared_contest)['languages']) == ['en']
+        assert 'pt' not in self._shared(shared_contest)['titles']
+
+    def test_without_a_terminal_refuses_unless_yes(self, runner, shared_contest):
+        before = (shared_contest / 'shared.rbx.yml').read_text()
+
+        with mock.patch('sys.stdin.isatty', return_value=False):
+            result = runner.invoke(languages_cli.app, ['add', 'pt'])
+
+        assert result.exit_code == 1
+        assert '--yes' in result.output
+        assert (shared_contest / 'shared.rbx.yml').read_text() == before
+        # Refused before any problem was touched either.
+        assert not (shared_contest / 'alpha/statement/statement-pt.rbx.tex').exists()
+
+    # The prompt tests call the commands directly: CliRunner swaps stdin for
+    # one that is never a terminal.
+    def test_declining_the_prompt_changes_nothing(self, shared_contest):
+        before = (shared_contest / 'shared.rbx.yml').read_text()
+
+        with (
+            mock.patch('sys.stdin.isatty', return_value=True),
+            mock.patch('typer.confirm', return_value=False) as confirm,
+            pytest.raises(typer.Exit),
+        ):
+            languages_cli.rm('en')
+
+        confirm.assert_called_once()
+        assert (shared_contest / 'shared.rbx.yml').read_text() == before
+
+    def test_accepting_the_prompt_edits_the_fragment(self, shared_contest):
+        with (
+            mock.patch('sys.stdin.isatty', return_value=True),
+            mock.patch('typer.confirm', return_value=True),
+        ):
+            languages_cli.add('pt')
+
+        assert list(self._shared(shared_contest)['languages']) == ['en', 'pt']
+
+    def test_unshared_fragment_needs_no_confirmation(self, runner, shared_contest):
+        (shared_contest / 'contest.warmup.rbx.yml').unlink()
+
+        with mock.patch('sys.stdin.isatty', return_value=False):
+            result = runner.invoke(languages_cli.app, ['add', 'pt'])
+
+        assert result.exit_code == 0, result.output
+        assert list(self._shared(shared_contest)['languages']) == ['en', 'pt']
 
 
 class TestList:

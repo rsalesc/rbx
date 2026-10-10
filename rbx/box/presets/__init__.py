@@ -983,16 +983,16 @@ def pick_languages(
 
 
 def _prune_languages(
-    template: ResolvedTemplate,
     dest_pkg: pathlib.Path,
+    keep: Optional[List[str]],
     *,
     is_contest: bool,
-    languages: Optional[List[str]],
     inherit: bool,
 ) -> None:
+    """Apply what `pick_languages` decided. Picking happens before the template
+    is copied, so a refused or cancelled choice leaves nothing behind."""
     from rbx.box import language_packs
 
-    keep = pick_languages(template, is_contest=is_contest, languages=languages)
     if keep is None:
         return
     language_packs.prune_languages(
@@ -1527,6 +1527,8 @@ def install_contest(
     )
     template = get_active_template(dest_pkg, is_contest=True, variant=variant)
 
+    keep = pick_languages(template, is_contest=True, languages=languages)
+
     expansions = _collect_expansions(template.expansion)
     console.console.print(
         f'Installing contest from [item]{template.path}[/item] to [item]{dest_pkg}[/item]...'
@@ -1542,9 +1544,7 @@ def install_contest(
         build_dir=get_preset_build_dir(get_preset_environment_path(dest_pkg)),
     )
     _pin_schema_header(dest_pkg / 'contest.rbx.yml', 'contest', dest_pkg)
-    _prune_languages(
-        template, dest_pkg, is_contest=True, languages=languages, inherit=False
-    )
+    _prune_languages(dest_pkg, keep, is_contest=True, inherit=False)
     if materialize:
         materialize_libraries(template.libraries, dest_pkg)
     return template
@@ -1579,6 +1579,8 @@ def install_problem(
     )
     template = get_active_template(dest_pkg, is_contest=False, variant=variant)
 
+    keep = pick_languages(template, is_contest=False, languages=languages)
+
     expansions = _collect_expansions(template.expansion)
     console.console.print(
         f'Installing problem from [item]{template.path}[/item] to [item]{dest_pkg}[/item]...'
@@ -1593,13 +1595,7 @@ def install_problem(
         build_dir=get_preset_build_dir(get_preset_environment_path(dest_pkg)),
     )
     _pin_schema_header(dest_pkg / 'problem.rbx.yml', 'problem', dest_pkg)
-    _prune_languages(
-        template,
-        dest_pkg,
-        is_contest=False,
-        languages=languages,
-        inherit=inherit_languages,
-    )
+    _prune_languages(dest_pkg, keep, is_contest=False, inherit=inherit_languages)
     if materialize:
         materialize_libraries(template.libraries, dest_pkg)
     return template

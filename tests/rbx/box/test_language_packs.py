@@ -10,6 +10,7 @@ import ruyaml
 import typer
 
 from rbx.box import language_packs as lp
+from rbx.box import yaml_include
 
 
 @pytest.fixture
@@ -286,3 +287,94 @@ class TestList:
                 ],
             ),
         ]
+
+
+def _share(contest: pathlib.Path) -> pathlib.Path:
+    """Move a contest's config into `shared.rbx.yml`, merged by the canonical
+    contest and by a warmup variant -- the layout of #887."""
+    (contest / 'shared.rbx.yml').write_text((contest / 'contest.rbx.yml').read_text())
+    (contest / 'contest.rbx.yml').write_text(
+        '<<: !include_deep shared.rbx.yml\nproblems: []\n'
+    )
+    (contest / 'contest.warmup.rbx.yml').write_text(
+        '<<: !include_deep shared.rbx.yml\nvars:\n  warmup: true\nproblems: []\n'
+    )
+    return contest
+
+
+@pytest.fixture
+def shared_contest(contest: pathlib.Path) -> pathlib.Path:
+    return _share(contest)
+
+
+class TestSharedFragment:
+    """`languages:`/`titles:` that reach contest.rbx.yml only via `<<:`."""
+
+    CANONICAL = '<<: !include_deep shared.rbx.yml\nproblems: []\n'
+
+    def test_template_languages_reads_the_merged_list(self, shared_contest):
+        assert lp.template_languages(shared_contest, is_contest=True) == [
+            'en',
+            'pt',
+            'es',
+        ]
+
+    def test_prune_edits_the_fragment(self, shared_contest):
+        lp.prune_languages(shared_contest, ['pt'], is_contest=True)
+
+        shared = _load_file(shared_contest / 'shared.rbx.yml')
+        assert list(shared['languages']) == ['pt']
+        assert dict(shared['titles']) == {'pt': 'Novo contest'}
+        assert (shared_contest / 'contest.rbx.yml').read_text() == self.CANONICAL
+
+    def test_add_and_remove_edit_the_fragment(self, shared_contest, preset):
+        lp.prune_languages(shared_contest, ['en'], is_contest=True)
+
+        lp.add_language(shared_contest, preset / 'contest', 'pt', is_contest=True)
+        shared = _load_file(shared_contest / 'shared.rbx.yml')
+        assert list(shared['languages']) == ['en', 'pt']
+        assert shared['titles']['pt'] == 'Novo contest'
+
+        lp.remove_language(shared_contest, 'en', is_contest=True)
+        shared = _load_file(shared_contest / 'shared.rbx.yml')
+        assert list(shared['languages']) == ['pt']
+        assert 'en' not in shared['titles']
+        assert (shared_contest / 'contest.rbx.yml').read_text() == self.CANONICAL
+
+    def test_a_local_list_is_edited_locally(self, shared_contest):
+        (shared_contest / 'contest.rbx.yml').write_text(
+            '<<: !include_deep shared.rbx.yml\nlanguages: ["en", "pt"]\n'
+        )
+
+        lp.remove_language(shared_contest, 'pt', is_contest=True)
+
+        local = _load_file(shared_contest / 'contest.rbx.yml')
+        assert list(local['languages']) == ['en']
+        # The title lives in the fragment, so it is dropped there; the
+        # fragment's own (shadowed) list is left alone.
+        shared = _load_file(shared_contest / 'shared.rbx.yml')
+        assert 'pt' not in shared['titles']
+        assert list(shared['languages']) == ['en', 'pt', 'es']
+
+    def test_shared_edits_name_the_fragment_and_who_else_includes_it(
+        self, shared_contest
+    ):
+        assert lp.shared_edits(shared_contest, 'pt', is_contest=True) == [
+            (
+                (shared_contest / 'shared.rbx.yml').resolve(),
+                [shared_contest / 'contest.warmup.rbx.yml'],
+            )
+        ]
+
+    def test_no_shared_edits_when_nothing_else_includes_the_fragment(
+        self, shared_contest
+    ):
+        (shared_contest / 'contest.warmup.rbx.yml').unlink()
+        assert lp.shared_edits(shared_contest, 'pt', is_contest=True) == []
+
+    def test_no_shared_edits_for_an_inline_config(self, contest):
+        assert lp.shared_edits(contest, 'pt', is_contest=True) == []
+
+
+def _load_file(path: pathlib.Path):
+    return yaml_include.make_yaml().load(path.read_text())

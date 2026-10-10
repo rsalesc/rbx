@@ -9,7 +9,7 @@ import pytest
 import ruyaml
 import typer
 
-from rbx.box import presets
+from rbx.box import presets, yaml_include
 
 
 @pytest.fixture
@@ -128,3 +128,68 @@ class TestInstallPrunes:
         data = _load(installed / 'problem.rbx.yml')
         assert list(data['languages']) == ['en', 'pt', 'es']
         assert (installed / 'statement/statement-es.rbx.tex').exists()
+
+    def test_unknown_language_fails_before_copying_anything(self, installed):
+        with pytest.raises(typer.Exit):
+            presets.install_contest(installed, languages=['fr'])
+
+        assert not (installed / 'contest.rbx.yml').exists()
+        assert not (installed / 'statements').exists()
+
+
+def _share_contest_template(package_dir: pathlib.Path) -> pathlib.Path:
+    """Turn the installed preset's contest template into the #887 layout: the
+    whole config in `shared.rbx.yml`, merged by the canonical contest and by a
+    warmup variant."""
+    template = package_dir / '.local.rbx' / 'contest'
+    (template / 'shared.rbx.yml').write_text((template / 'contest.rbx.yml').read_text())
+    (template / 'contest.rbx.yml').write_text(
+        '<<: !include_deep shared.rbx.yml\nproblems: []\n'
+    )
+    (template / 'contest.warmup.rbx.yml').write_text(
+        '<<: !include_deep shared.rbx.yml\nvars:\n  warmup: true\nproblems: []\n'
+    )
+    return template
+
+
+class TestInstallSharedFragment:
+    """#887: a contest whose languages reach it only via `<<: !include_deep`."""
+
+    def _shared(self, package_dir: pathlib.Path):
+        return yaml_include.make_yaml().load(
+            (package_dir / 'shared.rbx.yml').read_text()
+        )
+
+    def test_explicit_languages_prune_the_fragment(self, installed):
+        _share_contest_template(installed)
+
+        presets.install_contest(installed, languages=['pt', 'en'])
+
+        shared = self._shared(installed)
+        assert list(shared['languages']) == ['pt', 'en']
+        assert dict(shared['titles']) == {'en': 'New contest', 'pt': 'Novo contest'}
+        canonical = (installed / 'contest.rbx.yml').read_text()
+        assert '<<: !include_deep shared.rbx.yml' in canonical
+        assert 'languages' not in canonical
+
+    def test_without_a_terminal_keeps_every_language(self, installed):
+        _share_contest_template(installed)
+
+        with mock.patch('sys.stdin.isatty', return_value=False):
+            presets.install_contest(installed)
+
+        assert list(self._shared(installed)['languages']) == ['en', 'pt', 'es']
+
+    def test_interactive_pick_prunes_the_fragment_without_asking_more(self, installed):
+        _share_contest_template(installed)
+
+        with (
+            mock.patch('sys.stdin.isatty', return_value=True),
+            mock.patch('questionary.checkbox') as checkbox,
+            mock.patch('typer.confirm') as confirm,
+        ):
+            checkbox.return_value.ask.return_value = ['es']
+            presets.install_contest(installed)
+
+        confirm.assert_not_called()
+        assert list(self._shared(installed)['languages']) == ['es']

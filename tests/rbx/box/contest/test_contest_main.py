@@ -437,6 +437,90 @@ class TestContestAddVariant:
         variants = contest_package.discover_contest_variants(tmp_path)
         assert 'extra' in variants
 
+    def test_scaffold_from_a_preset_sharing_its_languages(
+        self, runner, tmp_path, monkeypatch, clear_package_caches
+    ):
+        # #887: the scratch install used to fail reading `languages:` through
+        # the `<<: !include_deep` merge.
+        monkeypatch.chdir(tmp_path)
+        from rbx.box import presets
+
+        presets.install_preset_from_dir(
+            _make_shared_languages_preset(tmp_path / '_src_preset'),
+            tmp_path / '.local.rbx',
+        )
+        presets.install_contest(tmp_path, languages=['pt'])
+
+        result = runner.invoke(contest_main.app, ['add_variant', 'warmup'])
+
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / 'contest.warmup.rbx.yml').exists()
+
+
+def _make_shared_languages_preset(dest: pathlib.Path) -> pathlib.Path:
+    """A minimal preset whose contest template takes `languages:`/`titles:`
+    from a `<<: !include_deep` fragment, the layout of #887."""
+    _make_minimal_preset(dest)
+    (dest / 'contest' / 'shared.rbx.yml').write_text(
+        'name: "placeholder"\n'
+        'languages: ["en", "pt"]\n'
+        'titles:\n  en: "Contest"\n  pt: "Competição"\n'
+    )
+    (dest / 'contest' / 'contest.rbx.yml').write_text(
+        '<<: !include_deep shared.rbx.yml\nproblems: []\n'
+    )
+    return dest
+
+
+class TestContestCreate:
+    def test_creates_from_a_preset_sharing_its_languages(
+        self, runner, tmp_path, monkeypatch, clear_package_caches
+    ):
+        monkeypatch.chdir(tmp_path)
+        preset = _make_shared_languages_preset(tmp_path / '_src_preset')
+
+        result = runner.invoke(
+            contest_main.app,
+            ['create', '--path', 'c', '--preset', str(preset), '-l', 'pt'],
+        )
+
+        assert result.exit_code == 0, result.output
+        shared = (tmp_path / 'c' / 'shared.rbx.yml').read_text()
+        assert 'languages: ["pt"]' in shared
+        assert 'en:' not in shared
+        assert 'languages' not in (tmp_path / 'c' / 'contest.rbx.yml').read_text()
+
+    def test_failed_creation_leaves_no_directory(
+        self, runner, tmp_path, monkeypatch, clear_package_caches
+    ):
+        monkeypatch.chdir(tmp_path)
+        preset = _make_shared_languages_preset(tmp_path / '_src_preset')
+
+        result = runner.invoke(
+            contest_main.app,
+            ['create', '--path', 'c', '--preset', str(preset), '-l', 'fr'],
+        )
+
+        assert result.exit_code != 0, result.output
+        assert not (tmp_path / 'c').exists()
+
+    def test_failed_creation_keeps_a_directory_that_already_existed(
+        self, runner, tmp_path, monkeypatch, clear_package_caches
+    ):
+        monkeypatch.chdir(tmp_path)
+        preset = _make_shared_languages_preset(tmp_path / '_src_preset')
+        (tmp_path / 'c').mkdir()
+        (tmp_path / 'c' / 'notes.txt').write_text('mine')
+
+        result = runner.invoke(
+            contest_main.app,
+            ['create', '--path', 'c', '--preset', str(preset), '-l', 'fr'],
+            input='y\n',
+        )
+
+        assert result.exit_code != 0, result.output
+        assert (tmp_path / 'c' / 'notes.txt').read_text() == 'mine'
+
 
 class TestContestOn:
     """`rbx on` dispatch: inline fast path vs. the queued command app."""

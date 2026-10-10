@@ -21,7 +21,7 @@ import io
 import os
 import pathlib
 import tempfile
-from typing import Any, List, Optional, Set, Tuple
+from typing import Any, List, NamedTuple, Optional, Set, Tuple, Union
 
 import ruyaml
 import typer
@@ -421,12 +421,51 @@ class EditTarget:
         self.session.save()
 
 
-def _merge_include_sources(node: CommentedMap) -> List[str]:
+def _merge_includes(node: CommentedMap) -> List[Any]:
+    """The `<<: !include` values of a round-trip (unresolved) map."""
     return [
-        node[key].value
-        for key in node.keys()
-        if _is_merge_key(key) and is_include(node[key])
+        node[key] for key in node.keys() if _is_merge_key(key) and is_include(node[key])
     ]
+
+
+class _Layer(NamedTuple):
+    """One file's own map at some path: the keys it states explicitly."""
+
+    node: CommentedMap
+    owner: pathlib.Path
+    stack: IncludeStack
+
+
+# The maps that together make up ONE resolved map, highest precedence first,
+# each tagged with whether it merges *deeply* into what comes before it. A part
+# is a `_Layer` or a nested view (an already-combined fragment). This mirrors
+# what `_apply_merge_includes`/`_merge_map` do to build the resolved tree, so
+# the editor can find which file a resolved value really lives in.
+_View = List[Tuple[Union[_Layer, '_View'], bool]]
+
+
+class _Found(NamedTuple):
+    owner: pathlib.Path
+    parent: Optional[Any]
+    key: Optional[Any]
+    stack: IncludeStack
+    value: Any
+    # The view of `value` when it is a map, else None.
+    view: Optional[_View]
+    # The layer whose map states the key.
+    layer: _Layer
+
+
+def _first_layer(view: _View) -> _Layer:
+    part, _ = view[0]
+    return part if isinstance(part, _Layer) else _first_layer(part)
+
+
+def _layers(view: _View) -> List[_Layer]:
+    found: List[_Layer] = []
+    for part, _ in view:
+        found.extend([part] if isinstance(part, _Layer) else _layers(part))
+    return found
 
 
 class EditSession:
@@ -438,8 +477,11 @@ class EditSession:
     only the files an edit actually touched.
     """
 
-    def __init__(self, path: pathlib.Path):
+    def __init__(self, path: pathlib.Path, *, follow_merges: bool = False):
         self.root_path = path.resolve()
+        # Edit a value that only arrives via `<<: !include` in the fragment
+        # that owns it, instead of refusing (see `resolve`).
+        self.follow_merges = follow_merges
         self.yaml = make_yaml()
         # A targeted edit must not restyle the rest of the file: keep the
         # author's quotes, and (see `_render`) their explicit document start.
@@ -494,6 +536,95 @@ class EditSession:
             base_dir = target.parent
         return node, stack[-1], stack
 
+    def _view_of(
+        self, node: CommentedMap, owner: pathlib.Path, stack: IncludeStack
+    ) -> _View:
+        """`node` and the chain of fragments it `<<:`-merges, in merge order."""
+        view: _View = [(_Layer(node, owner, stack), True)]
+        for include in _merge_includes(node):
+            target = _resolve_path(include.value, owner.parent, stack)
+            fragment, frag_owner, frag_stack = self._follow_includes(
+                self.tree(target), target.parent, stack + (target,)
+            )
+            if not isinstance(fragment, CommentedMap):
+                with IncludeError() as err:
+                    err.print(
+                        f'[error]`<<: !include {include.value}` expects the '
+                        f'fragment to be a mapping, but it is a '
+                        f'{type(fragment).__name__}.[/error]'
+                    )
+            view.append(
+                (
+                    self._view_of(fragment, frag_owner, frag_stack),
+                    is_deep_include(include),
+                )
+            )
+        return view
+
+    def _child(self, view: _View, seg: Any) -> Optional[_Found]:
+        """Where the resolved map described by `view` gets `seg` from.
+
+        The first part stating `seg` owns it. When that value is a map, later
+        parts that merge *deeply* and also hold a map there contribute their
+        keys under it -- exactly the precedence `_merge_map` applies.
+        """
+        base: Optional[_Found] = None
+        merged: _View = []
+        for part, deep in view:
+            if isinstance(part, _Layer):
+                if seg not in part.node:
+                    continue
+                value = part.node[seg]
+                resolved, owner, stack = self._follow_includes(
+                    value, part.owner.parent, part.stack
+                )
+                if resolved is value:
+                    owner, stack = part.owner, part.stack
+                    parent, key = part.node, seg
+                else:
+                    # A spliced fragment: its document root *is* the value.
+                    parent, key = None, None
+                found = _Found(
+                    owner,
+                    parent,
+                    key,
+                    stack,
+                    resolved,
+                    self._view_of(resolved, owner, stack)
+                    if isinstance(resolved, CommentedMap)
+                    else None,
+                    part,
+                )
+            else:
+                found = self._child(part, seg)
+                if found is None:
+                    continue
+            if base is None:
+                base = found
+                if found.view is None:
+                    # Scalars and lists are never merged: the first one wins.
+                    return found
+                merged.append((found.view, True))
+            elif deep and found.view is not None:
+                merged.append((found.view, True))
+        if base is None:
+            return None
+        return base._replace(view=merged)
+
+    def _refuse_merged(self, keys: Tuple[Any, ...], seg: Any, view: _View) -> None:
+        fragments = sorted({str(layer.owner) for layer in _layers(view)[1:]})
+        with IncludeError() as err:
+            err.print(
+                f'[error]Cannot edit [item]'
+                f'{".".join(str(k) for k in keys)}[/item] in [item]'
+                f'{self.root_path}[/item]: [item]{seg}[/item] is not set '
+                f'there and would come from [item]'
+                f'{", ".join(fragments)}[/item] via `<<: !include`.'
+                f'[/error]\n'
+                f'[warning]Edit that fragment directly, or set '
+                f'[item]{seg}[/item] explicitly here first.[/warning]'
+            )
+
     def resolve(
         self, keys: Tuple[Any, ...]
     ) -> Tuple[pathlib.Path, Optional[Any], Optional[Any]]:
@@ -504,10 +635,12 @@ class EditSession:
         Missing intermediate mappings are created, so a caller can set a nested
         value in a config that does not declare the nesting yet.
 
-        Raises IncludeError when a fragment cannot be read, or when a key
-        exists only by way of a `<<: !include` merge -- the value lives in the
-        fragment's map, and rbx will not guess whether the caller meant to edit
-        the shared value or shadow it here.
+        A key that reaches this file only through a `<<: !include` merge lives
+        in the fragment's map. By default that raises IncludeError: rbx will
+        not guess whether the caller meant to edit the shared value or shadow
+        it here. With `follow_merges` the edit lands where the value
+        effectively lives, and a key set nowhere is created in the
+        highest-precedence map at its level. A key set here always wins.
         """
         stack: IncludeStack = (self.root_path,)
         node, owner, stack = self._follow_includes(
@@ -515,41 +648,49 @@ class EditSession:
         )
         parent: Optional[Any] = None
         key: Optional[Any] = None
+        view = (
+            self._view_of(node, owner, stack)
+            if isinstance(node, CommentedMap)
+            else None
+        )
 
         for index, seg in enumerate(keys):
             is_last = index == len(keys) - 1
-            if isinstance(node, CommentedMap) and seg not in node:
-                merged_from = _merge_include_sources(node)
-                if merged_from:
-                    with IncludeError() as err:
-                        err.print(
-                            f'[error]Cannot edit [item]'
-                            f'{".".join(str(k) for k in keys)}[/item] in [item]'
-                            f'{self.root_path}[/item]: [item]{seg}[/item] is not set '
-                            f'there and would come from [item]'
-                            f'{", ".join(merged_from)}[/item] via `<<: !include`.'
-                            f'[/error]\n'
-                            f'[warning]Edit that fragment directly, or set '
-                            f'[item]{seg}[/item] explicitly here first.[/warning]'
-                        )
+            if view is None:
+                # Not a map (a list, say): index into it as-is.
+                parent, key = node, seg
+                value = node[seg]
+                node, owner_candidate, stack = self._follow_includes(
+                    value, owner.parent, stack
+                )
+                if node is not value:
+                    owner, parent, key = owner_candidate, None, None
+                view = (
+                    self._view_of(node, owner, stack)
+                    if isinstance(node, CommentedMap)
+                    else None
+                )
+                continue
+
+            found = self._child(view, seg)
+            if found is None:
+                if not self.follow_merges and len(_layers(view)) > 1:
+                    self._refuse_merged(keys, seg, view)
+                first = _first_layer(view)
                 if is_last:
                     # A brand new key: the caller may create it with `replace`.
-                    return owner, node, seg
+                    return first.owner, first.node, seg
                 # An intermediate that does not exist yet: create the nesting
                 # rather than refusing. `rbx time --integrate` writes
                 # modifiers.<lang>.<field> into packages that declare none.
-                node[seg] = CommentedMap()
+                first.node[seg] = CommentedMap()
+                found = self._child(view, seg)
+                assert found is not None
+            elif not self.follow_merges and found.layer is not _first_layer(view):
+                self._refuse_merged(keys, seg, view)
 
-            parent, key = node, seg
-            node = node[seg]
-            resolved, owner_candidate, stack = self._follow_includes(
-                node, owner.parent, stack
-            )
-            if resolved is not node:
-                # The value came from a fragment: continue there, and forget the
-                # parent -- the fragment's document root *is* the value.
-                node, owner = resolved, owner_candidate
-                parent, key = None, None
+            owner, parent, key = found.owner, found.parent, found.key
+            stack, node, view = found.stack, found.value, found.view
 
         return owner, parent, key
 
