@@ -21,8 +21,15 @@ from rbx.box.lang import is_valid_lang_code
 # contest statement that imports it (design §3.1).
 DEFAULT_VARIANT = 'default'
 
+# A statement whose `language` is the wildcard expands, when the package is
+# loaded, into one concrete statement per language of the package's effective
+# `languages:` list (design 2026-09-20 §1). `{lang}` in its path-like fields
+# is substituted with each language.
+WILDCARD_LANGUAGE = '*'
+LANG_PLACEHOLDER = '{lang}'
 
-def validate_statement_language(lang: str):
+
+def validate_concrete_language(lang: str):
     if not is_valid_lang_code(lang) or not lang.islower():
         raise ValueError(
             f'Invalid statement language: {lang}. Language must be a valid lowercase ISO 639-1 code.'
@@ -30,7 +37,37 @@ def validate_statement_language(lang: str):
     return lang
 
 
+def validate_statement_language(lang: str):
+    if lang == WILDCARD_LANGUAGE:
+        return lang
+    return validate_concrete_language(lang)
+
+
 StatementLanguage = Annotated[str, AfterValidator(validate_statement_language)]
+
+# An entry of a `languages:` list: a real language, never the wildcard.
+ConcreteLanguage = Annotated[str, AfterValidator(validate_concrete_language)]
+
+
+def validate_languages_list(langs: Optional[List[str]]) -> Optional[List[str]]:
+    if langs is not None and len(set(langs)) != len(langs):
+        raise ValueError('The `languages` list must not repeat a language.')
+    return langs
+
+
+LanguagesList = Annotated[
+    Optional[List[ConcreteLanguage]], AfterValidator(validate_languages_list)
+]
+
+
+def LanguagesField():
+    return Field(
+        default=None,
+        description='Languages this package ships statements in, as lowercase '
+        'ISO 639-1 codes. Statements declared with `language: "*"` expand to '
+        'one entry per language listed here. A problem inside a contest '
+        'inherits the contest list when unset.',
+    )
 
 
 ### Conversion types
@@ -233,6 +270,10 @@ class BaseStatement(BaseModel):
     @property
     def expanded_params(self) -> Vars:
         return expand_vars(self.params)
+
+    @property
+    def is_wildcard(self) -> bool:
+        return self.language == WILDCARD_LANGUAGE
 
 
 class Statement(BaseStatement):

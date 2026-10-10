@@ -18,7 +18,12 @@ _STUB_TEMPLATE = SimpleNamespace(variant_id='interactive')
 
 
 def _install_problem_stub(
-    dest_pkg: pathlib.Path, fetch_info=None, materialize=True, variant=None
+    dest_pkg: pathlib.Path,
+    fetch_info=None,
+    materialize=True,
+    variant=None,
+    languages=None,
+    inherit_languages=False,
 ):
     """Mimic presets.install_problem: create the folder and a minimal package,
     and return the template that was installed."""
@@ -45,10 +50,12 @@ def mock_presets():
         ),
         mock.patch.object(
             creation.presets, 'install_problem', side_effect=_install_problem_stub
-        ),
+        ) as install_problem,
         mock.patch.object(creation.presets, 'generate_lock') as generate_lock,
     ):
-        yield SimpleNamespace(generate_lock=generate_lock)
+        yield SimpleNamespace(
+            generate_lock=generate_lock, install_problem=install_problem
+        )
 
 
 def test_create_with_plain_name(cleandir, mock_presets):
@@ -89,3 +96,48 @@ def test_create_with_invalid_derived_name_fails_fast(cleandir, mock_presets):
 
     assert not pathlib.Path('problems/ab').exists()
     assert not pathlib.Path('problems').exists()
+
+
+def test_create_passes_languages_through(cleandir, mock_presets):
+    creation.create('my-problem', languages=['en', 'pt'])
+
+    kwargs = mock_presets.install_problem.call_args.kwargs
+    assert kwargs['languages'] == ['en', 'pt']
+    assert kwargs['inherit_languages'] is False
+
+
+def test_create_inside_contest_inherits_its_languages(cleandir, mock_presets):
+    # `rbx contest add` lands here: the problem follows the contest's list and
+    # carries no list of its own.
+    (cleandir / 'contest.rbx.yml').write_text(
+        'name: "contest"\nlanguages: ["en", "pt"]\n'
+    )
+
+    creation.create('my-problem')
+
+    kwargs = mock_presets.install_problem.call_args.kwargs
+    assert kwargs['languages'] == ['en', 'pt']
+    assert kwargs['inherit_languages'] is True
+
+
+def test_create_inside_contest_without_list_keeps_everything(cleandir, mock_presets):
+    (cleandir / 'contest.rbx.yml').write_text('name: "contest"\n')
+
+    creation.create('my-problem')
+
+    kwargs = mock_presets.install_problem.call_args.kwargs
+    assert kwargs['languages'] is None
+    assert kwargs['inherit_languages'] is True
+
+
+@pytest.mark.parametrize(
+    'raw, expected',
+    [
+        (None, None),
+        (['en'], ['en']),
+        (['en,pt', 'es'], ['en', 'pt', 'es']),
+        ([' en , pt '], ['en', 'pt']),
+    ],
+)
+def test_split_languages(raw, expected):
+    assert creation.split_languages(raw) == expected

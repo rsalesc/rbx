@@ -18,7 +18,14 @@ from typing import (
     Union,
 )
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    model_validator,
+)
 from pydantic_core import PydanticCustomError
 
 from rbx import utils
@@ -34,7 +41,16 @@ from rbx.box.fields import (
 )
 from rbx.box.formatting import href
 from rbx.box.statements.expander import expand_problem_statements
-from rbx.box.statements.schema import Statement, is_unique_problem_statements
+from rbx.box.statements.schema import (
+    LanguagesField,
+    LanguagesList,
+    Statement,
+    is_unique_problem_statements,
+)
+from rbx.box.statements.wildcards import (
+    concrete_languages,
+    expand_problem_wildcards,
+)
 from rbx.grading.steps import Outcome
 
 
@@ -1357,6 +1373,12 @@ class Package(BaseModel):
         'Languages should be specified as lowercase ISO 639-1 codes.',
     )
 
+    languages: LanguagesList = LanguagesField()
+
+    # Languages inherited from the enclosing contest, injected by the package
+    # loader: a model cannot see its contest. Never part of the yml.
+    _inherited_languages: Optional[List[str]] = PrivateAttr(default=None)
+
     type: TaskType = Field(
         default=TaskType.BATCH, description='The type of the problem.'
     )
@@ -1475,13 +1497,31 @@ that is correct and used as reference -- and should have the `accepted` outcome.
         description='Unit tests for components of this problem.',
     )
 
+    def set_inherited_languages(self, languages: Optional[List[str]]) -> None:
+        self._inherited_languages = languages
+
+    @property
+    def effective_languages(self) -> List[str]:
+        """The languages wildcard statements expand to: own `languages:`, else
+        the enclosing contest's, else the distinct languages of the concrete
+        statement/tutorial entries in order of appearance."""
+        if self.languages is not None:
+            return list(self.languages)
+        if self._inherited_languages is not None:
+            return list(self._inherited_languages)
+        return concrete_languages(self.statements + self.tutorials)
+
     @property
     def expanded_statements(self) -> List[Statement]:
-        return expand_problem_statements(self.statements)
+        return expand_problem_statements(
+            expand_problem_wildcards(self.statements, self.effective_languages)
+        )
 
     @property
     def expanded_tutorials(self) -> List[Statement]:
-        return expand_problem_statements(self.tutorials)
+        return expand_problem_statements(
+            expand_problem_wildcards(self.tutorials, self.effective_languages)
+        )
 
     @property
     def expanded_vars(self) -> Vars:

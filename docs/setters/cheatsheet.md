@@ -87,7 +87,10 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | ----------------------------------------------- | ------------------------------------- |
 | Show help message                               | `rbx contest --help`                  |
 | Create a new contest                            | `rbx contest create`                  |
+| Create a contest keeping only some of the preset's languages [:material-open-in-new:](/setters/presets#choosing-languages-at-creation) | `rbx contest create -l en,pt` |
 | Add a new problem to the contest with letter A  | `rbx contest add`                     |
+| Add a statement language to the contest and every problem [:material-open-in-new:](/setters/presets#adding-a-language-later) | `rbx lang add pt` |
+| List statement languages and their files        | `rbx lang ls`                         |
 | Remove a problem from the contest               | `rbx contest remove A`                |
 | Remove a problem at a certain path              | `rbx contest remove path/to/problem`  |
 | Open the contest configuration in a text editor | `rbx contest edit`                    |

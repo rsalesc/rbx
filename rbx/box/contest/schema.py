@@ -15,14 +15,25 @@ from rbx.box.fields import (
     CheckedStatementRecVars,
     FNameField,
     NameField,
+    StatementNameField,
     Vars,
     expand_vars,
+    validate_statement_name,
 )
 from rbx.box.statements.expander import expand_contest_statements
 from rbx.box.statements.schema import (
     DOCUMENT_TYPES,
     BaseStatement,
+    LanguagesField,
+    LanguagesList,
 )
+from rbx.box.statements.wildcards import (
+    concrete_languages,
+    expand_contest_wildcards,
+)
+
+# A contest statement/document name: an FName that may carry `{lang}`.
+StatementName = Annotated[str, AfterValidator(validate_statement_name)]
 
 Alias = Annotated[str, NameField()]
 
@@ -42,8 +53,9 @@ class ContestStatement(BaseStatement):
     """A contest-level statement. Owns the templates used to render problems both
     standalone and inside the contest join (design §3.2)."""
 
-    name: str = FNameField(
-        description='Name of this statement. Unique within the contest.'
+    name: StatementName = StatementNameField(
+        description='Name of this statement. Unique within the contest. May '
+        'carry `{lang}` on a wildcard (`language: "*"`) statement.'
     )
 
     extends: Optional[str] = FNameField(
@@ -94,8 +106,9 @@ class Document(BaseStatement):
     """A contest-level document (infosheet, etc.). Shares the statement model but
     NEVER joins on problems, so it is restricted to non-rbx types (design §3.2)."""
 
-    name: str = FNameField(
-        description='Name of this document. Unique within the contest.'
+    name: StatementName = StatementNameField(
+        description='Name of this document. Unique within the contest. May '
+        'carry `{lang}` on a wildcard (`language: "*"`) document.'
     )
 
     extends: Optional[str] = FNameField(
@@ -238,6 +251,8 @@ class Contest(BaseModel):
         'Languages should be specified as lowercase ISO 639-1 codes.',
     )
 
+    languages: LanguagesList = LanguagesField()
+
     problems: List[ContestProblem] = Field(
         default=[], description='List of problems in this contest.'
     )
@@ -250,6 +265,7 @@ class Contest(BaseModel):
             for field in (
                 'name',
                 'titles',
+                'languages',
                 'problems',
                 'statements',
                 'tutorials',
@@ -320,16 +336,30 @@ class Contest(BaseModel):
     )
 
     @property
+    def effective_languages(self) -> List[str]:
+        """The languages wildcard entries expand to: `languages:`, else the
+        distinct languages of the concrete entries in order of appearance."""
+        if self.languages is not None:
+            return list(self.languages)
+        return concrete_languages([*self.statements, *self.tutorials, *self.documents])
+
+    @property
     def expanded_statements(self) -> List[ContestStatement]:
-        return expand_contest_statements(self.statements)
+        return expand_contest_statements(
+            expand_contest_wildcards(self.statements, self.effective_languages)
+        )
 
     @property
     def expanded_tutorials(self) -> List[ContestStatement]:
-        return expand_contest_statements(self.tutorials)
+        return expand_contest_statements(
+            expand_contest_wildcards(self.tutorials, self.effective_languages)
+        )
 
     @property
     def expanded_documents(self) -> List[Document]:
-        return expand_contest_statements(self.documents)
+        return expand_contest_statements(
+            expand_contest_wildcards(self.documents, self.effective_languages)
+        )
 
     @property
     def expanded_vars(self) -> Vars:

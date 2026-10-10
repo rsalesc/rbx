@@ -234,7 +234,7 @@ def test_an_annotation_for_a_path_the_preset_dropped_is_an_error():
     import main
 
     tracked = _tracked_preset_paths()
-    assert 'statement/statement.rbx.tex' in tracked
+    assert 'statement/statement-en.rbx.tex' in tracked
     assert 'documents/statement.rbx.tex' not in tracked, (
         'the check below only means anything while `documents/` is gone'
     )

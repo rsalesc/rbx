@@ -47,6 +47,18 @@ with `\subimport`. There is **no migration** from v1.
 with cycle/dangling errors. Problem: `Package.expanded_statements`/`expanded_tutorials`;
 contest: `Contest.expanded_statements`/`expanded_tutorials`/`expanded_documents`.
 
+`wildcards.py` runs **before** the extends expander inside those same properties
+(design `docs/plans/2026-09-20-multi-language-presets-design.md`). An entry with
+`language: "*"` expands to one concrete entry per language of the package's
+`effective_languages` — own `languages:`, else the enclosing contest's (injected by
+`package.find_problem_package` via `contest_package.find_contest_languages`, a light
+model load that must not go through `find_contest_package` or it recurses), else the
+languages of the concrete entries. `{lang}` is substituted in `name`/`file`/templates/
+`assets`/`params`; a concrete entry with the same key beats the expansion. A wildcard
+with no languages in effect is a `WildcardExpansionError`. `language_packs.py` reads
+the same wildcard entries to know which files belong to each language (creation
+pruning, `rbx lang`); the bundled default preset ships `languages: ["en"]` with wildcard entries.
+
 ## v2 engine modules
 
 The build is a pipeline of small, unit-tested pieces:

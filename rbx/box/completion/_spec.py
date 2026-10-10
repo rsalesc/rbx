@@ -863,6 +863,16 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Languages to keep from a multi-language preset (e.g. `-l '
+                    'en,pt`). Omit to be prompted when the preset ships more than '
+                    'one language.',
+                    'kind': 'option',
+                    'multiple': True,
+                    'names': ['--languages', '-l'],
+                    'takes_value': True,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,
@@ -2278,9 +2288,11 @@ SPEC = {
                             'value': {'kind': 'none'},
                         },
                         {
-                            'help': 'If set, will build the statement in the given '
-                            'language. Leave unset if you want to use the '
-                            'language of the topmost statement.',
+                            'help': 'If set, will use the statement in the given '
+                            'language as the main one. Leave unset to use the '
+                            'Portuguese statement, or the topmost one without '
+                            'it. Every other `en`/`es` statement ships as a '
+                            'translation.',
                             'kind': 'option',
                             'multiple': False,
                             'names': ['--language', '-l'],
@@ -2412,6 +2424,16 @@ SPEC = {
                             'multiple': False,
                             'names': ['--local'],
                             'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Languages to keep from a multi-language preset '
+                            '(e.g. `-l en,pt`). Omit to be prompted when the '
+                            'preset ships more than one language.',
+                            'kind': 'option',
+                            'multiple': True,
+                            'names': ['--languages', '-l'],
+                            'takes_value': True,
                             'value': {'kind': 'none'},
                         },
                         {
@@ -3193,6 +3215,106 @@ SPEC = {
         {
             'children': [
                 {
+                    'help': 'List the statement languages of the...',
+                    'is_group': False,
+                    'name': 'ls, list',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'help': 'Add a statement language to the package(s).',
+                    'is_group': False,
+                    'name': 'add',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': None,
+                            'kind': 'argument',
+                            'multiple': False,
+                            'names': [],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': "Clone this existing language's files instead of "
+                            'the preset skeleton.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--from'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Remove a statement language from the...',
+                    'is_group': False,
+                    'name': 'rm, remove',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': None,
+                            'kind': 'argument',
+                            'multiple': False,
+                            'names': [],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': "Also delete the language's files. By default "
+                            'they are kept and reported as orphaned.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--delete-files'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+            ],
+            'help': 'Manage statement languages of a problem or...',
+            'is_group': True,
+            'name': 'lang, languages',
+            'panel': 'Management',
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
+        {
+            'children': [
+                {
                     'help': 'View a testcase in your default editor.',
                     'is_group': False,
                     'name': 'view, v',
@@ -3460,10 +3582,11 @@ SPEC = {
                                 {
                                     'help': 'If set, will report the title of '
                                     'the statement in the given '
-                                    'language. Leave unset if you want '
-                                    'to use the language of the topmost '
-                                    'statement, which is the one `rbx '
-                                    'package moj` would upload.',
+                                    'language. Leave unset to use the '
+                                    'Portuguese statement, or the '
+                                    'topmost one without it -- the one '
+                                    '`rbx package moj` would upload as '
+                                    'the main statement.',
                                     'kind': 'option',
                                     'multiple': False,
                                     'names': ['--language', '-l'],

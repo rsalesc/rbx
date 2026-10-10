@@ -1,0 +1,97 @@
+scenarios:
+  - name: create-with-one-language-then-add-another
+    description: >
+      A preset that ships three languages (see preset/) is used to create a
+      contest keeping only `en`; problems added to it inherit that choice and
+      carry no `languages:` list of their own. Building emits only English
+      artefacts. `rbx lang add pt` then grafts the preset's Portuguese pack
+      into the contest and every problem, and the next build emits Portuguese
+      artefacts too, rendered from the Portuguese skeleton. TeX output only:
+      pdflatex is stubbed in e2e runs.
+    steps:
+      - cmd: contest create --path ctt --preset preset --languages en
+        expect:
+          files_exist:
+            - ctt/contest.rbx.yml
+          file_contains:
+            ctt/contest.rbx.yml: 'languages: ["en"]'
+      - cmd: contest add --path alpha --short-name A
+        cwd: ctt
+      - cmd: contest add --path beta --short-name B
+        cwd: ctt
+        expect:
+          files_exist:
+            - ctt/beta/statement/statement-en.rbx.tex
+            - ctt/beta/statement/editorial-en.rbx.tex
+          files_absent:
+            - ctt/beta/statement/statement-pt.rbx.tex
+            - ctt/beta/statement/editorial-es.rbx.tex
+      - cmd: contest st b --output tex --no-samples
+        cwd: ctt
+        expect:
+          files_exist:
+            - ctt/build/statement-en.tex
+            - ctt/build/info-en.tex
+          files_absent:
+            - ctt/build/statement-pt.tex
+            - ctt/build/info-pt.tex
+      - cmd: lang add pt
+        cwd: ctt
+        expect:
+          stdout_contains:
+            - statement/statement-pt.rbx.tex
+          files_exist:
+            - ctt/alpha/statement/statement-pt.rbx.tex
+            - ctt/alpha/statement/editorial-pt.rbx.tex
+            - ctt/beta/statement/statement-pt.rbx.tex
+          file_contains:
+            ctt/contest.rbx.yml: 'languages: ["en", "pt"]'
+            ctt/alpha/problem.rbx.yml: 'pt: "Novo problema"'
+      - cmd: lang ls
+        cwd: ctt
+        expect:
+          stdout_contains:
+            - statement-pt.rbx.tex
+      - cmd: contest st b --output tex --no-samples
+        cwd: ctt
+        expect:
+          files_exist:
+            - ctt/build/statement-en.tex
+            - ctt/build/statement-pt.tex
+            - ctt/build/info-pt.tex
+          file_contains:
+            ctt/build/statements/statement-pt/.problems/A/statement-pt.rbx.tex: Descreva o problema
+            ctt/build/statements/statement-en/.problems/A/statement-en.rbx.tex: Describe the problem
+
+  - name: add-unshipped-language-needs-from
+    description: >
+      Adding a language the preset does not ship is refused with the shipped
+      list; `--from` clones an existing language's files instead.
+    steps:
+      - cmd: contest create --path ctt --preset preset --languages en
+      - cmd: contest add --path alpha --short-name A
+        cwd: ctt
+      - cmd: lang add fr
+        cwd: ctt
+        expect_exit: 1
+        expect:
+          stdout_contains:
+            - 'en, pt, es'
+            - '--from'
+      - cmd: lang add fr --from en
+        cwd: ctt
+        expect:
+          files_exist:
+            - ctt/alpha/statement/statement-fr.rbx.tex
+          file_contains:
+            ctt/alpha/statement/statement-fr.rbx.tex: Describe the problem
+            ctt/contest.rbx.yml: 'languages: ["en", "fr"]'
+      - cmd: lang rm fr
+        cwd: ctt
+        expect:
+          stdout_contains:
+            - statement-fr.rbx.tex
+          files_exist:
+            - ctt/alpha/statement/statement-fr.rbx.tex
+          file_contains:
+            ctt/contest.rbx.yml: 'languages: ["en"]'
