@@ -1,10 +1,10 @@
 # Installation
 
-You can install {{rbx}} with a single command, either using `pip`, `pipx` or `uv`. Prefer using `uv` or `pipx` to have a better isolation between the dependencies. Read more about how to install and use `uv` [here](https://docs.astral.sh/uv/getting-started/installation/).
+You can install {{rbx}} with a single command, either using `uv`, `pipx` or `pip`. Prefer using `uv` or `pipx` to have a better isolation between the dependencies. Read more about how to install and use `uv` [here](https://docs.astral.sh/uv/getting-started/installation/).
 
 ## Requirements
 
-- Python 3.9.1 or above (stable with Python 3.10).
+- Python 3.10 or above.
 - A C++ toolchain to compile {{testlib}} libraries (usually `g++`).
 - (Optional):
     - Compilers/interpreters that you need to run your solutions on (e.g. `g++`, `java`).
@@ -14,6 +14,12 @@ You can install {{rbx}} with a single command, either using `pip`, `pipx` or `uv
 
 ```bash
 $ uv tool install rbx.cp
+
+# To update to latest version
+$ uv tool install rbx.cp@latest
+
+# To update to a given version
+$ uv tool install rbx.cp@x.x.x
 ```
 
 ## From the repository

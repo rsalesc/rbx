@@ -1,3 +1,16 @@
+## 2.0.0 (2026-10-10)
+
+### Feat
+
+- **statements**: multi-language presets, --languages and rbx lang (#872)
+- **schema**: add a TLE_OR_MLE expected outcome (#883)
+
+### Fix
+
+- **lang**: edit languages that come from a <<: !include_deep fragment (#888)
+- **checkers**: blame the interactor when the solution dies of SIGPIPE (#885)
+- **moj**: catch up with mojtools' sample gate, tags and JVM locale (#880)
+
 ## 1.6.2 (2026-10-03)
 
 ### Feat
