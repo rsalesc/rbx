@@ -39,7 +39,7 @@ def test_seed_package_from_preset_overlays_real_files(tmp_path: pathlib.Path):
     # Statements v2: the problem statement lives under statement/, and the
     # contest (not the problem) owns the LaTeX chrome, so the problem package
     # carries no icpc.sty / template symlinks at all.
-    assert (dest / 'statement' / 'statement.rbx.tex').is_file()
+    assert (dest / 'statement' / 'statement-en.rbx.tex').is_file()
     assert (dest / 'statement' / 'samples' / '000.in').is_file()
 
     # The seed overlay never leaves symlinks behind (they are dereferenced).
@@ -90,7 +90,7 @@ def test_seed_package_from_preset_variant_overlays_variant_files(
     assert (dest / 'interactor.cpp').is_file()
     assert not (dest / 'wcmp.cpp').exists()
     assert (dest / 'sols' / 'main.cpp').is_file()
-    assert (dest / 'statement' / 'statement.rbx.tex').is_file()
+    assert (dest / 'statement' / 'statement-en.rbx.tex').is_file()
 
     # The seed overlay never leaves symlinks behind (they are dereferenced).
     assert not any(p.is_symlink() for p in dest.rglob('*'))
