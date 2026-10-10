@@ -59,10 +59,15 @@ def template_languages(root: pathlib.Path, *, is_contest: bool) -> List[str]:
 
     A raw key read rather than a model load: installing from a template never
     validated its yml, and a template that fails validation must keep failing
-    where it always did (when the created package is first loaded)."""
-    if not (root / _yaml_name(is_contest)).is_file():
+    where it always did (when the created package is first loaded). Read off
+    the include-resolved tree, so a list a `<<: !include` fragment supplies
+    counts too."""
+    path = root / _yaml_name(is_contest)
+    if not path.is_file():
         return []
-    return list(_Edit(root, is_contest).languages or [])
+    tree, _ = yaml_include.resolve_yaml_file(path)
+    languages = tree.get('languages') if isinstance(tree, dict) else None
+    return [str(lang) for lang in languages or []]
 
 
 def pack_files(
@@ -119,10 +124,17 @@ def _quoted(value: str) -> ruyaml.scalarstring.DoubleQuotedScalarString:
 
 class _Edit:
     """A comment-preserving edit of `languages:` and `titles:` in the package's
-    yml (or the fragment that owns them)."""
+    yml (or the fragment that owns them).
+
+    Follows `<<: !include` merges: a contest whose language list comes from a
+    fragment it shares with its variants means the whole contest, variants
+    included, and so edits the fragment. A value set in the yml itself still
+    wins and is edited there."""
 
     def __init__(self, root: pathlib.Path, is_contest: bool):
-        self.session = yaml_include.EditSession(root / _yaml_name(is_contest))
+        self.session = yaml_include.EditSession(
+            root / _yaml_name(is_contest), follow_merges=True
+        )
 
     @property
     def languages(self) -> Optional[List[str]]:
@@ -160,6 +172,33 @@ class _Edit:
 
     def save(self) -> None:
         self.session.save()
+
+
+def shared_edits(
+    root: pathlib.Path, lang: str, *, is_contest: bool
+) -> List[Tuple[pathlib.Path, List[pathlib.Path]]]:
+    """The fragments adding or removing `lang` would edit that other contest
+    configs (variants) also include, each with those configs. Empty when the
+    edit stays in files only this package reads."""
+    if not is_contest:
+        return []
+    yml = (root / _yaml_name(is_contest)).resolve()
+    session = yaml_include.EditSession(yml, follow_merges=True)
+    owners: List[pathlib.Path] = []
+    for keys in (('languages',), ('titles', lang)):
+        owner = session.target(*keys).path
+        if owner != yml and owner not in owners:
+            owners.append(owner)
+    shared = []
+    for owner in owners:
+        others = [
+            path
+            for path in yaml_include.including_files(owner, root)
+            if path.resolve() != yml
+        ]
+        if others:
+            shared.append((owner, others))
+    return shared
 
 
 def prune_languages(

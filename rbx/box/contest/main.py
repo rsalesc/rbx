@@ -137,17 +137,18 @@ def create(
             )
             raise typer.Exit(1)
 
-    template = presets.install_contest(
-        dest_path,
-        fetch_info,
-        variant=variant,
-        languages=creation.split_languages(languages),
-    )
+    with creation.removing_on_failure(dest_path):
+        template = presets.install_contest(
+            dest_path,
+            fetch_info,
+            variant=variant,
+            languages=creation.split_languages(languages),
+        )
 
-    with cd.new_package_cd(dest_path):
-        contest_utils.clear_all_caches()
-        # fix_package()
-        presets.generate_lock(template=template)
+        with cd.new_package_cd(dest_path):
+            contest_utils.clear_all_caches()
+            # fix_package()
+            presets.generate_lock(template=template)
 
     if preset is not None:
         presets.maybe_offer_to_register(fetch_info, dest_path)

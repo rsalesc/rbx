@@ -3254,6 +3254,15 @@ SPEC = {
                             'value': {'kind': 'none'},
                         },
                         {
+                            'help': 'Edit a fragment other contest configs also '
+                            'include without asking.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--yes', '-y'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
                             'multiple': False,
@@ -3283,6 +3292,15 @@ SPEC = {
                             'kind': 'option',
                             'multiple': False,
                             'names': ['--delete-files'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Edit a fragment other contest configs also '
+                            'include without asking.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--yes', '-y'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
                         },

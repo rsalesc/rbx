@@ -246,3 +246,132 @@ def test_including_files_ignores_a_broken_sibling(tmp_path):
     reachers = including_files(frag, tmp_path)
 
     assert {p.name for p in reachers} == {'contest.rbx.yml'}
+
+
+def test_strict_mode_refuses_a_nested_key_supplied_by_a_deep_merge(tmp_path):
+    """Under `!include_deep` the includer's own `titles:` map merges with the
+    fragment's, so `titles.es` lives in the fragment even though `titles` is
+    set here. Silently creating a local `es` would shadow it."""
+    (tmp_path / 'shared.yml').write_text('titles:\n  en: E\n  es: S\n')
+    main = tmp_path / 'contest.rbx.yml'
+    main.write_text('<<: !include_deep shared.yml\ntitles:\n  pt: P\n')
+
+    with pytest.raises(IncludeError):
+        open_for_edit(main, 'titles', 'es')
+    # A key set locally is still editable.
+    assert open_for_edit(main, 'titles', 'pt').path == main
+
+
+class TestFollowMerges:
+    def _layout(self, tmp_path):
+        shared = tmp_path / 'shared.rbx.yml'
+        shared.write_text(
+            'name: c\n'
+            '# the languages\n'
+            'languages: ["pt", "en"]\n'
+            'titles:\n  pt: "Pt"\n  en: "En"\n'
+        )
+        main = tmp_path / 'contest.rbx.yml'
+        main.write_text('<<: !include_deep shared.rbx.yml\nproblems: []\n')
+        return main, shared
+
+    def test_reads_and_edits_a_merged_key_in_its_fragment(self, tmp_path):
+        main, shared = self._layout(tmp_path)
+        session = EditSession(main, follow_merges=True)
+
+        target = session.target('languages')
+        assert target.path == shared
+        assert list(target.value) == ['pt', 'en']
+        target.value.append('es')
+        session.save()
+
+        assert 'languages: ["pt", "en", es]' in shared.read_text()
+        assert '# the languages' in shared.read_text()
+        assert main.read_text() == ('<<: !include_deep shared.rbx.yml\nproblems: []\n')
+
+    def test_new_nested_key_lands_beside_its_siblings(self, tmp_path):
+        main, shared = self._layout(tmp_path)
+        session = EditSession(main, follow_merges=True)
+
+        target = session.target('titles', 'es')
+        assert target.path == shared
+        assert target.value is None
+        target.replace('Es')
+        session.save()
+
+        assert 'es: Es' in shared.read_text()
+        assert 'titles' not in main.read_text()
+
+    def test_deletes_a_merged_nested_key_in_its_fragment(self, tmp_path):
+        main, shared = self._layout(tmp_path)
+        session = EditSession(main, follow_merges=True)
+
+        path, parent, key = session.resolve(('titles', 'en'))
+        assert path == shared
+        del parent[key]
+        session.save()
+
+        assert 'En' not in shared.read_text()
+
+    def test_a_local_value_wins_over_the_fragment(self, tmp_path):
+        main, shared = self._layout(tmp_path)
+        main.write_text(
+            '<<: !include_deep shared.rbx.yml\nlanguages: ["pt"]\nproblems: []\n'
+        )
+        session = EditSession(main, follow_merges=True)
+
+        assert session.target('languages').path == main
+        assert list(session.target('languages').value) == ['pt']
+
+    def test_deep_merge_finds_a_nested_key_in_the_fragment(self, tmp_path):
+        main, shared = self._layout(tmp_path)
+        main.write_text('<<: !include_deep shared.rbx.yml\ntitles:\n  es: "Es"\n')
+        session = EditSession(main, follow_merges=True)
+
+        assert session.target('titles', 'es').path == main
+        assert session.target('titles', 'en').path == shared
+        assert session.target('titles', 'en').value == 'En'
+        # Absent everywhere: created in the highest-precedence map, here.
+        assert session.target('titles', 'fr').path == main
+
+    def test_shallow_merge_does_not_reach_into_a_local_map(self, tmp_path):
+        main, shared = self._layout(tmp_path)
+        main.write_text('<<: !include shared.rbx.yml\ntitles:\n  es: "Es"\n')
+        session = EditSession(main, follow_merges=True)
+
+        # `titles` here replaces the fragment's wholesale: `en` is not set.
+        target = session.target('titles', 'en')
+        assert target.path == main
+        assert target.value is None
+
+    def test_follows_a_chain_of_merges_in_merge_order(self, tmp_path):
+        base = tmp_path / 'base.yml'
+        base.write_text('languages: ["en"]\ntitles:\n  en: "En"\n  pt: "Base"\n')
+        shared = tmp_path / 'shared.yml'
+        shared.write_text('<<: !include_deep base.yml\ntitles:\n  pt: "Pt"\n')
+        main = tmp_path / 'contest.rbx.yml'
+        main.write_text('<<: !include_deep shared.yml\n')
+        session = EditSession(main, follow_merges=True)
+
+        assert session.target('languages').path == base
+        assert session.target('titles', 'pt').path == shared
+        assert session.target('titles', 'pt').value == 'Pt'
+        assert session.target('titles', 'en').path == base
+
+    def test_a_merged_value_that_is_a_spliced_include(self, tmp_path):
+        (tmp_path / 'titles.yml').write_text('en: "En"\n')
+        (tmp_path / 'shared.yml').write_text('titles: !include titles.yml\n')
+        main = tmp_path / 'contest.rbx.yml'
+        main.write_text('<<: !include_deep shared.yml\n')
+        session = EditSession(main, follow_merges=True)
+
+        assert session.target('titles', 'en').path == tmp_path / 'titles.yml'
+        assert session.target('titles', 'en').value == 'En'
+
+    def test_a_top_level_key_absent_everywhere_is_created_locally(self, tmp_path):
+        main, shared = self._layout(tmp_path)
+        session = EditSession(main, follow_merges=True)
+
+        target = session.target('vars')
+        assert target.path == main
+        assert target.value is None

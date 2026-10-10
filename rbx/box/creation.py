@@ -1,5 +1,7 @@
+import contextlib
 import pathlib
-from typing import Annotated, List, Optional
+import shutil
+from typing import Annotated, Iterator, List, Optional
 
 import pydantic
 import typer
@@ -7,6 +9,20 @@ import typer
 from rbx import console, utils
 from rbx.box import package, presets
 from rbx.box.schema import Package
+
+
+@contextlib.contextmanager
+def removing_on_failure(dest: pathlib.Path) -> Iterator[None]:
+    """Delete `dest` if the block fails and `dest` did not exist before it, so
+    a failed creation leaves no half-installed package behind. A directory the
+    user agreed to create into is never removed."""
+    existed = dest.exists()
+    try:
+        yield
+    except BaseException:
+        if not existed and dest.is_dir():
+            shutil.rmtree(dest, ignore_errors=True)
+        raise
 
 
 def split_languages(values: Optional[List[str]]) -> Optional[List[str]]:
@@ -104,22 +120,23 @@ def create(
         )
         raise typer.Exit(1)
 
-    template = presets.install_problem(
-        dest_path,
-        fetch_info,
-        variant=variant,
-        languages=languages,
-        inherit_languages=inherit_languages,
-    )
+    with removing_on_failure(dest_path):
+        template = presets.install_problem(
+            dest_path,
+            fetch_info,
+            variant=variant,
+            languages=languages,
+            inherit_languages=inherit_languages,
+        )
 
-    # Change problem name.
-    ru, problem = package.get_ruyaml(dest_path)
-    problem['name'] = problem_name
-    utils.save_ruyaml(dest_path / 'problem.rbx.yml', ru, problem)
+        # Change problem name.
+        ru, problem = package.get_ruyaml(dest_path)
+        problem['name'] = problem_name
+        utils.save_ruyaml(dest_path / 'problem.rbx.yml', ru, problem)
 
-    # fix_package(dest_path)
+        # fix_package(dest_path)
 
-    presets.generate_lock(dest_path, template=template)
+        presets.generate_lock(dest_path, template=template)
 
     if preset is not None:
         presets.maybe_offer_to_register(fetch_info, dest_path)
