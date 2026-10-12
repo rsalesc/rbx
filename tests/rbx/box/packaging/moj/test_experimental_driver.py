@@ -272,6 +272,19 @@ def test_a_contestant_that_cannot_start_is_a_judge_error(supervisor, tmp_path):
     assert 'cannot run' in proc.stderr
 
 
+def test_a_stderr_flood_reaches_the_report_only_as_a_tail(supervisor, tmp_path):
+    # The report is written inside the timed jail: copying a contestant's 64 MiB
+    # of stderr into it turned an accepted solution into a TLE on MOJ.
+    code, result, report = _judge(
+        supervisor,
+        tmp_path,
+        '7\n',
+        'echo 7; head -c 5000000 /dev/zero | tr "\\0" e >&2',
+    )
+    assert (code, result) == (0, 'OK ok guessed 7')
+    assert len(report) < 20000
+
+
 def test_the_contestant_stderr_reaches_the_report(supervisor, tmp_path):
     _, _, report = _judge(supervisor, tmp_path, '7\n', 'echo oops >&2; echo 7')
     assert 'oops' in report

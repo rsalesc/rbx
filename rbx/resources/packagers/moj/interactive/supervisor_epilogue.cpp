@@ -57,10 +57,16 @@ static std::string path_of(const char *env, const char *fallback) {
   return value != nullptr && *value != '\0' ? value : fallback;
 }
 
-static std::string read_file(const std::string &path) {
+// The last `max_bytes` of a file. Only ever the tail: a contestant can write
+// tens of MiB to stderr, and the report lands inside the timed jail.
+static std::string read_tail(const std::string &path, long max_bytes) {
   std::string into;
   if (FILE *f = std::fopen(path.c_str(), "rb")) {
-    char buf[1 << 16];
+    if (std::fseek(f, 0, SEEK_END) == 0) {
+      long size = std::ftell(f);
+      std::fseek(f, size > max_bytes ? size - max_bytes : 0, SEEK_SET);
+    }
+    char buf[1 << 13];
     size_t n;
     while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0)
       into.append(buf, n);
@@ -68,6 +74,8 @@ static std::string read_file(const std::string &path) {
   }
   return into;
 }
+
+static const long kReportBytes = 8192;
 
 // The last non-empty line of `text`, flattened so it survives MOJ's
 // "last line" protocol.
@@ -319,7 +327,7 @@ int main(int argc, char *argv[]) {
       if (early == ACCEPTS)
         continue; // the contestant may still crash, or overrun the limit
       if (early == REJECTS &&
-          is_eof_rejection(status, last_line(read_file(interactor_err))) &&
+          is_eof_rejection(status, last_line(read_tail(interactor_err, kReportBytes))) &&
           reap_within(g_contestant, kEofGraceMs, &contestant_status, &contestant_usage)) {
         contestant_done = true;
         kill(-g_contestant, SIGKILL);
@@ -338,8 +346,8 @@ int main(int argc, char *argv[]) {
     judge_error("lost track of a process");
 
   // -- report: everything below lands in MOJ's per-test log ------------------
-  std::string interactor_text = read_file(interactor_err);
-  std::string contestant_text = read_file(contestant_err);
+  std::string interactor_text = read_tail(interactor_err, kReportBytes);
+  std::string contestant_text = read_tail(contestant_err, kReportBytes);
   std::string message = last_line(interactor_text);
   if (!interactor_text.empty())
     std::fprintf(stderr, "%s\n", interactor_text.c_str());
