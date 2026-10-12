@@ -168,9 +168,12 @@ async def moj(
         None,
         '--language',
         '-l',
-        help='If set, will use the statement in the given language as the main '
-        'one. Leave unset to use the Portuguese statement, or the topmost one '
-        'without it. Every other `en`/`es` statement ships as a translation.',
+        help="If set, puts the statement in the given language in MOJ's main slot, "
+        '`docs/enunciado.md`, which MOJ always serves as Portuguese; an `en`/`es` '
+        'statement also fills its own slot, and a Portuguese statement it '
+        'displaces is left out. Leave unset to use the Portuguese statement, or '
+        'the topmost one without it. Every other `en`/`es` statement ships in its '
+        'own slot.',
         autocompletion=annotations._adapt('language'),  # noqa: SLF001
     ),
     calibrate: bool = typer.Option(

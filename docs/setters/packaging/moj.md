@@ -68,27 +68,33 @@ running.
 MOJ renders statements with pandoc, so {{rbx}} converts your {{rbxtex}} statement into Markdown
 and ships that, together with one file per sample explanation.
 
-MOJ shows each reader the statement in their language, and it knows three: Portuguese, which
-is the main one, plus English and Spanish translations. {{rbx}} maps your statements onto that
-directly: the Portuguese statement becomes the main one, and every other statement you declare
-in `en` or `es` ships as a translation, sample explanations included. A statement in a language
-MOJ doesn't know is left out, and {{rbx}} tells you which one.
+MOJ shows each reader the statement in their language, and it knows three: Portuguese, English
+and Spanish. Each one has a fixed place in the package, a *slot*. The main slot is the
+Portuguese one, and English and Spanish each get a slot of their own. MOJ always serves the main
+slot as Portuguese, whatever language you put in it.
 
-Each translation carries its own title, taken from the statement's `title` (or the package's
-`titles`), so the reader sees it in their language too. A translation without a title of its
-own simply shows the main one.
+{{rbx}} fills one slot per language from your statements, taking the topmost (first-listed)
+statement in each language:
 
-If your problem has no Portuguese statement, the topmost declared one takes the main slot
-instead. You can also pick which statement is the main one with the `-l` or `--language`
-flag:
+- The Portuguese statement goes to the main slot.
+- The English and Spanish statements each go to their own slot, sample explanations included.
 
-```bash
-rbx package moj -l en
-```
+{{rbx}} leaves out any other statement and tells you why: a statement in a language MOJ
+doesn't know, or a second statement in a language that already has one. At the end of the
+build, {{rbx}} prints which statement went into which slot.
 
-The rendered problem title comes from the very same statement, so the body and the title can
-never disagree. Since MOJ only reads Portuguese from the main slot, a Portuguese statement that
-isn't the main one is left out too.
+Each statement shows its own title: the statement's `title`, or else the package's `titles`
+entry for its language. A statement with neither shows the main title. The main title comes
+from the statement in the main slot, so the body and the title always match.
+
+If the Portuguese statement isn't the topmost one, it still takes the main slot, and {{rbx}}
+warns you. The topmost statement goes to its own slot if it's in English or Spanish. If it's in
+a language MOJ doesn't know, {{rbx}} stops and asks you to
+[choose the main statement](#choosing-the-main-statement) yourself.
+
+If your problem has no Portuguese statement, the topmost statement takes the main slot, whatever
+its language. When it's in English or Spanish, it fills its own slot too, so English readers
+still find it under English.
 
 A few things to keep in mind:
 
@@ -103,6 +109,29 @@ A few things to keep in mind:
 - Figures are embedded into the rendered HTML, so a PDF figure (which is what TikZ
   externalization produces) is rasterized to PNG for you. That needs `pdftoppm`, from poppler; a
   statement with PDF figures and no poppler installed refuses to package, naming the figures.
+
+### Choosing the main statement
+
+You can put a different statement in the main slot with the `-l` or `--language` flag, passing
+the language exactly as your statement declares it:
+
+```bash
+rbx package moj -l en
+```
+
+The `en` statement then fills the main slot and its own `en` slot. Because MOJ reads Portuguese
+from the main slot only, your Portuguese statement has nowhere left to go: {{rbx}} leaves it out
+and warns you, but does what you asked. If no statement is in the language you pass, {{rbx}}
+stops.
+
+Putting English in the main slot is rarely what you want. MOJ serves the main slot as
+Portuguese, so it shows the English text under a Portuguese label, and readers who pick
+Portuguese get English. If what you're after is an English-first contest, keep the Portuguese statement in the main slot and set the language
+on the MOJ contest instead. In the contest's configuration, `LOCALE` picks the language teams
+see first (for example, `LOCALE=en`), and `STATEMENT_LANGS` picks which ones they can switch
+to, as MOJ's
+[contest statement script](https://github.com/cd-moj/cdmoj/blob/master/server/api/v1/lib/contest-statement.sh)
+reads them. Those are contest settings on MOJ, not something a package can set.
 
 ## Test groups and scoring
 

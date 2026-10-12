@@ -485,13 +485,34 @@ docs/notes/<sample>.<lang>.md  the translation's note; absent => the Portuguese 
 runs the whole per-statement sequence (bundle → materialize → rasterize → convert →
 write → discard) once per shipped statement:
 
-- **Main.** `--language` picks it; without the flag the `pt` statement is preferred,
-  else the topmost declared. It fills `enunciado.md` *whatever its language* -- an
-  English-only problem still packages, labelled `pt-BR` by MOJ -- and
-  `display_title` resolves from it, so body and `<h1>` never disagree.
+- **Main** (`_select_main`, issue #889). The slot *means* Portuguese to MOJ
+  (`stmt_html_lang` serves it as `pt-BR`), so:
+  - no `--language`, `pt` topmost: `pt` is main, silently;
+  - no `--language`, `pt` declared lower: `pt` is still main, and the topmost is
+    warned about -- it ships in its own slot when that is `en`/`es`, and is an
+    **error** pointing at `-l` otherwise (dropping the statement the setter put
+    first is not something to do silently);
+  - no `pt` at all: the topmost is main;
+  - `--language X`: `X` is main, always honored. A `pt` statement it displaces is
+    skipped with a warning (`select_statements`).
+
+  It fills `enunciado.md` *whatever its language*, and `display_title` resolves
+  from it, so body and `<h1>` never disagree.
+- **The main statement also fills its own slot** when that is `en`/`es`. Without
+  the copy an English main statement is only reachable labelled `pt-BR`, and a
+  contest with `STATEMENT_LANGS=en` would not offer it. `translations` therefore
+  may hold `main` again; its title equals `display_title`, so it adds no `titles`
+  entry.
 - **Translations.** Every other statement whose subtag is `en` or `es`, one per
   language (topmost wins, the rest are warned about). A `pt` statement that is not
   the main one is dropped with a warning too: MOJ has no `enunciado.pt.md`.
+- **Reporting.** `select_statements` is pure (it is called for the body, the
+  title and the titles), returning `warnings`/`skipped`; the packager prints them
+  once via `report_selection`, and `report_slots` prints the slot -> statement map
+  at the end of `package()`, so a setter sees what `-l` did. The default language a
+  team sees is a MOJ *contest* setting (`LOCALE`, `STATEMENT_LANGS` in cdmoj's
+  `contest-statement.sh`), not a package one -- the docs point English-first
+  contests there rather than at `-l`.
 - **Skipped.** Any other language, with a warning naming it. Nothing dead ships.
 - **`titles`.** Emitted for a translation only when it has a title *of its own*
   (`Statement.title` or `pkg.titles[lang]`) that differs from `display_title`.
