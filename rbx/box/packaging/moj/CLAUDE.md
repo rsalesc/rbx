@@ -713,6 +713,43 @@ through. Packaging refuses a driver that contains the heredoc delimiter.
 **Still differs from rbx:** an interactor that has decided WA while the contestant
 **hangs** is overridden by the wall-clock **TLE**: the driver waits for the contestant.
 
+### EXPERIMENTAL: rbx's own driver (`rbx package moj --experimental`)
+
+An opt-in mode that replaces mojtools' driver with rbx's, without touching anything on
+the judge. Only two things in the package change:
+
+- **`scripts/arbitro.cpp` ends in `interactive/supervisor_epilogue.cpp`** instead of
+  `arbiter_epilogue.cpp`. The arbiter becomes a supervisor, the role BOCA's `pipe.c`
+  plays: called as `arbitro <input> -- <command...>`, it forks the contestant (exec'd,
+  own process group) and the interactor (its own testlib code, in a child), crosses
+  their pipes and reaps both. Being their parent it has the real wait statuses, so no
+  GNU `time` text is parsed. mojtools' `prep.sh` still compiles it, unchanged, which
+  is why no second compile path (or a separate runpipe binary) is needed.
+- **`scripts/<lang>/run.sh` is the language's own batch `run.sh`**, with each `exec
+  <command> < /tmp/in > /tmp/out` rewritten to `exec /tmp/dir/arbitro /tmp/in --
+  <command>` (`supervised_run_script`). Every language therefore runs exactly as in a
+  batch problem -- the JVM flags, PyPy fallback and stack sizing included -- instead of
+  through the driver's hard-coded `case` on `$BIN`'s extension.
+
+`prep.sh` and `compare.sh` stay mojtools' stubs: the first already compiles
+`arbitro.cpp`, the second already maps `/tmp/out` to AC/WA/UE, and shipping host-side
+copies is what the stub rule forbids.
+
+**The verdict is decided by cause, not by reaping order.** A dying contestant closes
+its pipes before it becomes reapable, so the interactor's EOF rejection can be reaped
+first; on the real judges an `abort()` mid-game came back WA under an order-based
+ladder. So: an interactor failure is a judge error (RE if the contestant had already
+failed); a rejection for any reason but EOF is WA and kills a contestant still running
+(#894); a contestant that failed (non-zero, or a signal other than SIGPIPE) is RE
+whether the interactor then accepted or only reported EOF (#895); an EOF rejection
+waits up to `kEofGraceMs` for the contestant to finish dying before deciding. Exit 3 is
+RE; every judge-side failure exits 0 with `/tmp/out` empty (UE), since a non-zero exit
+would blame the contestant.
+
+**Not fixable from a package, even here:** TLE is still `build-and-test.sh`'s, from the
+wall clock of the whole jail, so the interactor's own time and startup still count
+against the contestant; and MLE is still its RSS check.
+
 ## Out of scope
 
 - **Collections and access control.** See `.moj-meta.json` below.

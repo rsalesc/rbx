@@ -191,6 +191,14 @@ async def moj(
         'upload much faster -- at the cost of nothing verifying the dropped solutions '
         'on the judge. For iterating; package again without it before going live.',
     ),
+    experimental: bool = typer.Option(
+        False,
+        '--experimental',
+        help="EXPERIMENTAL. Judge an interactive problem with rbx's own driver "
+        "instead of MOJ's: the arbiter runs the solution itself and decides the "
+        'verdict as rbx does locally, and each language runs with the same command '
+        'as in a batch problem.',
+    ),
 ):
     from rbx.box.packaging.moj.packager import (
         JudgeCalibrated,
@@ -216,6 +224,7 @@ async def moj(
             main_language=language,
             timing_mode=timing_mode,
             reference_only=reference_only,
+            experimental=experimental,
         )
         return
 
@@ -235,6 +244,7 @@ async def moj(
             main_language=language,
             timing_mode=timing_mode,
             reference_only=reference_only,
+            experimental=experimental,
             into_dir=directory,
         )
         await upload_package(problem_id, directory)

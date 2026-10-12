@@ -90,6 +90,7 @@ def run_packager(
     timing_mode: Optional[TimingMode] = None,
     probe: Optional[ProbePackage] = None,
     reference_only: bool = False,
+    experimental: bool = False,
 ) -> pathlib.Path:
     # Packaging needs the time limits settled one way or the other, so the default
     # profile is written here for the tests that are about something else. The tests
@@ -111,6 +112,7 @@ def run_packager(
             timing_mode=timing_mode,
             probe=probe,
             reference_only=reference_only,
+            experimental=experimental,
         ).package(build_path, into_path, [])
     )
     return into_path
