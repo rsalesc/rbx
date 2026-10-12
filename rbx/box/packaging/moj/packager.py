@@ -1466,8 +1466,30 @@ class MojPackager(BasePackager):
         """Swap a language's run.sh for MOJ's interactive driver, and add the prep
         stub that materializes the arbiter. compile.sh stays rbx's own."""
         files = self._mojtools_files()
-        files.write(mojtools.INTERACTIVE_RUN, lang_path / 'run.sh')
+        run_path = lang_path / 'run.sh'
+        run_path.write_bytes(
+            self._wrap_interactive_driver(files.files[mojtools.INTERACTIVE_RUN])
+        )
+        run_path.chmod(0o755)
         files.write(mojtools.INTERACTIVE_PREP_STUB, lang_path / 'prep.sh')
+
+    def _wrap_interactive_driver(self, driver: bytes) -> bytes:
+        """mojtools' interactive driver, embedded in rbx's wrapper.
+
+        The wrapper turns a contestant that crashed into Runtime Error where the
+        driver lets the arbiter's verdict win (rsalesc/rbx#895). The jail binds only
+        `run.sh`, so the driver travels inside it, as a quoted heredoc.
+        """
+        delimiter = b'RBX_MOJTOOLS_DRIVER_EOF'
+        if delimiter in driver:
+            console.console.print(
+                '[error]Cannot package for MOJ: the mojtools interactive driver '
+                f'contains [item]{delimiter.decode()}[/item], which rbx uses to '
+                'embed it.[/error]'
+            )
+            raise typer.Exit(1)
+        template = self._interactive_template('run_wrapper.sh').read_bytes()
+        return template.replace(b'{{mojtoolsDriver}}', driver.rstrip(b'\n'))
 
     # -- solutions ------------------------------------------------------------
 

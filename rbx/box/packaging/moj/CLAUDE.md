@@ -57,7 +57,7 @@ time a package is built:
 | `testlib/compare-stub.sh` | `scripts/compare.sh` | batch |
 | `interactive/compare-stub.sh` | `scripts/compare.sh` | interactive |
 | `interactive/prep-stub.sh` | `scripts/<lang>/prep.sh` | interactive |
-| `interactive/run.sh` | `scripts/<lang>/run.sh` | interactive |
+| `interactive/run.sh` | `scripts/<lang>/run.sh`, inside rbx's wrapper | interactive |
 
 The fallback is the snapshot bundled at `rbx/resources/packagers/moj/mojtools/`,
 mirroring upstream's layout byte for byte, with the commit it was taken from in
@@ -649,8 +649,9 @@ The packager **refuses**:
 **Scripts.** Following "stub on the host, copy in the jail": `scripts/compare.sh` is
 `interactive/compare-stub.sh` and every `scripts/<lang>/prep.sh` is
 `interactive/prep-stub.sh` (both run on the host and call into mojtools; `prep` is
-what compiles `arbitro.cpp`), while every `scripts/<lang>/run.sh` is a **copy** of
-the driver `interactive/run.sh`, because it runs in the jail. rbx keeps its own
+what compiles `arbitro.cpp`), while every `scripts/<lang>/run.sh` carries a **copy** of
+the driver `interactive/run.sh`, because it runs in the jail -- wrapped by rbx's
+`interactive/run_wrapper.sh` (see below). rbx keeps its own
 `compile.sh` per language; the driver picks the run command from `$BIN`'s extension
 (ELF, `.py`, `.jar`, ...), which rbx's compile scripts already produce. The three
 driver files come from mojtools like the batch stub does — see below.
@@ -687,12 +688,30 @@ CPU took 0.11s of wall and came back TLE under a pinned 100ms limit. The package
 warns about it whenever it pins interactive limits; it does not add the headroom
 itself.
 
-**Verdicts that differ from rbx, by MOJ's driver (not fixable from the arbiter):**
+**A crashed contestant is Runtime Error, through rbx's wrapper (#895).** mojtools'
+driver lets the arbiter's result win over how the contestant ended, so on its own a
+contestant that crashes mid-interaction is WA (the interactor then complains about end
+of file) and one that answers correctly and then crashes is AC. rbx, Polygon and
+DOMjudge call both RE. `scripts/<lang>/run.sh` is therefore rbx's
+`interactive/run_wrapper.sh`, carrying mojtools' driver **verbatim** in a quoted
+heredoc (the jail binds only `run.sh`, as `/tmp/script`, so the driver cannot be a
+sibling file -- the wrapper writes it to `/tmp` and runs it). After the driver exits 0,
+and only if no TERM arrived (the time limit) and the arbiter itself ended cleanly, the
+wrapper reads `/tmp/aluno.time`: a contestant that exited non-zero or died of a signal
+other than SIGPIPE turns a non-`WRONG` result, or a `WRONG` that only says
+`Unexpected end of file` (the same test as `checkers._is_testlib_eof`), into `exit 3`,
+the driver's own RE. Every other `WRONG` stays WA. MOJ supports this officially:
+mojtools' README §7 has `build-and-test.sh` take `<pacote>/scripts/<lang>/run.sh`
+before its own.
 
-- A contestant that **crashes** makes the interactor hit EOF and say `WRONG`; the
-  driver keeps the `WRONG`, so it is **WA**, not RE.
-- An interactor that has decided WA while the contestant **hangs** is overridden by
-  the wall-clock **TLE**: the driver waits for the contestant.
+The wrapper leans on the driver's private files (`/tmp/out`, `/tmp/{aluno,arbitro}.time`,
+GNU time's wording, exit 3). If upstream renames any of them, the rule silently stops
+firing and the verdicts go back to the driver's own, never to something wrong. When
+upstream adopts the rule itself, the driver exits 3 first and the wrapper passes it
+through. Packaging refuses a driver that contains the heredoc delimiter.
+
+**Still differs from rbx:** an interactor that has decided WA while the contestant
+**hangs** is overridden by the wall-clock **TLE**: the driver waits for the contestant.
 
 ## Out of scope
 
