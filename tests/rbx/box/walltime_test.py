@@ -14,6 +14,7 @@ from rbx.box.environment import (
     resolve_walltime_coeffs,
 )
 from rbx.box.testing import testing_package
+from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.judge.sandboxes.stupid_sandbox import StupidSandbox
 from rbx.grading.limits import Limits
 
@@ -138,3 +139,46 @@ def test_interactor_wall_time_is_solution_wall_plus_fixed_margin():
     margin = tasks._INTERACTOR_WALL_MARGIN_MS  # noqa: SLF001
     assert tasks._interactor_wall_time(2000) == 2000 + margin  # noqa: SLF001
     assert tasks._interactor_wall_time(5000) == 5000 + margin  # noqa: SLF001
+
+
+def test_interactor_cpu_limit_is_its_own_wall_not_the_solution_cpu():
+    # #893: the interactor used to inherit the solution's CPU limit (2x TL here),
+    # so a slow interactor was killed while the solution sat idle, and the
+    # verdict blamed the solution.
+    limits = Limits(time=1000, memory=256, output=4096, isDoubleTL=True)
+    with mock.patch.object(tasks.environment, 'compute_walltime', return_value=4500):
+        solution_cfg = tasks._get_execution_config(limits, StupidSandbox, 'cpp')  # noqa: SLF001
+        cfg = tasks._get_interactor_execution_config(  # noqa: SLF001
+            limits, StupidSandbox, solution_cfg
+        )
+    margin = tasks._INTERACTOR_WALL_MARGIN_MS  # noqa: SLF001
+    assert cfg.sandbox is not None
+    assert cfg.sandbox.wallTimeLimit == 4500 + margin
+    assert cfg.sandbox.timeLimit == 4500 + margin
+    # The solution's own limits are untouched.
+    assert solution_cfg.sandbox is not None
+    assert solution_cfg.sandbox.timeLimit == 2000
+    assert solution_cfg.sandbox.wallTimeLimit == 4500
+
+
+def test_interactor_outlives_the_solution_without_soft_timeouts():
+    # A sandbox without soft timeouts gives the solution wall == CPU limit; the
+    # interactor still gets the margin on top, for both limits.
+    limits = Limits(time=1000, memory=256, output=4096)
+    solution_cfg = tasks._get_execution_config(limits, SandboxBase)  # noqa: SLF001
+    cfg = tasks._get_interactor_execution_config(limits, SandboxBase, solution_cfg)  # noqa: SLF001
+    margin = tasks._INTERACTOR_WALL_MARGIN_MS  # noqa: SLF001
+    assert cfg.sandbox is not None
+    assert cfg.sandbox.wallTimeLimit == 1000 + margin
+    assert cfg.sandbox.timeLimit == 1000 + margin
+
+
+def test_interactor_is_unbounded_when_the_solution_is():
+    # `use_timelimit=False` / the estimation sentinel null the solution's TL;
+    # the interactor must not end up with a limit the solution lacks.
+    limits = Limits(time=None, memory=256, output=4096)
+    solution_cfg = tasks._get_execution_config(limits, StupidSandbox, 'cpp')  # noqa: SLF001
+    cfg = tasks._get_interactor_execution_config(limits, StupidSandbox, solution_cfg)  # noqa: SLF001
+    assert cfg.sandbox is not None
+    assert cfg.sandbox.timeLimit is None
+    assert cfg.sandbox.wallTimeLimit is None
