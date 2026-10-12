@@ -314,7 +314,8 @@ class TestCheckCommunicationInteractorExitedFirst:
             program_output,
         )
 
-        assert result.outcome == Outcome.TIME_LIMIT_EXCEEDED
+        # An interactor out of its own budget is never the solution's fault (#893).
+        assert result.outcome == Outcome.JUDGE_FAILED
 
     async def test_check_communication_sol_terminated_and_interactor_internal_error(
         self,
@@ -598,7 +599,8 @@ class TestCheckCommunicatedSolutionExitedOkFirst:
             program_output,
         )
 
-        assert result.outcome == Outcome.TIME_LIMIT_EXCEEDED
+        # An interactor out of its own budget is never the solution's fault (#893).
+        assert result.outcome == Outcome.JUDGE_FAILED
 
 
 class TestCheckCommunicationLegacyChecker:
@@ -874,7 +876,8 @@ class TestCheckCommunicationInteractorComplexScenarios:
             program_output,
         )
 
-        assert result.outcome == Outcome.MEMORY_LIMIT_EXCEEDED
+        # An interactor out of its own budget is never the solution's fault (#893).
+        assert result.outcome == Outcome.JUDGE_FAILED
 
     async def test_check_communication_interactor_output_limit(
         self,
@@ -896,7 +899,8 @@ class TestCheckCommunicationInteractorComplexScenarios:
             program_output,
         )
 
-        assert result.outcome == Outcome.OUTPUT_LIMIT_EXCEEDED
+        # An interactor out of its own budget is never the solution's fault (#893).
+        assert result.outcome == Outcome.JUDGE_FAILED
 
     async def test_check_communication_interactor_idleness(
         self,
@@ -918,7 +922,8 @@ class TestCheckCommunicationInteractorComplexScenarios:
             program_output,
         )
 
-        assert result.outcome == Outcome.IDLENESS_LIMIT_EXCEEDED
+        # An interactor out of its own budget is never the solution's fault (#893).
+        assert result.outcome == Outcome.JUDGE_FAILED
 
 
 # Benchmarking: how long the interactor itself took (`rbx run --benchmark`).
@@ -1035,3 +1040,155 @@ class TestCheckCommunicationInteractorTiming:
         # though it had no say in the verdict.
         assert result.interactor_timing is not None
         assert result.interactor_timing.time == 0.25
+
+
+INTERACTOR_LIMIT_STATUSES = [
+    SandboxBase.EXIT_TIMEOUT,
+    SandboxBase.EXIT_TIMEOUT_WALL,
+    SandboxBase.EXIT_MEMORY_LIMIT_EXCEEDED,
+    SandboxBase.EXIT_OUTPUT_LIMIT_EXCEEDED,
+]
+
+
+# #893: the interactor ran out of its own budget while the solution waited for
+# it. Whichever of the two the sandbox happened to reap first, the solution did
+# nothing wrong.
+class TestCheckCommunicationInteractorOverranItsLimits:
+    @pytest.mark.parametrize('interactor_status', INTERACTOR_LIMIT_STATUSES)
+    @pytest.mark.usefixtures('interactor_exit_first')
+    async def test_interactor_first_and_solution_killed_after_it(
+        self,
+        interactor_status: str,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        # The C++ echo of the issue: SIGPIPE'd, or SIGKILLed by the sandbox.
+        run_log.exitcode = -signal.SIGPIPE
+        run_log.exitstatus = SandboxBase.EXIT_SIGNAL
+        interactor_run_log.exitcode = -signal.SIGXCPU
+        interactor_run_log.exitstatus = interactor_status
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.JUDGE_FAILED
+        assert 'interactor' in result.message
+
+    @pytest.mark.usefixtures('interactor_exit_first')
+    async def test_interactor_first_and_solution_exits_on_eof(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        run_log.exitcode = 1
+        run_log.exitstatus = SandboxBase.EXIT_NONZERO_RETURN
+        interactor_run_log.exitcode = -signal.SIGXCPU
+        interactor_run_log.exitstatus = SandboxBase.EXIT_TIMEOUT
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.JUDGE_FAILED
+
+    @pytest.mark.parametrize('interactor_status', INTERACTOR_LIMIT_STATUSES)
+    async def test_solution_reaped_first_after_reading_eof(
+        self,
+        interactor_status: str,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        # The Python echo of the issue: it read EOF once the interactor was
+        # killed, raised, and exited 1 before the interactor was reaped.
+        run_log.exitcode = 1
+        run_log.exitstatus = SandboxBase.EXIT_NONZERO_RETURN
+        interactor_run_log.exitcode = -signal.SIGKILL
+        interactor_run_log.exitstatus = interactor_status
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.JUDGE_FAILED
+        assert 'interactor' in result.message
+
+    async def test_solution_reaped_first_with_its_own_tle_keeps_it(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        # The solution blew its own limit before the interactor did; that is
+        # still the solution's verdict.
+        run_log.exitstatus = SandboxBase.EXIT_TIMEOUT
+        interactor_run_log.exitstatus = SandboxBase.EXIT_TIMEOUT
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.TIME_LIMIT_EXCEEDED
+
+    async def test_solution_crashed_first_and_interactor_crashed_after_keeps_rte(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        # Only an interactor out of its *limits* is blamed regardless of exit
+        # order. One that crashed after the solution did may have crashed on the
+        # EOF the solution left it, so the solution's crash stands.
+        run_log.exitcode = -signal.SIGSEGV
+        run_log.exitstatus = SandboxBase.EXIT_SIGNAL
+        interactor_run_log.exitcode = -signal.SIGABRT
+        interactor_run_log.exitstatus = SandboxBase.EXIT_SIGNAL
+
+        result = await checkers.check_communication(
+            checker_digest,
+            run_log,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.RUNTIME_ERROR

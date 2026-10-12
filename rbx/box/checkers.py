@@ -366,6 +366,14 @@ def _check_sanitizer_warnings(run_log: Optional[RunLog]) -> bool:
     return run_log.warnings
 
 
+_INTERACTOR_LIMIT_STATUSES = (
+    SandboxBase.EXIT_TIMEOUT,
+    SandboxBase.EXIT_TIMEOUT_WALL,
+    SandboxBase.EXIT_MEMORY_LIMIT_EXCEEDED,
+    SandboxBase.EXIT_OUTPUT_LIMIT_EXCEEDED,
+)
+
+
 def _is_testlib_eof(stderr: str) -> bool:
     return 'wrong output format Unexpected end of file' in stderr
 
@@ -416,7 +424,25 @@ async def check_communication(
         result.interactor_timing = RunTiming.of(interactor_run_log)
         return result
 
-    def _check_interactor(reinterpret_rte: bool = True) -> Optional[CheckerResult]:
+    def _interactor_limit_failure() -> Optional[CheckerResult]:
+        # The interactor has its own budget, larger than the solution's. Running
+        # out of it is a problem with the interactor, never the solution's TLE
+        # (or the RTE of a solution that read the EOF it left behind) (#893).
+        if (
+            interactor_run_log is None
+            or interactor_run_log.exitstatus not in _INTERACTOR_LIMIT_STATUSES
+        ):
+            return None
+        return CheckerResult(
+            outcome=Outcome.JUDGE_FAILED,
+            message=f'interactor exceeded its own limits ({interactor_run_log.exitstatus})',
+        )
+
+    def _check_interactor() -> Optional[CheckerResult]:
+        limit_failure = _interactor_limit_failure()
+        if limit_failure is not None:
+            return _extra_check_and_sanitize(limit_failure)
+
         result = process_checker_run_log(
             interactor_run_log, interactor_stderr.read_text()
         )
@@ -429,9 +455,9 @@ async def check_communication(
             ):
                 return _extra_check_and_sanitize(result)
             else:
-                # Check for other verdicts, but potentially reinterpret RTEs as JUDGE_FAILED.
+                # Check for other verdicts, but reinterpret RTEs as JUDGE_FAILED.
                 result = check_with_no_output(interactor_run_log)
-                if result.outcome == Outcome.RUNTIME_ERROR and reinterpret_rte:
+                if result.outcome == Outcome.RUNTIME_ERROR:
                     result.outcome = Outcome.JUDGE_FAILED
                 if result.outcome != Outcome.ACCEPTED:
                     return _extra_check_and_sanitize(result)
@@ -474,6 +500,15 @@ async def check_communication(
     # of verdicts.
     result = check_with_no_output(run_log)
     if result is not None and result.outcome.is_limit_exceeded():
+        return _extra_check_and_sanitize(result)
+
+    # 2b. An interactor out of its own limits is a judge failure even when the
+    # solution was reaped first: killing the interactor hands the solution an
+    # EOF, and a solution that exits on it can beat the interactor to the reaper.
+    # Only limits, not crashes -- an interactor may crash on the EOF a crashed
+    # solution left it, and that solution's crash must stand.
+    result = _interactor_limit_failure()
+    if result is not None:
         return _extra_check_and_sanitize(result)
 
     # 3. If interactor finished first with an usual verdict, and solution

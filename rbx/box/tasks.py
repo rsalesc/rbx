@@ -281,6 +281,35 @@ def _interactor_wall_time(solution_wall_ms: int) -> int:
     return solution_wall_ms + _INTERACTOR_WALL_MARGIN_MS
 
 
+def _get_interactor_execution_config(
+    limits: Limits,
+    sandbox_type: Type[SandboxBase],
+    solution_config: ExecutionConfig,
+) -> ExecutionConfig:
+    """Execution config for the interactor running against `solution_config`.
+
+    The interactor is not language-specific, so it is built without the
+    solution's language. Its time budget is its own, not a copy of the
+    solution's: both its wall and its CPU limit are the solution's wall plus a
+    fixed margin. A copied CPU limit let a slow interactor be killed while the
+    solution sat idle waiting for it, and the verdict then blamed the solution
+    (#893). A single-threaded interactor cannot use more CPU than wall time, so
+    the CPU limit only catches a runaway one -- after the solution's own limits
+    have already had their say.
+    """
+    config = _get_execution_config(limits, sandbox_type)
+    solution_wall = (
+        solution_config.sandbox.wallTimeLimit
+        if solution_config.sandbox is not None
+        else None
+    )
+    # When the solution has no wall limit, neither process gets one.
+    if config.sandbox is not None and solution_wall is not None:
+        config.sandbox.wallTimeLimit = _interactor_wall_time(solution_wall)
+        config.sandbox.timeLimit = config.sandbox.wallTimeLimit
+    return config
+
+
 async def _run_communication_solution_on_testcase(
     solution: CodeItem,
     compiled_digest: str,
@@ -318,21 +347,9 @@ async def _run_communication_solution_on_testcase(
         )
 
         extra_config = _get_execution_config(limits, sandbox_type, language)
-        # The interactor is not language-specific, so it is built without the
-        # solution's language. Its wall time is set below from the solution's
-        # wall plus a fixed margin so it always outlives the solution.
-        interactor_extra_config = _get_execution_config(limits, sandbox_type)
-        if (
-            interactor_extra_config.sandbox is not None
-            and extra_config.sandbox is not None
-            and extra_config.sandbox.wallTimeLimit is not None
-        ):
-            interactor_extra_config.sandbox.wallTimeLimit = _interactor_wall_time(
-                extra_config.sandbox.wallTimeLimit
-            )
-        # When the solution has no wall limit (sandbox without soft timeout),
-        # neither process gets one, so the interactor still outlives the
-        # solution; the override above is correctly skipped.
+        interactor_extra_config = _get_interactor_execution_config(
+            limits, sandbox_type, extra_config
+        )
 
         output_path = get_testcase_output_path(testcase, output_dir, filestem)
         solution_error_path = output_path.with_suffix('.sol.err')

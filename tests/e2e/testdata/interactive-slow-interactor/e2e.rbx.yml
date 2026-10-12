@@ -1,0 +1,14 @@
+scenarios:
+  - name: run
+    description: >
+      Issue #893. The interactor runs on a time budget of its own, not on a
+      copy of the solution's. One that needs more CPU than the solution's
+      limit, while the solution only waits on it, must not get the solution
+      a TLE (or, for a solution that exits on the EOF the killed interactor
+      leaves behind, an RE).
+    steps:
+      - cmd: run
+        expect:
+          solutions:
+            sols/echo.cpp: ac
+            sols/echo.py: ac

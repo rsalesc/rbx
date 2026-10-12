@@ -1,0 +1,25 @@
+---
+name: "interactive-slow-interactor"
+type: communication
+timeLimit: 500
+memoryLimit: 256
+interactor:
+  path: "interactor.cpp"
+generators:
+  - name: "gen"
+    path: "gens/gen.cpp"
+testcases:
+  - name: "tests"
+    # `rounds us`: the interactor burns `us` microseconds of CPU per round.
+    # The second test costs it about 1.2 s, past the 2 x TL it used to inherit
+    # from the solution, and well within its own budget.
+    generators:
+      - name: "gen"
+        args: "10 0"
+      - name: "gen"
+        args: "100 12000"
+solutions:
+  - path: "sols/echo.cpp"
+    outcome: AC
+  - path: "sols/echo.py"
+    outcome: AC
