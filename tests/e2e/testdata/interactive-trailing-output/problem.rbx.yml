@@ -1,0 +1,30 @@
+---
+name: "interactive-trailing-output"
+type: communication
+timeLimit: 2000
+memoryLimit: 256
+interactor:
+  path: "interactor.cpp"
+generators:
+  - name: "gen"
+    path: "gens/gen.cpp"
+testcases:
+  - name: "tests"
+    # The second argument is how much the interactor writes after the query:
+    # from well inside to well past what the pipes hold on every platform.
+    generators:
+      - name: "gen"
+        args: "1 10"
+      - name: "gen"
+        args: "2 30000"
+      - name: "gen"
+        args: "3 200000"
+      - name: "gen"
+        args: "4 2000000"
+solutions:
+  - path: "sols/ac_early.cpp"
+    outcome: AC
+  - path: "sols/ac_early.py"
+    outcome: AC
+  - path: "sols/wa_early.cpp"
+    outcome: WA
