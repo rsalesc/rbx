@@ -7,6 +7,7 @@ from rbx.box.packaging.moj import mojtools
 from rbx.box.schema import TaskType
 from tests.rbx.box.packaging.moj.conftest import (
     build_entries,
+    embedded_driver,
     minimal_package,
     run_packager,
 )
@@ -169,7 +170,7 @@ def test_interactive_package_ships_the_upstream_driver(
     runs = list((into / 'scripts').glob('*/run.sh'))
     assert runs
     for run in runs:
-        assert run.read_bytes() == b'#!/bin/bash\n# newer\n'
+        assert embedded_driver(run) == b'#!/bin/bash\n# newer\n'
 
 
 def test_a_package_fetches_only_what_it_needs(testing_pkg, tmp_path, monkeypatch):

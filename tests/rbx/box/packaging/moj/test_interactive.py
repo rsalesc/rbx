@@ -15,6 +15,7 @@ from rbx.config import get_default_app_path
 from tests.rbx.box.packaging.moj.conftest import (
     PT_BLOCKS,
     build_entries,
+    embedded_driver,
     run_packager,
     with_statements,
 )
@@ -79,7 +80,7 @@ def test_every_language_runs_under_the_interactive_driver(moj_interactive_packag
     for lang_dir in lang_dirs:
         run = lang_dir / 'run.sh'
         prep = lang_dir / 'prep.sh'
-        assert run.read_bytes() == mojtools.vendored(mojtools.INTERACTIVE_RUN)
+        assert embedded_driver(run) == mojtools.vendored(mojtools.INTERACTIVE_RUN)
         assert prep.read_bytes() == mojtools.vendored(mojtools.INTERACTIVE_PREP_STUB)
         # rbx's own compile step is kept: the driver only replaces how it runs.
         assert (lang_dir / 'compile.sh').is_file()
@@ -274,3 +275,135 @@ def test_samples_are_written_into_the_statement(interactive_with_samples):
 def test_samples_ship_no_notes(interactive_with_samples):
     # With SAMPLE=no MOJ renders no sample notes; the explanation is in the text.
     assert not (interactive_with_samples / 'docs' / 'notes').exists()
+
+
+# What GNU time writes to `/tmp/{aluno,arbitro}.time` (`-f "%M %U"`), by how the
+# process ended.
+_EXITED_CLEANLY = '3456 0.01\n'
+_SEGFAULTED = 'Command terminated by signal 11\n3456 0.01\n'
+_SIGPIPED = 'Command terminated by signal 13\n3456 0.01\n'
+_EXITED_1 = 'Command exited with non-zero status 1\n3456 0.01\n'
+
+_EOF_WRONG = 'WRONG wrong output format Unexpected end of file - token expected\n'
+
+
+def _run_wrapper(
+    package: pathlib.Path,
+    tmp_path: pathlib.Path,
+    *,
+    driver: str,
+    aluno: str,
+    out: str,
+    arbitro: str = _EXITED_CLEANLY,
+) -> 'tuple[int, str]':
+    """Run the shipped `run.sh` with `driver` standing in for mojtools' one, and
+    `/tmp` pointing at a scratch dir holding what the driver would have left."""
+    jail_tmp = tmp_path / 'jail'
+    jail_tmp.mkdir()
+    (jail_tmp / 'aluno.time').write_text(aluno)
+    (jail_tmp / 'arbitro.time').write_text(arbitro)
+    (jail_tmp / 'out').write_text(out)
+    (jail_tmp / 'stderrlog').write_text('')
+
+    run = package / 'scripts' / 'cpp' / 'run.sh'
+    script = (
+        run.read_bytes()
+        .replace(embedded_driver(run), driver.encode())
+        .replace(b'/tmp/', f'{jail_tmp}/'.encode())
+    )
+    script_path = tmp_path / 'run.sh'
+    script_path.write_bytes(script)
+
+    result = subprocess.run(['bash', str(script_path)], timeout=10)
+    return result.returncode, (jail_tmp / 'stderrlog').read_text()
+
+
+@pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
+@pytest.mark.parametrize(
+    'aluno, out, expected',
+    [
+        # The cases the wrapper exists for (#895).
+        pytest.param(_SEGFAULTED, 'OK guessed 5\n', 3, id='crash-after-ok'),
+        pytest.param(_EXITED_1, 'OK guessed 5\n', 3, id='nonzero-after-ok'),
+        pytest.param(_SEGFAULTED, _EOF_WRONG, 3, id='crash-then-eof'),
+        # A real wrong answer stays one, crash or not.
+        pytest.param(_SEGFAULTED, 'WRONG expected 5, got 7\n', 0, id='crash-wa'),
+        # A contestant that ended cleanly keeps the arbiter's verdict.
+        pytest.param(_EXITED_CLEANLY, _EOF_WRONG, 0, id='clean-exit-eof'),
+        pytest.param(_EXITED_CLEANLY, 'OK guessed 5\n', 0, id='clean-exit-ok'),
+        # SIGPIPE is the arbiter having left first, not the contestant's fault.
+        pytest.param(_SIGPIPED, 'OK guessed 5\n', 0, id='sigpipe-after-ok'),
+        # No result at all is the driver's to decide.
+        pytest.param(_SEGFAULTED, '', 0, id='no-result'),
+    ],
+)
+def test_the_wrapper_turns_a_crashed_contestant_into_runtime_error(
+    moj_interactive_package, tmp_path, aluno, out, expected
+):
+    code, log = _run_wrapper(
+        moj_interactive_package, tmp_path, driver='exit 0\n', aluno=aluno, out=out
+    )
+    assert code == expected
+    assert ('Runtime Error' in log) == (expected == 3)
+
+
+@pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
+@pytest.mark.parametrize('driver_code', [1, 3])
+def test_the_wrapper_keeps_what_the_driver_decided(
+    moj_interactive_package, tmp_path, driver_code
+):
+    code, _ = _run_wrapper(
+        moj_interactive_package,
+        tmp_path,
+        driver=f'exit {driver_code}\n',
+        aluno=_EXITED_CLEANLY,
+        out='OK guessed 5\n',
+    )
+    assert code == driver_code
+
+
+@pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
+def test_the_wrapper_leaves_a_dead_arbiter_to_the_driver(
+    moj_interactive_package, tmp_path
+):
+    code, _ = _run_wrapper(
+        moj_interactive_package,
+        tmp_path,
+        driver='exit 0\n',
+        aluno=_SEGFAULTED,
+        arbitro='Command exited with non-zero status 1\n3456 0.01\n',
+        out='WRONG kept by the driver\n',
+    )
+    assert code == 0
+
+
+@pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
+def test_the_wrapper_leaves_a_time_limit_alone(moj_interactive_package, tmp_path):
+    # The time limit arrives as TERM; the contestant then dies of it, which must
+    # not turn the driver's result into a Runtime Error.
+    code, _ = _run_wrapper(
+        moj_interactive_package,
+        tmp_path,
+        # Like mojtools' driver: TERM is trapped, and it exits 0 (`sai_tl`).
+        driver='trap "exit 0" TERM; kill -TERM "$PPID"; sleep 5 & wait $!\n',
+        aluno='Command terminated by signal 15\n3456 0.01\n',
+        out='OK guessed 5\n',
+    )
+    assert code == 0
+
+
+def test_a_driver_containing_the_heredoc_delimiter_is_refused(
+    testing_pkg, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        mojtools,
+        'fetch_upstream',
+        lambda path: (
+            b'echo RBX_MOJTOOLS_DRIVER_EOF\n'
+            if path == mojtools.INTERACTIVE_RUN
+            else mojtools.vendored(path)
+        ),
+    )
+    _interactive_package(testing_pkg)
+    with pytest.raises(typer.Exit):
+        run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['tests']))
