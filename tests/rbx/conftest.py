@@ -122,6 +122,7 @@ def _isolate_global_state() -> Iterator[None]:
     from rbx.box import package as _package
     from rbx.box import state as _state
     from rbx.box.contest import contest_state as _contest_state
+    from rbx.box.sanitizers import issue_stack as _issue_stack
     from rbx.grading import grading_context as _gc
 
     original_cwd = os.getcwd()
@@ -142,9 +143,17 @@ def _isolate_global_state() -> Iterator[None]:
         _contest_state.selected_variant_id_var,
     ]
     snapshots = [(v, v.get()) for v in context_vars]
+    # The issue stack's default is a single accumulator shared by the whole
+    # process, and every CLI invocation prints it on the way out. An issue one
+    # test files (say, a memory limit warning under a faked `getrlimit`) would
+    # otherwise show up in the output of every later CLI test.
+    issue_stack_token = _issue_stack.issue_stack_var.set(
+        [_issue_stack.IssueAccumulator()]
+    )
     try:
         yield
     finally:
+        _issue_stack.issue_stack_var.reset(issue_stack_token)
         try:
             os.chdir(original_cwd)
         except (FileNotFoundError, OSError):

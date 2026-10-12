@@ -39,7 +39,10 @@ class CrashReportingMixin:
         """
         super()._print_error_renderables()  # type: ignore[misc]
         if self._crash_report_path is not None:
+            # `soft_wrap` keeps the path on one line: hard-wrapped at the
+            # console width, it can no longer be copied out of the terminal.
             self.error_console.print(  # type: ignore[attr-defined]
-                Text(f'\nCrash report written to {self._crash_report_path}')
+                Text(f'\nCrash report written to {self._crash_report_path}'),
+                soft_wrap=True,
             )
             self._crash_report_path = None

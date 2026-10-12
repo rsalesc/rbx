@@ -91,7 +91,7 @@ def test_preset_declaring_no_libraries_still_declares_testlib(tmp_path, monkeypa
     lists no libraries used to return an empty set, which left the builtin
     checkers compiling against an unresolvable `#include "testlib.h"`.
     """
-    _write_preset(tmp_path, 'min_version: "1.0.0"\n')
+    _write_preset(tmp_path, 'min_version: "2.0.0"\n')
     monkeypatch.chdir(tmp_path)
     libraries.get_declared_libraries.cache_clear()
 

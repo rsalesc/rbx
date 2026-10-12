@@ -703,7 +703,10 @@ int custom_function();
         assert all(c in '0123456789abcdef' for c in result.lower())
 
     async def test_compile_records_warning_logs_when_warnings_enabled(
-        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+        self,
+        testing_pkg: testing_package.TestingPackage,
+        mock_steps_with_caching,
+        monkeypatch,
     ):
         """Warning-bearing compiler logs are forwarded to the warning stack."""
         from rbx.box import setter_config
@@ -736,10 +739,11 @@ int custom_function();
             artifacts.logs = GradingLogsHolder(preprocess=[warning_log, clean_log])
             return True
 
-        monkeypatch.setattr(
-            'rbx.box.code.steps_with_caching.compile',
-            mock.AsyncMock(side_effect=compile_side_effect),
-        )
+        # Reuse the autouse mock rather than patching `compile` again: a
+        # `monkeypatch` torn down after that fixture would "restore" its
+        # MagicMock, leaving `steps_with_caching.compile` faked for every later
+        # test in the process.
+        mock_steps_with_caching.side_effect = compile_side_effect
         cfg = setter_config.get_setter_config()
         monkeypatch.setattr(cfg.warnings, 'enabled', True)
 

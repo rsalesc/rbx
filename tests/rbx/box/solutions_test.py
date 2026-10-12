@@ -3114,7 +3114,9 @@ async def test_the_clock_advances_on_a_frame_nobody_triggered(
 
     started = reporter._elapsed._started  # noqa: SLF001
     console.export_text(clear=True)
-    with patch('rbx.utils.time.monotonic', return_value=started + 42.0):
+    # Half a second past 42: `(started + 42.0) - started` can come back as
+    # 41.999..., which the whole-seconds format floors to `41s`.
+    with patch('rbx.utils.time.monotonic', return_value=started + 42.5):
         reporter.live.refresh()
 
     assert '42s' in console.export_text(clear=False)
