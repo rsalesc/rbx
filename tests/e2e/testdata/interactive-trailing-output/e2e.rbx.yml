@@ -1,0 +1,15 @@
+scenarios:
+  - name: run
+    description: >
+      Issue #891. A solution may answer and exit without reading output the
+      interactor is still writing. That output must be drained rather than
+      left to kill the interactor with SIGPIPE (or, through a capture tee,
+      block it until its wall time limit), so each solution gets the verdict
+      its answer earns -- not JUDGE_FAILED -- however much noise is pending.
+    steps:
+      - cmd: run
+        expect:
+          solutions:
+            sols/ac_early.cpp: ac
+            sols/ac_early.py: ac
+            sols/wa_early.cpp: wa

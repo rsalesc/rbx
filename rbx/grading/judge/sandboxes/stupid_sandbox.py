@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import typing
 from typing import List, Optional, Tuple
 
@@ -32,6 +33,19 @@ from rbx.grading.judge.sandbox import (
 logger = logging.getLogger(__name__)
 
 BUFFER_SIZE_BYTES = 1024 * 1024
+DRAIN_CHUNK_BYTES = 64 * 1024
+DRAIN_GRACE_SECONDS = 1.0
+
+
+def _drain(pipe: typing.IO[bytes]) -> None:
+    """Read `pipe` to EOF, discarding what comes out, then close it."""
+    try:
+        while os.read(pipe.fileno(), DRAIN_CHUNK_BYTES):
+            pass
+    except OSError:
+        pass
+    finally:
+        pipe.close()
 
 
 class StupidSandbox(SandboxBase):
@@ -407,7 +421,20 @@ class StupidSandbox(SandboxBase):
 
         program_params = self._get_program_params(params)
         program_params.io = self._get_io(params, pipe_io=True)
-        program_params.io.input = solution_input_pipe
+        # The solution gets its own copy of the read end it consumes, and the
+        # `Program` closes that copy when it is reaped. Ours stays open, so the
+        # interactor -- or its capture tee -- never writes into a pipe nobody
+        # holds: a solution may answer and exit without reading everything the
+        # interactor still has to say, and once it is gone we drain the rest
+        # (as BAPCtools' relay and problemtools do) instead of letting the
+        # interactor die of SIGPIPE, or block forever on a full pipe.
+        #
+        # The copy is a file object, not a bare fd: `Program` closes it more
+        # than once, and a second `os.close` could hit an unrelated fd that
+        # reused the number.
+        program_params.io.input = open(
+            os.dup(solution_input_pipe.fileno()), 'rb', buffering=0
+        )
         program_params.io.output = solution_output_pipe
         if stderr_tee is not None:
             program_params.io.stderr = stderr_tee.pipes.input
@@ -415,6 +442,7 @@ class StupidSandbox(SandboxBase):
         program = Program(command, program_params)
 
         results: List[Optional[SandboxLog]] = [None, None]
+        drainer: Optional[threading.Thread] = None
 
         num_processes = 2 + (2 if should_tee else 0) + (1 if should_tee_stderr else 0)
         for idx in range(num_processes):
@@ -425,8 +453,10 @@ class StupidSandbox(SandboxBase):
                 results[1] = self._get_sandbox_log(program_result, interactor_params)
                 results[1].exit_index = idx
 
-                interactor.pipes.output.close()
-                if should_tee:
+                # Whatever is being drained is closed by its drainer instead.
+                if drainer is None or should_tee:
+                    interactor.pipes.output.close()
+                if should_tee and drainer is None:
                     assert interactor_tee.pipes.output is not None
                     interactor_tee.pipes.output.close()
 
@@ -450,6 +480,13 @@ class StupidSandbox(SandboxBase):
                 if stderr_tee is not None:
                     assert stderr_tee.pipes.input is not None
                     stderr_tee.pipes.input.close()
+
+                # An interactor already reaped has had this pipe closed above.
+                if results[1] is None:
+                    drainer = threading.Thread(
+                        target=_drain, args=(solution_input_pipe,), daemon=True
+                    )
+                    drainer.start()
             elif should_tee and (pid in (solution_tee.pid, interactor_tee.pid)):
                 pass
             elif stderr_tee is not None and pid == stderr_tee.pid:
@@ -457,6 +494,16 @@ class StupidSandbox(SandboxBase):
             else:
                 raise RuntimeError(f'Unknown pid: {pid}')
 
+        # Every writer has been reaped by now, so the drainer is at EOF -- unless
+        # something the interactor spawned still holds the write end.
+        if drainer is not None:
+            drainer.join(DRAIN_GRACE_SECONDS)
+            if drainer.is_alive():
+                try:
+                    os.killpg(group_id, signal.SIGKILL)
+                except Exception:
+                    pass
+                drainer.join()
         for p in (interactor, program):
             p.close()
         if should_tee:
