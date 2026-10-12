@@ -2288,11 +2288,14 @@ SPEC = {
                             'value': {'kind': 'none'},
                         },
                         {
-                            'help': 'If set, will use the statement in the given '
-                            'language as the main one. Leave unset to use the '
-                            'Portuguese statement, or the topmost one without '
-                            'it. Every other `en`/`es` statement ships as a '
-                            'translation.',
+                            'help': 'If set, puts the statement in the given language '
+                            "in MOJ's main slot, `docs/enunciado.md`, which "
+                            'MOJ always serves as Portuguese; an `en`/`es` '
+                            'statement also fills its own slot, and a '
+                            'Portuguese statement it displaces is left out. '
+                            'Leave unset to use the Portuguese statement, or '
+                            'the topmost one without it. Every other '
+                            '`en`/`es` statement ships in its own slot.',
                             'kind': 'option',
                             'multiple': False,
                             'names': ['--language', '-l'],
@@ -3600,11 +3603,13 @@ SPEC = {
                                 {
                                     'help': 'If set, will report the title of '
                                     'the statement in the given '
-                                    'language. Leave unset to use the '
-                                    'Portuguese statement, or the '
-                                    'topmost one without it -- the one '
-                                    '`rbx package moj` would upload as '
-                                    'the main statement.',
+                                    'language, as `rbx package moj -l` '
+                                    "would put it in MOJ's main slot. "
+                                    'Leave unset to use the Portuguese '
+                                    'statement, or the topmost one '
+                                    'without it -- the one `rbx package '
+                                    'moj` would upload as the main '
+                                    'statement.',
                                     'kind': 'option',
                                     'multiple': False,
                                     'names': ['--language', '-l'],

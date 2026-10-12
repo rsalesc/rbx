@@ -971,11 +971,41 @@ def test_no_titles_key_without_a_differing_translation(
     assert 'titles' not in meta
 
 
-def test_the_portuguese_statement_takes_the_canonical_slot_by_default(
-    testing_pkg, tmp_path, monkeypatch
+def _out(capsys) -> str:
+    """Captured stdout with Rich's line wrapping undone."""
+    return ' '.join(capsys.readouterr().out.split())
+
+
+def test_a_topmost_portuguese_statement_takes_the_canonical_slot_quietly(
+    testing_pkg, tmp_path, monkeypatch, capsys
 ):
-    """Declared order does not matter: without `--language`, `pt` is the main
-    statement, since MOJ ignores an `enunciado.pt.md`."""
+    minimal_package(testing_pkg)
+    with_statements(
+        testing_pkg,
+        monkeypatch,
+        EN_AND_PT_BLOCKS,
+        languages=('pt', 'en'),
+        titles={'pt': 'Soma', 'en': 'Sum'},
+    )
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+
+    assert 'Em português.' in (into_path / 'docs' / 'enunciado.md').read_text()
+    assert 'In English.' in (into_path / 'docs' / 'enunciado.en.md').read_text()
+    out = _out(capsys)
+    assert 'topmost' not in out
+    assert 'Not shipping' not in out
+    assert 'docs/enunciado.md pt (default) -- main' in out
+    assert 'docs/enunciado.en.md en (default)' in out
+
+
+def test_the_portuguese_statement_takes_the_canonical_slot_by_default(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    """Declared order does not decide it: without `--language`, `pt` is the main
+    statement, since MOJ ignores an `enunciado.pt.md`. The topmost statement
+    still ships in its own slot, with a warning pointing at `-l`."""
     minimal_package(testing_pkg)
     with_statements(
         testing_pkg,
@@ -993,32 +1023,92 @@ def test_the_portuguese_statement_takes_the_canonical_slot_by_default(
     meta = json.loads((into_path / '.moj-meta.json').read_text())
     assert meta['display_title'] == 'Soma'
     assert meta['titles'] == {'en': 'Sum'}
+    out = _out(capsys)
+    assert 'The topmost statement is in en' in out
+    assert '-l en' in out
 
 
-def test_language_option_drops_the_portuguese_statement(
+def test_a_topmost_statement_moj_has_no_slot_for_is_an_error(
     testing_pkg, tmp_path, monkeypatch, capsys
 ):
-    """`--language en` puts English in the canonical slot. MOJ has no
-    `enunciado.pt.md`, so Portuguese is dropped with a warning rather than
-    shipped where nothing reads it."""
+    """Leaving the topmost statement out without being asked would package
+    something other than what the setter meant, so `-l` has to settle it."""
+    minimal_package(testing_pkg)
+    with_statements(
+        testing_pkg, monkeypatch, MULTILANG_BLOCKS, languages=('ru', 'pt', 'en')
+    )
+
+    with pytest.raises(typer.Exit):
+        run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
+    out = _out(capsys)
+    assert 'The topmost statement is in ru' in out
+    assert '-l pt' in out
+    assert '-l ru' in out
+
+
+def test_language_option_settles_a_topmost_statement_without_a_slot(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    minimal_package(testing_pkg)
+    with_statements(
+        testing_pkg, monkeypatch, MULTILANG_BLOCKS, languages=('ru', 'pt', 'en')
+    )
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples']), main_language='pt'
+    )
+
+    docs = into_path / 'docs'
+    assert 'Em português.' in (docs / 'enunciado.md').read_text()
+    assert 'In English.' in (docs / 'enunciado.en.md').read_text()
+    assert not (docs / 'enunciado.ru.md').exists()
+    assert 'chosen with -l pt' in _out(capsys)
+
+
+def test_language_option_shadows_the_portuguese_statement(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    """`--language en` puts English in the canonical slot, which MOJ serves as
+    Portuguese, and in its own `en` slot too. MOJ has no `enunciado.pt.md`, so
+    the Portuguese statement is dropped with a warning rather than shipped where
+    nothing reads it -- but the flag is honored."""
     into_path = _multilang_package(
         testing_pkg, tmp_path, monkeypatch, main_language='en'
     )
     docs = into_path / 'docs'
 
     assert 'In English.' in (docs / 'enunciado.md').read_text()
+    assert 'In English.' in (docs / 'enunciado.en.md').read_text()
+    assert 'in English' in (docs / 'notes' / 'sample001.en.md').read_text()
     assert 'En español.' in (docs / 'enunciado.es.md').read_text()
-    assert not (docs / 'enunciado.en.md').exists()
     assert not (docs / 'enunciado.pt.md').exists()
     meta = json.loads((into_path / '.moj-meta.json').read_text())
     assert meta['display_title'] == 'Sum'
     assert 'titles' not in meta
-    assert 'pt' in capsys.readouterr().out
+    out = _out(capsys)
+    assert 'Not shipping the pt statement' in out
+    assert '-l en puts the en statement in docs/enunciado.md' in out
+    assert 'chosen with -l en; MOJ serves this slot as Portuguese' in out
+
+
+def test_language_option_without_a_slot_of_its_own_fills_only_the_main_one(
+    testing_pkg, tmp_path, monkeypatch
+):
+    into_path = _multilang_package(
+        testing_pkg, tmp_path, monkeypatch, main_language='ru'
+    )
+    docs = into_path / 'docs'
+
+    assert 'По-русски.' in (docs / 'enunciado.md').read_text()
+    assert 'In English.' in (docs / 'enunciado.en.md').read_text()
+    assert 'En español.' in (docs / 'enunciado.es.md').read_text()
+    assert not (docs / 'enunciado.ru.md').exists()
 
 
 def test_without_a_portuguese_statement_the_first_declared_is_main(
-    testing_pkg, tmp_path, monkeypatch
+    testing_pkg, tmp_path, monkeypatch, capsys
 ):
+    """It fills the main slot and, since MOJ serves that slot as Portuguese, its
+    own slot too, so a Spanish reader gets it labelled as Spanish."""
     minimal_package(testing_pkg)
     with_statements(
         testing_pkg,
@@ -1032,10 +1122,14 @@ def test_without_a_portuguese_statement_the_first_declared_is_main(
     )
 
     assert 'En español.' in (into_path / 'docs' / 'enunciado.md').read_text()
+    assert 'En español.' in (into_path / 'docs' / 'enunciado.es.md').read_text()
     assert 'In English.' in (into_path / 'docs' / 'enunciado.en.md').read_text()
     meta = json.loads((into_path / '.moj-meta.json').read_text())
     assert meta['display_title'] == 'Suma'
     assert meta['titles'] == {'en': 'Sum'}
+    out = _out(capsys)
+    assert 'Not shipping' not in out
+    assert 'there is no Portuguese one; MOJ serves this slot as Portuguese' in out
 
 
 def test_one_statement_per_language_the_topmost_wins(

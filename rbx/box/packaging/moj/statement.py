@@ -24,6 +24,7 @@ facts worth carrying in your head:
 """
 
 import dataclasses
+import enum
 import pathlib
 import re
 from typing import Callable, Dict, List, Mapping, Optional, Sequence
@@ -119,18 +120,33 @@ def enunciado_path(language: Optional[str] = None) -> pathlib.PurePosixPath:
     return pathlib.PurePosixPath('docs') / f'enunciado{suffix}.md'
 
 
+class MainReason(enum.Enum):
+    """Why a statement fills MOJ's canonical slot."""
+
+    # The Portuguese statement: what the slot means to MOJ.
+    PORTUGUESE = 'portuguese'
+    # No Portuguese statement, so the topmost declared one.
+    TOPMOST = 'topmost'
+    # Named with `--language`.
+    FORCED = 'forced'
+
+
 @dataclasses.dataclass(frozen=True)
 class StatementSelection:
     """Which statements a MOJ package ships, and where.
 
-    `main` fills the canonical slot; `translations` is one statement per MOJ
-    language, keyed by that language; `skipped` are the statements the package
-    drops, each paired with the reason the setter is told.
+    `main` fills the canonical slot, picked for `reason`; `translations` is one
+    statement per MOJ language, keyed by that language, and holds `main` again
+    when MOJ has a dedicated slot for its language; `skipped` are the statements
+    the package drops, each paired with the reason the setter is told;
+    `warnings` are about the choice of `main` itself.
     """
 
     main: Optional[Statement]
     translations: Dict[str, Statement]
     skipped: List[tuple[Statement, str]]
+    reason: Optional[MainReason] = None
+    warnings: List[str] = dataclasses.field(default_factory=list)
 
 
 # How the statement's figures travel to MOJ. A code-level switch on purpose: both
@@ -204,47 +220,95 @@ def _headings(language: Optional[str]) -> Dict[str, str]:
     return _HEADINGS.get(moj_language(language), _HEADINGS[_DEFAULT_HEADING_LANGUAGE])
 
 
-def _select_main(
-    statements: List[Statement], main_language: Optional[str]
-) -> Statement:
-    """The statement for the canonical slot.
-
-    `main_language` picks it, and naming a language the problem has none in is
-    an error. Without one, the Portuguese statement is preferred, since that is
-    what the slot *means* to MOJ and a Portuguese statement anywhere else would
-    never be read; only a problem with none falls back to the topmost declared
-    statement, as everywhere else in rbx.
-    """
-    if main_language is None:
-        for statement in statements:
-            if moj_language(statement.language) == CANONICAL_LANGUAGE:
-                return statement
-        return statements[0]
+def _find_language(statements: List[Statement], language: str) -> Statement:
+    """The topmost statement declared in `language`, or a clean exit naming the
+    languages the problem does have."""
     for statement in statements:
-        if statement.language == main_language:
+        if statement.language == language:
             return statement
     available = '[/item], [item]'.join(
         sorted({statement.language for statement in statements})
     )
     console.console.print(
-        f'[error]No statement in language [item]{main_language}[/item].'
+        f'[error]No statement in language [item]{language}[/item].'
         f'[/error]\n[error]This problem has statements in: '
         f'[item]{available}[/item].[/error]'
     )
     raise typer.Exit(1)
 
 
+def _select_main(
+    statements: List[Statement], main_language: Optional[str]
+) -> tuple[Statement, MainReason, List[str]]:
+    """The statement for the canonical slot, why it was picked, and the warnings
+    that pick deserves.
+
+    - `main_language` (`--language`) always wins, and naming a language the
+      problem has no statement in is an error. Shadowing a Portuguese statement
+      is honored; `select_statements` reports it when it skips that statement.
+    - Without it, the Portuguese statement is preferred, since that is what the
+      slot *means* to MOJ. When it is not the topmost declared one, the topmost
+      is warned about: it still ships in its own slot if MOJ has one for it, and
+      is an error otherwise -- the setter put it first, and silently dropping it
+      would package something other than what they meant. `--language` resolves
+      it either way.
+    - A problem with no Portuguese statement falls back to the topmost declared
+      one, as everywhere else in rbx.
+    """
+    if main_language is not None:
+        return _find_language(statements, main_language), MainReason.FORCED, []
+
+    topmost = statements[0]
+    portuguese = next(
+        (s for s in statements if moj_language(s.language) == CANONICAL_LANGUAGE),
+        None,
+    )
+    if portuguese is None:
+        return topmost, MainReason.TOPMOST, []
+    if portuguese is topmost:
+        return portuguese, MainReason.PORTUGUESE, []
+
+    top_language = moj_language(topmost.language)
+    if top_language not in SUPPORTED_LANGUAGES:
+        supported = '[/item], [item]'.join(SUPPORTED_LANGUAGES)
+        console.console.print(
+            f'[error]The topmost statement is in [item]{topmost.language}[/item], '
+            f'which MOJ has no slot for: it reads Portuguese from '
+            f'[item]docs/enunciado.md[/item] and takes only '
+            f'[item]{supported}[/item] statements.[/error]\n'
+            f'[error]Pass [item]-l {portuguese.language}[/item] to ship the '
+            f'Portuguese statement as the main one and leave '
+            f'[item]{topmost.language}[/item] out, or '
+            f'[item]-l {topmost.language}[/item] to put it in the main slot, which '
+            f'MOJ serves as Portuguese.[/error]'
+        )
+        raise typer.Exit(1)
+    warning = (
+        f'The topmost statement is in [item]{topmost.language}[/item], but MOJ '
+        f'reads its main slot, [item]docs/enunciado.md[/item], as Portuguese: the '
+        f'[item]{portuguese.language}[/item] statement fills it, and '
+        f'[item]{topmost.language}[/item] ships as a translation. Pass '
+        f'[item]-l {topmost.language}[/item] to put it in the main slot instead.'
+    )
+    return portuguese, MainReason.PORTUGUESE, [warning]
+
+
 def select_statements(main_language: Optional[str] = None) -> StatementSelection:
     """Which statements a MOJ package ships, and where each lands.
 
-    The main statement fills `docs/enunciado.md` whatever its language, and the
-    body and `display_title` both resolve from it, so they can never come from
-    different languages. Every other statement in a language MOJ supports ships
-    as a translation, one per language (the topmost declared wins); the rest are
-    skipped, each with the reason the packager reports.
+    The main statement (see `_select_main`) fills `docs/enunciado.md` whatever
+    its language, and the body and `display_title` both resolve from it, so they
+    can never come from different languages. When MOJ has a dedicated slot for
+    the main statement's language (`en`/`es`), it fills that one too: MOJ serves
+    the main slot as Portuguese, so without the copy an English reader would get
+    the English text labelled `pt-BR`, and a contest offering only English would
+    have no English statement at all.
 
-    A Portuguese statement that is not the main one is skipped too: MOJ reads
-    Portuguese only from the canonical slot, so shipping it as
+    Every other statement in a language MOJ supports ships as a translation,
+    one per language (the topmost declared wins); the rest are skipped, each
+    with the reason the packager reports. A Portuguese statement that is not the
+    main one -- only `--language` can make that happen -- is skipped too: MOJ
+    reads Portuguese only from the canonical slot, so shipping it as
     `enunciado.pt.md` would be shipping a file nothing reads.
     """
     pkg = package.find_problem_package_or_die()
@@ -252,9 +316,13 @@ def select_statements(main_language: Optional[str] = None) -> StatementSelection
     if not statements:
         return StatementSelection(main=None, translations={}, skipped=[])
 
-    main = _select_main(statements, main_language)
+    main, reason, warnings = _select_main(statements, main_language)
     main_moj_language = moj_language(main.language)
     translations: Dict[str, Statement] = {}
+    if main_moj_language in SUPPORTED_LANGUAGES and (
+        main_moj_language != CANONICAL_LANGUAGE
+    ):
+        translations[main_moj_language] = main
     skipped: List[tuple[Statement, str]] = []
     for statement in statements:
         if statement is main:
@@ -265,17 +333,24 @@ def select_statements(main_language: Optional[str] = None) -> StatementSelection
             skipped.append(
                 (statement, f'MOJ supports only [item]{supported}[/item] statements')
             )
-        elif language == CANONICAL_LANGUAGE:
+        elif language == CANONICAL_LANGUAGE and main_moj_language != language:
             skipped.append(
                 (
                     statement,
-                    'MOJ reads Portuguese only from [item]docs/enunciado.md[/item], '
-                    f'which the [item]{main.language}[/item] statement fills',
+                    f'[item]-l {main_language}[/item] puts the '
+                    f'[item]{main.language}[/item] statement in '
+                    '[item]docs/enunciado.md[/item], the only slot MOJ reads '
+                    'Portuguese from. Drop [item]-l[/item] to ship the Portuguese '
+                    'statement as the main one',
                 )
             )
         elif language == main_moj_language:
             skipped.append(
-                (statement, f'the main statement is already in [item]{language}[/item]')
+                (
+                    statement,
+                    f'MOJ takes one [item]{language}[/item] statement, and the main '
+                    f'one ([item]{main.variant}[/item]) already fills its slot',
+                )
             )
         elif language in translations:
             skipped.append(
@@ -287,7 +362,13 @@ def select_statements(main_language: Optional[str] = None) -> StatementSelection
             )
         else:
             translations[language] = statement
-    return StatementSelection(main=main, translations=translations, skipped=skipped)
+    return StatementSelection(
+        main=main,
+        translations=translations,
+        skipped=skipped,
+        reason=reason,
+        warnings=warnings,
+    )
 
 
 def get_main_statement(main_language: Optional[str] = None) -> Optional[Statement]:
@@ -339,13 +420,53 @@ def get_translated_titles(main_language: Optional[str] = None) -> Dict[str, str]
     return titles
 
 
-def report_skipped(selection: StatementSelection) -> None:
-    """Warn about every statement the package drops, and why."""
+def report_selection(selection: StatementSelection) -> None:
+    """Warn about the choice of the main statement, and about every statement
+    the package drops, and why."""
+    for warning in selection.warnings:
+        console.console.print(f'[warning]{warning}[/warning]')
     for statement, reason in selection.skipped:
         console.console.print(
             f'[warning]Not shipping the [item]{statement.language}[/item] '
             f'statement ([item]{statement.variant}[/item]): {reason}.[/warning]'
         )
+
+
+def _main_slot_note(selection: StatementSelection) -> str:
+    assert selection.main is not None
+    language = selection.main.language
+    if selection.reason == MainReason.FORCED:
+        note = f'main, chosen with -l {language}'
+    elif selection.reason == MainReason.TOPMOST:
+        note = 'main, the topmost statement: there is no Portuguese one'
+    else:
+        note = 'main'
+    if moj_language(language) != CANONICAL_LANGUAGE:
+        note += '; MOJ serves this slot as Portuguese'
+    return note
+
+
+def report_slots(selection: StatementSelection) -> None:
+    """Say which statement went into which slot.
+
+    Printed last, so a setter who passed `-l` sees exactly what it did to the
+    package: which statement MOJ serves as Portuguese, and which slots the rest
+    landed in.
+    """
+    if selection.main is None:
+        return
+    rows = [(str(enunciado_path()), selection.main, _main_slot_note(selection))]
+    for language, statement in selection.translations.items():
+        rows.append((str(enunciado_path(language)), statement, ''))
+    width = max(len(path) for path, _, _ in rows)
+    lines = ['MOJ statement slots:']
+    for path, statement, note in rows:
+        suffix = f' -- {note}' if note else ''
+        lines.append(
+            f'  [item]{path.ljust(width)}[/item]  {statement.language} '
+            f'([item]{statement.variant}[/item]){suffix}'
+        )
+    console.console.print('\n'.join(lines))
 
 
 def moj_layout() -> statement_assets.RasterizingLayout:

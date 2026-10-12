@@ -419,6 +419,8 @@ class MojPackager(BasePackager):
         # Only an interactive package reads these: it renders them into the
         # statement's `## Exemplo` section. Filled by `package`.
         self._statement_samples: List[StatementSample] = []
+        # What `_write_statement` shipped, kept for the closing slot report.
+        self._statement_selection: Optional[moj_statement.StatementSelection] = None
 
         # The two axes are separate arguments because they are separate questions --
         # but of their product only one cell is legal. A probe pinned from the profile
@@ -748,7 +750,8 @@ class MojPackager(BasePackager):
             (into_path / moj_statement.enunciado_path()).write_text(DUMMY_STATEMENT)
             return
 
-        moj_statement.report_skipped(selection)
+        moj_statement.report_selection(selection)
+        self._statement_selection = selection
         self._write_statement_documents(into_path, selection.main, language=None)
         for language, statement in selection.translations.items():
             self._write_statement_documents(into_path, statement, language=language)
@@ -1656,6 +1659,8 @@ class MojPackager(BasePackager):
         self._write_solutions(into_path)
         self._write_language_scripts(into_path)
         self._report_time_limits()
+        if self._statement_selection is not None:
+            moj_statement.report_slots(self._statement_selection)
 
         shutil.make_archive(str(build_path / self.package_basename()), 'zip', into_path)
         return (build_path / self.package_basename()).with_suffix('.zip')
