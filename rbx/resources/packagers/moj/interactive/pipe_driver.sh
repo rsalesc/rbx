@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# EXPERIMENTAL (rbx package moj --experimental): rbx's own interactive driver.
+# rbx's own interactive driver for MOJ.
 #
 # `rbx_interact <contestant command...>` runs the contestant against the
 # interactor (/tmp/dir/arbitro, the problem's plain testlib interactor) through
@@ -33,13 +33,13 @@ rbx_interact() {
   mkfifo /tmp/fifo.in /tmp/fifo.out || rbx_judge_error "mkfifo failed"
 
   # Contestant: run from /tmp/dir, stdout opened before stdin so the two FIFO
-  # rendezvous pair up with the interactor's in the same order.
-  # Interactor: SIGPIPE ignored (it survives exec), so a contestant that leaves
-  # early surfaces as a testlib verdict instead of killing the interactor.
+  # rendezvous pair up with the interactor's in the same order. pipe starts the
+  # interactor with SIGPIPE ignored, so a contestant that leaves early surfaces
+  # as a testlib verdict instead of killing it.
   /tmp/dir/pipe -i /tmp/fifo.in -o /tmp/fifo.out \
     -e /tmp/rbx-contestant.err -E /tmp/rbx-interactor.err -- \
     /bin/bash -c 'cd /tmp/dir && exec "$@" >/tmp/fifo.out </tmp/fifo.in' rbx "$@" = \
-    /bin/bash -c 'trap "" PIPE; exec /tmp/dir/arbitro /tmp/in /dev/null' \
+    /tmp/dir/arbitro /tmp/in /dev/null \
     >/tmp/rbx-pipe.log 2>/tmp/rbx-pipe.err
   local pipe_rc=$?
 
