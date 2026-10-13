@@ -1,4 +1,4 @@
-"""`rbx package moj --experimental`: rbx's own interactive driver.
+"""rbx's own interactive driver for MOJ.
 
 The package ships BOCA's pipe.c (built by prep.sh next to the arbiter), the
 plain testlib interactor as the arbiter, and a run.sh per language that runs
@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
 
 
 @pytest.fixture
-def experimental_package(testing_pkg, tmp_path) -> pathlib.Path:
+def interactive_package(testing_pkg, tmp_path) -> pathlib.Path:
     testing_pkg.set_type(TaskType.COMMUNICATION)
     testing_pkg.add_file('interactor.cpp').write_text(INTERACTOR)
     testing_pkg.set_interactor('interactor.cpp')
@@ -49,26 +49,25 @@ def experimental_package(testing_pkg, tmp_path) -> pathlib.Path:
         testing_pkg,
         tmp_path,
         build_entries(tmp_path, ['tests']),
-        experimental=True,
     )
 
 
-def test_the_arbiter_is_the_plain_interactor(experimental_package):
-    text = (experimental_package / 'scripts' / 'arbitro.cpp').read_text()
+def test_the_arbiter_is_the_plain_interactor(interactive_package):
+    text = (interactive_package / 'scripts' / 'arbitro.cpp').read_text()
     assert 'registerInteraction' in text
     # No rbx prologue or epilogue: the arbiter exits with testlib's own codes.
     assert 'rbx_interactor_main' not in text
     assert '#include "testlib.h"' not in text
 
 
-def test_the_package_ships_bocas_pipe(experimental_package):
-    assert (experimental_package / 'scripts' / 'pipe.c').read_bytes() == (
+def test_the_package_ships_bocas_pipe(interactive_package):
+    assert (interactive_package / 'scripts' / 'pipe.c').read_bytes() == (
         APP / 'boca' / 'pipe.c'
     ).read_bytes()
 
 
-def test_prep_builds_pipe_after_mojtools_stub(experimental_package):
-    lang_dirs = [d for d in (experimental_package / 'scripts').iterdir() if d.is_dir()]
+def test_prep_builds_pipe_after_mojtools_stub(interactive_package):
+    lang_dirs = [d for d in (interactive_package / 'scripts').iterdir() if d.is_dir()]
     assert lang_dirs
     stub = mojtools.vendored(mojtools.INTERACTIVE_PREP_STUB).rstrip(b'\n')
     for lang_dir in lang_dirs:
@@ -76,15 +75,15 @@ def test_prep_builds_pipe_after_mojtools_stub(experimental_package):
         assert prep.read_bytes().startswith(stub)
         assert b'scripts/pipe.c' in prep.read_bytes()
         assert prep.stat().st_mode & 0o111
-    assert (experimental_package / 'scripts' / 'compare.sh').read_bytes() == (
+    assert (interactive_package / 'scripts' / 'compare.sh').read_bytes() == (
         mojtools.vendored(mojtools.INTERACTIVE_COMPARE_STUB)
     )
 
 
 def test_every_language_runs_its_own_command_through_the_driver(
-    experimental_package,
+    interactive_package,
 ):
-    for lang_dir in (experimental_package / 'scripts').iterdir():
+    for lang_dir in (interactive_package / 'scripts').iterdir():
         if not lang_dir.is_dir():
             continue
         run = (lang_dir / 'run.sh').read_text()
@@ -94,8 +93,8 @@ def test_every_language_runs_its_own_command_through_the_driver(
 
 
 @pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
-def test_the_scripts_are_valid_bash(experimental_package):
-    for script in (experimental_package / 'scripts').glob('*/*.sh'):
+def test_the_scripts_are_valid_bash(interactive_package):
+    for script in (interactive_package / 'scripts').glob('*/*.sh'):
         proc = subprocess.run(
             ['bash', '-n', str(script)], capture_output=True, text=True
         )

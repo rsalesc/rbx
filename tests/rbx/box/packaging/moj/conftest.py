@@ -90,7 +90,6 @@ def run_packager(
     timing_mode: Optional[TimingMode] = None,
     probe: Optional[ProbePackage] = None,
     reference_only: bool = False,
-    experimental: bool = False,
 ) -> pathlib.Path:
     # Packaging needs the time limits settled one way or the other, so the default
     # profile is written here for the tests that are about something else. The tests
@@ -112,7 +111,6 @@ def run_packager(
             timing_mode=timing_mode,
             probe=probe,
             reference_only=reference_only,
-            experimental=experimental,
         ).package(build_path, into_path, [])
     )
     return into_path
@@ -238,15 +236,3 @@ def moj_package_output(testing_pkg, tmp_path, capsys) -> str:
 
     run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
     return capsys.readouterr().out
-
-
-_DRIVER_DELIMITER = b'RBX_MOJTOOLS_DRIVER_EOF'
-
-
-def embedded_driver(run: pathlib.Path) -> bytes:
-    """The mojtools driver that rbx's interactive `run.sh` wrapper carries."""
-    text = run.read_bytes()
-    opening = b"<<'" + _DRIVER_DELIMITER + b"'\n"
-    start = text.index(opening) + len(opening)
-    end = text.index(b'\n' + _DRIVER_DELIMITER + b'\n', start)
-    return text[start:end] + b'\n'

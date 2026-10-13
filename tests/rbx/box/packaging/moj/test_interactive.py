@@ -1,21 +1,16 @@
 import pathlib
-import shutil
-import subprocess
 
 import pytest
 import typer
 
-from rbx.box.packaging.moj import mojtools
 from rbx.box.packaging.moj import packager as moj_packager
 from rbx.box.packaging.moj.packager import MojPackager
 from rbx.box.schema import TaskType
 from rbx.box.testcase_sample_utils import SampleTestcaseInteraction, StatementSample
 from rbx.box.testcase_utils import TestcaseInteractionEntry
-from rbx.config import get_default_app_path
 from tests.rbx.box.packaging.moj.conftest import (
     PT_BLOCKS,
     build_entries,
-    embedded_driver,
     run_packager,
     with_statements,
 )
@@ -31,8 +26,6 @@ int main(int argc, char *argv[]) {
   quitf(_ok, "guessed %d", x);
 }
 """
-
-INTERACTIVE_DIR = get_default_app_path() / 'packagers' / 'moj' / 'interactive'
 
 
 def _interactive_package(testing_pkg, interactor: str = INTERACTOR) -> None:
@@ -51,41 +44,6 @@ def moj_interactive_package(testing_pkg, tmp_path) -> pathlib.Path:
 
 def test_supports_interactive_problems():
     assert TaskType.COMMUNICATION in MojPackager.task_types()
-
-
-def test_ships_the_interactor_as_the_arbiter_instead_of_a_checker(
-    moj_interactive_package,
-):
-    scripts = moj_interactive_package / 'scripts'
-    assert not (scripts / 'checker.cpp').exists()
-    text = (scripts / 'arbitro.cpp').read_text()
-    # One self-contained file: MOJ compiles scripts/arbitro.cpp alone.
-    assert '#include "testlib.h"' not in text
-    assert 'registerInteraction' in text
-    assert text.startswith((INTERACTIVE_DIR / 'arbiter_prologue.cpp').read_text())
-    assert text.endswith((INTERACTIVE_DIR / 'arbiter_epilogue.cpp').read_text())
-
-
-def test_compare_is_the_interactive_stub(moj_interactive_package):
-    emitted = moj_interactive_package / 'scripts' / 'compare.sh'
-    assert emitted.read_bytes() == mojtools.vendored(mojtools.INTERACTIVE_COMPARE_STUB)
-    assert emitted.stat().st_mode & 0o111
-
-
-def test_every_language_runs_under_the_interactive_driver(moj_interactive_package):
-    lang_dirs = [
-        d for d in (moj_interactive_package / 'scripts').iterdir() if d.is_dir()
-    ]
-    assert lang_dirs
-    for lang_dir in lang_dirs:
-        run = lang_dir / 'run.sh'
-        prep = lang_dir / 'prep.sh'
-        assert embedded_driver(run) == mojtools.vendored(mojtools.INTERACTIVE_RUN)
-        assert prep.read_bytes() == mojtools.vendored(mojtools.INTERACTIVE_PREP_STUB)
-        # rbx's own compile step is kept: the driver only replaces how it runs.
-        assert (lang_dir / 'compile.sh').is_file()
-        for script in (run, prep):
-            assert script.stat().st_mode & 0o111
 
 
 def test_conf_allows_the_extra_processes_and_hides_the_example_box(
@@ -140,92 +98,6 @@ def test_refuses_a_non_cpp_interactor(testing_pkg, tmp_path, capsys):
     assert 'must be C++' in capsys.readouterr().out
 
 
-def test_refuses_a_testlib_that_cannot_throw_its_exit_code(
-    testing_pkg, tmp_path, capsys
-):
-    # A problem-local testlib.h wins over rbx's own; one too old to throw would
-    # exit() before the arbiter can print MOJ's verdict line.
-    testing_pkg.add_file('testlib.h').write_text(
-        '#pragma once\nvoid registerInteraction(int, char **) {}\n'
-    )
-    _interactive_package(testing_pkg)
-
-    with pytest.raises(typer.Exit):
-        run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['tests']))
-
-    assert 'too old' in capsys.readouterr().out
-
-
-# -- the arbiter, compiled and run --------------------------------------------
-
-
-@pytest.fixture
-def arbiter(moj_interactive_package, tmp_path) -> pathlib.Path:
-    gxx = shutil.which('g++')
-    if gxx is None:
-        pytest.skip('g++ not available')
-    binary = tmp_path / 'arbitro'
-    proc = subprocess.run(
-        [
-            gxx,
-            '-O2',
-            '-std=gnu++17',
-            '-o',
-            str(binary),
-            str(moj_interactive_package / 'scripts' / 'arbitro.cpp'),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if proc.returncode != 0:
-        pytest.fail(proc.stderr)
-    return binary
-
-
-def _judge(arbiter: pathlib.Path, tmp_path: pathlib.Path, test: str, contestant: str):
-    """Run the arbiter the way MOJ's driver does: test path in argv[1], the
-    contestant on stdin. Returns its exit code and last non-empty stderr line,
-    which is the verdict MOJ reads."""
-    input_path = tmp_path / 'in'
-    input_path.write_text(test)
-    proc = subprocess.run(
-        [str(arbiter), str(input_path)],
-        input=contestant,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    lines = [line for line in proc.stderr.splitlines() if line.strip()]
-    return proc.returncode, lines[-1] if lines else ''
-
-
-def test_arbiter_reports_accepted(arbiter, tmp_path):
-    code, last = _judge(arbiter, tmp_path, '7\n', '7\n')
-    assert code == 0
-    assert last.startswith('OK ')
-    assert 'guessed 7' in last
-
-
-def test_arbiter_reports_wrong_answer_with_the_testlib_message(arbiter, tmp_path):
-    code, last = _judge(arbiter, tmp_path, '7\n', '3\n')
-    assert code == 0
-    assert last == 'WRONG wrong answer expected 7, got 3'
-
-
-def test_arbiter_reports_a_contestant_that_left_as_wrong(arbiter, tmp_path):
-    code, last = _judge(arbiter, tmp_path, '7\n', '')
-    assert code == 0
-    assert last.startswith('WRONG ')
-
-
-def test_arbiter_reports_an_interactor_failure_as_a_judge_error(arbiter, tmp_path):
-    # An unreadable test is the interactor's fault: exiting non-zero without a
-    # WRONG line is what MOJ turns into a judge error, never AC.
-    code, last = _judge(arbiter, tmp_path, 'not-a-number\n', '7\n')
-    assert code != 0
-    assert not last.startswith(('OK', 'WRONG'))
-
-
 # -- the samples, written into the statement ----------------------------------
 
 
@@ -275,135 +147,3 @@ def test_samples_are_written_into_the_statement(interactive_with_samples):
 def test_samples_ship_no_notes(interactive_with_samples):
     # With SAMPLE=no MOJ renders no sample notes; the explanation is in the text.
     assert not (interactive_with_samples / 'docs' / 'notes').exists()
-
-
-# What GNU time writes to `/tmp/{aluno,arbitro}.time` (`-f "%M %U"`), by how the
-# process ended.
-_EXITED_CLEANLY = '3456 0.01\n'
-_SEGFAULTED = 'Command terminated by signal 11\n3456 0.01\n'
-_SIGPIPED = 'Command terminated by signal 13\n3456 0.01\n'
-_EXITED_1 = 'Command exited with non-zero status 1\n3456 0.01\n'
-
-_EOF_WRONG = 'WRONG wrong output format Unexpected end of file - token expected\n'
-
-
-def _run_wrapper(
-    package: pathlib.Path,
-    tmp_path: pathlib.Path,
-    *,
-    driver: str,
-    aluno: str,
-    out: str,
-    arbitro: str = _EXITED_CLEANLY,
-) -> 'tuple[int, str]':
-    """Run the shipped `run.sh` with `driver` standing in for mojtools' one, and
-    `/tmp` pointing at a scratch dir holding what the driver would have left."""
-    jail_tmp = tmp_path / 'jail'
-    jail_tmp.mkdir()
-    (jail_tmp / 'aluno.time').write_text(aluno)
-    (jail_tmp / 'arbitro.time').write_text(arbitro)
-    (jail_tmp / 'out').write_text(out)
-    (jail_tmp / 'stderrlog').write_text('')
-
-    run = package / 'scripts' / 'cpp' / 'run.sh'
-    script = (
-        run.read_bytes()
-        .replace(embedded_driver(run), driver.encode())
-        .replace(b'/tmp/', f'{jail_tmp}/'.encode())
-    )
-    script_path = tmp_path / 'run.sh'
-    script_path.write_bytes(script)
-
-    result = subprocess.run(['bash', str(script_path)], timeout=10)
-    return result.returncode, (jail_tmp / 'stderrlog').read_text()
-
-
-@pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
-@pytest.mark.parametrize(
-    'aluno, out, expected',
-    [
-        # The cases the wrapper exists for (#895).
-        pytest.param(_SEGFAULTED, 'OK guessed 5\n', 3, id='crash-after-ok'),
-        pytest.param(_EXITED_1, 'OK guessed 5\n', 3, id='nonzero-after-ok'),
-        pytest.param(_SEGFAULTED, _EOF_WRONG, 3, id='crash-then-eof'),
-        # A real wrong answer stays one, crash or not.
-        pytest.param(_SEGFAULTED, 'WRONG expected 5, got 7\n', 0, id='crash-wa'),
-        # A contestant that ended cleanly keeps the arbiter's verdict.
-        pytest.param(_EXITED_CLEANLY, _EOF_WRONG, 0, id='clean-exit-eof'),
-        pytest.param(_EXITED_CLEANLY, 'OK guessed 5\n', 0, id='clean-exit-ok'),
-        # SIGPIPE is the arbiter having left first, not the contestant's fault.
-        pytest.param(_SIGPIPED, 'OK guessed 5\n', 0, id='sigpipe-after-ok'),
-        # No result at all is the driver's to decide.
-        pytest.param(_SEGFAULTED, '', 0, id='no-result'),
-    ],
-)
-def test_the_wrapper_turns_a_crashed_contestant_into_runtime_error(
-    moj_interactive_package, tmp_path, aluno, out, expected
-):
-    code, log = _run_wrapper(
-        moj_interactive_package, tmp_path, driver='exit 0\n', aluno=aluno, out=out
-    )
-    assert code == expected
-    assert ('Runtime Error' in log) == (expected == 3)
-
-
-@pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
-@pytest.mark.parametrize('driver_code', [1, 3])
-def test_the_wrapper_keeps_what_the_driver_decided(
-    moj_interactive_package, tmp_path, driver_code
-):
-    code, _ = _run_wrapper(
-        moj_interactive_package,
-        tmp_path,
-        driver=f'exit {driver_code}\n',
-        aluno=_EXITED_CLEANLY,
-        out='OK guessed 5\n',
-    )
-    assert code == driver_code
-
-
-@pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
-def test_the_wrapper_leaves_a_dead_arbiter_to_the_driver(
-    moj_interactive_package, tmp_path
-):
-    code, _ = _run_wrapper(
-        moj_interactive_package,
-        tmp_path,
-        driver='exit 0\n',
-        aluno=_SEGFAULTED,
-        arbitro='Command exited with non-zero status 1\n3456 0.01\n',
-        out='WRONG kept by the driver\n',
-    )
-    assert code == 0
-
-
-@pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
-def test_the_wrapper_leaves_a_time_limit_alone(moj_interactive_package, tmp_path):
-    # The time limit arrives as TERM; the contestant then dies of it, which must
-    # not turn the driver's result into a Runtime Error.
-    code, _ = _run_wrapper(
-        moj_interactive_package,
-        tmp_path,
-        # Like mojtools' driver: TERM is trapped, and it exits 0 (`sai_tl`).
-        driver='trap "exit 0" TERM; kill -TERM "$PPID"; sleep 5 & wait $!\n',
-        aluno='Command terminated by signal 15\n3456 0.01\n',
-        out='OK guessed 5\n',
-    )
-    assert code == 0
-
-
-def test_a_driver_containing_the_heredoc_delimiter_is_refused(
-    testing_pkg, tmp_path, monkeypatch
-):
-    monkeypatch.setattr(
-        mojtools,
-        'fetch_upstream',
-        lambda path: (
-            b'echo RBX_MOJTOOLS_DRIVER_EOF\n'
-            if path == mojtools.INTERACTIVE_RUN
-            else mojtools.vendored(path)
-        ),
-    )
-    _interactive_package(testing_pkg)
-    with pytest.raises(typer.Exit):
-        run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['tests']))

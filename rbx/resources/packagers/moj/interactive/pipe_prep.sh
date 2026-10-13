@@ -1,7 +1,7 @@
 
 # ---------------------------------------------------------------------------
-# EXPERIMENTAL (rbx package moj --experimental): build the pipe runner next to
-# the arbiter. Appended by rbx to mojtools' prep stub above, so it is SOURCED on
+# rbx: build the pipe runner next to the arbiter. Appended by rbx to mojtools'
+# prep stub above, so it is SOURCED on
 # the judge host the same way, with $1 = the work dir (/tmp/dir in the jail):
 # no `exit`, only messages on stderr.
 #

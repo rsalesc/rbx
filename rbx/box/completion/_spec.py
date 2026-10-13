@@ -2327,19 +2327,6 @@ SPEC = {
                             'value': {'kind': 'none'},
                         },
                         {
-                            'help': 'EXPERIMENTAL. Judge an interactive problem with '
-                            "rbx's own driver instead of MOJ's: BOCA's pipe "
-                            'runner crosses the solution with the interactor, '
-                            'the verdict is decided as rbx does locally, and '
-                            'each language runs with the same command as in a '
-                            'batch problem.',
-                            'kind': 'option',
-                            'multiple': False,
-                            'names': ['--experimental'],
-                            'takes_value': False,
-                            'value': {'kind': 'none'},
-                        },
-                        {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
                             'multiple': False,

@@ -19,9 +19,9 @@ format), and named every test `001`/`002`, so a package had **no samples** and M
 published its first two secret tests as the statement's examples (see [Samples are
 optional, but say so with
 `SAMPLE=no`](#samples-are-optional-but-say-so-with-sampleno)).
-It also covered interactive problems by smuggling its own run script and interactor
-build into the package; this one uses MOJ's own interactive driver instead -- see
-[Interactive problems](#interactive-problems).
+Its interactive support smuggled a run script and an interactor build into the
+package; this one ships rbx's own driver through the overrides mojtools documents --
+see [Interactive problems](#interactive-problems).
 
 ## The two rules that shape everything
 
@@ -32,7 +32,9 @@ copy, because mojtools does not exist in there. A package carrying its own bridg
 copy is what replicated one `bwrap` bug into **198 packages**, where the fix in
 mojtools reached none of them. `scripts/compare.sh` is therefore mojtools' own
 canonical `testlib/compare-stub.sh` — see [MOJ's own files come from
-mojtools](#mojs-own-files-come-from-mojtools) for where rbx gets it.
+mojtools](#mojs-own-files-come-from-mojtools) for where rbx gets it. The one
+deliberate exception is an interactive package's `prep.sh`, which appends rbx's own
+`pipe.c` build to mojtools' stub -- see [Interactive problems](#interactive-problems).
 
 **2. The checker is one file.** `checker-bridge.sh` compiles the package's checker
 under `bwrap` with **only** `checker.cpp` and `testlib.h` bound into `/tmp`, and
@@ -56,8 +58,7 @@ time a package is built:
 |---|---|---|
 | `testlib/compare-stub.sh` | `scripts/compare.sh` | batch |
 | `interactive/compare-stub.sh` | `scripts/compare.sh` | interactive |
-| `interactive/prep-stub.sh` | `scripts/<lang>/prep.sh` | interactive |
-| `interactive/run.sh` | `scripts/<lang>/run.sh`, inside rbx's wrapper | interactive |
+| `interactive/prep-stub.sh` | `scripts/<lang>/prep.sh`, followed by rbx's pipe build | interactive |
 
 The fallback is the snapshot bundled at `rbx/resources/packagers/moj/mojtools/`,
 mirroring upstream's layout byte for byte, with the commit it was taken from in
@@ -75,8 +76,7 @@ Why GitHub and not MOJ's own `GET /problems/script-templates` (which serves the 
 files resolved from the server's mojtools, and matched the snapshot when checked):
 it needs a login, and rbx never talks to the MOJ API itself — the `moj` CLI does, and
 it has no command for templates. `master` may run ahead of what the judge park has
-deployed; the stubs only point at `$MOJTOOLS_DIR/...` paths, so that only matters for
-`run.sh`, and a newer driver is what a fresh `moj interactive` would install anyway.
+deployed; the stubs only point at `$MOJTOOLS_DIR/...` paths, so it rarely matters.
 
 Tests never reach the network: an autouse fixture in `tests/rbx/box/conftest.py`
 makes "upstream" serve the snapshot, and `test_mojtools.py` overrides it.
@@ -396,7 +396,7 @@ back to `ls *.class` — locale-dependent once javac emits nested `Main$X.class`
 `-encoding UTF-8`. Without them a judge rootfs with `LANG=pt_BR` makes
 `Scanner.nextDouble()` reject `5.5`, and accented output comes out as `?`. rbx ships
 its own templates, so upstream's fix only reaches a package through this copy.
-(Interactive packages run mojtools' driver `run.sh`, which already carries them.)
+(Interactive packages run these same commands through rbx's driver.)
 
 **Java sources are renamed to their public type inside the jail**, by
 `scripts/java/compile.sh`, before javac runs. javac is the only party that requires the
@@ -608,56 +608,75 @@ used to write wiped whatever a setter had set on the web at every re-upload.
 
 ## Interactive problems
 
-MOJ judges an interactive problem with its own driver, `mojtools/interactive/`
-(upstream since mid-2025; a mojtools checkout older than that has no such dir). There
-is no `conf` flag: a problem is interactive because its scripts say so.
-
-**MOJ's protocol.** The driver's `run.sh` starts the contestant and `arbitro /tmp/in`
-in the **same jail**, wired through two FIFOs. The arbiter gets the test input and
-nothing else -- never `tests/output/N` -- and reports through the **last non-empty
-line of its stderr**: `WRONG <reason>` is WA, any other line is AC, and a non-zero
-exit without a `WRONG` line is a judge error (or RE, when the contestant died). No
-checker runs after the interaction. The interactive `compare.sh` then reads that line.
-
-**The interactor *is* the arbiter.** `scripts/arbitro.cpp` is the problem's testlib
-interactor, amalgamated like the checker, between two vendored pieces:
+rbx judges an interactive problem on MOJ with **its own driver**, not mojtools'
+(`mojtools/interactive/run.sh`), and nothing on the judge changes for it. mojtools
+documents the override this rests on: `build-and-test.sh` takes a package's
+`scripts/<lang>/{compile,run,prep}.sh` and `scripts/compare.sh` before its own (README
+§7). There is no `conf` flag: a problem is interactive because its scripts say so. The
+layout is BOCA's, moved onto MOJ:
 
 ```
-interactive/arbiter_prologue.cpp   #define TESTLIB_THROW_EXIT_EXCEPTION_INSTEAD_OF_EXIT
-                                   #define main rbx_interactor_main
-<the interactor, testlib inlined>
-interactive/arbiter_epilogue.cpp   #undef main + the real main()
+scripts/arbitro.cpp        the plain interactor, amalgamated: exits with testlib's own
+                           codes, which pipe.c and the driver read
+scripts/pipe.c             BOCA's pipe.c, byte for byte (rbx/resources/packagers/boca/)
+scripts/<lang>/prep.sh     mojtools' prep stub (compiles arbitro.cpp) + interactive/pipe_prep.sh
+scripts/<lang>/run.sh      the language's own batch run.sh + interactive/pipe_driver.sh
+scripts/compare.sh         mojtools' interactive compare stub
 ```
 
-That testlib switch makes `quit`/`quitf` **throw** its exit code instead of calling
-`exit()`, so the epilogue's `main` gets control back in the same process -- no fork.
-It calls the interactor with `/dev/null` as the output file, captures testlib's stderr
-to a file meanwhile, then relays it and prints the verdict as the last line (`OK`,
-`WRONG <testlib message>`, or a non-zero exit for `_fail`/`_points`). It ends in
-`_exit()`, because testlib's static finalize guard would otherwise get a say, and
-flushes `std::cout` first, since `_exit` skips that. It also ignores `SIGPIPE`, so a
-contestant that closes its pipe early surfaces as a testlib read error, i.e. WA.
+**What MOJ provides.** The arbiter gets the test input and nothing else -- never
+`tests/output/N` -- and no checker runs after the interaction. Out of the jail come two
+things only: `run.sh`'s exit code and `/tmp/out`. `build-and-test.sh` decides TLE first
+(wall clock of the whole jail), then a non-zero exit is RE, then `compare.sh` reads
+`/tmp/out`: `WRONG <reason>` is WA, any other line AC, nothing at all a judge error (UE).
+The jail binds **only** `run.sh` (as `/tmp/script`) plus the work dir as `/tmp/dir`, so
+everything the driver needs is either inside `run.sh` or built into the work dir.
+
+**`prep.sh` builds `pipe` next to the arbiter.** `build-and-test.sh` sources it on the
+host once per submission (`. prep.sh $workdir`, with `CAGE_ROOT`, `MOJTOOLS_DIR` and
+`PROBLEMTEMPLATEDIR` set). The mojtools stub compiles `arbitro.cpp`; the appended rbx
+block compiles `scripts/pipe.c` into `$workdir/pipe` -- `/tmp/dir/pipe` in the jail --
+the same way: host `gcc`, else the jail rootfs's through `bwrap`, `-static`, cached by
+source + compiler under `.rbx-pipe-cache`. This is host-side code in the package, which
+the stub rule below otherwise forbids: it is the price of owning the driver.
+
+**`run.sh` is the language's batch `run.sh`**, with each `exec <command> < /tmp/in >
+/tmp/out` rewritten to `rbx_interact <command>` and the driver function inserted after
+the shebang (`supervised_run_script`). Every language runs exactly as in a batch problem
+-- JVM flags, PyPy fallback, stack sizing -- rather than through mojtools' hard-coded
+`case` on `$BIN`'s extension.
+
+**`rbx_interact` runs `pipe`** with both sides on FIFOs, the contestant through `bash -c
+'cd /tmp/dir && exec "$@" >fifo.out <fifo.in'` (stdout first, so the two FIFO rendezvous
+pair up with the interactor's). `pipe` starts the interactor with **SIGPIPE ignored**:
+measured on Linux, a contestant that leaves without reading otherwise kills the
+interactor in ~45% of runs -- a judge error where the verdict is WA. That fix lives in
+`pipe.c`, so BOCA has it too (`tests/rbx/box/packaging/boca/test_pipe.py`, Linux only).
+
+**The ladder (bash, `pipe_driver.sh`) decides by cause, not only by `pipe`'s exit
+order:**
+
+- the interactor failed (`_fail`, `_points`, a crash) -> judge error, unless the
+  contestant ended first and failed (then RE);
+- the interactor rejected for any reason but EOF -> WA (`pipe` has already SIGTERMed a
+  contestant still running, so it cannot turn into TLE: #894);
+- the contestant failed (non-zero, or a signal other than SIGPIPE) -> RE, whether the
+  interactor then accepted or only reported the EOF it left behind (#895);
+- otherwise, the interactor's verdict.
+
+A 143 after the interactor rejected first is `pipe`'s own SIGTERM, not a failure; a 141
+is a write into a pipe the interactor had already left, no failure either (`pipe.c` reads
+it as SIGPIPE too, beside safeexec's code 10). Exit 3 is RE; every judge-side failure
+exits 0 with `/tmp/out` empty (UE), since a non-zero exit would blame the contestant.
 
 The packager **refuses**:
 
 - a **legacy** interactor (`legacy: true`, interactor + checker): MOJ runs no checker
   after the interaction and never hands the arbiter the answer file;
-- a **non-C++** interactor: MOJ compiles `arbitro.cpp` itself, from one file;
-- a **testlib without the throw switch** (a problem-local `testlib.h` too old):
-  testlib would `exit()` before the epilogue could print the verdict.
+- a **non-C++** interactor: MOJ compiles `arbitro.cpp` itself, from one file.
 
-**Scripts.** Following "stub on the host, copy in the jail": `scripts/compare.sh` is
-`interactive/compare-stub.sh` and every `scripts/<lang>/prep.sh` is
-`interactive/prep-stub.sh` (both run on the host and call into mojtools; `prep` is
-what compiles `arbitro.cpp`), while every `scripts/<lang>/run.sh` carries a **copy** of
-the driver `interactive/run.sh`, because it runs in the jail -- wrapped by rbx's
-`interactive/run_wrapper.sh` (see below). rbx keeps its own
-`compile.sh` per language; the driver picks the run command from `$BIN`'s extension
-(ELF, `.py`, `.jar`, ...), which rbx's compile scripts already produce. The three
-driver files come from mojtools like the batch stub does — see below.
-
-**`conf`** gains `ULIMITS[-u]=10000` (the jail holds the contestant, the arbiter,
-`time` and `stdbuf`) and `SAMPLE=no` (a test's input is the interactor's, which the
+**`conf`** gains `ULIMITS[-u]=10000` (the jail holds the contestant, the arbiter, `pipe`
+and the shells around them) and `SAMPLE=no` (a test's input is the interactor's, which the
 contestant never sees).
 
 **The samples go into the statement text.** `SAMPLE=no` hides MOJ's examples box
@@ -681,84 +700,18 @@ the parsed `.pio`/`.interaction`). That call is async, which is why
 the MOJ Markdown gate that rejects a setter's own fences and examples headings; the
 explanations inside it still are.
 
-**Time limits are the trap.** MOJ times the whole jail's **wall clock** -- contestant,
-arbiter and interpreter startup together -- while `rbx time -p moj` estimated the
-solution alone. Measured on the judge: a Python solution that crashed after 0.05s of
-CPU took 0.11s of wall and came back TLE under a pinned 100ms limit. The packager
-warns about it whenever it pins interactive limits; it does not add the headroom
-itself.
+**Time limits are the trap, and no package can fix it.** MOJ times the whole jail's
+**wall clock** -- contestant, interactor and interpreter startup together -- while `rbx
+time -p moj` estimated the solution alone. Measured on the judge: a Python solution that
+crashed after 0.05s of CPU took 0.11s of wall and came back TLE under a pinned 100ms
+limit. The packager warns about it whenever it pins interactive limits; it does not add
+the headroom itself.
 
-**A crashed contestant is Runtime Error, through rbx's wrapper (#895).** mojtools'
-driver lets the arbiter's result win over how the contestant ended, so on its own a
-contestant that crashes mid-interaction is WA (the interactor then complains about end
-of file) and one that answers correctly and then crashes is AC. rbx, Polygon and
-DOMjudge call both RE. `scripts/<lang>/run.sh` is therefore rbx's
-`interactive/run_wrapper.sh`, carrying mojtools' driver **verbatim** in a quoted
-heredoc (the jail binds only `run.sh`, as `/tmp/script`, so the driver cannot be a
-sibling file -- the wrapper writes it to `/tmp` and runs it). After the driver exits 0,
-and only if no TERM arrived (the time limit) and the arbiter itself ended cleanly, the
-wrapper reads `/tmp/aluno.time`: a contestant that exited non-zero or died of a signal
-other than SIGPIPE turns a non-`WRONG` result, or a `WRONG` that only says
-`Unexpected end of file` (the same test as `checkers._is_testlib_eof`), into `exit 3`,
-the driver's own RE. Every other `WRONG` stays WA. MOJ supports this officially:
-mojtools' README §7 has `build-and-test.sh` take `<pacote>/scripts/<lang>/run.sh`
-before its own.
-
-The wrapper leans on the driver's private files (`/tmp/out`, `/tmp/{aluno,arbitro}.time`,
-GNU time's wording, exit 3). If upstream renames any of them, the rule silently stops
-firing and the verdicts go back to the driver's own, never to something wrong. When
-upstream adopts the rule itself, the driver exits 3 first and the wrapper passes it
-through. Packaging refuses a driver that contains the heredoc delimiter.
-
-**Still differs from rbx:** an interactor that has decided WA while the contestant
-**hangs** is overridden by the wall-clock **TLE**: the driver waits for the contestant.
-
-### EXPERIMENTAL: rbx's own driver (`rbx package moj --experimental`)
-
-An opt-in mode that replaces mojtools' driver with rbx's, without touching anything on
-the judge. It is BOCA's interactive layout, moved onto MOJ:
-
-```
-scripts/arbitro.cpp        the plain interactor, amalgamated (no prologue/epilogue):
-                           exits with testlib's own codes, which pipe.c needs to see
-scripts/pipe.c             BOCA's pipe.c, byte for byte (rbx/resources/packagers/boca/)
-scripts/<lang>/prep.sh     mojtools' prep stub (compiles arbitro.cpp) + interactive/pipe_prep.sh
-scripts/<lang>/run.sh      the language's own batch run.sh + interactive/pipe_driver.sh
-scripts/compare.sh         mojtools' interactive compare stub, unchanged
-```
-
-- **`prep.sh` builds `pipe` next to the arbiter.** `build-and-test.sh` sources it on
-  the host once per submission (`. prep.sh $workdir`, with `CAGE_ROOT` and
-  `PROBLEMTEMPLATEDIR` set), so the appended block compiles `scripts/pipe.c` into
-  `$workdir/pipe` -- `/tmp/dir/pipe` in the jail -- exactly as mojtools compiles the
-  arbiter: host `gcc`, else the jail rootfs's through `bwrap`, `-static`, cached by
-  source + compiler under `.rbx-pipe-cache`. This is host-side code in the package,
-  which the stub rule otherwise forbids; it is what the experiment is for.
-- **`run.sh` is the language's batch `run.sh`**, with each `exec <command> < /tmp/in >
-  /tmp/out` rewritten to `rbx_interact <command>` and the driver function inserted
-  after the shebang (`supervised_run_script`). Every language runs exactly as in a batch
-  problem -- JVM flags, PyPy fallback, stack sizing -- instead of through mojtools'
-  hard-coded `case` on `$BIN`'s extension.
-- **`rbx_interact` runs `pipe`** with both sides on FIFOs: the contestant through `bash
-  -c 'cd /tmp/dir && exec "$@" >fifo.out <fifo.in'` (stdout first, so the two FIFO
-  rendezvous pair up), the interactor with SIGPIPE ignored. That last part matters:
-  measured on Linux, a contestant that exits without reading kills a default-SIGPIPE
-  interactor in ~45% of runs, a judge error where the verdict is WA (BOCA likely shares
-  this).
-
-**The ladder (bash, in `pipe_driver.sh`) decides by cause, not only by `pipe`'s exit
-order.** An interactor failure is a judge error (RE if the contestant ended first and
-failed); a rejection for any reason but EOF is WA (`pipe` has already SIGTERMed a
-contestant still running: #894); a contestant that failed (non-zero, or a signal other
-than SIGPIPE/141) is RE whether the interactor then accepted or only reported EOF
-(#895); a 143 after the interactor rejected first is `pipe`'s own SIGTERM, not a failure.
-Exit 3 is RE; every judge-side failure exits 0 with `/tmp/out` empty (UE), since a
-non-zero exit would blame the contestant. `pipe.c` gained one line for this: it also
-reads 141 as SIGPIPE (it only knew safeexec's code 10), which BOCA never produces.
-
-**Not fixable from a package, even here:** TLE is still `build-and-test.sh`'s, from the
-wall clock of the whole jail, so the interactor's own time and startup still count
-against the contestant; and MLE is still its RSS check.
+**Validated** on a 78-solution interactive stress set, test by test against rbx: 38/78
+agreed under mojtools' driver, 53/78 under this one with unmodified mojtools, 56/78 on
+the real MOJ judges. The rest are wall-clock TLEs (above), TLE where rbx says ILE, cases
+where rbx itself is off, and one deliberate choice: a contestant that dies of SIGPIPE
+writing after a correct answer is AC here, RE in rbx.
 
 ## Out of scope
 
