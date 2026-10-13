@@ -27,6 +27,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple, TypeVar
 import yaml
 from pydantic import BaseModel
 
+from rbx import utils
 from rbx.box.schema import ExpectedOutcome
 from rbx.grading.steps import Evaluation, Outcome
 
@@ -325,14 +326,18 @@ def write_report(path: pathlib.Path, report: RunReport) -> None:
     published schema, and no schema is published for this model. It also drops
     unset fields, which would make a client's parsing depend on which defaults
     happened to be explicit at the call site.
+
+    Written atomically: the report is rewritten after every solution while the
+    extension may be reading it, and a half-written file parses -- as an entry
+    missing the fields that say it failed.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    utils.write_text_atomic(
+        path,
         yaml.safe_dump(
             report.model_dump(mode='json', exclude_none=True),
             sort_keys=False,
             allow_unicode=True,
-        )
+        ),
     )
 
 
