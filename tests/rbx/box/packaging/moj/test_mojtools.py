@@ -7,7 +7,6 @@ from rbx.box.packaging.moj import mojtools
 from rbx.box.schema import TaskType
 from tests.rbx.box.packaging.moj.conftest import (
     build_entries,
-    embedded_driver,
     minimal_package,
     run_packager,
 )
@@ -19,7 +18,6 @@ ALL_FILES = [
     mojtools.CHECKER_COMPARE_STUB,
     mojtools.INTERACTIVE_COMPARE_STUB,
     mojtools.INTERACTIVE_PREP_STUB,
-    mojtools.INTERACTIVE_RUN,
 ]
 
 
@@ -67,15 +65,17 @@ def test_prefers_upstream_and_names_what_changed(monkeypatch, capsys):
     monkeypatch.setattr(
         mojtools,
         'fetch_upstream',
-        _upstream(overrides={mojtools.INTERACTIVE_RUN: b'#!/bin/bash\n# newer\n'}),
+        _upstream(
+            overrides={mojtools.INTERACTIVE_PREP_STUB: b'#!/bin/bash\n# newer\n'}
+        ),
     )
 
     files = mojtools.resolve(ALL_FILES)
 
     assert files.upstream
-    assert files.files[mojtools.INTERACTIVE_RUN] == b'#!/bin/bash\n# newer\n'
+    assert files.files[mojtools.INTERACTIVE_PREP_STUB] == b'#!/bin/bash\n# newer\n'
     out = capsys.readouterr().out
-    assert mojtools.INTERACTIVE_RUN in out
+    assert mojtools.INTERACTIVE_PREP_STUB in out
     assert mojtools.CHECKER_COMPARE_STUB not in out
 
 
@@ -87,8 +87,8 @@ def test_falls_back_to_the_bundled_copy_for_every_file_when_one_fails(
         mojtools,
         'fetch_upstream',
         _upstream(
-            overrides={mojtools.INTERACTIVE_RUN: b'newer'},
-            missing={mojtools.INTERACTIVE_PREP_STUB},
+            overrides={mojtools.INTERACTIVE_PREP_STUB: b'newer'},
+            missing={mojtools.INTERACTIVE_COMPARE_STUB},
         ),
     )
 
@@ -104,9 +104,9 @@ def test_falls_back_to_the_bundled_copy_for_every_file_when_one_fails(
 def test_fetches_from_mojtools_master():
     response = mock.Mock(content=b'data')
     with mock.patch.object(requests, 'get', return_value=response) as get:
-        assert REAL_FETCH_UPSTREAM(mojtools.INTERACTIVE_RUN) == b'data'
+        assert REAL_FETCH_UPSTREAM(mojtools.INTERACTIVE_PREP_STUB) == b'data'
     get.assert_called_once_with(
-        'https://raw.githubusercontent.com/cd-moj/mojtools/master/interactive/run.sh',
+        'https://raw.githubusercontent.com/cd-moj/mojtools/master/interactive/prep-stub.sh',
         timeout=mojtools.FETCH_TIMEOUT_SECONDS,
     )
 
@@ -117,14 +117,14 @@ def test_fetches_from_mojtools_master():
 )
 def test_a_network_failure_is_no_file(failure):
     with mock.patch.object(requests, 'get', side_effect=failure):
-        assert REAL_FETCH_UPSTREAM(mojtools.INTERACTIVE_RUN) is None
+        assert REAL_FETCH_UPSTREAM(mojtools.INTERACTIVE_PREP_STUB) is None
 
 
 def test_an_http_error_is_no_file():
     response = mock.Mock()
     response.raise_for_status.side_effect = requests.HTTPError('404')
     with mock.patch.object(requests, 'get', return_value=response):
-        assert REAL_FETCH_UPSTREAM(mojtools.INTERACTIVE_RUN) is None
+        assert REAL_FETCH_UPSTREAM(mojtools.INTERACTIVE_PREP_STUB) is None
 
 
 # -- the packager ships what resolve picked -------------------------------------
@@ -148,13 +148,15 @@ def test_batch_package_ships_the_upstream_compare_stub(
     assert compare.stat().st_mode & 0o111
 
 
-def test_interactive_package_ships_the_upstream_driver(
+def test_interactive_package_ships_the_upstream_prep_stub(
     testing_pkg, tmp_path, monkeypatch
 ):
     monkeypatch.setattr(
         mojtools,
         'fetch_upstream',
-        _upstream(overrides={mojtools.INTERACTIVE_RUN: b'#!/bin/bash\n# newer\n'}),
+        _upstream(
+            overrides={mojtools.INTERACTIVE_PREP_STUB: b'#!/bin/bash\n# newer\n'}
+        ),
     )
     testing_pkg.set_type(TaskType.COMMUNICATION)
     testing_pkg.add_file('interactor.cpp').write_text(
@@ -167,10 +169,11 @@ def test_interactive_package_ships_the_upstream_driver(
 
     into = run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['tests']))
 
-    runs = list((into / 'scripts').glob('*/run.sh'))
-    assert runs
-    for run in runs:
-        assert embedded_driver(run) == b'#!/bin/bash\n# newer\n'
+    preps = list((into / 'scripts').glob('*/prep.sh'))
+    assert preps
+    for prep in preps:
+        # rbx's pipe build follows the stub; the stub itself is upstream's.
+        assert prep.read_bytes().startswith(b'#!/bin/bash\n# newer\n')
 
 
 def test_a_package_fetches_only_what_it_needs(testing_pkg, tmp_path, monkeypatch):

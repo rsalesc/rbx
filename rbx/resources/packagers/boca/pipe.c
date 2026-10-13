@@ -6,6 +6,7 @@
 */
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +28,8 @@ struct process_args {
   char *input;
   char *output;
   char *stderr;
+  // Start the process with SIGPIPE ignored (the disposition survives exec).
+  int ignore_sigpipe;
 };
 
 struct parsed_args {
@@ -253,6 +256,11 @@ void fill_in_interactor_stdio(struct parsed_args *args) {
   if (args->interactor_stderr) {
     args->interactor_args.stderr = args->interactor_stderr;
   }
+  // A solution that exits without reading leaves the interactor writing into a
+  // pipe nobody reads. With the default disposition SIGPIPE kills it -- a judge
+  // error where the verdict is the solution's -- so the write must fail with
+  // EPIPE instead, and testlib then reports what it read.
+  args->interactor_args.ignore_sigpipe = 1;
 }
 
 void create_pipe(int *pip) {
@@ -268,6 +276,7 @@ int run_process(struct process_args *args) {
   fcntl(args->fd, F_SETFD, fcntl(args->fd, F_GETFD) & ~FD_CLOEXEC);
   int pid = fork();
   if (pid == 0) {
+    if (args->ignore_sigpipe) signal(SIGPIPE, SIG_IGN);
     if (args->input) freopen(args->input, "r", stdin);
     if (args->output) freopen(args->output, "w", stdout);
     if (args->stderr) freopen(args->stderr, "w", stderr);
@@ -349,7 +358,9 @@ int main(int argc, char *argv[]) {
       // A SIGPIPE'd solution means the interactor already closed its input and
       // is on its way out with a verdict; terminating it now would erase that
       // verdict. Its own watchdog still bounds it.
-      if (solution_status && solution_status != SAFEEXEC_INTERACTIVE_SIGPIPE)
+      // 128 + SIGPIPE is the same death reported without safeexec in between.
+      if (solution_status && solution_status != SAFEEXEC_INTERACTIVE_SIGPIPE &&
+          solution_status != 128 + SIGPIPE)
         if (kill(interactor_pid, SIGTERM)) {
           fprintf(stderr, "term interactor failed: %s\n", strerror(errno));
         }

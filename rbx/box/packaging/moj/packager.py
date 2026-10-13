@@ -112,9 +112,21 @@ DEFAULT_FLAGS = {
     'cpp': '-std=c++20 -O2 -lm -static',
 }
 
-# The testlib switch that makes `quit` throw its exit code rather than exit, which
-# is what lets the MOJ arbiter run the interactor in-process.
-_THROW_EXIT_MACRO = b'TESTLIB_THROW_EXIT_EXCEPTION_INSTEAD_OF_EXIT'
+# Where `interactive/pipe_driver.sh` takes the language's batch run.sh, and the
+# quoted-heredoc delimiter that carries it.
+_BATCH_RUN_SLOT = '{{batchRun}}'
+_BATCH_RUN_DELIMITER = 'RBX_BATCH_RUN_EOF'
+
+
+def interactive_run_script(batch_run: str, driver: str) -> str:
+    """An interactive problem's run.sh: `driver` (`interactive/pipe_driver.sh`)
+    with the language's batch run.sh embedded verbatim. The driver runs that very
+    script as the contestant, pointing its RBX_STDIN/RBX_STDOUT/RBX_STDERR at the
+    interactor's pipes, so every language runs exactly as in a batch problem."""
+    if _BATCH_RUN_DELIMITER in batch_run:
+        raise ValueError(f'run.sh contains {_BATCH_RUN_DELIMITER}, which embeds it')
+    return driver.replace(_BATCH_RUN_SLOT, batch_run.rstrip('\n'))
+
 
 # Suffixes the amalgamator can reduce to a single translation unit.
 _AMALGAMATABLE_SUFFIXES = {'.c', '.cc', '.cpp', '.cxx'}
@@ -1395,11 +1407,7 @@ class MojPackager(BasePackager):
         """
         if self._mojtools is None:
             paths = (
-                [
-                    mojtools.INTERACTIVE_COMPARE_STUB,
-                    mojtools.INTERACTIVE_PREP_STUB,
-                    mojtools.INTERACTIVE_RUN,
-                ]
+                [mojtools.INTERACTIVE_COMPARE_STUB, mojtools.INTERACTIVE_PREP_STUB]
                 if self._is_interactive()
                 else [mojtools.CHECKER_COMPARE_STUB]
             )
@@ -1415,6 +1423,14 @@ class MojPackager(BasePackager):
         return get_default_app_path() / 'packagers' / 'moj' / 'interactive' / name
 
     def _write_interactive(self, scripts_path: pathlib.Path) -> None:
+        """The arbiter, the pipe runner and the compare stub.
+
+        rbx judges an interactive problem with its own driver rather than mojtools':
+        `scripts/arbitro.cpp` is the plain interactor (mojtools' prep compiles it),
+        `scripts/pipe.c` is BOCA's pipe runner (rbx's prep block compiles it next to
+        the arbiter) and each language's run.sh crosses the two and decides the
+        verdict. See `_install_interactive_driver`.
+        """
         interactor = package.get_interactor()
         if interactor.path.suffix.lower() not in _AMALGAMATABLE_SUFFIXES:
             console.console.print(
@@ -1435,61 +1451,42 @@ class MojPackager(BasePackager):
             )
             raise typer.Exit(1)
 
-        amalgamated = self._amalgamate(interactor, 'interactor')
-        if _THROW_EXIT_MACRO not in amalgamated:
-            # Without it testlib calls exit() itself, and the arbiter never gets to
-            # turn the exit code into MOJ's verdict line.
-            console.console.print(
-                f'[error]Cannot package {interactor.href()} for MOJ: its testlib '
-                'is too old to support '
-                f'[item]{_THROW_EXIT_MACRO.decode()}[/item].[/error]\n'
-                "[error]Update the problem's testlib.h, or drop it to use rbx's "
-                'own.[/error]'
-            )
-            raise typer.Exit(1)
-
-        # The interactor IS the arbiter: testlib throws its exit code instead of
-        # exiting, and the epilogue's `main` turns it into MOJ's verdict line.
-        parts = [
-            self._interactive_template('arbiter_prologue.cpp').read_bytes(),
-            amalgamated,
-            b'\n',
-            self._interactive_template('arbiter_epilogue.cpp').read_bytes(),
-        ]
-        (scripts_path / 'arbitro.cpp').write_bytes(b''.join(parts))
-
+        # The interactor as it is, exiting with testlib's own codes: that is what
+        # pipe.c and the driver read.
+        (scripts_path / 'arbitro.cpp').write_bytes(
+            self._amalgamate(interactor, 'interactor')
+        )
+        # BOCA's pipe.c, shared rather than reimplemented.
+        shutil.copyfile(
+            get_default_app_path() / 'packagers' / 'boca' / 'pipe.c',
+            scripts_path / 'pipe.c',
+        )
         self._mojtools_files().write(
             mojtools.INTERACTIVE_COMPARE_STUB, scripts_path / 'compare.sh'
         )
 
     def _install_interactive_driver(self, lang_path: pathlib.Path) -> None:
-        """Swap a language's run.sh for MOJ's interactive driver, and add the prep
-        stub that materializes the arbiter. compile.sh stays rbx's own."""
+        """Turn a language's scripts into rbx's interactive driver. compile.sh stays.
+
+        - run.sh is `interactive/pipe_driver.sh` with the language's batch run.sh
+          embedded verbatim; the driver runs it as the contestant through pipe and
+          decides the verdict. See `interactive_run_script`.
+        - prep.sh is mojtools' prep stub, which compiles the arbiter, followed by
+          `interactive/pipe_prep.sh`, which builds pipe.c next to it.
+        """
         files = self._mojtools_files()
         run_path = lang_path / 'run.sh'
-        run_path.write_bytes(
-            self._wrap_interactive_driver(files.files[mojtools.INTERACTIVE_RUN])
+        prep_path = lang_path / 'prep.sh'
+        driver = self._interactive_template('pipe_driver.sh').read_text()
+        run_path.write_text(interactive_run_script(run_path.read_text(), driver))
+        prep_path.write_bytes(
+            files.files[mojtools.INTERACTIVE_PREP_STUB].rstrip(b'\n')
+            + b'\n'
+            + self._interactive_template('pipe_prep.sh').read_bytes()
         )
         run_path.chmod(0o755)
-        files.write(mojtools.INTERACTIVE_PREP_STUB, lang_path / 'prep.sh')
-
-    def _wrap_interactive_driver(self, driver: bytes) -> bytes:
-        """mojtools' interactive driver, embedded in rbx's wrapper.
-
-        The wrapper turns a contestant that crashed into Runtime Error where the
-        driver lets the arbiter's verdict win (rsalesc/rbx#895). The jail binds only
-        `run.sh`, so the driver travels inside it, as a quoted heredoc.
-        """
-        delimiter = b'RBX_MOJTOOLS_DRIVER_EOF'
-        if delimiter in driver:
-            console.console.print(
-                '[error]Cannot package for MOJ: the mojtools interactive driver '
-                f'contains [item]{delimiter.decode()}[/item], which rbx uses to '
-                'embed it.[/error]'
-            )
-            raise typer.Exit(1)
-        template = self._interactive_template('run_wrapper.sh').read_bytes()
-        return template.replace(b'{{mojtoolsDriver}}', driver.rstrip(b'\n'))
+        # build-and-test.sh only sources a prep.sh it can execute.
+        prep_path.chmod(0o755)
 
     # -- solutions ------------------------------------------------------------
 

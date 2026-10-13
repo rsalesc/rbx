@@ -1,8 +1,7 @@
 """MOJ's own driver files, taken from upstream mojtools whenever possible.
 
 Some files a MOJ package carries are not rbx's to write: the stubs that point the
-judge at mojtools' checker bridge and interactive driver, and the interactive driver
-itself, which has to be a real copy because it runs in the jail. They belong to
+judge at mojtools' checker bridge and at its interactive arbiter build. They belong to
 [mojtools](https://github.com/cd-moj/mojtools), and a copy that lags behind it is
 exactly how one bug ended up replicated across hundreds of MOJ packages.
 
@@ -10,7 +9,7 @@ So the packager fetches them from mojtools' `master` at packaging time, and fall
 back to the snapshot rbx bundles (`rbx/resources/packagers/moj/mojtools/`, at the
 commit in its `COMMIT` file) when it cannot. Either way it says so when the result
 is not what rbx bundles: a fetched file that differs means the snapshot is stale, and
-a failed fetch means the package may carry an outdated driver.
+a failed fetch means the package may carry outdated stubs.
 
 The set is resolved atomically: if any file fails to fetch, every file comes from
 the snapshot, so a package never mixes two mojtools versions.
@@ -30,7 +29,6 @@ FETCH_TIMEOUT_SECONDS = 5
 CHECKER_COMPARE_STUB = 'testlib/compare-stub.sh'
 INTERACTIVE_COMPARE_STUB = 'interactive/compare-stub.sh'
 INTERACTIVE_PREP_STUB = 'interactive/prep-stub.sh'
-INTERACTIVE_RUN = 'interactive/run.sh'
 
 
 def vendored_root() -> pathlib.Path:
