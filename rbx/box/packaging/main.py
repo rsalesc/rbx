@@ -195,9 +195,9 @@ async def moj(
         False,
         '--experimental',
         help="EXPERIMENTAL. Judge an interactive problem with rbx's own driver "
-        "instead of MOJ's: the arbiter runs the solution itself and decides the "
-        'verdict as rbx does locally, and each language runs with the same command '
-        'as in a batch problem.',
+        "instead of MOJ's: BOCA's pipe runner crosses the solution with the "
+        'interactor, the verdict is decided as rbx does locally, and each language '
+        'runs with the same command as in a batch problem.',
     ),
 ):
     from rbx.box.packaging.moj.packager import (

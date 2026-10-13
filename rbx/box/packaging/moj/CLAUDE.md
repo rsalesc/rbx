@@ -716,35 +716,45 @@ through. Packaging refuses a driver that contains the heredoc delimiter.
 ### EXPERIMENTAL: rbx's own driver (`rbx package moj --experimental`)
 
 An opt-in mode that replaces mojtools' driver with rbx's, without touching anything on
-the judge. Only two things in the package change:
+the judge. It is BOCA's interactive layout, moved onto MOJ:
 
-- **`scripts/arbitro.cpp` ends in `interactive/supervisor_epilogue.cpp`** instead of
-  `arbiter_epilogue.cpp`. The arbiter becomes a supervisor, the role BOCA's `pipe.c`
-  plays: called as `arbitro <input> -- <command...>`, it forks the contestant (exec'd,
-  own process group) and the interactor (its own testlib code, in a child), crosses
-  their pipes and reaps both. Being their parent it has the real wait statuses, so no
-  GNU `time` text is parsed. mojtools' `prep.sh` still compiles it, unchanged, which
-  is why no second compile path (or a separate runpipe binary) is needed.
-- **`scripts/<lang>/run.sh` is the language's own batch `run.sh`**, with each `exec
-  <command> < /tmp/in > /tmp/out` rewritten to `exec /tmp/dir/arbitro /tmp/in --
-  <command>` (`supervised_run_script`). Every language therefore runs exactly as in a
-  batch problem -- the JVM flags, PyPy fallback and stack sizing included -- instead of
-  through the driver's hard-coded `case` on `$BIN`'s extension.
+```
+scripts/arbitro.cpp        the plain interactor, amalgamated (no prologue/epilogue):
+                           exits with testlib's own codes, which pipe.c needs to see
+scripts/pipe.c             BOCA's pipe.c, byte for byte (rbx/resources/packagers/boca/)
+scripts/<lang>/prep.sh     mojtools' prep stub (compiles arbitro.cpp) + interactive/pipe_prep.sh
+scripts/<lang>/run.sh      the language's own batch run.sh + interactive/pipe_driver.sh
+scripts/compare.sh         mojtools' interactive compare stub, unchanged
+```
 
-`prep.sh` and `compare.sh` stay mojtools' stubs: the first already compiles
-`arbitro.cpp`, the second already maps `/tmp/out` to AC/WA/UE, and shipping host-side
-copies is what the stub rule forbids.
+- **`prep.sh` builds `pipe` next to the arbiter.** `build-and-test.sh` sources it on
+  the host once per submission (`. prep.sh $workdir`, with `CAGE_ROOT` and
+  `PROBLEMTEMPLATEDIR` set), so the appended block compiles `scripts/pipe.c` into
+  `$workdir/pipe` -- `/tmp/dir/pipe` in the jail -- exactly as mojtools compiles the
+  arbiter: host `gcc`, else the jail rootfs's through `bwrap`, `-static`, cached by
+  source + compiler under `.rbx-pipe-cache`. This is host-side code in the package,
+  which the stub rule otherwise forbids; it is what the experiment is for.
+- **`run.sh` is the language's batch `run.sh`**, with each `exec <command> < /tmp/in >
+  /tmp/out` rewritten to `rbx_interact <command>` and the driver function inserted
+  after the shebang (`supervised_run_script`). Every language runs exactly as in a batch
+  problem -- JVM flags, PyPy fallback, stack sizing -- instead of through mojtools'
+  hard-coded `case` on `$BIN`'s extension.
+- **`rbx_interact` runs `pipe`** with both sides on FIFOs: the contestant through `bash
+  -c 'cd /tmp/dir && exec "$@" >fifo.out <fifo.in'` (stdout first, so the two FIFO
+  rendezvous pair up), the interactor with SIGPIPE ignored. That last part matters:
+  measured on Linux, a contestant that exits without reading kills a default-SIGPIPE
+  interactor in ~45% of runs, a judge error where the verdict is WA (BOCA likely shares
+  this).
 
-**The verdict is decided by cause, not by reaping order.** A dying contestant closes
-its pipes before it becomes reapable, so the interactor's EOF rejection can be reaped
-first; on the real judges an `abort()` mid-game came back WA under an order-based
-ladder. So: an interactor failure is a judge error (RE if the contestant had already
-failed); a rejection for any reason but EOF is WA and kills a contestant still running
-(#894); a contestant that failed (non-zero, or a signal other than SIGPIPE) is RE
-whether the interactor then accepted or only reported EOF (#895); an EOF rejection
-waits up to `kEofGraceMs` for the contestant to finish dying before deciding. Exit 3 is
-RE; every judge-side failure exits 0 with `/tmp/out` empty (UE), since a non-zero exit
-would blame the contestant.
+**The ladder (bash, in `pipe_driver.sh`) decides by cause, not only by `pipe`'s exit
+order.** An interactor failure is a judge error (RE if the contestant ended first and
+failed); a rejection for any reason but EOF is WA (`pipe` has already SIGTERMed a
+contestant still running: #894); a contestant that failed (non-zero, or a signal other
+than SIGPIPE/141) is RE whether the interactor then accepted or only reported EOF
+(#895); a 143 after the interactor rejected first is `pipe`'s own SIGTERM, not a failure.
+Exit 3 is RE; every judge-side failure exits 0 with `/tmp/out` empty (UE), since a
+non-zero exit would blame the contestant. `pipe.c` gained one line for this: it also
+reads 141 as SIGPIPE (it only knew safeexec's code 10), which BOCA never produces.
 
 **Not fixable from a package, even here:** TLE is still `build-and-test.sh`'s, from the
 wall clock of the whole jail, so the interactor's own time and startup still count

@@ -1,14 +1,15 @@
 """`rbx package moj --experimental`: rbx's own interactive driver.
 
-The arbiter becomes a supervisor that runs the contestant itself, so these tests
-compile it once and judge small shell-script contestants with it, the way the
-language's run.sh would (`arbitro <input> -- <command...>`).
+The package ships BOCA's pipe.c (built by prep.sh next to the arbiter), the
+plain testlib interactor as the arbiter, and a run.sh per language that runs
+the two through pipe and decides the verdict. The verdict tests run that real
+run.sh with a stand-in `pipe` reporting a chosen exit order and statuses;
+pipe.c itself needs epoll, so it is exercised on Linux judges only.
 """
 
 import pathlib
 import shutil
 import subprocess
-import time
 
 import pytest
 
@@ -18,9 +19,8 @@ from rbx.box.schema import TaskType
 from rbx.config import get_default_app_path
 from tests.rbx.box.packaging.moj.conftest import build_entries, run_packager
 
-INTERACTIVE_DIR = get_default_app_path() / 'packagers' / 'moj' / 'interactive'
-SCRIPTS_DIR = get_default_app_path() / 'packagers' / 'moj' / 'scripts'
-TESTLIB_DIR = get_default_app_path() / 'predownloaded'
+APP = get_default_app_path() / 'packagers'
+DRIVER = (APP / 'moj' / 'interactive' / 'pipe_driver.sh').read_text()
 
 # Reads the hidden number from the input and one guess from the contestant.
 INTERACTOR = """#include "testlib.h"
@@ -53,39 +53,63 @@ def experimental_package(testing_pkg, tmp_path) -> pathlib.Path:
     )
 
 
-def test_the_arbiter_ends_in_the_supervisor(experimental_package):
+def test_the_arbiter_is_the_plain_interactor(experimental_package):
     text = (experimental_package / 'scripts' / 'arbitro.cpp').read_text()
-    assert text.endswith((INTERACTIVE_DIR / 'supervisor_epilogue.cpp').read_text())
+    assert 'registerInteraction' in text
+    # No rbx prologue or epilogue: the arbiter exits with testlib's own codes.
+    assert 'rbx_interactor_main' not in text
+    assert '#include "testlib.h"' not in text
 
 
-def test_every_language_hands_its_own_run_command_to_the_arbiter(
-    experimental_package,
-):
+def test_the_package_ships_bocas_pipe(experimental_package):
+    assert (experimental_package / 'scripts' / 'pipe.c').read_bytes() == (
+        APP / 'boca' / 'pipe.c'
+    ).read_bytes()
+
+
+def test_prep_builds_pipe_after_mojtools_stub(experimental_package):
     lang_dirs = [d for d in (experimental_package / 'scripts').iterdir() if d.is_dir()]
     assert lang_dirs
+    stub = mojtools.vendored(mojtools.INTERACTIVE_PREP_STUB).rstrip(b'\n')
     for lang_dir in lang_dirs:
-        run = (lang_dir / 'run.sh').read_text()
-        assert 'exec /tmp/dir/arbitro /tmp/in -- ' in run
-        assert '< /tmp/in > /tmp/out' not in run
-        assert (lang_dir / 'run.sh').stat().st_mode & 0o111
-        # The host-side stubs stay mojtools': prep.sh still compiles arbitro.cpp,
-        # which now carries the supervisor.
-        assert (lang_dir / 'prep.sh').read_bytes() == mojtools.vendored(
-            mojtools.INTERACTIVE_PREP_STUB
-        )
+        prep = lang_dir / 'prep.sh'
+        assert prep.read_bytes().startswith(stub)
+        assert b'scripts/pipe.c' in prep.read_bytes()
+        assert prep.stat().st_mode & 0o111
     assert (experimental_package / 'scripts' / 'compare.sh').read_bytes() == (
         mojtools.vendored(mojtools.INTERACTIVE_COMPARE_STUB)
     )
 
 
+def test_every_language_runs_its_own_command_through_the_driver(
+    experimental_package,
+):
+    for lang_dir in (experimental_package / 'scripts').iterdir():
+        if not lang_dir.is_dir():
+            continue
+        run = (lang_dir / 'run.sh').read_text()
+        assert 'rbx_interact() {' in run
+        assert '< /tmp/in > /tmp/out' not in run
+        assert (lang_dir / 'run.sh').stat().st_mode & 0o111
+
+
+@pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
+def test_the_scripts_are_valid_bash(experimental_package):
+    for script in (experimental_package / 'scripts').glob('*/*.sh'):
+        proc = subprocess.run(
+            ['bash', '-n', str(script)], capture_output=True, text=True
+        )
+        assert proc.returncode == 0, f'{script}: {proc.stderr}'
+
+
 @pytest.mark.parametrize('template', ['c', 'cpp', 'py', 'java', 'kt'])
 def test_every_batch_template_can_be_supervised(template):
-    batch = (SCRIPTS_DIR / template / 'run.sh').read_text()
-    supervised = supervised_run_script(batch)
-    assert supervised.startswith('#!/bin/bash\n# EXPERIMENTAL')
-    assert supervised.count('exec /tmp/dir/arbitro /tmp/in -- ') == batch.count(
-        '< /tmp/in > /tmp/out'
-    )
+    batch = (APP / 'moj' / 'scripts' / template / 'run.sh').read_text()
+    supervised = supervised_run_script(batch, DRIVER)
+    head = '#!/bin/bash\n' + DRIVER.rstrip() + '\n'
+    assert supervised.startswith(head)
+    body = supervised[len(head) :]
+    assert body.count('rbx_interact ') == batch.count('< /tmp/in > /tmp/out')
     assert '< /tmp/in > /tmp/out' not in supervised
 
 
@@ -96,195 +120,94 @@ def test_a_multiline_run_command_keeps_its_continuations():
         'exec java -Dx=1 \\\n'
         '     -jar "$BIN" < /tmp/in > /tmp/out\n'
     )
-    assert supervised_run_script(batch).endswith(
-        'exec &>/tmp/stderrlog\n'
-        'exec /tmp/dir/arbitro /tmp/in -- java -Dx=1 \\\n'
-        '     -jar "$BIN"\n'
+    assert supervised_run_script(batch, '# driver\n').endswith(
+        'exec &>/tmp/stderrlog\nrbx_interact java -Dx=1 \\\n     -jar "$BIN"\n'
     )
 
 
 def test_a_run_script_without_a_run_command_is_refused():
     with pytest.raises(ValueError):
-        supervised_run_script('#!/bin/bash\nexec ./main\n')
+        supervised_run_script('#!/bin/bash\nexec ./main\n', DRIVER)
 
 
-# -- the supervisor, compiled and run ----------------------------------------------
+# -- the verdict ------------------------------------------------------------------
+
+EOF_MESSAGE = 'wrong output format Unexpected end of file - token expected'
 
 
-@pytest.fixture(scope='module')
-def supervisor(tmp_path_factory) -> pathlib.Path:
-    gxx = shutil.which('g++')
-    if gxx is None:
-        pytest.skip('g++ not available')
-    root = tmp_path_factory.mktemp('supervisor')
-    source = root / 'arbitro.cpp'
-    source.write_text(
-        (INTERACTIVE_DIR / 'arbiter_prologue.cpp').read_text()
-        + INTERACTOR
-        + '\n'
-        + (INTERACTIVE_DIR / 'supervisor_epilogue.cpp').read_text()
-    )
-    binary = root / 'arbitro'
-    proc = subprocess.run(
-        [
-            gxx,
-            '-O2',
-            '-std=gnu++17',
-            '-I',
-            str(TESTLIB_DIR),
-            '-o',
-            str(binary),
-            str(source),
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if proc.returncode != 0:
-        pytest.fail(proc.stderr)
-    return binary
+def _judge(
+    tmp_path: pathlib.Path,
+    first: int,
+    contestant: int,
+    interactor: int,
+    message: str,
+    with_pipe: bool = True,
+):
+    """Run the cpp run.sh with `/tmp` redirected to a scratch dir and a stand-in
+    pipe that reports `first` (1 contestant, 2 interactor) and both statuses
+    (bash-like: 128+signal). Returns run.sh's exit code (3 is RE) and what it
+    left in the result file (`WRONG ...` WA, any other line AC, nothing UE)."""
+    jail = tmp_path / 'jail'
+    (jail / 'dir').mkdir(parents=True)
+    (jail / 'dir' / 'binfile.sh').write_text('BIN=main\n')
+    (jail / 'out').write_text('')
+    (jail / 'rbx-interactor.err').write_text(message + '\n')
+    if with_pipe:
+        pipe = jail / 'dir' / 'pipe'
+        pipe.write_text(
+            f'#!/bin/sh\nprintf "{first}\\n{contestant}\\n{interactor}\\n"\n'
+        )
+        pipe.chmod(0o755)
+    batch = (APP / 'moj' / 'scripts' / 'cpp' / 'run.sh').read_text()
+    script = supervised_run_script(batch, DRIVER).replace('/tmp/', f'{jail}/')
+    (tmp_path / 'run.sh').write_text(script)
+    proc = subprocess.run(['bash', str(tmp_path / 'run.sh')], timeout=30)
+    return proc.returncode, (jail / 'out').read_text().strip()
 
 
-def _judge(supervisor: pathlib.Path, tmp_path: pathlib.Path, test: str, script: str):
-    """Judge a contestant written as a shell script. Returns the exit code (3 is
-    MOJ's Runtime Error), what landed in the result file (`WRONG ...` is WA, any
-    other line AC, nothing at all a judge error), and the report."""
-    input_path = tmp_path / 'in'
-    input_path.write_text(test)
-    out = tmp_path / 'out'
-    out.write_text('')
-    proc = subprocess.run(
-        [str(supervisor), str(input_path), '--', 'sh', '-c', script],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        env={
-            'RBX_MOJ_OUT': str(out),
-            'RBX_MOJ_TMP': str(tmp_path),
-            'PATH': '/usr/bin:/bin',
-        },
-    )
-    return proc.returncode, out.read_text().strip(), proc.stderr
-
-
-def test_a_correct_answer_is_accepted(supervisor, tmp_path):
-    code, result, _ = _judge(supervisor, tmp_path, '7\n', 'echo 7')
-    assert (code, result) == (0, 'OK ok guessed 7')
-
-
-def test_a_wrong_answer_is_wrong(supervisor, tmp_path):
-    code, result, _ = _judge(supervisor, tmp_path, '7\n', 'echo 3')
-    assert (code, result) == (0, 'WRONG wrong answer expected 7, got 3')
-
-
-def test_leaving_without_answering_is_wrong(supervisor, tmp_path):
-    code, result, _ = _judge(supervisor, tmp_path, '7\n', 'exit 0')
-    assert code == 0
-    assert result.startswith('WRONG ')
-
-
+@pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
 @pytest.mark.parametrize(
-    'script',
+    'first, contestant, interactor, message, expected',
     [
-        pytest.param('exit 2', id='nonzero-before-answering'),
-        pytest.param('kill -SEGV $$', id='crash-before-answering'),
+        pytest.param(1, 0, 0, 'ok guessed 7', (0, 'OK ok guessed 7'), id='accepted'),
+        pytest.param(
+            2, 0, 1, 'wrong answer no', (0, 'WRONG wrong answer no'), id='wrong'
+        ),
+        # The interactor rejected first; pipe.c then SIGTERMed the contestant,
+        # which must not turn the WA into anything else (#894).
+        pytest.param(
+            2, 143, 1, 'wrong answer no', (0, 'WRONG wrong answer no'), id='killed'
+        ),
+        # A real rejection stands even if the contestant crashed afterwards.
+        pytest.param(
+            1,
+            139,
+            1,
+            'wrong answer no',
+            (0, 'WRONG wrong answer no'),
+            id='wa-then-crash',
+        ),
+        # A crash, and the EOF the interactor reported because of it (#895) --
+        # in either reported order.
+        pytest.param(1, 139, 2, EOF_MESSAGE, (3, ''), id='crash-then-eof'),
+        pytest.param(2, 134, 2, EOF_MESSAGE, (3, ''), id='eof-reaped-first'),
+        # pipe.c SIGTERMs the interactor once the contestant failed.
+        pytest.param(1, 139, 143, '', (3, ''), id='crash-interactor-stopped'),
+        pytest.param(2, 134, 0, 'ok guessed 7', (3, ''), id='crash-after-answer'),
+        # Leaving without answering, cleanly, is wrong; so is lingering silently.
+        pytest.param(1, 0, 2, EOF_MESSAGE, (0, f'WRONG {EOF_MESSAGE}'), id='left'),
+        pytest.param(2, 143, 2, EOF_MESSAGE, (0, f'WRONG {EOF_MESSAGE}'), id='linger'),
+        # SIGPIPE after the interactor left is no failure.
+        pytest.param(2, 141, 0, 'ok guessed 7', (0, 'OK ok guessed 7'), id='sigpipe'),
+        # The interactor's own failure is the judge's.
+        pytest.param(2, 0, 3, 'FAIL bad input', (0, ''), id='interactor-fail'),
+        pytest.param(2, 0, 139, '', (0, ''), id='interactor-crash'),
     ],
 )
-def test_a_crash_before_the_answer_is_a_runtime_error(supervisor, tmp_path, script):
-    # The interactor then complains about EOF; that is the crash's consequence
-    # (#895).
-    code, result, report = _judge(supervisor, tmp_path, '7\n', script)
-    assert (code, result) == (3, '')
-    assert 'contestant ended first' in report
+def test_the_verdict(tmp_path, first, contestant, interactor, message, expected):
+    assert _judge(tmp_path, first, contestant, interactor, message) == expected
 
 
-@pytest.mark.parametrize(
-    'script',
-    [
-        pytest.param('echo 7; sleep 0.2; exit 1', id='nonzero-after-answer'),
-        pytest.param('echo 7; sleep 0.2; kill -ABRT $$', id='abort-after-answer'),
-    ],
-)
-def test_a_crash_after_a_correct_answer_is_a_runtime_error(
-    supervisor, tmp_path, script
-):
-    code, result, _ = _judge(supervisor, tmp_path, '7\n', script)
-    assert (code, result) == (3, '')
-
-
-def test_a_crash_the_interactor_noticed_first_is_still_a_runtime_error(
-    supervisor, tmp_path
-):
-    # A dying contestant closes its pipes before it can be reaped, so the
-    # interactor's EOF rejection may be reaped first. The verdict must follow the
-    # cause, not the reaping order.
-    code, result, report = _judge(
-        supervisor, tmp_path, '7\n', 'exec 1>&-; sleep 0.1; exit 1'
-    )
-    assert (code, result) == (3, '')
-    assert 'interactor ended first' in report
-
-
-def test_a_contestant_that_stops_writing_but_lingers_is_wrong(supervisor, tmp_path):
-    start = time.monotonic()
-    code, result, report = _judge(supervisor, tmp_path, '7\n', 'exec 1>&-; sleep 30')
-    assert time.monotonic() - start < 10
-    assert code == 0
-    assert result.startswith('WRONG ')
-    assert 'killed by the driver' in report
-
-
-def test_a_rejected_contestant_is_stopped_and_judged_wrong(supervisor, tmp_path):
-    # Once the interactor has rejected, a contestant that keeps running must not
-    # turn the WA into a TLE (#894).
-    start = time.monotonic()
-    code, result, report = _judge(supervisor, tmp_path, '7\n', 'echo 3; sleep 30')
-    assert time.monotonic() - start < 10
-    assert (code, result) == (0, 'WRONG wrong answer expected 7, got 3')
-    assert 'killed by the driver' in report
-
-
-def test_a_crash_after_being_rejected_stays_wrong(supervisor, tmp_path):
-    code, result, _ = _judge(
-        supervisor, tmp_path, '7\n', 'echo 3; sleep 0.2; kill -SEGV $$'
-    )
-    assert (code, result) == (0, 'WRONG wrong answer expected 7, got 3')
-
-
-def test_an_interactor_failure_is_a_judge_error(supervisor, tmp_path):
-    code, result, report = _judge(supervisor, tmp_path, 'not-a-number\n', 'echo 7')
-    assert (code, result) == (0, '')
-    assert 'judge error' in report
-
-
-def test_a_contestant_that_cannot_start_is_a_judge_error(supervisor, tmp_path):
-    input_path = tmp_path / 'in'
-    input_path.write_text('7\n')
-    out = tmp_path / 'out'
-    out.write_text('')
-    proc = subprocess.run(
-        [str(supervisor), str(input_path), '--', str(tmp_path / 'missing')],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        env={'RBX_MOJ_OUT': str(out), 'RBX_MOJ_TMP': str(tmp_path)},
-    )
-    assert (proc.returncode, out.read_text()) == (0, '')
-    assert 'cannot run' in proc.stderr
-
-
-def test_a_stderr_flood_reaches_the_report_only_as_a_tail(supervisor, tmp_path):
-    # The report is written inside the timed jail: copying a contestant's 64 MiB
-    # of stderr into it turned an accepted solution into a TLE on MOJ.
-    code, result, report = _judge(
-        supervisor,
-        tmp_path,
-        '7\n',
-        'echo 7; head -c 5000000 /dev/zero | tr "\\0" e >&2',
-    )
-    assert (code, result) == (0, 'OK ok guessed 7')
-    assert len(report) < 20000
-
-
-def test_the_contestant_stderr_reaches_the_report(supervisor, tmp_path):
-    _, _, report = _judge(supervisor, tmp_path, '7\n', 'echo oops >&2; echo 7')
-    assert 'oops' in report
+@pytest.mark.skipif(shutil.which('bash') is None, reason='needs bash')
+def test_a_missing_pipe_is_a_judge_error(tmp_path):
+    assert _judge(tmp_path, 1, 0, 0, 'ok', with_pipe=False) == (0, '')

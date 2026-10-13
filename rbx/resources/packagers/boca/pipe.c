@@ -6,6 +6,7 @@
 */
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -349,7 +350,9 @@ int main(int argc, char *argv[]) {
       // A SIGPIPE'd solution means the interactor already closed its input and
       // is on its way out with a verdict; terminating it now would erase that
       // verdict. Its own watchdog still bounds it.
-      if (solution_status && solution_status != SAFEEXEC_INTERACTIVE_SIGPIPE)
+      // 128 + SIGPIPE is the same death reported without safeexec in between.
+      if (solution_status && solution_status != SAFEEXEC_INTERACTIVE_SIGPIPE &&
+          solution_status != 128 + SIGPIPE)
         if (kill(interactor_pid, SIGTERM)) {
           fprintf(stderr, "term interactor failed: %s\n", strerror(errno));
         }
