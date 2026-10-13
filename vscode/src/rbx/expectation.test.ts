@@ -14,11 +14,12 @@ import { ExpectationDisplay, expectationDisplay } from './expectation';
  * via `is_slow()`, which MLE fails. Pinning every column of every row is one
  * assertion and catches all of them.
  *
- * Note what this does *not* do: rbx growing a thirteenth member cannot fail a
- * list maintained by hand on this side. The new member would take the neutral
+ * Note what this does *not* do: rbx growing a new member cannot fail a list
+ * maintained by hand on this side. The new member would take the neutral
  * raw-label fallback, which is the designed graceful degradation -- so what
  * this table guards is a member being dropped or mistranscribed here, not rbx
- * moving underneath it. Re-check it against schema.py when bumping rbx.
+ * moving underneath it. That is rbxEnums.test.ts's job, against a dump of the
+ * enum that a Python test keeps current.
  */
 const EXPECTED: Record<string, ExpectationDisplay> = {
   ANY: { label: 'ANY', hue: 'neutral', bold: true, glyph: '?', badge: '?' },
@@ -85,6 +86,13 @@ const EXPECTED: Record<string, ExpectationDisplay> = {
     bold: false,
     glyph: '⧖',
     badge: '⧖M',
+  },
+  MLE_OR_RTE: {
+    label: 'MLE or RTE',
+    hue: 'blue',
+    bold: false,
+    glyph: '✗',
+    badge: '✗m',
   },
   JUDGE_FAILED: {
     label: 'FL',
