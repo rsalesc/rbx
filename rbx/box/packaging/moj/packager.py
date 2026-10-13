@@ -2,7 +2,6 @@ import collections
 import dataclasses
 import json
 import pathlib
-import re
 import shutil
 import typing
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple, Union
@@ -113,24 +112,20 @@ DEFAULT_FLAGS = {
     'cpp': '-std=c++20 -O2 -lm -static',
 }
 
-# How a batch run.sh template runs the contestant: `exec <command> < /tmp/in >
-# /tmp/out`, possibly continued over several lines. An interactive package keeps
-# that command and hands it to rbx's driver function instead, so every language
-# runs exactly as it does in a batch problem.
-_BATCH_RUN_LINE = re.compile(r'\bexec ((?:[^\n]|\\\n)+?) < /tmp/in > /tmp/out$', re.M)
+# Where `interactive/pipe_driver.sh` takes the language's batch run.sh, and the
+# quoted-heredoc delimiter that carries it.
+_BATCH_RUN_SLOT = '{{batchRun}}'
+_BATCH_RUN_DELIMITER = 'RBX_BATCH_RUN_EOF'
 
 
-def supervised_run_script(batch_run: str, driver: str) -> str:
-    """A batch `run.sh` turned into the interactive driver: `driver` (which defines
-    `rbx_interact`) goes in right after the shebang, and each `exec <command> <
-    /tmp/in > /tmp/out` becomes `rbx_interact <command>`."""
-    script, count = _BATCH_RUN_LINE.subn(r'rbx_interact \1', batch_run)
-    if count == 0:
-        raise ValueError(
-            'run.sh has no `exec <command> < /tmp/in > /tmp/out` line to supervise'
-        )
-    shebang, _, rest = script.partition('\n')
-    return f'{shebang}\n{driver.rstrip()}\n\n{rest}'
+def interactive_run_script(batch_run: str, driver: str) -> str:
+    """An interactive problem's run.sh: `driver` (`interactive/pipe_driver.sh`)
+    with the language's batch run.sh embedded verbatim. The driver runs that very
+    script as the contestant, pointing its RBX_STDIN/RBX_STDOUT/RBX_STDERR at the
+    interactor's pipes, so every language runs exactly as in a batch problem."""
+    if _BATCH_RUN_DELIMITER in batch_run:
+        raise ValueError(f'run.sh contains {_BATCH_RUN_DELIMITER}, which embeds it')
+    return driver.replace(_BATCH_RUN_SLOT, batch_run.rstrip('\n'))
 
 
 # Suffixes the amalgamator can reduce to a single translation unit.
@@ -1473,10 +1468,9 @@ class MojPackager(BasePackager):
     def _install_interactive_driver(self, lang_path: pathlib.Path) -> None:
         """Turn a language's scripts into rbx's interactive driver. compile.sh stays.
 
-        - run.sh is the language's own batch run.sh, its run command handed to
-          `rbx_interact` (`interactive/pipe_driver.sh`), which runs pipe and decides
-          the verdict; see `supervised_run_script`. Every language thus runs exactly
-          as it does in a batch problem.
+        - run.sh is `interactive/pipe_driver.sh` with the language's batch run.sh
+          embedded verbatim; the driver runs it as the contestant through pipe and
+          decides the verdict. See `interactive_run_script`.
         - prep.sh is mojtools' prep stub, which compiles the arbiter, followed by
           `interactive/pipe_prep.sh`, which builds pipe.c next to it.
         """
@@ -1484,7 +1478,7 @@ class MojPackager(BasePackager):
         run_path = lang_path / 'run.sh'
         prep_path = lang_path / 'prep.sh'
         driver = self._interactive_template('pipe_driver.sh').read_text()
-        run_path.write_text(supervised_run_script(run_path.read_text(), driver))
+        run_path.write_text(interactive_run_script(run_path.read_text(), driver))
         prep_path.write_bytes(
             files.files[mojtools.INTERACTIVE_PREP_STUB].rstrip(b'\n')
             + b'\n'

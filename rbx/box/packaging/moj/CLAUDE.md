@@ -620,7 +620,7 @@ scripts/arbitro.cpp        the plain interactor, amalgamated: exits with testlib
                            codes, which pipe.c and the driver read
 scripts/pipe.c             BOCA's pipe.c, byte for byte (rbx/resources/packagers/boca/)
 scripts/<lang>/prep.sh     mojtools' prep stub (compiles arbitro.cpp) + interactive/pipe_prep.sh
-scripts/<lang>/run.sh      the language's own batch run.sh + interactive/pipe_driver.sh
+scripts/<lang>/run.sh      interactive/pipe_driver.sh, carrying the language's batch run.sh
 scripts/compare.sh         mojtools' interactive compare stub
 ```
 
@@ -640,15 +640,25 @@ the same way: host `gcc`, else the jail rootfs's through `bwrap`, `-static`, cac
 source + compiler under `.rbx-pipe-cache`. This is host-side code in the package, which
 the stub rule below otherwise forbids: it is the price of owning the driver.
 
-**`run.sh` is the language's batch `run.sh`**, with each `exec <command> < /tmp/in >
-/tmp/out` rewritten to `rbx_interact <command>` and the driver function inserted after
-the shebang (`supervised_run_script`). Every language runs exactly as in a batch problem
+**`run.sh` is the driver, and the contestant is the language's batch `run.sh`, run as
+is.** `interactive_run_script` embeds the batch script verbatim in the driver
+(`interactive/pipe_driver.sh`, slot `{{batchRun}}`) as a quoted heredoc -- the jail binds
+only `run.sh`, so it cannot be a sibling file -- and the driver writes it to
+`/tmp/rbx-solution.sh` and has `pipe` run `bash /tmp/rbx-solution.sh` as the contestant.
+No command is extracted or rewritten: every language runs exactly as in a batch problem
 -- JVM flags, PyPy fallback, stack sizing -- rather than through mojtools' hard-coded
 `case` on `$BIN`'s extension.
 
-**`rbx_interact` runs `pipe`** with both sides on FIFOs, the contestant through `bash -c
-'cd /tmp/dir && exec "$@" >fifo.out <fifo.in'` (stdout first, so the two FIFO rendezvous
-pair up with the interactor's). `pipe` starts the interactor with **SIGPIPE ignored**:
+What makes that possible is the **I/O contract of every batch `run.sh` template**: it
+reads, writes and logs to `RBX_STDIN`, `RBX_STDOUT` and `RBX_STDERR`, which default to
+MOJ's `/tmp/in`, `/tmp/out` and `/tmp/stderrlog`. A batch run never sets them; the driver
+exports them pointing at `/tmp/fifo.in`, `/tmp/fifo.out` and the contestant's own log. A
+template must redirect **stdout before stdin** (`exec <command> >"$RBX_STDOUT"
+<"$RBX_STDIN"`): opening a FIFO blocks until its other end opens, and `pipe` opens the
+interactor's stdin (`fifo.out`) first, so the opposite order deadlocks both sides.
+
+**`rbx_interact` runs `pipe`** with both sides on those FIFOs. `pipe` starts the
+interactor with **SIGPIPE ignored**:
 measured on Linux, a contestant that leaves without reading otherwise kills the
 interactor in ~45% of runs -- a judge error where the verdict is WA. That fix lives in
 `pipe.c`, so BOCA has it too (`tests/rbx/box/packaging/boca/test_pipe.py`, Linux only).
