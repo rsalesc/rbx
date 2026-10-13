@@ -24,6 +24,7 @@ import * as vscode from 'vscode';
 
 import { ActiveProblem } from './activeProblem';
 import { log } from './log';
+import { Latest } from './rbx/latest';
 import { packageLayout, testsetPath } from './rbx/layout';
 import {
   EMPTY_TESTSET_MODEL,
@@ -109,6 +110,8 @@ export class TestsetViewProvider implements vscode.WebviewViewProvider {
    * problem has a manifest at all, is news.
    */
   private posted?: { readonly root?: string; readonly built: boolean };
+  /** Overlapping posts resolve out of order; only the newest may land. */
+  private readonly posts = new Latest();
 
   constructor(
     private readonly data: RunDataProvider,
@@ -232,7 +235,22 @@ export class TestsetViewProvider implements vscode.WebviewViewProvider {
   private async post(): Promise<void> {
     const selected = this.active.selected();
     const pkg = selected === undefined ? undefined : packageLayout(selected);
+    const current = this.posts.begin();
     const testset = pkg === undefined ? undefined : await this.data.testset(pkg);
+    const model =
+      testset === undefined || selected === undefined
+        ? EMPTY_TESTSET_MODEL
+        : buildTestsetViewModel(testset, {
+            builtAt: await builtAt(selected),
+            // So a channel the build did not draw can still offer to draw it
+            // now, where a visualizer is declared for it.
+            visualizers: await this.data.visualizers(packageLayout(selected)),
+          });
+    // Every await is above this line and every side effect below it: a post
+    // that a newer one overtook must not touch the node map or the client.
+    if (!current()) {
+      return;
+    }
     this.nodes = new Map(
       testsetNodes(pkg ?? packageLayout(''), testset).map((node) => [testsetNodeId(node), node]),
     );
@@ -252,15 +270,7 @@ export class TestsetViewProvider implements vscode.WebviewViewProvider {
     }
     await this.view?.webview.postMessage({
       type: 'state',
-      model:
-        testset === undefined || selected === undefined
-          ? EMPTY_TESTSET_MODEL
-          : buildTestsetViewModel(testset, {
-              builtAt: await builtAt(selected),
-              // So a channel the build did not draw can still offer to draw it
-              // now, where a visualizer is declared for it.
-              visualizers: await this.data.visualizers(packageLayout(selected)),
-            }),
+      model,
       problems: this.active.problems(),
       selected,
     });

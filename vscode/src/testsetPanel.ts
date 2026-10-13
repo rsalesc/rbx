@@ -26,6 +26,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
 
+import { Latest } from './rbx/latest';
 import {
   PackageLayout,
   buildPath,
@@ -111,6 +112,8 @@ export class TestsetPanel {
     TestsetPanel.opened.event;
 
   private model: PanelViewModel = EMPTY_PANEL_MODEL;
+  /** Overlapping posts resolve out of order; only the newest may land. */
+  private readonly posts = new Latest();
   private readonly subscriptions: vscode.Disposable[] = [];
   /** Set while an open asked for a testcase the model has not been built for yet. */
   private pendingReveal?: string;
@@ -275,8 +278,14 @@ export class TestsetPanel {
    */
   private async post(): Promise<void> {
     this.repoint();
-    this.model = buildPanelViewModel(this.pkg.root, await this.source.testset(this.pkg));
-    const assets = await this.resolveAssets(this.model);
+    const current = this.posts.begin();
+    const model = buildPanelViewModel(this.pkg.root, await this.source.testset(this.pkg));
+    const assets = await this.resolveAssets(model);
+    // A post a newer one overtook must not repaint an older manifest.
+    if (!current()) {
+      return;
+    }
+    this.model = model;
     const request = this.request;
     // Consumed: a tab or group the *open* asked for must not be re-imposed on
     // the reader by the next watcher tick.
