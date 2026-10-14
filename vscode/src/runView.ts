@@ -22,7 +22,7 @@ import { packageLayout } from './rbx/layout';
 import { PackageRunView, RunNode, findingNodes, flattenNodes, nodeId } from './rbx/nodes';
 import { asSolutionLabelStyle } from './rbx/solutionLabel';
 import { EMPTY_MODEL, buildViewModel } from './rbx/viewModel';
-import { RunDataProvider } from './runData';
+import { RunDataChange, RunDataProvider } from './runData';
 
 /**
  * What main.ts posts back: a load announcement, a row's primary command, or the
@@ -62,6 +62,8 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
   private posted?: { readonly root?: string; readonly readable: boolean };
   /** Overlapping posts resolve out of order; only the newest may land. */
   private readonly posts = new Latest();
+  /** The last message the client was sent, serialized, to drop repeats. */
+  private lastPosted?: string;
 
   constructor(
     private readonly data: RunDataProvider,
@@ -79,6 +81,8 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
 
     view.webview.onDidReceiveMessage((message: ClientMessage) => {
       if (message.type === 'ready') {
+        // A fresh client holds no model, so nothing it was sent still counts.
+        this.lastPosted = undefined;
         void this.post();
         return;
       }
@@ -103,7 +107,11 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     // `setState` and the host re-posts the whole model on every change, so
     // paying to keep a hidden view alive would buy nothing back.
     const subscriptions = [
-      this.data.onDidChange(() => void this.post()),
+      this.data.onDidChange((change) => {
+        if (this.concerns(change)) {
+          void this.post();
+        }
+      }),
       // Both, and they are different events: `data` changes what the selected
       // problem's run says, `active` changes which problem that is.
       this.active.onDidChange(() => void this.post()),
@@ -119,6 +127,20 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
       subscriptions.forEach((subscription) => subscription.dispose());
       this.view = undefined;
     });
+  }
+
+  /**
+   * Whether a data change can move what this view shows.
+   *
+   * It shows one package's run and visualizer declarations, so a change to
+   * another package, or to a testset, is none of its business -- and during a
+   * contest-wide build those are most of the ticks.
+   */
+  private concerns(change: RunDataChange): boolean {
+    if (change.root !== undefined && change.root !== this.active.selected()) {
+      return false;
+    }
+    return change.plan === undefined || change.plan.run !== 'keep' || change.plan.manifest;
   }
 
   /** The node behind a row id, for commands invoked from the context menu. */
@@ -184,13 +206,23 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     const style = asSolutionLabelStyle(
       vscode.workspace.getConfiguration('rbx').get('solutionLabel'),
     );
-    await this.view?.webview.postMessage({
+    const message = {
       type: 'state',
       model:
         view === undefined ? EMPTY_MODEL : buildViewModel(view, style, visualizers),
       problems: this.active.problems(),
       selected,
-    });
+    };
+    // A tick whose events moved nothing visible -- a report rewritten with the
+    // same aggregates, an `.eval` rewritten whole -- builds the model it built
+    // last time. Posting it again would cost the client a full re-render for
+    // nothing, so it is dropped here.
+    const serialized = JSON.stringify(message);
+    if (serialized === this.lastPosted || this.view === undefined) {
+      return;
+    }
+    this.lastPosted = serialized;
+    await this.view.webview.postMessage(message);
   }
 
   private html(webview: vscode.Webview): string {

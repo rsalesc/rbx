@@ -386,6 +386,29 @@ export class SelectorHost {
   }
 }
 
+const written = new WeakMap<Element, string>();
+
+/**
+ * Replace an element's markup, unless it is already exactly that.
+ *
+ * The host posts a new model on every watcher tick of a run, and most ticks
+ * change one row -- or, in the card and the findings panel, nothing at all.
+ * Rebuilding an unchanged subtree costs layout, jitters the scroll position
+ * and drops the focus, so a section whose markup did not move is left alone
+ * (#902). Compared against what was last *written* rather than read back off
+ * `innerHTML`, which the browser normalizes.
+ *
+ * Returns whether anything was written.
+ */
+export function setHtml(element: Element, html: string): boolean {
+  if (written.get(element) === html) {
+    return false;
+  }
+  written.set(element, html);
+  element.innerHTML = html;
+  return true;
+}
+
 /**
  * Coalesce writes to `setState`, which is called from scroll handlers.
  *

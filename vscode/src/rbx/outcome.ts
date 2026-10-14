@@ -25,7 +25,7 @@ export interface OutcomeIcon {
   readonly color: string;
 }
 
-interface OutcomeDisplay {
+export interface OutcomeDisplay {
   /** Mirrors `Outcome.short_name()`. */
   readonly short: string;
   readonly icon: string;
@@ -86,13 +86,35 @@ const UNKNOWN: OutcomeDisplay = {
 };
 
 /**
- * No evaluation on disk yet: either still running, or the run was interrupted.
- * Indistinguishable in v1; both read as pending.
+ * No evaluation on disk yet, in a run that is still going -- or that ended
+ * without rbx being able to say so (SIGKILL, or an rbx too old to stamp
+ * `report.yml`). See `NOT_RUN` for the run that did say so.
  */
 const PENDING: OutcomeDisplay = {
   short: '?',
   icon: 'circle-outline',
   color: 'descriptionForeground',
+};
+
+/**
+ * No evaluation, in a run rbx has stamped as over: this testcase was never
+ * evaluated and never will be. The same hue as pending, since neither is a
+ * verdict, but a glyph that does not promise one is coming.
+ */
+export const NOT_RUN: OutcomeDisplay = {
+  short: '–',
+  icon: 'circle-slash',
+  color: 'descriptionForeground',
+};
+
+/**
+ * The `.eval` is there but could not be read. Never drawn as pending: that is
+ * how a testcase that *had* a verdict used to vanish under `EMFILE` (#902).
+ */
+export const UNREADABLE: OutcomeDisplay = {
+  short: '!',
+  icon: 'warning',
+  color: 'charts.orange',
 };
 
 function display(outcome: string | undefined): OutcomeDisplay {

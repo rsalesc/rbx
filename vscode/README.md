@@ -647,7 +647,17 @@ Two things are easy to get wrong here:
   `003`. Reading it wrong silently shows another testcase's output -- it was a
   real rbx bug once (#418 / #429).
 - A missing `.eval` means *pending*, not *failed*. That is what gives the view
-  live progress during a run for free.
+  live progress during a run for free. Once `report.yml` says `finished: true`
+  -- rbx stamps it, with an `exitStatus` of `ok`, `interrupted` or `error`, as
+  the process exits -- a missing `.eval` means *never run* instead, and the view
+  says the run was interrupted rather than leaving it pending forever. An `.eval`
+  that exists but fails to read is drawn as unreadable, never as pending.
+- The watchers follow only what the views read: `.rbx` and `.rbx/runs`
+  themselves, `skeleton.yml`, `report.yml`, `runs/<i>/<group>/*.eval` and the
+  testset manifest. Each event is classified (`rbx/artifactEvents.ts`) and the
+  store does the least that accounts for it: one `.eval` landing re-reads that
+  one file. The rest of `.rbx` -- storage, caches, `.irun`, `.stress` -- churns
+  through every build and is deliberately not watched.
 - `skeleton.yml` carries each solution's `limits` already resolved through its
   language. The table above it is keyed by language, and mapping a solution onto
   one of its entries needs rbx's own `find_language_name` -- so the resolved

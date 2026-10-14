@@ -82,7 +82,7 @@ export function registerDiagnostics(
     // that cleared up front and was then overtaken would land last and
     // re-publish the warnings a newer run had already fixed.
     const current = refreshes.begin();
-    const packages = enabled() ? await data.loadAll() : [];
+    const packages = enabled() ? await data.findingsAll() : [];
     if (!current()) {
       return;
     }
@@ -93,7 +93,14 @@ export function registerDiagnostics(
   };
 
   context.subscriptions.push(
-    data.onDidChange(() => void refresh()),
+    // The findings come from the skeleton alone, so only a reloaded run can
+    // move them. An `.eval` or a report landing -- every tick of a run -- is
+    // skipped, and so is a testset or a manifest edit.
+    data.onDidChange((change) => {
+      if (change.plan === undefined || change.plan.run === 'reload') {
+        void refresh();
+      }
+    }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration(SETTING)) {
         void refresh();

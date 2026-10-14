@@ -24,6 +24,7 @@ import * as vscode from 'vscode';
 
 import { ActiveProblem } from './activeProblem';
 import { log } from './log';
+import { touchesTestset } from './rbx/artifactEvents';
 import { Latest } from './rbx/latest';
 import { packageLayout, testsetPath } from './rbx/layout';
 import {
@@ -162,7 +163,13 @@ export class TestsetViewProvider implements vscode.WebviewViewProvider {
     // persists its own state and the host re-posts the whole model on every
     // change, so paying to keep a hidden view alive would buy nothing back.
     const subscriptions = [
-      this.data.onDidChange(() => void this.post()),
+      // Not on every tick of a run: an `.eval` or a report landing moves
+      // nothing this view reads.
+      this.data.onDidChange((change) => {
+        if (touchesTestset(change.plan)) {
+          void this.post();
+        }
+      }),
       // Both, and they are different events: `data` changes what the selected
       // problem's testset says, `active` changes which problem that is.
       this.active.onDidChange(() => void this.post()),

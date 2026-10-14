@@ -5,10 +5,16 @@
  * empty view, not an error), and a missing `.eval` means that testcase is still
  * pending -- which is exactly what an in-progress run looks like, and is why the
  * extension gets live progress without any streaming protocol.
+ *
+ * And incremental (#902): the watcher says *which* artifact moved, and the
+ * store does the least that accounts for it -- one `.eval` landing re-reads
+ * that one file and patches that one testcase, rather than re-reading the run.
  */
 import * as fs from 'fs/promises';
 import { parse as parseYaml } from 'yaml';
 
+import { EvalKey, RefreshPlan, evalKeyId } from './artifactEvents';
+import { ReadResult, ReadStats, YamlFileCache } from './fileReader';
 import {
   Ext,
   PackageLayout,
@@ -37,7 +43,7 @@ import {
   parseEvaluation,
   parseSkeleton,
 } from './model';
-import { GroupReport, SolutionReport, parseReport } from './report';
+import { GroupReport, RunEnd, RunReport, SolutionReport, parseReport } from './report';
 import { Testset, parseTestset } from './testset';
 
 /** One (solution, testcase) pair, with wherever its artifacts live. */
@@ -46,6 +52,14 @@ export interface TestcaseRun {
   readonly stem: string;
   /** Absent while the run has not produced this evaluation yet. */
   readonly evaluation?: Evaluation;
+  /**
+   * Why the `.eval` could not be read, when it exists but the read failed.
+   *
+   * Kept apart from a missing evaluation on purpose: the two used to be one
+   * `undefined`, so an `EMFILE` on a large run drew a testcase that *had* a
+   * verdict as pending (#902).
+   */
+  readonly readError?: string;
   readonly inputPath: string;
   readonly answerPath: string;
   readonly outputPath: string;
@@ -113,7 +127,15 @@ export interface PackageRun {
   readonly skeleton: Skeleton;
   readonly solutions: readonly SolutionRun[];
   readonly findings: readonly CompilationFinding[];
+  /**
+   * How the run ended, once rbx has said so -- see `RunEnd`. Absent while it
+   * is in flight, which is also what a run by an older rbx always looks like.
+   */
+  readonly ended?: RunEnd;
 }
+
+/** Reads one YAML artifact; the store's `YamlFileCache`, behind a seam. */
+type Reader = (filePath: string) => Promise<ReadResult>;
 
 /**
  * Parse a YAML file, or `undefined` for anything that is not readable YAML.
@@ -143,16 +165,22 @@ async function loadTestcaseRun(
   skeleton: Skeleton,
   solutionIndex: number,
   entry: TestcaseEntry,
+  read: Reader,
 ): Promise<TestcaseRun> {
   const stem = entryStem(entry);
   const group = entry.group;
   const evalPath = runArtifactPath(pkg, solutionIndex, group, stem, Ext.Eval);
-  const evaluation = parseEvaluation(await readYamlFile(evalPath));
+  const result = await read(evalPath);
+  const evaluation = result.kind === 'ok' ? parseEvaluation(result.value) : undefined;
 
   return {
     entry,
     stem,
     evaluation,
+    // Spread rather than set: almost every testcase has no read error, and an
+    // explicit `readError: undefined` on each would make them unequal to the
+    // same testcase written without it.
+    ...(result.kind === 'error' ? { readError: result.message } : {}),
     inputPath: testArtifactPath(pkg, group, stem, Ext.Input),
     answerPath: testArtifactPath(pkg, group, stem, Ext.Output),
     outputPath: runArtifactPath(pkg, solutionIndex, group, stem, Ext.Output),
@@ -180,15 +208,18 @@ async function loadSolutionRun(
   skeleton: Skeleton,
   solution: SolutionEntry,
   report: SolutionReport | undefined,
+  read: Reader,
 ): Promise<SolutionRun> {
   const groupReports = new Map(
     (report?.groups ?? []).map((group) => [group.name, group]),
   );
   const groups = await Promise.all(
     orderedGroups(skeleton).map(async (name): Promise<GroupRun> => {
+      // Still one `Promise.all` over the whole group, but every read in it
+      // queues on the cache's limiter, so at most a bounded number are open.
       const testcases = await Promise.all(
         entriesForGroup(skeleton, name).map((entry) =>
-          loadTestcaseRun(pkg, skeleton, solution.index, entry),
+          loadTestcaseRun(pkg, skeleton, solution.index, entry, read),
         ),
       );
       return { name, testcases, report: groupReports.get(name) };
@@ -197,40 +228,121 @@ async function loadSolutionRun(
   return { solution, groups, report };
 }
 
+/** What one store did on one load or patch, for the reload log line. */
+export interface StoreTrace {
+  readonly root: string;
+  /** Why: `load`, `reload`, or what a patch re-read. */
+  readonly reason: string;
+  readonly stats: ReadStats;
+  readonly ms: number;
+}
+
+export interface ArtifactStoreOptions {
+  readonly files?: YamlFileCache;
+  /** Called after every load and patch; the extension logs it. */
+  readonly trace?: (trace: StoreTrace) => void;
+}
+
+function diffStats(after: ReadStats, before: ReadStats): ReadStats {
+  return {
+    reads: after.reads - before.reads,
+    hits: after.hits - before.hits,
+    missing: after.missing - before.missing,
+    errors: after.errors - before.errors,
+  };
+}
+
+function reportsByIndex(report: RunReport | undefined): Map<number, SolutionReport> {
+  return new Map((report?.solutions ?? []).map((solution) => [solution.index, solution]));
+}
+
 /**
- * Loads and caches one package's run report.
+ * Loads and caches one package's run, testset and visualizer declarations.
  *
- * The cache is invalidated wholesale by `invalidate()` rather than per file:
- * a run is a few hundred small YAML files at most, and rereading them all is
- * cheaper than tracking which of them a filesystem event referred to.
+ * The three are cached apart and dropped apart (`apply`): a testset landing
+ * says nothing about the run, and an `.eval` landing says nothing about the
+ * testset. They used to be dropped together on every watcher tick.
  */
 export class ArtifactStore {
   private cached?: Promise<PackageRun | undefined>;
+  private cachedSkeleton?: Promise<Skeleton | undefined>;
   private cachedTestset?: Promise<Testset | undefined>;
   private cachedVisualizers?: Promise<VisualizerDeclarations | undefined>;
+  private readonly files: YamlFileCache;
+  private readonly trace?: (trace: StoreTrace) => void;
 
-  constructor(readonly pkg: PackageLayout) {}
+  constructor(
+    readonly pkg: PackageLayout,
+    options: ArtifactStoreOptions = {},
+  ) {
+    this.files = options.files ?? new YamlFileCache();
+    this.trace = options.trace;
+  }
 
+  /**
+   * Drop everything; the next read of each starts from disk.
+   *
+   * Except the per-file cache, which is safe to keep: every entry in it is
+   * checked against the file's `(mtime, size)` before it is reused. That is
+   * what makes a rediscovery -- which invalidates every package -- cost a stat
+   * per `.eval` rather than a read and a parse.
+   */
   invalidate(): void {
     this.cached = undefined;
+    this.cachedSkeleton = undefined;
     this.cachedTestset = undefined;
     this.cachedVisualizers = undefined;
   }
 
+  /**
+   * Bring the cache in step with a batch of watcher events.
+   *
+   * A patch is chained onto the run already cached rather than replacing it,
+   * so a caller asking mid-patch gets the patched run, and two patches in a
+   * row apply in the order their events arrived. Nothing loaded yet means
+   * nothing to patch: the next `load` reads the run as it is on disk.
+   */
+  apply(plan: RefreshPlan): void {
+    if (plan.testset) {
+      this.cachedTestset = undefined;
+    }
+    if (plan.manifest) {
+      this.cachedVisualizers = undefined;
+    }
+    if (plan.run === 'reload') {
+      this.dropRun();
+      return;
+    }
+    if (plan.run === 'keep' || this.cached === undefined) {
+      return;
+    }
+    const previous = this.cached;
+    this.cached = previous
+      .catch(() => undefined)
+      .then((run) => (run === undefined ? this.read('reload') : this.patch(run, plan)));
+  }
+
   load(): Promise<PackageRun | undefined> {
     if (this.cached === undefined) {
-      this.cached = this.read();
+      this.cached = this.read('load');
     }
     return this.cached;
   }
 
   /**
-   * The testset the last `rbx build` published, or undefined if there is none.
+   * The compile findings of the run on disk, reading no `.eval` to get them.
    *
-   * Cached beside the run rather than in a store of its own: the two describe
-   * the same package and are invalidated by the same watcher tick, so keeping
-   * them together is what stops the Run and Tests views ever disagreeing about
-   * which package is being shown.
+   * The Problems panel covers every package in the workspace, and all it needs
+   * is the skeleton. Going through `load` made it read every evaluation of
+   * every package in a contest just to list a few warnings.
+   */
+  async findings(): Promise<readonly CompilationFinding[]> {
+    const skeleton = await this.skeleton();
+    return skeleton === undefined ? [] : this.findingsOf(skeleton);
+  }
+
+  /**
+   * The testset the last `rbx build` published, or undefined if there is none.
    *
    * A missing manifest is not an error -- it is what a package that has never
    * been built looks like, and the view renders it as empty.
@@ -245,12 +357,9 @@ export class ArtifactStore {
   /**
    * What `problem.rbx.yml` declares about visualizers.
    *
-   * Cached beside the testset, and invalidated by the same watcher tick, for
-   * the same reason: the Run and Tests views must never disagree about which
-   * buttons a testcase gets. The manifest watcher already invalidates the
-   * store, so an edit that adds a visualizer shows up without a rebuild --
-   * which is the whole reason this is read from the manifest rather than from
-   * the build's testset manifest.
+   * Read from the manifest rather than from the build's testset manifest, so an
+   * edit that adds a visualizer shows up without a rebuild; the manifest
+   * watcher sends a `manifest` event for exactly that.
    */
   visualizers(): Promise<VisualizerDeclarations | undefined> {
     if (this.cachedVisualizers === undefined) {
@@ -261,30 +370,181 @@ export class ArtifactStore {
     return this.cachedVisualizers;
   }
 
-  private async read(): Promise<PackageRun | undefined> {
-    const skeleton = parseSkeleton(await readYamlFile(skeletonPath(this.pkg)));
-    if (skeleton === undefined) {
-      return undefined;
+  private dropRun(): void {
+    this.cached = undefined;
+    this.cachedSkeleton = undefined;
+    // A new run wiped `runs/`, so nothing cached for the old one can be reused,
+    // and keeping it would only hold the memory.
+    this.files.clear();
+  }
+
+  private skeleton(): Promise<Skeleton | undefined> {
+    if (this.cachedSkeleton === undefined) {
+      this.cachedSkeleton = readYamlFile(skeletonPath(this.pkg)).then(parseSkeleton);
     }
-    // The report is matched to solutions by index, not by position: mid-run it
-    // holds only the solutions that have finished, in the order they finished.
-    const report = parseReport(await readYamlFile(reportPath(this.pkg)));
-    const reports = new Map(
-      (report?.solutions ?? []).map((solution) => [solution.index, solution]),
-    );
-    const solutions = await Promise.all(
-      skeleton.solutions.map((solution) =>
-        loadSolutionRun(this.pkg, skeleton, solution, reports.get(solution.index)),
-      ),
-    );
-    const findings = skeleton.compilation.map(
+    return this.cachedSkeleton;
+  }
+
+  private findingsOf(skeleton: Skeleton): CompilationFinding[] {
+    return skeleton.compilation.map(
       (entry): CompilationFinding => ({
         entry,
         logPath: compilationLogPath(this.pkg, entry.log),
         sourcePath: solutionSourcePath(this.pkg, entry.path),
       }),
     );
-    return { skeleton, solutions, findings };
+  }
+
+  private async readReport(): Promise<RunReport | undefined> {
+    // Not through the file cache: it is one file, rewritten whole, and the
+    // event that brought us here is the news that it changed.
+    return parseReport(await readYamlFile(reportPath(this.pkg)));
+  }
+
+  private traced<T>(reason: string, work: () => Promise<T>): Promise<T> {
+    const before = { ...this.files.stats };
+    const started = Date.now();
+    return work().then((result) => {
+      this.trace?.({
+        root: this.pkg.root,
+        reason,
+        stats: diffStats(this.files.stats, before),
+        ms: Date.now() - started,
+      });
+      return result;
+    });
+  }
+
+  private read(reason: string): Promise<PackageRun | undefined> {
+    return this.traced(reason, async () => {
+      // A fresh read of the skeleton too: whatever brought us here may be the
+      // news that it changed.
+      this.cachedSkeleton = undefined;
+      const skeleton = await this.skeleton();
+      if (skeleton === undefined) {
+        return undefined;
+      }
+      // The report is matched to solutions by index, not by position: mid-run
+      // it holds only the solutions that have finished, in the order they did.
+      const report = await this.readReport();
+      const reports = reportsByIndex(report);
+      const read: Reader = (filePath) => this.files.read(filePath);
+      const solutions = await Promise.all(
+        skeleton.solutions.map((solution) =>
+          loadSolutionRun(this.pkg, skeleton, solution, reports.get(solution.index), read),
+        ),
+      );
+      return this.assemble(skeleton, solutions, report?.ended);
+    });
+  }
+
+  private assemble(
+    skeleton: Skeleton,
+    solutions: readonly SolutionRun[],
+    ended: RunEnd | undefined,
+  ): PackageRun {
+    const findings = this.findingsOf(skeleton);
+    return ended === undefined
+      ? { skeleton, solutions, findings }
+      : { skeleton, solutions, findings, ended };
+  }
+
+  /**
+   * The run with `plan`'s report and evaluations re-read, and nothing else.
+   *
+   * Structurally shared: a solution, group or testcase no event named is the
+   * very object it was before, so a patch costs the files it names and the
+   * spine above them -- not the run.
+   */
+  private patch(run: PackageRun, plan: RefreshPlan): Promise<PackageRun> {
+    const what = [
+      plan.report ? 'report' : undefined,
+      plan.evals.length > 0 ? `${plan.evals.length} evaluation(s)` : undefined,
+    ].filter((part) => part !== undefined);
+    return this.traced(what.join(' + '), async () => {
+      const report = plan.report ? await this.readReport() : undefined;
+      const reports = plan.report ? reportsByIndex(report) : undefined;
+      const fresh = await this.readEvaluations(run, plan.evals);
+
+      const solutions = run.solutions.map((solution): SolutionRun => {
+        const index = solution.solution.index;
+        const solutionReport = reports === undefined ? solution.report : reports.get(index);
+        const touched = fresh.get(index);
+        if (touched === undefined && solutionReport === solution.report) {
+          return solution;
+        }
+        const groupReports = new Map(
+          (solutionReport?.groups ?? []).map((group) => [group.name, group]),
+        );
+        const groups = solution.groups.map((group): GroupRun => {
+          const groupReport =
+            reports === undefined ? group.report : groupReports.get(group.name);
+          const testcases = touched?.get(group.name);
+          if (testcases === undefined && groupReport === group.report) {
+            return group;
+          }
+          return {
+            name: group.name,
+            testcases:
+              testcases === undefined
+                ? group.testcases
+                : group.testcases.map((testcase) => testcases.get(testcase.stem) ?? testcase),
+            report: groupReport,
+          };
+        });
+        return { solution: solution.solution, groups, report: solutionReport };
+      });
+      return this.assemble(run.skeleton, solutions, plan.report ? report?.ended : run.ended);
+    });
+  }
+
+  /** The named evaluations, re-read, as solution -> group -> stem -> testcase. */
+  private async readEvaluations(
+    run: PackageRun,
+    keys: readonly EvalKey[],
+  ): Promise<Map<number, Map<string, Map<string, TestcaseRun>>>> {
+    const byId = new Map<string, TestcaseEntry>();
+    for (const key of keys) {
+      const entry = run.solutions
+        .find((solution) => solution.solution.index === key.solution)
+        ?.groups.find((group) => group.name === key.group)
+        ?.testcases.find((testcase) => testcase.stem === key.stem)?.entry;
+      // An event for a testcase this run does not have is one from the run
+      // before it, caught on its way out; the skeleton event that follows it
+      // reloads the run anyway.
+      if (entry !== undefined) {
+        byId.set(evalKeyId(key), entry);
+      }
+    }
+    const read: Reader = (filePath) => {
+      // The event is the news that this file changed, so a cached parse of it
+      // is stale by definition -- even one whose stat happens to match.
+      this.files.forget(filePath);
+      return this.files.read(filePath);
+    };
+    const loaded = await Promise.all(
+      keys
+        .filter((key) => byId.has(evalKeyId(key)))
+        .map(async (key) => ({
+          key,
+          testcase: await loadTestcaseRun(
+            this.pkg,
+            run.skeleton,
+            key.solution,
+            byId.get(evalKeyId(key)) as TestcaseEntry,
+            read,
+          ),
+        })),
+    );
+    const out = new Map<number, Map<string, Map<string, TestcaseRun>>>();
+    for (const { key, testcase } of loaded) {
+      const groups = out.get(key.solution) ?? new Map<string, Map<string, TestcaseRun>>();
+      out.set(key.solution, groups);
+      const stems = groups.get(key.group) ?? new Map<string, TestcaseRun>();
+      groups.set(key.group, stems);
+      stems.set(key.stem, testcase);
+    }
+    return out;
   }
 }
 
@@ -310,6 +570,11 @@ export class ArtifactStores {
     private readonly create: (pkg: PackageLayout) => ArtifactStore = (pkg) =>
       new ArtifactStore(pkg),
   ) {}
+
+  /** Bring one package's store in step with a batch of events, if it has one. */
+  apply(root: string, plan: RefreshPlan): void {
+    this.stores.get(root)?.apply(plan);
+  }
 
   /** The store for `pkg`, replacing one built for an older layout of it. */
   for(pkg: PackageLayout): ArtifactStore {
