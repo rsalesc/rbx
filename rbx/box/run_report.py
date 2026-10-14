@@ -21,6 +21,8 @@ Two deliberate constraints:
   shape that must not harden into an external contract.
 """
 
+import datetime
+import enum
 import pathlib
 from typing import Dict, Iterable, List, Optional, Set, Tuple, TypeVar
 
@@ -184,9 +186,34 @@ class RunSolutionReport(BaseModel):
     groups: List[RunGroupReport] = []
 
 
+class ExitStatus(str, enum.Enum):
+    """How the process that wrote a run ended."""
+
+    OK = 'ok'
+    # Ctrl-C, or anything else that aborted the run on purpose.
+    INTERRUPTED = 'interrupted'
+    # A crash, or a command that exited non-zero.
+    ERROR = 'error'
+
+
 class RunReport(BaseModel):
     version: int = REPORT_VERSION
     solutions: List[RunSolutionReport] = []
+    # Whether the process that ran this has exited.
+    #
+    # The `.eval`s alone cannot say it: a testcase with no evaluation looks the
+    # same whether its run is still going or was killed, so a client drawing it
+    # as pending would keep a Ctrl-C'd run "running" forever. Stamped on the way
+    # out (see `finish_run`), never by the reporters, so it is false for exactly
+    # as long as the process is alive -- or forever, if it was SIGKILLed.
+    finished: bool = False
+    # When the process ended, as an ISO 8601 timestamp with its UTC offset.
+    endedAt: Optional[str] = None
+    # `ExitStatus`, as its value. Absent until `finished`. Says how the
+    # *process* ended, so `error` includes a complete run whose solutions
+    # missed their expectations (`rbx run` exits 1 then); whether a testcase
+    # was ever evaluated is what its `.eval` says.
+    exitStatus: Optional[ExitStatus] = None
 
 
 def _max_of(values: Iterable[Optional[_T]]) -> Optional[_T]:
@@ -339,6 +366,57 @@ def write_report(path: pathlib.Path, report: RunReport) -> None:
             allow_unicode=True,
         ),
     )
+
+
+# The runs directory of the run this process started last, until it is stamped.
+_open_run: Optional[pathlib.Path] = None
+
+
+def begin_run(runs_dir: pathlib.Path) -> None:
+    """Remember that this process started a run in `runs_dir`.
+
+    An earlier run of this process in the *same* directory is simply forgotten:
+    the new skeleton wiped its report (`rbx time` runs several). One in another
+    package is over -- `rbx contest each run` walks problems one at a time -- so
+    it is stamped now rather than left looking live until the whole contest is.
+    """
+    global _open_run
+    if _open_run is not None and _open_run != runs_dir:
+        finish_run(ExitStatus.OK)
+    _open_run = runs_dir
+
+
+def finish_run(status: ExitStatus) -> None:
+    """Stamp the run this process started, if any, as over.
+
+    Called once, as the process exits, from `rbx.box.main`: the run is over
+    when rbx is, and that is the only place every way of leaving -- success,
+    Ctrl-C, a crash -- passes through. Writes a report even when no solution
+    finished, since "nothing finished and nothing will" is exactly what an
+    interrupted run needs to say.
+
+    Never raises: this runs on the way out of a process that may already be
+    failing, and an error here would replace the one the user needs to see.
+    """
+    global _open_run
+    runs_dir, _open_run = _open_run, None
+    # A skeleton that is gone means the run was cleaned away under us (`rbx
+    # clean` from another terminal); writing a report would resurrect half a run.
+    if runs_dir is None or not (runs_dir / 'skeleton.yml').is_file():
+        return
+    path = report_path(runs_dir)
+    try:
+        data = yaml.safe_load(path.read_text()) if path.is_file() else None
+        if not isinstance(data, dict):
+            data = RunReport().model_dump(mode='json', exclude_none=True)
+        data['finished'] = True
+        data['endedAt'] = datetime.datetime.now().astimezone().isoformat()
+        data['exitStatus'] = status.value
+        utils.write_text_atomic(
+            path, yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+        )
+    except Exception:
+        return
 
 
 def clear_report(runs_dir: pathlib.Path) -> None:

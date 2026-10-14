@@ -476,6 +476,15 @@ It is a **published contract**, so three rules hold:
 - **Versioned.** Bump `REPORT_VERSION` when a change would make an older reader
   misread the file. Readers ignore versions they do not know.
 
+**The end marker.** `_get_report_skeleton` calls `run_report.begin_run`, and
+`rbx.box.main` calls `finish_run` on every way out of the process (success,
+Ctrl-C -- which click turns into `SystemExit(130)` -- or a crash), stamping
+`finished`, `endedAt` and `exitStatus` into the report. It is what lets a
+reader tell an interrupted run from one still in flight. `exitStatus` is the
+*process's* exit: a complete `rbx run` whose solutions missed their
+expectations exits 1 and reads `error`. Starting a run in another package
+stamps the previous one `ok` (`rbx contest each run`).
+
 Lean on purpose: `SolutionOutcomeReport` embeds the solution, its limits and
 every evaluation, which either live on disk already or are internal shape that
 must not harden into a contract. Consumed by `vscode/src/rbx/report.ts`; see

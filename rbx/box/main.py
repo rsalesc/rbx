@@ -59,6 +59,32 @@ def _abort():
     sys.exit(1)
 
 
+def _finish_run(status: str) -> None:
+    """Stamp the run this process started, if it started one.
+
+    Looked up in `sys.modules` rather than imported: a process that never
+    imported the run report never wrote a skeleton, and importing it now would
+    make every `rbx --help` pay for the schema on its way out.
+    """
+    run_report = sys.modules.get('rbx.box.run_report')
+    if run_report is not None:
+        run_report.finish_run(run_report.ExitStatus(status))
+
+
+def exit_status_of(exc: BaseException) -> str:
+    """How a run ended by `exc` ended, as an `ExitStatus` value."""
+    if isinstance(exc, SystemExit):
+        # Click turns Ctrl-C inside a command into exit code 130.
+        if exc.code == 130:
+            return 'interrupted'
+        return 'ok' if exc.code in (0, None) else 'error'
+    if isinstance(exc, (KeyboardInterrupt, typer.Abort)):
+        return 'interrupted'
+    if isinstance(exc, typer.Exit):
+        return 'ok' if exc.exit_code == 0 else 'error'
+    return 'error'
+
+
 def run_app_cli():
     from rbx.box.cli import app as app_cli
 
@@ -93,11 +119,21 @@ def app():
     from rbx.box.exception import RbxException
 
     try:
-        import nest_asyncio
+        # Stamped here, before the handlers below run: `_abort` schedules a hard
+        # kill, and a stamp left for the outer `finally` could lose that race.
+        # Click ends even a successful command with `SystemExit(0)`, so the
+        # `except` is the common path and the `else` only a safety net.
+        try:
+            import nest_asyncio
 
-        nest_asyncio.apply()
+            nest_asyncio.apply()
 
-        run_app_cli()
+            run_app_cli()
+        except BaseException as e:
+            _finish_run(exit_status_of(e))
+            raise
+        else:
+            _finish_run('ok')
     except (KeyboardInterrupt, typer.Abort):
         _abort()
     except SystemExit as e:

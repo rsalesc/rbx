@@ -23,7 +23,7 @@ from rbx.grading.steps import (
     TestcaseIO,
     TestcaseLog,
 )
-from rbx.utils import model_to_yaml
+from rbx.utils import model_to_yaml, write_text_atomic
 
 # Extra wall time (ms) granted to the interactor on top of the solution's wall
 # time in communication tasks, so the interactor never times out before the
@@ -61,7 +61,10 @@ def write_evaluation(eval: Evaluation, output_path: pathlib.Path) -> str:
     eval.log.eval_absolute_path = eval_path.absolute()
     eval_path.parent.mkdir(parents=True, exist_ok=True)
     rendered = model_to_yaml(eval)
-    eval_path.write_text(rendered)
+    # Atomically, for the same reader: the extension re-reads an `.eval` the
+    # moment the watcher reports it, and a truncated one still parses -- as an
+    # evaluation missing its timings.
+    write_text_atomic(eval_path, rendered)
     # The `.log` artifact next to it is byte-identical, so hand the rendered
     # text back rather than paying for a second dump of the same object.
     return rendered
