@@ -608,24 +608,44 @@ export function registerDispatch(
         syncContext();
       }
     }),
-    vscode.commands.registerCommand('rbx.runSolution', async (arg: unknown) => {
-      const target = solutionTarget(arg, declared, view);
-      if (target === undefined) {
+    // The Explorer's context menu passes the clicked file *and* the whole
+    // selection, so several solutions picked there run as one `rbx run a b`.
+    vscode.commands.registerCommand('rbx.runSolution', async (arg: unknown, selection?: unknown) => {
+      const args =
+        Array.isArray(selection) && selection.length > 1 ? (selection as unknown[]) : [arg];
+      const targets = args.map((each) => solutionTarget(each, declared, view));
+      if (targets.some((target) => target === undefined)) {
         void vscode.window.showInformationMessage(
-          'rbx: this file is not a solution declared in a problem.rbx.yml.',
+          args.length === 1
+            ? 'rbx: this file is not a solution declared in a problem.rbx.yml.'
+            : 'rbx: not every selected file is a solution declared in a problem.rbx.yml.',
         );
         return;
       }
-      // rbx reads the file from disk; running the last saved version of the
-      // file the user is looking at would be a surprise.
-      const absolute = path.resolve(target.root, target.solution);
-      const open = vscode.workspace.textDocuments.find(
-        (document) => document.uri.scheme === 'file' && document.uri.fsPath === absolute,
-      );
-      if (open?.isDirty) {
-        await open.save();
+      const solutions = targets as { root: string; solution: string }[];
+      const root = solutions[0].root;
+      if (solutions.some((target) => target.root !== root)) {
+        void vscode.window.showInformationMessage(
+          'rbx: the selected solutions belong to different problems; run them one problem at a time.',
+        );
+        return;
       }
-      await dispatcher.dispatch({ command: 'run', root: target.root, solutions: [target.solution] });
+      // rbx reads the files from disk; running the last saved version of a
+      // file the user is looking at would be a surprise.
+      for (const target of solutions) {
+        const absolute = path.resolve(target.root, target.solution);
+        const open = vscode.workspace.textDocuments.find(
+          (document) => document.uri.scheme === 'file' && document.uri.fsPath === absolute,
+        );
+        if (open?.isDirty) {
+          await open.save();
+        }
+      }
+      await dispatcher.dispatch({
+        command: 'run',
+        root,
+        solutions: [...new Set(solutions.map((target) => target.solution))],
+      });
     }),
     vscode.commands.registerCommand('rbx.runAll', async () => {
       const root = selectedRoot();

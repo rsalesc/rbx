@@ -567,6 +567,8 @@ never reads the terminal.
 | Where | What it starts |
 |---|---|
 | **▶ Run** lens on a solution, or the ▶ button in its editor title | `rbx run <solution>` |
+| *Run This Solution*, when you right-click a solution in the Explorer or in its editor | `rbx run <solution>` |
+| *Run This Solution*, on several solutions of one problem selected in the Explorer | `rbx run <solution> <solution> ...` |
 | *Run This Solution*, in a Run view solution row's context menu | `rbx run <solution>` |
 | Run view title: *Run All Solutions* | `rbx run` |
 | Run view title: *Re-run Last Command* (after the first one) | the last command again |

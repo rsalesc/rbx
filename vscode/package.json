@@ -528,6 +528,20 @@
           "when": "webviewSection == 'rbx.testsetTestcase'",
           "group": "navigation@5"
         }
+      ],
+      "explorer/context": [
+        {
+          "command": "rbx.runSolution",
+          "when": "rbx.dispatchEnabled && resourceScheme == file && resourcePath in rbx.solutionFiles",
+          "group": "0_rbx@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "rbx.runSolution",
+          "when": "rbx.dispatchEnabled && resourceScheme == file && resourcePath in rbx.solutionFiles",
+          "group": "0_rbx@1"
+        }
       ]
     },
     "colors": [
