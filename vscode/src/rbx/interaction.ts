@@ -233,39 +233,6 @@ function lastLine(text: string | undefined): string | undefined {
   return lines.length === 0 ? undefined : lines[lines.length - 1];
 }
 
-/**
- * How many lines a transcript file holds, counted off its raw bytes.
- *
- * Counted rather than parsed: this runs before the channel opens, to decide
- * whether to ask first, and a newline count over a buffer is far cheaper than
- * the parse the document is about to do anyway. A last line without a trailing
- * newline still counts.
- */
-export function countLines(bytes: Uint8Array): number {
-  let lines = 0;
-  for (const byte of bytes) {
-    if (byte === 0x0a) {
-      lines += 1;
-    }
-  }
-  return bytes.length > 0 && bytes[bytes.length - 1] !== 0x0a ? lines + 1 : lines;
-}
-
-/** The default of `rbx.interactionLineWarning`. */
-export const DEFAULT_LINE_WARNING = 10_000;
-
-/**
- * Whether opening a transcript of `lines` lines should be confirmed first.
- *
- * Above the threshold the editor is noticeably slow to open it -- every line is
- * decorated -- and with `io` the default channel on an interactive problem,
- * arrowing onto one big testcase would otherwise stall the panes without a
- * word. A threshold of 0 (or less) turns the question off.
- */
-export function needsConfirmation(lines: number, threshold: number): boolean {
-  return threshold > 0 && lines > threshold;
-}
-
 /** A span of lines, 0-based and inclusive. */
 export interface LineSpan {
   readonly start: number;
