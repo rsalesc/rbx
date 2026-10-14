@@ -18,9 +18,11 @@
  *
  * See `docs/plans/2026-08-21-vscode-testcase-detail-design.md`.
  */
+import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
 
 import { SCHEME, artifactUri, firstExisting } from './artifactFs';
+import { DEFAULT_LINE_WARNING, countLines, needsConfirmation } from './rbx/interaction';
 import { PackageLayout } from './rbx/layout';
 import { TestcaseNode } from './rbx/nodes';
 import {
@@ -96,6 +98,9 @@ export class TestcasePanes {
    * task, so an interactive problem opens on its transcript (`StickyChannels`).
    */
   private readonly channels = new StickyChannels();
+
+  /** Set by "Always Show" on the large-transcript question, for the session. */
+  private allowLargeTranscripts = false;
 
   /**
    * The testcase the panes are showing.
@@ -207,6 +212,49 @@ export class TestcasePanes {
     await this.open(target, channel);
   }
 
+  /**
+   * Ask before opening a transcript too long to open quickly.
+   *
+   * Every line of a transcript is decorated, so one past
+   * `rbx.interactionLineWarning` lines takes a noticeable while to show -- and
+   * `io` is the default channel on an interactive problem, so arrowing onto a
+   * big testcase would otherwise stall the panes without a word. "Always" lasts
+   * the session, so a group of big tests asks once rather than on every arrow
+   * key.
+   */
+  private async confirmTranscript(node: TestcaseNode): Promise<boolean> {
+    const threshold = vscode.workspace
+      .getConfiguration('rbx')
+      .get<number>('interactionLineWarning', DEFAULT_LINE_WARNING);
+    if (this.allowLargeTranscripts || threshold <= 0) {
+      return true;
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = await fs.readFile(node.testcase.interactionPath);
+    } catch {
+      // No transcript: the channel says so, in words, on its own.
+      return true;
+    }
+    const lines = countLines(bytes);
+    if (!needsConfirmation(lines, threshold)) {
+      return true;
+    }
+    const show = 'Show Transcript';
+    const always = 'Always Show (This Session)';
+    const choice = await vscode.window.showWarningMessage(
+      `The interaction transcript of ${node.group.name}/${node.testcase.stem} has ` +
+        `${lines.toLocaleString('en-US')} lines and may take a while to open. Show it anyway?`,
+      { modal: true, detail: 'Otherwise the output diff is shown instead.' },
+      show,
+      always,
+    );
+    if (choice === always) {
+      this.allowLargeTranscripts = true;
+    }
+    return choice !== undefined;
+  }
+
   private async seedLayout(): Promise<void> {
     const layout = asTestcaseLayout(
       vscode.workspace.getConfiguration('rbx').get('testcaseLayout'),
@@ -215,7 +263,14 @@ export class TestcasePanes {
   }
 
   private async showChannel(node: TestcaseNode, column: vscode.ViewColumn): Promise<void> {
-    const artifact = channelArtifact(this.channels.for(node.testcase), node.testcase);
+    let channel = this.channels.for(node.testcase);
+    if (channel === 'io' && !(await this.confirmTranscript(node))) {
+      // Declined: the diff, for this testcase only. Not left empty, which would
+      // keep the previous testcase's transcript on screen beside this one's
+      // input; and not remembered, so the next small transcript still opens.
+      channel = 'out';
+    }
+    const artifact = channelArtifact(channel, node.testcase);
     const prefix = labelPrefix(node.run.solution.path, node.group.name, node.testcase.stem);
     if (!isDiff(artifact)) {
       await this.showArtifact(artifact, prefix, column);

@@ -2,7 +2,10 @@ import * as assert from 'assert';
 import { test } from 'node:test';
 
 import {
+  DEFAULT_LINE_WARNING,
   InteractionParseError,
+  countLines,
+  needsConfirmation,
   RAW_BANNER,
   documentText,
   footerText,
@@ -160,6 +163,20 @@ test('footerText omits what it does not know', () => {
     footerText(renderInteraction(parseInteraction('<\n>\n', false)), {}),
     '0 solution turns',
   );
+});
+
+test('countLines counts newline-terminated and unterminated last lines', () => {
+  const bytes = (text: string): Uint8Array => Buffer.from(text, 'utf8');
+  assert.deepStrictEqual(
+    ['', 'a\n', 'a\nb', '<\n>\n<1\n'].map((text) => countLines(bytes(text))),
+    [0, 1, 2, 3],
+  );
+});
+
+test('needsConfirmation asks only above a positive threshold', () => {
+  assert.strictEqual(needsConfirmation(10_000, DEFAULT_LINE_WARNING), false);
+  assert.strictEqual(needsConfirmation(10_001, DEFAULT_LINE_WARNING), true);
+  assert.strictEqual(needsConfirmation(1_000_000, 0), false);
 });
 
 test('transcriptSiblings finds the eval and interactor stderr of a .pio', () => {
