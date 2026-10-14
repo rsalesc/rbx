@@ -5,7 +5,9 @@ import {
   DEFAULT_LINE_WARNING,
   InteractionParseError,
   countLines,
+  decorationWindow,
   needsConfirmation,
+  windowCovers,
   RAW_BANNER,
   documentText,
   footerText,
@@ -177,6 +179,44 @@ test('needsConfirmation asks only above a positive threshold', () => {
   assert.strictEqual(needsConfirmation(10_000, DEFAULT_LINE_WARNING), false);
   assert.strictEqual(needsConfirmation(10_001, DEFAULT_LINE_WARNING), true);
   assert.strictEqual(needsConfirmation(1_000_000, 0), false);
+});
+
+test('decorationWindow widens the visible lines by the margin, clamped', () => {
+  assert.deepStrictEqual(decorationWindow([{ start: 1000, end: 1040 }], 100_000, 500), {
+    start: 500,
+    end: 1540,
+  });
+  assert.deepStrictEqual(decorationWindow([{ start: 10, end: 50 }], 300, 500), {
+    start: 0,
+    end: 299,
+  });
+  // Folded regions split what is visible into several spans; the window spans them all.
+  assert.deepStrictEqual(
+    decorationWindow(
+      [
+        { start: 2000, end: 2010 },
+        { start: 5000, end: 5020 },
+      ],
+      100_000,
+      500,
+    ),
+    { start: 1500, end: 5520 },
+  );
+  assert.deepStrictEqual(decorationWindow([], 100_000, 500), { start: 0, end: 500 });
+});
+
+test('windowCovers redraws only once the viewport nears a decorated edge', () => {
+  const window = { start: 500, end: 1540 };
+  assert.strictEqual(windowCovers(window, [{ start: 1000, end: 1040 }], 100_000, 500), true);
+  // Within half a margin of the bottom edge: time to redraw.
+  assert.strictEqual(windowCovers(window, [{ start: 1260, end: 1300 }], 100_000, 500), false);
+  assert.strictEqual(windowCovers(window, [{ start: 600, end: 640 }], 100_000, 500), false);
+  // At the document's ends there is nothing further to decorate.
+  assert.strictEqual(windowCovers({ start: 0, end: 299 }, [{ start: 0, end: 40 }], 300, 500), true);
+  assert.strictEqual(
+    windowCovers({ start: 99_000, end: 99_999 }, [{ start: 99_950, end: 99_999 }], 100_000, 500),
+    true,
+  );
 });
 
 test('transcriptSiblings finds the eval and interactor stderr of a .pio', () => {

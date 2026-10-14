@@ -26,10 +26,14 @@ import * as vscode from 'vscode';
 import { SCHEME, realPathOf } from './artifactFs';
 import {
   InteractionDocument,
+  LineSpan,
   Pipe,
+  Turn,
+  decorationWindow,
   footerText,
   interactionDocument,
   transcriptSiblings,
+  windowCovers,
 } from './rbx/interaction';
 import { parseEvaluation } from './rbx/model';
 import { LABELS, isInteractionLabel } from './rbx/panes';
@@ -146,6 +150,9 @@ class InteractionDecorator implements vscode.Disposable {
    */
   private readonly cache = new Map<string, Promise<Loaded | undefined>>();
 
+  /** The lines each editor's decorations currently cover. */
+  private readonly windows = new WeakMap<vscode.TextEditor, LineSpan>();
+
   loaded(uri: vscode.Uri): Promise<Loaded | undefined> {
     const key = uri.toString();
     let entry = this.cache.get(key);
@@ -173,28 +180,40 @@ class InteractionDecorator implements vscode.Disposable {
       return;
     }
     const { rendered } = loaded.document;
+    const lineCount = editor.document.lineCount;
+    // Only the lines near the viewport, so a 10^5-line transcript costs the
+    // same to decorate as a short one (`decorationWindow`).
+    const window = decorationWindow(spans(editor), lineCount);
+    this.windows.set(editor, window);
+
     const byPipe: Record<Pipe, vscode.Range[]> = { interactor: [], solution: [], stderr: [] };
-    rendered.pipes.forEach((pipe, line) => {
-      byPipe[pipe].push(new vscode.Range(line, 0, line, 0));
-    });
+    const lastPiped = Math.min(window.end, rendered.pipes.length - 1);
+    for (let line = window.start; line <= lastPiped; line++) {
+      byPipe[rendered.pipes[line]].push(new vscode.Range(line, 0, line, 0));
+    }
     for (const pipe of Object.keys(byPipe) as Pipe[]) {
       editor.setDecorations(this.lines[pipe], byPipe[pipe]);
     }
 
-    editor.setDecorations(
-      this.counter,
-      rendered.turns
-        .filter((turn) => turn.pipe === 'solution')
-        .map((turn) => ({
+    const counters: vscode.DecorationOptions[] = [];
+    for (let i = firstTurnFrom(rendered.turns, window.start); i < rendered.turns.length; i++) {
+      const turn = rendered.turns[i];
+      if (turn.start > window.end) {
+        break;
+      }
+      if (turn.pipe === 'solution') {
+        counters.push({
           range: lineEnd(editor.document, turn.start),
           renderOptions: { after: { contentText: `#${turn.ordinal}` } },
-        })),
-    );
+        });
+      }
+    }
+    editor.setDecorations(this.counter, counters);
 
-    const last = Math.max(0, editor.document.lineCount - 1);
+    const last = Math.max(0, lineCount - 1);
     editor.setDecorations(
       this.footer,
-      loaded.footer === undefined
+      loaded.footer === undefined || window.end < last
         ? []
         : [
             {
@@ -203,6 +222,18 @@ class InteractionDecorator implements vscode.Disposable {
             },
           ],
     );
+  }
+
+  /** Re-decorate after a scroll, but only once it leaves the decorated window. */
+  async scrolled(editor: vscode.TextEditor): Promise<void> {
+    const window = this.windows.get(editor);
+    if (
+      window !== undefined &&
+      windowCovers(window, spans(editor), editor.document.lineCount)
+    ) {
+      return;
+    }
+    await this.decorate(editor);
   }
 
   dispose(): void {
@@ -216,6 +247,25 @@ class InteractionDecorator implements vscode.Disposable {
     }
     this.cache.clear();
   }
+}
+
+function spans(editor: vscode.TextEditor): LineSpan[] {
+  return editor.visibleRanges.map((range) => ({ start: range.start.line, end: range.end.line }));
+}
+
+/** The first turn ending at or after `line`; turns are sorted and disjoint. */
+function firstTurnFrom(turns: readonly Turn[], line: number): number {
+  let lo = 0;
+  let hi = turns.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (turns[mid].end < line) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  return lo;
 }
 
 function lineEnd(document: vscode.TextDocument, line: number): vscode.Range {
@@ -247,6 +297,11 @@ export function registerInteractionDecorations(context: vscode.ExtensionContext)
   context.subscriptions.push(
     decorator,
     vscode.window.onDidChangeVisibleTextEditors(decorateVisible),
+    vscode.window.onDidChangeTextEditorVisibleRanges((event) => {
+      if (isTranscript(event.textEditor.document)) {
+        void decorator.scrolled(event.textEditor);
+      }
+    }),
     vscode.workspace.onDidCloseTextDocument((document) => decorator.forget(document)),
     vscode.languages.registerFoldingRangeProvider(SELECTOR, new TurnFoldingProvider(decorator)),
   );

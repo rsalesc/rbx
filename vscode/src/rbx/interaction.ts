@@ -266,6 +266,70 @@ export function needsConfirmation(lines: number, threshold: number): boolean {
   return threshold > 0 && lines > threshold;
 }
 
+/** A span of lines, 0-based and inclusive. */
+export interface LineSpan {
+  readonly start: number;
+  readonly end: number;
+}
+
+/**
+ * How far past the visible lines the decorations reach, on either side.
+ *
+ * Wide enough that a page-down lands on lines already decorated, narrow enough
+ * that re-decorating costs a few thousand ranges whatever the transcript's size.
+ */
+export const DECORATION_MARGIN = 500;
+
+/**
+ * The lines to decorate: everything visible, widened by `margin` and clamped.
+ *
+ * Decorating a whole 10^5-line transcript at once is what stalls the editor --
+ * every arrow and tint is a decoration, and each turn counter carries render
+ * options of its own. Only the lines near the viewport are decorated instead,
+ * and again as it moves; the document still holds every line, so find,
+ * go-to-line and copy are untouched.
+ */
+export function decorationWindow(
+  visible: readonly LineSpan[],
+  lineCount: number,
+  margin: number = DECORATION_MARGIN,
+): LineSpan {
+  const last = Math.max(0, lineCount - 1);
+  if (visible.length === 0) {
+    return { start: 0, end: Math.min(last, margin) };
+  }
+  const start = Math.min(...visible.map((span) => span.start));
+  const end = Math.max(...visible.map((span) => span.end));
+  return { start: Math.max(0, start - margin), end: Math.min(last, end + margin) };
+}
+
+/**
+ * Whether the decorations drawn for `window` still cover what is visible, with
+ * room to spare.
+ *
+ * Scrolling fires constantly; re-decorating on every event would redo the same
+ * work line by line. Redrawing only once the viewport gets within half a margin
+ * of the decorated edge keeps it to one redraw per few hundred lines scrolled.
+ * An edge at the document's start or end needs no slack: there is nothing
+ * further to decorate.
+ */
+export function windowCovers(
+  window: LineSpan,
+  visible: readonly LineSpan[],
+  lineCount: number,
+  margin: number = DECORATION_MARGIN,
+): boolean {
+  if (visible.length === 0) {
+    return true;
+  }
+  const slack = Math.floor(margin / 2);
+  const start = Math.min(...visible.map((span) => span.start));
+  const end = Math.max(...visible.map((span) => span.end));
+  const startOk = window.start === 0 || start - slack >= window.start;
+  const endOk = window.end >= lineCount - 1 || end + slack <= window.end;
+  return startOk && endOk;
+}
+
 /**
  * The sibling artifacts a transcript's footer reads, derived from its path.
  *
