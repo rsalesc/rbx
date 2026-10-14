@@ -31,13 +31,7 @@ from rbx.box.issues.schema import (
     UnmetExpectationIssue,
     UntunedLimitsIssue,
 )
-
-# How much of its time limit a passing solution may use before it is worth a
-# mention. 0.8 rather than something tighter because the measurement is one
-# machine's, on one run: flagging at 0.95 would only fire once the limit is
-# already effectively broken, and flagging at 0.5 would fire on every package
-# whose limits are deliberately snug.
-TIGHT_TIME_MARGIN_RATIO = 0.8
+from rbx.box.run_report import TIGHT_TIME_MARGIN_RATIO
 
 # How much a solution may print to stderr on a single testcase before it is
 # worth a mention. 1MB is far past any plausible deliberate use: a solution that

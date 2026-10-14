@@ -60,6 +60,19 @@ Every solution and every group carries its own summary: the verdict underneath
 it, the points it earned, and the **max** time and memory across its testcases
 -- the slowest test being the one the time limit is judged against.
 
+Every time is read against the limit *that solution* ran under, which rbx stamps
+on the skeleton already resolved through the solution's language and any
+`--profile`: a group or solution row shows its max time as a share of it
+(`0.18×TL`), a testcase row spells the pair out (`181 / 1000 ms`), and a TLE that
+ran into the expanded limit reads `>2000 ms`, as `rbx run` prints it -- that run
+was killed, and its raw time is only when. A time or memory figure close to its
+limit turns yellow at `tightTimeMarginRatio`, the threshold the
+`tight_time_margin` detector applies, which rbx publishes in `report.yml` so the
+two cannot drift. The header carries the per-language limits block `rbx run`
+prints before it starts, `2×TL` when the run judges at double the limit, a
+non-default verification level, and *limits look untuned* when rbx suspects
+them.
+
 ### One problem at a time
 
 The view shows **one package**, and a dropdown in its header picks which. The
@@ -138,7 +151,7 @@ or *wrong, and too slow got there first*. Those are different bugs. When they
 differ, the row spells both:
 
 ```
-1-gen-001        1306 ms · 10 MiB   ⌚ TLE (WA)
+1-gen-001        1306 / 1000 ms · 10 MiB   ⌚ TLE (WA)
 ```
 
 Only on leaves, and only when it matters. A solution declared `incorrect` that
@@ -278,7 +291,7 @@ what its row cannot.
 ```
 
 Not the verdict, not the time, not the memory: the row has all three, eight
-pixels above. What the card adds is the two facts the extension has been reading
+pixels above. What the card adds is the facts the extension has been reading
 out of every run and showing nowhere.
 
 - **The checker's own message**, wrapped and whole. It is the answer to *why*
@@ -292,6 +305,8 @@ out of every run and showing nowhere.
   real `path:line`. A generator *call* is text: it names a generator declared in
   `problem.rbx.yml` rather than a file, and a button that went nowhere would
   promise a destination the view does not have.
+- **The other timings** -- the solution's wall time, and the checker's and
+  interactor's when they ran: the `r` panel of `rbx ui`.
 
 The card fills on **selection**, not on open, so a whole failing group can be
 scanned for checker messages without opening a single editor. It is absent

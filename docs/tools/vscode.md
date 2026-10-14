@@ -70,6 +70,27 @@ it, the points it earned, and the **max** time and memory across its testcases.
 A solution still running shows how far it has got (`12/40`) instead of a
 verdict.
 
+The header lists the limits each language ran under, the ones `rbx run` prints
+before it starts, and names the [limits profile](../setters/profiling/profiles.md)
+they came from, if any. `2×TL` there means each solution could keep running up
+to twice the time limit before {{rbx}} stopped it.
+
+A solution that went past the limit but finished within twice the limit is
+still reported `TLE`, and its answer is still checked. When {{rbx}} suspects the limits aren't tuned to this machine,
+the header shows a `limits look untuned` notice. Run
+[`rbx time`](../setters/profiling/estimating.md) to estimate them.
+
+Each time is measured against the time limit of the solution's own language,
+so a Python solution's times are compared with the Python limit. A solution or
+group row shows its max time as a share of that limit, like `0.18×TL`, and a
+testcase row spells it out, like `181 / 1000 ms`. When {{rbx}} stopped a
+testcase at twice the limit, the row shows only when it stopped it, like
+`>2000 ms`, and a solution or group row reads `>2.00×TL`.
+
+A time or memory figure turns yellow once it's close to its limit, at the same
+threshold {{rbx}} uses to warn about a tight time margin. Hover a figure to see
+the limit and the share of it the figure uses.
+
 In a contest, a dropdown in the header picks which problem you are looking at,
 naming problems by their contest letter and colour. It follows the problem that
 is *running*, so `rbx contest each run` walks the view along with it. The
@@ -88,14 +109,16 @@ panes**: the input, and the output diffed against the expected answer.
 
 ![A testcase, input above and diff below](vscode/testcase-panes.png)
 
-Under the tree, a card describes the selected testcase and carries the two facts
-its row cannot fit:
+Under the tree, a card describes the selected testcase and shows what its row
+can't fit:
 
 - **the checker's own message**, wrapped and whole -- the answer to *why* a
   solution answered wrongly;
 - **where the test came from** -- the generator call, the generator script, or
   the testcase it was copied from, with the ones that point at a real file
-  opening it.
+  opening it;
+- **the other times** -- the solution's wall-clock time (the row shows CPU
+  time), and the checker's and interactor's times when they ran.
 
 The card's `out`, `err` and `log` buttons pick what the second pane shows: the
 output against the expected answer, what the solution wrote to stderr, or the

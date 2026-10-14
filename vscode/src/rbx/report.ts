@@ -101,6 +101,21 @@ export interface SolutionReport {
    * run that tripped nothing -- and that is the safe direction.
    */
   readonly sanitizerWarnings: boolean;
+  /**
+   * The time limit this solution was judged against, in seconds -- the
+   * enforced 1x one, absent when none was enforced.
+   *
+   * The skeleton's `SolutionEntry.limits` says the same thing and is there from
+   * the start of the run; this is the fallback for a skeleton too old to carry
+   * it, and never the package's own `timeLimit`, which is wrong whenever a
+   * language modifier or a profile applies.
+   */
+  readonly timeLimit?: number;
+  /**
+   * Whether this solution's failure is the kind untuned limits explain -- rbx's
+   * cue to suggest `rbx time`. False on a report too old to say.
+   */
+  readonly untunedLimitsSuspected: boolean;
   readonly groups: readonly GroupReport[];
 }
 
@@ -123,6 +138,15 @@ export interface RunEnd {
 export interface RunReport {
   readonly solutions: readonly SolutionReport[];
   readonly ended?: RunEnd;
+  /**
+   * The share of its time limit past which rbx calls a margin tight -- the
+   * `tight_time_margin` detector's own threshold, published so the view draws
+   * the line where `rbx issues` does.
+   *
+   * Absent on a report too old to carry it, and then nothing is drawn tight:
+   * guessing a threshold is the second copy the field exists to prevent.
+   */
+  readonly tightTimeMarginRatio?: number;
 }
 
 function parseEnd(raw: Wire): RunEnd | undefined {
@@ -232,6 +256,8 @@ function parseSolution(raw: Wire): SolutionReport | undefined {
     runUnderDoubleTl: asBoolean(field(raw, 'runUnderDoubleTl')) ?? false,
     doubleTlVerdicts: parseOutcomes(field(raw, 'doubleTlVerdicts')),
     sanitizerWarnings: asBoolean(field(raw, 'sanitizerWarnings')) ?? false,
+    timeLimit: asNumber(field(raw, 'timeLimit')),
+    untunedLimitsSuspected: asBoolean(field(raw, 'untunedLimitsSuspected')) ?? false,
     groups,
   };
 }
@@ -257,5 +283,10 @@ export function parseReport(raw: Wire): RunReport | undefined {
     }
   }
   const ended = parseEnd(raw);
-  return ended === undefined ? { solutions } : { solutions, ended };
+  const tightTimeMarginRatio = asNumber(field(raw, 'tightTimeMarginRatio'));
+  return {
+    solutions,
+    ...(ended === undefined ? {} : { ended }),
+    ...(tightTimeMarginRatio === undefined ? {} : { tightTimeMarginRatio }),
+  };
 }

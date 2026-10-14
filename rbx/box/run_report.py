@@ -44,6 +44,17 @@ REPORT_VERSION = 1
 
 REPORT_FILENAME = 'report.yml'
 
+# How much of its time limit a passing solution may use before it is worth a
+# mention. 0.8 rather than something tighter because the measurement is one
+# machine's, on one run: flagging at 0.95 would only fire once the limit is
+# already effectively broken, and flagging at 0.5 would fire on every package
+# whose limits are deliberately snug.
+#
+# Lives here rather than beside the detector that applies it because it is
+# published (`RunReport.tightTimeMarginRatio`): a client colouring a time that
+# sits close to its limit must draw the line exactly where `rbx issues` does.
+TIGHT_TIME_MARGIN_RATIO = 0.8
+
 _T = TypeVar('_T', float, int)
 
 
@@ -214,6 +225,13 @@ class RunReport(BaseModel):
     # missed their expectations (`rbx run` exits 1 then); whether a testcase
     # was ever evaluated is what its `.eval` says.
     exitStatus: Optional[ExitStatus] = None
+    # The share of its time limit past which rbx calls a passing solution's
+    # margin tight -- see `TIGHT_TIME_MARGIN_RATIO`.
+    #
+    # Published so a client showing a time against its limit draws "tight" at
+    # the same line the `tight_time_margin` detector does, rather than carrying
+    # a second copy of the threshold that would drift from this one.
+    tightTimeMarginRatio: float = TIGHT_TIME_MARGIN_RATIO
 
 
 def _max_of(values: Iterable[Optional[_T]]) -> Optional[_T]:

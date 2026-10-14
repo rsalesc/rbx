@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import { test } from 'node:test';
+import { parse as parseYaml } from 'yaml';
 
 import { parseEvaluation, parseSkeleton } from './model';
 
@@ -204,4 +205,82 @@ test('an evaluation with an interactor timing is a communication task', () => {
   const batch = parseEvaluation({ result: { outcome: 'accepted' }, log: {} });
   assert.strictEqual(batch?.communication, false);
   assert.strictEqual(batch?.interactorTime, undefined);
+});
+
+// The limits-bearing parts of a real `rbx run` of vscode/demo/sum-of-pairs'
+// skeleton.yml: the per-language table, the verification level, and one
+// solution's own stamped limits.
+const REAL_SKELETON_LIMITS = `
+solutions:
+- path: sols/slow-ok.cpp
+  outcome: ACCEPTED_OR_TLE
+  runs_dir: .rbx/runs/1
+  limits:
+    time: 1000
+    configuredTime: 1000
+    memory: 256
+    output: 4096
+    isDoubleTL: true
+entries: []
+groups: []
+limits:
+  cpp:
+    time: 1000
+    configuredTime: 1000
+    memory: 256
+    output: 4096
+    isDoubleTL: true
+verification: 4
+`;
+
+test("a skeleton carries each solution's limits, the table, and the level", () => {
+  const skeleton = parseSkeleton(parseYaml(REAL_SKELETON_LIMITS));
+  const cpp = {
+    time: 1000,
+    configuredTime: 1000,
+    memory: 256,
+    output: 4096,
+    isDoubleTL: true,
+    profile: undefined,
+  };
+  assert.deepStrictEqual(skeleton?.solutions[0].limits, cpp);
+  assert.deepStrictEqual(skeleton?.limits, [{ language: 'cpp', limits: cpp }]);
+  assert.strictEqual(skeleton?.verification, 4);
+});
+
+test('a skeleton too old for limits reads as having none', () => {
+  const skeleton = parseSkeleton(MINIMAL);
+  assert.deepStrictEqual(skeleton?.limits, []);
+  assert.strictEqual(skeleton?.verification, undefined);
+  assert.strictEqual(parseSkeleton({ ...MINIMAL, limits: 'nonsense' })?.limits.length, 0);
+});
+
+test('an evaluation carries its wall time and the limits it ran under', () => {
+  // Trimmed from the same run's `sols/tle.cpp` on `main/1-gen-000`.
+  const evaluation = parseEvaluation(
+    parseYaml(`
+result:
+  outcome: time-limit-exceeded
+log:
+  time: 2.01198
+  wall_time: 2.0626422078348696
+  memory: 10829824
+  metadata:
+    limits:
+      time: 1000
+      configuredTime: 1000
+      memory: 256
+      isDoubleTL: true
+    timeLimit: 2000
+`),
+  );
+  assert.strictEqual(evaluation?.wallTime, 2.0626422078348696);
+  assert.deepStrictEqual(evaluation?.limits, {
+    time: 1000,
+    configuredTime: 1000,
+    memory: 256,
+    output: undefined,
+    isDoubleTL: true,
+    profile: undefined,
+  });
 });

@@ -114,6 +114,13 @@ body {
   color: var(--vscode-descriptionForeground);
 }
 
+/* The limits are on every run, so they read as the quietest line of the strip
+   rather than as a notice. */
+.header-limits {
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.85;
+}
+
 /* Each label truncates on its own rather than the line truncating as a whole,
    so a narrow sidebar shortens both notices instead of dropping the second
    one off the end. */

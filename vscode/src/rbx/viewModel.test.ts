@@ -77,6 +77,7 @@ function solutionReport(over: Partial<SolutionReport> = {}): SolutionReport {
     runUnderDoubleTl: false,
     doubleTlVerdicts: [],
     sanitizerWarnings: false,
+    untunedLimitsSuspected: false,
     groups: [],
     ...over,
   };
@@ -105,6 +106,7 @@ function run(
       compilation: [],
       sanitized: false,
       onlyAccepted: false,
+      limits: [],
       ...skeleton,
     },
     solutions,
@@ -1267,10 +1269,10 @@ test('an interactive testcase card knows it is one, and carries the judge times'
   const { rows } = buildViewModel(view([interactive]));
   const card = rowById(rows, '/w/a::0::main::000').card;
   assert.strictEqual(card?.communication, true);
-  assert.strictEqual(card?.judgeTimes, 'interactor 120 ms · checker 3 ms');
+  assert.strictEqual(card?.timings, 'interactor 120 ms · checker 3 ms');
   const batch = rowById(rows, '/w/a::0::main::001').card;
   assert.strictEqual(batch?.communication, false);
-  assert.strictEqual(batch?.judgeTimes, undefined);
+  assert.strictEqual(batch?.timings, undefined);
 });
 
 test('a checker that never ran leaves the card without a message', () => {
@@ -1418,4 +1420,140 @@ test('an evaluation that would not read is drawn as unreadable, never pending', 
   const { rows } = buildViewModel(view([sol]));
 
   assert.strictEqual(rowById(rows, '/w/a::0::main::000').verdict?.short, '!');
+});
+
+// --- Measurements against limits (#904) ------------------------------------
+
+const CPP_LIMITS = { time: 1000, configuredTime: 1000, memory: 256, isDoubleTL: true };
+const PY_LIMITS = { time: 3000, configuredTime: 3000, memory: 256, isDoubleTL: true };
+
+function limited(
+  index: number,
+  path: string,
+  limits: typeof CPP_LIMITS,
+  seconds: number,
+  report: Partial<SolutionReport> = {},
+): SolutionRun {
+  const groupReported = groupReport({ maxTime: seconds, maxMemory: 10 * 1024 * 1024 });
+  return {
+    solution: { path, index, expectedOutcome: 'ACCEPTED', limits },
+    groups: [
+      group(
+        'main',
+        [
+          testcase('000', 'accepted', {
+            evaluation: { outcome: 'accepted', time: seconds, memory: 10 * 1024 * 1024 },
+          }),
+        ],
+        groupReported,
+      ),
+    ],
+    report: solutionReport({
+      path,
+      index,
+      maxTime: seconds,
+      maxMemory: 10 * 1024 * 1024,
+      groups: [groupReported],
+      ...report,
+    }),
+  };
+}
+
+function ratioView(solutions: readonly SolutionRun[], skeleton: Partial<Skeleton> = {}) {
+  const base = view(solutions, [], skeleton);
+  return { ...base, run: { ...base.run!, tightTimeMarginRatio: 0.8 } };
+}
+
+function timeSpan(row: Row) {
+  return row.meta.find((span) => span.role === 'time');
+}
+
+test("every row reads its time against its own solution's limit, not the package's", () => {
+  // The same 0.9 s is tight under C++'s 1 s and comfortable under Python's 3 s:
+  // the one thing a package-wide `timeLimit` could never tell apart.
+  const model = buildViewModel(
+    ratioView([
+      limited(0, 'sols/main.cpp', CPP_LIMITS, 0.9),
+      limited(1, 'sols/main.py', PY_LIMITS, 0.9),
+    ]),
+  );
+  const cpp = (id: string) => timeSpan(rowById(model.rows, id));
+  assert.deepStrictEqual(
+    [cpp('/w/a::0'), cpp('/w/a::0::main'), cpp('/w/a::0::main::000')].map((span) => [
+      span?.text,
+      span?.hue,
+    ]),
+    [
+      ['0.90×TL', 'yellow'],
+      ['0.90×TL', 'yellow'],
+      ['900 / 1000 ms', 'yellow'],
+    ],
+  );
+  assert.deepStrictEqual(
+    [cpp('/w/a::1'), cpp('/w/a::1::main'), cpp('/w/a::1::main::000')].map((span) => [
+      span?.text,
+      span?.hue,
+    ]),
+    [
+      ['0.30×TL', 'dim'],
+      ['0.30×TL', 'dim'],
+      ['900 / 3000 ms', 'dim'],
+    ],
+  );
+});
+
+test("the solution card spells the max time and memory against the limits", () => {
+  const model = buildViewModel(ratioView([limited(0, 'sols/main.cpp', CPP_LIMITS, 0.181881)]));
+  const detail = rowById(model.rows, '/w/a::0').detail;
+  assert.strictEqual(detail?.maxTime, '181 / 1000 ms');
+  assert.strictEqual(detail?.maxTimeHue, 'dim');
+  assert.strictEqual(detail?.maxMemory, '10 MiB / 256 MiB');
+});
+
+test('a run with no limits on record reads its times as it always did', () => {
+  // An rbx too old to stamp limits, and a report too old to carry `timeLimit`.
+  const model = buildViewModel(view([MAIN]));
+  for (const row of model.rows) {
+    const span = timeSpan(row);
+    assert.ok(span === undefined || /^\d+ ms$/.test(span.text), span?.text);
+  }
+  assert.deepStrictEqual(model.limits, []);
+});
+
+test("the header's limits come off the skeleton's per-language table", () => {
+  const model = buildViewModel(
+    view([MAIN], [], { limits: [{ language: 'cpp', limits: { ...CPP_LIMITS, profile: 'local' } }] }),
+  );
+  assert.deepStrictEqual(model.limits, [
+    { language: 'cpp', time: '1000 ms', memory: '256 MiB', profile: 'local', doubleTl: true },
+  ]);
+});
+
+test('untuned limits raise one notice for the run, however many solutions suspect them', () => {
+  const model = buildViewModel(
+    view([
+      limited(0, 'sols/a.cpp', CPP_LIMITS, 0.1, { untunedLimitsSuspected: true }),
+      limited(1, 'sols/b.cpp', CPP_LIMITS, 0.1, { untunedLimitsSuspected: true }),
+    ]),
+  );
+  assert.deepStrictEqual(model.notices, [{ kind: 'untuned-limits' }]);
+});
+
+test('a verification level is a notice only off the default', () => {
+  assert.deepStrictEqual(buildViewModel(view([MAIN], [], { verification: 4 })).notices, []);
+  assert.deepStrictEqual(buildViewModel(view([MAIN], [], { verification: 2 })).notices, [
+    { kind: 'verification', level: 2 },
+  ]);
+});
+
+test('the testcase card carries the wall time first', () => {
+  const run = solution(0, 'sols/main.cpp', 'ACCEPTED', [
+    group('main', [
+      testcase('000', 'accepted', {
+        evaluation: { outcome: 'accepted', wallTime: 0.18389054108411074, checkerTime: 0.007826 },
+      }),
+    ]),
+  ]);
+  const card = rowById(buildViewModel(view([run])).rows, '/w/a::0::main::000').card;
+  assert.strictEqual(card?.timings, 'wall 183 ms · checker 7 ms');
 });

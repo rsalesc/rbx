@@ -24,6 +24,16 @@ import {
 } from './declaredVisualizers';
 import { ExpectationDisplay, expectationDisplay } from './expectation';
 import { Hue, hueOfScore, hueOfThemeColor } from './hue';
+import {
+  LimitLine,
+  Measured,
+  TimeLimits,
+  aggregateTime,
+  limitLines,
+  memoryAgainstLimit,
+  solutionTimeLimits,
+  testcaseTime,
+} from './limitsView';
 import { Evaluation, TestcaseEntry } from './model';
 import {
   FindingNode,
@@ -46,7 +56,6 @@ import {
 import { PackageRun, SolutionRun, TestcaseRun } from './store';
 import {
   Progress,
-  formatMemory,
   formatScore,
   formatTime,
   isComplete,
@@ -87,6 +96,8 @@ export interface Span {
   readonly text: string;
   readonly hue?: Hue;
   readonly role?: SpanRole;
+  /** A hover, for a span whose text is a shortening -- `0.93×TL` of what. */
+  readonly title?: string;
 }
 
 export interface VerdictChip {
@@ -171,10 +182,16 @@ export type NoticeKind =
   /** rbx stamped the run as interrupted, with testcases left unevaluated. */
   | 'interrupted'
   /** rbx stamped the run as over, some other way, with testcases left unevaluated. */
-  | 'ended-early';
+  | 'ended-early'
+  /** rbx suspects a solution failed because the limits are not tuned to this machine. */
+  | 'untuned-limits'
+  /** The run used a verification level other than `rbx run`'s default. */
+  | 'verification';
 
 export interface RunNotice {
   readonly kind: NoticeKind;
+  /** The `VerificationLevel`, for `verification`; absent otherwise. */
+  readonly level?: number;
 }
 
 export interface Mismatched {
@@ -225,8 +242,12 @@ export interface SolutionDetail {
    */
   readonly warnings?: readonly RunWarning[];
   readonly histogram: readonly HistogramSlice[];
+  /** `181 / 1000 ms` when the limit is known, the time alone otherwise. */
   readonly maxTime?: string;
+  /** Yellow when the margin is tight, by rbx's published threshold. */
+  readonly maxTimeHue?: Hue;
   readonly maxMemory?: string;
+  readonly maxMemoryHue?: Hue;
   readonly score?: string;
   /** Set exactly when `score` is -- see `hueOfScore`. */
   readonly scoreHue?: Hue;
@@ -289,10 +310,11 @@ export interface TestcaseCard {
    */
   readonly communication: boolean;
   /**
-   * `interactor 120 ms · checker 3 ms`: the judges' own times, which the row
-   * (the solution's time) has no room for. Absent when neither was measured.
+   * `wall 183 ms · interactor 120 ms · checker 3 ms`: the solution's wall time
+   * and the judges' own times, which the row -- the solution's CPU time -- has
+   * no room for. The `r` panel of `rbx ui`. Absent when none was measured.
    */
-  readonly judgeTimes?: string;
+  readonly timings?: string;
 }
 
 export interface Row {
@@ -450,6 +472,12 @@ export interface RunViewModel {
    * that forgot to answer the question would silently draw nothing.
    */
   readonly notices: readonly RunNotice[];
+  /**
+   * The per-language limits `rbx run` prints before it starts -- see
+   * `LimitLine`. Empty when the skeleton carries no table, which is also what a
+   * skeleton by an older rbx looks like.
+   */
+  readonly limits: readonly LimitLine[];
 }
 
 /**
@@ -465,6 +493,7 @@ export const EMPTY_MODEL: RunViewModel = {
   warned: 0,
   empty: true,
   notices: [],
+  limits: [],
 };
 
 /**
@@ -495,8 +524,21 @@ function noticesOf(run: PackageRun | undefined): RunNotice[] {
   if (skeleton.onlyAccepted) {
     notices.push({ kind: 'accepted-only' });
   }
+  // rbx decides it per solution; the cure -- `rbx time` -- is per package, so
+  // one notice for the run however many solutions raised it.
+  if (run?.solutions.some((solution) => solution.report?.untunedLimitsSuspected === true)) {
+    notices.push({ kind: 'untuned-limits' });
+  }
+  // Only off the default: `-v4` is every ordinary `rbx run`, and a notice on
+  // every ordinary run is a notice nobody reads.
+  if (skeleton.verification !== undefined && skeleton.verification !== DEFAULT_VERIFICATION) {
+    notices.push({ kind: 'verification', level: skeleton.verification });
+  }
   return notices;
 }
+
+/** `VerificationLevel.FULL`, the default of `rbx run -v`. */
+const DEFAULT_VERIFICATION = 4;
 
 function hasUnevaluated(run: PackageRun): boolean {
   return run.solutions.some((solution) =>
@@ -606,6 +648,39 @@ function span(text: string | undefined, hue: Hue, role?: SpanRole): Span | undef
   return text === undefined || text === '' ? undefined : { text, hue, role };
 }
 
+/** A measurement against its limit, as a span -- see limitsView.ts. */
+function measuredSpan(measured: Measured | undefined, role: SpanRole): Span | undefined {
+  if (measured === undefined || measured.text === '') {
+    return undefined;
+  }
+  // `title` only when there is one, for the reason `chip` spreads `under`.
+  return {
+    text: measured.text,
+    hue: measured.hue,
+    role,
+    ...(measured.title === undefined ? {} : { title: measured.title }),
+  };
+}
+
+/**
+ * What a row needs to read a measurement against: its own solution's limits,
+ * never the package's, and rbx's tight-margin line.
+ */
+interface Against {
+  readonly time?: TimeLimits;
+  /** MiB. */
+  readonly memory?: number;
+  readonly ratio?: number;
+}
+
+function against(run: SolutionRun, ratio: number | undefined): Against {
+  return {
+    time: solutionTimeLimits(run.solution.limits, run.report),
+    memory: run.solution.limits?.memory,
+    ratio,
+  };
+}
+
 function spans(candidates: readonly (Span | undefined)[]): Span[] {
   return candidates.filter((candidate): candidate is Span => candidate !== undefined);
 }
@@ -621,6 +696,7 @@ function spans(candidates: readonly (Span | undefined)[]): Span[] {
 function aggregateMeta(
   report: SolutionReport | GroupReport | undefined,
   progress: Progress,
+  limits: Against,
 ): Span[] {
   if (report === undefined) {
     return spans([span(pendingDescription(progress), 'dim', 'progress')]);
@@ -640,8 +716,8 @@ function aggregateMeta(
           hueOfScore(report.score, report.maxScore),
           'score',
         ),
-    span(formatTime(report.maxTime), 'dim', 'time'),
-    span(formatMemory(report.maxMemory), 'dim', 'memory'),
+    measuredSpan(aggregateTime(report.maxTime, report.outcome, limits.time, limits.ratio), 'time'),
+    measuredSpan(memoryAgainstLimit(report.maxMemory, limits.memory, limits.ratio), 'memory'),
   ]);
 }
 
@@ -893,19 +969,35 @@ function solutionDetail(
   run: SolutionRun,
   mismatch: boolean,
   warnings: readonly RunWarning[],
+  limits: Against,
 ): SolutionDetail {
   const report = run.report;
   const testcases = run.groups.flatMap((group) => group.testcases);
+  // The card has the width the row does not, so it spells the pair out where
+  // the row shows only the share: `181 / 1000 ms`, the same pair a testcase row
+  // shows, so the two read as the same measurement.
+  const time =
+    report === undefined
+      ? undefined
+      : testcaseTime({ time: report.maxTime, outcome: report.outcome }, limits.time, limits.ratio);
+  const memory =
+    report === undefined
+      ? undefined
+      : memoryAgainstLimit(report.maxMemory, limits.memory, limits.ratio);
+  const memoryLimit = limits.memory === undefined ? undefined : `${limits.memory} MiB`;
   return {
     mismatch: mismatch && report !== undefined ? mismatchDetail(run, report) : undefined,
     warnings,
     histogram: histogram(testcases),
-    maxTime: report === undefined ? undefined : formatTime(report.maxTime),
-    maxMemory: report === undefined ? undefined : formatMemory(report.maxMemory),
-    // No limit denominator yet. There is now one to divide by -- `skeleton.yml`
-    // carries each solution's resolved limits -- but showing a time against it
-    // is a decision about what "close to the limit" means, and nobody has made
-    // it. Absence here is a gap, no longer an impossibility.
+    maxTime: time?.text,
+    maxTimeHue: time?.hue,
+    maxMemory:
+      memory === undefined
+        ? undefined
+        : memoryLimit === undefined
+          ? memory.text
+          : `${memory.text} / ${memoryLimit}`,
+    maxMemoryHue: memory?.hue,
     score:
       report === undefined || report.maxScore === 0
         ? undefined
@@ -917,8 +1009,15 @@ function solutionDetail(
   };
 }
 
-function solutionRow(node: SolutionNode, depth: number, label: string, parentId?: string): Row {
+function solutionRow(
+  node: SolutionNode,
+  depth: number,
+  label: string,
+  ratio: number | undefined,
+  parentId?: string,
+): Row {
   const { run, solo } = node;
+  const limits = against(run, ratio);
   const warnings = warningsOf(run.report, true);
   const gutter = solutionGutter(run, warnings);
   const mismatch = gutter === 'missed';
@@ -935,7 +1034,7 @@ function solutionRow(node: SolutionNode, depth: number, label: string, parentId?
     labelTitle: label === run.solution.path ? undefined : run.solution.path,
     labelHue: declared?.hue,
     labelBold: declared?.bold ?? false,
-    meta: aggregateMeta(run.report, progressOf(testcases)),
+    meta: aggregateMeta(run.report, progressOf(testcases), limits),
     expectation: declared,
     verdict,
     warnings,
@@ -944,7 +1043,7 @@ function solutionRow(node: SolutionNode, depth: number, label: string, parentId?
     // Mirrors the tree, which mirrors rbx's own `len(skeleton.solutions) == 1`
     // choice of the reporter that prints per-testcase lines.
     defaultExpanded: solo,
-    detail: solutionDetail(run, mismatch, warnings),
+    detail: solutionDetail(run, mismatch, warnings, limits),
     search: haystack(run.solution.path, verdict, mismatch, declared, warnings),
     section: 'rbx.solution',
     // The row names a file, so the most obvious gesture in the view -- arrow
@@ -955,7 +1054,12 @@ function solutionRow(node: SolutionNode, depth: number, label: string, parentId?
   };
 }
 
-function groupRow(node: GroupNode, depth: number, parentId?: string): Row {
+function groupRow(
+  node: GroupNode,
+  depth: number,
+  ratio: number | undefined,
+  parentId?: string,
+): Row {
   const { group } = node;
   // No group attribution on a group row: the row is the attribution.
   const warnings = warningsOf(group.report, false);
@@ -976,7 +1080,9 @@ function groupRow(node: GroupNode, depth: number, parentId?: string): Row {
     label: group.name,
     labelHue: declared?.hue,
     labelBold: declared?.bold ?? false,
-    meta: aggregateMeta(group.report, progressOf(group.testcases)),
+    // Against the group's own solution's limits: a Python solution's groups
+    // are read against the Python limit, not the C++ one beside it.
+    meta: aggregateMeta(group.report, progressOf(group.testcases), against(node.run, ratio)),
     expectation: declared,
     verdict,
     warnings,
@@ -1050,12 +1156,13 @@ function testcaseCard(
         ? NO_VISUALIZERS
         : resolveDeclaredVisualizers(declarations, node.testcase.entry.subgroup),
     communication: node.testcase.evaluation?.communication ?? false,
-    judgeTimes: judgeTimes(node.testcase.evaluation),
+    timings: timings(node.testcase.evaluation),
   };
 }
 
-function judgeTimes(evaluation: Evaluation | undefined): string | undefined {
+function timings(evaluation: Evaluation | undefined): string | undefined {
   const parts = [
+    ['wall', formatTime(evaluation?.wallTime)],
     ['interactor', formatTime(evaluation?.interactorTime)],
     ['checker', formatTime(evaluation?.checkerTime)],
   ]
@@ -1070,9 +1177,11 @@ function testcaseRow(
   parentId: string | undefined,
   declarations: VisualizerDeclarations | undefined,
   ended: boolean,
+  ratio: number | undefined,
 ): Row {
   const { testcase } = node;
   const evaluation = testcase.evaluation;
+  const limits = against(node.run, ratio);
   const verdict = testcaseChip(testcase, ended, hiddenVerdict(testcase, node.group.report));
   // A double-TL fact is decided over a whole group or a whole solution, never
   // over one testcase: a single soft TLE says nothing until it is weighed
@@ -1100,8 +1209,8 @@ function testcaseRow(
     // of a row that is only 22px tall. It belongs somewhere that can wrap --
     // which is `card`, below.
     meta: spans([
-      span(formatTime(evaluation?.time), 'dim', 'time'),
-      span(formatMemory(evaluation?.memory), 'dim', 'memory'),
+      measuredSpan(testcaseTime(evaluation, limits.time, limits.ratio), 'time'),
+      measuredSpan(memoryAgainstLimit(evaluation?.memory, limits.memory, limits.ratio), 'memory'),
     ]),
     verdict,
     warnings,
@@ -1310,6 +1419,7 @@ export function buildViewModel(
   // The most recent row at each level, so a child can name its parent without
   // the walk having to carry a stack.
   const parents = new Map<number, string>();
+  const ratio = view.run?.tightTimeMarginRatio;
 
   const rows: Row[] = [];
   for (const node of nodes) {
@@ -1319,12 +1429,19 @@ export function buildViewModel(
       switch (node.kind) {
         case 'solution': {
           const path = node.run.solution.path;
-          return solutionRow(node, depth, labels.get(path) ?? path, parentId);
+          return solutionRow(node, depth, labels.get(path) ?? path, ratio, parentId);
         }
         case 'group':
-          return groupRow(node, depth, parentId);
+          return groupRow(node, depth, ratio, parentId);
         case 'testcase':
-          return testcaseRow(node, depth, parentId, declarations, view.run?.ended !== undefined);
+          return testcaseRow(
+            node,
+            depth,
+            parentId,
+            declarations,
+            view.run?.ended !== undefined,
+            ratio,
+          );
       }
     })();
     rows.push(row);
@@ -1347,5 +1464,6 @@ export function buildViewModel(
     empty: !rows.some((row) => row.kind === 'solution'),
     findings: buildFindings(view, labels),
     notices: noticesOf(view.run),
+    limits: limitLines(view.run?.skeleton.limits ?? []),
   };
 }
