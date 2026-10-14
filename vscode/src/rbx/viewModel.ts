@@ -24,7 +24,7 @@ import {
 } from './declaredVisualizers';
 import { ExpectationDisplay, expectationDisplay } from './expectation';
 import { Hue, hueOfScore, hueOfThemeColor } from './hue';
-import { Evaluation, Skeleton, TestcaseEntry } from './model';
+import { Evaluation, TestcaseEntry } from './model';
 import {
   FindingNode,
   GroupNode,
@@ -35,7 +35,7 @@ import {
   flattenNodes,
   nodeId,
 } from './nodes';
-import { outcomeIcon, shortName } from './outcome';
+import { NOT_RUN, OutcomeDisplay, UNREADABLE, outcomeIcon, shortName } from './outcome';
 import { GroupReport, SolutionReport } from './report';
 import { scoreRange } from './score';
 import {
@@ -165,7 +165,13 @@ export interface RunWarning {
  * notices a run gets is rbx's answer, published on the skeleton; only the words
  * are decided here.
  */
-export type NoticeKind = 'sanitized-run' | 'accepted-only';
+export type NoticeKind =
+  | 'sanitized-run'
+  | 'accepted-only'
+  /** rbx stamped the run as interrupted, with testcases left unevaluated. */
+  | 'interrupted'
+  /** rbx stamped the run as over, some other way, with testcases left unevaluated. */
+  | 'ended-early';
 
 export interface RunNotice {
   readonly kind: NoticeKind;
@@ -468,11 +474,18 @@ export const EMPTY_MODEL: RunViewModel = {
  * is up while the solutions are still going rather than arriving with the first
  * finished one.
  */
-function noticesOf(skeleton: Skeleton | undefined): RunNotice[] {
+function noticesOf(run: PackageRun | undefined): RunNotice[] {
+  const skeleton = run?.skeleton;
   if (skeleton === undefined) {
     return [];
   }
   const notices: RunNotice[] = [];
+  // First, because it changes how every pending-looking row reads. Only when
+  // something was actually left behind: a run interrupted after its last
+  // testcase is complete, and a banner saying otherwise would be false.
+  if (run?.ended !== undefined && hasUnevaluated(run)) {
+    notices.push({ kind: run.ended.status === 'interrupted' ? 'interrupted' : 'ended-early' });
+  }
   if (skeleton.sanitized) {
     notices.push({ kind: 'sanitized-run' });
   }
@@ -483,6 +496,33 @@ function noticesOf(skeleton: Skeleton | undefined): RunNotice[] {
     notices.push({ kind: 'accepted-only' });
   }
   return notices;
+}
+
+function hasUnevaluated(run: PackageRun): boolean {
+  return run.solutions.some((solution) =>
+    solution.groups.some((group) =>
+      group.testcases.some((testcase) => testcase.evaluation === undefined),
+    ),
+  );
+}
+
+function displayChip({ icon, color, short }: OutcomeDisplay): VerdictChip {
+  return { icon, hue: hueOfThemeColor(color), short };
+}
+
+/**
+ * A testcase's chip, which unlike a solution's has two states that are not
+ * verdicts and must not read as pending: an `.eval` that would not read, and
+ * no `.eval` in a run rbx has said is over.
+ */
+function testcaseChip(testcase: TestcaseRun, ended: boolean, under?: WarningVerdict): VerdictChip {
+  if (testcase.readError !== undefined) {
+    return displayChip(UNREADABLE);
+  }
+  if (testcase.evaluation === undefined && ended) {
+    return displayChip(NOT_RUN);
+  }
+  return chip(testcase.evaluation?.outcome, under);
 }
 
 function chip(outcome: string | undefined, under?: WarningVerdict): VerdictChip {
@@ -1029,10 +1069,11 @@ function testcaseRow(
   depth: number,
   parentId: string | undefined,
   declarations: VisualizerDeclarations | undefined,
+  ended: boolean,
 ): Row {
   const { testcase } = node;
   const evaluation = testcase.evaluation;
-  const verdict = chip(evaluation?.outcome, hiddenVerdict(testcase, node.group.report));
+  const verdict = testcaseChip(testcase, ended, hiddenVerdict(testcase, node.group.report));
   // A double-TL fact is decided over a whole group or a whole solution, never
   // over one testcase: a single soft TLE says nothing until it is weighed
   // against the expectation the layer above it declared. A sanitizer finding
@@ -1283,7 +1324,7 @@ export function buildViewModel(
         case 'group':
           return groupRow(node, depth, parentId);
         case 'testcase':
-          return testcaseRow(node, depth, parentId, declarations);
+          return testcaseRow(node, depth, parentId, declarations, view.run?.ended !== undefined);
       }
     })();
     rows.push(row);
@@ -1305,6 +1346,6 @@ export function buildViewModel(
     // no solution rows at all, and it is precisely the run with most to say.
     empty: !rows.some((row) => row.kind === 'solution'),
     findings: buildFindings(view, labels),
-    notices: noticesOf(view.run?.skeleton),
+    notices: noticesOf(view.run),
   };
 }

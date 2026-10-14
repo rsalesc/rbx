@@ -104,8 +104,37 @@ export interface SolutionReport {
   readonly groups: readonly GroupReport[];
 }
 
+/**
+ * How the process that wrote the run ended, once it has.
+ *
+ * Stamped by rbx on its way out (`run_report.finish_run`), so it is what tells
+ * an interrupted run apart from one still going: before it, a testcase with no
+ * evaluation is pending; after it, that testcase was never evaluated and never
+ * will be. Absent on a run still in flight, on one rbx was SIGKILLed out of,
+ * and on every report an rbx older than the marker wrote.
+ */
+export interface RunEnd {
+  /** `ok`, `interrupted` or `error` -- the process's exit, not the verdicts'. */
+  readonly status: string;
+  /** ISO 8601, with its offset. */
+  readonly endedAt?: string;
+}
+
 export interface RunReport {
   readonly solutions: readonly SolutionReport[];
+  readonly ended?: RunEnd;
+}
+
+function parseEnd(raw: Wire): RunEnd | undefined {
+  if (asBoolean(field(raw, 'finished')) !== true) {
+    return undefined;
+  }
+  return {
+    // A marker missing its status still says the run is over, which is the
+    // half that matters; `error` is the reading that promises the least.
+    status: asString(field(raw, 'exitStatus')) ?? 'error',
+    endedAt: asString(field(raw, 'endedAt')),
+  };
 }
 
 function parseGroup(raw: Wire): GroupReport | undefined {
@@ -227,5 +256,6 @@ export function parseReport(raw: Wire): RunReport | undefined {
       solutions.push(solution);
     }
   }
-  return { solutions };
+  const ended = parseEnd(raw);
+  return ended === undefined ? { solutions } : { solutions, ended };
 }

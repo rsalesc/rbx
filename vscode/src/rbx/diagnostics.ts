@@ -13,9 +13,14 @@
  * every decision here to account. The host half (../diagnostics.ts) turns what
  * this returns into `vscode.Diagnostic`s and owns the collection.
  */
-import { packageFilePath } from './layout';
-import { PackageRunView } from './nodes';
+import { PackageLayout, packageFilePath } from './layout';
 import { CompilationFinding } from './store';
+
+/** One package's compile findings -- all a diagnostic is built from. */
+export interface PackageFindings {
+  readonly pkg: PackageLayout;
+  readonly findings: readonly CompilationFinding[];
+}
 
 export interface Finding {
   /** Absolute path of the file this belongs to. */
@@ -54,12 +59,12 @@ function failureMessage(finding: CompilationFinding): string {
 }
 
 /** Every finding in every package, in skeleton order. */
-export function buildDiagnostics(packages: readonly PackageRunView[]): Finding[] {
-  const findings: Finding[] = [];
-  for (const { pkg, run } of packages) {
-    for (const finding of run?.findings ?? []) {
+export function buildDiagnostics(packages: readonly PackageFindings[]): Finding[] {
+  const out: Finding[] = [];
+  for (const { pkg, findings } of packages) {
+    for (const finding of findings) {
       if (finding.entry.status === 'FAILED') {
-        findings.push({
+        out.push({
           path: finding.sourcePath,
           // Line 1 of the file, because there is no better answer -- see
           // `failureMessage`. Never a guessed line: a diagnostic that points at
@@ -72,7 +77,7 @@ export function buildDiagnostics(packages: readonly PackageRunView[]): Finding[]
         continue;
       }
       for (const warning of finding.entry.warnings) {
-        findings.push({
+        out.push({
           // The file the *compiler* named, which is not always the file being
           // compiled.
           path: packageFilePath(pkg, warning.file),
@@ -87,7 +92,7 @@ export function buildDiagnostics(packages: readonly PackageRunView[]): Finding[]
       }
     }
   }
-  return findings;
+  return out;
 }
 
 /**

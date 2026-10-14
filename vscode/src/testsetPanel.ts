@@ -26,7 +26,9 @@ import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
 
+import { touchesTestset } from './rbx/artifactEvents';
 import { Latest } from './rbx/latest';
+import type { RunDataChange } from './runData';
 import {
   PackageLayout,
   buildPath,
@@ -53,7 +55,7 @@ import type { Testset } from './rbx/testset';
  */
 export interface TestsetSource {
   /** Fires when the watcher has invalidated something on disk. */
-  readonly onDidChange: vscode.Event<void>;
+  readonly onDidChange: vscode.Event<RunDataChange>;
   testset(pkg: PackageLayout): Promise<Testset | undefined>;
 }
 
@@ -138,7 +140,11 @@ export class TestsetPanel {
       }),
       // The panel follows the same debounced watcher the Run view does, so a
       // rebuild redraws the gallery without the reader asking.
-      source.onDidChange(() => void this.post()),
+      source.onDidChange((change) => {
+        if (touchesTestset(change.plan)) {
+          void this.post();
+        }
+      }),
     );
     panel.onDidDispose(() => {
       this.subscriptions.forEach((subscription) => subscription.dispose());

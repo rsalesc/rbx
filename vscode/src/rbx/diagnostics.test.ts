@@ -1,11 +1,10 @@
 import * as assert from 'assert';
 import { test } from 'node:test';
 
-import { buildDiagnostics, byFile } from './diagnostics';
+import { PackageFindings, buildDiagnostics, byFile } from './diagnostics';
 import type { PackageLayout } from './layout';
-import type { PackageRunView } from './nodes';
 import type { CompilationEntry } from './model';
-import type { CompilationFinding, PackageRun } from './store';
+import type { CompilationFinding } from './store';
 
 const PKG: PackageLayout = { buildDir: 'build', root: '/w/a' };
 
@@ -24,20 +23,8 @@ function finding(path: string, over: Partial<CompilationEntry> = {}): Compilatio
   };
 }
 
-function view(findings: readonly CompilationFinding[]): PackageRunView {
-  const run: PackageRun = {
-    skeleton: {
-      solutions: [],
-      entries: [],
-      groups: [],
-      compilation: [],
-      sanitized: false,
-      onlyAccepted: false,
-    },
-    solutions: [],
-    findings,
-  };
-  return { pkg: PKG, run };
+function view(findings: readonly CompilationFinding[]): PackageFindings {
+  return { pkg: PKG, findings };
 }
 
 test('a package with nothing to report produces no entries', () => {
@@ -45,7 +32,7 @@ test('a package with nothing to report produces no entries', () => {
 });
 
 test('a package that has never run produces no entries', () => {
-  assert.deepStrictEqual(buildDiagnostics([{ pkg: PKG, run: undefined }]), []);
+  assert.deepStrictEqual(buildDiagnostics([{ pkg: PKG, findings: [] }]), []);
 });
 
 test('a warning lands on its own line, one-based to zero-based', () => {
@@ -134,31 +121,20 @@ test('every entry knows where the compiler output went', () => {
 });
 
 test('findings from several packages are all reported', () => {
-  const other: PackageRunView = {
+  const other: PackageFindings = {
     pkg: { buildDir: 'build', root: '/w/b' },
-    run: {
-      skeleton: {
-      solutions: [],
-      entries: [],
-      groups: [],
-      compilation: [],
-      sanitized: false,
-      onlyAccepted: false,
-    },
-      solutions: [],
-      findings: [
-        {
-          entry: {
-            path: 'sols/x.cpp',
-            status: 'FAILED',
-            log: 'compilation/0.log',
-            warnings: [],
-          },
-          logPath: '/w/b/.rbx/runs/compilation/0.log',
-          sourcePath: '/w/b/sols/x.cpp',
+    findings: [
+      {
+        entry: {
+          path: 'sols/x.cpp',
+          status: 'FAILED',
+          log: 'compilation/0.log',
+          warnings: [],
         },
-      ],
-    },
+        logPath: '/w/b/.rbx/runs/compilation/0.log',
+        sourcePath: '/w/b/sols/x.cpp',
+      },
+    ],
   };
   const entries = buildDiagnostics([view([finding('sols/broken.cpp', { status: 'FAILED' })]), other]);
   assert.deepStrictEqual(

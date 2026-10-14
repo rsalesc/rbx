@@ -29,7 +29,7 @@ import {
   renderTree,
   visibleRows,
 } from './render';
-import { FilterBox, SelectorHost, TreeController, debounce } from './tree';
+import { FilterBox, SelectorHost, TreeController, debounce, setHtml } from './tree';
 
 interface VsCodeApi {
   postMessage(message: unknown): void;
@@ -133,18 +133,19 @@ const filterBox = new FilterBox({
 /** Re-render the tree, the card and the findings panel, keeping scroll where it was. */
 function render(): void {
   const scrollTop = controller.scrollTop;
-  header.innerHTML = renderHeader(model, uiState());
-  tree.innerHTML = renderTree(model, uiState());
+  // Each section only if its markup moved -- see `setHtml`.
+  setHtml(header, renderHeader(model, uiState()));
+  setHtml(tree, renderTree(model, uiState()));
   controller.scrollTop = scrollTop;
   // Redrawn with the tree rather than on its own message: the card describes
   // the selection, and the selection changes in the same breath as the rows do.
   const cardHtml = renderCard(model, uiState());
-  card.innerHTML = cardHtml;
+  setHtml(card, cardHtml);
   // Empty means "the selection is not a testcase", and an empty flex item would
   // still take its border and padding with it -- the same rule the findings
   // panel follows for a clean run.
   card.classList.toggle('has-card', cardHtml !== '');
-  findings.innerHTML = renderFindings(model, uiState());
+  setHtml(findings, renderFindings(model, uiState()));
   // The panel is `display: none` until it has something in it, so a clean run
   // does not leave an empty flex item taking the bottom border with it.
   findings.classList.toggle('has-findings', model.findings !== undefined);

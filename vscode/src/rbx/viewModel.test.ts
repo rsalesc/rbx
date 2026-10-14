@@ -1377,3 +1377,45 @@ test('a sanitized run the user narrowed themselves says only the first', () => {
 test('an ordinary run carries no notices', () => {
   assert.deepStrictEqual(buildViewModel(view([MAIN])).notices, []);
 });
+
+function ended(status: string, testcases: readonly TestcaseRun[]): PackageRunView {
+  const sol = solution(0, 'sols/main.cpp', 'ACCEPTED', [group('main', testcases)]);
+  return { pkg: PKG, run: { ...run([sol]), ended: { status } } };
+}
+
+test('an interrupted run says so, and its unevaluated testcases are never-run', () => {
+  const model = buildViewModel(ended('interrupted', [testcase('000', 'accepted'), testcase('001')]));
+
+  assert.deepStrictEqual(model.notices, [{ kind: 'interrupted' }]);
+  assert.strictEqual(rowById(model.rows, '/w/a::0::main::000').verdict?.short, 'AC');
+  assert.strictEqual(rowById(model.rows, '/w/a::0::main::001').verdict?.short, '–');
+});
+
+test('a run that ended any other way with testcases left says it ended early', () => {
+  const model = buildViewModel(ended('error', [testcase('000')]));
+
+  assert.deepStrictEqual(model.notices, [{ kind: 'ended-early' }]);
+});
+
+test('a finished run with nothing left behind carries no notice', () => {
+  // Ctrl-C after the last testcase landed interrupted nothing.
+  const model = buildViewModel(ended('interrupted', [testcase('000', 'accepted')]));
+
+  assert.deepStrictEqual(model.notices, []);
+});
+
+test('a run still in flight draws a missing evaluation as pending', () => {
+  const sol = solution(0, 'sols/main.cpp', 'ACCEPTED', [group('main', [testcase('000')])]);
+  const { rows } = buildViewModel(view([sol]));
+
+  assert.strictEqual(rowById(rows, '/w/a::0::main::000').verdict?.short, '?');
+});
+
+test('an evaluation that would not read is drawn as unreadable, never pending', () => {
+  const sol = solution(0, 'sols/main.cpp', 'ACCEPTED', [
+    group('main', [testcase('000', undefined, { readError: 'EMFILE: too many open files' })]),
+  ]);
+  const { rows } = buildViewModel(view([sol]));
+
+  assert.strictEqual(rowById(rows, '/w/a::0::main::000').verdict?.short, '!');
+});

@@ -788,6 +788,8 @@ async def _get_report_skeleton(
     # an interrupted run cannot leave stale verdicts that a reader would take
     # for current ones.
     run_report.clear_report(runs_dir)
+    # And remember it, so the way out of this process can say how it ended.
+    run_report.begin_run(runs_dir)
 
     return skeleton
 

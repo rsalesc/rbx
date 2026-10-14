@@ -23,7 +23,14 @@ import {
   renderTestsetTree,
   visibleTestsetRows,
 } from './testsetRender';
-import { FilterBox, SelectorHost, TreeClick, TreeController, debounce } from './tree';
+import {
+  FilterBox,
+  SelectorHost,
+  TreeClick,
+  TreeController,
+  debounce,
+  setHtml,
+} from './tree';
 
 interface VsCodeApi {
   postMessage(message: unknown): void;
@@ -134,11 +141,12 @@ const filterBox = new FilterBox({
 /** Re-render the header, the tree and the card, keeping scroll where it was. */
 function render(): void {
   const scrollTop = controller.scrollTop;
-  header.innerHTML = renderTestsetHeader(model);
-  tree.innerHTML = renderTestsetTree(model, uiState());
+  // Each section only if its markup moved -- see `setHtml`.
+  setHtml(header, renderTestsetHeader(model));
+  setHtml(tree, renderTestsetTree(model, uiState()));
   controller.scrollTop = scrollTop;
   const cardHtml = renderTestsetCard(model, uiState());
-  card.innerHTML = cardHtml;
+  setHtml(card, cardHtml);
   // Empty means "the selection is not a testcase", and an empty flex item would
   // still take its border and padding with it.
   card.classList.toggle('has-card', cardHtml !== '');

@@ -153,6 +153,10 @@ function noticeText(notice: RunNotice): string {
       return 'sanitized \u2014 no time limit';
     case 'accepted-only':
       return 'ACCEPTED only';
+    case 'interrupted':
+      return 'interrupted';
+    case 'ended-early':
+      return 'ended early';
   }
 }
 
@@ -168,6 +172,16 @@ function noticeTitle(notice: RunNotice): string {
       return (
         'No solutions were named, so a sanitized run judged only the ones declared ' +
         'ACCEPTED. This package\u2019s other solutions were never run.'
+      );
+    case 'interrupted':
+      return (
+        'This run was interrupted before every testcase was evaluated. ' +
+        'Testcases marked \u2013 were never run.'
+      );
+    case 'ended-early':
+      return (
+        'rbx exited before every testcase of this run was evaluated. ' +
+        'Testcases marked \u2013 were never run.'
       );
   }
 }

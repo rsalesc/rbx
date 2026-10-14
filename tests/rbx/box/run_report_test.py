@@ -580,3 +580,97 @@ def test_a_sanitizer_finding_is_attributed_to_its_group(
     assert not groups['small'].sanitizerWarnings
     assert groups['big'].sanitizerWarnings
     assert entry.sanitizerWarnings
+
+
+@pytest.fixture
+def runs_dir(tmp_path: pathlib.Path, monkeypatch) -> pathlib.Path:
+    """A runs directory holding a skeleton, with no run remembered yet."""
+    monkeypatch.setattr(run_report, '_open_run', None)
+    runs = tmp_path / 'runs'
+    runs.mkdir()
+    (runs / 'skeleton.yml').write_text('solutions: []\n')
+    return runs
+
+
+def _read(runs: pathlib.Path) -> dict:
+    return yaml.safe_load(run_report.report_path(runs).read_text())
+
+
+def test_finishing_a_run_stamps_the_report_and_keeps_its_solutions(runs_dir):
+    writer = run_report.RunReportWriter(runs_dir)
+    writer.add(
+        run_report.RunSolutionReport(
+            path='sols/main.cpp',
+            index=0,
+            expectedOutcome=ExpectedOutcome.ACCEPTED,
+            status='OK',
+        )
+    )
+    assert _read(runs_dir)['finished'] is False
+
+    run_report.begin_run(runs_dir)
+    run_report.finish_run(run_report.ExitStatus.INTERRUPTED)
+
+    data = _read(runs_dir)
+    assert data['finished'] is True
+    assert data['exitStatus'] == 'interrupted'
+    assert data['endedAt']
+    assert [solution['path'] for solution in data['solutions']] == ['sols/main.cpp']
+    # And it is still a report this module can read back.
+    assert run_report.RunReport.model_validate(data).finished
+
+
+def test_a_run_interrupted_before_any_solution_finished_still_says_so(runs_dir):
+    run_report.begin_run(runs_dir)
+    run_report.finish_run(run_report.ExitStatus.INTERRUPTED)
+
+    data = _read(runs_dir)
+    assert data['solutions'] == []
+    assert data['finished'] is True
+    assert data['exitStatus'] == 'interrupted'
+
+
+def test_finishing_without_a_run_writes_nothing(runs_dir):
+    run_report.finish_run(run_report.ExitStatus.OK)
+
+    assert not run_report.report_path(runs_dir).exists()
+
+
+def test_a_run_cleaned_away_is_not_resurrected(runs_dir):
+    run_report.begin_run(runs_dir)
+    (runs_dir / 'skeleton.yml').unlink()
+
+    run_report.finish_run(run_report.ExitStatus.OK)
+
+    assert not run_report.report_path(runs_dir).exists()
+
+
+def test_a_run_is_stamped_once(runs_dir):
+    run_report.begin_run(runs_dir)
+    run_report.finish_run(run_report.ExitStatus.OK)
+    run_report.report_path(runs_dir).unlink()
+
+    run_report.finish_run(run_report.ExitStatus.ERROR)
+
+    assert not run_report.report_path(runs_dir).exists()
+
+
+def test_starting_a_run_in_another_package_finishes_the_previous_one(
+    runs_dir, tmp_path: pathlib.Path
+):
+    other = tmp_path / 'other'
+    other.mkdir()
+    (other / 'skeleton.yml').write_text('solutions: []\n')
+
+    run_report.begin_run(runs_dir)
+    run_report.begin_run(other)
+
+    assert _read(runs_dir)['exitStatus'] == 'ok'
+    assert not run_report.report_path(other).exists()
+
+
+def test_restarting_a_run_in_the_same_package_stamps_nothing(runs_dir):
+    run_report.begin_run(runs_dir)
+    run_report.begin_run(runs_dir)
+
+    assert not run_report.report_path(runs_dir).exists()

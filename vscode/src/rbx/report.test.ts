@@ -257,3 +257,34 @@ test('a group read mid-write is dropped, never drawn as a pass', () => {
     [['small', false]],
   );
 });
+
+test('a report without the end marker describes a run still in flight', () => {
+  const report = parseReport(parseYaml(REAL_REPORT));
+
+  assert.strictEqual(report?.ended, undefined);
+});
+
+test('the end marker says how the run ended', () => {
+  const report = parseReport(
+    parseYaml(
+      [
+        'version: 1',
+        'solutions: []',
+        'finished: true',
+        'endedAt: "2026-10-15T10:00:00+02:00"',
+        'exitStatus: interrupted',
+      ].join('\n'),
+    ),
+  );
+
+  assert.deepStrictEqual(report, {
+    solutions: [],
+    ended: { status: 'interrupted', endedAt: '2026-10-15T10:00:00+02:00' },
+  });
+});
+
+test('a report still being written is not finished', () => {
+  const report = parseReport(parseYaml('{version: 1, solutions: [], finished: false}'));
+
+  assert.strictEqual(report?.ended, undefined);
+});

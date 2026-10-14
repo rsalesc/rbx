@@ -19,7 +19,15 @@ import { registerInteractionDecorations } from './interactionDecorations';
 import { initLog, log } from './log';
 import { CONTEST_FILE_GLOB, CONTEST_MANIFEST, isContestVariantFile } from './rbx/contest';
 import { resetBuildDirs, resolveBuildDir } from './rbx/environment';
-import { CACHE_DIR, PROBLEM_MANIFEST, TESTSET_MANIFEST } from './rbx/layout';
+import {
+  ArtifactEvent,
+  PackageEvent,
+  classifyCachePath,
+  classifyPath,
+  planRefresh,
+} from './rbx/artifactEvents';
+import { Coalescer } from './rbx/coalescer';
+import { CACHE_DIR, Ext, PROBLEM_MANIFEST, TESTSET_MANIFEST } from './rbx/layout';
 import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
 import { registerSolutionLens } from './solutionLens';
@@ -29,24 +37,6 @@ import { StatementVarsIndex } from './statementVarsIndex';
 import { TestsetPanel } from './testsetPanel';
 import { TestsetViewProvider } from './testsetView';
 import { openVisualization } from './visualizationPanel';
-
-/**
- * Map a changed cache path back to the package it belongs to.
- *
- * Events arrive either as `<pkg>/.rbx/runs/...` during a run, or as the bare
- * `<pkg>/.rbx` when the whole cache directory goes away -- `rbx clean` rmtree's
- * it in one call, and the watcher reports the top removed directory rather than
- * each descendant. Both spellings must resolve to the package root.
- */
-function cacheRootOf(fsPath: string): string | undefined {
-  const suffix = `${path.sep}${CACHE_DIR}`;
-  if (fsPath.endsWith(suffix)) {
-    return fsPath.slice(0, -suffix.length);
-  }
-  const marker = `${suffix}${path.sep}`;
-  const index = fsPath.indexOf(marker);
-  return index === -1 ? undefined : fsPath.slice(0, index);
-}
 
 /**
  * The package a `testset.yml` belongs to, or undefined if it belongs to none.
@@ -77,19 +67,6 @@ function testsetRootOf(fsPath: string): string | undefined {
     dir = parent;
   }
   return undefined;
-}
-
-/**
- * Map any watched path back to the package it belongs to.
- *
- * Two spellings reach the debounce: run artifacts under `.rbx`, and the testset
- * manifest `rbx build` writes at `<pkg>/<build>/testset.yml`. They feed the same
- * pending set because they invalidate the same store -- a package is reloaded
- * whole, and which of its two producers moved is not a distinction the reload
- * makes.
- */
-function packageRootOf(fsPath: string): string | undefined {
-  return cacheRootOf(fsPath) ?? testsetRootOf(fsPath);
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -170,48 +147,33 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  /**
-   * Whether this path is a visualization, and so says nothing about a run.
-   *
-   * `rbx.visualizeSolutionOutput` passes `--dest` under the build directory,
-   * which nothing here watches, so the extension's own visualizations are
-   * already invisible to this. A *hand-typed* `rbx visualize output` has no
-   * `--dest` and lands beside the run artifact instead, i.e. inside
-   * `.rbx/runs/<i>/<group>/output_visualization/` -- and that would invalidate
-   * the run view and redraw the tree for a file that carries no verdict, no
-   * timing and no progress.
-   */
-  const isVisualizationArtifact = (fsPath: string): boolean =>
-    fsPath.includes(`${path.sep}output_visualization${path.sep}`) ||
-    fsPath.includes(`${path.sep}visualization${path.sep}`);
-
   // Artifacts land incrementally as evaluations resolve, which is what gives
   // the view live progress without any streaming protocol: each new `.eval`
-  // fills in one testcase. Refreshes are debounced because a run drops many
-  // files in quick succession.
-  const pending = new Set<string>();
-  let timer: NodeJS.Timeout | undefined;
+  // fills in one testcase. Events are classified as they arrive -- *which*
+  // artifact moved, not just which package (artifactEvents.ts) -- and batched,
+  // so a store re-reads exactly the files a batch named (#902).
+  //
+  // The batch has a ceiling as well as a quiet period: a run whose events come
+  // faster than the quiet period would otherwise never be flushed, and the view
+  // would sit still until the run paused or ended.
+  const batches = new Coalescer<PackageEvent>((batch) => {
+    const byRoot = new Map<string, ArtifactEvent[]>();
+    for (const { root, event } of batch) {
+      const events = byRoot.get(root) ?? [];
+      events.push(event);
+      byRoot.set(root, events);
+    }
+    for (const [root, events] of byRoot) {
+      data.apply(root, planRefresh(events));
+    }
+  }, { wait: 200, maxWait: 1000 });
+  context.subscriptions.push(new vscode.Disposable(() => batches.dispose()));
 
   const touched = (uri: vscode.Uri) => {
-    if (isVisualizationArtifact(uri.fsPath)) {
-      return;
+    const classified = classifyPath(uri.fsPath, testsetRootOf);
+    if (classified !== undefined) {
+      batches.push(classified);
     }
-    const root = packageRootOf(uri.fsPath);
-    if (root === undefined) {
-      return;
-    }
-    pending.add(root);
-    if (timer !== undefined) {
-      clearTimeout(timer);
-    }
-    timer = setTimeout(() => {
-      timer = undefined;
-      for (const changed of pending) {
-        log(`Artifacts changed under ${changed}; reloading.`);
-        data.invalidate(changed);
-      }
-      pending.clear();
-    }, 200);
   };
 
   const watch = (glob: string) => {
@@ -222,30 +184,37 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(watcher);
   };
 
-  // Two globs, because they catch different things: the first sees individual
-  // artifacts appearing during a run, the second sees the cache directory
-  // itself being created or removed -- which is all `rbx clean` produces.
-  watch(`**/${CACHE_DIR}/**`);
+  // Only what something here reads. `.rbx` also holds the file cacher's
+  // storage, the dependency caches, remote and judge state, and `runs/.irun`
+  // and `runs/.stress` -- all of which churn through a build or a stress test,
+  // and each write used to schedule a reload of a run that had not changed.
+  //
+  // The cache directory itself, and `runs/` itself, because removing either is
+  // reported as that one directory and nothing under it: `rbx clean` removes
+  // `.rbx`, and a new run wipes `runs/` before writing its skeleton.
   watch(`**/${CACHE_DIR}`);
+  watch(`**/${CACHE_DIR}/runs`);
+  watch(`**/${CACHE_DIR}/runs/{skeleton.yml,report.yml}`);
+  // Numeric solution directories only: `.irun` and `.stress` live under
+  // `runs/` too. The classifier checks the same shape, since a glob is a
+  // filter on the watcher, not a promise about what reaches it.
+  watch(`**/${CACHE_DIR}/runs/[0-9]*/*/*${Ext.Eval}`);
 
-  // A third: the testset manifest, which `rbx build` writes last (design D2).
-  // Written last is what lets this be a single glob rather than a heuristic
-  // about when a build has settled -- when it lands, everything it names is
-  // already on disk. It joins the same debounce as the artifacts above, so a
-  // build finishing while a run is in flight still costs one reload.
+  // The testset manifest, which `rbx build` writes last (design D2). Written
+  // last is what lets this be a single glob rather than a heuristic about when
+  // a build has settled -- when it lands, everything it names is already on
+  // disk.
   //
   // The glob cannot name the build directory, because its name comes from the
-  // preset and differs per workspace; `packageRootOf` is what decides whether a
-  // given `testset.yml` is one of ours, and a stray one maps to no package and
-  // is dropped.
+  // preset and differs per workspace; `testsetRootOf` is what decides whether
+  // a given `testset.yml` is one of ours, and a stray one maps to no package.
   watch(`**/${TESTSET_MANIFEST}`);
 
-  // A fourth glob, for a different question: the three above ask *what
-  // changed*, this one asks *what is running*. `skeleton.yml` is written when
-  // a run starts (rbx/box/solutions.py:746 -- "A new skeleton is what marks a
-  // new run"), so following it makes the view track the problem being run:
-  // `rbx contest each run` walks the view through the contest in step with the
-  // run itself.
+  // A different question: the watchers above ask *what changed*, this one asks
+  // *what is running*. `skeleton.yml` is written when a run starts
+  // (rbx/box/solutions.py -- "A new skeleton is what marks a new run"), so
+  // following it makes the view track the problem being run: `rbx contest each
+  // run` walks the view through the contest in step with the run itself.
   //
   // Create and change only, never delete: `rbx clean` removes the skeleton,
   // and switching to a package whose run was just deleted is the opposite of
@@ -254,20 +223,14 @@ export function activate(context: vscode.ExtensionContext): void {
     `**/${CACHE_DIR}/runs/skeleton.yml`,
   );
   const followRun = (uri: vscode.Uri) => {
-    const root = packageRootOf(uri.fsPath);
-    if (root !== undefined) {
-      void active.follow(root);
+    const classified = classifyCachePath(uri.fsPath);
+    if (classified !== undefined) {
+      void active.follow(classified.root);
     }
   };
   skeletons.onDidCreate(followRun);
   skeletons.onDidChange(followRun);
   context.subscriptions.push(skeletons);
-
-  context.subscriptions.push(new vscode.Disposable(() => {
-    if (timer !== undefined) {
-      clearTimeout(timer);
-    }
-  }));
 
   // A package appearing or disappearing changes the set of roots, not just
   // their contents, so it needs a full rediscovery.
@@ -302,6 +265,8 @@ export function activate(context: vscode.ExtensionContext): void {
   manifests.onDidChange((uri) => {
     revars(uri);
     void declared.refresh();
+    // And the visualizer buttons, which the store reads from the manifest.
+    batches.push({ root: path.dirname(uri.fsPath), event: { kind: 'manifest' } });
   });
   context.subscriptions.push(
     manifests,

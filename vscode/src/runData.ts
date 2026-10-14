@@ -11,17 +11,45 @@ import * as vscode from 'vscode';
 import { VisualizerDeclarations } from './rbx/declaredVisualizers';
 import { discoverPackages } from './discovery';
 import { log } from './log';
+import { RefreshPlan } from './rbx/artifactEvents';
+import { PackageFindings } from './rbx/diagnostics';
 import { PackageLayout } from './rbx/layout';
-import { PackageRunView } from './rbx/nodes';
-import { ArtifactStore, ArtifactStores, PackageRun } from './rbx/store';
+import { ArtifactStore, ArtifactStores, PackageRun, StoreTrace } from './rbx/store';
 import { Testset } from './rbx/testset';
 
+/**
+ * What a change event is about, so a listener can skip what it does not read.
+ *
+ * `root` and `plan` are both absent after a rediscovery, which may have moved
+ * anything in any package.
+ */
+export interface RunDataChange {
+  readonly root?: string;
+  readonly plan?: RefreshPlan;
+}
+
+function traceLine({ root, reason, stats, ms }: StoreTrace): string {
+  const parts = [`${stats.reads} read`];
+  if (stats.hits > 0) {
+    parts.push(`${stats.hits} unchanged`);
+  }
+  if (stats.errors > 0) {
+    parts.push(`${stats.errors} failed`);
+  }
+  return `Artifacts in ${root}: ${reason}, ${parts.join(', ')} in ${ms} ms.`;
+}
+
 export class RunDataProvider {
-  private readonly changed = new vscode.EventEmitter<void>();
-  readonly onDidChange: vscode.Event<void> = this.changed.event;
+  private readonly changed = new vscode.EventEmitter<RunDataChange>();
+  readonly onDidChange: vscode.Event<RunDataChange> = this.changed.event;
 
   private packages: PackageLayout[] = [];
-  private readonly stores = new ArtifactStores();
+  // Every load and patch is logged with what it read: the instrumentation the
+  // incremental refresh (#902) is checked against -- one `.eval` landing
+  // should read one file, not the run.
+  private readonly stores = new ArtifactStores(
+    (pkg) => new ArtifactStore(pkg, { trace: (trace) => log(traceLine(trace)) }),
+  );
   /**
    * In-flight or completed discovery.
    *
@@ -37,7 +65,7 @@ export class RunDataProvider {
   async refresh(): Promise<void> {
     this.discovery = this.discover();
     await this.discovery;
-    this.changed.fire();
+    this.changed.fire({});
   }
 
   private async ensureDiscovered(): Promise<void> {
@@ -71,10 +99,10 @@ export class RunDataProvider {
     return this.packages;
   }
 
-  /** Drop cached artifacts for one package, in response to a filesystem event. */
-  invalidate(root: string): void {
-    this.stores.invalidate(root);
-    this.changed.fire();
+  /** Bring one package's cache in step with a batch of filesystem events. */
+  apply(root: string, plan: RefreshPlan): void {
+    this.stores.apply(root, plan);
+    this.changed.fire({ root, plan });
   }
 
   private storeFor(pkg: PackageLayout): ArtifactStore {
@@ -110,21 +138,17 @@ export class RunDataProvider {
   }
 
   /**
-   * Every discovered package paired with whatever run is on disk for it.
+   * Every discovered package's compile findings.
    *
-   * The Run view deliberately does NOT use this -- it shows one problem and
-   * loads only that one, which is what stops a ten-problem contest paying for
-   * nine of them on every watcher tick. This is for the surfaces that are
-   * workspace-wide on purpose: the Problems panel reports a compile error in
-   * problem B while you are reading problem A, the same way the Explorer badges
-   * every package's declarations however few of them are on screen.
+   * For the Problems panel, which is workspace-wide on purpose: it reports a
+   * compile error in problem B while you are reading problem A. It reads only
+   * each package's skeleton -- never an `.eval` -- since that is all the
+   * findings come from.
    */
-  async loadAll(): Promise<PackageRunView[]> {
+  async findingsAll(): Promise<PackageFindings[]> {
     const packages = await this.discovered();
-    const views: PackageRunView[] = [];
-    for (const pkg of packages) {
-      views.push({ pkg, run: await this.report(pkg) });
-    }
-    return views;
+    return Promise.all(
+      packages.map(async (pkg) => ({ pkg, findings: await this.storeFor(pkg).findings() })),
+    );
   }
 }
