@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
+import { WELCOME_COMMANDS } from '../rbx/dispatch';
 import type { TestsetRow, TestsetViewModel } from '../rbx/testsetViewModel';
 import {
   TestsetUiState,
@@ -189,6 +190,18 @@ test('no manifest draws the welcome, in the words the Run view uses', () => {
   const html = renderTestsetTree({ rows: [], empty: true }, state());
   assert.ok(html.includes('No testset built for this problem.'), html);
   assert.ok(html.includes('<code>rbx build</code>'), html);
+});
+
+test('the welcome offers a build button the host allows an empty state to ask for', () => {
+  const html = renderTestsetTree({ rows: [], empty: true }, state());
+  // Always in the markup; style.css shows it only while dispatch is enabled.
+  assert.ok(html.includes('class="welcome-action" data-command="rbx.build"'), html);
+  assert.ok(WELCOME_COMMANDS.includes('rbx.build'));
+});
+
+test('a manifest with no tests offers no build button', () => {
+  const html = renderTestsetTree({ rows: [], empty: false }, state());
+  assert.ok(!html.includes('welcome-action'), html);
 });
 
 test('a manifest with no tests says so, and does not ask for another build', () => {

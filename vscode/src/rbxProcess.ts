@@ -1,10 +1,12 @@
 /**
  * Spawning `rbx`, and finding the `rbx` to spawn.
  *
- * The extension is a pure reader everywhere else (design D2/D3). Spawning rbx
- * at all is a deliberate exception, narrowed to read-only, idempotent work the
- * user explicitly asked for. It does not drive the build -- there is still no
- * Build button, and `rbx build` / `rbx run` stay in the terminal.
+ * The extension is a reader everywhere else (design D2/D3). Spawning rbx at
+ * all is a deliberate exception, narrowed to read-only, idempotent work the
+ * user explicitly asked for. It does not drive the build: `rbx build` / `rbx
+ * run` always run in a visible terminal -- typed by the user, or dispatched
+ * there as a VS Code task by dispatch.ts (D3 as amended by #906) -- and never
+ * through `run` here.
  *
  * The doctrine reversal is safe in a way the original rationale did not know:
  * rbx cache directories take a *shared* session lock and support any number of

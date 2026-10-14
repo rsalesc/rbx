@@ -83,6 +83,17 @@ export class DeclaredIndex {
     return uri.scheme === 'file' ? this.index.get(uri.fsPath) : undefined;
   }
 
+  /** Absolute paths of every declared solution, for the editor button's `when`. */
+  solutionPaths(): string[] {
+    const paths: string[] = [];
+    for (const [fsPath, declared] of this.index) {
+      if (declared.asset.role === 'solution') {
+        paths.push(fsPath);
+      }
+    }
+    return paths;
+  }
+
   /** How many files are declared across the workspace. */
   get size(): number {
     return this.index.size;

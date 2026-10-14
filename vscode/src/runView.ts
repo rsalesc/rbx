@@ -22,6 +22,8 @@ import { packageLayout } from './rbx/layout';
 import { PackageRunView, RunNode, findingNodes, flattenNodes, nodeId } from './rbx/nodes';
 import { asSolutionLabelStyle } from './rbx/solutionLabel';
 import { EMPTY_MODEL, buildViewModel } from './rbx/viewModel';
+import { dispatchEnabled } from './dispatch';
+import { WELCOME_COMMANDS } from './rbx/dispatch';
 import { RunDataChange, RunDataProvider } from './runData';
 
 /**
@@ -92,6 +94,11 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
         this.active.select(message.root);
         return;
       }
+      if (message.type === 'command' && WELCOME_COMMANDS.includes(message.commandId ?? '')) {
+        // An empty-state button (#906): no row, so no node to resolve.
+        void vscode.commands.executeCommand(message.commandId as string);
+        return;
+      }
       if (message.type === 'invoke' && message.commandId !== undefined) {
         const node = this.nodeById(message.nodeId ?? '');
         if (node === undefined) {
@@ -118,7 +125,10 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
       // `rbx.solutionLabel` changes nothing on disk, so no reload will bring the
       // new labels in on its own -- the view has to rebuild the model itself.
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration('rbx.solutionLabel')) {
+        if (
+          event.affectsConfiguration('rbx.solutionLabel') ||
+          event.affectsConfiguration('rbx.dispatch.enabled')
+        ) {
           void this.post();
         }
       }),
@@ -208,6 +218,8 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     );
     const message = {
       type: 'state',
+      // Shows the empty state's Run/Build buttons; see style.css.
+      dispatch: dispatchEnabled(),
       model:
         view === undefined ? EMPTY_MODEL : buildViewModel(view, style, visualizers),
       problems: this.active.problems(),

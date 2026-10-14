@@ -11,6 +11,7 @@ import * as path from 'path';
 
 import {
   CONTEST_MANIFEST,
+  ContestFile,
   ProblemIdentity,
   contestVariantId,
   isContestVariantFile,
@@ -26,7 +27,7 @@ import { readYamlFile } from './rbx/store';
  * is common, and that puts the contest file above the workspace root -- exactly
  * the case that would lose its letters if the walk stopped there.
  */
-async function findContestRoot(from: string): Promise<string | undefined> {
+export async function findContestRoot(from: string): Promise<string | undefined> {
   let walker = from;
   for (;;) {
     try {
@@ -68,6 +69,25 @@ async function contestFiles(root: string): Promise<string[]> {
     if (isContestVariantFile(entry)) {
       files.push(path.join(root, entry));
     }
+  }
+  return files;
+}
+
+/**
+ * Every contest file in a contest root, parsed, canonical first.
+ *
+ * The dispatcher's input (#906): unlike `indexContests`, which merges the files
+ * so it never has to choose, dispatching *has* to choose, so it needs each file
+ * on its own.
+ */
+export async function readContestFiles(contestRoot: string): Promise<ContestFile[]> {
+  const files: ContestFile[] = [];
+  for (const file of await contestFiles(contestRoot)) {
+    const variantId = contestVariantId(path.basename(file));
+    files.push({
+      ...(variantId === undefined ? {} : { variantId }),
+      contest: parseContest(await readYamlFile(file)),
+    });
   }
   return files;
 }

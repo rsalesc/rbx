@@ -45,7 +45,7 @@ Execution stays in the terminal. The extension only *observes and renders*.
 |---|---|---|
 | D1 | The extension lives in this repo, under `vscode/` | Contract changes and the reader that depends on them land atomically |
 | D2 | **The contract is the on-disk artifact layout.** The extension is a pure reader — it parses `.box/` and never invokes `rbx` | Every `rbx` invocation has side effects: `package.get_problem_cache_dir()` mkdirs `.box/` and writes a `fingerprint` file; `get_problem_runs_dir()` mkdirs. A query command could corrupt or race a concurrently running `rbx` |
-| D3 | Terminal-first. The user runs `rbx build` / `rbx run`; the extension watches `.box/` | rbx keeps sole ownership of execution. Nothing is hidden from the user, and the terminal output stays the source of truth |
+| D3 | Terminal-first. The user runs `rbx build` / `rbx run`; the extension watches `.box/`. **Amended by #906** (see [the dispatch design](2026-10-15-vscode-dispatch-design.md)): the extension may also *dispatch* `rbx` commands to a visible terminal, as VS Code tasks, but never runs them headless and never parses their output; results still come from the on-disk artifacts | rbx keeps sole ownership of execution. Nothing is hidden from the user, and the terminal output stays the source of truth |
 | D4 | Custom `TreeView` in an rbx sidebar, **not** the VS Code Testing API | Full control over MAIN badges, POINTS scores, expected-vs-actual mismatch styling, group headers. The Testing API is shaped for *running* tests, which we deliberately do not do |
 | D5 | Testcase content opens as **read-only editor windows**; comparisons use the native diff editor. No webview in v1 | Every artifact the TUI shows is already a real file on disk. Editors give syntax highlighting, search, large-file handling and familiar keybindings for free |
 | D6 | `rbx build` persists its entry list to `.box/tests/entries.yml` | The one piece of state the TUI shows that is *not* on disk after a build (see [Build provenance](#the-one-gap-build-provenance)) |
@@ -262,7 +262,7 @@ M1 can start immediately against today's rbx — only the build tree depends on 
 
 ## Non-goals for v1
 
-- Running `rbx` from the extension (D3)
+- Running `rbx` from the extension (D3; since #906, dispatching it to a visible terminal is in scope)
 - `problem.rbx.yml` authoring support — the versioned JSON schemas (#617) already give completion and validation
 - Stress testing, statements, packaging, `irun` / interactive mode, visualizers
 - The VS Code Testing API (D4)

@@ -235,14 +235,30 @@ card.addEventListener('click', (event) => {
   invokeOn(action, selected);
 });
 
+/**
+ * The empty state's buttons. On the tree rather than the button, because the
+ * welcome markup is replaced on every render; the host runs the command only
+ * if it is one an empty state is allowed to ask for.
+ */
+tree.addEventListener('click', (event) => {
+  const button = (event.target as HTMLElement).closest('.welcome-action') as HTMLElement | null;
+  const commandId = button?.dataset.command;
+  if (commandId !== undefined) {
+    vscode.postMessage({ type: 'command', commandId });
+  }
+});
+
 window.addEventListener('message', (event: MessageEvent) => {
   const message = event.data as {
     type?: string;
     model?: TestsetViewModel;
     problems?: readonly ProblemChoice[];
     selected?: string;
+    dispatch?: boolean;
   };
   if (message.type === 'state' && message.model !== undefined) {
+    // Shows the empty state's Run/Build buttons (#906); see style.css.
+    document.body.classList.toggle('dispatch-enabled', message.dispatch === true);
     problems = message.problems ?? [];
     selectedProblem = message.selected;
     setModel(message.model);
