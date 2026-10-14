@@ -15,6 +15,7 @@ import { registerCommands } from './commands';
 import { DeclaredIndex } from './declared';
 import { registerDecorations } from './decorations';
 import { registerDiagnostics } from './diagnostics';
+import { registerInteractionDecorations } from './interactionDecorations';
 import { initLog, log } from './log';
 import { CONTEST_FILE_GLOB, CONTEST_MANIFEST, isContestVariantFile } from './rbx/contest';
 import { resetBuildDirs, resolveBuildDir } from './rbx/environment';
@@ -134,6 +135,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   registerCommands(context, view, data, active, testset);
+  registerInteractionDecorations(context);
 
   // The panel follows the sidebar's highlight, so arrowing the list scrolls the
   // gallery to the testcase being read. `reveal` is a no-op when no panel is

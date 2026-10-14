@@ -895,7 +895,7 @@ function findingRowHtml(row: FindingRow, expanded: boolean): string {
 }
 
 /**
- * The three channels the second pane can hold, as buttons.
+ * The channels the second pane can hold, as buttons.
  *
  * `out` is the diff -- the output beside what it should have been -- which is
  * what `rbx ui`'s output box is in two-sided mode. There is deliberately no
@@ -907,15 +907,31 @@ function findingRowHtml(row: FindingRow, expanded: boolean): string {
  * button row while arrowing down a group -- a moving target on the one control
  * that should stay put. A button with nothing behind it says so, in words, when
  * it is pressed.
+ *
+ * The interaction channels get a line of their own, and only on a
+ * communication task. That does not reflow anything while arrowing: a problem
+ * is interactive or it is not, so every testcase of it gets the same rows.
  */
-function cardChannels(): string {
+function cardChannels(communication: boolean): string {
   const button = (action: string, label: string, title: string): string =>
     `<button class="card-channel" data-action="${action}" title="${escapeAttr(title)}">${escapeHtml(label)}</button>`;
-  return (
+  const judged =
     '<div class="card-channels">' +
-    button('out', 'out', 'Show the output against the expected answer') +
-    button('err', 'err', 'Show what this solution wrote to stderr') +
-    button('log', 'log', 'Show the run log for this testcase') +
+    button('out', 'out', 'Show the output against the expected answer (alt+1)') +
+    button('err', 'err', 'Show what this solution wrote to stderr (alt+2)') +
+    button('log', 'log', 'Show the run log for this testcase (alt+3)') +
+    button('cerr', 'chk', "Show the checker's stderr, kept by --keep-checker-stderr (alt+7)") +
+    '</div>';
+  if (!communication) {
+    return judged;
+  }
+  return (
+    judged +
+    '<div class="card-channels">' +
+    '<span class="card-channels-label">interaction</span>' +
+    button('io', 'io', 'Show the interaction transcript, captured by rbx -cp (alt+4)') +
+    button('ierr', 'err', 'Show what the interactor wrote to stderr (alt+5)') +
+    button('ilog', 'log', "Show the interactor's run log (alt+6)") +
     '</div>'
   );
 }
@@ -993,11 +1009,17 @@ export function renderCard(model: RunViewModel, state: UiState): string {
     card.checker === undefined
       ? ''
       : `<div class="card-checker">${escapeHtml(card.checker)}</div>`;
+  // The judges' times, which the row -- the solution's time -- has no room for.
+  const judges =
+    card.judgeTimes === undefined
+      ? ''
+      : `<div class="card-origin">${escapeHtml(card.judgeTimes)}</div>`;
   return (
     `<div class="card-title">${escapeHtml(card.title)}</div>` +
     checker +
     card.origins.map(originLine).join('') +
-    cardChannels() +
+    judges +
+    cardChannels(card.communication) +
     cardVisualizers(card.visualizers)
   );
 }

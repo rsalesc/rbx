@@ -7,15 +7,22 @@
  * source is the one thing here rbx did not generate: it opens as itself, on
  * the `file:` scheme, because editing it is the whole point of reaching it.
  */
+import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { ActiveProblem } from './activeProblem';
-import { artifactUri, firstExisting } from './artifactFs';
+import { SCHEME, artifactUri, firstExisting, realPathOf } from './artifactFs';
+import { interactionFileText, parseInteraction } from './rbx/interaction';
 import { TestcaseEntry } from './rbx/model';
 import { Ext, solutionSourcePath, testArtifactPath, testsetFilePath } from './rbx/layout';
 import { RunNode, TestcaseNode } from './rbx/nodes';
-import { Channel, LABELS, labelPrefix as displayPrefix } from './rbx/panes';
+import {
+  Channel,
+  LABELS,
+  labelPrefix as displayPrefix,
+  isInteractionLabel,
+} from './rbx/panes';
 import {
   TestsetNode,
   TestsetTestcaseNode,
@@ -321,6 +328,10 @@ export function registerCommands(
     ['rbx.showOutput', 'out'],
     ['rbx.showStderr', 'err'],
     ['rbx.showLog', 'log'],
+    ['rbx.showInteraction', 'io'],
+    ['rbx.showInteractorStderr', 'ierr'],
+    ['rbx.showInteractorLog', 'ilog'],
+    ['rbx.showCheckerStderr', 'cerr'],
   ];
   for (const [id, channel] of channels) {
     // A node is passed when the card's button was clicked, and absent from the
@@ -329,6 +340,39 @@ export function registerCommands(
       await panes.setChannel(channel, isTestcase(node) ? node : undefined);
     });
   }
+
+  // The transcript back in `.interaction` form, ready to become a statement
+  // sample. From the editor title it copies the transcript on screen; from a
+  // testcase row, that testcase's.
+  register('rbx.copyInteraction', async (node) => {
+    const active = vscode.window.activeTextEditor?.document.uri;
+    const realPath = isTestcase(node)
+      ? node.testcase.interactionPath
+      : active !== undefined && active.scheme === SCHEME && isInteractionLabel(active.path)
+        ? realPathOf(active)
+        : undefined;
+    if (realPath === undefined) {
+      return;
+    }
+    let raw: string;
+    try {
+      raw = await fs.readFile(realPath, 'utf8');
+    } catch {
+      vscode.window.showInformationMessage(
+        'Re-run with `rbx -cp run` to capture the interaction.',
+      );
+      return;
+    }
+    let text: string;
+    try {
+      text = interactionFileText(parseInteraction(raw, realPath.endsWith('.interaction')));
+    } catch {
+      // Unparseable: the raw file is still the most useful thing to hand over.
+      text = raw;
+    }
+    await vscode.env.clipboard.writeText(text);
+    vscode.window.setStatusBarMessage('Interaction copied as .interaction', 3000);
+  });
 
   register('rbx.openGeneratorScript', async (node) => {
     const source = provenance(node);

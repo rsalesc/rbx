@@ -65,7 +65,16 @@ export interface TestcaseRun {
    * does not depend on the task type.
    */
   readonly logPath: string;
+  /** The transcript (`.pio`), written under `rbx -cp` or `--merge-stderr`. */
   readonly interactionPath: string;
+  /** Whether this run was asked to write `interactionPath` at all. */
+  readonly capturesInteraction: boolean;
+  /** The interactor's stderr (`.int.err`) -- communication tasks only. */
+  readonly interactorStderrPath: string;
+  /** The interactor's run log (`.int.log`) -- communication tasks only. */
+  readonly interactorLogPath: string;
+  /** The checker's full stderr, kept under `--keep-checker-stderr`. */
+  readonly checkerStderrPath: string;
 }
 
 export interface GroupRun {
@@ -131,6 +140,7 @@ export async function readYamlFile(filePath: string): Promise<unknown> {
 
 async function loadTestcaseRun(
   pkg: PackageLayout,
+  skeleton: Skeleton,
   solutionIndex: number,
   entry: TestcaseEntry,
 ): Promise<TestcaseRun> {
@@ -152,6 +162,16 @@ async function loadTestcaseRun(
     ],
     logPath: runArtifactPath(pkg, solutionIndex, group, stem, Ext.Log),
     interactionPath: runArtifactPath(pkg, solutionIndex, group, stem, Ext.Interaction),
+    capturesInteraction: skeleton.capturesInteraction ?? false,
+    interactorStderrPath: runArtifactPath(pkg, solutionIndex, group, `${stem}.int`, Ext.Stderr),
+    interactorLogPath: runArtifactPath(pkg, solutionIndex, group, `${stem}.int`, Ext.Log),
+    checkerStderrPath: runArtifactPath(
+      pkg,
+      solutionIndex,
+      group,
+      `${stem}.checker`,
+      Ext.Stderr,
+    ),
   };
 }
 
@@ -168,7 +188,7 @@ async function loadSolutionRun(
     orderedGroups(skeleton).map(async (name): Promise<GroupRun> => {
       const testcases = await Promise.all(
         entriesForGroup(skeleton, name).map((entry) =>
-          loadTestcaseRun(pkg, solution.index, entry),
+          loadTestcaseRun(pkg, skeleton, solution.index, entry),
         ),
       );
       return { name, testcases, report: groupReports.get(name) };

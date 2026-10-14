@@ -180,4 +180,28 @@ test('an ordinary run says so by omission', () => {
   const skeleton = parseSkeleton(MINIMAL);
   assert.strictEqual(skeleton?.sanitized, false);
   assert.strictEqual(skeleton?.onlyAccepted, false);
+  assert.strictEqual(skeleton?.capturesInteraction, false);
+});
+
+test('either -cp or --merge-stderr means the run writes a transcript', () => {
+  assert.strictEqual(parseSkeleton({ ...MINIMAL, capture_pipes: true })?.capturesInteraction, true);
+  assert.strictEqual(parseSkeleton({ ...MINIMAL, merge_stderr: true })?.capturesInteraction, true);
+});
+
+test('an evaluation with an interactor timing is a communication task', () => {
+  const evaluation = parseEvaluation({
+    result: {
+      outcome: 'wrong-answer',
+      interactor_timing: { time: 0.12, wall_time: 0.2 },
+      checker_timing: { time: 0.003 },
+    },
+    log: { time: 0.5 },
+  });
+  assert.strictEqual(evaluation?.communication, true);
+  assert.strictEqual(evaluation?.interactorTime, 0.12);
+  assert.strictEqual(evaluation?.checkerTime, 0.003);
+
+  const batch = parseEvaluation({ result: { outcome: 'accepted' }, log: {} });
+  assert.strictEqual(batch?.communication, false);
+  assert.strictEqual(batch?.interactorTime, undefined);
 });

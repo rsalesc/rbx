@@ -118,7 +118,7 @@ export interface VisualizeRequest {
  *
  * `--use-stderr` is deliberately never sent: it derives the stderr file by
  * suffix substitution, which is wrong on a communication task, where the
- * solution's stderr is `.sol.err` and `.err` belongs to the interactor. The
+ * solution's stderr is `.sol.err` (and the interactor's is `.int.err`). The
  * caller passes the stderr file as `outputPath` instead, which mounts to the
  * same place and cannot guess wrong.
  */
