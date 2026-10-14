@@ -26,12 +26,10 @@ from rbx.box.issues.schema import (
     IssueSeverity,
     NoisyStderrIssue,
     SanitizerFindingIssue,
-    TightTimeMarginIssue,
     UnexpectedScoreIssue,
     UnmetExpectationIssue,
     UntunedLimitsIssue,
 )
-from rbx.box.run_report import TIGHT_TIME_MARGIN_RATIO
 
 # How much a solution may print to stderr on a single testcase before it is
 # worth a mention. 1MB is far past any plausible deliberate use: a solution that
@@ -156,34 +154,6 @@ def detect_hidden_verdicts(state: RunState) -> List[Issue]:
     return issues
 
 
-def detect_tight_time_margin(state: RunState) -> List[Issue]:
-    """Solutions that passed, but with little room left against the TL.
-
-    Only solutions that met their expectation: one declared slow is *supposed*
-    to sit against the limit, and one that failed has a louder issue already.
-    """
-    issues: List[Issue] = []
-    for solution in state.report.solutions:
-        if not solution.matchesExpectation:
-            continue
-        if solution.maxTime is None or not solution.timeLimit:
-            continue
-        # A solution declared slow is expected to be up against the limit; that
-        # is the declaration working, not a margin worth warning about.
-        if solution.expectedOutcome.is_slow():
-            continue
-        if solution.maxTime < solution.timeLimit * TIGHT_TIME_MARGIN_RATIO:
-            continue
-        issues.append(
-            TightTimeMarginIssue(
-                solution=solution.path,
-                maxTime=solution.maxTime,
-                timeLimit=solution.timeLimit,
-            )
-        )
-    return issues
-
-
 def detect_noisy_stderr(state: RunState) -> List[Issue]:
     """Solutions that printed a lot to stderr.
 
@@ -264,7 +234,6 @@ DETECTORS: List[Callable[[RunState], List[Issue]]] = [
     detect_sanitizer_findings,
     detect_borderline_tle,
     detect_hidden_verdicts,
-    detect_tight_time_margin,
     detect_noisy_stderr,
     detect_untuned_limits,
 ]

@@ -132,12 +132,7 @@ export interface PackageRun {
    * is in flight, which is also what a run by an older rbx always looks like.
    */
   readonly ended?: RunEnd;
-  /** rbx's tight-margin threshold, off the report -- see `RunReport`. */
-  readonly tightTimeMarginRatio?: number;
 }
-
-/** The report's run-wide facts, which `assemble` carries onto the run. */
-type RunWide = Pick<RunReport, 'ended' | 'tightTimeMarginRatio'>;
 
 /** Reads one YAML artifact; the store's `YamlFileCache`, behind a seam. */
 type Reader = (filePath: string) => Promise<ReadResult>;
@@ -439,25 +434,19 @@ export class ArtifactStore {
           loadSolutionRun(this.pkg, skeleton, solution, reports.get(solution.index), read),
         ),
       );
-      return this.assemble(skeleton, solutions, report ?? {});
+      return this.assemble(skeleton, solutions, report?.ended);
     });
   }
 
   private assemble(
     skeleton: Skeleton,
     solutions: readonly SolutionRun[],
-    { ended, tightTimeMarginRatio }: RunWide,
+    ended: RunEnd | undefined,
   ): PackageRun {
     const findings = this.findingsOf(skeleton);
-    // Spread rather than set: a run with neither fact compares equal to one
-    // built without the keys at all, which is what the tests hold it to.
-    return {
-      skeleton,
-      solutions,
-      findings,
-      ...(ended === undefined ? {} : { ended }),
-      ...(tightTimeMarginRatio === undefined ? {} : { tightTimeMarginRatio }),
-    };
+    return ended === undefined
+      ? { skeleton, solutions, findings }
+      : { skeleton, solutions, findings, ended };
   }
 
   /**
@@ -505,7 +494,7 @@ export class ArtifactStore {
         });
         return { solution: solution.solution, groups, report: solutionReport };
       });
-      return this.assemble(run.skeleton, solutions, plan.report ? (report ?? {}) : run);
+      return this.assemble(run.skeleton, solutions, plan.report ? report?.ended : run.ended);
     });
   }
 

@@ -215,20 +215,6 @@ class HiddenVerdictIssue(_RunIssue):
         return IssueSeverity.WARNING
 
 
-class TightTimeMarginIssue(_RunIssue):
-    """A solution that passed came uncomfortably close to the time limit."""
-
-    kind: Literal['tight_time_margin'] = 'tight_time_margin'
-    solution: str
-    maxTime: float  # seconds
-    timeLimit: float  # seconds
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def severity(self) -> IssueSeverity:
-        return IssueSeverity.WARNING
-
-
 class NoisyStderrIssue(_RunIssue):
     """A solution printed an unreasonable amount to stderr.
 
@@ -420,7 +406,6 @@ Issue = Annotated[
         CompilationWarningsIssue,
         BorderlineTleIssue,
         HiddenVerdictIssue,
-        TightTimeMarginIssue,
         NoisyStderrIssue,
         SanitizerFindingIssue,
         UntunedLimitsIssue,

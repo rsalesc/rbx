@@ -592,24 +592,6 @@ def runs_dir(tmp_path: pathlib.Path, monkeypatch) -> pathlib.Path:
     return runs
 
 
-def test_the_report_publishes_the_tight_margin_threshold_rbx_applies(runs_dir):
-    # A client colouring a time close to its limit reads the line off the
-    # report, so it must be the very constant the detector applies.
-    from rbx.box.issues import detectors
-
-    run_report.RunReportWriter(runs_dir).add(
-        run_report.RunSolutionReport(
-            path='sols/main.cpp',
-            index=0,
-            expectedOutcome=ExpectedOutcome.ACCEPTED,
-            status='OK',
-        )
-    )
-
-    data = _read(runs_dir)
-    assert data['tightTimeMarginRatio'] == detectors.TIGHT_TIME_MARGIN_RATIO
-
-
 def _read(runs: pathlib.Path) -> dict:
     return yaml.safe_load(run_report.report_path(runs).read_text())
 
