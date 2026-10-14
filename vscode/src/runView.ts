@@ -17,6 +17,7 @@ import * as vscode from 'vscode';
 
 import { ActiveProblem } from './activeProblem';
 import { log } from './log';
+import { Latest } from './rbx/latest';
 import { packageLayout } from './rbx/layout';
 import { PackageRunView, RunNode, findingNodes, flattenNodes, nodeId } from './rbx/nodes';
 import { asSolutionLabelStyle } from './rbx/solutionLabel';
@@ -59,6 +60,8 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
    * of whether that problem has a readable run at all, is news.
    */
   private posted?: { readonly root?: string; readonly readable: boolean };
+  /** Overlapping posts resolve out of order; only the newest may land. */
+  private readonly posts = new Latest();
 
   constructor(
     private readonly data: RunDataProvider,
@@ -143,8 +146,19 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     // Undefined and not an empty layout: no package was discovered, so there is
     // nothing to load and the client draws its empty state.
     const pkg = selected === undefined ? undefined : packageLayout(selected);
+    const current = this.posts.begin();
     const view: PackageRunView | undefined =
       pkg === undefined ? undefined : { pkg, run: await this.data.report(pkg) };
+    // Read alongside the run rather than cached here: the store invalidates
+    // both on the same watcher tick, so the buttons cannot describe a manifest
+    // the rest of the card does not.
+    const visualizers =
+      pkg === undefined ? undefined : await this.data.visualizers(pkg);
+    // Every await is above this line and every side effect below it: a post
+    // that a newer one overtook must not touch the node map or the client.
+    if (!current()) {
+      return;
+    }
     // Both walks, because both produce rows the client can click: the tree's,
     // and the compilation findings' -- including the warning lines under them,
     // each of which resolves to the position it opens the source at.
@@ -170,11 +184,6 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     const style = asSolutionLabelStyle(
       vscode.workspace.getConfiguration('rbx').get('solutionLabel'),
     );
-    // Read alongside the run rather than cached here: the store invalidates
-    // both on the same watcher tick, so the buttons cannot describe a manifest
-    // the rest of the card does not.
-    const visualizers =
-      selected === undefined ? undefined : await this.data.visualizers(packageLayout(selected));
     await this.view?.webview.postMessage({
       type: 'state',
       model:

@@ -65,6 +65,7 @@ test('every alias rbx accepts resolves to the same member', () => {
     OUTPUT_LIMIT_EXCEEDED: ['ole', 'ol', 'output limit exceeded'],
     TLE_OR_RTE: ['tle or rte', 'tle/rte', 'tle+rte', 'tle or re', 'tle+re'],
     TLE_OR_MLE: ['tle or mle', 'tle/mle', 'tle+mle', 'tl or ml', 'tl+ml'],
+    MLE_OR_RTE: ['mle or rte', 'mle/rte', 'mle+rte', 'ml or re', 'ml+re', 'mle-or-rte'],
     JUDGE_FAILED: ['jf', 'judge failed'],
     COMPILATION_ERROR: ['ce', 'compilation error'],
   };

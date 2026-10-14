@@ -385,6 +385,32 @@ def uploaded_schema_path(model: Type[BaseModel]) -> str:
 _SAFE_DUMPER = getattr(yaml, 'CSafeDumper', yaml.SafeDumper)
 
 
+def write_text_atomic(path: pathlib.Path, text: str) -> None:
+    """Replace `path` with `text` in one step, so no reader sees a partial file.
+
+    For files rbx rewrites while something else may be reading them -- the run
+    artifacts the VS Code extension watches. A plain `write_text` truncates
+    first, and a reader landing mid-write sees half a YAML document that still
+    parses. The temp file sits beside the target so the rename never crosses a
+    filesystem, which is what makes it atomic.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        'w',
+        encoding='utf-8',
+        dir=str(path.parent),
+        prefix=f'.{path.name}.',
+        delete=False,
+    ) as handle:
+        temp = pathlib.Path(handle.name)
+        handle.write(text)
+    try:
+        os.replace(temp, path)
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
+
+
 def model_to_yaml(
     model: BaseModel, root: Optional[pathlib.Path] = None, **kwargs
 ) -> str:

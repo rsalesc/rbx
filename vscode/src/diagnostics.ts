@@ -15,6 +15,7 @@ import * as vscode from 'vscode';
 
 import { artifactUri } from './artifactFs';
 import { Finding, buildDiagnostics, byFile } from './rbx/diagnostics';
+import { Latest } from './rbx/latest';
 import { RunDataProvider } from './runData';
 
 const SETTING = 'rbx.compilationDiagnostics';
@@ -70,16 +71,22 @@ export function registerDiagnostics(
   const collection = vscode.languages.createDiagnosticCollection('rbx');
   context.subscriptions.push(collection);
 
+  const refreshes = new Latest();
   const refresh = async (): Promise<void> => {
-    // Cleared and rebuilt whole rather than diffed. The findings are a handful
-    // of entries and they all come from one file that is rewritten at once, so
-    // a diff would be machinery in exchange for nothing -- and a stale entry
-    // here is a setter chasing a warning they already fixed.
-    collection.clear();
-    if (!enabled()) {
+    // Rebuilt whole rather than diffed. The findings are a handful of entries
+    // and they all come from one file that is rewritten at once, so a diff
+    // would be machinery in exchange for nothing -- and a stale entry here is
+    // a setter chasing a warning they already fixed.
+    //
+    // Cleared only once the load is in, and only by the newest refresh: one
+    // that cleared up front and was then overtaken would land last and
+    // re-publish the warnings a newer run had already fixed.
+    const current = refreshes.begin();
+    const packages = enabled() ? await data.loadAll() : [];
+    if (!current()) {
       return;
     }
-    const packages = await data.loadAll();
+    collection.clear();
     for (const [file, findings] of byFile(buildDiagnostics(packages))) {
       collection.set(vscode.Uri.file(file), findings.map(toDiagnostic));
     }

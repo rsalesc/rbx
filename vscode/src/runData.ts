@@ -13,7 +13,7 @@ import { discoverPackages } from './discovery';
 import { log } from './log';
 import { PackageLayout } from './rbx/layout';
 import { PackageRunView } from './rbx/nodes';
-import { ArtifactStore, PackageRun } from './rbx/store';
+import { ArtifactStore, ArtifactStores, PackageRun } from './rbx/store';
 import { Testset } from './rbx/testset';
 
 export class RunDataProvider {
@@ -21,7 +21,7 @@ export class RunDataProvider {
   readonly onDidChange: vscode.Event<void> = this.changed.event;
 
   private packages: PackageLayout[] = [];
-  private readonly stores = new Map<string, ArtifactStore>();
+  private readonly stores = new ArtifactStores();
   /**
    * In-flight or completed discovery.
    *
@@ -54,15 +54,9 @@ export class RunDataProvider {
         ? 'No problem.rbx.yml found in the workspace.'
         : `Found ${this.packages.length} package(s): ${this.packages.map((p) => p.root).join(', ')}`,
     );
-    const roots = new Set(this.packages.map((pkg) => pkg.root));
-    for (const root of this.stores.keys()) {
-      if (!roots.has(root)) {
-        this.stores.delete(root);
-      }
-    }
-    for (const store of this.stores.values()) {
-      store.invalidate();
-    }
+    // Also drops the store of a package whose build directory moved: the
+    // preset watcher rediscovers precisely so paths get repointed.
+    this.stores.retain(this.packages);
   }
 
   /**
@@ -79,17 +73,12 @@ export class RunDataProvider {
 
   /** Drop cached artifacts for one package, in response to a filesystem event. */
   invalidate(root: string): void {
-    this.stores.get(root)?.invalidate();
+    this.stores.invalidate(root);
     this.changed.fire();
   }
 
   private storeFor(pkg: PackageLayout): ArtifactStore {
-    let store = this.stores.get(pkg.root);
-    if (store === undefined) {
-      store = new ArtifactStore(pkg);
-      this.stores.set(pkg.root, store);
-    }
-    return store;
+    return this.stores.for(pkg);
   }
 
   /**

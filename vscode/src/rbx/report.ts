@@ -110,14 +110,18 @@ export interface RunReport {
 
 function parseGroup(raw: Wire): GroupReport | undefined {
   const name = asString(field(raw, 'name'));
-  if (name === undefined) {
+  // Required, never defaulted: rbx always writes it, so a group without it is
+  // one read mid-write, and defaulting it to `true` would call a failing group
+  // a pass. See `parseSolution`.
+  const matchesExpectation = asBoolean(field(raw, 'matchesExpectation'));
+  if (name === undefined || matchesExpectation === undefined) {
     return undefined;
   }
   return {
     name,
     outcome: asString(field(raw, 'outcome')),
     expectedOutcome: asString(field(raw, 'expectedOutcome')),
-    matchesExpectation: asBoolean(field(raw, 'matchesExpectation')) ?? true,
+    matchesExpectation,
     score: asNumber(field(raw, 'score')) ?? 0,
     maxScore: asNumber(field(raw, 'maxScore')) ?? 0,
     maxTime: asNumber(field(raw, 'maxTime')),
@@ -158,7 +162,19 @@ function parseScoreRange(raw: Wire): readonly [number, number] | undefined {
 function parseSolution(raw: Wire): SolutionReport | undefined {
   const path = asString(field(raw, 'path'));
   const index = asNumber(field(raw, 'index'));
-  if (path === undefined || index === undefined) {
+  // The verdict fields are required, never defaulted. rbx always writes both,
+  // so an entry missing one was read mid-write -- and defaulting them to `OK`
+  // and `true`, as this once did, drew a failing solution as clean (#901).
+  // Dropping the entry instead shows the solution with no aggregates yet,
+  // which is what a solution still running looks like anyway.
+  const status = asString(field(raw, 'status'));
+  const matchesExpectation = asBoolean(field(raw, 'matchesExpectation'));
+  if (
+    path === undefined ||
+    index === undefined ||
+    status === undefined ||
+    matchesExpectation === undefined
+  ) {
     return undefined;
   }
   const groups: GroupReport[] = [];
@@ -173,8 +189,8 @@ function parseSolution(raw: Wire): SolutionReport | undefined {
     index,
     expectedOutcome: asString(field(raw, 'expectedOutcome')),
     outcome: asString(field(raw, 'outcome')),
-    status: asString(field(raw, 'status')) ?? 'OK',
-    matchesExpectation: asBoolean(field(raw, 'matchesExpectation')) ?? true,
+    status,
+    matchesExpectation,
     score: asNumber(field(raw, 'score')) ?? 0,
     maxScore: asNumber(field(raw, 'maxScore')) ?? 0,
     maxTime: asNumber(field(raw, 'maxTime')),

@@ -102,6 +102,7 @@ const ALIASES: Record<string, readonly string[]> = {
   OUTPUT_LIMIT_EXCEEDED: ['output limit exceeded', 'ole', 'ol'],
   TLE_OR_RTE: ['tle or rte', 'tle/rte', 'tle+rte', 'tle or re', 'tle+re'],
   TLE_OR_MLE: ['tle or mle', 'tle/mle', 'tle+mle', 'tl or ml', 'tl+ml'],
+  MLE_OR_RTE: ['mle or rte', 'mle/rte', 'mle+rte', 'ml or re', 'ml+re'],
   JUDGE_FAILED: ['judge failed', 'jf'],
   COMPILATION_ERROR: ['compilation error', 'ce'],
 };

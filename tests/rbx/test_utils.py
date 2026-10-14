@@ -4,13 +4,14 @@ import os
 import pathlib
 from datetime import date, datetime
 from typing import List, Optional
+from unittest import mock
 
 import pytest
 import yaml
 from pydantic import BaseModel, ValidationError
 from rich import text
 
-from rbx.utils import model_from_yaml, model_to_yaml
+from rbx.utils import model_from_yaml, model_to_yaml, write_text_atomic
 
 
 class SampleModel(BaseModel):
@@ -1737,3 +1738,35 @@ class TestModelFromYamlInclude:
         message = str(exc_info.value)
         assert '!include' in message
         assert 'load_yaml_model' in message
+
+
+class TestWriteTextAtomic:
+    def test_creates_the_file_and_its_parent(self, tmp_path: pathlib.Path):
+        target = tmp_path / 'runs' / 'report.yml'
+
+        write_text_atomic(target, 'version: 1\n')
+
+        assert target.read_text() == 'version: 1\n'
+
+    def test_replaces_an_existing_file_and_leaves_no_temp_behind(
+        self, tmp_path: pathlib.Path
+    ):
+        target = tmp_path / 'report.yml'
+        target.write_text('old\n')
+
+        write_text_atomic(target, 'new\n')
+
+        assert target.read_text() == 'new\n'
+        assert sorted(p.name for p in tmp_path.iterdir()) == ['report.yml']
+
+    def test_a_failed_replace_keeps_the_old_file_intact(self, tmp_path: pathlib.Path):
+        """The point of the helper: a reader never sees a truncated file."""
+        target = tmp_path / 'report.yml'
+        target.write_text('old\n')
+
+        with mock.patch('rbx.utils.os.replace', side_effect=OSError('disk full')):
+            with pytest.raises(OSError):
+                write_text_atomic(target, 'new\n')
+
+        assert target.read_text() == 'old\n'
+        assert sorted(p.name for p in tmp_path.iterdir()) == ['report.yml']

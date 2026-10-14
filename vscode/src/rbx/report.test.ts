@@ -86,7 +86,13 @@ test('an absent time or memory stays absent rather than becoming zero', () => {
   const report = parseReport({
     version: 1,
     solutions: [
-      { path: 's.cpp', index: 0, status: 'OK', groups: [{ name: 'g' }] },
+      {
+        path: 's.cpp',
+        index: 0,
+        status: 'OK',
+        matchesExpectation: true,
+        groups: [{ name: 'g', matchesExpectation: true }],
+      },
     ],
   });
   const solution = report!.solutions[0];
@@ -108,7 +114,7 @@ test('a missing or malformed report reads as no report', () => {
 test('a solution missing its identity is dropped, not defaulted', () => {
   const report = parseReport({
     version: 1,
-    solutions: [{ index: 0, status: 'OK' }, { path: 'ok.cpp', index: 1, status: 'OK' }],
+    solutions: [{ index: 0, status: 'OK' }, { path: 'ok.cpp', index: 1, status: 'OK', matchesExpectation: true }],
   });
   assert.deepStrictEqual(report?.solutions.map((s) => s.path), ['ok.cpp']);
 });
@@ -124,7 +130,14 @@ test('the double-TL facts are read off the report rather than re-derived', () =>
         matchesExpectation: true,
         runUnderDoubleTl: true,
         doubleTlVerdicts: ['wrong-answer'],
-        groups: [{ name: 'big', runUnderDoubleTl: true, doubleTlVerdicts: ['wrong-answer'] }],
+        groups: [
+          {
+            name: 'big',
+            matchesExpectation: true,
+            runUnderDoubleTl: true,
+            doubleTlVerdicts: ['wrong-answer'],
+          },
+        ],
       },
     ],
   });
@@ -140,7 +153,13 @@ test('a report predating the double-TL fields warns about nothing', () => {
   // warning the run never raised is not.
   const report = parseReport({
     version: 1,
-    solutions: [{ path: 's.cpp', index: 0, status: 'OK', groups: [{ name: 'g' }] }],
+    solutions: [{
+        path: 's.cpp',
+        index: 0,
+        status: 'OK',
+        matchesExpectation: true,
+        groups: [{ name: 'g', matchesExpectation: true }],
+      }],
   });
   const solution = report!.solutions[0];
   assert.strictEqual(solution.runUnderDoubleTl, false);
@@ -160,8 +179,8 @@ test('a sanitizer finding is read off the solution and off the group that raised
         matchesExpectation: true,
         sanitizerWarnings: true,
         groups: [
-          { name: 'small', sanitizerWarnings: false },
-          { name: 'big', sanitizerWarnings: true },
+          { name: 'small', matchesExpectation: true, sanitizerWarnings: false },
+          { name: 'big', matchesExpectation: true, sanitizerWarnings: true },
         ],
       },
     ],
@@ -175,7 +194,13 @@ test('a sanitizer finding is read off the solution and off the group that raised
 test('a report predating the sanitizer field warns about nothing', () => {
   const report = parseReport({
     version: 1,
-    solutions: [{ path: 's.cpp', index: 0, status: 'OK', groups: [{ name: 'g' }] }],
+    solutions: [{
+        path: 's.cpp',
+        index: 0,
+        status: 'OK',
+        matchesExpectation: true,
+        groups: [{ name: 'g', matchesExpectation: true }],
+      }],
   });
   const solution = report!.solutions[0];
   assert.strictEqual(solution.sanitizerWarnings, false);
@@ -190,10 +215,45 @@ test('an unusable entry in doubleTlVerdicts is dropped, not defaulted', () => {
         path: 's.cpp',
         index: 0,
         status: 'OK',
+        matchesExpectation: true,
         doubleTlVerdicts: ['wrong-answer', 7, null],
         groups: [],
       },
     ],
   });
   assert.deepStrictEqual(report!.solutions[0].doubleTlVerdicts, ['wrong-answer']);
+});
+
+test('a solution read mid-write is dropped, never drawn as a pass', () => {
+  // rbx rewrites the report after every solution; a read can land after
+  // `path` and `index` but before the fields that say the solution failed.
+  // Defaulting those to `OK` / `true` drew a failing solution as clean.
+  const report = parseReport({
+    version: 1,
+    solutions: [
+      { path: 'sols/main.cpp', index: 0, status: 'OK', matchesExpectation: true },
+      { path: 'sols/wa.cpp', index: 1 },
+      { path: 'sols/tle.cpp', index: 2, status: 'UNEXPECTED_VERDICTS' },
+    ],
+  });
+  assert.deepStrictEqual(report?.solutions.map((s) => s.path), ['sols/main.cpp']);
+});
+
+test('a group read mid-write is dropped, never drawn as a pass', () => {
+  const report = parseReport({
+    version: 1,
+    solutions: [
+      {
+        path: 'sols/wa.cpp',
+        index: 0,
+        status: 'UNEXPECTED_VERDICTS',
+        matchesExpectation: false,
+        groups: [{ name: 'small', matchesExpectation: false }, { name: 'big' }],
+      },
+    ],
+  });
+  assert.deepStrictEqual(
+    report?.solutions[0].groups.map((g) => [g.name, g.matchesExpectation]),
+    [['small', false]],
+  );
 });

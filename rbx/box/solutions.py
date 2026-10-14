@@ -783,7 +783,7 @@ async def _get_report_skeleton(
     )
 
     skeleton_file = runs_dir / 'skeleton.yml'
-    skeleton_file.write_text(utils.model_to_yaml(skeleton))
+    utils.write_text_atomic(skeleton_file, utils.model_to_yaml(skeleton))
     # A new skeleton is what marks a new run. Drop the previous run's report so
     # an interrupted run cannot leave stale verdicts that a reader would take
     # for current ones.
@@ -1357,7 +1357,7 @@ async def _get_interactive_skeleton(
     )
 
     skeleton_file = irun_dir / 'skeleton.yml'
-    skeleton_file.write_text(utils.model_to_yaml(skeleton))
+    utils.write_text_atomic(skeleton_file, utils.model_to_yaml(skeleton))
 
     return skeleton
 

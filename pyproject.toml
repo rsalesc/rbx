@@ -96,7 +96,11 @@ version_provider = "uv"
 update_changelog_on_bump = true
 annotated_tag = true
 pre_bump_hooks = [
-  "uv lock"
+  "uv lock",
+  # The VS Code extension carries rbx's version (semver-converted), so the
+  # outdated-extension hint can tell a stale install apart. Not a
+  # version_files entry: see the script's docstring.
+  "python3 scripts/sync_vscode_version.py",
 ]
 version_files = [
   "pyproject.toml:^version = ",

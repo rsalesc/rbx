@@ -119,6 +119,18 @@ const DISPLAY: Record<string, ExpectationDisplay> = {
     glyph: HOURGLASS,
     badge: `${HOURGLASS}M`,
   },
+  // Blue, not MLE's yellow: `style()` asks `match(RUNTIME_ERROR)` before it
+  // asks `match(MEMORY_LIMIT_EXCEEDED)`, and this member matches both. The
+  // badge cannot be `✗!` (RTE's) or `✗M` (MLE's) -- the hue already pairs it
+  // with RTE -- so it takes a lower-case `m`: "memory, in whichever form the
+  // platform reports it".
+  MLE_OR_RTE: {
+    label: 'MLE or RTE',
+    hue: 'blue',
+    bold: false,
+    glyph: CROSS,
+    badge: `${CROSS}m`,
+  },
   JUDGE_FAILED: {
     label: 'FL',
     hue: 'purple',

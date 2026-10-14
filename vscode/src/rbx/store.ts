@@ -189,7 +189,7 @@ export class ArtifactStore {
   private cachedTestset?: Promise<Testset | undefined>;
   private cachedVisualizers?: Promise<VisualizerDeclarations | undefined>;
 
-  constructor(private readonly pkg: PackageLayout) {}
+  constructor(readonly pkg: PackageLayout) {}
 
   invalidate(): void {
     this.cached = undefined;
@@ -265,5 +265,61 @@ export class ArtifactStore {
       }),
     );
     return { skeleton, solutions, findings };
+  }
+}
+
+function sameLayout(a: PackageLayout, b: PackageLayout): boolean {
+  return a.root === b.root && a.buildDir === b.buildDir;
+}
+
+/**
+ * One `ArtifactStore` per package, kept only while its layout is current.
+ *
+ * Keyed by root for lookup, but a store is reused only when the *whole* layout
+ * still matches. A store captures its layout when it is built, and every path
+ * it reads hangs off it -- so when a preset renames the build directory, a
+ * store found by root alone keeps reading `<root>/<old buildDir>/testset.yml`
+ * and resolving testcase inputs under a directory that is no longer written
+ * (#901). Comparing the layout makes the next caller holding the new one get a
+ * fresh store instead.
+ */
+export class ArtifactStores {
+  private readonly stores = new Map<string, ArtifactStore>();
+
+  constructor(
+    private readonly create: (pkg: PackageLayout) => ArtifactStore = (pkg) =>
+      new ArtifactStore(pkg),
+  ) {}
+
+  /** The store for `pkg`, replacing one built for an older layout of it. */
+  for(pkg: PackageLayout): ArtifactStore {
+    const existing = this.stores.get(pkg.root);
+    if (existing !== undefined && sameLayout(existing.pkg, pkg)) {
+      return existing;
+    }
+    const store = this.create(pkg);
+    this.stores.set(pkg.root, store);
+    return store;
+  }
+
+  /** Drop one package's cached artifacts, if it has a store at all. */
+  invalidate(root: string): void {
+    this.stores.get(root)?.invalidate();
+  }
+
+  /**
+   * After discovery: forget packages that are gone or whose layout moved, and
+   * drop every cached artifact of the rest.
+   */
+  retain(packages: readonly PackageLayout[]): void {
+    const current = new Map(packages.map((pkg) => [pkg.root, pkg]));
+    for (const [root, store] of this.stores) {
+      const pkg = current.get(root);
+      if (pkg === undefined || !sameLayout(store.pkg, pkg)) {
+        this.stores.delete(root);
+      } else {
+        store.invalidate();
+      }
+    }
   }
 }

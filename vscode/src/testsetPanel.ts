@@ -26,6 +26,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
 
+import { Latest } from './rbx/latest';
 import {
   PackageLayout,
   buildPath,
@@ -111,6 +112,8 @@ export class TestsetPanel {
     TestsetPanel.opened.event;
 
   private model: PanelViewModel = EMPTY_PANEL_MODEL;
+  /** Overlapping posts resolve out of order; only the newest may land. */
+  private readonly posts = new Latest();
   private readonly subscriptions: vscode.Disposable[] = [];
   /** Set while an open asked for a testcase the model has not been built for yet. */
   private pendingReveal?: string;
@@ -118,7 +121,7 @@ export class TestsetPanel {
   private constructor(
     private readonly panel: vscode.WebviewPanel,
     private readonly source: TestsetSource,
-    private readonly pkg: PackageLayout,
+    private pkg: PackageLayout,
     private readonly extensionUri: vscode.Uri,
     private request: TestsetPanelRequest,
   ) {
@@ -179,10 +182,7 @@ export class TestsetPanel {
         // Resolved rather than hardcoded to `build`: `Environment.buildDir` is
         // a preset setting, so a preset that renames it left this root pointing
         // nowhere and the gallery blank.
-        localResourceRoots: [
-          vscode.Uri.file(buildPath(pkg)),
-          vscode.Uri.joinPath(context.extensionUri, 'dist'),
-        ],
+        localResourceRoots: TestsetPanel.resourceRoots(pkg, context.extensionUri),
         // No `retainContextWhenHidden`: the client persists tab, group and
         // scroll through `setState`, and the host re-posts the whole model on
         // `ready`, so keeping a hidden panel's DOM alive -- images and all --
@@ -193,6 +193,30 @@ export class TestsetPanel {
       root,
       new TestsetPanel(panel, source, pkg, context.extensionUri, request),
     );
+  }
+
+  private static resourceRoots(pkg: PackageLayout, extensionUri: vscode.Uri): vscode.Uri[] {
+    return [vscode.Uri.file(buildPath(pkg)), vscode.Uri.joinPath(extensionUri, 'dist')];
+  }
+
+  /**
+   * Follow the build directory if the preset moved it since the panel opened.
+   *
+   * The layout is resolved once, at `show`, and both the manifest the panel
+   * reads and the one directory its webview may load from hang off it. A
+   * preset renaming `buildDir` would otherwise leave the panel reading the old
+   * manifest and its images blocked, until it was closed and reopened (#901).
+   */
+  private repoint(): void {
+    const pkg = packageLayout(this.pkg.root);
+    if (pkg.buildDir === this.pkg.buildDir) {
+      return;
+    }
+    this.pkg = pkg;
+    this.panel.webview.options = {
+      ...this.panel.webview.options,
+      localResourceRoots: TestsetPanel.resourceRoots(pkg, this.extensionUri),
+    };
   }
 
   /**
@@ -253,8 +277,15 @@ export class TestsetPanel {
    * broken image: the two are only ever correct together.
    */
   private async post(): Promise<void> {
-    this.model = buildPanelViewModel(this.pkg.root, await this.source.testset(this.pkg));
-    const assets = await this.resolveAssets(this.model);
+    this.repoint();
+    const current = this.posts.begin();
+    const model = buildPanelViewModel(this.pkg.root, await this.source.testset(this.pkg));
+    const assets = await this.resolveAssets(model);
+    // A post a newer one overtook must not repaint an older manifest.
+    if (!current()) {
+      return;
+    }
+    this.model = model;
     const request = this.request;
     // Consumed: a tab or group the *open* asked for must not be re-imposed on
     // the reader by the next watcher tick.
