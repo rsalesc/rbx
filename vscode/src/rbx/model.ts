@@ -37,12 +37,75 @@ export interface TestcaseEntry {
   readonly generatorScriptLine?: number;
 }
 
+/**
+ * rbx.grading.limits.Limits: what one solution, or one language, is judged under.
+ *
+ * Units as rbx keeps them, which are not the units of `Evaluation`: time in
+ * milliseconds, memory in MiB (rbx multiplies by 1024 twice before comparing),
+ * output in KiB. Converting is the view model's business, at the one place a
+ * limit is set beside a measurement.
+ */
+export interface Limits {
+  /**
+   * The *enforced* time limit, ms. Absent when none is enforced -- a sanitized
+   * run nulls it -- and the view then has nothing to measure a time against.
+   */
+  readonly time?: number;
+  /** The declared time limit, ms, kept even when `time` is nulled. */
+  readonly configuredTime?: number;
+  /** MiB. */
+  readonly memory?: number;
+  /** KiB. */
+  readonly output?: number;
+  /**
+   * Whether this run judges at double the time limit (`-v4`, the default).
+   *
+   * The verdict is still decided at 1x -- a run between 1x and 2x is a *soft*
+   * TLE -- and only the process is allowed to run on to 2x. So `time` stays the
+   * limit a measurement is read against, and this says how far past it a
+   * measurement can go before the run is killed and the time stops meaning
+   * anything.
+   */
+  readonly isDoubleTL: boolean;
+  /** The limits profile these came from (`rbx time`); absent for the package's own. */
+  readonly profile?: string;
+}
+
+/** One row of the skeleton's per-language limits table. */
+export interface LanguageLimits {
+  readonly language: string;
+  readonly limits: Limits;
+}
+
+export function parseLimits(raw: Wire): Limits | undefined {
+  if (asRecord(raw) === undefined) {
+    return undefined;
+  }
+  return {
+    time: asNumber(field(raw, 'time')),
+    configuredTime: asNumber(field(raw, 'configuredTime')),
+    memory: asNumber(field(raw, 'memory')),
+    output: asNumber(field(raw, 'output')),
+    isDoubleTL: asBoolean(field(raw, 'isDoubleTL')) ?? false,
+    profile: asString(field(raw, 'profile')),
+  };
+}
+
 export interface SolutionEntry {
   readonly path: string;
   /** Expected outcome declared in problem.rbx.yml, e.g. `ACCEPTED`. */
   readonly expectedOutcome?: string;
   /** Index into `Skeleton.solutions`; also the directory name under .rbx/runs. */
   readonly index: number;
+  /**
+   * The limits this solution is judged under, already resolved through its
+   * language and any `--profile` by rbx (`SolutionSkeleton.limits`).
+   *
+   * Absent on a skeleton written by an rbx that predates the field. Resolving it
+   * here instead would need rbx's language table, which is exactly the lookup
+   * rbx stamps this field to spare its readers.
+   */
+  readonly limits?: Limits;
 }
 
 export interface GroupEntry {
@@ -114,6 +177,13 @@ export interface Skeleton {
    * the channel says how to get one.
    */
   readonly capturesInteraction?: boolean;
+  /**
+   * The per-language limits table `rbx run` prints before it starts, in the
+   * order rbx keeps it. Empty on a skeleton too old to carry it.
+   */
+  readonly limits: readonly LanguageLimits[];
+  /** `VerificationLevel`, as its number; absent on a skeleton too old to say. */
+  readonly verification?: number;
 }
 
 export interface Evaluation {
@@ -155,6 +225,15 @@ export interface Evaluation {
   readonly interactorTime?: number;
   /** Checker CPU seconds, when measured. */
   readonly checkerTime?: number;
+  /** The solution's wall-clock seconds, beside the CPU `time` above. */
+  readonly wallTime?: number;
+  /**
+   * The limits this testcase actually ran under (`log.metadata.limits`).
+   *
+   * What rbx's own `get_capped_evals_formatted_time` reads first when it caps a
+   * TLE's time, so the cap a row draws is the one this run was killed at.
+   */
+  readonly limits?: Limits;
 }
 
 /**
@@ -220,6 +299,7 @@ export function parseSkeleton(raw: Wire): Skeleton | undefined {
       path: solutionPath,
       expectedOutcome: asString(field(rawSolution, 'outcome')),
       index,
+      limits: parseLimits(field(rawSolution, 'limits')),
     });
   });
 
@@ -249,7 +329,24 @@ export function parseSkeleton(raw: Wire): Skeleton | undefined {
     onlyAccepted: asBoolean(root.only_accepted) ?? false,
     capturesInteraction:
       (asBoolean(root.capture_pipes) ?? false) || (asBoolean(root.merge_stderr) ?? false),
+    limits: parseLanguageLimits(root.limits),
+    verification: asNumber(root.verification),
   };
+}
+
+function parseLanguageLimits(raw: Wire): LanguageLimits[] {
+  const table = asRecord(raw);
+  if (table === undefined) {
+    return [];
+  }
+  const rows: LanguageLimits[] = [];
+  for (const [language, rawLimits] of Object.entries(table)) {
+    const limits = parseLimits(rawLimits);
+    if (limits !== undefined) {
+      rows.push({ language, limits });
+    }
+  }
+  return rows;
 }
 
 function parseWarning(raw: Wire): CompilationWarning | undefined {
@@ -313,6 +410,8 @@ export function parseEvaluation(raw: Wire): Evaluation | undefined {
     communication: asRecord(field(raw, 'result', 'interactor_timing')) !== undefined,
     interactorTime: asNumber(field(raw, 'result', 'interactor_timing', 'time')),
     checkerTime: asNumber(field(raw, 'result', 'checker_timing', 'time')),
+    wallTime: asNumber(field(raw, 'log', 'wall_time')),
+    limits: parseLimits(field(raw, 'log', 'metadata', 'limits')),
   };
 }
 

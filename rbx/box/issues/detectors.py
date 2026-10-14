@@ -26,18 +26,10 @@ from rbx.box.issues.schema import (
     IssueSeverity,
     NoisyStderrIssue,
     SanitizerFindingIssue,
-    TightTimeMarginIssue,
     UnexpectedScoreIssue,
     UnmetExpectationIssue,
     UntunedLimitsIssue,
 )
-
-# How much of its time limit a passing solution may use before it is worth a
-# mention. 0.8 rather than something tighter because the measurement is one
-# machine's, on one run: flagging at 0.95 would only fire once the limit is
-# already effectively broken, and flagging at 0.5 would fire on every package
-# whose limits are deliberately snug.
-TIGHT_TIME_MARGIN_RATIO = 0.8
 
 # How much a solution may print to stderr on a single testcase before it is
 # worth a mention. 1MB is far past any plausible deliberate use: a solution that
@@ -162,34 +154,6 @@ def detect_hidden_verdicts(state: RunState) -> List[Issue]:
     return issues
 
 
-def detect_tight_time_margin(state: RunState) -> List[Issue]:
-    """Solutions that passed, but with little room left against the TL.
-
-    Only solutions that met their expectation: one declared slow is *supposed*
-    to sit against the limit, and one that failed has a louder issue already.
-    """
-    issues: List[Issue] = []
-    for solution in state.report.solutions:
-        if not solution.matchesExpectation:
-            continue
-        if solution.maxTime is None or not solution.timeLimit:
-            continue
-        # A solution declared slow is expected to be up against the limit; that
-        # is the declaration working, not a margin worth warning about.
-        if solution.expectedOutcome.is_slow():
-            continue
-        if solution.maxTime < solution.timeLimit * TIGHT_TIME_MARGIN_RATIO:
-            continue
-        issues.append(
-            TightTimeMarginIssue(
-                solution=solution.path,
-                maxTime=solution.maxTime,
-                timeLimit=solution.timeLimit,
-            )
-        )
-    return issues
-
-
 def detect_noisy_stderr(state: RunState) -> List[Issue]:
     """Solutions that printed a lot to stderr.
 
@@ -270,7 +234,6 @@ DETECTORS: List[Callable[[RunState], List[Issue]]] = [
     detect_sanitizer_findings,
     detect_borderline_tle,
     detect_hidden_verdicts,
-    detect_tight_time_margin,
     detect_noisy_stderr,
     detect_untuned_limits,
 ]

@@ -24,7 +24,7 @@ from rich.table import Table
 from rich.text import Text
 
 from rbx import console
-from rbx.box.formatting import get_formatted_memory, get_formatted_time, href
+from rbx.box.formatting import get_formatted_memory, href
 from rbx.box.issues.schema import (
     BorderlineTleIssue,
     CompilationFailedIssue,
@@ -42,7 +42,6 @@ from rbx.box.issues.schema import (
     NoSamplesIssue,
     NoValidatorIssue,
     SanitizerFindingIssue,
-    TightTimeMarginIssue,
     UnexpectedScoreIssue,
     UnmetExpectationIssue,
     UntunedLimitsIssue,
@@ -145,11 +144,6 @@ def summarize(issue: Issue) -> str:
         return 'slow only within 2x the time limit'
     if isinstance(issue, HiddenVerdictIssue):
         return f'a soft TLE hid: {_verdicts(issue.verdicts)}'
-    if isinstance(issue, TightTimeMarginIssue):
-        return (
-            f'used {get_formatted_time(int(issue.maxTime * 1000))} of a '
-            f'{get_formatted_time(int(issue.timeLimit * 1000))} limit'
-        )
     if isinstance(issue, NoisyStderrIssue):
         return f'wrote {get_formatted_memory(issue.size)} to stderr on one test'
     if isinstance(issue, SanitizerFindingIssue):
@@ -225,12 +219,6 @@ def explain(issue: Issue, runs_dir: Optional[str] = None) -> List[str]:
         if issue.groups:
             lines.append(f'groups:   {", ".join(issue.groups)}')
         return lines
-    if isinstance(issue, TightTimeMarginIssue):
-        ratio = issue.maxTime / issue.timeLimit
-        return [
-            f'{ratio:.0%} of the time limit on this machine. Fine here, tight '
-            f'on a slower judge.'
-        ]
     if isinstance(issue, NoisyStderrIssue):
         return [
             'Stderr this large is almost always debug output left behind. It '

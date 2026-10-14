@@ -60,6 +60,17 @@ Every solution and every group carries its own summary: the verdict underneath
 it, the points it earned, and the **max** time and memory across its testcases
 -- the slowest test being the one the time limit is judged against.
 
+Times read as `rbx run` prints them: `194 ms`, and `>2000 ms` for a TLE that ran
+into the expanded limit -- that run was killed, and its raw time is only when.
+The limit they are compared with is the one *that solution* ran under, which rbx
+stamps on the skeleton already resolved through its language and any
+`--profile`; it is in each time's hover rather than on every row. Neither a
+time nor a memory figure is coloured for being close to its limit: how close is
+too close is not something rbx decides, and a threshold picked here would be
+arbitrary. The header carries the per-language limits block `rbx run` prints
+before it starts, `2×TL` when the run judges at double the limit, a non-default
+verification level, and *limits look untuned* when rbx suspects them.
+
 ### One problem at a time
 
 The view shows **one package**, and a dropdown in its header picks which. The
@@ -278,7 +289,7 @@ what its row cannot.
 ```
 
 Not the verdict, not the time, not the memory: the row has all three, eight
-pixels above. What the card adds is the two facts the extension has been reading
+pixels above. What the card adds is the facts the extension has been reading
 out of every run and showing nowhere.
 
 - **The checker's own message**, wrapped and whole. It is the answer to *why*
@@ -292,6 +303,8 @@ out of every run and showing nowhere.
   real `path:line`. A generator *call* is text: it names a generator declared in
   `problem.rbx.yml` rather than a file, and a button that went nowhere would
   promise a destination the view does not have.
+- **The other timings** -- the solution's wall time, and the checker's and
+  interactor's when they ran: the `r` panel of `rbx ui`.
 
 The card fills on **selection**, not on open, so a whole failing group can be
 scanned for checker messages without opening a single editor. It is absent

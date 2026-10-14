@@ -39,6 +39,7 @@ function run(solutions: readonly SolutionRun[]): PackageRun {
       compilation: [],
       sanitized: false,
       onlyAccepted: false,
+      limits: [],
     },
     solutions,
     findings: [],

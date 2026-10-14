@@ -48,6 +48,7 @@ function model(rows: readonly Row[], notices: RunViewModel['notices'] = []): Run
       .length,
     empty: !rows.some((r) => r.kind === 'solution'),
     notices,
+    limits: [],
   };
 }
 
@@ -1172,7 +1173,7 @@ test('a communication card offers the interaction channels and the judge times',
     card: {
       ...CARD_CASE.card!,
       communication: true,
-      judgeTimes: 'interactor 120 ms · checker 3 ms',
+      timings: 'interactor 120 ms · checker 3 ms',
     },
   };
   const html = renderCard(
@@ -1286,4 +1287,75 @@ test('two notices share one icon rather than reading as two alarms', () => {
     state(),
   );
   assert.strictEqual(html.match(/codicon-info/g)?.length, 1);
+});
+
+// --- Limits (#904) ----------------------------------------------------------
+
+test('renderHeader shows the limits rbx run prints, even on a clean run', () => {
+  const html = renderHeader(
+    {
+      ...model([MAIN]),
+      limits: [
+        { language: 'cpp', time: '1000 ms', memory: '256 MiB', doubleTl: true },
+        { language: 'py', time: '3000 ms', memory: '256 MiB', profile: 'local', doubleTl: true },
+      ],
+    },
+    state(),
+  );
+  assert.ok(html.includes('header-limits'), html);
+  assert.ok(html.includes('cpp 1000 ms, 256 MiB'), html);
+  // A profile is named in the text; the package's own limits only on hover.
+  assert.ok(html.includes('py 3000 ms, 256 MiB (local)'), html);
+  assert.ok(html.includes('from limits profile local'), html);
+  assert.ok(html.includes('from the package'), html);
+  // Once for the line, not once per language.
+  assert.strictEqual(html.split('2×TL<').length - 1, 1, html);
+  // No counts line: nothing missed.
+  assert.ok(!html.includes('did not match'), html);
+});
+
+test('renderHeader names no 2×TL when the run judges at the limit itself', () => {
+  const html = renderHeader(
+    {
+      ...model([MAIN]),
+      limits: [{ language: 'cpp', time: '1000 ms', memory: '256 MiB', doubleTl: false }],
+    },
+    state(),
+  );
+  assert.ok(!html.includes('2×TL'), html);
+});
+
+test('the untuned-limits and verification notices say what to do on hover', () => {
+  const html = renderHeader(
+    model([MAIN], [{ kind: 'untuned-limits' }, { kind: 'verification', level: 2 }]),
+    state(),
+  );
+  assert.ok(html.includes('limits look untuned'), html);
+  assert.ok(html.includes('rbx time'), html);
+  assert.ok(html.includes('>-v2<'), html);
+});
+
+test("a meta span's hover names the limit its time is read against", () => {
+  const html = renderTree(
+    model([
+      {
+        ...MAIN,
+        meta: [
+          {
+            text: '930 ms',
+            hue: 'dim',
+            role: 'time',
+            title: '930 ms of a 1000 ms time limit',
+          },
+        ],
+      },
+    ]),
+    state(),
+  );
+  assert.ok(
+    html.includes(
+      '<span class="span span-time hue-dim" title="930 ms of a 1000 ms time limit">930 ms</span>',
+    ),
+    html,
+  );
 });

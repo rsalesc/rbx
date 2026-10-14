@@ -288,3 +288,43 @@ test('a report still being written is not finished', () => {
 
   assert.strictEqual(report?.ended, undefined);
 });
+
+test("a solution's time limit and the untuned suspicion are read", () => {
+  // Verbatim, trimmed of its groups, from a real `rbx run` of
+  // vscode/demo/sum-of-pairs: `sols/double-tl.cpp`, whose slow verdict went
+  // unmatched on the package's own limits.
+  const report = parseReport(
+    parseYaml(`
+version: 1
+solutions:
+- path: sols/double-tl.cpp
+  index: 8
+  expectedOutcome: TIME_LIMIT_EXCEEDED
+  outcome: time-limit-exceeded
+  status: OK
+  matchesExpectation: true
+  pooledMatchesExpectation: true
+  score: 60
+  maxScore: 100
+  maxTime: 1.307227
+  maxMemory: 10960896
+  failedGroups: []
+  runUnderDoubleTl: true
+  doubleTlVerdicts: []
+  sanitizerWarnings: false
+  timeLimit: 1.0
+  untunedLimitsSuspected: true
+finished: true
+endedAt: '2026-10-15T00:50:21.317364+02:00'
+exitStatus: error
+`),
+  );
+  assert.strictEqual(report?.solutions[0].timeLimit, 1.0);
+  assert.strictEqual(report?.solutions[0].untunedLimitsSuspected, true);
+});
+
+test('a report too old for limits suspects nothing', () => {
+  const report = parseReport(parseYaml(REAL_REPORT));
+  assert.strictEqual(report?.solutions[0].timeLimit, undefined);
+  assert.strictEqual(report?.solutions[0].untunedLimitsSuspected, false);
+});

@@ -70,6 +70,23 @@ it, the points it earned, and the **max** time and memory across its testcases.
 A solution still running shows how far it has got (`12/40`) instead of a
 verdict.
 
+The header lists the limits each language ran under, the ones `rbx run` prints
+before it starts, and names the [limits profile](../setters/profiling/profiles.md)
+they came from, if any. `2×TL` there means each solution could keep running up
+to twice the time limit before {{rbx}} stopped it.
+
+A solution that went past the limit but finished within twice the limit is
+still reported `TLE`, and its answer is still checked. When {{rbx}} suspects the limits aren't tuned to this machine,
+the header shows a `limits look untuned` notice. Run
+[`rbx time`](../setters/profiling/estimating.md) to estimate them.
+
+When {{rbx}} stopped a testcase at twice the limit, its row shows only when it
+stopped it, like `>2000 ms`, the way `rbx run` prints it.
+
+Hover a time to see the time limit it's compared with: the limit of the
+solution's own language, so a Python solution's times are compared with the
+Python limit.
+
 In a contest, a dropdown in the header picks which problem you are looking at,
 naming problems by their contest letter and colour. It follows the problem that
 is *running*, so `rbx contest each run` walks the view along with it. The
@@ -88,14 +105,16 @@ panes**: the input, and the output diffed against the expected answer.
 
 ![A testcase, input above and diff below](vscode/testcase-panes.png)
 
-Under the tree, a card describes the selected testcase and carries the two facts
-its row cannot fit:
+Under the tree, a card describes the selected testcase and shows what its row
+can't fit:
 
 - **the checker's own message**, wrapped and whole -- the answer to *why* a
   solution answered wrongly;
 - **where the test came from** -- the generator call, the generator script, or
   the testcase it was copied from, with the ones that point at a real file
-  opening it.
+  opening it;
+- **the other times** -- the solution's wall-clock time (the row shows CPU
+  time), and the checker's and interactor's times when they ran.
 
 The card's `out`, `err` and `log` buttons pick what the second pane shows: the
 output against the expected answer, what the solution wrote to stderr, or the

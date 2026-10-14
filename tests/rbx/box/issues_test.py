@@ -269,40 +269,6 @@ class TestTimingRisk:
         assert issue.groups == ['main']
         assert issue.verdicts == [Outcome.WRONG_ANSWER]
 
-    def test_flags_a_passing_solution_close_to_the_limit(self):
-        state = make_state([solution(maxTime=0.95, timeLimit=1.0)])
-
-        (issue,) = detectors.detect_tight_time_margin(state)
-
-        assert issue.maxTime == 0.95
-        assert issue.timeLimit == 1.0
-
-    def test_leaves_a_comfortable_solution_alone(self):
-        state = make_state([solution(maxTime=0.2, timeLimit=1.0)])
-
-        assert detectors.detect_tight_time_margin(state) == []
-
-    def test_never_flags_a_solution_declared_slow(self):
-        """A solution declared slow is supposed to sit against the limit."""
-        state = make_state(
-            [
-                solution(
-                    expectedOutcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
-                    outcome=Outcome.TIME_LIMIT_EXCEEDED,
-                    maxTime=1.0,
-                    timeLimit=1.0,
-                )
-            ]
-        )
-
-        assert detectors.detect_tight_time_margin(state) == []
-
-    def test_needs_a_time_limit_to_compare_against(self):
-        """A sanitized run enforces none, so there is no margin to speak of."""
-        state = make_state([solution(maxTime=9.0, timeLimit=None)])
-
-        assert detectors.detect_tight_time_margin(state) == []
-
     def test_collects_untuned_limits_into_one_issue(self):
         state = make_state(
             [
@@ -457,7 +423,6 @@ class TestDetectAll:
     def test_puts_errors_before_warnings(self):
         state = make_state(
             [
-                solution(path='sol/tight.cpp', maxTime=0.95, timeLimit=1.0),
                 solution(
                     path='sol/wa.cpp',
                     expectedOutcome=ExpectedOutcome.WRONG_ANSWER,
@@ -470,7 +435,7 @@ class TestDetectAll:
 
         issues = detectors.detect_all(state)
 
-        assert kinds(issues) == ['unmet_expectation', 'tight_time_margin']
+        assert kinds(issues) == ['unmet_expectation']
 
     def test_a_clean_run_has_no_issues(self):
         assert detectors.detect_all(make_state([solution()])) == []
@@ -785,7 +750,6 @@ class TestRendering:
             schema.CompilationWarningsIssue(solution='s', log=pathlib.Path('a.log')),
             schema.BorderlineTleIssue(solution='s'),
             schema.HiddenVerdictIssue(solution='s'),
-            schema.TightTimeMarginIssue(solution='s', maxTime=1.0, timeLimit=1.0),
             schema.NoisyStderrIssue(
                 solution='s', path=pathlib.Path('0/main/1.err'), size=1
             ),

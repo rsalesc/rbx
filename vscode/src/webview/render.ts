@@ -14,6 +14,7 @@
  * which is why nothing that decides anything is allowed to live there.
  */
 import type { DeclaredVisualizers } from '../rbx/declaredVisualizers';
+import type { LimitLine } from '../rbx/limitsView';
 import type { ProblemChoice } from '../rbx/problems';
 import type {
   CardOrigin,
@@ -157,6 +158,10 @@ function noticeText(notice: RunNotice): string {
       return 'interrupted';
     case 'ended-early':
       return 'ended early';
+    case 'untuned-limits':
+      return 'limits look untuned';
+    case 'verification':
+      return `-v${notice.level ?? '?'}`;
   }
 }
 
@@ -183,6 +188,18 @@ function noticeTitle(notice: RunNotice): string {
         'rbx exited before every testcase of this run was evaluated. ' +
         'Testcases marked \u2013 were never run.'
       );
+    case 'untuned-limits':
+      return (
+        'A solution missed a time-related expectation on a run that used the ' +
+        'package\u2019s own limits, which is what limits not tuned to this machine ' +
+        'look like. Run `rbx time` to estimate them here.'
+      );
+    case 'verification':
+      return (
+        `This run used verification level ${notice.level ?? '?'} instead of the ` +
+        'default 4, so it may have skipped validation or some solutions, or judged ' +
+        'at 1\u00d7 the time limit instead of 2\u00d7.'
+      );
   }
 }
 
@@ -197,7 +214,8 @@ function twistyCell(row: Row, expanded: boolean): string {
 function spanCell(span: Span): string {
   const hue = span.hue === undefined ? '' : ` hue-${span.hue}`;
   const role = span.role === undefined ? '' : ` span-${span.role}`;
-  return `<span class="span${role}${hue}">${escapeHtml(span.text)}</span>`;
+  const title = span.title === undefined ? '' : ` title="${escapeAttr(span.title)}"`;
+  return `<span class="span${role}${hue}"${title}>${escapeHtml(span.text)}</span>`;
 }
 
 const SEPARATOR = '<span class="sep">·</span>';
@@ -516,8 +534,7 @@ function value(label: string, text: string | undefined, hue?: string): string {
 }
 
 function valuesCard(detail: SolutionDetail): string {
-  // No denominators: see `solutionDetail`, which decides what these are. The
-  // limits exist on the skeleton now; rendering against them does not.
+  // Against the solution's own limits, which `solutionDetail` decides.
   const values = [
     value('Max time', detail.maxTime),
     value('Max memory', detail.maxMemory),
@@ -717,8 +734,14 @@ export function renderTree(model: RunViewModel, state: UiState): string {
 export function renderHeader(model: RunViewModel, _state: UiState): string {
   // Notices count as something to say: a sanitized run is exactly the run that
   // trips neither counter, and the strip returning nothing there is what left
-  // its dropped time limit unsaid.
-  if (model.mismatches === 0 && model.warned === 0 && model.notices.length === 0) {
+  // its dropped time limit unsaid. So do the limits: `rbx run` prints them
+  // before every run, and they are the denominator of every `×TL` below.
+  if (
+    model.mismatches === 0 &&
+    model.warned === 0 &&
+    model.notices.length === 0 &&
+    model.limits.length === 0
+  ) {
     return '';
   }
   const solutions = model.rows.filter((row) => row.kind === 'solution').length;
@@ -756,7 +779,47 @@ export function renderHeader(model: RunViewModel, _state: UiState): string {
   // below, so a notice never competes for width with the number of misses --
   // and a run with only notices draws no empty line above them.
   const top = counts === '' ? '' : `<div class="header-line">${counts}${button}</div>`;
-  return '<div class="header">' + top + notices + '</div>';
+  return '<div class="header">' + top + notices + limitsLine(model.limits) + '</div>';
+}
+
+/**
+ * `cpp 1000 ms, 256 MiB · py 3000 ms, 256 MiB · 2×TL` -- `_print_limits`, on one
+ * line.
+ *
+ * Last in the strip and dimmed, because it is the one line in it that is not
+ * news: it is there on every run. Where each language's limits came from goes
+ * in the text only when it is a profile, which is the case worth noticing; the
+ * package's own limits say so on hover.
+ *
+ * `2×TL` once for the line, since rbx doubles by verification level and so for
+ * every language at once -- but read off each, so a table that ever disagreed
+ * would still say it.
+ */
+function limitsLine(limits: readonly LimitLine[]): string {
+  if (limits.length === 0) {
+    return '';
+  }
+  const languages = limits
+    .map((line) => {
+      const source =
+        line.profile === undefined ? 'the package' : `limits profile ${line.profile}`;
+      const text =
+        `${line.language} ${line.time}, ${line.memory}` +
+        (line.profile === undefined ? '' : ` (${line.profile})`);
+      const title = `${line.language}: time ${line.time}, memory ${line.memory}, from ${source}`;
+      return `<span class="header-notice" title="${escapeAttr(title)}">${escapeHtml(text)}</span>`;
+    })
+    .join(SEPARATOR);
+  const doubled = limits.some((line) => line.doubleTl)
+    ? SEPARATOR +
+      '<span class="header-notice" title="' +
+      escapeAttr(
+        'Judged at double the time limit: a run between 1\u00d7 and 2\u00d7 the limit ' +
+          'is reported TLE, but is allowed to finish so its answer is still checked.',
+      ) +
+      '">2\u00d7TL</span>'
+    : '';
+  return `<div class="header-line header-limits">${codicon('watch')}${languages}${doubled}</div>`;
 }
 
 /**
@@ -1023,11 +1086,12 @@ export function renderCard(model: RunViewModel, state: UiState): string {
     card.checker === undefined
       ? ''
       : `<div class="card-checker">${escapeHtml(card.checker)}</div>`;
-  // The judges' times, which the row -- the solution's time -- has no room for.
+  // Wall time and the judges' times, which the row -- the solution's CPU time
+  // -- has no room for.
   const judges =
-    card.judgeTimes === undefined
+    card.timings === undefined
       ? ''
-      : `<div class="card-origin">${escapeHtml(card.judgeTimes)}</div>`;
+      : `<div class="card-origin">${escapeHtml(card.timings)}</div>`;
   return (
     `<div class="card-title">${escapeHtml(card.title)}</div>` +
     checker +
