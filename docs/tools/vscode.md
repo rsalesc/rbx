@@ -83,10 +83,9 @@ the header shows a `limits look untuned` notice. Run
 When {{rbx}} stopped a testcase at twice the limit, its row shows only when it
 stopped it, like `>2000 ms`, the way `rbx run` prints it.
 
-Each time is compared with the time limit of the solution's own language, so a
-Python solution's times are compared with the Python limit. A time turns yellow
-once it's close to that limit, at the same threshold {{rbx}} uses to warn about
-a tight time margin. Hover a time to see the limit it's compared with.
+Hover a time to see the time limit it's compared with: the limit of the
+solution's own language, so a Python solution's times are compared with the
+Python limit.
 
 In a contest, a dropdown in the header picks which problem you are looking at,
 naming problems by their contest letter and colour. It follows the problem that

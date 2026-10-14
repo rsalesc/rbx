@@ -315,19 +315,16 @@ solutions:
   timeLimit: 1.0
   untunedLimitsSuspected: true
 finished: true
-tightTimeMarginRatio: 0.8
 endedAt: '2026-10-15T00:50:21.317364+02:00'
 exitStatus: error
 `),
   );
   assert.strictEqual(report?.solutions[0].timeLimit, 1.0);
   assert.strictEqual(report?.solutions[0].untunedLimitsSuspected, true);
-  assert.strictEqual(report?.tightTimeMarginRatio, 0.8);
 });
 
-test('a report too old for limits suspects nothing and publishes no ratio', () => {
+test('a report too old for limits suspects nothing', () => {
   const report = parseReport(parseYaml(REAL_REPORT));
   assert.strictEqual(report?.solutions[0].timeLimit, undefined);
   assert.strictEqual(report?.solutions[0].untunedLimitsSuspected, false);
-  assert.strictEqual(report?.tightTimeMarginRatio, undefined);
 });

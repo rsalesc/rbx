@@ -64,11 +64,10 @@ Times read as `rbx run` prints them: `194 ms`, and `>2000 ms` for a TLE that ran
 into the expanded limit -- that run was killed, and its raw time is only when.
 The limit they are compared with is the one *that solution* ran under, which rbx
 stamps on the skeleton already resolved through its language and any
-`--profile`; it is in each time's hover rather than on every row. A time close
-to its limit turns yellow at `tightTimeMarginRatio`, the threshold the
-`tight_time_margin` detector applies, which rbx publishes in `report.yml` so the
-two cannot drift. Memory is never hued: rbx has no memory-margin warning to
-mirror. The header carries the per-language limits block `rbx run` prints
+`--profile`; it is in each time's hover rather than on every row. Neither a
+time nor a memory figure is coloured for being close to its limit: how close is
+too close is not something rbx decides, and a threshold picked here would be
+arbitrary. The header carries the per-language limits block `rbx run` prints
 before it starts, `2×TL` when the run judges at double the limit, a non-default
 verification level, and *limits look untuned* when rbx suspects them.
 

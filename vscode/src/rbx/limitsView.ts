@@ -3,8 +3,8 @@
  *
  * Every number here is rbx's: the limits a solution ran under are stamped on the
  * skeleton (`SolutionSkeleton.limits`), the limit a testcase was killed at on its
- * `.eval`, and the share of a limit that counts as tight on the report. What is
- * decided here is only how a measurement and its limit are written side by side.
+ * `.eval`. What is decided here is only how a measurement is written and which
+ * limit its hover names.
  *
  * Pure, like viewModel.ts, so `node --test` can hold it to account.
  */
@@ -83,15 +83,6 @@ function ms(seconds: number): number {
 }
 
 /**
- * Whether a measurement sits at or past rbx's tight-margin line, but inside the
- * limit. Inside, because past it the verdict chip is already saying so; and no
- * line at all without the published ratio -- see `RunReport.tightTimeMarginRatio`.
- */
-function tight(value: number, limit: number, ratio: number | undefined): boolean {
-  return ratio !== undefined && limit > 0 && value >= limit * ratio && value < limit;
-}
-
-/**
  * A time, as `rbx run` prints it: `194 ms`, or `>440 ms` for a TLE that ran into
  * the expanded limit (`get_capped_evals_formatted_time`) -- that run was killed,
  * and its raw time is only when. The same rule on every row, testcase or
@@ -109,7 +100,6 @@ export function measuredTime(
   outcome: string | undefined,
   own: Limits | undefined,
   limits: TimeLimits | undefined,
-  ratio: number | undefined,
 ): Measured | undefined {
   if (seconds === undefined) {
     return undefined;
@@ -129,7 +119,7 @@ export function measuredTime(
   }
   return {
     text: `${value} ms`,
-    hue: tight(value, limits.time, ratio) ? 'yellow' : 'dim',
+    hue: 'dim',
     title: `${value} ms of a ${limits.time} ms time limit`,
   };
 }
@@ -137,9 +127,8 @@ export function measuredTime(
 /**
  * A memory measurement, with its limit in the hover.
  *
- * Never hued: rbx warns about a tight *time* margin and has no counterpart for
- * memory, so a yellow memory figure would be a judgement this extension made on
- * its own -- the very thing it is built not to do.
+ * Never hued, like a time: how close to its limit counts as too close is a
+ * threshold rbx does not publish, and one invented here would be arbitrary.
  */
 export function memoryAgainstLimit(
   bytes: number | undefined,

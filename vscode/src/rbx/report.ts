@@ -138,15 +138,6 @@ export interface RunEnd {
 export interface RunReport {
   readonly solutions: readonly SolutionReport[];
   readonly ended?: RunEnd;
-  /**
-   * The share of its time limit past which rbx calls a margin tight -- the
-   * `tight_time_margin` detector's own threshold, published so the view draws
-   * the line where `rbx issues` does.
-   *
-   * Absent on a report too old to carry it, and then nothing is drawn tight:
-   * guessing a threshold is the second copy the field exists to prevent.
-   */
-  readonly tightTimeMarginRatio?: number;
 }
 
 function parseEnd(raw: Wire): RunEnd | undefined {
@@ -283,10 +274,5 @@ export function parseReport(raw: Wire): RunReport | undefined {
     }
   }
   const ended = parseEnd(raw);
-  const tightTimeMarginRatio = asNumber(field(raw, 'tightTimeMarginRatio'));
-  return {
-    solutions,
-    ...(ended === undefined ? {} : { ended }),
-    ...(tightTimeMarginRatio === undefined ? {} : { tightTimeMarginRatio }),
-  };
+  return ended === undefined ? { solutions } : { solutions, ended };
 }

@@ -1459,54 +1459,40 @@ function limited(
   };
 }
 
-function ratioView(solutions: readonly SolutionRun[], skeleton: Partial<Skeleton> = {}) {
-  const base = view(solutions, [], skeleton);
-  return { ...base, run: { ...base.run!, tightTimeMarginRatio: 0.8 } };
-}
-
 function timeSpan(row: Row) {
   return row.meta.find((span) => span.role === 'time');
 }
 
 test("every row reads its time against its own solution's limit, not the package's", () => {
-  // The same 0.9 s is tight under C++'s 1 s and comfortable under Python's 3 s:
-  // the one thing a package-wide `timeLimit` could never tell apart.
+  // The same 0.9 s, against C++'s 1 s and Python's 3 s: the one thing a
+  // package-wide `timeLimit` could never tell apart. The rows print the time as
+  // rbx does; the limit it is read against is in the hover.
   const model = buildViewModel(
-    ratioView([
+    view([
       limited(0, 'sols/main.cpp', CPP_LIMITS, 0.9),
       limited(1, 'sols/main.py', PY_LIMITS, 0.9),
     ]),
   );
-  const cpp = (id: string) => timeSpan(rowById(model.rows, id));
-  assert.deepStrictEqual(
-    [cpp('/w/a::0'), cpp('/w/a::0::main'), cpp('/w/a::0::main::000')].map((span) => [
-      span?.text,
-      span?.hue,
-    ]),
-    [
-      ['900 ms', 'yellow'],
-      ['900 ms', 'yellow'],
-      ['900 ms', 'yellow'],
-    ],
-  );
-  assert.deepStrictEqual(
-    [cpp('/w/a::1'), cpp('/w/a::1::main'), cpp('/w/a::1::main::000')].map((span) => [
-      span?.text,
-      span?.hue,
-    ]),
-    [
-      ['900 ms', 'dim'],
-      ['900 ms', 'dim'],
-      ['900 ms', 'dim'],
-    ],
-  );
+  const spanOf = (id: string) => timeSpan(rowById(model.rows, id));
+  for (const [index, limit] of [
+    [0, 1000],
+    [1, 3000],
+  ]) {
+    for (const id of [`/w/a::${index}`, `/w/a::${index}::main`, `/w/a::${index}::main::000`]) {
+      assert.deepStrictEqual(spanOf(id), {
+        text: '900 ms',
+        hue: 'dim',
+        role: 'time',
+        title: `900 ms of a ${limit} ms time limit`,
+      });
+    }
+  }
 });
 
 test("the solution card spells the max time and memory against the limits", () => {
-  const model = buildViewModel(ratioView([limited(0, 'sols/main.cpp', CPP_LIMITS, 0.181881)]));
+  const model = buildViewModel(view([limited(0, 'sols/main.cpp', CPP_LIMITS, 0.181881)]));
   const detail = rowById(model.rows, '/w/a::0').detail;
   assert.strictEqual(detail?.maxTime, '181 / 1000 ms');
-  assert.strictEqual(detail?.maxTimeHue, 'dim');
   assert.strictEqual(detail?.maxMemory, '10 MiB / 256 MiB');
 });
 

@@ -90,7 +90,7 @@ const CPP_TL = { time: 1000, expanded: 2000 };
 
 function timeOf(raw: string, limits = CPP_TL) {
   const evaluation = parseEvaluation(parseYaml(raw));
-  return measuredTime(evaluation?.time, evaluation?.outcome, evaluation?.limits, limits, 0.8);
+  return measuredTime(evaluation?.time, evaluation?.outcome, evaluation?.limits, limits);
 }
 
 test('a time reads as rbx prints it, with the limit only in the hover', () => {
@@ -110,42 +110,26 @@ test('a hard TLE is capped at the limit it was killed at, as rbx prints it', () 
 
 test('an aggregate is capped the same way, off the solution limits', () => {
   assert.strictEqual(
-    measuredTime(2.01198, 'time-limit-exceeded', undefined, CPP_TL, 0.8)?.text,
+    measuredTime(2.01198, 'time-limit-exceeded', undefined, CPP_TL)?.text,
     '>2000 ms',
   );
-  assert.strictEqual(measuredTime(0.93, 'accepted', undefined, CPP_TL, 0.8)?.text, '930 ms');
+  assert.strictEqual(measuredTime(0.93, 'accepted', undefined, CPP_TL)?.text, '930 ms');
 });
 
 test('a soft TLE keeps its measured time: it finished, so the time is real', () => {
-  assert.strictEqual(
-    measuredTime(1.4, 'time-limit-exceeded', CPP, CPP_TL, 0.8)?.text,
-    '1400 ms',
-  );
+  assert.strictEqual(measuredTime(1.4, 'time-limit-exceeded', CPP, CPP_TL)?.text, '1400 ms');
 });
 
-test('tight is drawn at the published ratio, and only inside the limit', () => {
-  const at = (seconds: number, outcome = 'accepted') =>
-    measuredTime(seconds, outcome, undefined, CPP_TL, 0.8)?.hue;
-  assert.strictEqual(at(0.799), 'dim');
-  assert.strictEqual(at(0.8), 'yellow');
-  assert.strictEqual(at(0.999), 'yellow');
-  // Past the limit the chip already says TLE.
-  assert.strictEqual(at(1.2, 'time-limit-exceeded'), 'dim');
-});
-
-test('with no published ratio nothing is tight: no second copy of the threshold', () => {
-  assert.strictEqual(
-    measuredTime(0.95, 'accepted', undefined, { time: 1000 }, undefined)?.hue,
-    'dim',
-  );
+test('a time close to its limit is not coloured: there is no threshold to draw', () => {
+  assert.strictEqual(measuredTime(0.999, 'accepted', undefined, CPP_TL)?.hue, 'dim');
 });
 
 test('with no limit a time reads as it always did', () => {
-  assert.deepStrictEqual(measuredTime(0.412, undefined, undefined, undefined, 0.8), {
+  assert.deepStrictEqual(measuredTime(0.412, undefined, undefined, undefined), {
     text: '412 ms',
     hue: 'dim',
   });
-  assert.strictEqual(measuredTime(undefined, 'accepted', undefined, CPP_TL, 0.8), undefined);
+  assert.strictEqual(measuredTime(undefined, 'accepted', undefined, CPP_TL), undefined);
 });
 
 test('memory keeps its text, carries the limit in its hover, and is never hued', () => {

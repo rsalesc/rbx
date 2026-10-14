@@ -1343,7 +1343,7 @@ test("a meta span's hover names the limit its time is read against", () => {
         meta: [
           {
             text: '930 ms',
-            hue: 'yellow',
+            hue: 'dim',
             role: 'time',
             title: '930 ms of a 1000 ms time limit',
           },
@@ -1354,7 +1354,7 @@ test("a meta span's hover names the limit its time is read against", () => {
   );
   assert.ok(
     html.includes(
-      '<span class="span span-time hue-yellow" title="930 ms of a 1000 ms time limit">930 ms</span>',
+      '<span class="span span-time hue-dim" title="930 ms of a 1000 ms time limit">930 ms</span>',
     ),
     html,
   );

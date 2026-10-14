@@ -243,8 +243,6 @@ export interface SolutionDetail {
   readonly histogram: readonly HistogramSlice[];
   /** `181 / 1000 ms` when the limit is known, the time alone otherwise. */
   readonly maxTime?: string;
-  /** Yellow when the margin is tight, by rbx's published threshold. */
-  readonly maxTimeHue?: Hue;
   readonly maxMemory?: string;
   readonly score?: string;
   /** Set exactly when `score` is -- see `hueOfScore`. */
@@ -662,20 +660,18 @@ function measuredSpan(measured: Measured | undefined, role: SpanRole): Span | un
 
 /**
  * What a row needs to read a measurement against: its own solution's limits,
- * never the package's, and rbx's tight-margin line.
+ * never the package's.
  */
 interface Against {
   readonly time?: TimeLimits;
   /** MiB. */
   readonly memory?: number;
-  readonly ratio?: number;
 }
 
-function against(run: SolutionRun, ratio: number | undefined): Against {
+function against(run: SolutionRun): Against {
   return {
     time: solutionTimeLimits(run.solution.limits, run.report),
     memory: run.solution.limits?.memory,
-    ratio,
   };
 }
 
@@ -715,7 +711,7 @@ function aggregateMeta(
           'score',
         ),
     measuredSpan(
-      measuredTime(report.maxTime, report.outcome, undefined, limits.time, limits.ratio),
+      measuredTime(report.maxTime, report.outcome, undefined, limits.time),
       'time',
     ),
     measuredSpan(memoryAgainstLimit(report.maxMemory, limits.memory), 'memory'),
@@ -979,7 +975,7 @@ function solutionDetail(
   const measured =
     report === undefined
       ? undefined
-      : measuredTime(report.maxTime, report.outcome, undefined, limits.time, limits.ratio);
+      : measuredTime(report.maxTime, report.outcome, undefined, limits.time);
   const time =
     measured === undefined || limits.time === undefined || measured.text.startsWith('>')
       ? measured
@@ -994,7 +990,6 @@ function solutionDetail(
     warnings,
     histogram: histogram(testcases),
     maxTime: time?.text,
-    maxTimeHue: time?.hue,
     maxMemory:
       memory === undefined
         ? undefined
@@ -1016,11 +1011,10 @@ function solutionRow(
   node: SolutionNode,
   depth: number,
   label: string,
-  ratio: number | undefined,
   parentId?: string,
 ): Row {
   const { run, solo } = node;
-  const limits = against(run, ratio);
+  const limits = against(run);
   const warnings = warningsOf(run.report, true);
   const gutter = solutionGutter(run, warnings);
   const mismatch = gutter === 'missed';
@@ -1057,12 +1051,7 @@ function solutionRow(
   };
 }
 
-function groupRow(
-  node: GroupNode,
-  depth: number,
-  ratio: number | undefined,
-  parentId?: string,
-): Row {
+function groupRow(node: GroupNode, depth: number, parentId?: string): Row {
   const { group } = node;
   // No group attribution on a group row: the row is the attribution.
   const warnings = warningsOf(group.report, false);
@@ -1085,7 +1074,7 @@ function groupRow(
     labelBold: declared?.bold ?? false,
     // Against the group's own solution's limits: a Python solution's groups
     // are read against the Python limit, not the C++ one beside it.
-    meta: aggregateMeta(group.report, progressOf(group.testcases), against(node.run, ratio)),
+    meta: aggregateMeta(group.report, progressOf(group.testcases), against(node.run)),
     expectation: declared,
     verdict,
     warnings,
@@ -1180,11 +1169,10 @@ function testcaseRow(
   parentId: string | undefined,
   declarations: VisualizerDeclarations | undefined,
   ended: boolean,
-  ratio: number | undefined,
 ): Row {
   const { testcase } = node;
   const evaluation = testcase.evaluation;
-  const limits = against(node.run, ratio);
+  const limits = against(node.run);
   const verdict = testcaseChip(testcase, ended, hiddenVerdict(testcase, node.group.report));
   // A double-TL fact is decided over a whole group or a whole solution, never
   // over one testcase: a single soft TLE says nothing until it is weighed
@@ -1218,7 +1206,6 @@ function testcaseRow(
           evaluation?.outcome,
           evaluation?.limits,
           limits.time,
-          limits.ratio,
         ),
         'time',
       ),
@@ -1431,7 +1418,6 @@ export function buildViewModel(
   // The most recent row at each level, so a child can name its parent without
   // the walk having to carry a stack.
   const parents = new Map<number, string>();
-  const ratio = view.run?.tightTimeMarginRatio;
 
   const rows: Row[] = [];
   for (const node of nodes) {
@@ -1441,10 +1427,10 @@ export function buildViewModel(
       switch (node.kind) {
         case 'solution': {
           const path = node.run.solution.path;
-          return solutionRow(node, depth, labels.get(path) ?? path, ratio, parentId);
+          return solutionRow(node, depth, labels.get(path) ?? path, parentId);
         }
         case 'group':
-          return groupRow(node, depth, ratio, parentId);
+          return groupRow(node, depth, parentId);
         case 'testcase':
           return testcaseRow(
             node,
@@ -1452,7 +1438,6 @@ export function buildViewModel(
             parentId,
             declarations,
             view.run?.ended !== undefined,
-            ratio,
           );
       }
     })();
