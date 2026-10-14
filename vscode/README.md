@@ -60,18 +60,17 @@ Every solution and every group carries its own summary: the verdict underneath
 it, the points it earned, and the **max** time and memory across its testcases
 -- the slowest test being the one the time limit is judged against.
 
-Every time is read against the limit *that solution* ran under, which rbx stamps
-on the skeleton already resolved through the solution's language and any
-`--profile`: a group or solution row shows its max time as a share of it
-(`0.18×TL`), a testcase row spells the pair out (`181 / 1000 ms`), and a TLE that
-ran into the expanded limit reads `>2000 ms`, as `rbx run` prints it -- that run
-was killed, and its raw time is only when. A time or memory figure close to its
-limit turns yellow at `tightTimeMarginRatio`, the threshold the
+Times read as `rbx run` prints them: `194 ms`, and `>2000 ms` for a TLE that ran
+into the expanded limit -- that run was killed, and its raw time is only when.
+The limit they are compared with is the one *that solution* ran under, which rbx
+stamps on the skeleton already resolved through its language and any
+`--profile`; it is in each time's hover rather than on every row. A time close
+to its limit turns yellow at `tightTimeMarginRatio`, the threshold the
 `tight_time_margin` detector applies, which rbx publishes in `report.yml` so the
-two cannot drift. The header carries the per-language limits block `rbx run`
-prints before it starts, `2×TL` when the run judges at double the limit, a
-non-default verification level, and *limits look untuned* when rbx suspects
-them.
+two cannot drift. Memory is never hued: rbx has no memory-margin warning to
+mirror. The header carries the per-language limits block `rbx run` prints
+before it starts, `2×TL` when the run judges at double the limit, a non-default
+verification level, and *limits look untuned* when rbx suspects them.
 
 ### One problem at a time
 
@@ -151,7 +150,7 @@ or *wrong, and too slow got there first*. Those are different bugs. When they
 differ, the row spells both:
 
 ```
-1-gen-001        1306 / 1000 ms · 10 MiB   ⌚ TLE (WA)
+1-gen-001        1306 ms · 10 MiB   ⌚ TLE (WA)
 ```
 
 Only on leaves, and only when it matters. A solution declared `incorrect` that

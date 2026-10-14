@@ -80,16 +80,13 @@ still reported `TLE`, and its answer is still checked. When {{rbx}} suspects the
 the header shows a `limits look untuned` notice. Run
 [`rbx time`](../setters/profiling/estimating.md) to estimate them.
 
-Each time is measured against the time limit of the solution's own language,
-so a Python solution's times are compared with the Python limit. A solution or
-group row shows its max time as a share of that limit, like `0.18×TL`, and a
-testcase row spells it out, like `181 / 1000 ms`. When {{rbx}} stopped a
-testcase at twice the limit, the row shows only when it stopped it, like
-`>2000 ms`, and a solution or group row reads `>2.00×TL`.
+When {{rbx}} stopped a testcase at twice the limit, its row shows only when it
+stopped it, like `>2000 ms`, the way `rbx run` prints it.
 
-A time or memory figure turns yellow once it's close to its limit, at the same
-threshold {{rbx}} uses to warn about a tight time margin. Hover a figure to see
-the limit and the share of it the figure uses.
+Each time is compared with the time limit of the solution's own language, so a
+Python solution's times are compared with the Python limit. A time turns yellow
+once it's close to that limit, at the same threshold {{rbx}} uses to warn about
+a tight time margin. Hover a time to see the limit it's compared with.
 
 In a contest, a dropdown in the header picks which problem you are looking at,
 naming problems by their contest letter and colour. It follows the problem that

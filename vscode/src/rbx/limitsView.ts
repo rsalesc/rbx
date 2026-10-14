@@ -11,9 +11,9 @@
 import type { Hue } from './hue';
 // Types only: this module reaches the webview bundle through viewModel.ts,
 // and model.ts imports `path`, which a browser bundle has no way to resolve.
-import type { Evaluation, LanguageLimits, Limits } from './model';
+import type { LanguageLimits, Limits } from './model';
 import type { SolutionReport } from './report';
-import { formatMemory, formatTime } from './summary';
+import { formatMemory } from './summary';
 
 /** The two outcomes `Outcome.is_slow` names, as they are spelled on the wire. */
 const SLOW = new Set(['time-limit-exceeded', 'idleness-limit-exceeded']);
@@ -91,33 +91,33 @@ function tight(value: number, limit: number, ratio: number | undefined): boolean
   return ratio !== undefined && limit > 0 && value >= limit * ratio && value < limit;
 }
 
-/** `0.93×TL`: two places, which is the resolution `rbx time` tunes at. */
-function share(value: number, limit: number, unit: string): string {
-  return `${(value / limit).toFixed(2)}×${unit}`;
-}
-
 /**
- * One testcase's time, against the limit it ran under.
+ * A time, as `rbx run` prints it: `194 ms`, or `>440 ms` for a TLE that ran into
+ * the expanded limit (`get_capped_evals_formatted_time`) -- that run was killed,
+ * and its raw time is only when. The same rule on every row, testcase or
+ * aggregate, because the console applies it to both.
  *
- * `412 / 1000 ms`, or rbx's own `>2000 ms` for a TLE that ran into the expanded
- * limit (`get_capped_evals_formatted_time`): that run was killed, and its raw
- * time is only when. The cap prefers the testcase's own recorded limits, which
- * is the order rbx reads them in.
+ * The limit itself is left to the header and the hover: on every row it was
+ * one more number to read past, and all the rows of a solution share it.
+ *
+ * `own` is the testcase's recorded limits (an `.eval`'s `log.metadata.limits`),
+ * which win over the solution's, the order rbx reads them in. An aggregate has
+ * none of its own.
  */
-export function testcaseTime(
-  evaluation: Evaluation | undefined,
+export function measuredTime(
+  seconds: number | undefined,
+  outcome: string | undefined,
+  own: Limits | undefined,
   limits: TimeLimits | undefined,
   ratio: number | undefined,
 ): Measured | undefined {
-  const seconds = evaluation?.time;
   if (seconds === undefined) {
     return undefined;
   }
   const value = ms(seconds);
-  const killedAt = expandedTimeLimit(evaluation?.limits) ?? limits?.expanded;
-  const slow = isSlow(evaluation?.outcome);
-  const ile = evaluation?.outcome === 'idleness-limit-exceeded';
-  if (killedAt !== undefined && ((slow && value >= killedAt) || ile)) {
+  const killedAt = expandedTimeLimit(own) ?? limits?.expanded;
+  const ile = outcome === 'idleness-limit-exceeded';
+  if (killedAt !== undefined && ((isSlow(outcome) && value >= killedAt) || ile)) {
     return {
       text: `>${killedAt} ms`,
       hue: 'dim',
@@ -128,60 +128,22 @@ export function testcaseTime(
     return { text: `${value} ms`, hue: 'dim' };
   }
   return {
-    text: `${value} / ${limits.time} ms`,
+    text: `${value} ms`,
     hue: tight(value, limits.time, ratio) ? 'yellow' : 'dim',
-    title: `${value} ms of a ${limits.time} ms time limit (${share(value, limits.time, 'TL')})`,
+    title: `${value} ms of a ${limits.time} ms time limit`,
   };
 }
 
 /**
- * A group's or a solution's max time, as a share of the limit: `0.93×TL`.
+ * A memory measurement, with its limit in the hover.
  *
- * A share and not a pair, because every row under one solution has the same
- * denominator and the header already names it; the share is what is left to
- * compare from row to row. A slow aggregate that reached the expanded limit
- * reads `>2.00×TL` for the reason a testcase reads `>2000 ms`.
- */
-export function aggregateTime(
-  maxTime: number | undefined,
-  outcome: string | undefined,
-  limits: TimeLimits | undefined,
-  ratio: number | undefined,
-): Measured | undefined {
-  if (maxTime === undefined) {
-    return undefined;
-  }
-  if (limits === undefined || limits.time <= 0) {
-    return { text: formatTime(maxTime) ?? '', hue: 'dim' };
-  }
-  const value = ms(maxTime);
-  const killedAt = limits.expanded;
-  if (killedAt !== undefined && isSlow(outcome) && value >= killedAt) {
-    return {
-      text: `>${share(killedAt, limits.time, 'TL')}`,
-      hue: 'dim',
-      title: `Killed at ${killedAt} ms, against a ${limits.time} ms time limit`,
-    };
-  }
-  return {
-    text: share(value, limits.time, 'TL'),
-    hue: tight(value, limits.time, ratio) ? 'yellow' : 'dim',
-    title: `Max time ${value} ms of a ${limits.time} ms time limit`,
-  };
-}
-
-/**
- * A memory measurement, hued against the memory limit.
- *
- * The text stays the measurement alone -- memory is the first span a narrow row
- * drops, and a pair would only get it dropped sooner -- and the limit goes in
- * the hover. Drawn tight at the same share as time: the one threshold rbx
- * publishes, rather than a second one invented here.
+ * Never hued: rbx warns about a tight *time* margin and has no counterpart for
+ * memory, so a yellow memory figure would be a judgement this extension made on
+ * its own -- the very thing it is built not to do.
  */
 export function memoryAgainstLimit(
   bytes: number | undefined,
   limitMiB: number | undefined,
-  ratio: number | undefined,
 ): Measured | undefined {
   const text = formatMemory(bytes);
   if (bytes === undefined || text === undefined) {
@@ -190,11 +152,10 @@ export function memoryAgainstLimit(
   if (limitMiB === undefined) {
     return { text, hue: 'dim' };
   }
-  const limit = limitMiB * 1024 * 1024;
   return {
     text,
-    hue: tight(bytes, limit, ratio) ? 'yellow' : 'dim',
-    title: `${text} of a ${formatMemory(limit)} memory limit (${share(bytes, limit, 'ML')})`,
+    hue: 'dim',
+    title: `${text} of a ${formatMemory(limitMiB * 1024 * 1024)} memory limit`,
   };
 }
 

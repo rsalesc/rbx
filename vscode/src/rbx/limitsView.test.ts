@@ -3,12 +3,11 @@ import { test } from 'node:test';
 import { parse as parseYaml } from 'yaml';
 
 import {
-  aggregateTime,
   expandedTimeLimit,
   limitLines,
+  measuredTime,
   memoryAgainstLimit,
   solutionTimeLimits,
-  testcaseTime,
 } from './limitsView';
 import { parseEvaluation, parseSkeleton } from './model';
 
@@ -87,34 +86,46 @@ test("a solution's limits come off its skeleton entry, the report standing in", 
   assert.strictEqual(solutionTimeLimits({ isDoubleTL: false }, undefined), undefined);
 });
 
-test('a testcase reads its time against the 1x limit', () => {
-  const evaluation = parseEvaluation(parseYaml(ACCEPTED_EVAL));
-  assert.deepStrictEqual(testcaseTime(evaluation, { time: 1000, expanded: 2000 }, 0.8), {
-    text: '181 / 1000 ms',
+const CPP_TL = { time: 1000, expanded: 2000 };
+
+function timeOf(raw: string, limits = CPP_TL) {
+  const evaluation = parseEvaluation(parseYaml(raw));
+  return measuredTime(evaluation?.time, evaluation?.outcome, evaluation?.limits, limits, 0.8);
+}
+
+test('a time reads as rbx prints it, with the limit only in the hover', () => {
+  assert.deepStrictEqual(timeOf(ACCEPTED_EVAL), {
+    text: '181 ms',
     hue: 'dim',
-    title: '181 ms of a 1000 ms time limit (0.18×TL)',
+    title: '181 ms of a 1000 ms time limit',
   });
 });
 
-test("a hard TLE is capped at the limit it was killed at, as rbx prints it", () => {
-  const evaluation = parseEvaluation(parseYaml(HARD_TLE_EVAL));
-  assert.strictEqual(
-    testcaseTime(evaluation, { time: 1000, expanded: 2000 }, 0.8)?.text,
-    '>2000 ms',
-  );
+test('a hard TLE is capped at the limit it was killed at, as rbx prints it', () => {
+  assert.strictEqual(timeOf(HARD_TLE_EVAL)?.text, '>2000 ms');
   // The testcase's own recorded limits win over the solution's, which is the
   // order `get_capped_evals_formatted_time` reads them in.
-  assert.strictEqual(testcaseTime(evaluation, { time: 500, expanded: 1000 }, 0.8)?.text, '>2000 ms');
+  assert.strictEqual(timeOf(HARD_TLE_EVAL, { time: 500, expanded: 1000 })?.text, '>2000 ms');
+});
+
+test('an aggregate is capped the same way, off the solution limits', () => {
+  assert.strictEqual(
+    measuredTime(2.01198, 'time-limit-exceeded', undefined, CPP_TL, 0.8)?.text,
+    '>2000 ms',
+  );
+  assert.strictEqual(measuredTime(0.93, 'accepted', undefined, CPP_TL, 0.8)?.text, '930 ms');
 });
 
 test('a soft TLE keeps its measured time: it finished, so the time is real', () => {
-  const soft = { outcome: 'time-limit-exceeded', time: 1.4, limits: CPP };
-  assert.strictEqual(testcaseTime(soft, { time: 1000, expanded: 2000 }, 0.8)?.text, '1400 / 1000 ms');
+  assert.strictEqual(
+    measuredTime(1.4, 'time-limit-exceeded', CPP, CPP_TL, 0.8)?.text,
+    '1400 ms',
+  );
 });
 
 test('tight is drawn at the published ratio, and only inside the limit', () => {
   const at = (seconds: number, outcome = 'accepted') =>
-    testcaseTime({ outcome, time: seconds }, { time: 1000, expanded: 2000 }, 0.8)?.hue;
+    measuredTime(seconds, outcome, undefined, CPP_TL, 0.8)?.hue;
   assert.strictEqual(at(0.799), 'dim');
   assert.strictEqual(at(0.8), 'yellow');
   assert.strictEqual(at(0.999), 'yellow');
@@ -123,39 +134,29 @@ test('tight is drawn at the published ratio, and only inside the limit', () => {
 });
 
 test('with no published ratio nothing is tight: no second copy of the threshold', () => {
-  const measured = testcaseTime({ outcome: 'accepted', time: 0.95 }, { time: 1000 }, undefined);
-  assert.strictEqual(measured?.hue, 'dim');
+  assert.strictEqual(
+    measuredTime(0.95, 'accepted', undefined, { time: 1000 }, undefined)?.hue,
+    'dim',
+  );
 });
 
 test('with no limit a time reads as it always did', () => {
-  assert.deepStrictEqual(testcaseTime({ time: 0.412 }, undefined, 0.8), {
+  assert.deepStrictEqual(measuredTime(0.412, undefined, undefined, undefined, 0.8), {
     text: '412 ms',
     hue: 'dim',
   });
-  assert.strictEqual(testcaseTime({ outcome: 'accepted' }, { time: 1000 }, 0.8), undefined);
+  assert.strictEqual(measuredTime(undefined, 'accepted', undefined, CPP_TL, 0.8), undefined);
 });
 
-test('an aggregate reads as a share of the limit', () => {
-  assert.deepStrictEqual(aggregateTime(0.93, 'accepted', { time: 1000, expanded: 2000 }, 0.8), {
-    text: '0.93×TL',
-    hue: 'yellow',
-    title: 'Max time 930 ms of a 1000 ms time limit',
-  });
-  assert.strictEqual(
-    aggregateTime(2.01198, 'time-limit-exceeded', { time: 1000, expanded: 2000 }, 0.8)?.text,
-    '>2.00×TL',
-  );
-  assert.strictEqual(aggregateTime(0.009, 'accepted', undefined, 0.8)?.text, '9 ms');
-});
-
-test('memory keeps its text and carries the limit in its hover', () => {
-  assert.deepStrictEqual(memoryAgainstLimit(10960896, 256, 0.8), {
+test('memory keeps its text, carries the limit in its hover, and is never hued', () => {
+  assert.deepStrictEqual(memoryAgainstLimit(10960896, 256), {
     text: '10 MiB',
     hue: 'dim',
-    title: '10 MiB of a 256 MiB memory limit (0.04×ML)',
+    title: '10 MiB of a 256 MiB memory limit',
   });
-  assert.strictEqual(memoryAgainstLimit(220 * 1024 * 1024, 256, 0.8)?.hue, 'yellow');
-  assert.deepStrictEqual(memoryAgainstLimit(1000, undefined, 0.8), { text: '1000 B', hue: 'dim' });
+  // rbx has no memory-margin warning, so nothing here turns yellow.
+  assert.strictEqual(memoryAgainstLimit(250 * 1024 * 1024, 256)?.hue, 'dim');
+  assert.deepStrictEqual(memoryAgainstLimit(1000, undefined), { text: '1000 B', hue: 'dim' });
 });
 
 test("the header's limit lines come off the skeleton's table", () => {

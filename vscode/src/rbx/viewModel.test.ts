@@ -1484,9 +1484,9 @@ test("every row reads its time against its own solution's limit, not the package
       span?.hue,
     ]),
     [
-      ['0.90×TL', 'yellow'],
-      ['0.90×TL', 'yellow'],
-      ['900 / 1000 ms', 'yellow'],
+      ['900 ms', 'yellow'],
+      ['900 ms', 'yellow'],
+      ['900 ms', 'yellow'],
     ],
   );
   assert.deepStrictEqual(
@@ -1495,9 +1495,9 @@ test("every row reads its time against its own solution's limit, not the package
       span?.hue,
     ]),
     [
-      ['0.30×TL', 'dim'],
-      ['0.30×TL', 'dim'],
-      ['900 / 3000 ms', 'dim'],
+      ['900 ms', 'dim'],
+      ['900 ms', 'dim'],
+      ['900 ms', 'dim'],
     ],
   );
 });

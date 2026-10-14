@@ -534,11 +534,11 @@ function value(label: string, text: string | undefined, hue?: string): string {
 }
 
 function valuesCard(detail: SolutionDetail): string {
-  // Against the solution's own limits, which `solutionDetail` decides; the hue
-  // is rbx's tight-margin line, never one drawn here.
+  // Against the solution's own limits, which `solutionDetail` decides; the time's
+  // hue is rbx's tight-margin line, never one drawn here.
   const values = [
     value('Max time', detail.maxTime, detail.maxTimeHue),
-    value('Max memory', detail.maxMemory, detail.maxMemoryHue),
+    value('Max memory', detail.maxMemory),
     value('Score', detail.score, detail.scoreHue),
   ].join('');
   return values === '' ? '' : `<div class="values">${values}</div>`;

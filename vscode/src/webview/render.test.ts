@@ -1335,17 +1335,17 @@ test('the untuned-limits and verification notices say what to do on hover', () =
   assert.ok(html.includes('>-v2<'), html);
 });
 
-test("a meta span's hover says what its shortening is of", () => {
+test("a meta span's hover names the limit its time is read against", () => {
   const html = renderTree(
     model([
       {
         ...MAIN,
         meta: [
           {
-            text: '0.93×TL',
+            text: '930 ms',
             hue: 'yellow',
             role: 'time',
-            title: 'Max time 930 ms of a 1000 ms time limit',
+            title: '930 ms of a 1000 ms time limit',
           },
         ],
       },
@@ -1354,7 +1354,7 @@ test("a meta span's hover says what its shortening is of", () => {
   );
   assert.ok(
     html.includes(
-      '<span class="span span-time hue-yellow" title="Max time 930 ms of a 1000 ms time limit">0.93×TL</span>',
+      '<span class="span span-time hue-yellow" title="930 ms of a 1000 ms time limit">930 ms</span>',
     ),
     html,
   );

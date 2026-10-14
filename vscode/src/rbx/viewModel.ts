@@ -28,11 +28,10 @@ import {
   LimitLine,
   Measured,
   TimeLimits,
-  aggregateTime,
   limitLines,
+  measuredTime,
   memoryAgainstLimit,
   solutionTimeLimits,
-  testcaseTime,
 } from './limitsView';
 import { Evaluation, TestcaseEntry } from './model';
 import {
@@ -96,7 +95,7 @@ export interface Span {
   readonly text: string;
   readonly hue?: Hue;
   readonly role?: SpanRole;
-  /** A hover, for a span whose text is a shortening -- `0.93×TL` of what. */
+  /** A hover, for what the text leaves out -- the limit a time is read against. */
   readonly title?: string;
 }
 
@@ -247,7 +246,6 @@ export interface SolutionDetail {
   /** Yellow when the margin is tight, by rbx's published threshold. */
   readonly maxTimeHue?: Hue;
   readonly maxMemory?: string;
-  readonly maxMemoryHue?: Hue;
   readonly score?: string;
   /** Set exactly when `score` is -- see `hueOfScore`. */
   readonly scoreHue?: Hue;
@@ -716,8 +714,11 @@ function aggregateMeta(
           hueOfScore(report.score, report.maxScore),
           'score',
         ),
-    measuredSpan(aggregateTime(report.maxTime, report.outcome, limits.time, limits.ratio), 'time'),
-    measuredSpan(memoryAgainstLimit(report.maxMemory, limits.memory, limits.ratio), 'memory'),
+    measuredSpan(
+      measuredTime(report.maxTime, report.outcome, undefined, limits.time, limits.ratio),
+      'time',
+    ),
+    measuredSpan(memoryAgainstLimit(report.maxMemory, limits.memory), 'memory'),
   ]);
 }
 
@@ -973,17 +974,20 @@ function solutionDetail(
 ): SolutionDetail {
   const report = run.report;
   const testcases = run.groups.flatMap((group) => group.testcases);
-  // The card has the width the row does not, so it spells the pair out where
-  // the row shows only the share: `181 / 1000 ms`, the same pair a testcase row
-  // shows, so the two read as the same measurement.
-  const time =
+  // The card has the width the rows do not, so it spells the limit out beside
+  // the time: `194 / 220 ms`. A capped time already says where it was cut.
+  const measured =
     report === undefined
       ? undefined
-      : testcaseTime({ time: report.maxTime, outcome: report.outcome }, limits.time, limits.ratio);
+      : measuredTime(report.maxTime, report.outcome, undefined, limits.time, limits.ratio);
+  const time =
+    measured === undefined || limits.time === undefined || measured.text.startsWith('>')
+      ? measured
+      : { ...measured, text: `${measured.text.replace(/ ms$/, '')} / ${limits.time.time} ms` };
   const memory =
     report === undefined
       ? undefined
-      : memoryAgainstLimit(report.maxMemory, limits.memory, limits.ratio);
+      : memoryAgainstLimit(report.maxMemory, limits.memory);
   const memoryLimit = limits.memory === undefined ? undefined : `${limits.memory} MiB`;
   return {
     mismatch: mismatch && report !== undefined ? mismatchDetail(run, report) : undefined,
@@ -997,7 +1001,6 @@ function solutionDetail(
         : memoryLimit === undefined
           ? memory.text
           : `${memory.text} / ${memoryLimit}`,
-    maxMemoryHue: memory?.hue,
     score:
       report === undefined || report.maxScore === 0
         ? undefined
@@ -1209,8 +1212,17 @@ function testcaseRow(
     // of a row that is only 22px tall. It belongs somewhere that can wrap --
     // which is `card`, below.
     meta: spans([
-      measuredSpan(testcaseTime(evaluation, limits.time, limits.ratio), 'time'),
-      measuredSpan(memoryAgainstLimit(evaluation?.memory, limits.memory, limits.ratio), 'memory'),
+      measuredSpan(
+        measuredTime(
+          evaluation?.time,
+          evaluation?.outcome,
+          evaluation?.limits,
+          limits.time,
+          limits.ratio,
+        ),
+        'time',
+      ),
+      measuredSpan(memoryAgainstLimit(evaluation?.memory, limits.memory), 'memory'),
     ]),
     verdict,
     warnings,
