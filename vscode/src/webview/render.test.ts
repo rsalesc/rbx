@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
+import { WELCOME_COMMANDS } from '../rbx/dispatch';
 import type { FindingRow, Findings, Row, RunViewModel } from '../rbx/viewModel';
 import {
   UiState,
@@ -477,6 +478,10 @@ test('the empty model renders the welcome copy that viewsWelcome used to hold', 
     html.includes('Run <code>rbx run</code> in its directory and the results will show up here.'),
     html,
   );
+  // The dispatch button (#906): always in the markup, shown by style.css only
+  // while dispatch is enabled, and naming a command the host will run.
+  assert.ok(html.includes('class="welcome-action" data-command="rbx.runAll"'), html);
+  assert.ok(WELCOME_COMMANDS.includes('rbx.runAll'));
   assert.ok(!html.includes('class="row'), html);
 });
 

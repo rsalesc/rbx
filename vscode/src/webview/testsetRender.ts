@@ -229,6 +229,10 @@ const WELCOME =
   '<div class="welcome">' +
   '<p>No testset built for this problem.</p>' +
   '<p>Run <code>rbx build</code> in its directory and the tests will show up here.</p>' +
+  // Hidden by the stylesheet unless the host says dispatch is on (#906).
+  '<p class="welcome-actions">' +
+  '<button class="welcome-action" data-command="rbx.build">Run <code>rbx build</code></button>' +
+  '</p>' +
   '</div>';
 
 /** A manifest that named no tests at all -- built, and empty. */

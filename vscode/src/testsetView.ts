@@ -23,8 +23,10 @@ import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
 
 import { ActiveProblem } from './activeProblem';
+import { dispatchEnabled } from './dispatch';
 import { log } from './log';
 import { touchesTestset } from './rbx/artifactEvents';
+import { WELCOME_COMMANDS } from './rbx/dispatch';
 import { Latest } from './rbx/latest';
 import { packageLayout, testsetPath } from './rbx/layout';
 import {
@@ -148,6 +150,11 @@ export class TestsetViewProvider implements vscode.WebviewViewProvider {
         this.requestPanel(this.asTab(message.tab), message.nodeId);
         return;
       }
+      if (message.type === 'command' && WELCOME_COMMANDS.includes(message.commandId ?? '')) {
+        // An empty-state button (#906): no row, so no node to resolve.
+        void vscode.commands.executeCommand(message.commandId as string);
+        return;
+      }
       if (message.type === 'invoke' && message.commandId !== undefined) {
         const node = this.nodeById(message.nodeId ?? '');
         if (node === undefined) {
@@ -173,6 +180,12 @@ export class TestsetViewProvider implements vscode.WebviewViewProvider {
       // Both, and they are different events: `data` changes what the selected
       // problem's testset says, `active` changes which problem that is.
       this.active.onDidChange(() => void this.post()),
+      // The empty state's Build button follows the setting.
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration('rbx.dispatch.enabled')) {
+          void this.post();
+        }
+      }),
     ];
     view.onDidDispose(() => {
       subscriptions.forEach((subscription) => subscription.dispose());
@@ -277,6 +290,8 @@ export class TestsetViewProvider implements vscode.WebviewViewProvider {
     }
     await this.view?.webview.postMessage({
       type: 'state',
+      // Shows the empty state's Run/Build buttons; see style.css.
+      dispatch: dispatchEnabled(),
       model,
       problems: this.active.problems(),
       selected,

@@ -4,11 +4,14 @@ import { parse as parseYaml } from 'yaml';
 
 import {
   CONTEST_MANIFEST,
+  ContestFile,
   ParsedContest,
+  contestCandidates,
   contestVariantId,
   isContestVariantFile,
   parseContest,
   problemIdentities,
+  rememberedCandidate,
 } from './contest';
 
 function contest(yaml: string): ParsedContest {
@@ -232,4 +235,65 @@ test('a canonical identity carries no variant key at all', () => {
     order: 0,
     contestRoot: '/c',
   });
+});
+
+// Which contests a dispatched command could run under (#906).
+
+const ROOT = '/c';
+
+function file(yaml: string, variantId?: string): ContestFile {
+  return { ...(variantId === undefined ? {} : { variantId }), contest: contest(yaml) };
+}
+
+test('candidates: a single contest naming the problem is the only one', () => {
+  const files = [file('problems: [{short_name: A}, {short_name: B}]')];
+  assert.deepStrictEqual(contestCandidates('problem', ROOT, files, '/c/B'), [{ shortName: 'B' }]);
+});
+
+test('candidates: a problem the contest does not name has none', () => {
+  const files = [file('problems: [{short_name: A}]')];
+  assert.deepStrictEqual(contestCandidates('problem', ROOT, files, '/c/Z'), []);
+});
+
+test('candidates: a dispatcher is never one, so one variant is inferred', () => {
+  const files = [
+    file('use_variants: true'),
+    file('problems: [{short_name: A}]', 'div1'),
+    file('problems: [{short_name: X, path: B}]', 'div2'),
+  ];
+  assert.deepStrictEqual(contestCandidates('problem', ROOT, files, '/c/B'), [
+    { variantId: 'div2', shortName: 'X' },
+  ]);
+});
+
+test('candidates: a problem in the canonical and a sibling is ambiguous', () => {
+  // rbx itself would silently pick the canonical here; the extension asks.
+  const files = [
+    file('problems: [{short_name: A}]'),
+    file('problems: [{short_name: C, path: A}]', 'div2'),
+  ];
+  assert.deepStrictEqual(contestCandidates('problem', ROOT, files, '/c/A/'), [
+    { shortName: 'A' },
+    { variantId: 'div2', shortName: 'C' },
+  ]);
+});
+
+test('candidates: contest scope offers every real contest', () => {
+  const files = [
+    file('use_variants: true'),
+    file('problems: [{short_name: A}]', 'div1'),
+    file('problems: []', 'div2'),
+  ];
+  assert.deepStrictEqual(contestCandidates('contest', ROOT, files), [
+    { variantId: 'div1' },
+    { variantId: 'div2' },
+  ]);
+});
+
+test('remembered: survives only while it is still a candidate', () => {
+  const candidates = [{ shortName: 'A' }, { variantId: 'div2', shortName: 'C' }];
+  assert.deepStrictEqual(rememberedCandidate(candidates, 'div2'), candidates[1]);
+  assert.deepStrictEqual(rememberedCandidate(candidates, ''), candidates[0]);
+  assert.strictEqual(rememberedCandidate(candidates, 'div3'), undefined);
+  assert.strictEqual(rememberedCandidate(candidates, undefined), undefined);
 });

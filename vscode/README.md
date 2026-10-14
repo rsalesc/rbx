@@ -29,10 +29,12 @@ Browse the results of an `rbx run` without leaving the editor: solution →
 group → testcase, with verdicts, timings and a diff of what a solution printed
 against the expected answer.
 
-Execution stays in the terminal. You type `rbx run`; the extension watches
-`.rbx/runs/` and renders whatever lands there. It never invokes `rbx` itself --
-every `rbx` invocation has side effects on the package cache and could race a
-run already in flight.
+Execution stays in the terminal. You type `rbx run`, or start it from a button
+that runs it in a terminal of its own (see
+[Starting a run from the editor](#starting-a-run-from-the-editor)). Either way,
+the extension watches `.rbx/runs/` and renders whatever lands there. It never
+runs a build in the background and never reads the terminal: what the views
+show comes only from the files rbx wrote.
 
 ## The run view
 
@@ -516,11 +518,13 @@ A score reads the way `rbx run` prints it: `score 100` for an exact one,
 omitted bound is rbx's `10^9`, and naming it would invent a maximum the setter
 never wrote.
 
-**The right-hand slot of the lens is reserved and ships empty.** That is where
-the last run goes -- verdict, worst time against the limit, points, and the
-fact of a miss. It is deliberately a separate issue, because it carries the
-questions this one does not have to answer: which run, how stale is too stale,
-and what it says when there has never been a run.
+Next to the declaration, a **▶ Run** lens starts `rbx run` on this solution in
+a terminal; see [Starting a run from the editor](#starting-a-run-from-the-editor).
+
+Showing the last run's result on the lens -- verdict, worst time against the
+limit, points, the fact of a miss -- is left to a separate issue. It raises
+questions the declaration never has to answer: which run, how stale is too
+stale, and what to say when there has never been a run.
 
 `rbx.solutionCodeLens` and `rbx.solutionStatus` turn the two off independently.
 
@@ -548,6 +552,78 @@ declaration never is -- a *miss* is, and that belongs to the run.
 
 The one API that would give a real banner, `createWebviewTextEditorInset`, is
 still proposed and cannot ship in a published extension.
+
+## Starting a run from the editor
+
+The extension can start `rbx run` and `rbx build` for you. It runs the command
+as a VS Code task, in a terminal of its own that you can see, named after what
+it runs (`run sols/main.cpp`). You watch the output and stop it with Ctrl-C.
+
+That terminal is not your shell, so there is no up-arrow to edit the command
+and run it again; *Re-run Last Command* covers the common case. The Run view
+follows the run live through the same files it always reads -- the extension
+never reads the terminal.
+
+| Where | What it starts |
+|---|---|
+| **▶ Run** lens on a solution, or the ▶ button in its editor title | `rbx run <solution>` |
+| *Run This Solution*, in a Run view solution row's context menu | `rbx run <solution>` |
+| Run view title: *Run All Solutions* | `rbx run` |
+| Run view title: *Re-run Last Command* (after the first one) | the last command again |
+| Run and Tests view title: *Build Tests* | `rbx build` |
+| The button in the empty Run view | `rbx run` |
+| The button in the empty Tests view | `rbx build` |
+| View title `...` menu, in a contest: *Run All Problems in the Contest* | `rbx contest each --inline run` |
+
+Every one of them is also a command, so it can be bound to a key.
+
+### One command at a time
+
+**The extension never starts a command on top of another.** It refuses to
+start one in a package where rbx is already running, whatever is running there.
+A second run would wipe the report the first is still writing, and a build
+would regenerate the tests a run is reading.
+
+A contest-wide run counts as running in every problem of the contest, and the
+other way round. Two commands in different problems run side by side.
+
+When a command would collide, the extension asks first. *Stop and Run* stops
+what is running and waits up to 10 seconds for it to end; if it has not ended
+by then, nothing is started. *Cancel* leaves it alone.
+
+VS Code's own *Rerun Last Task* starts a task without asking the extension, so
+it is checked as it starts instead: if it would collide, it is stopped at once,
+with a message naming the command it ran into.
+
+### Choosing a contest
+
+A problem can belong to more than one contest when a contest has variants
+(`contest.<id>.rbx.yml`), and the variant decides things a run uses, such as
+the contest's languages. When the problem is in exactly one, the extension uses
+it without asking. *Run All Problems in the Contest* chooses among every
+contest in the directory instead.
+
+When there are several, the extension asks once per contest directory and
+remembers the answer. A variant is passed as `-C <id>`; the default
+`contest.rbx.yml` is selected by clearing `RBX_CONTEST` for the task, so an
+exported variant cannot override the choice. If the remembered contest stops
+applying -- its file is gone, or it no longer lists the problem -- the extension
+asks again.
+
+The choice is shown in the task's name and, while it matters, in the status
+bar. Click the status bar item, or run *Change Contest for Dispatched
+Commands*, to change it.
+
+### Settings
+
+- `rbx.run.extraArgs` adds arguments to every `rbx run` the extension starts,
+  including each problem's run in *Run All Problems in the Contest* -- for
+  example `["--sanitized"]`.
+- Setting `rbx.dispatch.enabled` to `false` removes every button that starts
+  `rbx build` or `rbx run`; the extension goes back to only watching what you
+  run yourself.
+- `rbx.solutionCodeLens` also hides the ▶ Run lens; the editor-title button
+  stays.
 
 ## Status
 

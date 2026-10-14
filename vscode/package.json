@@ -229,6 +229,47 @@
         "command": "rbx.visualizeSolutionOutput",
         "title": "Visualize Solution's Output",
         "category": "rbx"
+      },
+      {
+        "command": "rbx.runSolution",
+        "title": "Run This Solution",
+        "category": "rbx",
+        "icon": "$(play)",
+        "enablement": "rbx.dispatchEnabled"
+      },
+      {
+        "command": "rbx.runAll",
+        "title": "Run All Solutions",
+        "category": "rbx",
+        "icon": "$(run-all)",
+        "enablement": "rbx.dispatchEnabled"
+      },
+      {
+        "command": "rbx.build",
+        "title": "Build Tests",
+        "category": "rbx",
+        "icon": "$(tools)",
+        "enablement": "rbx.dispatchEnabled"
+      },
+      {
+        "command": "rbx.rerun",
+        "title": "Re-run Last Command",
+        "category": "rbx",
+        "icon": "$(debug-rerun)",
+        "enablement": "rbx.dispatchEnabled && rbx.canRerun"
+      },
+      {
+        "command": "rbx.runContest",
+        "title": "Run All Problems in the Contest",
+        "category": "rbx",
+        "icon": "$(run-all-coverage)",
+        "enablement": "rbx.dispatchEnabled && rbx.activeInContest"
+      },
+      {
+        "command": "rbx.changeContest",
+        "title": "Change Contest for Dispatched Commands",
+        "category": "rbx",
+        "enablement": "rbx.dispatchEnabled"
       }
     ],
     "menus": {
@@ -242,15 +283,59 @@
           "command": "rbx.copyInteraction",
           "when": "resourceScheme == rbx && resourceFilename == interaction.io",
           "group": "navigation@1"
+        },
+        {
+          "command": "rbx.runSolution",
+          "when": "rbx.dispatchEnabled && resourceScheme == file && resourcePath in rbx.solutionFiles",
+          "group": "navigation@0"
         }
       ],
       "commandPalette": [
         {
           "command": "rbx.openVisualizationExternally",
           "when": "activeWebviewPanelId == 'rbx.visualization'"
+        },
+        {
+          "command": "rbx.runSolution",
+          "when": "rbx.dispatchEnabled && resourceScheme == file && resourcePath in rbx.solutionFiles"
+        },
+        {
+          "command": "rbx.runAll",
+          "when": "rbx.dispatchEnabled"
+        },
+        {
+          "command": "rbx.build",
+          "when": "rbx.dispatchEnabled"
+        },
+        {
+          "command": "rbx.rerun",
+          "when": "rbx.dispatchEnabled && rbx.canRerun"
+        },
+        {
+          "command": "rbx.runContest",
+          "when": "rbx.dispatchEnabled && rbx.activeInContest"
+        },
+        {
+          "command": "rbx.changeContest",
+          "when": "rbx.dispatchEnabled && rbx.activeInContest"
         }
       ],
       "view/title": [
+        {
+          "command": "rbx.runAll",
+          "when": "view == rbx.run && rbx.dispatchEnabled",
+          "group": "navigation@0"
+        },
+        {
+          "command": "rbx.rerun",
+          "when": "view == rbx.run && rbx.dispatchEnabled && rbx.canRerun",
+          "group": "navigation@0"
+        },
+        {
+          "command": "rbx.build",
+          "when": "(view == rbx.run || view == rbx.testset) && rbx.dispatchEnabled",
+          "group": "navigation@0"
+        },
         {
           "command": "rbx.selectProblem",
           "when": "view == rbx.run || view == rbx.testset",
@@ -260,9 +345,24 @@
           "command": "rbx.refresh",
           "when": "view == rbx.run || view == rbx.testset",
           "group": "navigation@2"
+        },
+        {
+          "command": "rbx.runContest",
+          "when": "(view == rbx.run || view == rbx.testset) && rbx.dispatchEnabled && rbx.activeInContest",
+          "group": "dispatch@1"
+        },
+        {
+          "command": "rbx.changeContest",
+          "when": "(view == rbx.run || view == rbx.testset) && rbx.dispatchEnabled && rbx.activeInContest",
+          "group": "dispatch@2"
         }
       ],
       "webview/context": [
+        {
+          "command": "rbx.runSolution",
+          "when": "webviewSection == 'rbx.solution' && rbx.dispatchEnabled",
+          "group": "0_run@1"
+        },
         {
           "command": "rbx.openSolution",
           "when": "webviewSection == 'rbx.solution'",
@@ -609,10 +709,59 @@
           "type": "string",
           "default": "",
           "scope": "resource",
-          "markdownDescription": "Full path to the `rbx` executable, used when visualizing a testcase and when reading a problem's vars for statement hints. Leave empty to find it automatically: the extension tries `PATH` first, then asks a login shell, because the extension host's `PATH` is the one VS Code was launched with and often omits `~/.local/bin`."
+          "markdownDescription": "Full path to the `rbx` executable, used when visualizing a testcase, when reading a problem's vars for statement hints, and as the command the Run and Build buttons start in a terminal. Leave empty to find it automatically: the extension tries `PATH` first, then asks a login shell, because the extension host's `PATH` is the one VS Code was launched with and often omits `~/.local/bin`."
+        },
+        "rbx.dispatch.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show the buttons that start `rbx run` and `rbx build` from the editor: the **Run** CodeLens on a solution, the editor-title and view buttons, and the commands behind them. Each one runs its command as a task in a visible terminal; the extension never runs a build in the background or reads its output. Turn this off to go back to only watching what you run yourself."
+        },
+        "rbx.run.extraArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "resource",
+          "markdownDescription": "Arguments added to every `rbx run` the extension starts -- including each problem's run in *Run All Problems in the Contest* -- one per item, for example `[\"--sanitized\"]` or `[\"--detailed\"]`."
         }
       }
-    }
+    },
+    "taskDefinitions": [
+      {
+        "type": "rbx",
+        "required": [
+          "command",
+          "cwd"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "enum": [
+              "build",
+              "run",
+              "contest-run"
+            ],
+            "description": "Describes the tasks the rbx extension starts from its buttons; rbx tasks cannot be declared in tasks.json. The rbx command: `build`, `run`, or `contest-run` (`rbx contest each --inline run`)."
+          },
+          "cwd": {
+            "type": "string",
+            "description": "The package root (or contest root, for contest-run) the command runs in."
+          },
+          "solutions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "For `run`: the solutions to run, relative to `cwd`. Empty runs every solution."
+          },
+          "contest": {
+            "type": "string",
+            "description": "The contest variant id passed as `-C`, or an empty string for the canonical contest.rbx.yml."
+          }
+        }
+      }
+    ]
   },
   "scripts": {
     "compile": "node esbuild.mjs",

@@ -1,10 +1,12 @@
 /**
  * Extension entry point.
  *
- * The extension is a pure reader (design D2/D3): the user runs `rbx run` in the
- * terminal and this watches what lands under `.rbx/runs`. It never drives a
- * build; the only rbx it spawns is read-only, idempotent work behind a feature
- * that asked for it -- see rbxProcess.ts for what makes that safe.
+ * The extension is a reader (design D2/D3): whoever starts `rbx run` -- the
+ * user in a terminal, or the user through a button that dispatches it to one
+ * (dispatch.ts, D3 as amended by #906) -- this watches what lands under
+ * `.rbx/runs`. It never runs a build headless or reads a terminal; the only rbx
+ * it spawns itself is read-only, idempotent work behind a feature that asked
+ * for it -- see rbxProcess.ts for what makes that safe.
  */
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -15,6 +17,7 @@ import { registerCommands } from './commands';
 import { DeclaredIndex } from './declared';
 import { registerDecorations } from './decorations';
 import { registerDiagnostics } from './diagnostics';
+import { registerDispatch } from './dispatch';
 import { registerInteractionDecorations } from './interactionDecorations';
 import { initLog, log } from './log';
 import { CONTEST_FILE_GLOB, CONTEST_MANIFEST, isContestVariantFile } from './rbx/contest';
@@ -112,6 +115,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   registerCommands(context, view, data, active, testset);
+  const dispatcher = registerDispatch(context, active, declared, view);
   registerInteractionDecorations(context);
 
   // The panel follows the sidebar's highlight, so arrowing the list scrolls the
@@ -319,6 +323,8 @@ export function activate(context: vscode.ExtensionContext): void {
     if (name === CONTEST_MANIFEST || isContestVariantFile(name)) {
       log(`${uri.fsPath} changed; rebuilding the problem list.`);
       void active.refresh();
+      // Which contests a dispatch could run under lives in the same files.
+      void dispatcher.refreshStatus();
     }
   };
   contests.onDidCreate(recontest);

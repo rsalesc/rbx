@@ -650,6 +650,11 @@ const WELCOME =
   // the workspace is simply false.
   '<p>No rbx run found for this problem.</p>' +
   '<p>Run <code>rbx run</code> in its directory and the results will show up here.</p>' +
+  // Hidden by the stylesheet unless the host says dispatch is on (#906); the
+  // sentence above stays true either way, so it is not reworded around it.
+  '<p class="welcome-actions">' +
+  '<button class="welcome-action" data-command="rbx.runAll">Run <code>rbx run</code></button>' +
+  '</p>' +
   '</div>';
 
 /**

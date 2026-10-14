@@ -209,3 +209,83 @@ export function problemIdentities(
   }
   return identities;
 }
+
+/** One contest file in a contest root, parsed. */
+export interface ContestFile {
+  /** Undefined for the canonical `contest.rbx.yml`. */
+  readonly variantId?: string;
+  readonly contest: ParsedContest;
+}
+
+/**
+ * A contest a dispatched command could run under.
+ *
+ * `variantId` is undefined for the canonical file, which is selected by passing
+ * no `-C` at all. `shortName` is this problem's letter in that contest, for a
+ * problem-scoped command; it is what tells two candidates apart in the picker
+ * when the variant ids alone do not.
+ */
+export interface ContestCandidate {
+  readonly variantId?: string;
+  readonly shortName?: string;
+}
+
+/**
+ * Every contest a command could run under, in file order (canonical first).
+ *
+ * - **Problem scope** (`rbx run`, `rbx build`): the contest files whose
+ *   `problems:` name this package. The variant matters even here --
+ *   `find_contest_languages` reads the *selected* contest's `languages:` -- and
+ *   rbx's own fallback does not ask: with no selection it uses the canonical
+ *   whenever there is one, even when the problem is only listed in a sibling.
+ * - **Contest scope** (`rbx contest each run`): every contest file that is a
+ *   real contest. A dispatcher declares no problems and cannot be selected.
+ *
+ * Zero candidates means no contest applies, and the command runs with nothing
+ * passed; one means it runs under that one without asking; more than one is
+ * the caller's to disambiguate.
+ */
+export function contestCandidates(
+  scope: 'problem' | 'contest',
+  contestRoot: string,
+  files: readonly ContestFile[],
+  packageRoot?: string,
+): ContestCandidate[] {
+  const candidates: ContestCandidate[] = [];
+  const target = packageRoot === undefined ? undefined : path.resolve(packageRoot);
+  for (const file of files) {
+    if (file.contest.useVariants) {
+      continue;
+    }
+    const id = file.variantId === undefined ? {} : { variantId: file.variantId };
+    if (scope === 'contest') {
+      candidates.push(id);
+      continue;
+    }
+    const identity =
+      target === undefined
+        ? undefined
+        : problemIdentities(contestRoot, file.contest).get(target);
+    if (identity !== undefined) {
+      candidates.push({ ...id, shortName: identity.shortName });
+    }
+  }
+  return candidates;
+}
+
+/**
+ * The remembered choice, if it is still one of the candidates.
+ *
+ * `''` remembers the canonical. A choice that no longer qualifies -- its file
+ * was deleted, or the problem was dropped from it -- comes back undefined, so
+ * the caller asks again rather than passing a `-C` rbx would refuse.
+ */
+export function rememberedCandidate(
+  candidates: readonly ContestCandidate[],
+  remembered: string | undefined,
+): ContestCandidate | undefined {
+  if (remembered === undefined) {
+    return undefined;
+  }
+  return candidates.find((candidate) => (candidate.variantId ?? '') === remembered);
+}

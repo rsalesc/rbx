@@ -24,6 +24,7 @@
 import * as vscode from 'vscode';
 
 import { DeclaredIndex } from './declared';
+import { dispatchEnabled } from './dispatch';
 import { declarationFor, lensTitle } from './rbx/declaration';
 
 const SETTING = 'rbx.solutionCodeLens';
@@ -49,13 +50,28 @@ export class SolutionLensProvider implements vscode.CodeLensProvider {
     if (declaration === undefined) {
       return [];
     }
-    return [
-      new vscode.CodeLens(new vscode.Range(0, 0, 0, 0), {
+    const range = new vscode.Range(0, 0, 0, 0);
+    const lenses = [
+      new vscode.CodeLens(range, {
         title: lensTitle(declaration),
         tooltip: declaration.tooltip,
         command: REVEAL,
       }),
     ];
+    // The slot to the right of the declaration was reserved for this (#906).
+    // Only on solutions: running a generator or a checker on its own is not
+    // something `rbx run` does.
+    if (asset.role === 'solution' && dispatchEnabled()) {
+      lenses.push(
+        new vscode.CodeLens(range, {
+          title: '$(play) Run',
+          tooltip: 'Run this solution with `rbx run` in a terminal',
+          command: 'rbx.runSolution',
+          arguments: [document.uri],
+        }),
+      );
+    }
+    return lenses;
   }
 
   /** Re-ask VS Code for the lens, after the manifest changed or a setting did. */
@@ -85,7 +101,7 @@ export function registerSolutionLens(
     vscode.languages.registerCodeLensProvider({ scheme: 'file' }, provider),
     declared.onDidChange(() => provider.refresh()),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration(SETTING)) {
+      if (event.affectsConfiguration(SETTING) || event.affectsConfiguration('rbx.dispatch.enabled')) {
         provider.refresh();
       }
     }),

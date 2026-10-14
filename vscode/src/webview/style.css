@@ -578,6 +578,39 @@ body {
 }
 
 /*
+ * The empty state's buttons start `rbx run` / `rbx build` in a terminal
+ * (#906). They exist in the markup whatever the setting says, and are shown
+ * only while the host reports dispatch as enabled -- a class on <body> -- so
+ * the renderers stay pure functions of the model.
+ */
+.welcome-actions {
+  display: none;
+}
+
+body.dispatch-enabled .welcome-actions {
+  display: block;
+}
+
+.welcome-action {
+  font: inherit;
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.welcome-action:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.welcome-action:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+/*
  * The responsive ladder.
  *
  * A row has more to say than a narrow sidebar can show, so the question is not
