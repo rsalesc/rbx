@@ -15,6 +15,10 @@ function testcase(stem: string): TestcaseRun {
     stderrPaths: [],
     logPath: '',
     interactionPath: '',
+    capturesInteraction: false,
+    interactorStderrPath: '',
+    interactorLogPath: '',
+    checkerStderrPath: '',
   };
 }
 

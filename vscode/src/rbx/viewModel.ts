@@ -24,7 +24,7 @@ import {
 } from './declaredVisualizers';
 import { ExpectationDisplay, expectationDisplay } from './expectation';
 import { Hue, hueOfScore, hueOfThemeColor } from './hue';
-import { Skeleton, TestcaseEntry } from './model';
+import { Evaluation, Skeleton, TestcaseEntry } from './model';
 import {
   FindingNode,
   GroupNode,
@@ -276,6 +276,17 @@ export interface TestcaseCard {
    * only possible outcome is "No visualizer declared" is worse than no button.
    */
   readonly visualizers: DeclaredVisualizers;
+  /**
+   * Whether an interactor judged this testcase. Decides whether the card
+   * offers the interaction channels -- a transcript, the interactor's stderr
+   * and its log -- which a batch task does not have.
+   */
+  readonly communication: boolean;
+  /**
+   * `interactor 120 ms · checker 3 ms`: the judges' own times, which the row
+   * (the solution's time) has no room for. Absent when neither was measured.
+   */
+  readonly judgeTimes?: string;
 }
 
 export interface Row {
@@ -998,7 +1009,19 @@ function testcaseCard(
       declarations === undefined
         ? NO_VISUALIZERS
         : resolveDeclaredVisualizers(declarations, node.testcase.entry.subgroup),
+    communication: node.testcase.evaluation?.communication ?? false,
+    judgeTimes: judgeTimes(node.testcase.evaluation),
   };
+}
+
+function judgeTimes(evaluation: Evaluation | undefined): string | undefined {
+  const parts = [
+    ['interactor', formatTime(evaluation?.interactorTime)],
+    ['checker', formatTime(evaluation?.checkerTime)],
+  ]
+    .filter(([, time]) => time !== undefined)
+    .map(([name, time]) => `${name} ${time}`);
+  return parts.length === 0 ? undefined : parts.join(' · ');
 }
 
 function testcaseRow(

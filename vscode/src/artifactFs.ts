@@ -15,6 +15,9 @@
 import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
 
+import { documentText, interactionDocument } from './rbx/interaction';
+import { isInteractionLabel } from './rbx/panes';
+
 export const SCHEME = 'rbx';
 
 /**
@@ -55,7 +58,8 @@ export async function firstExisting(
   return undefined;
 }
 
-function realPathOf(uri: vscode.Uri): string {
+/** The file on disk an `rbx:` URI reads from. */
+export function realPathOf(uri: vscode.Uri): string {
   return decodeURIComponent(uri.query);
 }
 
@@ -91,11 +95,22 @@ export class ArtifactFileSystemProvider implements vscode.FileSystemProvider {
   }
 
   async readFile(uri: vscode.Uri): Promise<Uint8Array> {
+    let bytes: Uint8Array;
     try {
-      return await fs.readFile(realPathOf(uri));
+      bytes = await fs.readFile(realPathOf(uri));
     } catch {
       throw vscode.FileSystemError.FileNotFound(uri);
     }
+    if (!isInteractionLabel(uri.path)) {
+      return bytes;
+    }
+    // The one artifact served as something other than itself: the transcript
+    // is shown as payload only, with who-said-what drawn by decorations
+    // (`interactionDecorations.ts`), so a copied line is data and not `>? 3`.
+    // Keyed on the label rather than the `.pio` suffix so the same file can
+    // still be opened raw under any other name.
+    const raw = Buffer.from(bytes).toString('utf8');
+    return Buffer.from(documentText(interactionDocument(raw, realPathOf(uri))), 'utf8');
   }
 
   readDirectory(uri: vscode.Uri): [string, vscode.FileType][] {

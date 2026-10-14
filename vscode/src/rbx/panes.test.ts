@@ -8,6 +8,8 @@ import {
   channelArtifact,
   inputArtifact,
   isDiff,
+  isInteractionLabel,
+  StickyChannels,
   labelPrefix,
   layoutCommand,
   paneKindOf,
@@ -27,6 +29,10 @@ function testcase(over: Partial<TestcaseRun> = {}): TestcaseRun {
     ],
     logPath: '/w/a/.rbx/runs/0/main/1-gen-000.log',
     interactionPath: '/w/a/.rbx/runs/0/main/1-gen-000.pio',
+    capturesInteraction: true,
+    interactorStderrPath: '/w/a/.rbx/runs/0/main/1-gen-000.int.err',
+    interactorLogPath: '/w/a/.rbx/runs/0/main/1-gen-000.int.log',
+    checkerStderrPath: '/w/a/.rbx/runs/0/main/1-gen-000.checker.err',
     ...over,
   };
 }
@@ -80,6 +86,54 @@ test('the out channel is the diff, and the others are single files', () => {
   assert.deepStrictEqual(log.paths, [run.logPath]);
 });
 
+test('the interaction and judge channels open their own artifacts', () => {
+  const run = testcase();
+  const paths = (['io', 'ierr', 'ilog', 'cerr'] as const).map(
+    (channel) => (channelArtifact(channel, run) as Artifact).paths,
+  );
+  assert.deepStrictEqual(paths, [
+    [run.interactionPath],
+    [run.interactorStderrPath],
+    [run.interactorLogPath],
+    [run.checkerStderrPath],
+  ]);
+});
+
+test('a missing transcript hints at -cp only when the run did not capture', () => {
+  const uncaptured = channelArtifact('io', testcase({ capturesInteraction: false })) as Artifact;
+  assert.strictEqual(uncaptured.missing, 'Re-run with `rbx -cp run` to capture the interaction.');
+  const captured = channelArtifact('io', testcase({ capturesInteraction: true })) as Artifact;
+  assert.ok(!captured.missing.includes('-cp'));
+});
+
+test('an interactive testcase opens on its transcript, a batch one on the diff', () => {
+  const sticky = new StickyChannels();
+  const interactive = testcase({ evaluation: { outcome: 'accepted', communication: true } });
+  const batch = testcase({ evaluation: { outcome: 'accepted' } });
+  // Not judged yet: nothing says it is interactive.
+  const pending = testcase();
+  assert.deepStrictEqual(
+    [sticky.for(interactive), sticky.for(batch), sticky.for(pending)],
+    ['io', 'out', 'out'],
+  );
+});
+
+test('a channel choice sticks within its kind of task and leaves the other alone', () => {
+  const sticky = new StickyChannels();
+  const interactive = testcase({ evaluation: { outcome: 'accepted', communication: true } });
+  const batch = testcase({ evaluation: { outcome: 'accepted' } });
+  sticky.choose(interactive, 'ierr');
+  assert.strictEqual(sticky.for(interactive), 'ierr');
+  assert.strictEqual(sticky.for(batch), 'out');
+  sticky.choose(batch, 'log');
+  assert.deepStrictEqual([sticky.for(interactive), sticky.for(batch)], ['ierr', 'log']);
+});
+
+test('isInteractionLabel names the transcript pane only', () => {
+  assert.ok(isInteractionLabel('/sols%2Fwa.cpp/main/1-gen-000/interaction.io'));
+  assert.ok(!isInteractionLabel('/sols%2Fwa.cpp/main/1-gen-000/interactor.err'));
+});
+
 test('every artifact a pane opens is recognised as that pane', () => {
   // The round trip the whole arrangement rests on: a label that opened into a
   // pane has to be a label that finds the pane again.
@@ -87,12 +141,14 @@ test('every artifact a pane opens is recognised as that pane', () => {
   const prefix = labelPrefix('sols/wa.cpp', 'main', '1-gen-000');
   const labels = [
     inputArtifact(run).label,
-    ...['err', 'log'].map((channel) => (channelArtifact(channel as 'err', run) as Artifact).label),
+    ...(['err', 'log', 'io', 'ierr', 'ilog', 'cerr'] as const).map(
+      (channel) => (channelArtifact(channel, run) as Artifact).label,
+    ),
     (channelArtifact('out', run) as DiffArtifact).left.label,
     (channelArtifact('out', run) as DiffArtifact).right.label,
   ];
   const kinds = labels.map((label) => paneKindOf(`/${prefix}/${label}`));
-  assert.deepStrictEqual(kinds, ['input', 'channel', 'channel', 'channel', 'channel']);
+  assert.deepStrictEqual(kinds, ['input', ...Array(8).fill('channel')]);
 });
 
 test('the layout setting picks a built-in layout command, and defaults to below', () => {

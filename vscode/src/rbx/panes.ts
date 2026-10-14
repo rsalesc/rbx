@@ -15,10 +15,17 @@
 import { Ext, PackageLayout, testArtifactPath } from './layout';
 import { TestcaseRun } from './store';
 
-/** What the second pane is showing. `out` is the diff, mirroring `rbx ui`. */
-export type Channel = 'out' | 'err' | 'log';
+/**
+ * What the second pane is showing. `out` is the diff, mirroring `rbx ui`.
+ *
+ * The first three are every testcase's. `io` (the interaction transcript),
+ * `ierr` and `ilog` (the interactor's stderr and run log) only exist for a
+ * communication task, and `cerr` (the checker's full stderr) only for a run
+ * made with `--keep-checker-stderr`. The order is the `alt+N` order.
+ */
+export type Channel = 'out' | 'err' | 'log' | 'io' | 'ierr' | 'ilog' | 'cerr';
 
-export const CHANNELS: readonly Channel[] = ['out', 'err', 'log'];
+export const CHANNELS: readonly Channel[] = ['out', 'err', 'log', 'io', 'ierr', 'ilog', 'cerr'];
 
 /**
  * Which of the two panes a tab belongs to.
@@ -43,6 +50,14 @@ export const LABELS = {
   answer: 'answer.out',
   stderr: 'stderr.err',
   log: 'run.log',
+  /**
+   * Also what tells `artifactFs` to render the transcript rather than serve
+   * the `.pio` as it is, and what the decorations look for.
+   */
+  interaction: 'interaction.io',
+  interactorStderr: 'interactor.err',
+  interactorLog: 'interactor.log',
+  checkerStderr: 'checker.err',
 } as const;
 
 const CHANNEL_LABELS: readonly string[] = [
@@ -50,7 +65,16 @@ const CHANNEL_LABELS: readonly string[] = [
   LABELS.answer,
   LABELS.stderr,
   LABELS.log,
+  LABELS.interaction,
+  LABELS.interactorStderr,
+  LABELS.interactorLog,
+  LABELS.checkerStderr,
 ];
+
+/** Whether a display path names the interaction transcript. */
+export function isInteractionLabel(displayPath: string): boolean {
+  return displayPath.split('/').pop() === LABELS.interaction;
+}
 
 /**
  * Which pane a display path names, if any.
@@ -147,7 +171,66 @@ export function channelArtifact(
         label: LABELS.log,
         missing: 'rbx recorded no log for this testcase.',
       };
+    case 'io':
+      return {
+        paths: [testcase.interactionPath],
+        label: LABELS.interaction,
+        // The hint `rbx ui` gives, and the only useful thing to say: without
+        // `-cp` rbx does not keep the transcript, so its absence is expected.
+        missing: testcase.capturesInteraction
+          ? 'No interaction transcript for this testcase -- the processes may never have started talking.'
+          : 'Re-run with `rbx -cp run` to capture the interaction.',
+      };
+    case 'ierr':
+      return {
+        paths: [testcase.interactorStderrPath],
+        label: LABELS.interactorStderr,
+        missing: 'The interactor wrote nothing to stderr for this testcase.',
+      };
+    case 'ilog':
+      return {
+        paths: [testcase.interactorLogPath],
+        label: LABELS.interactorLog,
+        missing: 'rbx recorded no interactor log for this testcase.',
+      };
+    case 'cerr':
+      return {
+        paths: [testcase.checkerStderrPath],
+        label: LABELS.checkerStderr,
+        missing:
+          'No checker stderr kept for this testcase. Re-run with `rbx run --keep-checker-stderr` to keep it.',
+      };
   }
+}
+
+/**
+ * Which channel the second pane opens on, remembered per kind of task.
+ *
+ * Sticky, so reading stderr and arrowing down a group keeps reading stderr,
+ * exactly as `rbx ui`'s switcher does. But one memory per *kind*: on a
+ * communication task the output is whatever the interactor chose to write and
+ * rarely the interesting part -- the transcript is -- so it opens on `io`,
+ * while a batch task opens on the diff. Two memories rather than one also
+ * stop a choice made on an interactive problem dragging a batch problem onto a
+ * channel it does not have, and back.
+ *
+ * A testcase whose evaluation has not landed yet reads as batch: nothing says
+ * otherwise until rbx has judged it.
+ */
+export class StickyChannels {
+  private readonly current = { batch: 'out' as Channel, communication: 'io' as Channel };
+
+  for(testcase: TestcaseRun): Channel {
+    return this.current[kindOf(testcase)];
+  }
+
+  choose(testcase: TestcaseRun, channel: Channel): void {
+    this.current[kindOf(testcase)] = channel;
+  }
+}
+
+function kindOf(testcase: TestcaseRun): 'batch' | 'communication' {
+  return testcase.evaluation?.communication === true ? 'communication' : 'batch';
 }
 
 export function isDiff(artifact: Artifact | DiffArtifact): artifact is DiffArtifact {

@@ -107,6 +107,13 @@ export interface Skeleton {
    * missing.
    */
   readonly onlyAccepted: boolean;
+  /**
+   * Whether the run kept the interaction transcript (`rbx -cp`), or folded the
+   * solution's stderr into one (`--merge-stderr`). Either one writes the `.pio`
+   * the `io` channel shows; with neither, a missing transcript is expected and
+   * the channel says how to get one.
+   */
+  readonly capturesInteraction?: boolean;
 }
 
 export interface Evaluation {
@@ -138,6 +145,16 @@ export interface Evaluation {
    * only thing that says *which* stderr is worth opening.
    */
   readonly sanitizerWarnings?: boolean;
+  /**
+   * Whether an interactor judged this testcase, i.e. it is a communication
+   * task. Read off `interactor_timing`, which rbx records for every run that
+   * had an interactor -- so this decides which channels the card offers.
+   */
+  readonly communication?: boolean;
+  /** Interactor CPU seconds, when measured. */
+  readonly interactorTime?: number;
+  /** Checker CPU seconds, when measured. */
+  readonly checkerTime?: number;
 }
 
 /**
@@ -230,6 +247,8 @@ export function parseSkeleton(raw: Wire): Skeleton | undefined {
     // snake_case on the wire: `skeleton.yml` is a dump of the Pydantic model.
     sanitized: asBoolean(root.sanitized) ?? false,
     onlyAccepted: asBoolean(root.only_accepted) ?? false,
+    capturesInteraction:
+      (asBoolean(root.capture_pipes) ?? false) || (asBoolean(root.merge_stderr) ?? false),
   };
 }
 
@@ -291,6 +310,9 @@ export function parseEvaluation(raw: Wire): Evaluation | undefined {
     memory: asNumber(field(raw, 'log', 'memory')),
     noTleOutcome: asString(field(raw, 'result', 'no_tle_outcome')),
     sanitizerWarnings: asBoolean(field(raw, 'result', 'sanitizer_warnings')),
+    communication: asRecord(field(raw, 'result', 'interactor_timing')) !== undefined,
+    interactorTime: asNumber(field(raw, 'result', 'interactor_timing', 'time')),
+    checkerTime: asNumber(field(raw, 'result', 'checker_timing', 'time')),
   };
 }
 

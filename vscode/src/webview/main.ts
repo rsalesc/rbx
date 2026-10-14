@@ -229,8 +229,16 @@ document.addEventListener('keydown', (event) => {
   //
   // `alt` and not the bare digits `rbx ui` uses: this view has a filter box,
   // and a bare `2` has to be able to reach it.
-  if (event.altKey && ['1', '2', '3'].includes(event.key)) {
-    const channel = (['out', 'err', 'log'] as const)[Number(event.key) - 1];
+  //
+  // `alt+4` and up are the interaction and judge channels, in `CHANNELS` order.
+  // They are live on a batch task too, where pressing one says, in words, that
+  // there is nothing there -- the same as an `err` button with no stderr behind
+  // it. Read off `code` rather than `key`: on macOS `alt` turns the key into a
+  // symbol (`alt+4` is `¢`), while `code` is still `Digit4`.
+  const keyed = ['out', 'err', 'log', 'io', 'ierr', 'ilog', 'cerr'] as const;
+  const index = /^Digit[1-9]$/.test(event.code) ? Number(event.code.slice(5)) - 1 : -1;
+  if (event.altKey && index >= 0 && index < keyed.length) {
+    const channel = keyed[index];
     const selected = controller.selected;
     if (selected !== undefined) {
       invokeOn(CHANNEL_COMMANDS[channel], selected);
@@ -267,6 +275,10 @@ const CHANNEL_COMMANDS: Record<string, string> = {
   out: 'rbx.showOutput',
   err: 'rbx.showStderr',
   log: 'rbx.showLog',
+  io: 'rbx.showInteraction',
+  ierr: 'rbx.showInteractorStderr',
+  ilog: 'rbx.showInteractorLog',
+  cerr: 'rbx.showCheckerStderr',
 };
 
 /**

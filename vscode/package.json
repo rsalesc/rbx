@@ -132,6 +132,32 @@
         "category": "rbx"
       },
       {
+        "command": "rbx.showInteraction",
+        "title": "Show Interaction",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.showInteractorStderr",
+        "title": "Show Interactor Stderr",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.showInteractorLog",
+        "title": "Show Interactor Log",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.showCheckerStderr",
+        "title": "Show Checker Stderr",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.copyInteraction",
+        "title": "Copy Interaction as .interaction",
+        "category": "rbx",
+        "icon": "$(copy)"
+      },
+      {
         "command": "rbx.openGeneratorScript",
         "title": "Open Generator Script",
         "category": "rbx"
@@ -210,6 +236,11 @@
         {
           "command": "rbx.openVisualizationExternally",
           "when": "activeWebviewPanelId == 'rbx.visualization'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "rbx.copyInteraction",
+          "when": "resourceScheme == rbx && resourceFilename == interaction.io",
           "group": "navigation@1"
         }
       ],
@@ -296,6 +327,31 @@
           "command": "rbx.showLog",
           "when": "webviewSection == 'rbx.testcase'",
           "group": "2_compare@4"
+        },
+        {
+          "command": "rbx.showInteraction",
+          "when": "webviewSection == 'rbx.testcase'",
+          "group": "2_compare@5"
+        },
+        {
+          "command": "rbx.showInteractorStderr",
+          "when": "webviewSection == 'rbx.testcase'",
+          "group": "2_compare@6"
+        },
+        {
+          "command": "rbx.showInteractorLog",
+          "when": "webviewSection == 'rbx.testcase'",
+          "group": "2_compare@7"
+        },
+        {
+          "command": "rbx.showCheckerStderr",
+          "when": "webviewSection == 'rbx.testcase'",
+          "group": "2_compare@8"
+        },
+        {
+          "command": "rbx.copyInteraction",
+          "when": "webviewSection == 'rbx.testcase'",
+          "group": "3_copy@2"
         },
         {
           "command": "rbx.openBuiltTestcase",
@@ -436,6 +492,60 @@
           "dark": "descriptionForeground",
           "light": "descriptionForeground",
           "highContrast": "descriptionForeground"
+        }
+      },
+      {
+        "id": "rbx.interaction.interactorForeground",
+        "description": "The arrow before a line the interactor wrote, in the interaction transcript.",
+        "defaults": {
+          "dark": "charts.green",
+          "light": "charts.green",
+          "highContrast": "charts.green"
+        }
+      },
+      {
+        "id": "rbx.interaction.solutionForeground",
+        "description": "The arrow before a line the solution wrote, in the interaction transcript.",
+        "defaults": {
+          "dark": "charts.blue",
+          "light": "charts.blue",
+          "highContrast": "charts.blue"
+        }
+      },
+      {
+        "id": "rbx.interaction.stderrForeground",
+        "description": "The marker before a line of the solution's stderr, in the interaction transcript.",
+        "defaults": {
+          "dark": "charts.red",
+          "light": "charts.red",
+          "highContrast": "charts.red"
+        }
+      },
+      {
+        "id": "rbx.interaction.interactorBackground",
+        "description": "The tint behind a line the interactor wrote, in the interaction transcript.",
+        "defaults": {
+          "dark": "#89d18514",
+          "light": "#38803014",
+          "highContrast": "#00000000"
+        }
+      },
+      {
+        "id": "rbx.interaction.solutionBackground",
+        "description": "The tint behind a line the solution wrote, in the interaction transcript.",
+        "defaults": {
+          "dark": "#75beff14",
+          "light": "#1a85ff14",
+          "highContrast": "#00000000"
+        }
+      },
+      {
+        "id": "rbx.interaction.stderrBackground",
+        "description": "The tint behind a line of the solution's stderr, in the interaction transcript.",
+        "defaults": {
+          "dark": "#f1484c1f",
+          "light": "#e5141a1a",
+          "highContrast": "#00000000"
         }
       }
     ],

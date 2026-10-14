@@ -32,6 +32,10 @@ function testcase(stem: string, outcome?: string, over: Partial<TestcaseRun> = {
     stderrPaths: [],
     logPath: '',
     interactionPath: '',
+    capturesInteraction: false,
+    interactorStderrPath: '',
+    interactorLogPath: '',
+    checkerStderrPath: '',
     ...over,
   };
 }
@@ -1244,6 +1248,29 @@ test('a testcase carries the checker message its row cannot hold', () => {
   // And still not on the row itself, which is 22px tall and already spending
   // its width on the timings.
   assert.ok(!row.meta.some((span) => span.text.includes('wrong answer')));
+});
+
+test('an interactive testcase card knows it is one, and carries the judge times', () => {
+  const interactive = solution(0, 'sols/main.cpp', 'ACCEPTED', [
+    group('main', [
+      testcase('000', 'accepted', {
+        evaluation: {
+          outcome: 'accepted',
+          communication: true,
+          interactorTime: 0.12,
+          checkerTime: 0.003,
+        },
+      }),
+      testcase('001', 'accepted', { evaluation: { outcome: 'accepted' } }),
+    ]),
+  ]);
+  const { rows } = buildViewModel(view([interactive]));
+  const card = rowById(rows, '/w/a::0::main::000').card;
+  assert.strictEqual(card?.communication, true);
+  assert.strictEqual(card?.judgeTimes, 'interactor 120 ms · checker 3 ms');
+  const batch = rowById(rows, '/w/a::0::main::001').card;
+  assert.strictEqual(batch?.communication, false);
+  assert.strictEqual(batch?.judgeTimes, undefined);
 });
 
 test('a checker that never ran leaves the card without a message', () => {
