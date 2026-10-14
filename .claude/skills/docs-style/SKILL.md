@@ -68,6 +68,10 @@ yourself.
    the reviewer if you changed more than wording.
 5. Report the final Vale counts for the touched files, and the reviewer's
    verdict, in your summary or PR body.
+6. **When you open the PR**, give it a `## Review the rendered docs` section
+   with `mise run docs:review <PR number>`, and end your report to the user
+   with the same command. It shows the rendered base and head side by side and
+   posts the user's comments back to the PR. Don't run it yourself.
 
 When the ask is **only a review**, run steps 2-3 on the target files and relay
 the findings. Don't fix anything you weren't asked to.

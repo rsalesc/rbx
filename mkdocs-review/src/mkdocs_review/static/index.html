@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mkdocs-review</title>
+  <link rel="stylesheet" href="/_mr/app.css">
+  <script src="/_mr/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">mkdocs-review</span>
+    <span class="target"><a id="target-link" target="_blank" rel="noopener"></a></span>
+    <span class="spacer"></span>
+    <label class="base-picker" title="What the head is compared against">
+      <span class="muted">Compare against</span>
+      <select id="base-select"></select>
+    </label>
+    <div class="hunk-nav">
+      <button id="prev" title="Previous change (k)" aria-label="Previous change">↑</button>
+      <span id="hunk-pos" class="muted">no changes</span>
+      <button id="next" title="Next change (j)" aria-label="Next change">↓</button>
+    </div>
+    <label class="toggle"><input type="checkbox" id="sync" checked> Sync scroll</label>
+    <button id="drawer-toggle" class="primary">Comments <span id="draft-count" class="count">0</span></button>
+  </header>
+
+  <div class="layout" id="layout">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <span id="pages-heading">Changed pages</span>
+        <label class="toggle small"><input type="checkbox" id="show-all"> Show all</label>
+      </div>
+      <ul id="pages" class="pages"></ul>
+    </aside>
+
+    <main class="panes">
+      <section class="pane">
+        <div class="pane-label"><span class="side-tag base">Base</span> <code id="base-sha"></code> <span id="base-desc" class="muted"></span></div>
+        <div id="building" class="building" hidden></div>
+        <iframe id="frame-base" title="Base version"></iframe>
+      </section>
+      <section class="pane">
+        <div class="pane-label"><span class="side-tag head">Head</span> <code id="head-sha"></code> <span id="head-desc" class="muted"></span></div>
+        <iframe id="frame-head" title="Head version"></iframe>
+      </section>
+    </main>
+
+    <aside class="drawer" id="drawer">
+      <div class="drawer-head">
+        <h2>Comments</h2>
+        <button id="drawer-close" class="ghost" aria-label="Close comments">×</button>
+      </div>
+      <p class="muted hint">Hover a block in either pane and click <b>+</b> to comment on it, or select text to comment on just that.</p>
+      <ol id="draft-list" class="drafts"></ol>
+      <div class="submit-box">
+        <textarea id="summary" rows="3" placeholder="Review summary (optional)"></textarea>
+        <button id="submit" class="primary">Submit review</button>
+        <p id="submit-status" class="muted"></p>
+      </div>
+    </aside>
+  </div>
+
+  <dialog id="composer">
+    <form method="dialog" id="composer-form">
+      <p class="muted" id="composer-where"></p>
+      <blockquote id="composer-quote"></blockquote>
+      <textarea id="composer-body" rows="6" placeholder="Leave a comment (markdown)"></textarea>
+      <div class="composer-actions">
+        <button value="cancel" class="ghost">Cancel</button>
+        <button value="save" class="primary" id="composer-save">Save comment</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

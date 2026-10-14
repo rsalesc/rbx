@@ -1,0 +1,51 @@
+/* Injected into every page of both sites by mkdocs-review. */
+.mr-added { background: rgba(46, 160, 67, .14) !important; box-shadow: -6px 0 0 0 #2ea043; }
+.mr-removed { background: rgba(248, 81, 73, .12) !important; box-shadow: -6px 0 0 0 #f85149; }
+.mr-changed { background: rgba(210, 153, 34, .12) !important; box-shadow: -6px 0 0 0 #d29922; }
+.mr-w-add { background: rgba(46, 160, 67, .38); border-radius: 2px; }
+.mr-w-del { background: rgba(248, 81, 73, .38); border-radius: 2px; text-decoration: line-through; }
+.mr-current { outline: 2px solid #388bfd; outline-offset: 3px; }
+@keyframes mr-flash { from { outline-color: #388bfd; } to { outline-color: transparent; } }
+.mr-flash { outline: 3px solid #388bfd; outline-offset: 3px; animation: mr-flash 1.2s ease-out; }
+
+.mr-overlay { position: absolute; top: 0; left: 0; width: 0; height: 0; z-index: 2147483000; }
+.mr-plus, .mr-badge, .mr-select {
+  position: absolute;
+  font: 600 12px/20px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  border-radius: 10px;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+}
+.mr-plus {
+  width: 20px;
+  height: 20px;
+  background: #0969da;
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+  display: none;
+}
+.mr-plus.visible { display: block; }
+.mr-select {
+  height: 22px;
+  padding: 0 10px;
+  line-height: 22px;
+  background: #0969da;
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .3);
+  white-space: nowrap;
+  display: none;
+}
+.mr-select.visible { display: block; }
+.mr-badge { min-width: 20px; height: 20px; padding: 0 6px; background: #8250df; color: #fff; }
+
+.mr-missing-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  margin: 0;
+  font: 15px -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  color: #656d76;
+  background: repeating-linear-gradient(45deg, #f6f8fa, #f6f8fa 10px, #fff 10px, #fff 20px);
+}

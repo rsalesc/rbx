@@ -162,3 +162,12 @@ description = "Lint docs prose with Vale (Google style + house rules, see .vale.
 # e.g. `mise run docs:lint docs/setters/first-steps.md`.
 usage = 'arg "[paths]..." help="Files or directories to lint" default="docs/"'
 run = 'vale sync >/dev/null && vale ${usage_paths?}'
+
+[tasks."docs:review"]
+description = "Review docs changes rendered side by side and comment on them (mkdocs-review/)"
+# e.g. `mise run docs:review 123` (a PR), `mise run docs:review main` (this
+# branch as a PR would see it), `mise run docs:review 123 --rebuild`. Extra
+# flags go to mkdocs-review; see mkdocs-review/README.md. Both sides build with
+# this checkout's uv environment rather than a fresh one per commit, so a PR
+# that changes the docs dependencies needs `uv sync` first.
+run = '''uv run --project mkdocs-review --frozen mkdocs-review --repo-dir . --build-cmd "uv run --project '{{config_root}}' --frozen mkdocs build -q" {{arg(name='args', var=true)}}'''
