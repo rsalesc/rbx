@@ -203,6 +203,36 @@ export function channelArtifact(
   }
 }
 
+/**
+ * Which channel the second pane opens on, remembered per kind of task.
+ *
+ * Sticky, so reading stderr and arrowing down a group keeps reading stderr,
+ * exactly as `rbx ui`'s switcher does. But one memory per *kind*: on a
+ * communication task the output is whatever the interactor chose to write and
+ * rarely the interesting part -- the transcript is -- so it opens on `io`,
+ * while a batch task opens on the diff. Two memories rather than one also
+ * stop a choice made on an interactive problem dragging a batch problem onto a
+ * channel it does not have, and back.
+ *
+ * A testcase whose evaluation has not landed yet reads as batch: nothing says
+ * otherwise until rbx has judged it.
+ */
+export class StickyChannels {
+  private readonly current = { batch: 'out' as Channel, communication: 'io' as Channel };
+
+  for(testcase: TestcaseRun): Channel {
+    return this.current[kindOf(testcase)];
+  }
+
+  choose(testcase: TestcaseRun, channel: Channel): void {
+    this.current[kindOf(testcase)] = channel;
+  }
+}
+
+function kindOf(testcase: TestcaseRun): 'batch' | 'communication' {
+  return testcase.evaluation?.communication === true ? 'communication' : 'batch';
+}
+
 export function isDiff(artifact: Artifact | DiffArtifact): artifact is DiffArtifact {
   return (artifact as DiffArtifact).left !== undefined;
 }

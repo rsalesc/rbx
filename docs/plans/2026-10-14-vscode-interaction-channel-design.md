@@ -17,7 +17,10 @@ scrollbar and folding for free -- the same argument `testcasePanes.ts` makes
 for testcases.
 
 1. **Placement: just another channel.** `alt+4` (`io`) swaps the second pane
-   exactly like `out`/`err`/`log`. No layout changes.
+   exactly like `out`/`err`/`log`. No layout changes. On a communication task
+   it is the *default* channel: the sticky channel is remembered per kind of
+   task (`StickyChannels`), starting at `io` for interactive problems and `out`
+   for batch ones.
 2. **Text model: payload only.** The document is `5 100`, `? 3`, not
    `<5 100`, `>? 3`, so a copied line is data. `artifactFs` renders it when the
    URI's label is `interaction.io`; the same `.pio` opened under any other

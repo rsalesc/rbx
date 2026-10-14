@@ -9,6 +9,7 @@ import {
   inputArtifact,
   isDiff,
   isInteractionLabel,
+  StickyChannels,
   labelPrefix,
   layoutCommand,
   paneKindOf,
@@ -103,6 +104,29 @@ test('a missing transcript hints at -cp only when the run did not capture', () =
   assert.strictEqual(uncaptured.missing, 'Re-run with `rbx -cp run` to capture the interaction.');
   const captured = channelArtifact('io', testcase({ capturesInteraction: true })) as Artifact;
   assert.ok(!captured.missing.includes('-cp'));
+});
+
+test('an interactive testcase opens on its transcript, a batch one on the diff', () => {
+  const sticky = new StickyChannels();
+  const interactive = testcase({ evaluation: { outcome: 'accepted', communication: true } });
+  const batch = testcase({ evaluation: { outcome: 'accepted' } });
+  // Not judged yet: nothing says it is interactive.
+  const pending = testcase();
+  assert.deepStrictEqual(
+    [sticky.for(interactive), sticky.for(batch), sticky.for(pending)],
+    ['io', 'out', 'out'],
+  );
+});
+
+test('a channel choice sticks within its kind of task and leaves the other alone', () => {
+  const sticky = new StickyChannels();
+  const interactive = testcase({ evaluation: { outcome: 'accepted', communication: true } });
+  const batch = testcase({ evaluation: { outcome: 'accepted' } });
+  sticky.choose(interactive, 'ierr');
+  assert.strictEqual(sticky.for(interactive), 'ierr');
+  assert.strictEqual(sticky.for(batch), 'out');
+  sticky.choose(batch, 'log');
+  assert.deepStrictEqual([sticky.for(interactive), sticky.for(batch)], ['ierr', 'log']);
 });
 
 test('isInteractionLabel names the transcript pane only', () => {

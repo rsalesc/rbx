@@ -26,6 +26,7 @@ import { TestcaseNode } from './rbx/nodes';
 import {
   Artifact,
   Channel,
+  StickyChannels,
   DiffArtifact,
   PaneKind,
   asTestcaseLayout,
@@ -91,9 +92,10 @@ export class TestcasePanes {
    * Sticky on purpose: reading stderr and arrowing down a group should keep
    * reading stderr, exactly as `rbx ui`'s switcher does. A channel that reset
    * per testcase would make the switch useless for the one thing it is for --
-   * comparing the same channel across several tests.
+   * comparing the same channel across several tests. Remembered per kind of
+   * task, so an interactive problem opens on its transcript (`StickyChannels`).
    */
-  private channel: Channel = 'out';
+  private readonly channels = new StickyChannels();
 
   /**
    * The testcase the panes are showing.
@@ -110,7 +112,7 @@ export class TestcasePanes {
   async open(node: TestcaseNode, channel?: Channel): Promise<void> {
     this.current = node;
     if (channel !== undefined) {
-      this.channel = channel;
+      this.channels.choose(node.testcase, channel);
     }
     const columns = await this.columns();
     await this.showArtifact(
@@ -213,7 +215,7 @@ export class TestcasePanes {
   }
 
   private async showChannel(node: TestcaseNode, column: vscode.ViewColumn): Promise<void> {
-    const artifact = channelArtifact(this.channel, node.testcase);
+    const artifact = channelArtifact(this.channels.for(node.testcase), node.testcase);
     const prefix = labelPrefix(node.run.solution.path, node.group.name, node.testcase.stem);
     if (!isDiff(artifact)) {
       await this.showArtifact(artifact, prefix, column);
