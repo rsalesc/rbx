@@ -1027,6 +1027,15 @@ SPEC = {
                     },
                 },
                 {
+                    'help': 'Do not offer to add the findings to a test group when the '
+                    'stress ends.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--no-promote'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,

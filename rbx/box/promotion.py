@@ -1,12 +1,12 @@
 import itertools
 import pathlib
 import re
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from rbx.box import generator_script_handlers as gsh
 from rbx.box import package, package_utils, yaml_include
 from rbx.box.generation_schema import GenerationTestcaseEntry
-from rbx.box.schema import GeneratorScript, TestcaseGroup
+from rbx.box.schema import GeneratorCall, GeneratorScript, TestcaseGroup
 
 
 def manual_group_dir(group: TestcaseGroup) -> pathlib.Path:
@@ -177,6 +177,57 @@ def get_manual_groups_by_name() -> Dict[str, TestcaseGroup]:
         if group.testcaseGlob is not None and group.testcaseGlob.endswith('.in'):
             res[name] = group
     return res
+
+
+def get_script_groups_by_name() -> Dict[str, TestcaseGroup]:
+    """Return test groups backed by a static ``.txt`` generator script.
+
+    These are the groups new generator calls can be appended to: a dynamic
+    script (a program that emits the plan, e.g. ``.py``) cannot be edited.
+    """
+    return {
+        name: group
+        for name, group in package.get_test_groups_by_name().items()
+        if group.generatorScript is not None
+        and group.generatorScript.path.suffix == '.txt'
+    }
+
+
+def propose_script_append(
+    group: TestcaseGroup,
+    calls: List[GeneratorCall],
+    comment: Optional[str] = None,
+) -> Tuple[pathlib.Path, str, str]:
+    """Compute the text of ``group``'s generator script with ``calls`` appended.
+
+    Returns ``(path, before, after)``: the script's path (as recorded in the
+    package, relative to its root), its current text and the text it would
+    have. Writes nothing; :func:`append_to_script_group` does.
+    """
+    assert group.generatorScript is not None
+    path = pathlib.Path(group.generatorScript.path)
+    before = path.read_text() if path.is_file() else ''
+    handler = gsh.get_generator_script_handler(
+        before,
+        gsh.GeneratorScriptHandlerParams(group.generatorScript),
+    )
+    handler.append(calls, comment=comment)
+    return path, before, handler.script
+
+
+def append_to_script_group(
+    group: TestcaseGroup,
+    calls: List[GeneratorCall],
+    comment: Optional[str] = None,
+) -> pathlib.Path:
+    """Append ``calls`` to ``group``'s ``.txt`` generator script.
+
+    Returns the path of the script it wrote.
+    """
+    path, _, after = propose_script_append(group, calls, comment=comment)
+    path.write_text(after)
+    package_utils.clear_package_cache()
+    return path
 
 
 def create_manual_group(name: str, glob: str) -> TestcaseGroup:

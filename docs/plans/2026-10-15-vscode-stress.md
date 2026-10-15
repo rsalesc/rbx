@@ -35,7 +35,7 @@ class StressSpec(BaseModel):  # what was asked
     timelimit: Optional[int] = None; doubleTL: bool = False
 class StressSolutionResult(BaseModel):
     solution: int  # index into StressManifest.solutions
-    outcome: str   # Outcome enum *name*, e.g. 'WRONG_ANSWER' (match run_report.py's convention)
+    outcome: Outcome  # serialized as the enum *value*, e.g. 'wrong-answer' (run_report.py's convention)
     time: Optional[float] = None  # seconds
     memory: Optional[int] = None  # bytes
 class StressFindingEntry(BaseModel):

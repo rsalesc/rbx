@@ -15,11 +15,7 @@ import syncer
 import typer
 
 from rbx import annotations, console, utils
-from rbx.box import (
-    generator_script_handlers,
-    package,
-    stress_manifest,
-)
+from rbx.box import package, stress_manifest
 from rbx.box.environment import VerificationLevel
 from rbx.grading import grading_context
 
@@ -155,6 +151,13 @@ async def stress(
         help='Reference solution to use for the stress test.',
         autocompletion=annotations._adapt('solutions', file=True),  # noqa: SLF001
     ),
+    no_promote: Annotated[
+        bool,
+        typer.Option(
+            '--no-promote',
+            help='Do not offer to add the findings to a test group when the stress ends.',
+        ),
+    ] = False,
 ):
     if generator_args and (fuzz or fuzz_on):
         console.console.print(
@@ -215,7 +218,7 @@ async def stress(
 
     stresses.print_stress_report(report)
 
-    if not report.findings:
+    if no_promote or not report.findings:
         return
 
     # Add found tests.
@@ -229,12 +232,7 @@ async def stress(
 
     testgroup = None
     while testgroup is None or testgroup:
-        groups_by_name = {
-            name: group
-            for name, group in package.get_test_groups_by_name().items()
-            if group.generatorScript is not None
-            and group.generatorScript.path.suffix == '.txt'
-        }
+        groups_by_name = promotion.get_script_groups_by_name()
         manual_groups = promotion.get_manual_groups_by_name()
 
         import questionary
@@ -296,20 +294,12 @@ async def stress(
         try:
             subgroup = groups_by_name[testgroup]
             assert subgroup.generatorScript is not None
-            generator_script = pathlib.Path(subgroup.generatorScript.path)
-            handler = generator_script_handlers.get_generator_script_handler(
-                generator_script.read_text(),
-                generator_script_handlers.GeneratorScriptHandlerParams(
-                    subgroup.generatorScript,
-                ),
-            )
-
             stress_text = f'Obtained by running `rbx {shlex.join(sys.argv[1:])}`'
-            handler.append(
+            promotion.append_to_script_group(
+                subgroup,
                 [finding.generator for finding in report.findings],
                 comment=stress_text,
             )
-            generator_script.write_text(handler.script)
 
             console.console.print(
                 f"Added [item]{len(report.findings)}[/item] tests to test group [item]{testgroup}[/item]'s generatorScript at {subgroup.generatorScript.href()}"

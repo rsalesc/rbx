@@ -221,3 +221,48 @@ def test_stress_promote_skip_writes_nothing(
     assert result.exit_code == 0, result.output
     folder = testing_pkg.root / 'tests/manual/corner'
     assert not any(folder.glob('*.in'))
+
+
+def test_stress_no_promote_skips_the_prompt(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    report = _write_findings(testing_pkg, b'5 7\n')
+
+    confirm = mock.MagicMock(return_value=True)
+    with (
+        mock.patch('rbx.box.stresses.run_stress', _mock_run_stress(report)),
+        mock.patch('rbx.box.stresses.print_stress_report'),
+        mock.patch('rich.prompt.Confirm.ask', confirm),
+    ):
+        result = runner.invoke(
+            cli.app, ['stress', '-g', 'gen 1', '-f', 'sols/main.cpp', '--no-promote']
+        )
+
+    assert result.exit_code == 0, result.output
+    confirm.assert_not_called()
+
+
+def test_stress_promote_existing_script_group(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    testing_pkg.add_testgroup_from_plan('main', 'gen 100\n')
+    report = _write_findings(testing_pkg, b'5 7\n', b'8 9\n')
+
+    with (
+        mock.patch('rbx.box.stresses.run_stress', _mock_run_stress(report)),
+        mock.patch('rbx.box.stresses.print_stress_report'),
+        mock.patch('rich.prompt.Confirm.ask', return_value=True),
+        mock.patch('questionary.select', _scripted_prompt('main')),
+        mock.patch('questionary.text', _scripted_prompt()),
+    ):
+        result = runner.invoke(
+            cli.app, ['stress', '-g', 'gen 1', '-f', 'sols/main.cpp']
+        )
+
+    assert result.exit_code == 0, result.output
+    lines = (testing_pkg.root / 'testplan/main.txt').read_text().splitlines()
+    assert lines[0] == 'gen 100'
+    assert lines[-2:] == ['gen 0', 'gen 1']
+    assert lines[-3].startswith('# Obtained by running `rbx ')
