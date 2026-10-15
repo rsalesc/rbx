@@ -1543,3 +1543,50 @@ test('the testcase card carries the wall time first', () => {
   const card = rowById(buildViewModel(view([run])).rows, '/w/a::0::main::000').card;
   assert.strictEqual(card?.timings, 'wall 183 ms · checker 7 ms');
 });
+
+test('an ad-hoc run draws one row per solution, standing for its one testcase', () => {
+  const adhoc: PackageRunView = {
+    ...view([
+      solution(
+        0,
+        'sols/main.cpp',
+        'ACCEPTED',
+        [group('interactive', [testcase('000', 'accepted')], groupReport({ name: 'interactive' }))],
+        solutionReport(),
+      ),
+      solution(
+        1,
+        'sols/wa.cpp',
+        'ACCEPTED',
+        [group('interactive', [testcase('000', 'wrong-answer')])],
+        solutionReport({
+          path: 'sols/wa.cpp',
+          index: 1,
+          outcome: 'wrong-answer',
+          status: 'UNEXPECTED_VERDICTS',
+          matchesExpectation: false,
+        }),
+      ),
+    ]),
+    flat: true,
+  };
+
+  const model = buildViewModel(adhoc, 'full');
+
+  assert.deepStrictEqual(
+    model.rows.map((row) => [row.kind, row.depth, row.label, row.verdict?.short, row.gutter]),
+    [
+      ['solution', 0, 'sols/main.cpp', 'AC', 'met'],
+      ['solution', 0, 'sols/wa.cpp', 'WA', 'missed'],
+    ],
+  );
+  // Still the testcase underneath: it opens the panes and carries the card.
+  const [first] = model.rows;
+  assert.strictEqual(first.id, '/w/a::0::interactive::000');
+  assert.strictEqual(first.primaryCommand, 'rbx.openTestcase');
+  assert.strictEqual(first.section, 'rbx.testcase');
+  assert.strictEqual(first.expandable, false);
+  assert.strictEqual(first.parentId, undefined);
+  assert.notStrictEqual(first.card, undefined);
+  assert.strictEqual(model.mismatches, 1);
+});

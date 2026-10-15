@@ -1120,6 +1120,8 @@ async def _generate_testcase_interactively(
     visualize: bool = False,
     sanitized: bool = False,
     print: bool = False,
+    input_file: Optional[pathlib.Path] = None,
+    answer_file: Optional[pathlib.Path] = None,
 ) -> GenerationTestcaseEntry:
     main_solution = package.get_main_solution()
     testcase = _get_interactive_testcase(check)
@@ -1146,6 +1148,11 @@ async def _generate_testcase_interactively(
         # Validate against this test's own validators (group-level overrides,
         # extra validators), not just the package-level ones.
         entry_for_validation = interactive_entry
+    elif input_file is not None:
+        # Copied rather than read and re-written: an input is bytes, and the
+        # one the setter handed over is the one that must reach the solution.
+        shutil.copyfile(input_file, testcase.inputPath)
+        is_manual = True
     else:
         with utils.no_progress(progress):
             input = console.multiline_prompt('Testcase input')
@@ -1153,7 +1160,8 @@ async def _generate_testcase_interactively(
         console.console.print()
 
         if (
-            testcase.outputPath is not None
+            answer_file is None
+            and testcase.outputPath is not None
             and not testcase.outputPath.is_file()
             and (main_solution is None or custom_output)
         ):
@@ -1180,6 +1188,13 @@ async def _generate_testcase_interactively(
             console.console.print(
                 f'Input was written to {href(package.relpath(testcase.inputPath))}'
             )
+
+    # The answer the caller handed over (`--answer`), which takes the place of
+    # the main solution's -- after step 1, so it wins over whatever answer the
+    # chosen testcase came with.
+    if answer_file is not None and testcase.outputPath is not None:
+        shutil.copyfile(answer_file, testcase.outputPath)
+        is_output_manual = True
 
     # 2. Generate test output from reference
     main_solution_digest = None
@@ -1380,6 +1395,8 @@ async def run_and_print_interactive_solutions(
     validate: bool = True,
     visualize: bool = False,
     benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
+    input_file: Optional[pathlib.Path] = None,
+    answer_file: Optional[pathlib.Path] = None,
 ):
     pkg = package.find_problem_package_or_die()
 
@@ -1411,6 +1428,8 @@ async def run_and_print_interactive_solutions(
             print=print,
             validate=validate,
             visualize=visualize,
+            input_file=input_file,
+            answer_file=answer_file,
         )
         skeleton = await _get_interactive_skeleton(
             entry,
@@ -1435,6 +1454,12 @@ async def run_and_print_interactive_solutions(
     # Collected as the loop streams, since there is no reporter here holding a
     # list of them -- same shape as the `--detailed` path in `print_run_report`.
     solution_benchmarks: List[benchmark.SolutionBenchmark] = []
+    # Published beside the irun skeleton, exactly as `rbx run` publishes its
+    # own: the extension reads an ad-hoc run through the same model (#907), and
+    # without a report it could never tell a finished solution from a running
+    # one. `begin_run` is what gets the end marker stamped on the way out.
+    run_report.begin_run(irun_dir)
+    report_writer = run_report.RunReportWriter(irun_dir)
 
     async for item in items:
         sol = skeleton.find_solution_skeleton(item.solution)
@@ -1447,8 +1472,13 @@ async def run_and_print_interactive_solutions(
 
         with utils.no_progress(progress):
             _print_solution_header(sol, console.console)
-            _print_solution_outcome(
+            outcome_report = _print_solution_outcome(
                 sol, skeleton, [eval], console.console, verification, subset=True
+            )
+            report_writer.add(
+                run_report.build_solution_report(
+                    skeleton.solutions.index(sol), skeleton, outcome_report
+                )
             )
             _print_interactive_judging_time(console.console, benchmark_level, eval)
 

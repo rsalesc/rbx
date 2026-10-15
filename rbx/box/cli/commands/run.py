@@ -5,6 +5,7 @@ only when one of its commands is invoked. A command added here needs a row
 there too.
 """
 
+import pathlib
 from typing import Annotated, List, Optional
 
 import rich.console
@@ -502,6 +503,29 @@ async def irun(
         '-O',
         help='Whether to ask user for custom output.',
     ),
+    input_file: Annotated[
+        Optional[pathlib.Path],
+        typer.Option(
+            '--input',
+            '-i',
+            exists=True,
+            dir_okay=False,
+            resolve_path=True,
+            help='Read the test input from this file instead of asking for it. '
+            'Cannot be combined with --testcase or --generator.',
+        ),
+    ] = None,
+    answer_file: Annotated[
+        Optional[pathlib.Path],
+        typer.Option(
+            '--answer',
+            exists=True,
+            dir_okay=False,
+            resolve_path=True,
+            help='Check the solutions against this expected answer instead of the '
+            "main solution's, without asking for it (the non-interactive --output).",
+        ),
+    ] = None,
     visualize: bool = typer.Option(
         False,
         '--visualize',
@@ -558,6 +582,19 @@ async def irun(
     # nothing about this run: the check is deliberately held to its light level
     # rather than reading a manifest an unrelated build left behind.
     estimation_checksum.warn_if_stale(limits_info.get_run_profile(), light_only=True)
+
+    # Refused before anything runs: each of these would silently ignore one of
+    # the two things the caller asked for.
+    if input_file is not None and (generator is not None or testcase is not None):
+        console.console.print(
+            '[error]--input cannot be combined with --testcase or --generator: each one names the test to run.[/error]'
+        )
+        raise typer.Exit(1)
+    if answer_file is not None and not check:
+        console.console.print(
+            '[error]--answer has nothing to be checked against with --no-check.[/error]'
+        )
+        raise typer.Exit(1)
 
     if not print:
         console.console.print(
@@ -617,6 +654,8 @@ async def irun(
             else None,
             testcase_entry=get_parsed_entry(testcase) if testcase else None,
             custom_output=output,
+            input_file=input_file,
+            answer_file=answer_file,
             print=print,
             merge_stderr=merge_stderr,
             keep_checker_stderr=keep_checker_stderr,

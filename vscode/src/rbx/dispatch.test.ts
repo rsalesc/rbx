@@ -66,6 +66,25 @@ test('a variant is selected with the root -C option, ahead of the subcommand', (
   );
 });
 
+test('root options go ahead of the subcommand, and into the task identity', () => {
+  const capture = invocation({
+    command: 'irun',
+    args: ['-t', 'main/0'],
+    rootArgs: ['-cp'],
+    contest: { kind: 'variant', id: 'div1' },
+  });
+  assert.deepStrictEqual(rbxArgs(capture), ['-C', 'div1', '-cp', 'irun', '-t', 'main/0']);
+  assert.deepStrictEqual(taskDefinition(capture).rootArgs, ['-cp']);
+  assert.strictEqual(taskDefinition(invocation()).rootArgs, undefined);
+});
+
+test('an ad-hoc run is named after what it runs on, not after a solution', () => {
+  const irun = (args: string[]) => taskName(invocation({ command: 'irun', args }));
+  assert.strictEqual(irun(['sols/a.cpp', '-t', 'main/1']), 'run on main/1');
+  assert.strictEqual(irun(['sols/a.cpp', '-g', 'gen 1 2']), 'run on gen 1 2');
+  assert.strictEqual(irun(['sols/a.cpp', '--input', '/t/in.txt']), 'run on typed input');
+});
+
 test('the canonical passes no -C but clears an inherited RBX_CONTEST', () => {
   const canonical = invocation({ contest: { kind: 'canonical' } });
   assert.deepStrictEqual(rbxArgs(canonical), ['run']);

@@ -19,6 +19,21 @@ def build(solution, skeleton, evals):
     return run_report.build_solution_report(0, skeleton, report)
 
 
+def test_a_skeleton_declaring_no_groups_reports_the_groups_its_entries_name(
+    tmp_path, mock_skeleton, mock_binary_scoring
+):
+    """`rbx irun` writes a skeleton with no `groups`, just the entry it ran."""
+    solution = Solution(path=tmp_path / 'main.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = mock_skeleton([solution], entries_per_group={'samples': 1})
+    skeleton = skeleton.model_copy(update={'groups': []})
+
+    published = build(solution, skeleton, [make_evaluation(Outcome.WRONG_ANSWER)])
+
+    assert [(g.name, g.outcome, g.maxScore) for g in published.groups] == [
+        ('samples', Outcome.WRONG_ANSWER, 0)
+    ]
+
+
 def test_report_round_trips_through_yaml(tmp_path: pathlib.Path):
     report = run_report.RunReport(
         version=run_report.REPORT_VERSION,

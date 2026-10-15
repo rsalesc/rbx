@@ -218,6 +218,50 @@ validators on it. The second moves that test into `handmade`, a manual group
 that must already exist, and deletes the line. To create the group instead,
 pass `--new-manual NAME --glob GLOB`.
 
+## Running solutions on one test
+
+`rbx irun` runs some of your solutions on one test: a test from the testset,
+the output of a generator call, or input you type. The extension starts it for
+you in a terminal from three places:
+
+- **Run Solutions on This Test…**, in the context menu of a testcase in the
+  run view or the **Tests** view.
+- **Run Solutions on This Input**, in the editor's context menu, which runs on
+  the text of the editor, or only on the selection when there is one. An
+  untitled editor also shows it as a button in its title bar, so you can paste
+  an input into a new file and run it.
+- **Run Solutions on a Generator Call…**, from the command palette or a
+  testplan's context menu. It asks for the call, starting from the selection
+  or the line under the cursor.
+
+These commands start a terminal, so with `rbx.dispatch.enabled` off the
+extension hides them.
+
+Each one asks which solutions to run, with the testcase's own solution already
+ticked, or the accepted ones when there is none. For typed input, it first asks
+what to check the output against: the main solution's answer, an answer in
+another editor, or nothing.
+
+For an interactive problem, the extension runs `rbx -cp irun`. The `-cp` flag,
+short for `--capture`, saves the interaction between the solution and the
+interactor, so the testcase panes can show it.
+
+The result shows in the run view, and once a solution has a verdict the
+testcase panes open on it.
+
+An `irun` keeps its results apart from your last `rbx run`. Once there's an
+ad-hoc run, the header switches between the two with **Last run** and
+**Ad-hoc run**, and the view follows whichever ran last. Hovering over
+**Ad-hoc run** shows what it ran on: `samples/0`, a generator call, or
+`typed input` for an input from an editor or from `--input`.
+
+Since an ad-hoc run has only one test, the view draws one row per solution,
+with that test's verdict and times.
+
+On the command line, `--input` and `--answer` pass the input and the expected
+answer as files, so `rbx irun` asks for nothing. See
+[Running tests with custom inputs](../setters/running/index.md#running-tests-with-custom-inputs).
+
 ## Stress testing
 
 The **Stress** view is next to the run view and the **Tests** view. It starts

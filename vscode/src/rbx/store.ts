@@ -18,6 +18,7 @@ import { ReadResult, ReadStats, YamlFileCache } from './fileReader';
 import {
   Ext,
   PackageLayout,
+  RunSource,
   compilationLogPath,
   manifestPath,
   reportPath,
@@ -168,10 +169,13 @@ async function loadTestcaseRun(
   solutionIndex: number,
   entry: TestcaseEntry,
   read: Reader,
+  source: RunSource = 'run',
 ): Promise<TestcaseRun> {
   const stem = entryStem(entry);
   const group = entry.group;
-  const evalPath = runArtifactPath(pkg, solutionIndex, group, stem, Ext.Eval);
+  const artifact = (name: string, ext: Ext): string =>
+    runArtifactPath(pkg, solutionIndex, group, name, ext, source);
+  const evalPath = artifact(stem, Ext.Eval);
   const result = await read(evalPath);
   const evaluation = result.kind === 'ok' ? parseEvaluation(result.value) : undefined;
 
@@ -183,25 +187,16 @@ async function loadTestcaseRun(
     // explicit `readError: undefined` on each would make them unequal to the
     // same testcase written without it.
     ...(result.kind === 'error' ? { readError: result.message } : {}),
-    inputPath: testArtifactPath(pkg, group, stem, Ext.Input),
-    answerPath: testArtifactPath(pkg, group, stem, Ext.Output),
-    outputPath: runArtifactPath(pkg, solutionIndex, group, stem, Ext.Output),
-    stderrPaths: [
-      runArtifactPath(pkg, solutionIndex, group, stem, Ext.Stderr),
-      runArtifactPath(pkg, solutionIndex, group, `${stem}.sol`, Ext.Stderr),
-    ],
-    logPath: runArtifactPath(pkg, solutionIndex, group, stem, Ext.Log),
-    interactionPath: runArtifactPath(pkg, solutionIndex, group, stem, Ext.Interaction),
+    inputPath: testArtifactPath(pkg, group, stem, Ext.Input, source),
+    answerPath: testArtifactPath(pkg, group, stem, Ext.Output, source),
+    outputPath: artifact(stem, Ext.Output),
+    stderrPaths: [artifact(stem, Ext.Stderr), artifact(`${stem}.sol`, Ext.Stderr)],
+    logPath: artifact(stem, Ext.Log),
+    interactionPath: artifact(stem, Ext.Interaction),
     capturesInteraction: skeleton.capturesInteraction ?? false,
-    interactorStderrPath: runArtifactPath(pkg, solutionIndex, group, `${stem}.int`, Ext.Stderr),
-    interactorLogPath: runArtifactPath(pkg, solutionIndex, group, `${stem}.int`, Ext.Log),
-    checkerStderrPath: runArtifactPath(
-      pkg,
-      solutionIndex,
-      group,
-      `${stem}.checker`,
-      Ext.Stderr,
-    ),
+    interactorStderrPath: artifact(`${stem}.int`, Ext.Stderr),
+    interactorLogPath: artifact(`${stem}.int`, Ext.Log),
+    checkerStderrPath: artifact(`${stem}.checker`, Ext.Stderr),
   };
 }
 
@@ -211,6 +206,7 @@ async function loadSolutionRun(
   solution: SolutionEntry,
   report: SolutionReport | undefined,
   read: Reader,
+  source: RunSource = 'run',
 ): Promise<SolutionRun> {
   const groupReports = new Map(
     (report?.groups ?? []).map((group) => [group.name, group]),
@@ -221,7 +217,7 @@ async function loadSolutionRun(
       // queues on the cache's limiter, so at most a bounded number are open.
       const testcases = await Promise.all(
         entriesForGroup(skeleton, name).map((entry) =>
-          loadTestcaseRun(pkg, skeleton, solution.index, entry, read),
+          loadTestcaseRun(pkg, skeleton, solution.index, entry, read, source),
         ),
       );
       return { name, testcases, report: groupReports.get(name) };
@@ -271,6 +267,8 @@ export class ArtifactStore {
   private cachedTestset?: Promise<Testset | undefined>;
   private cachedVisualizers?: Promise<VisualizerDeclarations | undefined>;
   private cachedStress?: Promise<StressManifest | undefined>;
+  /** The last `rbx irun`, cached apart from the run: neither moves the other. */
+  private cachedIrun?: Promise<PackageRun | undefined>;
   private readonly files: YamlFileCache;
   private readonly trace?: (trace: StoreTrace) => void;
 
@@ -296,6 +294,7 @@ export class ArtifactStore {
     this.cachedTestset = undefined;
     this.cachedVisualizers = undefined;
     this.cachedStress = undefined;
+    this.cachedIrun = undefined;
   }
 
   /**
@@ -316,6 +315,9 @@ export class ArtifactStore {
     if (plan.stress) {
       this.cachedStress = undefined;
     }
+    if (plan.irun) {
+      this.cachedIrun = undefined;
+    }
     if (plan.run === 'reload') {
       this.dropRun();
       return;
@@ -329,7 +331,20 @@ export class ArtifactStore {
       .then((run) => (run === undefined ? this.read('reload') : this.patch(run, plan)));
   }
 
-  load(): Promise<PackageRun | undefined> {
+  /**
+   * The run on disk for `source`: the last `rbx run`, or the last `rbx irun`.
+   *
+   * The ad-hoc run is always read whole, never patched -- it is one testcase
+   * per solution -- so its cache is a single promise dropped by any event
+   * about it.
+   */
+  load(source: RunSource = 'run'): Promise<PackageRun | undefined> {
+    if (source === 'irun') {
+      if (this.cachedIrun === undefined) {
+        this.cachedIrun = this.readIrun();
+      }
+      return this.cachedIrun;
+    }
     if (this.cached === undefined) {
       this.cached = this.read('load');
     }
@@ -407,20 +422,20 @@ export class ArtifactStore {
     return this.cachedSkeleton;
   }
 
-  private findingsOf(skeleton: Skeleton): CompilationFinding[] {
+  private findingsOf(skeleton: Skeleton, source: RunSource = 'run'): CompilationFinding[] {
     return skeleton.compilation.map(
       (entry): CompilationFinding => ({
         entry,
-        logPath: compilationLogPath(this.pkg, entry.log),
+        logPath: compilationLogPath(this.pkg, entry.log, source),
         sourcePath: solutionSourcePath(this.pkg, entry.path),
       }),
     );
   }
 
-  private async readReport(): Promise<RunReport | undefined> {
+  private async readReport(source: RunSource = 'run'): Promise<RunReport | undefined> {
     // Not through the file cache: it is one file, rewritten whole, and the
     // event that brought us here is the news that it changed.
-    return parseReport(await readYamlFile(reportPath(this.pkg)));
+    return parseReport(await readYamlFile(reportPath(this.pkg, source)));
   }
 
   private traced<T>(reason: string, work: () => Promise<T>): Promise<T> {
@@ -460,12 +475,41 @@ export class ArtifactStore {
     });
   }
 
+  /**
+   * The last `rbx irun`, read whole.
+   *
+   * Every `.eval` is forgotten before it is read: `irun` replaces `.irun` as a
+   * directory on every invocation, and the same path can come back with a
+   * different verdict and, at the file system's mtime grain, the same stat.
+   */
+  private readIrun(): Promise<PackageRun | undefined> {
+    return this.traced('ad-hoc run', async () => {
+      const skeleton = parseSkeleton(await readYamlFile(skeletonPath(this.pkg, 'irun')));
+      if (skeleton === undefined) {
+        return undefined;
+      }
+      const report = await this.readReport('irun');
+      const reports = reportsByIndex(report);
+      const read: Reader = (filePath) => {
+        this.files.forget(filePath);
+        return this.files.read(filePath);
+      };
+      const solutions = await Promise.all(
+        skeleton.solutions.map((solution) =>
+          loadSolutionRun(this.pkg, skeleton, solution, reports.get(solution.index), read, 'irun'),
+        ),
+      );
+      return this.assemble(skeleton, solutions, report?.ended, 'irun');
+    });
+  }
+
   private assemble(
     skeleton: Skeleton,
     solutions: readonly SolutionRun[],
     ended: RunEnd | undefined,
+    source: RunSource = 'run',
   ): PackageRun {
-    const findings = this.findingsOf(skeleton);
+    const findings = this.findingsOf(skeleton, source);
     return ended === undefined
       ? { skeleton, solutions, findings }
       : { skeleton, solutions, findings, ended };

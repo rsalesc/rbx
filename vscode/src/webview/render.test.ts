@@ -15,6 +15,7 @@ import {
   renderFindings,
   renderHeader,
   renderSelector,
+  renderSourceToggle,
   renderTree,
   visibleRows,
 } from './render';
@@ -1363,4 +1364,15 @@ test("a meta span's hover names the limit its time is read against", () => {
     ),
     html,
   );
+});
+
+test('the source toggle is drawn only when there is an ad-hoc run to switch to', () => {
+  assert.strictEqual(renderSourceToggle(undefined), '');
+
+  const html = renderSourceToggle({ selected: 'irun', adhoc: 'gen "a<b"' });
+
+  assert.match(html, /data-source="run" aria-pressed="false"/);
+  assert.match(html, /data-source="irun" aria-pressed="true"/);
+  // What was run, escaped, in the tooltip.
+  assert.match(html, /title="The last rbx irun: gen &quot;a&lt;b&quot;"/);
 });

@@ -278,6 +278,27 @@
         "enablement": "rbx.dispatchEnabled"
       },
       {
+        "command": "rbx.irunTest",
+        "title": "Run Solutions on This Test…",
+        "category": "rbx",
+        "icon": "$(debug-alt)",
+        "enablement": "rbx.dispatchEnabled"
+      },
+      {
+        "command": "rbx.irunInput",
+        "title": "Run Solutions on This Input",
+        "category": "rbx",
+        "icon": "$(debug-alt)",
+        "enablement": "rbx.dispatchEnabled"
+      },
+      {
+        "command": "rbx.irunGenerator",
+        "title": "Run Solutions on a Generator Call…",
+        "category": "rbx",
+        "icon": "$(debug-alt)",
+        "enablement": "rbx.dispatchEnabled"
+      },
+      {
         "command": "rbx.runAll",
         "title": "Run All Solutions",
         "category": "rbx",
@@ -385,6 +406,11 @@
           "command": "rbx.proposal.discard",
           "when": "resourceScheme == rbx-proposed",
           "group": "navigation@1"
+        },
+        {
+          "command": "rbx.irunInput",
+          "when": "rbx.dispatchEnabled && resourceScheme == untitled",
+          "group": "navigation@0"
         }
       ],
       "commandPalette": [
@@ -455,6 +481,18 @@
         {
           "command": "rbx.stress.promote",
           "when": "false"
+        },
+        {
+          "command": "rbx.irunTest",
+          "when": "false"
+        },
+        {
+          "command": "rbx.irunInput",
+          "when": "rbx.dispatchEnabled && editorIsOpen"
+        },
+        {
+          "command": "rbx.irunGenerator",
+          "when": "rbx.dispatchEnabled"
         }
       ],
       "view/title": [
@@ -674,6 +712,16 @@
           "command": "rbx.visualizeTestAnswer",
           "when": "webviewSection == 'rbx.testsetTestcase'",
           "group": "navigation@5"
+        },
+        {
+          "command": "rbx.irunTest",
+          "when": "rbx.dispatchEnabled && webviewSection == 'rbx.testcase'",
+          "group": "0_run@1"
+        },
+        {
+          "command": "rbx.irunTest",
+          "when": "rbx.dispatchEnabled && webviewSection == 'rbx.testsetTestcase'",
+          "group": "0_run@1"
         }
       ],
       "explorer/context": [
@@ -708,6 +756,16 @@
           "command": "rbx.testplan.promote",
           "when": "resourceScheme == file && resourcePath in rbx.testplanFiles",
           "group": "0_rbx@4"
+        },
+        {
+          "command": "rbx.irunInput",
+          "when": "rbx.dispatchEnabled && editorTextFocus",
+          "group": "0_rbx@5"
+        },
+        {
+          "command": "rbx.irunGenerator",
+          "when": "rbx.dispatchEnabled && resourceScheme == file && resourcePath in rbx.testplanFiles",
+          "group": "0_rbx@6"
         }
       ]
     },

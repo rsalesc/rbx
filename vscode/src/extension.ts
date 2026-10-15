@@ -15,6 +15,7 @@ import { ActiveProblem } from './activeProblem';
 import { ArtifactFileSystemProvider, SCHEME } from './artifactFs';
 import { registerCommands } from './commands';
 import { DeclaredIndex } from './declared';
+import { registerIrunCommands } from './irunCommands';
 import { registerDecorations } from './decorations';
 import { registerDiagnostics } from './diagnostics';
 import { registerDispatch } from './dispatch';
@@ -34,6 +35,7 @@ import { Coalescer } from './rbx/coalescer';
 import {
   CACHE_DIR,
   Ext,
+  IRUN_DIR,
   PROBLEM_MANIFEST,
   STRESS_DIR,
   STRESS_MANIFEST,
@@ -132,6 +134,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const panes = registerCommands(context, view, data, active, testset);
   const dispatcher = registerDispatch(context, active, declared, view);
   registerTestplanLens(context, declared, dispatcher, panes);
+  registerIrunCommands(context, { dispatcher, active, data, view, testset, panes });
   // The third view in the container, on the same `data` and `active` as the
   // other two. It needs the dispatcher, which is why it is built only here.
   const stress = new StressViewProvider(
@@ -250,10 +253,9 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   // Only what something here reads. `.rbx` also holds the file cacher's
-  // storage, the dependency caches, remote and judge state, `runs/.irun` and
-  // the bulk of `runs/.stress` -- all of which churn through a build or a
-  // stress test, and each write used to schedule a reload of a run that had
-  // not changed.
+  // storage, the dependency caches, remote and judge state and the bulk of
+  // `runs/.stress` -- all of which churn through a build or a stress test, and
+  // each write used to schedule a reload of a run that had not changed.
   //
   // The cache directory itself, and `runs/` itself, because removing either is
   // reported as that one directory and nothing under it: `rbx clean` removes
@@ -273,6 +275,12 @@ export function activate(context: vscode.ExtensionContext): void {
   // `.stress` itself too, which a new session replaces as one directory.
   watch(`**/${CACHE_DIR}/runs/${STRESS_DIR}`);
   watch(`**/${CACHE_DIR}/runs/${STRESS_DIR}/${STRESS_MANIFEST}`);
+  // The ad-hoc run (`rbx irun`, #907), read the way the run is: its skeleton,
+  // its report and its `.eval`s -- which sit straight under the solution, with
+  // no group level. `.irun` itself too, which every `irun` replaces whole.
+  watch(`**/${CACHE_DIR}/runs/${IRUN_DIR}`);
+  watch(`**/${CACHE_DIR}/runs/${IRUN_DIR}/{skeleton.yml,report.yml}`);
+  watch(`**/${CACHE_DIR}/runs/${IRUN_DIR}/[0-9]*/*${Ext.Eval}`);
 
   // The testset manifest, which `rbx build` writes last (design D2). Written
   // last is what lets this be a single glob rather than a heuristic about when
@@ -305,6 +313,13 @@ export function activate(context: vscode.ExtensionContext): void {
   skeletons.onDidCreate(followRun);
   skeletons.onDidChange(followRun);
   context.subscriptions.push(skeletons);
+  // `rbx irun` is work being done too, and the view switches to its result.
+  const adhocSkeletons = vscode.workspace.createFileSystemWatcher(
+    `**/${CACHE_DIR}/runs/${IRUN_DIR}/skeleton.yml`,
+  );
+  adhocSkeletons.onDidCreate(followRun);
+  adhocSkeletons.onDidChange(followRun);
+  context.subscriptions.push(adhocSkeletons);
 
   // A package appearing or disappearing changes the set of roots, not just
   // their contents, so it needs a full rediscovery.

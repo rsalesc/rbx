@@ -17,8 +17,9 @@ import * as vscode from 'vscode';
 
 import { ActiveProblem } from './activeProblem';
 import { log } from './log';
+import { chooseSource } from './rbx/adhoc';
 import { Latest } from './rbx/latest';
-import { packageLayout } from './rbx/layout';
+import { RunSource, packageLayout } from './rbx/layout';
 import { PackageRunView, RunNode, findingNodes, flattenNodes, nodeId } from './rbx/nodes';
 import { asSolutionLabelStyle } from './rbx/solutionLabel';
 import { EMPTY_MODEL, buildViewModel } from './rbx/viewModel';
@@ -35,6 +36,7 @@ interface ClientMessage {
   readonly commandId?: string;
   readonly nodeId?: string;
   readonly root?: string;
+  readonly source?: string;
 }
 
 /** A CSP nonce. Fresh per resolve, from a real random source. */
@@ -66,6 +68,13 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
   private readonly posts = new Latest();
   /** The last message the client was sent, serialized, to drop repeats. */
   private lastPosted?: string;
+  /**
+   * Which run the view shows: the last `rbx run`, or the last `rbx irun`
+   * (#907). The toggle sets it, and so does a run starting -- whichever kind
+   * of run the setter just started is the one they want to see. Neither ever
+   * overwrites the other on disk, so switching loses nothing.
+   */
+  private source: RunSource = 'run';
 
   constructor(
     private readonly data: RunDataProvider,
@@ -85,6 +94,11 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
       if (message.type === 'ready') {
         // A fresh client holds no model, so nothing it was sent still counts.
         this.lastPosted = undefined;
+        void this.post();
+        return;
+      }
+      if (message.type === 'source' && (message.source === 'run' || message.source === 'irun')) {
+        this.source = message.source;
         void this.post();
         return;
       }
@@ -115,7 +129,13 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     // paying to keep a hidden view alive would buy nothing back.
     const subscriptions = [
       this.data.onDidChange((change) => {
-        if (this.concerns(change)) {
+        // Followed whichever package started it: the skeleton watcher in
+        // extension.ts moves the selection there on its own.
+        const started = change.plan?.started;
+        if (started !== undefined) {
+          this.source = started;
+        }
+        if (started !== undefined || this.concerns(change)) {
           void this.post();
         }
       }),
@@ -150,7 +170,12 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     if (change.root !== undefined && change.root !== this.active.selected()) {
       return false;
     }
-    return change.plan === undefined || change.plan.run !== 'keep' || change.plan.manifest;
+    return (
+      change.plan === undefined ||
+      change.plan.run !== 'keep' ||
+      change.plan.manifest ||
+      change.plan.irun
+    );
   }
 
   /** The node behind a row id, for commands invoked from the context menu. */
@@ -179,8 +204,17 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     // nothing to load and the client draws its empty state.
     const pkg = selected === undefined ? undefined : packageLayout(selected);
     const current = this.posts.begin();
+    // Read on every post, whichever source is showing: whether one exists at
+    // all is what decides if the toggle is drawn. One testcase per solution,
+    // so it is a handful of files, and the store caches it between ticks.
+    const adhoc = pkg === undefined ? undefined : await this.data.report(pkg, 'irun');
+    const { source, choice } = chooseSource(this.source, adhoc);
     const view: PackageRunView | undefined =
-      pkg === undefined ? undefined : { pkg, run: await this.data.report(pkg) };
+      pkg === undefined
+        ? undefined
+        : source === 'irun'
+          ? { pkg, run: adhoc, flat: true }
+          : { pkg, run: await this.data.report(pkg) };
     // Read alongside the run rather than cached here: the store invalidates
     // both on the same watcher tick, so the buttons cannot describe a manifest
     // the rest of the card does not.
@@ -224,6 +258,7 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
         view === undefined ? EMPTY_MODEL : buildViewModel(view, style, visualizers),
       problems: this.active.problems(),
       selected,
+      source: choice,
     };
     // A tick whose events moved nothing visible -- a report rewritten with the
     // same aggregates, an `.eval` rewritten whole -- builds the model it built

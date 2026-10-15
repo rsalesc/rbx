@@ -150,6 +150,12 @@ export interface Invocation {
    * whoever asked. Ignored by every other command.
    */
   readonly args?: readonly string[];
+  /**
+   * Root options, typed before the subcommand: `-cp`, which keeps an
+   * interactive run's transcript, is one (rbx/box/cli/__init__.py), and is
+   * spelled nowhere else.
+   */
+  readonly rootArgs?: readonly string[];
   readonly contest: ContestSelection;
 }
 
@@ -166,6 +172,7 @@ export function rbxArgs(invocation: Invocation): string[] {
   if (invocation.contest.kind === 'variant') {
     args.push('-C', invocation.contest.id);
   }
+  args.push(...(invocation.rootArgs ?? []));
   switch (invocation.command) {
     case 'build':
       args.push('build');
@@ -278,6 +285,15 @@ function testSubject(args: readonly string[]): string {
   if (flag >= 0 && flag + 1 < args.length) {
     return args[flag + 1];
   }
+  // An irun on a generator call or on typed input (irun.ts), whose positional
+  // arguments are solutions rather than a test.
+  const generator = args.indexOf('-g');
+  if (generator >= 0 && generator + 1 < args.length) {
+    return args[generator + 1];
+  }
+  if (args.includes('--input')) {
+    return 'typed input';
+  }
   return args.find((arg) => !arg.startsWith('-')) ?? 'tests';
 }
 
@@ -303,6 +319,8 @@ export interface RbxTaskDefinition {
    * that dropped the finder would let VS Code mistake one for the other.
    */
   readonly args?: readonly string[];
+  /** Root options before the subcommand; part of the identity for the same reason. */
+  readonly rootArgs?: readonly string[];
 }
 
 export function taskDefinition(invocation: Invocation): RbxTaskDefinition {
@@ -315,6 +333,9 @@ export function taskDefinition(invocation: Invocation): RbxTaskDefinition {
     ...(invocation.args === undefined || invocation.args.length === 0
       ? {}
       : { args: [...invocation.args] }),
+    ...(invocation.rootArgs === undefined || invocation.rootArgs.length === 0
+      ? {}
+      : { rootArgs: [...invocation.rootArgs] }),
     ...(contest.kind === 'variant'
       ? { contest: contest.id }
       : contest.kind === 'canonical'

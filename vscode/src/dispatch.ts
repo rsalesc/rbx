@@ -86,6 +86,8 @@ export interface DispatchRequest {
    * command, as `rbx.run.extraArgs` is by everything but a run.
    */
   readonly args?: readonly string[];
+  /** Root options, before the subcommand: `-cp` for an interactive `irun`. */
+  readonly rootArgs?: readonly string[];
   /**
    * Never ask or alert: skip, and say so in the log, wherever a dispatch would
    * otherwise prompt -- something already running there, a contest to choose,
@@ -257,6 +259,9 @@ export class Dispatcher implements vscode.Disposable {
       ...(request.args !== undefined && carriesArgs(request.command)
         ? { args: request.args }
         : {}),
+      ...(request.rootArgs === undefined || request.rootArgs.length === 0
+        ? {}
+        : { rootArgs: request.rootArgs }),
       contest,
     };
     if ((await this.execute(invocation, request.quiet)) && scope === 'problem') {

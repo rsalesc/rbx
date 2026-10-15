@@ -47,7 +47,10 @@ test('everything nothing reads is ignored', () => {
     `${ROOT}/.rbx/.storage/ab/cdef`,
     `${ROOT}/.rbx/.cache.db`,
     `${ROOT}/.rbx/runs/compilation/0.log`,
+    // An ad-hoc run has no group level, so this is nothing irun writes.
     `${ROOT}/.rbx/runs/.irun/0/main/000.eval`,
+    `${ROOT}/.rbx/runs/.irun/inputs/000.in`,
+    `${ROOT}/.rbx/runs/.irun/0/000.out`,
     `${ROOT}/.rbx/runs/.stress/0/main/000.eval`,
     `${ROOT}/.rbx/runs/.stress/findings/1/0.eval`,
     `${ROOT}/.rbx/runs/.stress/findings/1/input.in`,
@@ -96,7 +99,51 @@ test('a batch of evaluations patches exactly those, once each', () => {
     testset: false,
     manifest: false,
     stress: false,
+    irun: false,
   });
+});
+
+test('the ad-hoc run is read through its skeleton, report and evaluations', () => {
+  assert.deepStrictEqual(event(`${ROOT}/.rbx/runs/.irun/skeleton.yml`), {
+    kind: 'irun',
+    started: true,
+  });
+  for (const moved of [
+    `${ROOT}/.rbx/runs/.irun`,
+    `${ROOT}/.rbx/runs/.irun/report.yml`,
+    `${ROOT}/.rbx/runs/.irun/1/000.eval`,
+  ]) {
+    assert.deepStrictEqual(event(moved), { kind: 'irun', started: false }, moved);
+  }
+});
+
+test('an ad-hoc run re-reads itself and leaves the main run alone', () => {
+  assert.deepStrictEqual(planRefresh([{ kind: 'irun', started: true }]), {
+    run: 'keep',
+    report: false,
+    evals: [],
+    testset: false,
+    manifest: false,
+    stress: false,
+    irun: true,
+    started: 'irun',
+  });
+});
+
+test('the last skeleton written says which run started', () => {
+  assert.strictEqual(
+    planRefresh([{ kind: 'irun', started: true }, { kind: 'skeleton' }]).started,
+    'run',
+  );
+  assert.strictEqual(
+    planRefresh([{ kind: 'skeleton' }, { kind: 'irun', started: true }]).started,
+    'irun',
+  );
+  assert.strictEqual(planRefresh([{ kind: 'irun', started: false }]).started, undefined);
+});
+
+test('a vanished cache takes the ad-hoc run with it', () => {
+  assert.strictEqual(planRefresh([{ kind: 'cache' }]).irun, true);
 });
 
 test('a new skeleton reloads the run and patches nothing in it', () => {
@@ -113,6 +160,8 @@ test('a new skeleton reloads the run and patches nothing in it', () => {
     testset: false,
     manifest: false,
     stress: false,
+    irun: false,
+    started: 'run',
   });
 });
 
@@ -124,6 +173,7 @@ test('a testset landing leaves the run alone, and the other way round', () => {
     testset: true,
     manifest: false,
     stress: false,
+    irun: false,
   });
   const run = planRefresh([{ kind: 'report' }]);
   assert.strictEqual(run.testset, false);
@@ -149,6 +199,7 @@ test('a stress event leaves the run, the testset and the manifest alone', () => 
     testset: false,
     manifest: false,
     stress: true,
+    irun: false,
   });
   assert.strictEqual(touchesStress(plan), true);
   assert.strictEqual(touchesTestset(plan), false);
