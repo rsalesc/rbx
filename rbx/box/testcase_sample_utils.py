@@ -146,7 +146,12 @@ def _get_statement_sample_from_entry(
         if pout_path.is_file():
             output_path = pout_path
 
-        interaction_path = get_best_interaction_file(input_path)
+        # Looked up next to *this* testcase's input, not the running `input_path`:
+        # that one points into the build dir by the time the manual testcase is
+        # processed, which hid a hand-written `.interaction`. The manual testcase
+        # is processed last, so its interaction -- statement-only, like
+        # `.out.statement` -- wins over the one captured by running the solution.
+        interaction_path = get_best_interaction_file(testcase.inputPath)
         if interaction_path is not None:
             try:
                 interaction = parse_interaction(interaction_path)

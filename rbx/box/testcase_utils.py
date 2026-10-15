@@ -163,6 +163,12 @@ def merge_interaction_entries(
     return merged_entries
 
 
+def _drop_separator(data: str, separator: str) -> str:
+    if separator and data.startswith(separator):
+        return data[len(separator) :]
+    return data
+
+
 def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
     """Parse an interaction file into its unmerged :class:`TestcaseInteraction`.
 
@@ -174,11 +180,16 @@ def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
     see :func:`merge_interaction_entries` for the chunked view).
     """
     entries = []
+    # Hand-written `.interaction` files are documented as `< line`, so the one
+    # space after the prefix is a separator, not data. Captured files (`.pio`)
+    # carry none, and keep their leading whitespace verbatim.
+    separator = ''
     with file.open('r') as f:
         if file.suffix == '.interaction':
             # Interaction files have a pretedetermined prefix.
             interactor_prefix = '<'
             solution_prefix = '>'
+            separator = ' '
         else:
             try:
                 interactor_prefix = f.readline().strip()
@@ -190,13 +201,19 @@ def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
 
         while line := f.readline().strip():
             if line.startswith(interactor_prefix):
-                stripped = line[len(interactor_prefix) :].rstrip()
+                stripped = _drop_separator(
+                    line[len(interactor_prefix) :].rstrip(), separator
+                )
                 entries.append(TestcaseInteractionEntry(data=stripped, pipe=0))
             elif line.startswith(solution_prefix):
-                stripped = line[len(solution_prefix) :].rstrip()
+                stripped = _drop_separator(
+                    line[len(solution_prefix) :].rstrip(), separator
+                )
                 entries.append(TestcaseInteractionEntry(data=stripped, pipe=1))
             elif line.startswith(STDERR_PREFIX):
-                stripped = line[len(STDERR_PREFIX) :].rstrip()
+                stripped = _drop_separator(
+                    line[len(STDERR_PREFIX) :].rstrip(), separator
+                )
                 entries.append(TestcaseInteractionEntry(data=stripped, pipe=2))
             else:
                 raise TestcaseInteractionParsingError(

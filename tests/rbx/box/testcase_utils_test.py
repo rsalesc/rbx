@@ -315,6 +315,21 @@ class TestTestcaseInteractionParsing:
         assert len(interaction.entries) == 2
         assert interaction.entries[1].data == 'Hi'
 
+    def test_parse_interaction_dot_interaction_separator_space(self, tmp_path_factory):
+        """A hand-written .interaction separates prefix and data with one space."""
+        temp_dir = tmp_path_factory.mktemp('interaction')
+        interaction_file = temp_dir / 'test.interaction'
+
+        interaction_file.write_text('< 4\n> 5 6\n<  indented\n')
+
+        interaction = parse_interaction(interaction_file)
+
+        assert [(e.pipe, e.data) for e in interaction.entries] == [
+            (0, '4'),
+            (1, '5 6'),
+            (0, ' indented'),
+        ]
+
     def test_parse_interaction_whitespace_handling(self, tmp_path_factory):
         """Test whitespace handling in interaction parsing."""
         temp_dir = tmp_path_factory.mktemp('interaction')
@@ -578,10 +593,10 @@ def test_parse_interaction_recognizes_stderr_prefix(tmp_path: pathlib.Path):
     interaction = testcase_utils.parse_interaction(f)
 
     assert [(e.pipe, e.data) for e in interaction.entries] == [
-        (0, ' 3'),
-        (2, ' reading n'),
-        (1, ' 1 2 3'),
-        (2, ' done'),
+        (0, '3'),
+        (2, 'reading n'),
+        (1, '1 2 3'),
+        (2, 'done'),
     ]
 
 

@@ -305,12 +305,22 @@ For interactive problems, you can create a `.interaction` file in the very same 
 
 This file should contain the interaction between the solution and the interactor. Each line of interaction should start
 with either `<` or `>` to denote whether this was the output of the interactor or the output of the solution, respectively.
+One space after the marker is optional: {{rbx}} drops it, so `< 3` and `<3` mean the same
+line. It keeps any further spaces.
 
 ```
 < this is an interactor line
 < followed by another line
 > this is the solution
 ```
+
+Like `.in.statement` and `.out.statement`, an `.interaction` file is statement-only. It takes
+the place, in the statement only, of the interaction {{rbx}} captures when it runs the model
+solution against the interactor. The test itself doesn't change: {{rbx}} still runs the model
+solution on it, and still judges every solution against it.
+
+So you can show a hand-written exchange that a correct solution would never produce, and the
+statement builds before you've written any solution at all.
 
 ## Building the testset
 
