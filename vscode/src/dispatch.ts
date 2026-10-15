@@ -50,7 +50,9 @@ import {
   RbxCommand,
   TASK_TYPE,
   asExtraArgs,
+  carriesArgs,
   collisions,
+  isOneShot,
   needsShellQuoting,
   rbxArgs,
   rbxEnv,
@@ -252,8 +254,7 @@ export class Dispatcher implements vscode.Disposable {
             ),
       // Only where it means something, so no other command's task identity
       // (its definition) changes because a caller passed args it ignores.
-      ...(request.args !== undefined &&
-      (request.command === 'stress' || request.command === 'add-finding')
+      ...(request.args !== undefined && carriesArgs(request.command)
         ? { args: request.args }
         : {}),
       contest,
@@ -369,11 +370,11 @@ export class Dispatcher implements vscode.Disposable {
       this.release(key);
       throw error;
     }
-    // Not an `add-finding`: it is a one-shot action on particular findings of
-    // a particular session, and Rerun is a button pressed without looking at
-    // what it reruns -- by then the session may be another one, whose finding
-    // 1 is a different input altogether.
-    if (invocation.command !== 'add-finding') {
+    // Not a one-shot (`add-finding`, `promote`): Rerun is a button pressed
+    // without looking at what it reruns, and by then what the first run acted
+    // on is gone -- another stress session's finding 1, or the testplan line
+    // the promote deleted.
+    if (!isOneShot(invocation.command)) {
       this.last = invocation;
       void vscode.commands.executeCommand('setContext', 'rbx.canRerun', true);
     }
@@ -594,7 +595,7 @@ function matching(root: string, command: RbxCommand): Running[] {
  */
 function shellArgs(invocation: Invocation): (string | vscode.ShellQuotedString)[] {
   const args = rbxArgs(invocation);
-  if (invocation.command !== 'stress' && invocation.command !== 'add-finding') {
+  if (!carriesArgs(invocation.command)) {
     return args;
   }
   return args.map((arg) =>

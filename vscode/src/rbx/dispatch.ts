@@ -54,6 +54,27 @@ export const RBX_COMMANDS: readonly RbxCommand[] = [
   'promote',
 ];
 
+/**
+ * The commands whose whole argv tail arrives in `Invocation.args`: only these
+ * are handed it, and only these have it shell-quoted, since a finder, a
+ * generator call or a glob is full of what a shell reads as syntax.
+ */
+export const ARGV_COMMANDS: readonly RbxCommand[] = ['stress', 'add-finding', 'irun', 'promote'];
+
+export function carriesArgs(command: RbxCommand): boolean {
+  return ARGV_COMMANDS.includes(command);
+}
+
+/**
+ * The commands *Rerun* must not repeat: each acts once on something that is
+ * gone afterwards. An `add-finding` names findings of one stress session; a
+ * `promote` names a testplan line it deletes, so a rerun would promote
+ * whichever statement moved up into its place.
+ */
+export function isOneShot(command: RbxCommand): boolean {
+  return command === 'add-finding' || command === 'promote';
+}
+
 /** The commands that build statements, which the statement preview watches for. */
 export const STATEMENT_COMMANDS: readonly RbxCommand[] = [
   'statements',

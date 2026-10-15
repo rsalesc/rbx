@@ -4,10 +4,13 @@ import { test } from 'node:test';
 import {
   Invocation,
   NO_CONTEST,
+  RBX_COMMANDS,
   asExtraArgs,
+  carriesArgs,
   collides,
   collisions,
   definedContest,
+  isOneShot,
   needsShellQuoting,
   rbxArgs,
   rbxEnv,
@@ -132,6 +135,19 @@ test('add-finding is a testcases subcommand', () => {
     rbxArgs(invocation({ command: 'add-finding', args: ['1', '2', '--group', 'main'] })),
     ['testcases', 'add-finding', '1', '2', '--group', 'main'],
   );
+});
+
+test('exactly the argv-tail commands are handed their args', () => {
+  for (const command of RBX_COMMANDS) {
+    assert.strictEqual(
+      carriesArgs(command),
+      ['stress', 'add-finding', 'irun', 'promote'].includes(command),
+      command,
+    );
+  }
+  assert.strictEqual(isOneShot('promote'), true);
+  assert.strictEqual(isOneShot('add-finding'), true);
+  assert.strictEqual(isOneShot('irun'), false);
 });
 
 test('irun and promote carry their argv tail, and are named for the test', () => {
