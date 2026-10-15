@@ -5,7 +5,7 @@ gen 1 100
 gen 100 1
 
 // Inline inputs, on one line or several.
-@input "3 4"
+@input "3 4\n"
 @input {
 50 50
 }
