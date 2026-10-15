@@ -15,6 +15,7 @@ import { ActiveProblem } from './activeProblem';
 import { ArtifactFileSystemProvider, SCHEME } from './artifactFs';
 import { registerCommands } from './commands';
 import { DeclaredIndex } from './declared';
+import { registerIrunCommands } from './irunCommands';
 import { registerDecorations } from './decorations';
 import { registerDiagnostics } from './diagnostics';
 import { registerDispatch } from './dispatch';
@@ -133,6 +134,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const panes = registerCommands(context, view, data, active, testset);
   const dispatcher = registerDispatch(context, active, declared, view);
   registerTestplanLens(context, declared, dispatcher, panes);
+  registerIrunCommands(context, { dispatcher, active, data, view, testset, panes });
   // The third view in the container, on the same `data` and `active` as the
   // other two. It needs the dispatcher, which is why it is built only here.
   const stress = new StressViewProvider(
