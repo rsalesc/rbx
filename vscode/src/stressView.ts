@@ -493,7 +493,9 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
     <div id="stress-root">
       <div id="declared"></div>
       <div id="status"></div>
-      <div id="findings"></div>
+      <!-- Not id="findings": style.css hides that id (the Run view's
+           compilation panel), and the views share the stylesheet. -->
+      <div id="stress-findings"></div>
     </div>
     <script nonce="${nonce}" src="${asset('webview', 'stressMain.js')}"></script>
   </body>

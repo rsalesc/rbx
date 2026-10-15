@@ -30,7 +30,9 @@ let selectedProblem: string | undefined;
 const selector = new SelectorHost(document.getElementById('selector-host') as HTMLElement);
 const declared = document.getElementById('declared') as HTMLElement;
 const status = document.getElementById('status') as HTMLElement;
-const findings = document.getElementById('findings') as HTMLElement;
+// Not `findings`: style.css hides `#findings` until the Run view's compilation
+// panel has something in it, and the views share that stylesheet.
+const findings = document.getElementById('stress-findings') as HTMLElement;
 
 function render(): void {
   selector.render(renderSelector(problems, selectedProblem));
