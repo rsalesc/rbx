@@ -74,7 +74,7 @@
       },
       {
         "command": "rbx.testplan.promote",
-        "title": "Promote This Test to a Manual Test",
+        "title": "Promote This Test…",
         "category": "rbx"
       },
       {
@@ -358,6 +358,18 @@
         "category": "rbx"
       },
       {
+        "command": "rbx.promoteTest",
+        "title": "Promote This Test…",
+        "category": "rbx",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "rbx.promoteInput",
+        "title": "Promote This Input to a Test…",
+        "category": "rbx",
+        "icon": "$(arrow-up)"
+      },
+      {
         "command": "rbx.proposal.accept",
         "title": "Accept Proposed Change",
         "category": "rbx",
@@ -489,6 +501,14 @@
         {
           "command": "rbx.irunInput",
           "when": "rbx.dispatchEnabled && editorIsOpen"
+        },
+        {
+          "command": "rbx.promoteTest",
+          "when": "false"
+        },
+        {
+          "command": "rbx.promoteInput",
+          "when": "editorIsOpen"
         },
         {
           "command": "rbx.irunGenerator",
@@ -722,6 +742,16 @@
           "command": "rbx.irunTest",
           "when": "rbx.dispatchEnabled && webviewSection == 'rbx.testsetTestcase'",
           "group": "0_run@1"
+        },
+        {
+          "command": "rbx.promoteTest",
+          "when": "webviewSection == 'rbx.testcase'",
+          "group": "0_run@2"
+        },
+        {
+          "command": "rbx.promoteTest",
+          "when": "webviewSection == 'rbx.testsetTestcase'",
+          "group": "0_run@2"
         }
       ],
       "explorer/context": [
@@ -729,6 +759,11 @@
           "command": "rbx.runSolution",
           "when": "rbx.dispatchEnabled && resourceScheme == file && resourcePath in rbx.solutionFiles",
           "group": "0_rbx@1"
+        },
+        {
+          "command": "rbx.promoteInput",
+          "when": "resourceScheme == file && resourceExtname == .in",
+          "group": "0_rbx@2"
         }
       ],
       "editor/context": [
@@ -760,6 +795,11 @@
         {
           "command": "rbx.irunInput",
           "when": "rbx.dispatchEnabled && editorTextFocus",
+          "group": "0_rbx@5"
+        },
+        {
+          "command": "rbx.promoteInput",
+          "when": "editorTextFocus && !(resourcePath in rbx.testplanFiles)",
           "group": "0_rbx@5"
         },
         {

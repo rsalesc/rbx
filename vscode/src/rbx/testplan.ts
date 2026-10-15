@@ -15,7 +15,6 @@
  * `statement_spans` both read it.
  */
 import { lastJson } from './promote';
-import { shellQuote } from './shellQuote';
 
 /** What a statement is, which decides the lenses it gets. */
 export type StatementKind = 'call' | 'copy' | 'input';
@@ -118,7 +117,6 @@ export function selector(scriptRelative: string, line: number): string {
 // --- argv -------------------------------------------------------------------
 
 export const GENERATE = ['testcases', 'generate'] as const;
-export const PROMOTE = ['testcases', 'promote'] as const;
 
 /** `rbx testcases generate <sel> ... --json`, after the executable. */
 export function generateArgs(
@@ -132,56 +130,6 @@ export function generateArgs(
     ...(options.validate === true ? ['--validate'] : []),
     '--json',
   ];
-}
-
-/** `--list-groups --json`, after `testcases promote`. */
-export function promoteListArgs(): string[] {
-  return ['--list-groups', '--json'];
-}
-
-/** Promote `sel` into an existing manual group, after `testcases promote`. */
-export function promoteToGroupArgs(sel: string, group: string, name?: string): string[] {
-  return [sel, '--group', group, ...nameArgs(name)];
-}
-
-/** Promote `sel` into a new manual group, after `testcases promote`. */
-export function promoteNewManualArgs(
-  sel: string,
-  group: string,
-  glob: string,
-  name?: string,
-): string[] {
-  return [sel, '--new-manual', group, '--glob', glob, ...nameArgs(name)];
-}
-
-/**
- * `rbx testcases promote …` as a line to paste, for when dispatching is off
- * and the user runs it themselves.
- */
-export function promoteCommandLine(args: readonly string[]): string {
-  return ['rbx', ...PROMOTE, ...args].map(shellQuote).join(' ');
-}
-
-function nameArgs(name: string | undefined): string[] {
-  return name === undefined || name === '' ? [] : ['--name', name];
-}
-
-/**
- * What a promoted file's stem may be. Stricter than rbx's `validate_stems`
- * (no whitespace): no `/` either, so the file lands in the group's own folder,
- * and no `'`, which a dispatched, single-quoted argument cannot hold.
- */
-const STEM = /^[A-Za-z0-9._-]+$/;
-
-/** Why `stem` cannot name a promoted test's file, or undefined if it can. */
-export function stemError(stem: string): string | undefined {
-  if (stem === '') {
-    return undefined;
-  }
-  if (!STEM.test(stem) || stem === '.' || stem === '..') {
-    return 'A file name is letters, digits, `.`, `_` or `-`; leave it empty for the next free one.';
-  }
-  return undefined;
 }
 
 // --- what `generate --json` prints -----------------------------------------

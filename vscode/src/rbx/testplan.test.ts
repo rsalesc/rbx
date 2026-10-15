@@ -5,12 +5,8 @@ import cases from './testplan.cases.json';
 import {
   generateArgs,
   parseGenerated,
-  promoteListArgs,
-  promoteNewManualArgs,
-  promoteToGroupArgs,
   selector,
   statementAt,
-  stemError,
   testplanStatements,
   validationSummary,
 } from './testplan';
@@ -42,7 +38,7 @@ test('selector is package-relative with forward slashes', () => {
   assert.strictEqual(selector('tests\\plan.txt', 12), 'tests/plan.txt:12');
 });
 
-test('argv for generate and promote', () => {
+test('argv for generate', () => {
   assert.deepStrictEqual(generateArgs('p.txt:3', { output: true }), [
     'testcases',
     'generate',
@@ -57,31 +53,6 @@ test('argv for generate and promote', () => {
     '--validate',
     '--json',
   ]);
-  assert.deepStrictEqual(promoteListArgs(), ['--list-groups', '--json']);
-  assert.deepStrictEqual(promoteToGroupArgs('p.txt:3', 'corner'), ['p.txt:3', '--group', 'corner']);
-  assert.deepStrictEqual(promoteToGroupArgs('p.txt:3', 'corner', 'big'), [
-    'p.txt:3',
-    '--group',
-    'corner',
-    '--name',
-    'big',
-  ]);
-  assert.deepStrictEqual(promoteNewManualArgs('p.txt:3', 'hand', 'tests/hand/*.in'), [
-    'p.txt:3',
-    '--new-manual',
-    'hand',
-    '--glob',
-    'tests/hand/*.in',
-  ]);
-});
-
-test('stemError allows empty (auto) and plain names only', () => {
-  assert.strictEqual(stemError(''), undefined);
-  assert.strictEqual(stemError('big-1.v2'), undefined);
-  assert.notStrictEqual(stemError('a b'), undefined);
-  assert.notStrictEqual(stemError('sub/x'), undefined);
-  assert.notStrictEqual(stemError("it's"), undefined);
-  assert.notStrictEqual(stemError('..'), undefined);
 });
 
 const GENERATED = {

@@ -113,7 +113,7 @@ class AdhocFollower implements vscode.Disposable {
 }
 
 /** The package a document belongs to: the deepest discovered root above it. */
-async function packageOf(
+export async function packageOf(
   data: RunDataProvider,
   document: vscode.TextDocument | undefined,
 ): Promise<string | undefined> {
@@ -132,7 +132,7 @@ async function packageOf(
 }
 
 /** The problem to run in: the document's own, else the one the views show. */
-async function rootFor(
+export async function rootFor(
   data: RunDataProvider,
   active: ActiveProblem,
   document: vscode.TextDocument | undefined,
@@ -179,7 +179,7 @@ async function rootArgsFor(root: string): Promise<string[]> {
 }
 
 /** A fresh directory for one dispatch's typed files, which outlive the dispatch. */
-async function scratchFiles(
+export async function scratchFiles(
   files: Record<string, string>,
 ): Promise<Record<string, string>> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'rbx-irun-'));
