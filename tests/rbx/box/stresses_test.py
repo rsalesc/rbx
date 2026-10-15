@@ -4,6 +4,7 @@ The VS Code extension never parses terminal output: it reads `stress.yml` and
 the per-finding directories. These tests pin that layout.
 """
 
+import asyncio
 import os
 import signal
 import threading
@@ -235,6 +236,68 @@ async def test_sigint_during_the_finder_lets_the_iteration_finish(
         if 'Stopping after the current test' in str(call)
     ]
     assert len(notices) == 1
+
+
+@pytest.mark.parametrize(
+    'signame',
+    [name for name in ('SIGTERM', 'SIGHUP') if hasattr(signal, name)],
+)
+def test_termination_signals_mark_interrupted_and_exit(
+    pkg: testing_package.TestingPackage, signame: str
+):
+    signum = getattr(signal, signame)
+    previous_handler = signal.getsignal(signum)
+    real = stresses.generate_standalone
+    timer = None
+
+    async def send_signal_once_running(*args, **kwargs):
+        nonlocal timer
+        if timer is None:
+            # A real signal, delivered while the loop awaits the sandbox.
+            timer = threading.Timer(0.2, lambda: os.kill(os.getpid(), signum))
+            timer.start()
+        return await real(*args, **kwargs)
+
+    # A loop of our own, rather than an async test: the handler raises
+    # `SystemExit` wherever the main thread is, which is usually the event
+    # loop's own wait rather than the test's coroutine.
+    loop = asyncio.new_event_loop()
+    try:
+        with (
+            mock.patch(
+                'rbx.box.stresses.generate_standalone', send_signal_once_running
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            # The finder never matches, so only the signal can end this early.
+            loop.run_until_complete(
+                _run_stress(
+                    timeout_in_seconds=30,
+                    generator_call='gens/gen.cpp [1..1000]',
+                    finder='sols/ac.cpp',
+                    findings_limit=1,
+                )
+            )
+        manifest = _read()
+        assert manifest.state == StressState.INTERRUPTED
+        assert manifest.elapsed < 30
+        assert exc_info.value.code == 128 + signum
+
+        # Unwinding what is left of the stress -- its `finally` included --
+        # must not overwrite the stamp.
+        # (Nothing is left when the signal landed inside the coroutine itself.)
+        pending = asyncio.all_tasks(loop)
+        for task in pending:
+            task.cancel()
+        if pending:
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+        assert _read().state == StressState.INTERRUPTED
+    finally:
+        loop.close()
+        if timer is not None:
+            timer.join()
+
+    assert signal.getsignal(signum) == previous_handler
 
 
 async def test_other_exceptions_mark_failed(pkg: testing_package.TestingPackage):

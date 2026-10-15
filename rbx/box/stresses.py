@@ -221,6 +221,7 @@ class _StressSession:
         self._heap: List[Tuple[int, int]] = []
         self._started = time.monotonic()
         self._last_publish = self._started
+        self._finished = False
         self._path = stress_manifest.manifest_path().absolute()
         self.manifest = stress_manifest.StressManifest(
             state=stress_manifest.StressState.RUNNING,
@@ -315,7 +316,14 @@ class _StressSession:
 
     def finish(self, state: stress_manifest.StressState) -> None:
         """Publish the final state. Never raises: this runs in a `finally`, and
-        must not replace whatever ended the session."""
+        must not replace whatever ended the session.
+
+        Only the first call counts: once a termination signal has stamped the
+        session (`abandon`), the `finally` that runs on the way out must not
+        overwrite it."""
+        if self._finished:
+            return
+        self._finished = True
         self.manifest.state = state
         try:
             self.publish()
@@ -323,6 +331,19 @@ class _StressSession:
             console.console.print(
                 f'[warning]Could not write the stress manifest: {e}[/warning]'
             )
+        stress_manifest.end_session()
+
+    def abandon(self, state: stress_manifest.StressState) -> None:
+        """`finish`, from a signal handler: silent, since the terminal may be
+        gone, and never raises."""
+        if self._finished:
+            return
+        self._finished = True
+        self.manifest.state = state
+        try:
+            self.publish()
+        except Exception:
+            pass
         stress_manifest.end_session()
 
     def report(self) -> 'StressReport':
@@ -388,6 +409,47 @@ class _SigintStop:
         if self._installed:
             signal.signal(signal.SIGINT, self._previous)
             self._installed = False
+
+    def __exit__(self, *args) -> None:
+        self._restore()
+
+
+class _StampOnTermination:
+    """End the session as `interrupted` on SIGTERM or SIGHUP, then exit.
+
+    This is how the VS Code extension stops a stress: it terminates the task,
+    which kills the terminal (SIGHUP to the process group) or sends SIGTERM.
+    Python's default for both is to die on the spot, leaving the manifest
+    `running` forever. There is no waiting for the current iteration here --
+    whoever asked is not going to read a report -- and nothing is printed, since
+    the terminal may already be gone. Main thread only, like any handler.
+    """
+
+    SIGNALS = tuple(
+        getattr(signal, name) for name in ('SIGTERM', 'SIGHUP') if hasattr(signal, name)
+    )
+
+    def __init__(self, session: _StressSession):
+        self._session = session
+        self._previous: Dict[int, object] = {}
+
+    def __enter__(self) -> '_StampOnTermination':
+        if threading.current_thread() is threading.main_thread():
+            for signum in self.SIGNALS:
+                self._previous[signum] = signal.getsignal(signum)
+                signal.signal(signum, self._handle)
+        return self
+
+    def _handle(self, signum, frame):
+        self._restore()
+        self._session.abandon(stress_manifest.StressState.INTERRUPTED)
+        raise SystemExit(128 + signum)
+
+    def _restore(self) -> None:
+        previous, self._previous = self._previous, {}
+        for signum, handler in previous.items():
+            # `None` means a handler not installed from Python: the default.
+            signal.signal(signum, handler if handler is not None else signal.SIG_DFL)
 
     def __exit__(self, *args) -> None:
         self._restore()
@@ -637,7 +699,7 @@ async def run_stress(
     # be left with a `running` session no process is running.
     final_state = stress_manifest.StressState.FAILED
     try:
-        with _SigintStop() as stop:
+        with _SigintStop() as stop, _StampOnTermination(session):
             interrupted = False
             try:
                 while not stop.check():
