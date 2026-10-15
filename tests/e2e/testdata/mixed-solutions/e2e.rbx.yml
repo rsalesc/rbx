@@ -95,3 +95,36 @@ scenarios:
         expect:
           stdout_not_contains:
             - 'Run report (remaining solutions)'
+
+  - name: irun-input-file-needs-no-prompt
+    description: >
+      `rbx irun --input` reads the test from a file instead of the stdin
+      prompt, which is what lets the editor dispatch it (#907). The main
+      solution writes the answer, so sols/main.cpp is accepted on `3 4`.
+    steps:
+      - cmd: irun sols/main.cpp sols/wa.cpp --input adhoc/input.txt -v4
+        expect:
+          file_contains:
+            .rbx/runs/.irun/inputs/000.in: '3 4'
+            .rbx/runs/.irun/0/000.eval: 'outcome: accepted'
+            .rbx/runs/.irun/1/000.eval: 'outcome: wrong-answer'
+
+  - name: irun-answer-file-replaces-the-main-solution
+    description: >
+      `--answer` is the non-interactive `-O`: the solutions are checked against
+      the file, not against the main solution. `adhoc/wrong.ans` says 8 where
+      the sum is 7, so even sols/main.cpp is wrong against it.
+    steps:
+      - cmd: irun sols/main.cpp --input adhoc/input.txt --answer adhoc/wrong.ans -v4
+        expect:
+          file_contains:
+            .rbx/runs/.irun/inputs/000.out: '8'
+            .rbx/runs/.irun/0/000.eval: 'outcome: wrong-answer'
+
+  - name: irun-input-conflicts-with-a-named-test
+    steps:
+      - cmd: irun sols/main.cpp --input adhoc/input.txt -t main/0 -v4
+        expect_exit: 1
+        expect:
+          stdout_contains:
+            - '--input cannot be combined with --testcase or --generator'

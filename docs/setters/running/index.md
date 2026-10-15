@@ -199,6 +199,19 @@ rbx irun -g "gen 100 123" -p
 
 {{ asciinema("irun-generator") }}
 
+To skip the prompt for an input that isn't in the testset, pass it as a file
+with `--input`. Pass `--answer` too to check the solutions against your own
+expected answer:
+
+```bash
+rbx irun sols/main.cpp sols/wa.cpp --input in.txt --answer expected.txt
+```
+
+The command runs the two solutions on the test in `in.txt` and checks their
+output against `expected.txt`. Without `--answer`, the main solution writes the
+expected answer. `--input` names the test itself, so {{rbx}} refuses it
+alongside `-t` or `-g`.
+
 ## Benchmarking the judging time
 
 `rbx run` tells you how long each **solution** took, and nothing about how long **judging**

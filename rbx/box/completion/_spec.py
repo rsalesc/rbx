@@ -747,6 +747,25 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Read the test input from this file instead of asking for it. '
+                    'Cannot be combined with --testcase or --generator.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--input', '-i'],
+                    'takes_value': True,
+                    'value': {'kind': 'path', 'path': 'file'},
+                },
+                {
+                    'help': 'Check the solutions against this expected answer instead of '
+                    "the main solution's, without asking for it (the "
+                    'non-interactive --output).',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--answer'],
+                    'takes_value': True,
+                    'value': {'kind': 'path', 'path': 'file'},
+                },
+                {
                     'help': 'Whether to generate visualizations for inputs and outputs.',
                     'kind': 'option',
                     'multiple': False,

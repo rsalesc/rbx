@@ -49,6 +49,8 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | Choose solutions and run interactively | `rbx irun -c` |
 | Run solutions in a single testcase | `rbx irun -t samples/0` |
 | Run solutions in a generator testcase [:material-open-in-new:](/setters/testset/generators#generator-call) | `rbx irun -g gen 5 10` |
+| Run solutions on an input file [:material-open-in-new:](/setters/running#running-tests-with-custom-inputs) | `rbx irun --input in.txt` |
+| Check them against your own answer file | `rbx irun --input in.txt --answer expected.txt` |
 | Run interactively and print the outputs | `rbx irun -p` |
 | Print the outputs with stderr interleaved | `rbx irun -p -e` |
 | Interactively visualize outputs of a recent run [:material-open-in-new:](/setters/testset/visualizers) | `rbx ui` |
