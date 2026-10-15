@@ -311,7 +311,8 @@ def md_to_pdf(root: pathlib.Path, md: bytes) -> bytes:
 
     output = root / 'statement.pdf'
     pypandoc.convert_text(
-        md.decode(),
+        # See `engine._md_to_latex`: pandoc must never see a tag.
+        sourcemap.strip(md.decode()),
         'pdf',
         format='markdown',
         outputfile=str(output),

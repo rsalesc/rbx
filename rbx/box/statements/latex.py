@@ -3,7 +3,7 @@ import os
 import pathlib
 import re
 import subprocess
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import chardet
 import typer
@@ -36,27 +36,49 @@ class LatexError:
     message: str
     file: Optional[str] = None
     line: Optional[int] = None
-    # The source text TeX was reading when it stopped (its `l.<n>` line).
+    # The source text TeX was reading when it stopped: the macro argument it
+    # was expanding when there was one, else its `l.<n>` line.
     context: Optional[str] = None
+    # The macro argument the error happened in, split where TeX stopped. An
+    # argument is often stored and expanded later (`\inputdesc{...}` in the
+    # bundled preset), so `line` names where it was *expanded* -- often
+    # `\end{document}` -- while this text is still the line that holds it.
+    argument: Optional[Tuple[str, str]] = None
 
 
 # `-file-line-error` turns every `! <message>` into `<file>:<line>: <message>`.
 _LOCATED = re.compile(r'^((?:[A-Za-z]:)?[^:]+):(\d+): (.*)$')
 _CONTEXT = re.compile(r'^l\.\d+ (.*)$')
+_ARGUMENT = '<argument> '
 _CONTEXT_LOOKAHEAD = 8
 
 
-def _context_after(lines: List[str], index: int) -> Optional[str]:
-    """TeX prints the line it stopped on as `l.<n> <before>` and, on the next
-    line, `<after>`; the error's own text sits a few lines above."""
+def _broken(lines: List[str], j: int, before: str) -> Tuple[str, str]:
+    """TeX shows the text it was reading as `<before>` on one line and, on the
+    next, `<after>` -- the point where it stopped is the line break."""
+    after = lines[j + 1].strip() if j + 1 < len(lines) else ''
+    return before.replace('^^M', ''), after.replace('^^M', '')
+
+
+def _context_after(
+    lines: List[str], index: int
+) -> Tuple[Optional[str], Optional[Tuple[str, str]]]:
+    """The `l.<n>` text, and the `<argument>` text when TeX shows one, from the
+    few lines under an error."""
+    argument = None
     for j in range(index + 1, min(index + 1 + _CONTEXT_LOOKAHEAD, len(lines))):
+        if lines[j].startswith(_ARGUMENT) and argument is None:
+            argument = _broken(lines, j, lines[j][len(_ARGUMENT) :])
+            continue
         match = _CONTEXT.match(lines[j])
         if match is None:
             continue
-        after = lines[j + 1].strip() if j + 1 < len(lines) else ''
-        text = (match.group(1) + after).replace('^^M', '').strip()
-        return text or None
-    return None
+        if argument is not None:
+            text = (argument[0] + argument[1]).strip()
+        else:
+            text = ''.join(_broken(lines, j, match.group(1))).strip()
+        return text or None, argument
+    return None, argument
 
 
 def parse_errors(log: str) -> List[LatexError]:
@@ -71,7 +93,10 @@ def parse_errors(log: str) -> List[LatexError]:
     lines = log.splitlines()
     for index, raw in enumerate(lines):
         if raw.startswith('! '):
-            errors.append(LatexError(raw[2:].strip()))
+            context, argument = _context_after(lines, index)
+            errors.append(
+                LatexError(raw[2:].strip(), context=context, argument=argument)
+            )
             continue
         match = _LOCATED.match(raw)
         if match is None:
@@ -80,15 +105,19 @@ def parse_errors(log: str) -> List[LatexError]:
         message = message.strip()
         if message.startswith('==>'):
             continue
-        context = _context_after(lines, index)
+        context, argument = _context_after(lines, index)
         if message == 'Emergency stop.' and errors:
             last = errors[-1]
             if last.file is None:
                 errors[-1] = dataclasses.replace(
-                    last, file=file, line=line, context=last.context or context
+                    last,
+                    file=file,
+                    line=line,
+                    context=last.context or context,
+                    argument=last.argument or argument,
                 )
             continue
-        errors.append(LatexError(message, file, line, context))
+        errors.append(LatexError(message, file, line, context, argument))
     return list(dict.fromkeys(errors))
 
 

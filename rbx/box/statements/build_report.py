@@ -38,7 +38,7 @@ from pydantic import BaseModel, ValidationError
 from rbx import console, utils
 from rbx.box.exception import describe_exception
 from rbx.box.statements import sourcemap
-from rbx.box.statements.latex import LatexCompilationError
+from rbx.box.statements.latex import LatexCompilationError, LatexError
 from rbx.config import CACHE_DIR_NAME
 
 REPORT_VERSION = 1
@@ -165,6 +165,20 @@ def _finding(
     )
 
 
+def _locate_latex_error(
+    tracker: sourcemap.SourceTracker, cwd: pathlib.Path, error: LatexError
+) -> Optional[sourcemap.SourcePos]:
+    if error.file is None or error.line is None:
+        return None
+    path = cwd / error.file
+    line = error.line
+    if error.argument is not None:
+        # TeX names the line a stored argument was expanded on; the argument
+        # itself is still on the line that wrote it.
+        line = tracker.find_excerpt(path, line, *error.argument) or line
+    return tracker.locate(path, line)
+
+
 def findings_for(
     root: pathlib.Path, exc: BaseException, tracker: sourcemap.SourceTracker
 ) -> List[StatementFinding]:
@@ -175,9 +189,7 @@ def findings_for(
                 root,
                 FindingOrigin.LATEX,
                 error.message,
-                tracker.locate(exc.cwd / error.file, error.line)
-                if error.file is not None and error.line is not None
-                else None,
+                _locate_latex_error(tracker, exc.cwd, error),
                 error.context,
             )
             for error in exc.errors

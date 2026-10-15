@@ -47,6 +47,11 @@ Why this and not the alternatives:
 - *Search the source for the text near the error*: fragile, and wrong whenever the
   text came from a var.
 
+Markdown is never tagged -- a tag at the start of a line would stop pandoc
+reading `# heading` or `- item` as syntax -- and every pandoc call strips
+defensively. Blocks written to `blocks*.yml` are stripped value by value, before
+YAML picks a scalar style.
+
 The tags are ids, not paths, so a `{% filter upper %}` cannot corrupt them. Only
 lines with non-whitespace content are tagged, so `if problem.blocks.notes` keeps
 its meaning for a whitespace-only block. Tagging is on only inside
@@ -67,6 +72,12 @@ points, which already know every directory involved.
   mapped through the source map: a rendered file through its line map, a copied
   file (a user `\input`) through `Origins`, anything else (a system `.sty`) is
   kept as an unlocated finding.
+- **Stored arguments.** A macro that stores its argument and expands it later
+  (the bundled preset's `\inputdesc{...}`) makes TeX blame the line of the
+  *expansion* -- often `\end{document}`. TeX still prints the argument
+  (`<argument> ...`), split where it stopped; that text is found in the emitted
+  file (whitespace-insensitively, nearest at or above the blamed line) and its
+  line is mapped instead.
 - **Template.** A Jinja syntax error or an undefined variable is the most common
   failure and happens before pdflatex runs. Its location comes from Jinja itself
   (`TemplateSyntaxError.lineno`, or the template frames of an `UndefinedError`
@@ -99,7 +110,9 @@ never reads half a PDF.
 - Markdown outputs open in VS Code's own Markdown preview; TeX outputs open as text.
 - *Build* button and opt-in `rbx.statements.buildOnSave` dispatch
   `rbx statements build` through the existing task dispatcher (#918).
-- Findings join the existing `rbx` diagnostic collection.
+- Findings go to a diagnostic collection of their own (`rbx-statements`):
+  the compile findings' collection is rebuilt whole on every run and would
+  wipe them.
 
 ## Out of scope
 

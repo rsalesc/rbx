@@ -255,3 +255,87 @@ class TestTemplateErrors:
                 )
         pos = tracker.locate_template_error(info.value)
         assert pos is not None and pos.path == statement
+
+
+class TestFindExcerpt:
+    TEX = (
+        '\\begin{document}\n'  # 1
+        '\\inputdesc{\\badcmd{} The input is two integers.\n'  # 2
+        'More input.}\n'  # 3
+        '\\inputdesc{\\badcmd{} Another use.}\n'  # 4
+        '\\end{document}\n'  # 5
+    )
+
+    def _tracker(self, tmp_path):
+        tracker = sourcemap.SourceTracker()
+        tracker.emit(tmp_path / 'statement.tex', self.TEX)
+        return tracker
+
+    def test_finds_the_line_holding_the_argument(self, tmp_path):
+        tracker = self._tracker(tmp_path)
+        found = tracker.find_excerpt(
+            tmp_path / 'statement.tex', 5, '\\badcmd ', '{} The input is two integers.'
+        )
+        assert found == 2
+
+    def test_nearest_above_the_reported_line_wins(self, tmp_path):
+        tracker = self._tracker(tmp_path)
+        assert tracker.find_excerpt(tmp_path / 'statement.tex', 5, '\\badcmd ', '') == 4
+        assert tracker.find_excerpt(tmp_path / 'statement.tex', 3, '\\badcmd ', '') == 2
+
+    def test_falls_back_to_the_text_before_the_stop(self, tmp_path):
+        # What follows ran onto the next source line, so only the head matches.
+        tracker = self._tracker(tmp_path)
+        found = tracker.find_excerpt(
+            tmp_path / 'statement.tex', 5, 'two integers. ', 'More input.'
+        )
+        assert found == 2
+
+    def test_nothing_found(self, tmp_path):
+        tracker = self._tracker(tmp_path)
+        assert tracker.find_excerpt(tmp_path / 'statement.tex', 5, '\\nope', '') is None
+        assert tracker.find_excerpt(tmp_path / 'other.tex', 5, '\\badcmd', '') is None
+
+
+class TestNeverChangesWhatIsWritten:
+    def test_blocks_yaml_round_trips_under_tracking(self, tmp_path):
+        """The scalar style must be chosen for the tag-free text: `- x` and
+        `123` stay strings and indentation survives."""
+        import yaml
+
+        from rbx.box.statements import engine
+
+        source = (
+            '\\BLOCK{block a}- dash inline\\BLOCK{endblock}\n'
+            '\\BLOCK{block b}123\\BLOCK{endblock}\n'
+            '\\BLOCK{block c}{\\bf x} y\\BLOCK{endblock}\n'
+            '%- block d\n'
+            '  \\begin{itemize}\n'
+            '    \\item a\n'
+            '  \\end{itemize}\n'
+            '%- endblock\n'
+        )
+        expected = render.render_jinja_blocks(tmp_path, source.encode())
+        with sourcemap.tracking():
+            tagged = render.render_jinja_blocks(tmp_path, source.encode())
+            assert sourcemap.TAG_OPEN in tagged.blocks['d']
+            engine.write_blocks(tmp_path, 'blocks.yml', tagged)
+
+        loaded = yaml.safe_load((tmp_path / 'blocks.yml').read_text())
+        assert loaded['blocks'] == expected.blocks
+        assert loaded['blocks']['b'] == '123'
+
+    def test_markdown_is_never_tagged(self, tmp_path):
+        source = _write(tmp_path / 'src' / 'explanation.md', '# Why\n\n- item\n')
+        overlay = tmp_path / 'overlay'
+        overlay.mkdir()
+        origins = Origins()
+        origins.source(source)
+        with sourcemap.tracking(origins):
+            out = render.render_jinja(overlay, source.read_bytes()).decode()
+            _write(overlay / 'doc.md', '# Title\n')
+            origins.mount(overlay, tmp_path / 'nothing')
+            doc = render.render_jinja(overlay, b'%- extends "doc.md"').decode()
+        # Jinja drops the final newline either way; nothing else may change.
+        assert out == '# Why\n\n- item'
+        assert doc == '# Title'

@@ -91,3 +91,37 @@ def test_clean_log_has_no_errors():
 def test_repeated_error_is_reported_once():
     log = './s.tex:1: Undefined control sequence.\n' * 2
     assert len(parse_errors(log)) == 1
+
+
+DEFERRED_ARGUMENT = r"""./statement.tex:35: Undefined control sequence.
+<argument> \badcmd 
+                   The input is a single line containing two integers $A$ and $B$. 
+l.35 }
+      \end{document}
+The control sequence at the end of the top line
+"""
+
+
+def test_error_in_a_stored_argument_keeps_the_argument():
+    [error] = parse_errors(DEFERRED_ARGUMENT)
+    assert (error.file, error.line) == ('./statement.tex', 35)
+    assert error.argument == (
+        '\\badcmd ',
+        'The input is a single line containing two integers $A$ and $B$.',
+    )
+    assert error.context == (
+        '\\badcmd The input is a single line containing two integers $A$ and $B$.'
+    )
+
+
+def test_bare_error_keeps_its_argument_through_the_emergency_stop():
+    log = (
+        '! Undefined control sequence.\n'
+        '<argument> \\badcmd \n'
+        '                   rest of it\n'
+        './statement.tex:9: Emergency stop.\n'
+        'l.9 \\end{document}\n'
+    )
+    [error] = parse_errors(log)
+    assert (error.file, error.line) == ('./statement.tex', 9)
+    assert error.argument == ('\\badcmd ', 'rest of it')

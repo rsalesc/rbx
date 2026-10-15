@@ -147,3 +147,30 @@ def test_unknown_version_is_ignored(tmp_path):
     path.parent.mkdir(parents=True)
     path.write_text('version: 999\noutputs: [{weird: true}]\n')
     assert build_report.read_report(path).outputs == []
+
+
+@pytest.mark.test_pkg('contests/statements_v2')
+async def test_error_in_a_deferred_argument_lands_where_it_was_written(
+    cleandir_with_testdata, monkeypatch
+):
+    """TeX reports an error inside a stored argument at the line that expands
+    it (here the last one); the argument text it prints finds the real line."""
+
+    def build_pdf(self: Latex, temp_dir: pathlib.Path) -> LatexResult:
+        last = len(self.latex.rstrip('\n').split('\n'))
+        log = (
+            f'./statement.tex:{last}: Undefined control sequence.\n'
+            '<argument> This problem belongs \n'
+            '                   to Statements v2 Contest.\n'
+            f'l.{last} \\end{{document}}\n'
+        )
+        return LatexResult(
+            result=subprocess.CompletedProcess('', 1, log.encode(), b''), pdf=None
+        )
+
+    monkeypatch.setattr(Latex, 'build_pdf', build_pdf)
+    with pytest.raises(typer.Exit):
+        await _build()
+
+    [finding] = _read(cleandir_with_testdata / 'A')['outputs'][0]['findings']
+    assert (finding['file'], finding['line']) == (STATEMENT, 3)

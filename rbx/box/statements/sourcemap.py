@@ -126,6 +126,7 @@ class SourceTracker:
         self._ids: Dict[Optional[pathlib.Path], int] = {}
         self._paths: List[Optional[pathlib.Path]] = []
         self._lines: Dict[pathlib.Path, List[Optional[SourcePos]]] = {}
+        self._text: Dict[pathlib.Path, List[str]] = {}
 
     def intern(self, origin: Optional[pathlib.Path]) -> int:
         if origin not in self._ids:
@@ -148,7 +149,34 @@ class SourceTracker:
             positions.append(current)
             lines.append(_TAG.sub('', raw))
         self._lines[_key(path)] = positions
+        self._text[_key(path)] = lines
         return '\n'.join(lines)
+
+    def find_excerpt(
+        self, path: PathLike, line: int, before: str, after: str
+    ) -> Optional[int]:
+        """The line of an emitted file that holds a piece of text TeX printed,
+        split at the point it stopped -- the nearest at or above ``line``, since
+        TeX expands text after reading it.
+
+        Matched without whitespace, which TeX re-spaces when it prints tokens
+        (a control word is always shown followed by a space). The text before
+        the stop together with what follows is tried first, then the text
+        before it alone, in case what follows ran onto the next line."""
+        text = self._text.get(_key(path))
+        if text is None:
+            return None
+        squashed = [_squash(raw) for raw in text]
+        head, tail = _squash(before), _squash(after)
+        half = _EXCERPT_CHARS // 2
+        for needle in (head[-half:] + tail[:half], head[-_EXCERPT_CHARS:]):
+            if len(needle) < _EXCERPT_MIN_CHARS:
+                continue
+            hits = [i + 1 for i, raw in enumerate(squashed) if needle in raw]
+            if hits:
+                above = [hit for hit in hits if hit <= line]
+                return above[-1] if above else hits[0]
+        return None
 
     def locate(self, path: PathLike, line: int) -> Optional[SourcePos]:
         """The source position of ``line`` of a file pdflatex read.
@@ -189,6 +217,16 @@ class SourceTracker:
         return None
 
 
+# Long enough to be specific, short enough to stay on one source line.
+_EXCERPT_CHARS = 48
+_EXCERPT_MIN_CHARS = 4
+_WHITESPACE = re.compile(r'\s+')
+
+
+def _squash(text: str) -> str:
+    return _WHITESPACE.sub('', text)
+
+
 def _chain(exc: BaseException) -> Iterator[BaseException]:
     seen = set()
     current: Optional[BaseException] = exc
@@ -215,6 +253,10 @@ def _template_frames(
         tb = tb.tb_next
 
 
+def _is_markdown(path: Optional[PathLike]) -> bool:
+    return path is not None and pathlib.Path(path).suffix.lower() == '.md'
+
+
 def _tag(origin_id: int, line: int) -> str:
     return f'{TAG_OPEN}{origin_id}:{line}{TAG_CLOSE}'
 
@@ -228,6 +270,12 @@ class LineTagExtension(jinja2.ext.Extension):
             yield from stream
             return
         origin = tracker.origins.resolve(stream.filename) if stream.filename else None
+        if _is_markdown(stream.filename) or _is_markdown(origin):
+            # Markdown is converted by pandoc before it is ever TeX, and a tag
+            # at the start of a line would stop `# heading` or `- item` from
+            # being syntax. Its errors are pandoc's, not pdflatex's, anyway.
+            yield from stream
+            return
         origin_id = tracker.intern(origin)
         last_tagged = 0
         for token in stream:
