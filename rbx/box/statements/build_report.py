@@ -190,7 +190,7 @@ def _locate_latex_error(
     line TeX was reading there.
 
     TeX names the line it was reading, but a macro that stores its argument and
-    expands it later makes that the line of the *expansion* -- `\end{document}`
+    expands it later makes that the line of the *expansion* -- `\\end{document}`
     in the bundled preset, for any error in a statement's body. The context
     levels TeX prints (`LatexError.excerpts`) still hold the text being read, so
     the level that best matches the emitted file says which line wrote it; the
