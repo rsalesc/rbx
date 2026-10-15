@@ -205,10 +205,13 @@ per solution with its verdict on that test. From the row you can:
 - **copy** the generator call;
 - **promote** the finding into the testset.
 
-Promoting a finding first asks which group to add it to. For a group backed
-by a testplan, it opens a diff of the testplan against the version {{rbx}}
-proposes, with the new generator call. You can edit the proposed side, then
-save it with the check-mark button (**Accept Proposed Change**) in the editor title. Promoting into a
+Promoting is available once the stress finishes, and first asks which group
+to add the finding to. For a group backed by a testplan, it opens a diff of the
+testplan against the version {{rbx}} proposes, with the new generator call. You
+can edit the proposed side, then save it with the check-mark button
+(**Accept Proposed Change**) in the editor title. If the testplan changed after
+the proposal was made, accepting refuses and offers to copy your edits and
+promote again. Promoting into a
 testcase-glob group, or into a group that doesn't exist yet, runs
 [`rbx testcases add-finding`](../setters/stress-testing.md#adding-findings-to-the-testset)
 in a terminal.

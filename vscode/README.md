@@ -662,11 +662,15 @@ the terminal. The last launch is remembered per package. Every launch passes
 `--no-promote`, so the task never stops to ask a question in its terminal.
 
 *Promote* goes through `rbx testcases add-finding`, which decides what lands in
-the testset. Into a generator script group, it runs a `--dry-run --json`
-headless and opens a diff of the script against a writable proposed version;
-edit the right side, then accept (the check mark in the editor title, *Accept Proposed Change*) or *Discard Proposed
-Change*. Into a manual group, or a new
-group of either kind, it dispatches `rbx testcases add-finding` in a terminal.
+the testset, and is disabled until the session ends. Into a generator script
+group, it runs a `--dry-run --json` headless and opens a diff of the script
+against a writable proposed version; edit the right side, then accept (the
+check mark in the editor title, *Accept Proposed Change*) or *Discard Proposed
+Change*. Accept creates the script if it does not exist yet, asks you to save
+or revert unsaved edits to it in an editor first, and refuses a proposal the
+script has moved past, offering *Copy my edits* and *Promote again*. Into a
+manual group, or a new group of either kind, it dispatches
+`rbx testcases add-finding` in a terminal.
 
 ## Status
 
