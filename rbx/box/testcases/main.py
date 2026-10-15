@@ -847,7 +847,9 @@ def add_finding(
         )
         return
     # Whatever else gets printed on the way -- including by the helpers this
-    # calls -- goes to stderr, so stdout parses as JSON.
+    # calls -- goes to stderr, so stdout parses as JSON. `within_problem` prints
+    # its issue report after this returns, outside the redirect: safe today, as
+    # add-finding records no issues.
     json_out = sys.stdout
     with contextlib.redirect_stdout(sys.stderr):
         _add_finding(

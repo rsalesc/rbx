@@ -8,7 +8,7 @@ import pytest
 from typer.testing import CliRunner
 
 from rbx.box import cli, package, stress_manifest
-from rbx.box.schema import GeneratorCall
+from rbx.box.schema import GeneratorCall, GeneratorScript, TestcaseGroup
 from rbx.box.testing import testing_package
 
 
@@ -340,6 +340,34 @@ def test_readding_script_findings_skips_them(
     }
     assert script.read_text().count('gen 0 --seed=abc') == 1
     assert script.read_text().endswith('\ngen 1 --seed=abc')
+
+
+def test_readding_box_script_findings_skips_them(
+    runner: CliRunner, testing_pkg: testing_package.TestingPackage
+):
+    script = testing_pkg.add_testplan('boxy')
+    script.write_text('1 ; gen.exe 100\n')
+    testing_pkg.yml.testcases = testing_pkg.yml.testcases + [
+        TestcaseGroup(
+            name='boxy', generatorScript=GeneratorScript(path=script, format='box')
+        )
+    ]
+    testing_pkg.save()
+    _write_session(b'1\n', b'2\n')
+    assert _invoke(runner, '1', '--group', 'boxy').exit_code == 0
+    once = script.read_text()
+    assert once.endswith('\n2 ; gen.exe 0 --seed=abc')
+
+    dry = _invoke(runner, '1', '--group', 'boxy', '--dry-run', '--json')
+    assert dry.exit_code == 0, dry.output
+    assert json.loads(dry.stdout)['after'] == once
+
+    result = _invoke(runner, '--group', 'boxy', '--json')
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)['skipped'] == [1]
+    assert script.read_text().count('gen.exe 0 --seed=abc') == 1
+    assert script.read_text().endswith('\n3 ; gen.exe 1 --seed=abc')
 
 
 def test_readding_manual_findings_skips_them(

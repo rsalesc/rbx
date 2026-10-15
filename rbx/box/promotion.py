@@ -230,29 +230,45 @@ def group_name_error(name: str) -> Optional[str]:
     return None
 
 
-def _script_call_line(group: TestcaseGroup, call: GeneratorCall) -> str:
+def _parsed_calls(group: TestcaseGroup, script: str) -> List[Tuple[str, str]]:
+    """The generator calls ``script`` holds, as ``(name, args)`` keys.
+
+    Args are whitespace-normalized so formatting alone never makes two calls
+    differ.
+    """
     assert group.generatorScript is not None
     handler = gsh.get_generator_script_handler(
-        '', gsh.GeneratorScriptHandlerParams(group.generatorScript)
+        script, gsh.GeneratorScriptHandlerParams(group.generatorScript)
     )
-    handler.append([call])
-    return handler.script.strip()
+    return [
+        (inp.generator_call.name, ' '.join((inp.generator_call.args or '').split()))
+        for inp in handler.parse()
+        if inp.generator_call is not None
+    ]
 
 
 def is_new_script_call(group: TestcaseGroup, calls: List[GeneratorCall]) -> List[bool]:
-    """For each call, whether ``group``'s script lacks that exact line yet.
+    """For each call, whether ``group``'s script lacks that call yet.
 
-    A call repeated within ``calls`` is new only the first time.
+    Compares parsed calls rather than lines: each call is appended the way
+    :func:`append_to_script_group` would, and only the appended text is parsed
+    back, so format-specific decoration (a ``box`` script's ``N ;`` group
+    prefix and ``.exe`` suffix) compares equal. A call repeated within
+    ``calls`` is new only the first time.
     """
     assert group.generatorScript is not None
     path = pathlib.Path(group.generatorScript.path)
     text = path.read_text() if path.is_file() else ''
-    seen = {line.strip() for line in text.splitlines()}
+    seen = set(_parsed_calls(group, text))
     res = []
     for call in calls:
-        line = _script_call_line(group, call)
-        res.append(line not in seen)
-        seen.add(line)
+        handler = gsh.get_generator_script_handler(
+            text, gsh.GeneratorScriptHandlerParams(group.generatorScript)
+        )
+        handler.append([call])
+        keys = _parsed_calls(group, handler.script[len(text) :])
+        res.append(not seen.issuperset(keys))
+        seen.update(keys)
     return res
 
 
