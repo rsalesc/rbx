@@ -123,6 +123,12 @@ async def _entries_for_selectors(
     line of a generator script, so an editor can address a test by where it is
     written, before the testset is ever built. Each script selector must match a
     test. Pattern matches come first, then script matches, each test once.
+
+    A statement of a script shared by several groups (a problem-level
+    ``generatorScript``, or one plan imported twice) makes a test in each of
+    them. Its selector still names one statement, so it resolves to the first
+    of those tests, in testset order: promoting it writes one file, not a copy
+    per group.
     """
     patterns = [
         TestcasePattern.parse(s) for s in selectors if not _is_script_selector(s)
@@ -143,7 +149,7 @@ async def _entries_for_selectors(
             if gse is None:
                 continue
             key = (utils.abspath(gse.path), gse.line)
-            if key not in wanted:
+            if key not in wanted or key in found:
                 continue
             found.add(key)
             if entry.group_entry.key() not in seen:

@@ -70,6 +70,32 @@ def test_promote_by_absolute_script_line_with_name(runner: CliRunner, pkg):
     assert _script(pkg).read_text() == 'gens/gen.cpp 456\n'
 
 
+def test_a_shared_plan_line_names_one_test(runner: CliRunner, pkg):
+    # A second group importing the same plan: line 1 makes `gen/0` and `twin/0`.
+    from rbx.box.schema import GeneratorScript, TestcaseGroup
+
+    pkg.yml.testcases = pkg.yml.testcases + [
+        TestcaseGroup(name='twin', generatorScript=GeneratorScript(path=_script(pkg)))
+    ]
+    pkg.save()
+    pkg.add_testgroup_from_glob('corner', 'tests/manual/corner/*.in')
+
+    generated = runner.invoke(
+        testcases_main.app, ['generate', 'testplan/gen.txt:1', '--json']
+    )
+    assert generated.exit_code == 0, generated.output
+    assert _last_json(generated)['test'] == 'gen/0'
+
+    promoted = runner.invoke(
+        testcases_main.app, ['promote', 'testplan/gen.txt:1', '-G', 'corner']
+    )
+    assert promoted.exit_code == 0, promoted.output
+    assert sorted(p.name for p in (pkg.root / 'tests/manual/corner').iterdir()) == [
+        '000.in'
+    ]
+    assert _script(pkg).read_text() == 'gens/gen.cpp 456\n'
+
+
 def test_promote_script_line_without_statement_writes_nothing(runner: CliRunner, pkg):
     pkg.add_testgroup_from_glob('corner', 'tests/manual/corner/*.in')
 

@@ -31,6 +31,7 @@ import { defaultManualGlob, failureMessage, groupNameError, manualGlobError, par
 import {
   Generated,
   PROMOTE,
+  StatementKind,
   generateArgs,
   parseGenerated,
   promoteCommandLine,
@@ -134,6 +135,8 @@ interface Target {
   readonly root: string;
   /** `<script>:<line>`, relative to `root`. */
   readonly sel: string;
+  /** What the statement on that line is, if one starts there. */
+  readonly kind?: StatementKind;
 }
 
 class TestplanActions {
@@ -186,7 +189,16 @@ class TestplanActions {
       );
       return undefined;
     }
-    return { root: declared.root, sel: selector(path.relative(declared.root, uri.fsPath), line) };
+    const document = open ?? (await vscode.workspace.openTextDocument(uri));
+    const statementLine = line;
+    const kind = testplanStatements(document.getText()).find(
+      (statement) => statement.line === statementLine,
+    )?.kind;
+    return {
+      root: declared.root,
+      sel: selector(path.relative(declared.root, uri.fsPath), line),
+      kind,
+    };
   }
 
   async generate(rawUri: unknown, rawLine: unknown): Promise<void> {
@@ -233,6 +245,14 @@ class TestplanActions {
   async promote(rawUri: unknown, rawLine: unknown): Promise<void> {
     const target = await this.target(rawUri, rawLine);
     if (target === undefined) {
+      return;
+    }
+    // The lens leaves a `@copy` out; the context menu cannot, so say why here
+    // rather than in a terminal rbx then refuses it in.
+    if (target.kind === 'copy') {
+      void vscode.window.showInformationMessage(
+        `rbx: ${target.sel} is a @copy, which is already a file -- there is nothing to promote.`,
+      );
       return;
     }
     const listed = await this.headless(
