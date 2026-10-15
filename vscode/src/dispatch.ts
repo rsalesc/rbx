@@ -77,6 +77,12 @@ export interface DispatchRequest {
   readonly root: string;
   readonly solutions?: readonly string[];
   /**
+   * The argv tail of a `stress` or `add-finding`, as stressSpec.ts (or the
+   * Stress view) built it. Passed through untouched; ignored by every other
+   * command, as `rbx.run.extraArgs` is by everything but a run.
+   */
+  readonly args?: readonly string[];
+  /**
    * Never ask or alert: skip, and say so in the log, wherever a dispatch would
    * otherwise prompt -- something already running there, a contest to choose,
    * no rbx found. For dispatches the user did not click: a build on save must
@@ -240,6 +246,7 @@ export class Dispatcher implements vscode.Disposable {
                 .getConfiguration(undefined, vscode.Uri.file(request.root))
                 .get(EXTRA_ARGS_SETTING),
             ),
+      ...(request.args === undefined ? {} : { args: request.args }),
       contest,
     };
     if ((await this.execute(invocation, request.quiet)) && scope === 'problem') {
@@ -353,9 +360,49 @@ export class Dispatcher implements vscode.Disposable {
       this.release(key);
       throw error;
     }
-    this.last = invocation;
-    void vscode.commands.executeCommand('setContext', 'rbx.canRerun', true);
+    // Not an `add-finding`: rerunning one would add the same finding twice,
+    // and Rerun is a button pressed without looking at what it reruns.
+    if (invocation.command !== 'add-finding') {
+      this.last = invocation;
+      void vscode.commands.executeCommand('setContext', 'rbx.canRerun', true);
+    }
     return true;
+  }
+
+  /**
+   * Whether an rbx task running `command` in exactly `root` is alive.
+   *
+   * For the one fact the artifacts cannot state: a stress manifest left
+   * `running` by an rbx that was killed outright looks exactly like a live one,
+   * and only the task list can tell them apart. Any such task counts, including
+   * one VS Code started on its own (*Rerun Last Task*), since the definition is
+   * what it reads.
+   */
+  isRunning(root: string, command: RbxCommand): boolean {
+    return matching(root, command).length > 0;
+  }
+
+  /**
+   * Stop every rbx task running `command` in `root`, and wait for it to go.
+   *
+   * Terminating the task is the Ctrl-C a user would type: rbx gets to write its
+   * own ending (a stress manifest then reads `interrupted`), so nothing here
+   * touches the artifacts. Resolves once the tasks have ended, or after the
+   * same timeout a dispatch waits for -- the views follow the manifest either
+   * way.
+   */
+  async stop(root: string, command: RbxCommand): Promise<void> {
+    const running = matching(root, command);
+    if (running.length === 0) {
+      return;
+    }
+    for (const task of running) {
+      task.execution.terminate();
+    }
+    const stopped = await waitFor(() => matching(root, command).length === 0, STOP_TIMEOUT_MS);
+    if (!stopped) {
+      log(`${command} in ${root} did not stop within ${STOP_TIMEOUT_MS / 1000}s.`);
+    }
   }
 
   private task(invocation: Invocation, executable: string): vscode.Task {
@@ -511,6 +558,16 @@ export class Dispatcher implements vscode.Disposable {
   dispose(): void {
     this.disposables.forEach((disposable) => disposable.dispose());
   }
+}
+
+/** The running rbx tasks for `command` whose directory is exactly `root`. */
+function matching(root: string, command: RbxCommand): Running[] {
+  const target = path.resolve(root);
+  return runningRbxTasks().filter(
+    (running) =>
+      running.execution.task.definition.command === command &&
+      path.resolve(running.cwd) === target,
+  );
 }
 
 /**

@@ -791,9 +791,11 @@
               "statements",
               "contest-statements",
               "tutorials",
-              "contest-tutorials"
+              "contest-tutorials",
+              "stress",
+              "add-finding"
             ],
-            "description": "Describes the tasks the rbx extension starts from its buttons; rbx tasks cannot be declared in tasks.json. The rbx command: `build`, `run`, `contest-run` (`rbx contest each --inline run`), `statements`/`tutorials` (`rbx statements build`/`rbx tutorials build`), or their `contest-` forms."
+            "description": "Describes the tasks the rbx extension starts from its buttons; rbx tasks cannot be declared in tasks.json. The rbx command: `build`, `run`, `contest-run` (`rbx contest each --inline run`), `statements`/`tutorials` (`rbx statements build`/`rbx tutorials build`), or their `contest-` forms, `stress`, or `add-finding` (`rbx testcases add-finding`)."
           },
           "cwd": {
             "type": "string",
@@ -809,6 +811,13 @@
           "contest": {
             "type": "string",
             "description": "The contest variant id passed as `-C`, or an empty string for the canonical contest.rbx.yml."
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "For `stress` and `add-finding`: the arguments after the subcommand."
           }
         }
       }

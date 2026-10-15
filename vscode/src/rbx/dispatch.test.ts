@@ -102,6 +102,56 @@ test('scope follows the command', () => {
   assert.strictEqual(scopeOf('run'), 'problem');
   assert.strictEqual(scopeOf('build'), 'problem');
   assert.strictEqual(scopeOf('contest-run'), 'contest');
+  assert.strictEqual(scopeOf('stress'), 'problem');
+  assert.strictEqual(scopeOf('add-finding'), 'problem');
+});
+
+const STRESS_ARGS = ['-g', 'gens/gen.cpp [1..9]', '-f', '[sols/wa.cpp]', '--no-promote'];
+
+test('a stress puts its argv tail after the subcommand, and nothing of run', () => {
+  assert.deepStrictEqual(
+    rbxArgs(invocation({ command: 'stress', args: STRESS_ARGS, extraArgs: ['-v4'], solutions: ['x'] })),
+    ['stress', ...STRESS_ARGS],
+  );
+  assert.deepStrictEqual(
+    rbxArgs(
+      invocation({
+        command: 'stress',
+        args: ['wa', '--no-promote'],
+        contest: { kind: 'variant', id: 'd1' },
+      }),
+    ),
+    ['-C', 'd1', 'stress', 'wa', '--no-promote'],
+  );
+});
+
+test('add-finding is a testcases subcommand', () => {
+  assert.deepStrictEqual(
+    rbxArgs(invocation({ command: 'add-finding', args: ['1', '2', '--group', 'main'] })),
+    ['testcases', 'add-finding', '1', '2', '--group', 'main'],
+  );
+});
+
+test('a stress task is named for what it stresses', () => {
+  const name = (args: string[]) => taskName(invocation({ command: 'stress', args }));
+  assert.strictEqual(name(['wa-small', '--no-promote']), 'stress wa-small');
+  assert.strictEqual(name(STRESS_ARGS), 'stress gens/gen.cpp [1..9]');
+  assert.strictEqual(name(['--fuzz-on', 'main', '--no-promote']), 'stress fuzz');
+  assert.strictEqual(name(['--fuzz', '--no-promote']), 'stress fuzz');
+  assert.strictEqual(
+    taskName(invocation({ command: 'add-finding', args: ['1', '--group', 'main'] })),
+    'add finding',
+  );
+});
+
+test('the argv tail is part of a stress task identity', () => {
+  assert.deepStrictEqual(taskDefinition(invocation({ command: 'stress', args: STRESS_ARGS })), {
+    type: 'rbx',
+    command: 'stress',
+    cwd: '/c/A',
+    args: STRESS_ARGS,
+  });
+  assert.strictEqual('args' in taskDefinition(invocation({ command: 'build' })), false);
 });
 
 // The busy policy. These are the cases the issue's acceptance hangs on:
