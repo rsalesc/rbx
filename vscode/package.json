@@ -2,7 +2,7 @@
   "name": "rbx-vscode",
   "displayName": "rbx",
   "description": "Browse rbx testcases and solution verdicts without leaving the editor.",
-  "version": "2.1.2",
+  "version": "2.2.0",
   "publisher": "rsalesc",
   "license": "MIT",
   "icon": "resources/icon.png",
