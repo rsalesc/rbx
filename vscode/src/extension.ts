@@ -47,6 +47,7 @@ import { registerStatementPreview } from './statementPreview';
 import { StatementReports } from './statementReports';
 import { registerStatementVarHints } from './statementVarHints';
 import { StatementVarsIndex } from './statementVarsIndex';
+import { StressViewProvider } from './stressView';
 import { TestsetPanel } from './testsetPanel';
 import { TestsetViewProvider } from './testsetView';
 import { openVisualization } from './visualizationPanel';
@@ -126,6 +127,20 @@ export function activate(context: vscode.ExtensionContext): void {
 
   registerCommands(context, view, data, active, testset);
   const dispatcher = registerDispatch(context, active, declared, view);
+  // The third view in the container, on the same `data` and `active` as the
+  // other two. It needs the dispatcher, which is why it is built only here.
+  const stress = new StressViewProvider(
+    data,
+    active,
+    dispatcher,
+    context.workspaceState,
+    context.extensionUri,
+  );
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(StressViewProvider.viewType, stress),
+    vscode.commands.registerCommand('rbx.stress.new', () => stress.newStress()),
+    vscode.commands.registerCommand('rbx.stress.stop', () => stress.stop()),
+  );
   // One watcher over every statement build report, shared by the preview and
   // the Problems panel so a finished build is read once.
   const statementReports = new StatementReports();

@@ -2,7 +2,14 @@ import * as assert from 'assert';
 import { test } from 'node:test';
 
 import { FinderRow } from './finder';
-import { StressLaunch, generatorCallString, stressArgv, validateLaunch } from './stressSpec';
+import {
+  StressLaunch,
+  defaultLaunch,
+  generatorCallString,
+  lastLaunchKey,
+  stressArgv,
+  validateLaunch,
+} from './stressSpec';
 
 const WA_ROW: FinderRow = { kind: 'break', solution: 'sols/wa.cpp', outcome: 'WRONG_ANSWER' };
 
@@ -213,4 +220,11 @@ test("nothing that becomes an argument may hold a single quote, which the termin
     ) ?? '',
     quoted,
   );
+});
+
+test('the default launch adds nothing to the source but --no-promote', () => {
+  const declared = defaultLaunch({ kind: 'declared', name: 'wa-small' });
+  assert.strictEqual(validateLaunch(declared), undefined);
+  assert.deepStrictEqual(stressArgv(declared), ['stress', 'wa-small', '--no-promote']);
+  assert.strictEqual(lastLaunchKey('/p/a'), 'rbx.stress.lastLaunch:/p/a');
 });

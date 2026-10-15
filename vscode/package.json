@@ -20,7 +20,8 @@
   "activationEvents": [
     "workspaceContains:**/problem.rbx.yml",
     "onView:rbx.run",
-    "onView:rbx.testset"
+    "onView:rbx.testset",
+    "onView:rbx.stress"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -45,6 +46,12 @@
           "id": "rbx.testset",
           "type": "webview",
           "name": "Tests",
+          "contextualTitle": "rbx"
+        },
+        {
+          "id": "rbx.stress",
+          "type": "webview",
+          "name": "Stress",
           "contextualTitle": "rbx"
         }
       ]
@@ -283,6 +290,31 @@
         "title": "Change Contest for Dispatched Commands",
         "category": "rbx",
         "enablement": "rbx.dispatchEnabled"
+      },
+      {
+        "command": "rbx.stress.new",
+        "title": "New Stress…",
+        "category": "rbx",
+        "icon": "$(add)",
+        "enablement": "rbx.dispatchEnabled"
+      },
+      {
+        "command": "rbx.stress.stop",
+        "title": "Stop Stress",
+        "category": "rbx",
+        "icon": "$(debug-stop)",
+        "enablement": "rbx.dispatchEnabled"
+      },
+      {
+        "command": "rbx.stress.openLauncher",
+        "title": "Open Stress Launcher",
+        "category": "rbx",
+        "enablement": "rbx.dispatchEnabled"
+      },
+      {
+        "command": "rbx.stress.promote",
+        "title": "Promote Stress Finding",
+        "category": "rbx"
       }
     ],
     "menus": {
@@ -341,6 +373,22 @@
         {
           "command": "rbx.changeContest",
           "when": "rbx.dispatchEnabled && rbx.activeInContest"
+        },
+        {
+          "command": "rbx.stress.new",
+          "when": "rbx.dispatchEnabled"
+        },
+        {
+          "command": "rbx.stress.stop",
+          "when": "rbx.dispatchEnabled && rbx.stressRunning"
+        },
+        {
+          "command": "rbx.stress.openLauncher",
+          "when": "false"
+        },
+        {
+          "command": "rbx.stress.promote",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -361,12 +409,12 @@
         },
         {
           "command": "rbx.selectProblem",
-          "when": "view == rbx.run || view == rbx.testset",
+          "when": "view == rbx.run || view == rbx.testset || view == rbx.stress",
           "group": "navigation@1"
         },
         {
           "command": "rbx.refresh",
-          "when": "view == rbx.run || view == rbx.testset",
+          "when": "view == rbx.run || view == rbx.testset || view == rbx.stress",
           "group": "navigation@2"
         },
         {
@@ -378,6 +426,16 @@
           "command": "rbx.changeContest",
           "when": "(view == rbx.run || view == rbx.testset) && rbx.dispatchEnabled && rbx.activeInContest",
           "group": "dispatch@2"
+        },
+        {
+          "command": "rbx.stress.stop",
+          "when": "view == rbx.stress && rbx.dispatchEnabled && rbx.stressRunning",
+          "group": "navigation@0"
+        },
+        {
+          "command": "rbx.stress.new",
+          "when": "view == rbx.stress && rbx.dispatchEnabled",
+          "group": "navigation@0"
         }
       ],
       "webview/context": [

@@ -25,6 +25,16 @@ import { StressDeclaration } from './stressDeclarations';
 /** rbx stress's own defaults, which the argv leaves out rather than repeats. */
 export const STRESS_DEFAULTS = { timeout: 10, findings: 1 } as const;
 
+/**
+ * Where the last launch for a package is kept, in `workspaceState`.
+ *
+ * Per package root, so a contest's problems each remember their own; written
+ * by the launcher, read by the Stress view's Run on a declared stress.
+ */
+export function lastLaunchKey(root: string): string {
+  return `rbx.stress.lastLaunch:${root}`;
+}
+
 /** Where the inputs come from. */
 export type StressSource =
   /** A stress declared in problem.rbx.yml, by name. */
@@ -59,6 +69,23 @@ export interface StressLaunch {
   readonly validate: boolean;
   /** A solution path, relative to the package root. */
   readonly reference?: string;
+}
+
+/**
+ * A launch that changes nothing rbx would assume: `rbx stress <source>` plus
+ * `--no-promote`. Also what the launcher opens blank on.
+ */
+export function defaultLaunch(source: StressSource): StressLaunch {
+  return {
+    source,
+    slowest: false,
+    timeout: STRESS_DEFAULTS.timeout,
+    findings: STRESS_DEFAULTS.findings,
+    tl: { kind: 'normal' },
+    sanitized: false,
+    skipInvalid: false,
+    validate: true,
+  };
 }
 
 /** What the argv needs of a declared stress: its generator call and finder. */

@@ -31,6 +31,7 @@ const webview = await esbuild.context({
   entryPoints: [
     'src/webview/main.ts',
     'src/webview/testsetMain.ts',
+    'src/webview/stressMain.ts',
     'src/webview/panelMain.ts',
     'src/webview/statementMain.mts',
     'src/webview/style.css',
