@@ -213,10 +213,9 @@ def _copy_testcase_outputs_over(
     ):
         has_copied = True
 
-    if _copy_testcase_output_over(
-        reference_path, dest.outputPath, '.interaction', dry_run=dry_run
-    ):
-        has_copied = True
+    # A hand-written `.interaction` is never copied over: it is statement-only
+    # (read straight from next to the manual input, see testcase_sample_utils),
+    # and must not stand in for the interaction captured by running the solution.
 
     return has_copied
 

@@ -415,7 +415,9 @@ async def test_get_statement_samples_interaction_generated(
 
 @pytest.mark.asyncio
 async def test_get_statement_samples_interaction_manual(
-    tmp_path, mock_extract_generation_testcases_from_groups
+    tmp_path,
+    mock_extract_generation_testcases_from_groups,
+    testing_pkg: testing_package.TestingPackage,
 ):
     """Test 15: Interaction (Manual)."""
     dest_input = tmp_path / 'dest.in'
@@ -432,12 +434,70 @@ async def test_get_statement_samples_interaction_manual(
     mock_extract_generation_testcases_from_groups.return_value = [entry]
 
     samples = await testcase_sample_utils.get_statement_samples()
-    # Code analysis reveals that manual interaction is looked up relative to 'input_path'.
-    # Since input_path is overwritten by dest_input, and dest_input has no interaction,
-    # this returns None.
-    # To make this pass with current code, we expect None.
-    # This highlights a potential issue/feature: Manual interactions are ignored if dest input is used.
-    assert list(samples)[0].interaction is None
+    # A hand-written interaction next to the manual input is statement-only, like
+    # `.out.statement`: it is shown even when no run captured one.
+    interaction = list(samples)[0].interaction
+    assert interaction is not None
+    assert [(e.pipe, e.data) for e in interaction.entries] == [(1, '5'), (0, '10')]
+
+
+@pytest.mark.asyncio
+async def test_get_statement_samples_manual_interaction_beats_captured(
+    tmp_path,
+    mock_extract_generation_testcases_from_groups,
+    testing_pkg: testing_package.TestingPackage,
+):
+    # The run of the main solution captured its own interaction next to the
+    # built test; the setter's hand-written one wins in the statement.
+    dest_input = tmp_path / 'build' / 'dest.in'
+    dest_input.parent.mkdir()
+    dest_input.write_text('4\n')
+    (tmp_path / 'build' / 'dest.pio').write_text('<\n>\n<4\n>8\n')
+
+    src_input = tmp_path / 'manual.in'
+    src_input.write_text('4\n')
+    (tmp_path / 'manual.interaction').write_text('< 4\n> 999\n')
+
+    entry = create_entry(
+        TestcaseEntry(group='samples', index=0),
+        copied_to_input=dest_input,
+        copied_from_input=src_input,
+    )
+    mock_extract_generation_testcases_from_groups.return_value = [entry]
+
+    samples = await testcase_sample_utils.get_statement_samples()
+    interaction = list(samples)[0].interaction
+    assert interaction is not None
+    assert [(e.pipe, e.data) for e in interaction.entries] == [(0, '4'), (1, '999')]
+    # The captured interaction is left untouched.
+    assert (tmp_path / 'build' / 'dest.pio').read_text() == '<\n>\n<4\n>8\n'
+
+
+@pytest.mark.asyncio
+async def test_get_statement_samples_captured_interaction_without_manual(
+    tmp_path,
+    mock_extract_generation_testcases_from_groups,
+    testing_pkg: testing_package.TestingPackage,
+):
+    dest_input = tmp_path / 'build' / 'dest.in'
+    dest_input.parent.mkdir()
+    dest_input.write_text('4\n')
+    (tmp_path / 'build' / 'dest.pio').write_text('<\n>\n<4\n>8\n')
+
+    src_input = tmp_path / 'manual.in'
+    src_input.write_text('4\n')
+
+    entry = create_entry(
+        TestcaseEntry(group='samples', index=0),
+        copied_to_input=dest_input,
+        copied_from_input=src_input,
+    )
+    mock_extract_generation_testcases_from_groups.return_value = [entry]
+
+    samples = await testcase_sample_utils.get_statement_samples()
+    interaction = list(samples)[0].interaction
+    assert interaction is not None
+    assert [(e.pipe, e.data) for e in interaction.entries] == [(0, '4'), (1, '8')]
 
 
 @pytest.mark.asyncio
