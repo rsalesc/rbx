@@ -315,6 +315,18 @@
         "command": "rbx.stress.promote",
         "title": "Promote Stress Finding",
         "category": "rbx"
+      },
+      {
+        "command": "rbx.proposal.accept",
+        "title": "Accept Proposed Change",
+        "category": "rbx",
+        "icon": "$(check)"
+      },
+      {
+        "command": "rbx.proposal.discard",
+        "title": "Discard Proposed Change",
+        "category": "rbx",
+        "icon": "$(discard)"
       }
     ],
     "menus": {
@@ -343,9 +355,27 @@
           "command": "rbx.runSolution",
           "when": "rbx.dispatchEnabled && resourceScheme == file && resourcePath in rbx.solutionFiles",
           "group": "navigation@0"
+        },
+        {
+          "command": "rbx.proposal.accept",
+          "when": "resourceScheme == rbx-proposed",
+          "group": "navigation@0"
+        },
+        {
+          "command": "rbx.proposal.discard",
+          "when": "resourceScheme == rbx-proposed",
+          "group": "navigation@1"
         }
       ],
       "commandPalette": [
+        {
+          "command": "rbx.proposal.accept",
+          "when": "resourceScheme == rbx-proposed"
+        },
+        {
+          "command": "rbx.proposal.discard",
+          "when": "resourceScheme == rbx-proposed"
+        },
         {
           "command": "rbx.openVisualizationExternally",
           "when": "activeWebviewPanelId == 'rbx.visualization'"

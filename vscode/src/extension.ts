@@ -20,6 +20,7 @@ import { registerDiagnostics } from './diagnostics';
 import { registerDispatch } from './dispatch';
 import { registerInteractionDecorations } from './interactionDecorations';
 import { initLog, log } from './log';
+import { PROPOSED_SCHEME, ProposedFileSystemProvider } from './proposedFs';
 import { CONTEST_FILE_GLOB, CONTEST_MANIFEST, isContestVariantFile } from './rbx/contest';
 import { resetBuildDirs, resolveBuildDir } from './rbx/environment';
 import {
@@ -48,6 +49,7 @@ import { StatementReports } from './statementReports';
 import { registerStatementVarHints } from './statementVarHints';
 import { StatementVarsIndex } from './statementVarsIndex';
 import { StressLauncher } from './stressLauncher';
+import { StressPromoter } from './stressPromote';
 import { StressViewProvider } from './stressView';
 import { TestsetPanel } from './testsetPanel';
 import { TestsetViewProvider } from './testsetView';
@@ -137,10 +139,21 @@ export function activate(context: vscode.ExtensionContext): void {
     context.workspaceState,
     context.extensionUri,
   );
+  // Promote answers the view's `rbx.stress.promote`; its script-group
+  // proposals live in `proposed`, the one writable scheme the extension has.
+  const proposed = new ProposedFileSystemProvider();
+  const promoter = new StressPromoter(stress, dispatcher, proposed);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(StressViewProvider.viewType, stress),
     vscode.commands.registerCommand('rbx.stress.new', () => stress.newStress()),
     vscode.commands.registerCommand('rbx.stress.stop', () => stress.stop()),
+    vscode.workspace.registerFileSystemProvider(PROPOSED_SCHEME, proposed, {
+      isCaseSensitive: true,
+    }),
+    promoter,
+    vscode.commands.registerCommand('rbx.stress.promote', (args: unknown) => promoter.promote(args)),
+    vscode.commands.registerCommand('rbx.proposal.accept', (uri: unknown) => promoter.accept(uri)),
+    vscode.commands.registerCommand('rbx.proposal.discard', (uri: unknown) => promoter.discard(uri)),
     // The view names the intent (`OpenLauncherArgs`) and this answers it; the
     // launcher checks the argument itself, since a command takes anything.
     vscode.commands.registerCommand('rbx.stress.openLauncher', (args: unknown) =>
