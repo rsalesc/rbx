@@ -4133,7 +4133,7 @@ SPEC = {
             'help': 'Whether to save extra logs and outputs from interactive solutions.',
             'kind': 'option',
             'multiple': False,
-            'names': ['--capture', '-cp'],
+            'names': ['--capture', '-cp', '--no-capture'],
             'takes_value': False,
             'value': {'kind': 'none'},
         },
