@@ -2,7 +2,13 @@ import * as assert from 'assert';
 import { test } from 'node:test';
 import { parse as parseYaml } from 'yaml';
 
-import { parseStressDeclarations } from './stressDeclarations';
+import {
+  isGlob,
+  listingFailure,
+  parseStressDeclarations,
+  parseStressListing,
+  withoutGlobs,
+} from './stressDeclarations';
 
 const MANIFEST = `
 name: sum
@@ -85,4 +91,62 @@ test('a half-typed entry costs that entry, never the rest', () => {
 test('an outcome this extension cannot resolve is kept as written', () => {
   const parsed = parseStressDeclarations({ solutions: [{ path: 'a', outcome: 'newer-thing' }] });
   assert.deepStrictEqual(parsed.solutions, [{ path: 'a', outcome: 'newer-thing' }]);
+});
+
+test('rbx stress --list --json reads as declarations, globs expanded by rbx', () => {
+  const listing = JSON.parse(
+    '{"stresses": [{"name": "wa", "generator": {"name": "gen", "args": null}, "finder": "[sols/wa-1.cpp]"},' +
+      ' {"name": "", "generator": {"name": "gen"}, "finder": "x"}],' +
+      ' "solutions": [{"path": "sols/main.cpp", "outcome": "ACCEPTED"},' +
+      ' {"path": "sols/wa-1.cpp", "outcome": "wa"}, {"outcome": "WRONG_ANSWER"}, {"path": "sols/x.cpp"}],' +
+      ' "generators": ["gen", "", 3], "groups": ["samples", "main", "main"]}',
+  );
+  assert.deepStrictEqual(parseStressListing(listing), {
+    stresses: [{ name: 'wa', generator: { name: 'gen', args: undefined }, finder: '[sols/wa-1.cpp]' }],
+    solutions: [
+      { path: 'sols/main.cpp', outcome: 'ACCEPTED' },
+      { path: 'sols/wa-1.cpp', outcome: 'WRONG_ANSWER' },
+      { path: 'sols/x.cpp', outcome: undefined },
+    ],
+    generators: ['gen'],
+    groups: ['samples', 'main'],
+  });
+});
+
+test('anything but a listing is no listing, so the caller falls back', () => {
+  for (const raw of [undefined, null, [], 'x', { stresses: [], solutions: [], generators: [] }]) {
+    assert.strictEqual(parseStressListing(raw), undefined, JSON.stringify(raw));
+  }
+});
+
+test('a failed listing is one line, the one naming the error', () => {
+  const panel = [
+    'Usage: rbx stress [OPTIONS] [NAME]',
+    "Try 'rbx stress --help' for help.",
+    '╭─ Error ──────────────────────────────╮',
+    '│ No such option: --list               │',
+    '╰──────────────────────────────────────╯',
+    '',
+  ].join('\n');
+  assert.strictEqual(listingFailure(panel), 'No such option: --list');
+  assert.strictEqual(listingFailure('something broke\n'), 'something broke');
+  assert.strictEqual(listingFailure(''), 'rbx printed no listing');
+});
+
+test('the YAML fallback drops the globs only rbx can expand', () => {
+  assert.deepStrictEqual(
+    ['sols/*.cpp', 'a?.cpp', 'sols/[ab].cpp', 'sols/a.cpp'].map(isGlob),
+    [true, true, true, false],
+  );
+  const declarations = parseStressDeclarations({
+    generators: [{ name: 'gen' }, { name: 'gens/*' }],
+    solutions: [{ path: 'sols/main.cpp' }, { path: 'sols/wa-*.*', outcome: 'WA' }],
+    testcases: [{ name: 'main' }],
+  });
+  assert.deepStrictEqual(withoutGlobs(declarations), {
+    stresses: [],
+    generators: ['gen'],
+    solutions: [{ path: 'sols/main.cpp', outcome: undefined }],
+    groups: ['main'],
+  });
 });

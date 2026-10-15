@@ -43,6 +43,8 @@ type HostMessage =
       readonly title: string;
       readonly rootLabel: string;
       readonly declarations: StressDeclarations;
+      /** Set when the pickers fell back to problem.rbx.yml because rbx could not list them. */
+      readonly notice?: string;
       readonly dispatch: boolean;
     }
   | { readonly type: 'vars'; readonly names: readonly string[] };
@@ -61,6 +63,7 @@ let received = false;
 const formHost = document.getElementById('form') as HTMLElement;
 const title = document.getElementById('title') as HTMLElement;
 const rootLabel = document.getElementById('root') as HTMLElement;
+const notice = document.getElementById('notice') as HTMLElement;
 const preview = document.getElementById('preview') as HTMLElement;
 const problem = document.getElementById('problem') as HTMLElement;
 const runButton = document.getElementById('run') as HTMLButtonElement;
@@ -290,6 +293,8 @@ window.addEventListener('message', (event: MessageEvent) => {
     dispatch = message.dispatch;
     title.textContent = message.title;
     rootLabel.textContent = message.rootLabel;
+    notice.textContent = message.notice ?? '';
+    notice.hidden = message.notice === undefined;
     if (form === undefined || target !== message.target.id) {
       target = message.target.id;
       form = formOf(message.target.launch, declarations);

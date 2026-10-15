@@ -66,6 +66,12 @@ body {
   color: var(--vscode-descriptionForeground);
 }
 
+.notice {
+  max-width: 760px;
+  margin: 4px 0 0;
+  color: var(--vscode-descriptionForeground);
+}
+
 .launcher-form {
   max-width: 760px;
 }

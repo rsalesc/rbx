@@ -21,11 +21,16 @@ import { log } from './log';
 import { Latest } from './rbx/latest';
 import { manifestPath, packageLayout } from './rbx/layout';
 import { readYamlFile } from './rbx/store';
-import { StressDeclarations, parseStressDeclarations } from './rbx/stressDeclarations';
+import {
+  StressDeclarations,
+  parseStressDeclarations,
+  withoutGlobs,
+} from './rbx/stressDeclarations';
 import { StressLaunch, lastLaunchKey, parseLaunch, stressDispatchArgs } from './rbx/stressSpec';
 import { declaredRunLaunch } from './rbx/stressViewModel';
 import type { RunDataChange } from './runData';
 import type { StatementVarsIndex } from './statementVarsIndex';
+import { StressListing } from './stressListing';
 import type { OpenLauncherArgs } from './stressView';
 import {
   commandLine,
@@ -84,8 +89,10 @@ function asOpenArgs(raw: unknown): OpenLauncherArgs | undefined {
   return typeof stress === 'string' && stress !== '' ? { root, stress } : { root };
 }
 
-async function readDeclarations(root: string): Promise<StressDeclarations> {
-  return parseStressDeclarations(await readYamlFile(manifestPath(packageLayout(root))));
+/** What the pickers offer, and -- when it is the fallback -- why. */
+interface Offered {
+  readonly declarations: StressDeclarations;
+  readonly notice?: string;
 }
 
 export class StressLauncher {
@@ -99,6 +106,8 @@ export class StressLauncher {
   private target: Target = { id: StressLauncher.newId() };
   /** Set once the panel is gone; every await below re-checks it. */
   private disposed = false;
+  /** rbx's own listing, globs expanded; owned by the panel, so its watchers go with it. */
+  private readonly listing: StressListing;
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -106,7 +115,14 @@ export class StressLauncher {
     private args: OpenLauncherArgs,
   ) {
     panel.webview.html = this.html(panel.webview);
+    this.listing = new StressListing(deps.onDidChange);
     this.subscriptions.push(
+      this.listing,
+      this.listing.onDidChange((root) => {
+        if (this.concerns(root)) {
+          void this.post();
+        }
+      }),
       panel.webview.onDidReceiveMessage((message: ClientMessage) => {
         this.receive(message).catch((error) => {
           log(`The stress launcher failed to handle ${String(message.type)}: ${String(error)}`);
@@ -196,10 +212,31 @@ export class StressLauncher {
     return initialLaunch(declarations, remembered);
   }
 
+  /**
+   * The declarations the pickers offer: rbx's listing, with solution globs
+   * expanded, once it has one. Until then -- or when rbx cannot list them --
+   * problem.rbx.yml as written minus its globs, which name no file a finder
+   * can, with a line saying why when rbx failed.
+   */
+  private async offered(root: string): Promise<Offered> {
+    const answer = this.listing.peek(root);
+    if (answer !== undefined && 'declarations' in answer) {
+      return { declarations: answer.declarations };
+    }
+    const yaml = parseStressDeclarations(await readYamlFile(manifestPath(packageLayout(root))));
+    return {
+      declarations: withoutGlobs(yaml),
+      notice:
+        answer === undefined
+          ? undefined
+          : `Couldn't ask rbx for the expanded solutions: ${answer.error}`,
+    };
+  }
+
   private async post(): Promise<void> {
     const current = this.posts.begin();
     const root = this.args.root;
-    const declarations = await readDeclarations(root);
+    const { declarations, notice } = await this.offered(root);
     if (!current() || this.disposed) {
       return;
     }
@@ -211,6 +248,7 @@ export class StressLauncher {
       title: titleOf(this.args),
       rootLabel: vscode.workspace.asRelativePath(root),
       declarations,
+      notice,
       dispatch: dispatchEnabled(),
     });
   }
@@ -267,7 +305,7 @@ export class StressLauncher {
       void vscode.window.showInformationMessage('rbx: dispatching commands is turned off.');
       return;
     }
-    const declarations = await readDeclarations(root);
+    const { declarations } = await this.offered(root);
     if (this.disposed || root !== this.args.root) {
       return;
     }
@@ -296,7 +334,7 @@ export class StressLauncher {
     if (launch === undefined) {
       return;
     }
-    const declarations = await readDeclarations(this.args.root);
+    const { declarations } = await this.offered(this.args.root);
     // Only a line that would run: Copy is the terminal's Run, and a copied
     // command rbx refuses is the same surprise later.
     const line =
@@ -339,6 +377,7 @@ export class StressLauncher {
         <h1 id="title"></h1>
         <span id="root" class="root"></span>
       </header>
+      <p id="notice" class="notice" hidden></p>
       <div id="form" class="launcher-form"></div>
     </main>
     <footer class="launcher-footer">
