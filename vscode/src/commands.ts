@@ -138,7 +138,7 @@ export function registerCommands(
   // commands it owns then report that there is nothing to act on rather than
   // failing to register, which would leave dead entries in the palette.
   testset?: TestsetViewProvider,
-): void {
+): TestcasePanes {
   /**
    * The seam where two invocation paths arrive in two shapes.
    *
@@ -648,4 +648,5 @@ export function registerCommands(
       }
     }),
   );
+  return panes;
 }

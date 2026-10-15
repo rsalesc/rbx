@@ -17,7 +17,9 @@
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": false,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    // For src/rbx/testplan.cases.json, which rbx's Python tests read too.
+    "resolveJsonModule": true
   },
   "include": ["src"]
 }

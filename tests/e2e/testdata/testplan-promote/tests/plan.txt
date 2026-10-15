@@ -1,0 +1,4 @@
+// Tests are addressed by the line their statement starts on.
+gen 1 2
+gen 30 40
+@input "5 6"

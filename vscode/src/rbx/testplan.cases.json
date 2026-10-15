@@ -1,0 +1,118 @@
+[
+  {
+    "name": "calls and comments",
+    "script": "// header comment\n# another comment\ngen 1 2\n\ngens/gen.cpp --n=10 --seed=3\n",
+    "statements": [
+      {
+        "line": 3,
+        "endLine": 3,
+        "kind": "call"
+      },
+      {
+        "line": 5,
+        "endLine": 5,
+        "kind": "call"
+      }
+    ]
+  },
+  {
+    "name": "copy and quoted input",
+    "script": "@copy tests/manual/1.in\n@input \"1 2\"\n@input '3 4'\n",
+    "statements": [
+      {
+        "line": 1,
+        "endLine": 1,
+        "kind": "copy"
+      },
+      {
+        "line": 2,
+        "endLine": 2,
+        "kind": "input"
+      },
+      {
+        "line": 3,
+        "endLine": 3,
+        "kind": "input"
+      }
+    ]
+  },
+  {
+    "name": "triple-quoted input over lines",
+    "script": "gen 1\n@input \"\"\"\n3\n1 2 3\n\"\"\"\ngen 2\n",
+    "statements": [
+      {
+        "line": 1,
+        "endLine": 1,
+        "kind": "call"
+      },
+      {
+        "line": 2,
+        "endLine": 5,
+        "kind": "input"
+      },
+      {
+        "line": 6,
+        "endLine": 6,
+        "kind": "call"
+      }
+    ]
+  },
+  {
+    "name": "block input over lines",
+    "script": "@input {\n  5\n  1 2 3 4 5\n}\n@input { 7 }\ngen 3\n",
+    "statements": [
+      {
+        "line": 1,
+        "endLine": 4,
+        "kind": "input"
+      },
+      {
+        "line": 5,
+        "endLine": 5,
+        "kind": "input"
+      },
+      {
+        "line": 6,
+        "endLine": 6,
+        "kind": "call"
+      }
+    ]
+  },
+  {
+    "name": "testgroups are descended into",
+    "script": "@testgroup small {\n  gen 1\n  // inside a group\n  @input \"2\"\n}\n@testgroup big/huge {\n  gen 100000\n}\n",
+    "statements": [
+      {
+        "line": 2,
+        "endLine": 2,
+        "kind": "call"
+      },
+      {
+        "line": 4,
+        "endLine": 4,
+        "kind": "input"
+      },
+      {
+        "line": 7,
+        "endLine": 7,
+        "kind": "call"
+      }
+    ]
+  },
+  {
+    "name": "indented and trailing whitespace",
+    "script": "   gen 1   \n\t@copy a.in\n\n\n",
+    "statements": [
+      {
+        "line": 1,
+        "endLine": 1,
+        "kind": "call"
+      },
+      {
+        "line": 2,
+        "endLine": 2,
+        "kind": "copy"
+      }
+    ]
+  }
+]

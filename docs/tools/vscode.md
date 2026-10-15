@@ -180,6 +180,44 @@ your desktop associates with the file.
     answer. Visualizing what a *solution* printed is not available in the
     extension yet -- use `rbx ui` for that.
 
+## Working on a testplan
+
+Each statement of a
+[testplan](../setters/testset/index.md#static-generator-script-aka-testplan)
+makes a test, and the editor shows a row of actions over each statement. Each
+acts on that statement's test, without building the rest of the testset:
+
+- **Generate** writes the test and its expected answer, and opens them in the
+  testcase panes.
+- **Validate** writes the test and runs its group's validators on it, then
+  shows whether they accepted it, with the message of any that rejected it.
+- **Run** runs your solutions on it, with `rbx irun` in a terminal.
+- **Promote** turns the test into a file in a
+  [manual test group](../setters/testset/index.md#testcase-glob): one you pick,
+  or a new one that **Promote** adds to `problem.rbx.yml`. Once you have
+  picked, it runs `rbx testcases promote` in a terminal, which also deletes the
+  line from the testplan. A `@copy` line is already a file, so it has no
+  **Promote** action.
+
+The same actions are in the editor's context menu, acting on the test under the
+cursor. Each one saves the testplan first, since {{rbx}} reads it from disk.
+**Run** and **Promote** need the extension to start commands in a terminal:
+with `rbx.dispatch.enabled` off, the extension hides **Run**, and **Promote**
+offers to copy its command for you to run.
+
+On the command line, you name a test by its testplan, relative to the problem
+folder, and the line its statement starts on: `tests/plan.txt:12`.
+
+```bash
+rbx testcases generate tests/plan.txt:12 --validate
+rbx testcases promote tests/plan.txt:12 --group handmade
+```
+
+The first command writes the test on line 12 of `tests/plan.txt` and runs its
+validators on it. The second moves that test into `handmade`, a manual group
+that must already exist, and deletes the line. To create the group instead,
+pass `--new-manual NAME --glob GLOB`.
+
 ## Stress testing
 
 The **Stress** view is next to the run view and the **Tests** view. It starts
@@ -400,3 +438,5 @@ Every surface above can be turned off or adjusted on its own. Search for
 | `rbx.executable` | *(empty)* | The `rbx` to call, when finding it automatically does not work |
 | `rbx.solutionLabel` | `trimmed` | How much of a solution's path the run view shows: `full`, `trimmed` or `basename` |
 | `rbx.testcaseLayout` | `below` | Where the second testcase pane is *first* placed: `below` or `beside` |
+| `rbx.testplanCodeLens` | `true` | Show **Generate**, **Validate**, **Run** and **Promote** over every test of a testplan |
+| `rbx.dispatch.enabled` | `true` | Let the extension's buttons start `rbx` commands in a visible terminal |

@@ -58,6 +58,15 @@ testcases:
             args: 7 8
           - name: gen
             args: 42 58
+  # A testplan: every test in it carries a Generate · Validate · Run · Promote
+  # lens. Promote moves one into `handmade` below (or a group it creates) and
+  # deletes its line here.
+  - name: plan
+    generatorScript:
+      path: tests/plan.txt
+  # Where promoted tests land: a folder of `.in` files.
+  - name: handmade
+    testcaseGlob: tests/handmade/*.in
 
 # Declared for the same reason as problem A's, but this package has no `vars`,
 # so its statement is the case where the editor must draw nothing at all.
