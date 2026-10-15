@@ -1308,6 +1308,15 @@ body.dispatch-enabled .welcome-actions {
   background: var(--vscode-toolbar-hoverBackground);
 }
 
+.stress-icon-button[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.stress-icon-button[aria-disabled='true']:hover {
+  background: none;
+}
+
 .stress-icon-button:focus-visible,
 .stress-link:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);

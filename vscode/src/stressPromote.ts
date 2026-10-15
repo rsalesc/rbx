@@ -20,6 +20,11 @@
  * headless and read-only, so the picker offers exactly what rbx would accept.
  * Nothing here decides what goes into a group: that is rbx's, and the pure
  * half (argv, parsing, name checks) is rbx/promote.ts.
+ *
+ * Not while the session runs: `--slowest` may still renumber its findings,
+ * and a dispatched promote would collide with the stress under the busy
+ * policy. The view shows Promote disabled then; the command refuses too, for
+ * a click that raced the state change.
  */
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -48,6 +53,7 @@ import {
   parseDryRun,
   parseGroupList,
   pickRows,
+  proposalLabel,
   proposalTitle,
   sameText,
   scriptGroupName,
@@ -63,14 +69,28 @@ import type { PromoteArgs, StressViewProvider } from './stressView';
  */
 const HEADLESS_TIMEOUT_MS = 60_000;
 
+/**
+ * How long after a dispatched task ends its process end may still arrive.
+ * VS Code does not order the two events; a task that ended with no process
+ * end (it never started one) is given up on after this.
+ */
+const PROCESS_END_GRACE_MS = 2_000;
+
 /** A script group's proposal, open in a diff. */
 interface Proposal {
   /** The right side, under `rbx-proposed:`. */
   readonly uri: vscode.Uri;
-  /** The generator script, absolute. */
+  /**
+   * The left side when the script does not exist yet: an empty, read-only
+   * stand-in, since a `file:` URI of a missing file opens as an error.
+   */
+  readonly emptyLeft?: vscode.Uri;
+  /** The generator script, absolute, as the package names it. */
   readonly file: string;
   /** The script as the dry run read it; Accept refuses if it moved since. */
   readonly before: string;
+  /** What the dry run proposed, to tell whether the user edited it. */
+  readonly after: string;
   readonly root: string;
   readonly k: number;
   readonly group: string;
@@ -78,6 +98,8 @@ interface Proposal {
   readonly startedAt?: string;
   /** The row's own session, as the view passed it, for Promote again. */
   readonly session?: string;
+  /** Whether a tab has shown it yet; until then no tab is no reason to drop it. */
+  shown: boolean;
 }
 
 function asPromoteArgs(raw: unknown): PromoteArgs | undefined {
@@ -93,7 +115,12 @@ function asPromoteArgs(raw: unknown): PromoteArgs | undefined {
 
 /** Whether `task` is a dispatched `add-finding` with exactly these args in `root`. */
 function isAddFinding(task: vscode.Task, root: string, args: readonly string[]): boolean {
-  const definition = task.definition as { type?: unknown; command?: unknown; cwd?: unknown; args?: unknown };
+  const definition = task.definition as {
+    type?: unknown;
+    command?: unknown;
+    cwd?: unknown;
+    args?: unknown;
+  };
   return (
     definition.type === TASK_TYPE &&
     definition.command === 'add-finding' &&
@@ -102,12 +129,51 @@ function isAddFinding(task: vscode.Task, root: string, args: readonly string[]):
   );
 }
 
+function isMissing(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
+}
+
+/**
+ * `file` with its symlinks resolved, as far as they exist: a script not yet
+ * created resolves through its directory.
+ */
+async function canonical(file: string): Promise<string> {
+  try {
+    return await fs.realpath(file);
+  } catch {
+    try {
+      return path.join(await fs.realpath(path.dirname(file)), path.basename(file));
+    } catch {
+      return path.resolve(file);
+    }
+  }
+}
+
+/** Every URI a tab shows, as strings. */
+function shownUris(): Set<string> {
+  const shown = new Set<string>();
+  for (const tab of vscode.window.tabGroups.all.flatMap((group) => group.tabs)) {
+    const input = tab.input;
+    if (input instanceof vscode.TabInputTextDiff) {
+      shown.add(input.original.toString());
+      shown.add(input.modified.toString());
+    } else if (input instanceof vscode.TabInputText) {
+      shown.add(input.uri.toString());
+    }
+  }
+  return shown;
+}
+
 export class StressPromoter implements vscode.Disposable {
   /** Open proposals, by the right side's URI. */
   private readonly proposals = new Map<string, Proposal>();
   /** Tells two proposals for the same script apart. */
   private serial = 0;
+  /** Accepts run one at a time, so a double click cannot apply twice. */
+  private accepting: Promise<unknown> = Promise.resolve();
   private readonly disposables: vscode.Disposable[] = [];
+  /** Listeners waiting on a dispatched `add-finding`, until it ends. */
+  private readonly waiting = new Set<vscode.Disposable>();
 
   constructor(
     private readonly stress: StressViewProvider,
@@ -115,26 +181,25 @@ export class StressPromoter implements vscode.Disposable {
     private readonly proposed: ProposedFileSystemProvider,
   ) {
     this.disposables.push(
-      // A proposal is only reachable through its editor; once that is gone,
-      // so is any way to Accept it.
-      vscode.workspace.onDidCloseTextDocument((document) => {
-        if (document.uri.scheme === PROPOSED_SCHEME) {
-          this.forget(document.uri);
-        }
-      }),
+      // A proposal is only reachable through its editor; once no tab shows
+      // it, there is no way left to Accept it. Tabs rather than documents:
+      // a document is also closed and reopened by a change of language mode.
+      vscode.window.tabGroups.onDidChangeTabs(() => this.sweep()),
     );
   }
 
   dispose(): void {
-    for (const disposable of this.disposables) {
+    for (const disposable of [...this.disposables, ...this.waiting]) {
       disposable.dispose();
     }
+    this.waiting.clear();
   }
 
   /** `rbx.stress.promote`. */
   async promote(raw: unknown): Promise<void> {
     const args = asPromoteArgs(raw);
     if (args === undefined) {
+      log(`rbx.stress.promote called with unexpected arguments: ${JSON.stringify(raw)}`);
       return;
     }
     const { root } = args;
@@ -145,6 +210,13 @@ export class StressPromoter implements vscode.Disposable {
       return;
     }
     const k = finding.index;
+    if (this.stress.isRunning(root, manifest)) {
+      void vscode.window.showInformationMessage(
+        `rbx: wait for the stress to finish before promoting finding #${k} -- ` +
+          'its findings may still change while it runs.',
+      );
+      return;
+    }
     const startedAt = manifest.startedAt;
 
     const listed = await this.headless(root, listGroupsArgs(), 'rbx: listing the test groups…');
@@ -161,6 +233,9 @@ export class StressPromoter implements vscode.Disposable {
     if (row === undefined) {
       return;
     }
+    // Checked against the groups that can take findings only, which is what
+    // --list-groups lists: a name held by another kind of group gets past
+    // this, and rbx refuses it in the terminal instead.
     const existing = groups.map((group) => group.name);
     switch (row.kind) {
       case 'group':
@@ -218,7 +293,24 @@ export class StressPromoter implements vscode.Disposable {
   }
 
   /** `rbx.proposal.accept`, from the proposal's editor title. */
-  async accept(raw: unknown): Promise<void> {
+  accept(raw: unknown): Promise<void> {
+    const next = this.accepting.then(() => this.acceptNow(raw));
+    // A failed accept must not wedge the ones behind it.
+    this.accepting = next.catch((error) => log(`rbx.proposal.accept failed: ${String(error)}`));
+    return next;
+  }
+
+  /** `rbx.proposal.discard`, from the proposal's editor title. */
+  async discard(raw: unknown): Promise<void> {
+    const proposal = this.proposalOf(raw);
+    if (proposal === undefined) {
+      log('rbx.proposal.discard: no open proposal to discard.');
+      return;
+    }
+    await this.close(proposal);
+  }
+
+  private async acceptNow(raw: unknown): Promise<void> {
     const proposal = this.proposalOf(raw);
     if (proposal === undefined) {
       void vscode.window.showInformationMessage(
@@ -236,66 +328,104 @@ export class StressPromoter implements vscode.Disposable {
     }
     const text = document?.getText() ?? this.proposed.text(proposal.uri);
     if (text === undefined) {
+      log(`rbx.proposal.accept: the proposal for ${proposal.file} has no text left.`);
       return;
     }
 
     const realUri = vscode.Uri.file(proposal.file);
-    // Both the disk and the editor's copy, which may hold unsaved edits the
-    // replacement below would silently overwrite.
+    // The disk, and the editor's copy, which may hold unsaved edits the
+    // replacement below would silently overwrite. A script the dry run found
+    // missing reads as '' -- rbx proposes creating it -- and is only stale if
+    // something has appeared there since.
     let onDisk: string | undefined;
     try {
       onDisk = await fs.readFile(proposal.file, 'utf8');
-    } catch {
+    } catch (error) {
+      if (!isMissing(error)) {
+        void vscode.window.showErrorMessage(
+          `rbx: could not read ${path.basename(proposal.file)} (${String(error)}); ` +
+            'the proposal is still open.',
+        );
+        return;
+      }
       onDisk = undefined;
     }
-    let real: vscode.TextDocument | undefined;
-    try {
-      real = await vscode.workspace.openTextDocument(realUri);
-    } catch {
-      real = undefined;
+    if (onDisk === undefined && proposal.before !== '') {
+      await this.refuseStale(proposal, text, 'was deleted');
+      return;
     }
-    if (
-      onDisk === undefined ||
-      real === undefined ||
-      !sameText(onDisk, proposal.before) ||
-      !sameText(real.getText(), proposal.before)
-    ) {
-      await this.refuseStale(proposal);
+    if (onDisk !== undefined && !sameText(onDisk, proposal.before)) {
+      await this.refuseStale(proposal, text, 'changed on disk');
+      return;
+    }
+    const open = vscode.workspace.textDocuments.find(
+      (each) => each.uri.toString() === realUri.toString(),
+    );
+    if (open?.isDirty && !sameText(open.getText(), proposal.before)) {
+      const show = 'Show script';
+      const choice = await vscode.window.showErrorMessage(
+        `rbx: ${proposal.group}'s script has unsaved changes in an editor. ` +
+          'Save or revert them, then Accept again.',
+        show,
+      );
+      if (choice === show) {
+        await vscode.window.showTextDocument(open, { preview: false });
+      }
       return;
     }
 
     // Through the editor rather than onto the disk, so the change is one undo
     // away and an open editor of the script never disagrees with the file.
     const edit = new vscode.WorkspaceEdit();
-    edit.replace(
-      realUri,
-      new vscode.Range(real.positionAt(0), real.positionAt(real.getText().length)),
-      text,
-    );
-    if (!(await vscode.workspace.applyEdit(edit)) || !(await real.save())) {
-      void vscode.window.showErrorMessage(
-        `rbx: could not write ${path.basename(proposal.file)}; the proposal is still open.`,
+    let real: vscode.TextDocument;
+    if (onDisk === undefined) {
+      edit.createFile(realUri, { ignoreIfExists: true });
+      edit.insert(realUri, new vscode.Position(0, 0), text);
+      if (!(await vscode.workspace.applyEdit(edit))) {
+        this.notApplied(proposal);
+        return;
+      }
+      real = await vscode.workspace.openTextDocument(realUri);
+    } else {
+      real = open ?? (await vscode.workspace.openTextDocument(realUri));
+      edit.replace(
+        realUri,
+        new vscode.Range(real.positionAt(0), real.positionAt(real.getText().length)),
+        text,
       );
+      if (!(await vscode.workspace.applyEdit(edit))) {
+        this.notApplied(proposal);
+        return;
+      }
+    }
+    if (!(await real.save())) {
+      // The edit is in the editor, so the proposal has done its job; what is
+      // left is an ordinary unsaved file, which the user knows how to save.
+      await this.close(proposal);
+      this.stress.markPromoted(proposal.root, proposal.startedAt, proposal.k, proposal.group);
+      void vscode.window.showWarningMessage(
+        `rbx: added finding #${proposal.k} to ${proposal.group}'s script, but could not save ` +
+          `${path.basename(proposal.file)}. Save it yourself.`,
+      );
+      await vscode.window.showTextDocument(real, { preview: false });
       return;
     }
     await this.close(proposal);
     this.stress.markPromoted(proposal.root, proposal.startedAt, proposal.k, proposal.group);
-    const open = 'Open script';
+    const show = 'Open script';
     const choice = await vscode.window.showInformationMessage(
       `rbx: added finding #${proposal.k} to ${proposal.group}.`,
-      open,
+      show,
     );
-    if (choice === open) {
+    if (choice === show) {
       await vscode.window.showTextDocument(realUri, { preview: false });
     }
   }
 
-  /** `rbx.proposal.discard`, from the proposal's editor title. */
-  async discard(raw: unknown): Promise<void> {
-    const proposal = this.proposalOf(raw);
-    if (proposal !== undefined) {
-      await this.close(proposal);
-    }
+  private notApplied(proposal: Proposal): void {
+    void vscode.window.showErrorMessage(
+      `rbx: could not edit ${path.basename(proposal.file)}; the proposal is still open.`,
+    );
   }
 
   // --- script groups --------------------------------------------------------
@@ -328,41 +458,82 @@ export class StressPromoter implements vscode.Disposable {
       return;
     }
 
-    const relative = path.relative(root, dry.file);
-    const label = relative.startsWith('..') || path.isAbsolute(relative)
-      ? path.basename(dry.file)
-      : relative.split(path.sep).join('/');
-    const uri = vscode.Uri.from({
-      scheme: PROPOSED_SCHEME,
-      path: `/${label}`,
-      query: String(++this.serial),
-    });
+    // The script as the package names it, not rbx's `file`: that is the
+    // physical path (rbx resolves its cwd), and in a workspace reached
+    // through a symlink it would be a second URI for the file the editor has
+    // open under the first. rbx's is only checked against it.
+    const file = path.resolve(root, group.path);
+    const [ours, theirs] = await Promise.all([canonical(file), canonical(dry.file)]);
+    if (ours !== theirs) {
+      log(`rbx proposed a change to ${dry.file}, but ${group.name}'s script is ${file}.`);
+      void vscode.window.showErrorMessage(
+        `rbx: the proposal for ${group.name} is for ${dry.file}, not its script ${group.path}. ` +
+          'Nothing was changed.',
+      );
+      return;
+    }
+
+    let exists = true;
+    try {
+      await fs.access(file);
+    } catch {
+      exists = false;
+    }
+
+    const label = proposalLabel(group.path);
+    const serial = String(++this.serial);
+    const uri = vscode.Uri.from({ scheme: PROPOSED_SCHEME, path: `/${label}`, query: serial });
+    const emptyLeft = exists
+      ? undefined
+      : vscode.Uri.from({ scheme: PROPOSED_SCHEME, path: `/${label}`, query: `${serial}-empty` });
     this.proposed.put(uri, dry.after);
+    if (emptyLeft !== undefined) {
+      this.proposed.put(emptyLeft, '', true);
+    }
     this.proposals.set(uri.toString(), {
       uri,
-      file: dry.file,
+      ...(emptyLeft === undefined ? {} : { emptyLeft }),
+      file,
       before: dry.before,
+      after: dry.after,
       root,
       k,
       group: group.name,
       ...(startedAt === undefined ? {} : { startedAt }),
       ...(session === undefined ? {} : { session }),
+      shown: false,
     });
     await vscode.commands.executeCommand(
       'vscode.diff',
-      vscode.Uri.file(dry.file),
+      emptyLeft ?? vscode.Uri.file(file),
       uri,
       proposalTitle(k, group.name),
       { preview: false },
     );
   }
 
-  private async refuseStale(proposal: Proposal): Promise<void> {
+  /**
+   * Accept found the script moved under the proposal. Promoting again makes a
+   * fresh one from the script as it is now -- which would drop whatever the
+   * user wrote into this one, so that is offered for the clipboard first.
+   */
+  private async refuseStale(proposal: Proposal, text: string, what: string): Promise<void> {
     const again = 'Promote again';
+    const copy = 'Copy my edits';
+    const edited = !sameText(text, proposal.after);
     const choice = await vscode.window.showErrorMessage(
-      `rbx: ${proposal.group}'s script changed since the proposal; promote again.`,
-      again,
+      `rbx: ${proposal.group}'s script ${what} since the proposal; promote again.` +
+        (edited ? ' A new proposal will not keep your edits to this one.' : ''),
+      ...(edited ? [copy, again] : [again]),
     );
+    if (choice === copy) {
+      // The proposal stays open, so the edits are also still there to read.
+      await vscode.env.clipboard.writeText(text);
+      void vscode.window.showInformationMessage(
+        'rbx: copied your version of the script. Promote again when you are ready.',
+      );
+      return;
+    }
     if (choice !== again) {
       return;
     }
@@ -390,7 +561,14 @@ export class StressPromoter implements vscode.Disposable {
         uri = input.uri;
       }
     }
-    return uri === undefined ? undefined : this.proposals.get(uri.toString());
+    if (uri === undefined) {
+      return undefined;
+    }
+    // The empty left side of a new script stands for its proposal too.
+    return (
+      this.proposals.get(uri.toString()) ??
+      [...this.proposals.values()].find((each) => each.emptyLeft?.toString() === uri?.toString())
+    );
   }
 
   /** Close every tab showing `proposal`, and forget it. */
@@ -414,12 +592,27 @@ export class StressPromoter implements vscode.Disposable {
     if (tabs.length > 0) {
       await vscode.window.tabGroups.close(tabs);
     }
-    this.forget(proposal.uri);
+    this.forget(proposal);
   }
 
-  private forget(uri: vscode.Uri): void {
-    this.proposals.delete(uri.toString());
-    this.proposed.drop(uri);
+  /** Forget every proposal a tab showed and none shows any more. */
+  private sweep(): void {
+    const shown = shownUris();
+    for (const proposal of [...this.proposals.values()]) {
+      if (shown.has(proposal.uri.toString())) {
+        proposal.shown = true;
+      } else if (proposal.shown) {
+        this.forget(proposal);
+      }
+    }
+  }
+
+  private forget(proposal: Proposal): void {
+    this.proposals.delete(proposal.uri.toString());
+    this.proposed.drop(proposal.uri);
+    if (proposal.emptyLeft !== undefined) {
+      this.proposed.drop(proposal.emptyLeft);
+    }
   }
 
   // --- manual and new groups ------------------------------------------------
@@ -449,16 +642,36 @@ export class StressPromoter implements vscode.Disposable {
       return;
     }
     let ended = false;
-    const listener = vscode.tasks.onDidEndTaskProcess((event) => {
-      if (!isAddFinding(event.execution.task, root, args)) {
-        return;
-      }
+    const listeners: vscode.Disposable[] = [];
+    const stop = () => {
       ended = true;
-      listener.dispose();
-      if (event.exitCode === 0) {
-        this.stress.markPromoted(root, startedAt, k, group);
+      for (const listener of listeners) {
+        listener.dispose();
+        this.waiting.delete(listener);
       }
-    });
+    };
+    listeners.push(
+      vscode.tasks.onDidEndTaskProcess((event) => {
+        if (ended || !isAddFinding(event.execution.task, root, args)) {
+          return;
+        }
+        stop();
+        if (event.exitCode === 0) {
+          this.stress.markPromoted(root, startedAt, k, group);
+        }
+      }),
+      // A task can end without its process ever ending -- one that failed to
+      // start, or a terminal closed under it -- and then nothing is marked.
+      // The process end may land after this, so it gets a moment first.
+      vscode.tasks.onDidEndTask((event) => {
+        if (!ended && isAddFinding(event.execution.task, root, args)) {
+          setTimeout(stop, PROCESS_END_GRACE_MS);
+        }
+      }),
+    );
+    for (const listener of listeners) {
+      this.waiting.add(listener);
+    }
     try {
       await this.dispatcher.dispatch({ command: 'add-finding', root, args });
     } finally {
@@ -469,7 +682,7 @@ export class StressPromoter implements vscode.Disposable {
         !ended &&
         !vscode.tasks.taskExecutions.some((execution) => isAddFinding(execution.task, root, args))
       ) {
-        listener.dispose();
+        stop();
       }
     }
   }
@@ -480,6 +693,9 @@ export class StressPromoter implements vscode.Disposable {
    * Run `rbx testcases add-finding <args>` headless in `root`, and return its
    * stdout -- or undefined, having said why, when it failed. Only for the
    * read-only modes (`--list-groups`, `--dry-run`), as design D3 allows.
+   *
+   * No `-C`, unlike a dispatch: add-finding reads one problem's stress
+   * session and testset, which no contest selection changes.
    */
   private async headless(root: string, args: string[], title: string): Promise<string | undefined> {
     const rbx = await resolveRbx(root);
@@ -500,7 +716,10 @@ export class StressPromoter implements vscode.Disposable {
       return undefined;
     }
     if (result.code !== 0) {
-      log(`rbx ${argv.join(' ')} failed in ${root} (exit ${result.code ?? 'none'}): ${result.stderr.trim()}`);
+      log(
+        `rbx ${argv.join(' ')} failed in ${root} (exit ${result.code ?? 'none'}): ` +
+          result.stderr.trim(),
+      );
       void vscode.window.showErrorMessage(`rbx: ${failureMessage(result.code, result.stderr)}`);
       return undefined;
     }

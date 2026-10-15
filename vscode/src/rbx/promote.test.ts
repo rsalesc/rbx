@@ -20,6 +20,7 @@ import {
   parseDryRun,
   parseGroupList,
   pickRows,
+  proposalLabel,
   sameText,
   scriptGroupName,
 } from './promote';
@@ -63,9 +64,21 @@ test('the dry run is read, and refused when a field is missing', () => {
   assert.strictEqual(parseDryRun('[]'), undefined);
 });
 
-test('sameText ignores line endings only', () => {
+test('sameText ignores line endings and a BOM only', () => {
   assert.ok(sameText('a\r\nb\r\n', 'a\nb\n'));
+  assert.ok(sameText('a\rb\r', 'a\nb\n'));
+  assert.ok(sameText('\uFEFFgen 1\n', 'gen 1\n'));
   assert.ok(!sameText('a\nb\n', 'a\nb'));
+  assert.ok(!sameText('gen 1\n', 'gen 2\n'));
+});
+
+test('a proposal is labelled by its package-relative path', () => {
+  assert.strictEqual(proposalLabel('tests/testplan.txt'), 'tests/testplan.txt');
+  assert.strictEqual(proposalLabel('./tests/testplan.txt'), 'tests/testplan.txt');
+  assert.strictEqual(proposalLabel('tests\\sub\\plan.txt'), 'tests/sub/plan.txt');
+  assert.strictEqual(proposalLabel('../shared/plan.txt'), 'plan.txt');
+  assert.strictEqual(proposalLabel('/abs/plan.txt'), 'plan.txt');
+  assert.strictEqual(proposalLabel('C:\\abs\\plan.txt'), 'plan.txt');
 });
 
 test('the argv tails', () => {

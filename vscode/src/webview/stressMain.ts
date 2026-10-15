@@ -73,7 +73,8 @@ setInterval(() => {
 document.addEventListener('click', (event) => {
   const button = (event.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
   const action = button?.dataset.action;
-  if (action === undefined) {
+  // A button shown disabled says why in its tooltip; the click is a no-op.
+  if (action === undefined || button?.getAttribute('aria-disabled') === 'true') {
     return;
   }
   const k = button?.dataset.k;

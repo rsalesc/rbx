@@ -28,12 +28,14 @@ function iconButton(
   icon: string,
   title: string,
   data: Record<string, string | number>,
+  disabled = false,
 ): string {
   const attrs = Object.entries(data)
     .map(([key, value]) => ` data-${key}="${escapeAttr(String(value))}"`)
     .join('');
   return (
     `<button class="stress-icon-button" data-action="${action}"${attrs} ` +
+    (disabled ? 'aria-disabled="true" ' : '') +
     `title="${escapeAttr(title)}" aria-label="${escapeAttr(title)}">${codicon(icon)}</button>`
   );
 }
@@ -160,13 +162,23 @@ function chip(item: StressChip): string {
   );
 }
 
-function findingRow(row: StressFindingRow): string {
+/**
+ * Promote while the session runs would act on findings that may still move:
+ * `--slowest` renumbers them, and a dispatched promote would collide with the
+ * stress itself. Shown, not hidden, so the row does not reflow when it ends;
+ * `aria-disabled` rather than `disabled`, so it keeps its tooltip and focus.
+ */
+const PROMOTE_WAIT = 'Wait for the stress to finish to promote';
+
+function findingRow(row: StressFindingRow, running: boolean): string {
   const k = { k: row.k };
   const actions =
     iconButton('open', 'go-to-file', `Open finding #${row.k}`, k) +
     (row.canCompare ? iconButton('compare', 'diff', `Compare outputs of finding #${row.k}`, k) : '') +
     iconButton('copy', 'copy', `Copy the generator call of finding #${row.k}`, k) +
-    iconButton('promote', 'arrow-up', `Promote finding #${row.k} into the testset`, k);
+    (running
+      ? iconButton('promote', 'arrow-up', PROMOTE_WAIT, k, true)
+      : iconButton('promote', 'arrow-up', `Promote finding #${row.k} into the testset`, k));
   const promoted =
     row.promoted === undefined
       ? ''
@@ -206,6 +218,8 @@ export function renderFindings(model: StressViewModel): string {
   }
   return (
     '<h3 class="stress-heading">Findings</h3>' +
-    `<ul class="stress-list" aria-label="Findings">${model.findings.map(findingRow).join('')}</ul>`
+    `<ul class="stress-list" aria-label="Findings">` +
+    model.findings.map((row) => findingRow(row, model.status?.state === 'running')).join('') +
+    '</ul>'
   );
 }

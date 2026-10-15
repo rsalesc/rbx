@@ -324,6 +324,14 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
+   * Whether `manifest` is a session still running -- the view's `running`,
+   * not a `stale` one whose rbx is gone. For promotion, which waits for it.
+   */
+  isRunning(root: string, manifest: StressManifest): boolean {
+    return manifest.state === 'running' && this.alive(root, manifest).alive;
+  }
+
+  /**
    * Whether a `running` manifest still has its rbx. The manifest's own pid is
    * the answer where it can be checked; elsewhere, whether VS Code is running
    * a stress task there (`Dispatcher.isRunning`).

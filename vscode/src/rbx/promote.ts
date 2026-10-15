@@ -102,12 +102,33 @@ export function parseDryRun(stdout: string): DryRun | undefined {
 /**
  * Whether two versions of a script are the same text.
  *
- * Line endings aside: rbx reads the script with universal newlines, so its
- * `before` never holds a `\r`, while the file on disk -- or the editor's copy
- * of it -- may.
+ * Line endings and a leading BOM aside: rbx reads the script with universal
+ * newlines, so its `before` never holds a `\r`, while the file on disk -- or
+ * the editor's copy of it -- may; and Node's `utf8` keeps a BOM that Python
+ * reading the same file may or may not have.
  */
 export function sameText(a: string, b: string): boolean {
-  return a.replace(/\r\n/g, '\n') === b.replace(/\r\n/g, '\n');
+  return normalize(a) === normalize(b);
+}
+
+function normalize(text: string): string {
+  return text.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+}
+
+/**
+ * The tab label of a proposal for the script at `scriptPath`, which
+ * `--list-groups` gives relative to the package.
+ *
+ * The URI path is what the tab shows, so it is the package-relative path
+ * with forward slashes; a path that leaves the package (or is absolute)
+ * would say less than its basename does, so it gets that instead.
+ */
+export function proposalLabel(scriptPath: string): string {
+  const slashed = scriptPath.replace(/\\/g, '/').replace(/^(\.\/)+/, '');
+  if (!insidePackage(slashed) || slashed.length === 0) {
+    return basename(slashed);
+  }
+  return slashed;
 }
 
 // --- argv -------------------------------------------------------------------

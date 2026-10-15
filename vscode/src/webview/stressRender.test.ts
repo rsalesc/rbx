@@ -156,6 +156,16 @@ test('finding rows: index, call, chips, and Compare only when there is a pair', 
   assert.doesNotMatch(single, /data-action="compare"/);
 });
 
+test('Promote is shown disabled while the session runs, and enabled after', () => {
+  const running = renderFindings(model());
+  assert.match(running, /data-action="promote" data-k="1" aria-disabled="true" title="Wait for the stress to finish/);
+  const done = renderFindings(
+    model({ status: { ...STATUS, state: 'done', label: 'Done', stoppable: false } }),
+  );
+  assert.doesNotMatch(done, /aria-disabled/);
+  assert.match(done, /title="Promote finding #1 into the testset"/);
+});
+
 test('empty states', () => {
   const none = model({ noPackage: true });
   assert.match(renderDeclared(none), /No rbx problem selected/);
