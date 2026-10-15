@@ -105,14 +105,35 @@ def materialize_library(
         return
 
     filename = library.path.name if library.path is not None else cache_path.name
-    stored = pkg_root / '.local.rbx' / 'libs' / library.name / filename
-    # Clear the per-library backing dir first so it always reflects exactly the
-    # current library file (no orphans left behind when `path`/filename changes).
-    shutil.rmtree(stored.parent, ignore_errors=True)
+    store_root = _library_store_root(pkg_root)
+    stored = store_root / 'libs' / library.name / filename
+    if utils.abspath(store_root) == utils.abspath(pkg_root / '.local.rbx'):
+        # Clear the per-library backing dir first so it always reflects exactly
+        # the current library file (no orphans left behind when `path`/filename
+        # changes). Skipped for a store shared with sibling packages (problems
+        # of one contest), whose symlinks may still point at other files there.
+        shutil.rmtree(stored.parent, ignore_errors=True)
     stored.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(cache_path, stored)
     rel = utils.relpath(utils.abspath(stored), utils.abspath(dest).parent)
     dest.symlink_to(rel)
+
+
+def _library_store_root(pkg_root: pathlib.Path) -> pathlib.Path:
+    """The `.local.rbx` that backs symlinked libraries for `pkg_root`.
+
+    That is the installed preset the package resolves to, so a problem inside a
+    contest shares the contest's `.local.rbx` (like the preset's resources do)
+    instead of growing a private copy of every library. Falls back to the
+    package's own `.local.rbx` when no installed preset is found (e.g. a
+    template inside a preset being developed).
+    """
+    from rbx.box import presets
+
+    preset_path = presets.find_local_preset(pkg_root)
+    if preset_path is not None and preset_path.name == '.local.rbx':
+        return preset_path
+    return pkg_root / '.local.rbx'
 
 
 def _require_path(library: Library) -> None:
