@@ -30,7 +30,14 @@ import {
   planRefresh,
 } from './rbx/artifactEvents';
 import { Coalescer } from './rbx/coalescer';
-import { CACHE_DIR, Ext, PROBLEM_MANIFEST, TESTSET_MANIFEST } from './rbx/layout';
+import {
+  CACHE_DIR,
+  Ext,
+  PROBLEM_MANIFEST,
+  STRESS_DIR,
+  STRESS_MANIFEST,
+  TESTSET_MANIFEST,
+} from './rbx/layout';
 import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
 import { registerSolutionLens } from './solutionLens';
@@ -198,9 +205,10 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   // Only what something here reads. `.rbx` also holds the file cacher's
-  // storage, the dependency caches, remote and judge state, and `runs/.irun`
-  // and `runs/.stress` -- all of which churn through a build or a stress test,
-  // and each write used to schedule a reload of a run that had not changed.
+  // storage, the dependency caches, remote and judge state, `runs/.irun` and
+  // the bulk of `runs/.stress` -- all of which churn through a build or a
+  // stress test, and each write used to schedule a reload of a run that had
+  // not changed.
   //
   // The cache directory itself, and `runs/` itself, because removing either is
   // reported as that one directory and nothing under it: `rbx clean` removes
@@ -212,6 +220,14 @@ export function activate(context: vscode.ExtensionContext): void {
   // `runs/` too. The classifier checks the same shape, since a glob is a
   // filter on the watcher, not a promise about what reaches it.
   watch(`**/${CACHE_DIR}/runs/[0-9]*/*/*${Ext.Eval}`);
+  // The stress session, through its manifest alone: rbx rewrites it whenever a
+  // finding lands (and at most once a second for the counters), so it is the
+  // one file that says the session moved. A finding's own files are opened on
+  // demand, and the scratch area beside them is overwritten every iteration --
+  // watching either would wake the views as fast as the stress loop spins.
+  // `.stress` itself too, which a new session replaces as one directory.
+  watch(`**/${CACHE_DIR}/runs/${STRESS_DIR}`);
+  watch(`**/${CACHE_DIR}/runs/${STRESS_DIR}/${STRESS_MANIFEST}`);
 
   // The testset manifest, which `rbx build` writes last (design D2). Written
   // last is what lets this be a single glob rather than a heuristic about when

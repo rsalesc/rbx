@@ -221,3 +221,59 @@ export function packageFilePath(pkg: PackageLayout, relative: string): string {
 export function testsetFilePath(pkg: PackageLayout, relative: string): string {
   return packageFilePath(pkg, relative);
 }
+
+/**
+ * The latest stress session, `.rbx/runs/.stress` (#908).
+ *
+ * One session at a time, by design (S2): a new `rbx stress` replaces the
+ * directory, so there is no session id to carry and every path below names
+ * "the" session. As `rbx.box.stress_manifest` writes it:
+ *
+ *   .stress/stress.yml                          StressManifest, written atomically
+ *   .stress/findings/<k>/input.in               the finding's input, k from 1
+ *   .stress/findings/<k>/input.ans              the reference answer, when one was made
+ *   .stress/findings/<k>/<sol>.out|.err|.eval   <sol> indexes the manifest's `solutions`
+ */
+export function stressDir(pkg: PackageLayout): string {
+  return path.join(runsDir(pkg), STRESS_DIR);
+}
+
+/** The stress session's directory name under `runs/`, for the watcher's classifier. */
+export const STRESS_DIR = '.stress';
+export const STRESS_MANIFEST = 'stress.yml';
+
+export function stressManifestPath(pkg: PackageLayout): string {
+  return path.join(stressDir(pkg), STRESS_MANIFEST);
+}
+
+/** One finding's directory; `k` is the finding's `index`, from 1. */
+export function findingDir(pkg: PackageLayout, k: number): string {
+  return path.join(stressDir(pkg), 'findings', String(k));
+}
+
+export function findingInputPath(pkg: PackageLayout, k: number): string {
+  return path.join(findingDir(pkg, k), 'input.in');
+}
+
+/**
+ * The reference answer, when the finder needed one.
+ *
+ * `.ans` here, where the testset says `.out`: inside a finding, `.out` is
+ * already taken by each solution's stdout.
+ */
+export function findingAnswerPath(pkg: PackageLayout, k: number): string {
+  return path.join(findingDir(pkg, k), 'input.ans');
+}
+
+/**
+ * One solution's artifact in a finding, in the same shapes a run's are -- so a
+ * finding's `.eval` goes through the same reader as a run's.
+ */
+export function findingArtifactPath(
+  pkg: PackageLayout,
+  k: number,
+  solution: number,
+  ext: Ext.Output | Ext.Stderr | Ext.Eval,
+): string {
+  return path.join(findingDir(pkg, k), `${solution}${ext}`);
+}

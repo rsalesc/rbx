@@ -15,6 +15,7 @@ import { RefreshPlan } from './rbx/artifactEvents';
 import { PackageFindings } from './rbx/diagnostics';
 import { PackageLayout } from './rbx/layout';
 import { ArtifactStore, ArtifactStores, PackageRun, StoreTrace } from './rbx/store';
+import { StressManifest } from './rbx/stress';
 import { Testset } from './rbx/testset';
 
 /**
@@ -130,6 +131,17 @@ export class RunDataProvider {
    */
   testset(pkg: PackageLayout): Promise<Testset | undefined> {
     return this.storeFor(pkg).testset();
+  }
+
+  /**
+   * The latest stress session `rbx stress` published for one package.
+   *
+   * A listener re-reads it when `touchesStress(change.plan)` holds; a run
+   * landing never does, and a stress session never moves the run. A missing
+   * manifest is what a package that has never been stressed looks like.
+   */
+  stress(pkg: PackageLayout): Promise<StressManifest | undefined> {
+    return this.storeFor(pkg).stress();
   }
 
   /** What `problem.rbx.yml` declares about visualizers, for the lazy buttons. */
