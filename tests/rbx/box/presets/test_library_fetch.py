@@ -157,6 +157,68 @@ def test_materialize_symlink_clears_stale_backing_file(tmp_path):
     assert not (libs_dir / 'old.h').exists()  # stale orphan removed
 
 
+def _contest_with_problem(tmp_path):
+    contest = tmp_path / 'contest'
+    (contest / '.local.rbx').mkdir(parents=True)
+    (contest / '.local.rbx' / 'preset.rbx.yml').write_text('name: p\n')
+    problem = contest / 'problems' / 'a'
+    problem.mkdir(parents=True)
+    return contest, problem
+
+
+def test_materialize_symlink_in_contest_problem_uses_contest_preset(tmp_path):
+    # A problem inside a contest has no preset of its own: the symlink content
+    # belongs next to the contest's installed preset, not in a per-problem
+    # .local.rbx that would duplicate it in every problem.
+    cache = tmp_path / 'cache.h'
+    cache.write_text('content')
+    contest, problem = _contest_with_problem(tmp_path)
+    lib = Library(name='lib', source='x', path='lib.h', dest='sub/lib.h', symlink=True)
+
+    library_fetch.materialize_library(lib, cache, problem)
+
+    out = problem / 'sub' / 'lib.h'
+    stored = contest / '.local.rbx' / 'libs' / 'lib' / 'lib.h'
+    assert stored.is_file()
+    assert not (problem / '.local.rbx').exists()
+    assert out.is_symlink()
+    assert out.readlink().as_posix() == '../../../.local.rbx/libs/lib/lib.h'
+    assert out.read_text() == 'content'
+
+
+def test_materialize_symlink_shared_store_keeps_sibling_files(tmp_path):
+    # In a shared store, re-materializing one problem's library must not delete
+    # a file another problem's symlink still points to.
+    cache = tmp_path / 'cache.h'
+    cache.write_text('content')
+    contest, problem = _contest_with_problem(tmp_path)
+    other = contest / 'problems' / 'b'
+    other.mkdir()
+
+    old = Library(name='lib', source='x', path='old.h', dest='old.h', symlink=True)
+    library_fetch.materialize_library(old, cache, other)
+    new = Library(name='lib', source='x', path='new.h', dest='new.h', symlink=True)
+    library_fetch.materialize_library(new, cache, problem)
+
+    assert (other / 'old.h').read_text() == 'content'
+    assert (problem / 'new.h').read_text() == 'content'
+
+
+def test_materialize_symlink_problem_with_own_preset(tmp_path):
+    # A problem carrying its own installed preset keeps using its own store.
+    cache = tmp_path / 'cache.h'
+    cache.write_text('content')
+    contest, problem = _contest_with_problem(tmp_path)
+    (problem / '.local.rbx').mkdir()
+    (problem / '.local.rbx' / 'preset.rbx.yml').write_text('name: q\n')
+    lib = Library(name='lib', source='x', path='lib.h', dest='lib.h', symlink=True)
+
+    library_fetch.materialize_library(lib, cache, problem)
+
+    assert (problem / '.local.rbx' / 'libs' / 'lib' / 'lib.h').is_file()
+    assert not (contest / '.local.rbx' / 'libs').exists()
+
+
 def test_resolve_remote_head_parses_sha(monkeypatch):
     from rbx.box import git_utils
 
