@@ -396,10 +396,10 @@ export class Dispatcher implements vscode.Disposable {
   /**
    * Stop every rbx task running `command` in `root`, and wait for it to go.
    *
-   * `terminate()` closes the task's terminal, whose process gets a SIGHUP; rbx
-   * handles SIGHUP (and SIGTERM) like Ctrl-C and writes its own ending -- a
-   * stress manifest then reads `interrupted` -- so nothing here touches the
-   * artifacts. Resolves once the tasks have ended, or after the same timeout a
+   * `terminate()` closes the task's terminal, whose process gets a SIGHUP. On
+   * SIGHUP or SIGTERM rbx stamps the stress manifest `interrupted` and exits at
+   * once -- unlike Ctrl-C, it does not let the current iteration finish -- so
+   * nothing here touches the artifacts. Resolves once the tasks have ended, or after the same timeout a
    * dispatch waits for; the views follow the manifest either way.
    *
    * Queued behind any dispatch in flight, like every request here, so a Stop

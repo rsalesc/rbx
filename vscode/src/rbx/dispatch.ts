@@ -334,8 +334,13 @@ export function runningAt<T extends { readonly cwd: string; readonly command: un
   return running.filter((task) => task.command === command && path.resolve(task.cwd) === target);
 }
 
-/** What a shell may see unquoted: no space, quote, glob, or operator. */
-const SHELL_SAFE = /^[A-Za-z0-9_\-.,/=:+%@]+$/;
+/**
+ * What a shell may see unquoted: no space, quote, glob, or operator -- and no
+ * `,` or `@` at all, nor a leading `=`, `_`, `:`, `+` or `%`, which some shell
+ * reads as syntax: zsh's `=cmd` expansion, PowerShell's `@x` splatting and
+ * `a,b` array operator.
+ */
+const SHELL_SAFE = /^[A-Za-z0-9\-./][A-Za-z0-9_\-./=:+%]*$/;
 
 /**
  * Whether an argument has to be quoted for the terminal's shell.
@@ -346,6 +351,10 @@ const SHELL_SAFE = /^[A-Za-z0-9_\-.,/=:+%@]+$/;
  * or a generator call like `gen [1..9] @`. Those go strongly (single-)quoted
  * instead; an argument holding a single quote cannot be, which is why
  * stressSpec.ts refuses one before it gets here.
+ *
+ * Known limitation: under Windows cmd.exe, VS Code's strong quoting is a pair
+ * of double quotes, so a finder that quotes a path (`["a b.cpp"] ~ WA`) does
+ * not survive it. Every other shell VS Code runs single-quotes.
  */
 export function needsShellQuoting(arg: string): boolean {
   return !SHELL_SAFE.test(arg);

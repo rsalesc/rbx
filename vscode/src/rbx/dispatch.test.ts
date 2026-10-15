@@ -166,7 +166,19 @@ test('runningAt finds that command in exactly that package', () => {
 });
 
 test('only what a shell would read as syntax needs quoting', () => {
-  for (const safe of ['stress', '--no-promote', '-g', 'sols/main.cpp', '1', '-C', 'div1', 'a=b']) {
+  for (const safe of [
+    'stress',
+    '--no-promote',
+    '-g',
+    'sols/main.cpp',
+    './sols/a_b.cpp',
+    '/abs/path',
+    '1',
+    '-C',
+    'div1',
+    'a=b',
+    'a:b+c%',
+  ]) {
     assert.strictEqual(needsShellQuoting(safe), false, safe);
   }
   for (const unsafe of [
@@ -178,6 +190,15 @@ test('only what a shell would read as syntax needs quoting', () => {
     'a!b',
     'a*b',
     '',
+    // zsh `=cmd` expansion; PowerShell splatting and the array operator.
+    '=python',
+    '@args',
+    'a@b',
+    'a,b',
+    '_x',
+    ':x',
+    '+x',
+    '%x',
   ]) {
     assert.strictEqual(needsShellQuoting(unsafe), true, unsafe);
   }

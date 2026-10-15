@@ -120,6 +120,15 @@ function strings(raw: Wire): string[] {
     .filter((value): value is string => value !== undefined);
 }
 
+/**
+ * A pid, or undefined. Positive integers only: `kill(0, 0)` or a negative pid
+ * signals a whole process group, which would read as alive forever.
+ */
+function positiveInteger(raw: Wire): number | undefined {
+  const value = asNumber(raw);
+  return value !== undefined && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
 function parseSpec(raw: Wire): StressSpec {
   const fuzz = field(raw, 'fuzz');
   return {
@@ -212,7 +221,7 @@ export function parseStressManifest(raw: Wire): StressManifest | undefined {
     skipped: asNumber(field(raw, 'skipped')) ?? 0,
     solutions: strings(field(raw, 'solutions')),
     findings,
-    pid: asNumber(field(raw, 'pid')),
+    pid: positiveInteger(field(raw, 'pid')),
     host: asString(field(raw, 'host')),
   };
 }

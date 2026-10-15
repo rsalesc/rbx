@@ -197,6 +197,10 @@ test('the process writing the session is read when rbx names it', () => {
   const odd = parseStressManifest({ ...raw, pid: '4242', host: 7 });
   assert.strictEqual(odd?.pid, undefined);
   assert.strictEqual(odd?.host, undefined);
+  // 0 and negatives would signal a process group, and read as alive forever.
+  for (const pid of [0, -1, -4242, 1.5]) {
+    assert.strictEqual(parseStressManifest({ ...raw, pid })?.pid, undefined, String(pid));
+  }
 });
 
 function session(overrides: Partial<StressManifest>): StressManifest {
