@@ -1,3 +1,33 @@
+## 2.1.0 (2026-10-15)
+
+### Feat
+
+- promote any test into any testplan or glob group, from the CLI and VS Code (#931)
+- **cli**: capture interactive pipes by default (#927)
+- **vscode**: ad-hoc runs (rbx irun) in the Run view and from the editor (#926)
+- **vscode**: testplan lenses — generate, validate, run and promote one test (#925)
+- **vscode**: stress testing UI with persisted findings (#924)
+- **vscode**: statement PDF preview with rebuild-on-save and LaTeX diagnostics (#919)
+- **vscode**: start rbx build/run from the editor in a visible terminal (#918)
+- **vscode**: show time and memory against each solution's own limits (#917)
+- **vscode**: interaction transcript channel, interactor and checker stderr (#915)
+- **moj**: judge interactive problems with rbx's own driver (BOCA's pipe.c), and fix pipe.c SIGPIPE (#900)
+
+### Fix
+
+- **statements**: use hand-written sample .interaction files in the statement (#930)
+- **presets**: store symlinked problem libraries in the contest's .local.rbx (#929)
+- **vscode**: version hint, MLE_OR_RTE, buildDir repointing, refresh races, half-written report (#914)
+- **moj**: report a crashed interactive contestant as runtime error (#899)
+- **interactive**: never blame the solution for the interactor's own limits (#898)
+- **sandbox**: drain the interactor's output once the solution exits (#897)
+- repair the test suite after the 2.0.0 bump, and two session-wide test leaks (#890)
+- **moj**: make --language and statement slot placement explicit (#896)
+
+### Perf
+
+- **vscode**: make artifact refreshes incremental (#916)
+
 ## 2.0.0 (2026-10-10)
 
 ### Feat
