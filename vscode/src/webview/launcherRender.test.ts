@@ -3,8 +3,17 @@ import { test } from 'node:test';
 
 import type { StressDeclarations } from '../rbx/stressDeclarations';
 import { defaultLaunch } from '../rbx/stressSpec';
-import { INSERT_CHIPS, LauncherView, footerState, renderForm, runBlocker } from './launcherRender';
+import {
+  HELP,
+  INSERT_CHIPS,
+  LauncherView,
+  footerState,
+  help,
+  renderForm,
+  runBlocker,
+} from './launcherRender';
 import { formOf, reduce } from './launcherState';
+import { escapeAttr } from './render';
 
 const DECLS: StressDeclarations = {
   stresses: [
@@ -104,6 +113,64 @@ test('each insert chip selects within the text it types', () => {
   }
   const range = INSERT_CHIPS.find((chip) => chip.label === '[1..10]');
   assert.strictEqual(range?.text.slice(...range.select), '1..10');
+});
+
+/** The `?` explaining the control with this id, as `help-<key>`'s text, or undefined. */
+function helpText(html: string, id: string): string | undefined {
+  const match = new RegExp(`<span class="help[^"]*" id="help-${id}"[^>]*data-help="([^"]*)"`).exec(html);
+  return match?.[1];
+}
+
+test('every ambiguous control has a ? that explains it', () => {
+  const v = view('wa-small');
+  const declared = renderForm(v);
+  const generator = renderForm({
+    ...v,
+    form: reduce(
+      reduce(v.form, { type: 'mode', mode: 'generator' }, DECLS),
+      { type: 'add-row', kind: 'disagree' },
+      DECLS,
+    ),
+  });
+  const fuzz = renderForm({ ...v, form: reduce(v.form, { type: 'mode', mode: 'fuzz' }, DECLS) });
+  const expected: [string, string][] = [
+    [declared, 'source'],
+    [declared, 'join'],
+    [declared, 'break-0'],
+    [declared, 'declaredFinder'],
+    [declared, 'slowest'],
+    [declared, 'timeout'],
+    [declared, 'findings'],
+    [declared, 'tl'],
+    [declared, 'sanitized'],
+    [declared, 'skipInvalid'],
+    [declared, 'validate'],
+    [declared, 'reference'],
+    [generator, 'expression'],
+    [generator, 'disagree-0'],
+    [fuzz, 'fuzzGroups'],
+    [renderForm(view('opaque')), 'declaredFinder'],
+  ];
+  for (const [html, id] of expected) {
+    const text = helpText(html, id);
+    assert.ok(text !== undefined && text.trim() !== '', id);
+  }
+  for (const text of Object.values(HELP)) {
+    assert.ok(text.trim() !== '');
+  }
+});
+
+test('a ? is focusable, outside any label, and its text is escaped', () => {
+  const html = renderForm(view('wa-small'));
+  assert.match(html, /<label for="slowest">[^]*?<\/label><span class="help[^"]*" id="help-slowest" tabindex="0"/);
+  // `<var>` in the generator call's explanation must not become markup.
+  const generator = renderForm({
+    ...view('wa-small'),
+    form: reduce(view('wa-small').form, { type: 'mode', mode: 'generator' }, DECLS),
+  });
+  assert.strictEqual(helpText(generator, 'expression'), escapeAttr(HELP.expression));
+  assert.match(helpText(generator, 'expression') ?? '', /&lt;var&gt;/);
+  assert.strictEqual(help('tl'), help('tl', 'tl'));
 });
 
 test('Run is off while the launch cannot run, or while dispatching is', () => {

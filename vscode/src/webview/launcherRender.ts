@@ -59,6 +59,72 @@ function codicon(name: string): string {
   return `<span class="codicon codicon-${name}" aria-hidden="true"></span>`;
 }
 
+/**
+ * What each ambiguous control does, in the words its `?` shows on hover and on
+ * focus. One table, so every explanation can be read (and tested) in one place;
+ * the wording follows `rbx stress --help` and docs/setters/stress-testing.md.
+ */
+export const HELP = {
+  source:
+    'Declared runs a stress from problem.rbx.yml by name. Generator runs your own generator ' +
+    "call, with fresh random values each iteration. Fuzz reruns your testset's generator " +
+    'calls with a random suffix appended.',
+  expression:
+    'Run once per iteration. @ becomes a random 8-character string, [a..b] a random integer ' +
+    'between a and b, (a|b) one of the options, and <var> a variable of the problem.',
+  fuzzGroups:
+    'Fuzz the generator calls of the checked testgroups; none checked fuzzes every group. ' +
+    'Inputs the validator rejects are skipped while fuzzing.',
+  join: 'All of: an input is a finding when every row holds. Any of: when at least one row does.',
+  break:
+    "Break (~): a finding when this solution's verdict matches the outcome. INCORRECT " +
+    'matches any failing verdict.',
+  disagree:
+    'Disagree (!=): a finding when the two solutions get different verdicts. It compares ' +
+    'verdicts, not outputs.',
+  declaredFinder:
+    'Kept, the stress runs by name with its finder from problem.rbx.yml. Once a row is ' +
+    'edited, it runs as its generator call with these rows instead (-g and -f).',
+  slowest:
+    'Run without the time limit (unless 2× TL) and keep the slowest inputs instead of ' +
+    'stopping at the first findings. A Break row then just names a solution to time.',
+  timeout:
+    'Wall-clock budget for the whole stress, in seconds. It stops sooner if it finds ' +
+    'enough findings.',
+  findings:
+    'Stop after this many findings. With Slowest tests, how many of the slowest inputs to keep.',
+  tl:
+    "Normal uses the problem's time limit. 2× TL doubles it, so only clearly slow runs " +
+    'count as TLE. Custom sets it in milliseconds.',
+  sanitized:
+    'Compile the solutions with sanitizers. Slower, but catches undefined behaviour such ' +
+    'as out-of-bounds access.',
+  skipInvalid:
+    'Keep going when the generator fails or the validator rejects an input, counting it ' +
+    'as skipped, instead of stopping the stress.',
+  validate: "Run the problem's validator on each generated input before the solutions see it.",
+  reference:
+    "The solution whose output is the expected answer for the checker. By default, rbx " +
+    'uses the main solution.',
+} as const;
+
+export type HelpKey = keyof typeof HELP;
+
+/**
+ * A `?` explaining a control: focusable, so the explanation shows on keyboard
+ * focus as well as on hover (a `title` alone only does the latter), and never
+ * inside the control's `<label>`, so clicking it toggles nothing. The tooltip
+ * is the stylesheet's, drawn from `data-help` -- the panel's CSP allows no
+ * inline style.
+ */
+export function help(key: HelpKey, id: string = key): string {
+  const text = escapeAttr(HELP[key]);
+  return (
+    `<span class="help codicon codicon-question" id="help-${id}" tabindex="0" role="img" ` +
+    `aria-label="${text}" data-help="${text}"></span>`
+  );
+}
+
 function option(value: string, label: string, selected: boolean): string {
   return `<option value="${escapeAttr(value)}"${selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
 }
@@ -75,10 +141,17 @@ function radio(name: string, value: string, label: string, on: boolean, bind: st
   );
 }
 
-function checkbox(id: string, bind: string, label: string, on: boolean, extra = ''): string {
+function checkbox(
+  id: string,
+  bind: string,
+  label: string,
+  on: boolean,
+  extra = '',
+  helpKey?: HelpKey,
+): string {
   return (
-    `<label class="check" for="${id}"><input type="checkbox" id="${id}" data-bind="${bind}"${extra}` +
-    `${checked(on)}><span>${escapeHtml(label)}</span></label>`
+    `<div class="check"><label for="${id}"><input type="checkbox" id="${id}" data-bind="${bind}"${extra}` +
+    `${checked(on)}><span>${escapeHtml(label)}</span></label>${helpKey === undefined ? '' : help(helpKey)}</div>`
   );
 }
 
@@ -122,14 +195,14 @@ function renderRow(row: FinderRow, index: number, declarations: StressDeclaratio
   if (row.kind === 'break') {
     const outcomes = FINDER_OUTCOMES.map((outcome) => option(outcome, outcome, outcome === row.outcome)).join('');
     body =
-      `<span class="row-kind">Break</span>` +
+      `<span class="row-kind">Break${help('break', `break-${index}`)}</span>` +
       solutionSelect(`row-${index}-solution`, index, 'solution', `Row ${n}: solution`, row.solution, declarations) +
       `<span class="row-op" aria-hidden="true">~</span>` +
       `<select id="row-${index}-outcome" data-bind="row" data-index="${index}" data-field="outcome" ` +
       `aria-label="Row ${n}: outcome">${outcomes}</select>`;
   } else {
     body =
-      `<span class="row-kind">Disagree</span>` +
+      `<span class="row-kind">Disagree${help('disagree', `disagree-${index}`)}</span>` +
       solutionSelect(`row-${index}-a`, index, 'a', `Row ${n}: first solution`, row.a, declarations) +
       `<span class="row-op" aria-hidden="true">≠</span>` +
       solutionSelect(`row-${index}-b`, index, 'b', `Row ${n}: second solution`, row.b, declarations);
@@ -182,7 +255,7 @@ function renderGeneratorSource(view: LauncherView): string {
         vars.map((name) => option(name, name, false)).join('') +
         '</select>';
   return (
-    '<div class="field"><label for="expression">Generator call</label>' +
+    `<div class="field"><span class="label-row"><label for="expression">Generator call</label>${help('expression')}</span>` +
     `<input type="text" id="expression" class="mono" data-bind="expression" list="generator-names" ` +
     `spellcheck="false" autocomplete="off" placeholder="gens/gen.cpp [1..1000]" ` +
     `aria-describedby="expression-hint" value="${escapeAttr(form.expression)}">` +
@@ -216,7 +289,7 @@ function renderFuzzSource(view: LauncherView): string {
     )
     .join('');
   return (
-    '<fieldset class="groups"><legend>Testgroups to fuzz</legend>' +
+    `<fieldset class="groups"><legend>Testgroups to fuzz${help('fuzzGroups')}</legend>` +
     `${boxes}</fieldset><p class="hint">None checked fuzzes every group.</p>`
   );
 }
@@ -241,7 +314,7 @@ function renderInputs(view: LauncherView): string {
   return (
     '<section class="section" aria-labelledby="inputs-heading">' +
     '<h2 id="inputs-heading"><span class="step" aria-hidden="true">1</span>Inputs</h2>' +
-    `<div class="segmented" role="radiogroup" aria-label="Where the inputs come from">${modes}</div>` +
+    `<div class="segmented-row"><div class="segmented" role="radiogroup" aria-label="Where the inputs come from">${modes}</div>${help('source')}</div>` +
     `<div class="source">${body}</div></section>`
   );
 }
@@ -251,12 +324,12 @@ function findNote(view: LauncherView): string {
   const { form } = view;
   if (form.mode === 'declared' && form.declaredName !== '') {
     if (form.declaredFinder === 'keep') {
-      return '<p class="hint">The stress\'s own finder. Editing a row replaces it for this run.</p>';
+      return `<p class="hint">The stress's own finder. Editing a row replaces it for this run.${help('declaredFinder')}</p>`;
     }
     return (
       '<p class="hint">These rows replace the stress\'s finder for this run, so it runs as its ' +
       'generator call with them. <button type="button" id="keep-finder" class="link-button" ' +
-      'data-act="keep-finder">Use the declared finder</button></p>'
+      `data-act="keep-finder">Use the declared finder</button>${help('declaredFinder')}</p>`
     );
   }
   if (form.mode === 'fuzz' && form.finders.fuzz.rows.length === 0) {
@@ -278,16 +351,16 @@ function renderFind(view: LauncherView): string {
     // Rows cannot say this finder, and rows that meant something else would be
     // worse than none: it is shown as written, and runs as written.
     body =
-      '<div class="finder-chip"><span class="finder-chip-label">Custom finder from problem.rbx.yml</span>' +
+      `<div class="finder-chip"><span class="finder-chip-label">Custom finder from problem.rbx.yml${help('declaredFinder')}</span>` +
       `<code>${escapeHtml(declared.finder)}</code>` +
       '<button type="button" id="replace-finder" data-act="replace-finder">Replace with rows</button></div>';
   } else {
     const draft = form.finders[form.mode];
     const join =
-      '<div class="segmented small" role="radiogroup" aria-label="How the rows combine">' +
+      '<div class="segmented-row"><div class="segmented small" role="radiogroup" aria-label="How the rows combine">' +
       radio('join', 'all', 'All of', draft.join === 'all', 'join') +
       radio('join', 'any', 'Any of', draft.join === 'any', 'join') +
-      '</div>';
+      `</div>${help('join')}</div>`;
     const rows =
       draft.rows.length === 0
         ? ''
@@ -308,15 +381,22 @@ function renderFind(view: LauncherView): string {
     '<section class="section" aria-labelledby="find-heading">' +
     '<h2 id="find-heading"><span class="step" aria-hidden="true">2</span>Find</h2>' +
     body +
-    checkbox('slowest', 'slowest', 'Slowest tests', form.slowest) +
+    checkbox('slowest', 'slowest', 'Slowest tests', form.slowest, '', 'slowest') +
     slowestHint +
     '</section>'
   );
 }
 
-function numberField(id: string, bind: string, label: string, value: string, unit: string): string {
+function numberField(
+  id: string,
+  bind: string,
+  label: string,
+  value: string,
+  unit: string,
+  helpKey: HelpKey,
+): string {
   return (
-    `<div class="field inline"><label for="${id}">${escapeHtml(label)}</label>` +
+    `<div class="field inline"><span class="label-row"><label for="${id}">${escapeHtml(label)}</label>${help(helpKey)}</span>` +
     // Text with a numeric keyboard rather than `type="number"`, which has no
     // caret to put back after a redraw and turns a half-typed value into ''.
     `<input type="text" inputmode="numeric" id="${id}" class="num" data-bind="${bind}" value="${escapeAttr(value)}">` +
@@ -327,7 +407,7 @@ function numberField(id: string, bind: string, label: string, value: string, uni
 function renderBudget(view: LauncherView): string {
   const { form, declarations } = view;
   const tl =
-    '<div class="field inline"><span id="tl-label" class="label">Time limit</span>' +
+    `<div class="field inline"><span class="label-row"><span id="tl-label">Time limit</span>${help('tl')}</span>` +
     '<div class="segmented small" role="radiogroup" aria-labelledby="tl-label">' +
     radio('tl', 'normal', 'Normal', form.tl === 'normal', 'tl') +
     radio('tl', 'double', '2× TL', form.tl === 'double', 'tl') +
@@ -338,7 +418,7 @@ function renderBudget(view: LauncherView): string {
       : '') +
     '</div>';
   const reference =
-    '<div class="field inline"><label for="reference">Reference solution</label>' +
+    `<div class="field inline"><span class="label-row"><label for="reference">Reference solution</label>${help('reference')}</span>` +
     `<select id="reference" data-bind="reference">${solutionOptions(
       declarations,
       form.reference,
@@ -347,14 +427,14 @@ function renderBudget(view: LauncherView): string {
   return (
     '<section class="section" aria-labelledby="budget-heading">' +
     '<h2 id="budget-heading"><span class="step" aria-hidden="true">3</span>Budget</h2>' +
-    numberField('timeout', 'timeout', 'Time budget', form.timeout, 's') +
-    numberField('findings', 'findings', 'Stop after', form.findings, 'findings') +
+    numberField('timeout', 'timeout', 'Time budget', form.timeout, 's', 'timeout') +
+    numberField('findings', 'findings', 'Stop after', form.findings, 'findings', 'findings') +
     tl +
     `<details id="advanced"${form.advancedOpen ? ' open' : ''}>` +
     '<summary id="advanced-summary">Advanced</summary>' +
-    checkbox('sanitized', 'sanitized', 'Sanitized', form.sanitized) +
-    checkbox('skip-invalid', 'skipInvalid', 'Skip invalid inputs', form.skipInvalid) +
-    checkbox('validate', 'validate', 'Validate inputs', form.validate) +
+    checkbox('sanitized', 'sanitized', 'Sanitized', form.sanitized, '', 'sanitized') +
+    checkbox('skip-invalid', 'skipInvalid', 'Skip invalid inputs', form.skipInvalid, '', 'skipInvalid') +
+    checkbox('validate', 'validate', 'Validate inputs', form.validate, '', 'validate') +
     reference +
     '</details></section>'
   );

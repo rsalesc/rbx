@@ -115,9 +115,77 @@ body {
   gap: 8px;
 }
 
-.field.inline > label,
-.field.inline > .label {
+.field.inline > .label-row {
   min-width: 130px;
+}
+
+.label-row,
+.segmented-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.segmented-row {
+  display: flex;
+  margin-bottom: 8px;
+}
+
+.segmented-row .segmented {
+  margin-bottom: 0;
+}
+
+/*
+ * The `?` beside an ambiguous control, and its tooltip. Drawn from
+ * `data-help` on hover and on keyboard focus, since a `title` never shows on
+ * focus; colours are the editor hover widget's, so it reads like VS Code's own.
+ */
+.help {
+  position: relative;
+  margin-left: 4px;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+  cursor: help;
+  user-select: none;
+}
+
+.help:hover,
+.help:focus-visible {
+  color: var(--vscode-foreground);
+}
+
+.help:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.help::after {
+  content: attr(data-help);
+  display: none;
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  left: -8px;
+  width: max-content;
+  max-width: 340px;
+  padding: 6px 8px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  font-weight: normal;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: left;
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-panel-border, transparent));
+  border-radius: 3px;
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, transparent);
+}
+
+.help:hover::after,
+.help:focus-visible::after {
+  display: block;
 }
 
 .unit {
@@ -290,8 +358,13 @@ button:disabled {
 .check {
   display: flex;
   align-items: center;
-  gap: 6px;
   margin: 6px 0;
+}
+
+.check > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .groups {
