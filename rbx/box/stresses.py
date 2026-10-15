@@ -301,7 +301,14 @@ class _StressSession:
         self._last_publish = time.monotonic()
 
     def renumber(self) -> None:
-        """`--slowest` only: number the kept candidates 1..n, slowest first."""
+        """`--slowest` only: number the kept candidates 1..n, slowest first.
+
+        Not atomic: the directories move before the manifest is republished, so
+        an interruption mid-move (a second Ctrl-C, a hard kill) can leave
+        `findings/<k>` and the manifest's indices out of step. The window is a
+        few renames long and the next session wipes the stress directory, so
+        the mismatch never outlives it -- acceptable for what this is.
+        """
         if not self.find_slowest or not self.manifest.findings:
             return
         ordered = sorted(

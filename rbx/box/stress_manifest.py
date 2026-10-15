@@ -70,8 +70,13 @@ class StressSpec(BaseModel):
     slowest: bool = False
     timeout: int  # seconds
     findingsLimit: int
-    # The effective time limit (ms) the solutions ran under, before any double
-    # TL is applied; `None` when they ran unlimited (`--slowest`).
+    # The base time limit (ms) of the session: the one
+    # `tasks.get_limits_for_language(lang=None, ...)` resolves from the active
+    # limits profile, or `--timelimit` when given. It is never doubled here:
+    # with `doubleTL` (`--double-tl`) the solutions ran under twice this value
+    # (doubled in the sandbox, `tasks._get_execution_config`). `None` when they
+    # ran unlimited -- `--slowest` without `--double-tl`, or a `--timelimit` of
+    # zero or less.
     timelimit: Optional[int] = None
     doubleTL: bool = False
 
