@@ -4,7 +4,14 @@ import { test } from 'node:test';
 
 import { packageLayout } from './layout';
 import { StressFinding, StressManifest } from './stress';
-import { compareCandidates, findingFiles, sessionOf } from './stressFindings';
+import {
+  compareCandidates,
+  everythingSelection,
+  findingFiles,
+  inputSelection,
+  outputSelection,
+  sessionOf,
+} from './stressFindings';
 
 test('a row acts on its own session only', () => {
   const manifest: StressManifest = {
@@ -67,12 +74,14 @@ test('every file on disk, labelled with the finding, in solution order', () => {
         path: path.join(DIR, '1.out'),
         label: 'stress/#2/sols/#2 wa.cpp.out',
         name: 'sols/wa.cpp',
+        solution: 1,
       },
       {
         kind: 'output',
         path: path.join(DIR, '2.out'),
         label: 'stress/#2/#2 brute.py.out',
         name: 'brute.py',
+        solution: 2,
       },
     ],
     // An empty stderr is no stderr at all.
@@ -82,6 +91,7 @@ test('every file on disk, labelled with the finding, in solution order', () => {
         path: path.join(DIR, '2.err'),
         label: 'stress/#2/#2 brute.py.err',
         name: 'brute.py stderr',
+        solution: 2,
       },
     ],
   });
@@ -111,4 +121,48 @@ test('no label ends in a bare testcase pane title', () => {
     const title = file?.label.split('/').pop();
     assert.ok(title !== 'input.in' && title !== 'output.out', title);
   }
+});
+
+const ALL = findingFiles(
+  PKG,
+  SOLUTIONS,
+  FINDING,
+  new Map([
+    ['input.in', 10],
+    ['input.ans', 3],
+    ['1.out', 3],
+  ]),
+);
+
+test('a row click opens the input alone', () => {
+  assert.deepStrictEqual(inputSelection(ALL), { active: ALL.input, beside: [] });
+});
+
+test('a chip opens the input and that solution output beside it', () => {
+  assert.deepStrictEqual(outputSelection(ALL, 1), {
+    active: ALL.input,
+    beside: [ALL.outputs[0]],
+    missingOutput: false,
+  });
+});
+
+test('a chip whose solution left no output opens the input and says so', () => {
+  assert.deepStrictEqual(outputSelection(ALL, 0), {
+    active: ALL.input,
+    beside: [],
+    missingOutput: true,
+  });
+});
+
+test('Open opens everything, and falls back to the first file without an input', () => {
+  assert.deepStrictEqual(everythingSelection(ALL), {
+    active: ALL.input,
+    beside: [ALL.answer, ALL.outputs[0]],
+  });
+  const noInput = { ...ALL, input: undefined };
+  assert.deepStrictEqual(everythingSelection(noInput), {
+    active: ALL.answer,
+    beside: [ALL.outputs[0]],
+  });
+  assert.deepStrictEqual(inputSelection(noInput), { active: undefined, beside: [] });
 });

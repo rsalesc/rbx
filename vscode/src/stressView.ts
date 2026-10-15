@@ -39,7 +39,14 @@ import {
 } from './rbx/stressViewModel';
 import { readYamlFile } from './rbx/store';
 import { RunDataProvider, stressLivenessHere } from './runData';
-import { compareFinding, copyFindingCall, findingEntries, openFinding } from './stressCommands';
+import {
+  compareFinding,
+  copyFindingCall,
+  findingEntries,
+  openFinding,
+  openFindingInput,
+  openFindingOutput,
+} from './stressCommands';
 
 /** What stressMain.ts posts back. */
 interface ClientMessage {
@@ -47,6 +54,8 @@ interface ClientMessage {
   readonly root?: string;
   readonly name?: string;
   readonly k?: number;
+  /** For `open-output`: the solution, as an index into the manifest's list. */
+  readonly solution?: number;
   /** The session the clicked row belonged to: its `startedAt`. */
   readonly session?: string;
 }
@@ -266,10 +275,18 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
         }
         return;
       case 'open':
+      case 'open-input':
       case 'compare':
       case 'copy':
         if (typeof message.k === 'number') {
           await this.onFinding(root, message.type, message.k, message.session);
+        }
+        return;
+      case 'open-output':
+        if (typeof message.k === 'number' && typeof message.solution === 'number') {
+          const pkg = packageLayout(root);
+          const manifest = await this.sessionFor(root, message.session);
+          await openFindingOutput(pkg, manifest, message.k, message.solution);
         }
         return;
     }
@@ -277,7 +294,7 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
 
   private async onFinding(
     root: string,
-    action: 'open' | 'compare' | 'copy',
+    action: 'open' | 'open-input' | 'compare' | 'copy',
     k: number,
     session: string | undefined,
   ): Promise<void> {
@@ -288,6 +305,8 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
     switch (action) {
       case 'open':
         return openFinding(pkg, manifest, k);
+      case 'open-input':
+        return openFindingInput(pkg, manifest, k);
       case 'compare':
         return compareFinding(pkg, manifest, k);
       case 'copy':

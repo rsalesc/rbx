@@ -67,6 +67,8 @@ export interface StressChip {
   readonly solution: string;
   /** The declared path, for the tooltip. */
   readonly path: string;
+  /** Index into the manifest's `solutions`: the stem of its output file. */
+  readonly index: number;
   readonly short: string;
   readonly icon: string;
   readonly hue: Hue;
@@ -210,6 +212,7 @@ function findingRows(
       return {
         solution: path.posix.basename(declared),
         path: declared,
+        index: result.solution,
         short: shortName(result.outcome),
         icon: icon.icon,
         hue: hueOfThemeColor(icon.color),

@@ -1342,11 +1342,49 @@ body.dispatch-enabled .welcome-actions {
   padding: 0 0 4px 16px;
 }
 
+/* A finding row opens its input on a click anywhere that is not a button. */
+.stress-finding {
+  cursor: pointer;
+}
+
+.stress-finding-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  min-height: 22px;
+  border-radius: 3px;
+}
+
+.stress-finding-main:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+/* A real button, drawn as the verdict it is. No `color` here: the `.hue-*`
+   class carries it, and a rule here would have to out-specify that table. */
 .stress-chip {
   display: inline-flex;
   align-items: center;
   gap: 2px;
   white-space: nowrap;
+  font: inherit;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  padding: 0 3px;
+  margin: 0 -3px;
+  cursor: pointer;
+}
+
+.stress-chip:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.stress-chip:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
 }
 
 .stress-promoted {

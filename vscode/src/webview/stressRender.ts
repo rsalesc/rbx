@@ -154,11 +154,13 @@ export function renderStatus(model: StressViewModel): string {
   );
 }
 
-function chip(item: StressChip): string {
-  const title = `${item.path}: ${item.short}`;
+/** A verdict, and a button: the input plus this solution's output. */
+function chip(item: StressChip, k: number): string {
+  const title = `Open the input and ${item.path}'s output (finding #${k}) — ${item.short}`;
   return (
-    `<span class="stress-chip hue-${item.hue}" title="${escapeAttr(title)}">` +
-    `${codicon(item.icon)}${escapeHtml(item.solution)} ${escapeHtml(item.short)}</span>`
+    `<button class="stress-chip hue-${item.hue}" data-action="open-output" data-k="${k}" ` +
+    `data-solution="${item.index}" title="${escapeAttr(title)}" aria-label="${escapeAttr(title)}">` +
+    `${codicon(item.icon)}${escapeHtml(item.solution)} ${escapeHtml(item.short)}</button>`
   );
 }
 
@@ -173,7 +175,7 @@ const PROMOTE_WAIT = 'Wait for the stress to finish to promote';
 function findingRow(row: StressFindingRow, running: boolean): string {
   const k = { k: row.k };
   const actions =
-    iconButton('open', 'go-to-file', `Open finding #${row.k}`, k) +
+    iconButton('open', 'go-to-file', `Open input, answer and all outputs of finding #${row.k}`, k) +
     (row.canCompare ? iconButton('compare', 'diff', `Compare outputs of finding #${row.k}`, k) : '') +
     iconButton('copy', 'copy', `Copy the generator call of finding #${row.k}`, k) +
     (running
@@ -188,12 +190,19 @@ function findingRow(row: StressFindingRow, running: boolean): string {
   return (
     `<li class="stress-finding" data-k="${row.k}">` +
     '<div class="stress-finding-head">' +
+    // The row's own gesture, opening the input. A `role="button"` beside the
+    // action buttons rather than around them: nothing interactive may sit
+    // inside a button, and each action keeps its own tab stop. A click on the
+    // rest of the row lands here too (stressMain.ts).
+    `<div class="stress-finding-main" role="button" tabindex="0" data-action="open-input" ` +
+    `data-k="${row.k}" aria-label="Open the input of finding #${row.k}: ${escapeAttr(row.call)}">` +
     `<span class="stress-index">#${row.k}</span>` +
     `<code class="stress-call" title="${escapeAttr(row.call)}">${escapeHtml(row.call)}</code>` +
     duration +
+    '</div>' +
     `<span class="stress-actions">${actions}</span>` +
     '</div>' +
-    `<div class="stress-chips">${row.chips.map(chip).join('')}${promoted}</div>` +
+    `<div class="stress-chips">${row.chips.map((item) => chip(item, row.k)).join('')}${promoted}</div>` +
     '</li>'
   );
 }

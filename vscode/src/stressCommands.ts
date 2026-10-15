@@ -17,7 +17,16 @@ import * as vscode from 'vscode';
 import { artifactUri } from './artifactFs';
 import { PackageLayout, findingDir } from './rbx/layout';
 import { StressFinding, StressManifest } from './rbx/stress';
-import { FindingFile, FindingFiles, compareCandidates, findingFiles } from './rbx/stressFindings';
+import {
+  FindingFile,
+  FindingFiles,
+  FindingSelection,
+  compareCandidates,
+  everythingSelection,
+  findingFiles,
+  inputSelection,
+  outputSelection,
+} from './rbx/stressFindings';
 import { generatorCallString } from './rbx/stressSpec';
 
 /**
@@ -77,13 +86,17 @@ function uriOf(file: FindingFile): vscode.Uri {
   return artifactUri(file.path, file.label);
 }
 
-async function show(file: FindingFile, column: vscode.ViewColumn): Promise<void> {
+async function show(
+  file: FindingFile,
+  column: vscode.ViewColumn,
+  preview = false,
+): Promise<void> {
   const document = await vscode.workspace.openTextDocument(uriOf(file));
-  // Not previews: a finding opens several files at once, and a preview tab
-  // is replaced by the next one opened into its group.
+  // Not previews by default: Open puts several files into one group, and a
+  // preview tab is replaced by the next one opened there.
   await vscode.window.showTextDocument(document, {
     viewColumn: column,
-    preview: false,
+    preview,
     preserveFocus: column === vscode.ViewColumn.Beside,
   });
 }
@@ -119,17 +132,7 @@ export async function openFinding(
     return;
   }
   const { files } = resolved;
-  // The input where the user is, and the rest beside it; with no input,
-  // whatever is first takes its place, so there is still a column to be
-  // beside.
-  const [first, ...rest] = [
-    ...(files.input === undefined ? [] : [files.input]),
-    ...compareCandidates(files),
-  ];
-  await show(first, vscode.ViewColumn.Active);
-  for (const file of rest) {
-    await show(file, vscode.ViewColumn.Beside);
-  }
+  await showSelection(everythingSelection(files));
   if (files.stderrs.length > 0) {
     const open = 'Open stderr…';
     const names = files.stderrs.map((file) => file.name.replace(/ stderr$/, '')).join(', ');
@@ -140,6 +143,64 @@ export async function openFinding(
     if (choice === open) {
       await pickStderr(files.stderrs);
     }
+  }
+}
+
+async function showSelection(selection: FindingSelection, preview = false): Promise<void> {
+  if (selection.active !== undefined) {
+    await show(selection.active, vscode.ViewColumn.Active, preview);
+  }
+  for (const file of selection.beside) {
+    await show(file, vscode.ViewColumn.Beside, preview);
+  }
+}
+
+/**
+ * A click on finding `k`'s row: its input, where the user is.
+ *
+ * As a preview, like a testcase row in the other views: clicking down the
+ * findings replaces the tab instead of piling them up. So is the chip's pair
+ * below, one preview per group.
+ */
+export async function openFindingInput(
+  pkg: PackageLayout,
+  manifest: StressManifest | undefined,
+  k: number,
+): Promise<void> {
+  const resolved = await resolve(pkg, manifest, k);
+  if (resolved === undefined) {
+    return;
+  }
+  const selection = inputSelection(resolved.files);
+  if (selection.active === undefined) {
+    findingGone(k);
+    return;
+  }
+  await showSelection(selection, true);
+}
+
+/** A click on a verdict chip: the input, and that solution's output beside it. */
+export async function openFindingOutput(
+  pkg: PackageLayout,
+  manifest: StressManifest | undefined,
+  k: number,
+  solution: number,
+): Promise<void> {
+  const resolved = await resolve(pkg, manifest, k);
+  if (resolved === undefined) {
+    return;
+  }
+  const selection = outputSelection(resolved.files, solution);
+  if (selection.active === undefined && selection.beside.length === 0) {
+    findingGone(k);
+    return;
+  }
+  await showSelection(selection, true);
+  if (selection.missingOutput) {
+    const name = manifest?.solutions[solution] ?? `solution #${solution}`;
+    void vscode.window.showInformationMessage(
+      `rbx: ${name} left no output on finding #${k}; showing the input only.`,
+    );
   }
 }
 

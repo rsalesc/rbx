@@ -41,7 +41,7 @@ function model(overrides: Partial<StressViewModel> = {}): StressViewModel {
         k: 1,
         call: 'gen 5 <seed>',
         duration: '1.3 s',
-        chips: [{ solution: 'wa.cpp', path: 'sols/wa.cpp', short: 'WA', icon: 'close', hue: 'red' }],
+        chips: [{ solution: 'wa.cpp', path: 'sols/wa.cpp', index: 1, short: 'WA', icon: 'close', hue: 'red' }],
         canCompare: true,
       },
     ],
@@ -154,6 +154,22 @@ test('finding rows: index, call, chips, and Compare only when there is a pair', 
     model({ findings: [{ ...model().findings[0], canCompare: false }] }),
   );
   assert.doesNotMatch(single, /data-action="compare"/);
+});
+
+test('three distinct gestures: the row, a chip, and Open', () => {
+  const html = renderFindings(model());
+  // The row: a keyboard-reachable button-role element, holding no button.
+  const main = /<div class="stress-finding-main" role="button" tabindex="0" data-action="open-input" data-k="1"[^>]*>(.*?)<\/div>/.exec(html);
+  assert.ok(main !== null);
+  assert.doesNotMatch(main[1], /<button/);
+  assert.match(main[0], /aria-label="Open the input of finding #1: gen 5 &lt;seed&gt;"/);
+  // A chip: a real button naming its solution by index.
+  assert.match(
+    html,
+    /<button class="stress-chip hue-red" data-action="open-output" data-k="1" data-solution="1" title="Open the input and sols\/wa\.cpp&#39;s output \(finding #1\) — WA" aria-label="[^"]+">/,
+  );
+  // Open: everything.
+  assert.match(html, /title="Open input, answer and all outputs of finding #1"/);
 });
 
 test('Promote is shown disabled while the session runs, and enabled after', () => {

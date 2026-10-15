@@ -72,21 +72,51 @@ setInterval(() => {
   }
 }, 1000);
 
+/**
+ * The element a click acts through: the nearest `[data-action]`, or -- for a
+ * click on the bare rest of a finding row -- that row's own gesture. Actions
+ * are checked first, so Copy, Compare, Promote and the chips never also open
+ * the row's input.
+ */
+function actionTarget(target: HTMLElement): HTMLElement | null {
+  const button = target.closest('[data-action]') as HTMLElement | null;
+  if (button !== null) {
+    return button;
+  }
+  return target.closest('.stress-finding')?.querySelector('.stress-finding-main') ?? null;
+}
+
 document.addEventListener('click', (event) => {
-  const button = (event.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+  const button = actionTarget(event.target as HTMLElement);
   const action = button?.dataset.action;
   // A button shown disabled says why in its tooltip; the click is a no-op.
   if (action === undefined || button?.getAttribute('aria-disabled') === 'true') {
     return;
   }
   const k = button?.dataset.k;
+  const solution = button?.dataset.solution;
   vscode.postMessage({
     type: action,
     name: button?.dataset.name,
     k: k === undefined ? undefined : Number(k),
+    solution: solution === undefined ? undefined : Number(solution),
     // Which session the row belonged to; see `StressViewModel.session`.
     session: model.session,
   });
+});
+
+// Enter and Space on the row's `role="button"`, which a real button gets for
+// free. Space is kept from scrolling the view, as a button's would be.
+document.addEventListener('keydown', (event) => {
+  const target = event.target as HTMLElement;
+  if (
+    target.getAttribute('role') === 'button' &&
+    target.tagName !== 'BUTTON' &&
+    (event.key === 'Enter' || event.key === ' ')
+  ) {
+    event.preventDefault();
+    target.click();
+  }
 });
 
 document.addEventListener('change', (event) => {

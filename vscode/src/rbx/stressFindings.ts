@@ -24,6 +24,8 @@ export interface FindingFile {
   readonly label: string;
   /** How a QuickPick or a diff title names it. */
   readonly name: string;
+  /** For an output or a stderr: whose, as an index into `solutions`. */
+  readonly solution?: number;
 }
 
 export interface FindingFiles {
@@ -68,6 +70,7 @@ export function findingFiles(
         path: output,
         label: at(`#${k} ${base}${Ext.Output}`),
         name: solution,
+        solution: index,
       });
     }
     const stderr = findingArtifactPath(pkg, k, index, Ext.Stderr);
@@ -77,6 +80,7 @@ export function findingFiles(
         path: stderr,
         label: at(`#${k} ${base}${Ext.Stderr}`),
         name: `${solution} stderr`,
+        solution: index,
       });
     }
   });
@@ -110,6 +114,50 @@ export function sessionOf(
     return manifest;
   }
   return manifest.startedAt === session ? manifest : undefined;
+}
+
+/**
+ * What a gesture on a finding row opens: `active` where the user is, `beside`
+ * next to it.
+ */
+export interface FindingSelection {
+  readonly active?: FindingFile;
+  readonly beside: readonly FindingFile[];
+}
+
+/** A click on the row: just the input. */
+export function inputSelection(files: FindingFiles): FindingSelection {
+  return { active: files.input, beside: [] };
+}
+
+/**
+ * A click on a verdict chip: the input, and that one solution's output beside
+ * it. `missingOutput` is set when the solution left none (it crashed, or never
+ * ran), so the caller can say so rather than open half of what was asked.
+ */
+export function outputSelection(
+  files: FindingFiles,
+  solution: number,
+): FindingSelection & { readonly missingOutput: boolean } {
+  const output = files.outputs.find((file) => file.solution === solution);
+  return {
+    active: files.input,
+    beside: output === undefined ? [] : [output],
+    missingOutput: output === undefined,
+  };
+}
+
+/**
+ * The row's Open button: everything. The input where the user is and the
+ * answer and every output beside it; with no input, whatever is first takes
+ * its place, so there is still a column to be beside.
+ */
+export function everythingSelection(files: FindingFiles): FindingSelection {
+  const [active, ...beside] = [
+    ...(files.input === undefined ? [] : [files.input]),
+    ...compareCandidates(files),
+  ];
+  return { active, beside };
 }
 
 /** What Compare offers: the reference answer first, then every output. */

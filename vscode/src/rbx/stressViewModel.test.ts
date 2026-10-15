@@ -89,8 +89,8 @@ test('a finished session: status, counters and one chip per result', () => {
       call: 'gen 5 123',
       duration: '1.3 s',
       chips: [
-        { solution: 'main.cpp', path: 'sols/main.cpp', short: 'AC', icon: 'pass', hue: 'green' },
-        { solution: 'wa.cpp', path: 'sols/wa.cpp', short: 'WA', icon: 'close', hue: 'red' },
+        { solution: 'main.cpp', path: 'sols/main.cpp', index: 0, short: 'AC', icon: 'pass', hue: 'green' },
+        { solution: 'wa.cpp', path: 'sols/wa.cpp', index: 1, short: 'WA', icon: 'close', hue: 'red' },
       ],
       promoted: 'main',
       canCompare: true,
@@ -175,7 +175,7 @@ test('a result naming no known solution still gets a chip', () => {
     dispatch: true,
   });
   assert.deepStrictEqual(model.findings[0].chips, [
-    { solution: '#7', path: '#7', short: 'XX', icon: 'question', hue: 'purple' },
+    { solution: '#7', path: '#7', index: 7, short: 'XX', icon: 'question', hue: 'purple' },
   ]);
   assert.strictEqual(model.findings[0].call, 'gen');
   assert.strictEqual(model.findings[0].duration, undefined);
