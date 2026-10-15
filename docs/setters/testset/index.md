@@ -345,6 +345,89 @@ rbx build -v1
 You can read more about the verification level flag in the [verification section](/setters/verification#verification-level) and
 about validation in the [Validators section](/setters/verification/validators).
 
+## Promoting tests
+
+Tests don't always stay where you first put them.
+
+A generated test can be special enough to freeze into a file exactly as it is. An input you typed while debugging can deserve a
+place in the testset. **Promoting** a test puts it into a test group,
+usually moving it there, and `rbx testcases promote` does the editing for you.
+
+```bash
+# Freeze the test on line 3 of the testplan into a @copy, on the same line.
+rbx testcases promote testplan.txt:3 --to secret --as copy
+
+# Move the fourth test of `secret` into the samples.
+rbx testcases promote secret/3 --to samples
+
+# Turn an input file into a test of `secret`.
+rbx testcases promote file:debug.in --to secret
+```
+
+Each command starts with the tests to promote, and `--to` says which group they go into. A
+selector says which test to promote:
+
+| Selector | The test |
+| --- | --- |
+| `testplan.txt:3` | the one whose statement starts on line 3 of that testplan |
+| `secret/3` | the fourth test of the `secret` group, counting from 0 as `rbx build` does |
+| `finding:2` | finding 2 of the last [stress test](../stress-testing.md#adding-findings-to-the-testset) |
+| `file:debug.in` | an input file, and `file:debug.in:debug.ans` to keep an answer with it |
+
+Leave out the tests, `--to`, or both, and {{rbx}} asks for them. To promote into a group
+that doesn't exist yet, pass `--new-manual NAME --glob GLOB` or `--new-script PATH`
+instead of `--to`; see
+[`rbx testcases promote`](../reference/cli.md#rbx-testcases-promote) in the reference.
+
+### Choosing where a test goes
+
+A test can go into two kinds of group, and each holds it differently:
+
+- A group defined by a [testcase glob](#testcase-glob) gets a copy of the test's input,
+  numbered after the group's last file, so that it sorts last: after `tests/03.in` comes
+  `tests/04.in`. `--name` picks the name yourself.
+- A group backed by a [testplan](#static-generator-script-aka-testplan) gets a line: the
+  generator call that makes the test, when it has one, or a `@copy` of its input otherwise.
+  `--as recipe` and `--as copy` pick one.
+
+A `@copy` needs its input somewhere on disk, and {{rbx}} follows the `@copy` lines the group
+already has. If `secret` holds `@copy tests/secret/edge-001.in` and
+`@copy tests/secret/edge-002.in`, the new file is `tests/secret/edge-003.in`. A group with no
+`@copy` lines yet keeps its files in `tests/<group>/`.
+
+Pass `--path` to choose yourself,
+either a file or a pattern whose `*` {{rbx}} fills with the next free name.
+
+When several groups share one testplan, an untagged line would belong to every one of them.
+So {{rbx}} writes the line inside the group's `@testgroup` block, adding a
+`@testgroup <group>` block if the group has none yet.
+
+### Moving, freezing, and copying
+
+By default, a promoted test **moves**: {{rbx}} deletes its line from the testplan, or its
+files from a testcase glob folder. A `@copy` file goes too, unless another test still reads
+it. Pass `--keep-source` to copy the test instead.
+
+Stress findings and input files are always copied. Some tests can't be moved, because
+{{rbx}} can't remove them where they are: those a group lists one by one in its own
+`testcases` field or makes with its `generators` field, and those made by a
+[dynamic generator script](#dynamic-generator-script). Promoting one of them fails unless
+you pass `--keep-source`.
+
+A test that is already in the group's testplan changes **in place**: promoting a
+generator call as a `@copy` freezes it on the same line, so no other test moves. With
+`--keep-source`, the new line goes at the end of the group instead, as anything else does.
+
+An answer is copied along with its input. A glob test's `.ans` file goes with it, and the
+answer of a `file:IN:ANS` is written next to the new input, where testcase globs and `@copy`
+both find it.
+
+!!! tip "Previewing a promotion"
+    `--dry-run` prints what a promotion would change without changing it, and
+    `--list-sinks` lists the groups a test can go into. With `--json`, both print their
+    result as JSON, which is what the [VS Code extension](../../tools/vscode.md) reads to
+    show you a promotion before making it.
+
 ## Visualizing the testset
 
 You can use the `rbx ui` to visualize the testcases that were built through the `rbx build` command.
