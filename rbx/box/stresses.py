@@ -1,10 +1,12 @@
 import datetime
 import heapq
+import os
 import pathlib
 import random
 import secrets
 import shutil
 import signal
+import socket
 import threading
 import time
 from shutil import rmtree
@@ -228,6 +230,8 @@ class _StressSession:
             spec=spec,
             startedAt=datetime.datetime.now().astimezone(),
             solutions=[str(solution.path) for solution in solutions],
+            pid=os.getpid(),
+            host=socket.gethostname(),
         )
         self.publish()
         stress_manifest.begin_session(self._path)

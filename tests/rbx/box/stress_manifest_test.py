@@ -27,6 +27,8 @@ def _manifest() -> StressManifest:
         ),
         startedAt=datetime.datetime(2026, 10, 15, 12, 0, tzinfo=datetime.timezone.utc),
         solutions=['sols/ac.cpp', 'sols/wa.cpp'],
+        pid=4242,
+        host='judge-1',
         findings=[
             StressFindingEntry(
                 index=1,
@@ -75,6 +77,24 @@ def test_written_as_structured_values(testing_pkg: testing_package.TestingPackag
         {'solution': 1, 'outcome': 'wrong-answer', 'time': 0.012, 'memory': 1024}
     ]
     assert data['findings'][0]['generator'] == {'name': 'gen', 'args': '3'}
+    assert data['pid'] == 4242
+    assert data['host'] == 'judge-1'
+
+
+def test_reads_a_manifest_without_pid_and_host(
+    testing_pkg: testing_package.TestingPackage,
+):
+    stress_manifest.write_manifest(_manifest())
+    path = stress_manifest.manifest_path()
+    data = yaml.safe_load(path.read_text())
+    del data['pid']
+    del data['host']
+    path.write_text(yaml.safe_dump(data))
+
+    manifest = stress_manifest.read_manifest()
+    assert manifest is not None
+    assert manifest.pid is None
+    assert manifest.host is None
 
 
 def test_atomic_write_leaves_no_temp_file(

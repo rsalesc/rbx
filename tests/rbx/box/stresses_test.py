@@ -7,6 +7,7 @@ the per-finding directories. These tests pin that layout.
 import asyncio
 import os
 import signal
+import socket
 import threading
 from unittest import mock
 
@@ -77,6 +78,8 @@ async def test_findings_are_published(pkg: testing_package.TestingPackage):
     assert manifest.spec.findingsLimit == 2
     assert manifest.spec.fuzz is None
     assert manifest.solutions == ['sols/ac.cpp', 'sols/wa.cpp']
+    assert manifest.pid == os.getpid()
+    assert manifest.host == socket.gethostname()
     assert manifest.executed == report.executed
     assert [f.index for f in manifest.findings] == [1, 2]
     assert [(f.generator, f.duration) for f in manifest.findings] == [

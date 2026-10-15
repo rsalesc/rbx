@@ -17,6 +17,10 @@ A solution's artifacts in a finding are its *last* run in that iteration (a
 finder can run one solution several times, against different checkers), while
 its entry in `results` carries the *worst* outcome across all those runs.
 
+A `running` manifest may outlive its process (a `kill -9`, a crash before the
+exit path). `pid` and `host` name the process that wrote it, so a reader on the
+same host can check whether it is still alive.
+
 Like `run_report.py`, it is a published contract:
 
 - **Structured, never rendered.** Enum values, seconds, bytes, milliseconds.
@@ -106,6 +110,12 @@ class StressManifest(BaseModel):
     # which then has artifacts in each finding but possibly no `results` entry.
     solutions: List[str]
     findings: List[StressFindingEntry] = []
+    # The rbx process running the session, and the host it runs on. A reader
+    # on the same host can tell a live `running` session from one whose
+    # process died without finishing it (`kill(pid, 0)`). Optional: absent in
+    # manifests written before they were added.
+    pid: Optional[int] = None
+    host: Optional[str] = None
 
 
 def stress_dir() -> pathlib.Path:
