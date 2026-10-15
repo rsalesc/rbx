@@ -260,12 +260,14 @@ async def stress(
 
         if testgroup in manual_groups:
             manual_target = manual_groups[testgroup]
-            findings_dir = package.get_problem_runs_dir() / '.stress' / 'findings'
+            from rbx.box import stress_manifest
+
             finding_paths = [
-                findings_dir / f'{i}.in' for i in range(len(report.findings))
+                stress_manifest.finding_input_path(i + 1)
+                for i in range(len(report.findings))
             ]
             missing = next(
-                (i for i, p in enumerate(finding_paths) if not p.exists()), None
+                (i + 1 for i, p in enumerate(finding_paths) if not p.exists()), None
             )
             if missing is not None:
                 console.console.print(

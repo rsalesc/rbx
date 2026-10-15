@@ -1,3 +1,4 @@
+import datetime
 import heapq
 import pathlib
 import random
@@ -5,15 +6,22 @@ import secrets
 import shutil
 import time
 from shutil import rmtree
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import async_lru
-import syncer
 import typer
+import yaml
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box import checkers, generators, package, tasks, validators
+from rbx.box import (
+    checkers,
+    generators,
+    package,
+    stress_manifest,
+    tasks,
+    validators,
+)
 from rbx.box.code import SanitizationLevel, compile_item
 from rbx.box.formatting import get_formatted_time, href
 from rbx.box.generators import (
@@ -70,31 +78,107 @@ async def _compile_finder(finder: Checker) -> str:
 
 
 def _renumber_slowest_findings(
-    findings_dir: pathlib.Path, slowest_findings: List
+    findings_dir: pathlib.Path, old_indices: List[int]
 ) -> None:
+    """Move the finding directories `old_indices` to `1..n`, in that order."""
     temp_dir = findings_dir.parent / '.temp_findings'
     rmtree(str(temp_dir), ignore_errors=True)
     temp_dir.mkdir(parents=True, exist_ok=True)
 
     # Move all candidates to temp directory
-    for _, _, old_file_index, _ in slowest_findings:
-        old_path = findings_dir / f'{old_file_index}.in'
-        temp_path = temp_dir / f'{old_file_index}.in'
+    for old_index in old_indices:
+        old_path = findings_dir / str(old_index)
         if old_path.exists():
-            shutil.move(str(old_path), str(temp_path))
+            shutil.move(str(old_path), str(temp_dir / str(old_index)))
 
     # Clean findings directory to avoid leftovers
     rmtree(str(findings_dir), ignore_errors=True)
     findings_dir.mkdir(parents=True, exist_ok=True)
 
     # Move back with new numbering
-    for i, (_, _, old_file_index, _) in enumerate(slowest_findings):
-        temp_path = temp_dir / f'{old_file_index}.in'
-        new_path = findings_dir / f'{i}.in'
+    for new_index, old_index in enumerate(old_indices, start=1):
+        temp_path = temp_dir / str(old_index)
         if temp_path.exists():
-            shutil.move(str(temp_path), str(new_path))
+            shutil.move(str(temp_path), str(findings_dir / str(new_index)))
 
     rmtree(str(temp_dir), ignore_errors=True)
+
+
+def _keep_finding_artifacts(
+    finding_index: int,
+    input_path: pathlib.Path,
+    evaluations: Dict[int, Evaluation],
+) -> None:
+    """Copy a finding out of the scratch area, before the next iteration
+    overwrites it.
+
+    `evaluations` maps a solution index to the last evaluation of it this
+    iteration, which is the one whose artifacts are on disk. Each lands as
+    `<index>.out|.err|.eval`, the shapes a regular run writes, with the `.eval`
+    pointing at the kept copies rather than at the scratch files.
+    """
+    directory = stress_manifest.finding_dir(finding_index)
+    rmtree(str(directory), ignore_errors=True)
+    directory.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(input_path, directory / stress_manifest.FINDING_INPUT_FILENAME)
+
+    for index, evaluation in sorted(evaluations.items()):
+        out_path = directory / f'{index}.out'
+        for src, dst in (
+            (evaluation.log.stdout_absolute_path, out_path),
+            (evaluation.log.stderr_absolute_path, out_path.with_suffix('.err')),
+        ):
+            if src is not None and src.is_file():
+                shutil.copyfile(src, dst)
+        _write_kept_evaluation(out_path, evaluation)
+
+
+def _write_kept_evaluation(out_path: pathlib.Path, evaluation: Evaluation) -> None:
+    """Write a finding's `.eval`, pointing at the files beside it."""
+    kept = evaluation.model_copy(deep=True)
+    kept_input = out_path.parent / stress_manifest.FINDING_INPUT_FILENAME
+    kept.testcase.input = kept_input.absolute()
+    kept.testcase.output = None
+    err_path = out_path.with_suffix('.err')
+    kept.log.stdout_absolute_path = out_path.absolute() if out_path.is_file() else None
+    kept.log.stderr_absolute_path = err_path.absolute() if err_path.is_file() else None
+    kept.log.log_absolute_path = None
+    kept.log.checker_stderr_absolute_path = None
+    tasks.write_evaluation(kept, out_path)
+
+
+def _repoint_kept_evaluations(directory: pathlib.Path) -> None:
+    """Rewrite the `.eval`s of a finding directory that was moved."""
+    for eval_path in directory.glob('*.eval'):
+        evaluation = Evaluation.model_validate(yaml.safe_load(eval_path.read_text()))
+        _write_kept_evaluation(eval_path.with_suffix('.out'), evaluation)
+
+
+def _finding_results(
+    results: List[finder_parser.FinderResult], solution_index: Dict[str, int]
+) -> List[stress_manifest.StressSolutionResult]:
+    """One result per solution, in finder order, with its worst outcome."""
+    by_solution: Dict[int, List[finder_parser.FinderResult]] = {}
+    for result in results:
+        index = solution_index[str(result.solution.path)]
+        by_solution.setdefault(index, []).append(result)
+
+    entries = []
+    for index, solution_results in by_solution.items():
+        log = solution_results[-1].solution_log
+        entries.append(
+            stress_manifest.StressSolutionResult(
+                solution=index,
+                outcome=Outcome.worst_outcome(r.outcome for r in solution_results),
+                time=log.time if log is not None else None,
+                memory=log.memory if log is not None else None,
+            )
+        )
+    return entries
+
+
+def _generator_expression(call: GeneratorCall) -> str:
+    return ' '.join(part for part in (call.name, call.args) if part)
 
 
 def _get_reference_solution(reference_solution: Optional[str]) -> Optional[Solution]:
@@ -122,6 +206,8 @@ async def run_stress(
 ) -> StressReport:
     pkg = package.find_problem_package_or_die()
     ref_sol = _get_reference_solution(reference_solution)
+    # The declared stress being run, if any; published in the manifest.
+    declared_name: Optional[str] = None
     if ref_sol is not None:
         console.console.print(f'Using {ref_sol.href()} as reference solution.')
 
@@ -175,6 +261,7 @@ async def run_stress(
             raise typer.Exit(1)
         else:
             stress = package.get_stress(name)
+            declared_name = stress.name
 
     generator_candidates = []
     if fuzz is not None:
@@ -303,14 +390,39 @@ async def run_stress(
         console.console.print(limits)
 
     # Erase old stress directory
-    runs_dir = package.get_problem_runs_dir()
-    stress_dir = runs_dir / '.stress'
+    stress_dir = stress_manifest.stress_dir()
+    findings_dir = stress_manifest.findings_dir()
     rmtree(str(stress_dir), ignore_errors=True)
     stress_dir.mkdir(parents=True, exist_ok=True)
-    empty_path = runs_dir / '.stress' / '.empty'
+    empty_path = stress_dir / '.empty'
     empty_path.write_text('')
 
+    solution_index_by_path = {
+        str(solution.path): i for i, solution in enumerate(solutions)
+    }
+    spec_fuzz: Optional[List[str]] = None
+    if fuzz is not None:
+        spec_fuzz = list(fuzz) if isinstance(fuzz, list) else []
+    manifest = stress_manifest.StressManifest(
+        state=stress_manifest.StressState.RUNNING,
+        spec=stress_manifest.StressSpec(
+            name=declared_name,
+            generator=_generator_expression(stress.generator) if fuzz is None else None,
+            finder=stress.finder,
+            fuzz=spec_fuzz,
+            slowest=find_slowest,
+            timeout=timeout_in_seconds,
+            findingsLimit=findings_limit,
+            timelimit=limits.time if limits is not None else None,
+            doubleTL=limits.isDoubleTL if limits is not None else False,
+        ),
+        startedAt=datetime.datetime.now().astimezone(),
+        solutions=[str(solution.path) for solution in solutions],
+    )
+    stress_manifest.write_manifest(manifest)
+
     startTime = time.monotonic()
+    last_manifest_write = startTime
 
     executed = 0
     skipped = 0
@@ -318,297 +430,353 @@ async def run_stress(
     only_call: Optional[str] = None
     has_diff_call = False
     duplicate_call_error = False
+    # Findings are numbered from 1. In `--slowest` mode the number is only a
+    # unique key while the stress runs; they are renumbered 1..n at the end.
     finding_counter = 0
+    eval_calls = finder_parser.get_all_eval_calls(parsed_finder)
 
     # Min-heap to store the top `findings_limit` slowest findings.
-    # Elements are (duration, executed_index, file_index, generator_call)
+    # Elements are (duration, executed_index, finding_index, generator_call)
     # We use executed_index as tie breaker (prefer newer distinct findings mostly for determinism)
     slowest_findings = []
 
+    def _sync_counters():
+        manifest.elapsed = time.monotonic() - startTime
+        manifest.executed = executed
+        manifest.skipped = skipped
+
+    # Whatever happens, the manifest ends in a final state: a reader must never
+    # be left with a `running` session no process is running.
+    final_state = stress_manifest.StressState.FAILED
     try:
-        while True:
-            # Check for timeout first
-            if time.monotonic() - startTime > timeout_in_seconds:
-                break
+        try:
+            while True:
+                # Check for timeout first
+                if time.monotonic() - startTime > timeout_in_seconds:
+                    break
 
-            # If not in find_slowest mode, check if we reached the limit
-            if not find_slowest and len(findings) >= findings_limit:
-                break
+                # If not in find_slowest mode, check if we reached the limit
+                if not find_slowest and len(findings) >= findings_limit:
+                    break
 
-            if print_descriptors:
-                utils.print_open_fd_count()
+                if print_descriptors:
+                    utils.print_open_fd_count()
 
-            executed += 1
+                # Counters are republished at most once a second.
+                if time.monotonic() - last_manifest_write >= 1:
+                    _sync_counters()
+                    stress_manifest.write_manifest(manifest)
+                    last_manifest_write = time.monotonic()
 
-            if progress:
-                seconds = timeout_in_seconds - int(time.monotonic() - startTime)
-                skipped_str = f'skipped [item]{skipped}[/item], ' if skipped else ''
-                progress.update(
-                    f'Stress testing: found [item]{len(findings)}[/item] tests, '
-                    f'executed [item]{executed}[/item], '
-                    f'{skipped_str}'
-                    f'[item]{seconds}[/item] second(s) remaining...'
-                )
+                executed += 1
 
-            input_path = runs_dir / '.stress' / 'input'
-            input_path.parent.mkdir(parents=True, exist_ok=True)
-
-            if fuzz is not None:
-                base_call = random.choice(generator_candidates)
-                fuzz_suffix = secrets.token_hex(4)
-                # Append fuzz suffix to args
-                new_args = str(base_call.args or '') + ' ' + fuzz_suffix
-                expanded_generator_call = GeneratorCall(
-                    name=base_call.name, args=new_args.strip()
-                )
-                generator_digest = generator_digests[base_call.name]
-            else:
-                expanded_generator_call = expand_generator_call(stress.generator)
-
-            if only_call is not None and str(expanded_generator_call) != only_call:
-                has_diff_call = True
-            only_call = str(expanded_generator_call)
-
-            if not has_diff_call and executed % 10 == 0:
-                console.console.print(
-                    f'[warning]Generator call [item]{only_call}[/item] was repeated [item]{executed}[/item] times.[/warning]'
-                )
-                if not duplicate_call_error:
-                    duplicate_call_error = True
-                    console.console.print(
-                        '[warning]This might mean your generator expression is not generating different testcases.[/warning]'
-                    )
-                    console.console.print(
-                        '[warning]You should add [item]@[/item] to your generator expression.[/warning]'
+                if progress:
+                    seconds = timeout_in_seconds - int(time.monotonic() - startTime)
+                    skipped_str = f'skipped [item]{skipped}[/item], ' if skipped else ''
+                    progress.update(
+                        f'Stress testing: found [item]{len(findings)}[/item] tests, '
+                        f'executed [item]{executed}[/item], '
+                        f'{skipped_str}'
+                        f'[item]{seconds}[/item] second(s) remaining...'
                     )
 
-            try:
-                await generate_standalone(
-                    GenerationMetadata(
-                        generator_call=expanded_generator_call,
-                        copied_to=Testcase(inputPath=input_path),
-                    ),
-                    generator_digest=generator_digest,
-                    validators_digests=validators_digests,
-                    validate=validate,
-                )
-            except (ValidationError, GenerationError) as err:
-                if skip_invalid_testcases:
-                    skipped += 1
-                    continue
-                with err:
-                    err.print('[warning]Invalid testcase generated.[/warning]')
-                    err.print(
-                        '[warning]You can use the [item]--skip[/item] flag to skip invalid testcases without halting.[/warning]'
-                    )
+                input_path = stress_dir / 'input'
+                input_path.parent.mkdir(parents=True, exist_ok=True)
 
-            @async_lru.alru_cache(maxsize=None)
-            async def run_solution_fn(
-                solution: Solution,
-                checker_digest: Optional[str] = None,
-                input_path=input_path,
-                output_path: Optional[pathlib.Path] = None,
-            ) -> Evaluation:
-                index = solution_indices[solution]
-                return await tasks.run_solution_on_testcase(
-                    solution,
-                    compiled_digest=solutions_digest[solution.path],
-                    checker_digest=checker_digest,
-                    interactor_digest=interactor_digest,
-                    testcase=Testcase(inputPath=input_path, outputPath=output_path),
-                    output_dir=input_path.parent,
-                    filestem=f'{index}',
-                    is_stress=True,
-                    limits_override=limits,
-                    use_timelimit=use_timelimit,
-                )
-
-            # Get main solution output.
-            expected_output_path = empty_path
-            if needs_expected_output:
-                eval = await run_solution_fn(solutions[0])
-                if eval.result.outcome != Outcome.ACCEPTED:
-                    console.console.print(
-                        f'[error]Error while generating main solution output for stress with args [item]{expanded_generator_call.name} {expanded_generator_call.args}[/item].[/error]'
+                if fuzz is not None:
+                    base_call = random.choice(generator_candidates)
+                    fuzz_suffix = secrets.token_hex(4)
+                    # Append fuzz suffix to args
+                    new_args = str(base_call.args or '') + ' ' + fuzz_suffix
+                    expanded_generator_call = GeneratorCall(
+                        name=base_call.name, args=new_args.strip()
                     )
-                    console.console.print(f'Input written at [item]{input_path}[/item]')
-                    console.console.print(
-                        f'Output written at [item]{eval.log.stdout_absolute_path}[/item]'
-                    )
-                    console.console.print(
-                        f'Stderr written at [item]{eval.log.stderr_absolute_path}[/item]'
-                    )
-                    console.console.print()
-                    console.console.print(
-                        "[warning]If you don't want reference outputs to be generated for the tests, you should "
-                        "use the two-way modifier in your finder expression (':2')."
-                    )
-                    raise typer.Exit(1)
-                if eval.log.stdout_absolute_path is not None:
-                    expected_output_path = input_path.with_suffix('.ans')
-                    shutil.copyfile(eval.log.stdout_absolute_path, expected_output_path)
+                    generator_digest = generator_digests[base_call.name]
                 else:
-                    expected_output_path = None
+                    expanded_generator_call = expand_generator_call(stress.generator)
 
-            @async_lru.alru_cache(maxsize=None)
-            async def run_solution_and_checker_fn(
-                call: finder_parser.FinderCall,
-                expected_output_path=expected_output_path,
-            ) -> finder_parser.FinderResult:
-                async def run_fn() -> Evaluation:
-                    solution = call.solution
+                if only_call is not None and str(expanded_generator_call) != only_call:
+                    has_diff_call = True
+                only_call = str(expanded_generator_call)
+
+                if not has_diff_call and executed % 10 == 0:
+                    console.console.print(
+                        f'[warning]Generator call [item]{only_call}[/item] was repeated [item]{executed}[/item] times.[/warning]'
+                    )
+                    if not duplicate_call_error:
+                        duplicate_call_error = True
+                        console.console.print(
+                            '[warning]This might mean your generator expression is not generating different testcases.[/warning]'
+                        )
+                        console.console.print(
+                            '[warning]You should add [item]@[/item] to your generator expression.[/warning]'
+                        )
+
+                try:
+                    await generate_standalone(
+                        GenerationMetadata(
+                            generator_call=expanded_generator_call,
+                            copied_to=Testcase(inputPath=input_path),
+                        ),
+                        generator_digest=generator_digest,
+                        validators_digests=validators_digests,
+                        validate=validate,
+                    )
+                except (ValidationError, GenerationError) as err:
+                    if skip_invalid_testcases:
+                        skipped += 1
+                        continue
+                    with err:
+                        err.print('[warning]Invalid testcase generated.[/warning]')
+                        err.print(
+                            '[warning]You can use the [item]--skip[/item] flag to skip invalid testcases without halting.[/warning]'
+                        )
+
+                # The last evaluation of each solution this iteration: the one
+                # whose artifacts are in the scratch area right now.
+                iteration_evals: Dict[int, Evaluation] = {}
+
+                @async_lru.alru_cache(maxsize=None)
+                async def run_solution_fn(
+                    solution: Solution,
+                    checker_digest: Optional[str] = None,
+                    input_path=input_path,
+                    output_path: Optional[pathlib.Path] = None,
+                    iteration_evals=iteration_evals,
+                ) -> Evaluation:
+                    index = solution_indices[solution]
+                    evaluation = await tasks.run_solution_on_testcase(
+                        solution,
+                        compiled_digest=solutions_digest[solution.path],
+                        checker_digest=checker_digest,
+                        interactor_digest=interactor_digest,
+                        testcase=Testcase(inputPath=input_path, outputPath=output_path),
+                        output_dir=input_path.parent,
+                        filestem=f'{index}',
+                        is_stress=True,
+                        limits_override=limits,
+                        use_timelimit=use_timelimit,
+                    )
+                    iteration_evals[index] = evaluation
+                    return evaluation
+
+                # Get main solution output.
+                expected_output_path = empty_path
+                if needs_expected_output:
+                    eval = await run_solution_fn(solutions[0])
+                    if eval.result.outcome != Outcome.ACCEPTED:
+                        console.console.print(
+                            f'[error]Error while generating main solution output for stress with args [item]{expanded_generator_call.name} {expanded_generator_call.args}[/item].[/error]'
+                        )
+                        console.console.print(
+                            f'Input written at [item]{input_path}[/item]'
+                        )
+                        console.console.print(
+                            f'Output written at [item]{eval.log.stdout_absolute_path}[/item]'
+                        )
+                        console.console.print(
+                            f'Stderr written at [item]{eval.log.stderr_absolute_path}[/item]'
+                        )
+                        console.console.print()
+                        console.console.print(
+                            "[warning]If you don't want reference outputs to be generated for the tests, you should "
+                            "use the two-way modifier in your finder expression (':2')."
+                        )
+                        raise typer.Exit(1)
+                    if eval.log.stdout_absolute_path is not None:
+                        expected_output_path = input_path.with_suffix('.ans')
+                        shutil.copyfile(
+                            eval.log.stdout_absolute_path, expected_output_path
+                        )
+                    else:
+                        expected_output_path = None
+
+                async def run_solution_and_checker_fn(
+                    call: finder_parser.FinderCall,
+                    expected_output_path=expected_output_path,
+                ) -> finder_parser.FinderResult:
                     checker = call.checker
-
                     checker_digest = (
                         finders_digest[checker.path] if checker is not None else None
                     )
-                    return await run_solution_fn(
-                        solution,
+                    eval = await run_solution_fn(
+                        call.solution,
                         checker_digest=checker_digest,
                         output_path=expected_output_path,
                     )
 
-                eval = await run_fn()
+                    return finder_parser.FinderResult(
+                        solution=call.solution,
+                        outcome=eval.result.outcome,
+                        checker=call.checker,
+                        solution_log=eval.log,
+                        checker_result=eval.result,
+                    )
 
-                return finder_parser.FinderResult(
-                    solution=call.solution,
-                    outcome=eval.result.outcome,
-                    checker=call.checker,
-                    solution_log=eval.log,
-                    checker_result=eval.result,
+                # The finder runner is synchronous and evaluates every call in
+                # the expression anyway, so run them all up front and hand it
+                # the results.
+                call_results = {
+                    call: await run_solution_and_checker_fn(call) for call in eval_calls
+                }
+                runner = finder_parser.FinderTreeRunner(
+                    runner=call_results.__getitem__,
+                    eval_only_outcome=eval_only_outcome,
+                )
+                finder_outcome: finder_parser.FinderOutcome = runner.transform(
+                    parsed_finder
                 )
 
-            @syncer.sync
-            async def run_fn(*args, **kwargs):
-                # Wrap the runner in a syncer.sync to make it work with the finder parser.
-                return await run_solution_and_checker_fn(*args, **kwargs)  # pyright: ignore[reportGeneralTypeIssues]
+                internal_error_results = [
+                    result
+                    for result in finder_outcome.results
+                    if result.outcome == Outcome.INTERNAL_ERROR
+                ]
 
-            runner = finder_parser.FinderTreeRunner(
-                runner=run_fn, eval_only_outcome=eval_only_outcome
-            )
-            finder_outcome: finder_parser.FinderOutcome = runner.transform(
-                parsed_finder
-            )
-
-            internal_error_results = [
-                result
-                for result in finder_outcome.results
-                if result.outcome == Outcome.INTERNAL_ERROR
-            ]
-
-            if internal_error_results:
-                console.console.print(
-                    f'[error]Checkers failed during stress test [item]{stress.name}[/item] with args [item]{expanded_generator_call.name} {expanded_generator_call.args}[/item].[/error]'
-                )
-                for internal_error_result in internal_error_results:
-                    assert internal_error_result.checker is not None
-                    assert internal_error_result.checker_result is not None
-                    internal_error_checker_name = internal_error_result.checker.path
+                if internal_error_results:
                     console.console.print(
-                        f'[warning]Checker [item]{internal_error_checker_name}[/item] failed with message:'
+                        f'[error]Checkers failed during stress test [item]{stress.name}[/item] with args [item]{expanded_generator_call.name} {expanded_generator_call.args}[/item].[/error]'
                     )
-                    console.console.print(internal_error_result.checker_result.message)
-                raise typer.Exit(1)
+                    for internal_error_result in internal_error_results:
+                        assert internal_error_result.checker is not None
+                        assert internal_error_result.checker_result is not None
+                        internal_error_checker_name = internal_error_result.checker.path
+                        console.console.print(
+                            f'[warning]Checker [item]{internal_error_checker_name}[/item] failed with message:'
+                        )
+                        console.console.print(
+                            internal_error_result.checker_result.message
+                        )
+                    raise typer.Exit(1)
 
-            if not finder_outcome.truth_value:
-                continue
+                if not finder_outcome.truth_value:
+                    continue
 
-            # Calculate max duration for this finding
-            max_duration = 0
-            for finder_result in finder_outcome.results:
-                if finder_result.solution_log and finder_result.solution_log.time:
-                    max_duration = max(
-                        max_duration, int(finder_result.solution_log.time * 1000)
+                # Calculate max duration for this finding
+                max_duration = 0
+                for finder_result in finder_outcome.results:
+                    if finder_result.solution_log and finder_result.solution_log.time:
+                        max_duration = max(
+                            max_duration, int(finder_result.solution_log.time * 1000)
+                        )
+
+                if find_slowest:
+                    if len(slowest_findings) >= findings_limit:
+                        if max_duration <= slowest_findings[0][0]:
+                            # Faster than the fastest of our slow tests, skip it.
+                            continue
+
+                finding_counter += 1
+                finding_index = finding_counter
+                # Before the next iteration overwrites the scratch area.
+                _keep_finding_artifacts(finding_index, input_path, iteration_evals)
+                manifest.findings.append(
+                    stress_manifest.StressFindingEntry(
+                        index=finding_index,
+                        generator=expanded_generator_call,
+                        duration=max_duration,
+                        results=_finding_results(
+                            finder_outcome.results, solution_index_by_path
+                        ),
                     )
-
-            if find_slowest:
-                if len(slowest_findings) >= findings_limit:
-                    if max_duration <= slowest_findings[0][0]:
-                        # Faster than the fastest of our slow tests, skip it.
-                        continue
-
-            findings_dir = stress_dir / 'findings'
-            findings_dir.mkdir(parents=True, exist_ok=True)
-
-            # Use 'finding_counter' as file index to ensure uniqueness over time.
-            # We will relabel them at the end.
-            finding_file_index = finding_counter
-            finding_counter += 1
-
-            finding_path = findings_dir / f'{finding_file_index}.in'
-            finding_path.write_bytes(input_path.read_bytes())
-
-            if find_slowest:
-                heap_item = (
-                    max_duration,
-                    executed,
-                    finding_file_index,
-                    expanded_generator_call,
                 )
-                if len(slowest_findings) < findings_limit:
-                    heapq.heappush(slowest_findings, heap_item)
-                else:
-                    removed_item = heapq.heappushpop(slowest_findings, heap_item)
-                    # Remove the file associated with the removed item
-                    removed_file_index = removed_item[2]
-                    (findings_dir / f'{removed_file_index}.in').unlink(missing_ok=True)
 
-            if not find_slowest:
+                if find_slowest:
+                    heap_item = (
+                        max_duration,
+                        executed,
+                        finding_index,
+                        expanded_generator_call,
+                    )
+                    if len(slowest_findings) < findings_limit:
+                        heapq.heappush(slowest_findings, heap_item)
+                    else:
+                        removed_item = heapq.heappushpop(slowest_findings, heap_item)
+                        # Drop the evicted candidate, on disk and in the manifest.
+                        removed_index = removed_item[2]
+                        rmtree(
+                            str(stress_manifest.finding_dir(removed_index)),
+                            ignore_errors=True,
+                        )
+                        manifest.findings = [
+                            entry
+                            for entry in manifest.findings
+                            if entry.index != removed_index
+                        ]
+
+                if not find_slowest:
+                    findings.append(
+                        StressFinding(
+                            generator=expanded_generator_call,  # pyright: ignore
+                            duration=max_duration,
+                        )
+                    )
+
+                _sync_counters()
+                stress_manifest.write_manifest(manifest)
+                last_manifest_write = time.monotonic()
+
+                if progress:
+                    status_header = '[error]FINDING[/error]'
+                    if find_slowest:
+                        status_header = f'[error]CANDIDATE ({get_formatted_time(max_duration)})[/error]'
+
+                    console.console.print(
+                        f'{status_header} Generator args are "[status]{expanded_generator_call.name} {expanded_generator_call.args}[/status]"'  # pyright: ignore
+                    )
+                    seen_finder_results = set()
+                    for finder_result in finder_outcome.results:
+                        style = get_outcome_style_verdict(finder_result.outcome)
+                        finder_result_key = (
+                            str(finder_result.solution.path),
+                            finder_result.checker,
+                        )
+                        if finder_result_key in seen_finder_results:
+                            continue
+                        seen_finder_results.add(finder_result_key)
+                        finder_result_report_line = f'{finder_result.solution.href()} = [{style}]{finder_result.outcome.name}[/{style}]'
+                        if finder_result.checker is not None:
+                            finder_result_report_line += (
+                                f' [item]ON[/item] {finder_result.checker.path}'
+                            )
+                        console.console.print(finder_result_report_line)
+
+                # Be cooperative.
+                time.sleep(0.001)
+
+            final_state = stress_manifest.StressState.DONE
+        except KeyboardInterrupt:
+            final_state = stress_manifest.StressState.INTERRUPTED
+
+        if find_slowest and slowest_findings:
+            # Sort by duration descending
+            slowest_findings.sort(key=lambda x: x[0], reverse=True)
+
+            old_indices = [item[2] for item in slowest_findings]
+            _renumber_slowest_findings(findings_dir, old_indices)
+            entries_by_index = {entry.index: entry for entry in manifest.findings}
+            manifest.findings = [
+                entries_by_index[old_index].model_copy(update={'index': new_index})
+                for new_index, old_index in enumerate(old_indices, start=1)
+            ]
+            for entry in manifest.findings:
+                _repoint_kept_evaluations(stress_manifest.finding_dir(entry.index))
+
+            for duration, _, _, generator_call in slowest_findings:
                 findings.append(
                     StressFinding(
-                        generator=expanded_generator_call,  # pyright: ignore
-                        duration=max_duration,
+                        generator=generator_call,  # pyright: ignore
+                        duration=duration,
                     )
                 )
-
-            if progress:
-                status_header = '[error]FINDING[/error]'
-                if find_slowest:
-                    status_header = (
-                        f'[error]CANDIDATE ({get_formatted_time(max_duration)})[/error]'
-                    )
-
-                console.console.print(
-                    f'{status_header} Generator args are "[status]{expanded_generator_call.name} {expanded_generator_call.args}[/status]"'  # pyright: ignore
-                )
-                seen_finder_results = set()
-                for finder_result in finder_outcome.results:
-                    style = get_outcome_style_verdict(finder_result.outcome)
-                    finder_result_key = (
-                        str(finder_result.solution.path),
-                        finder_result.checker,
-                    )
-                    if finder_result_key in seen_finder_results:
-                        continue
-                    seen_finder_results.add(finder_result_key)
-                    finder_result_report_line = f'{finder_result.solution.href()} = [{style}]{finder_result.outcome.name}[/{style}]'
-                    if finder_result.checker is not None:
-                        finder_result_report_line += (
-                            f' [item]ON[/item] {finder_result.checker.path}'
-                        )
-                    console.console.print(finder_result_report_line)
-
-            # Be cooperative.
-            time.sleep(0.001)
-
-    except KeyboardInterrupt:
-        pass
-
-    if find_slowest and slowest_findings:
-        # Sort by duration descending
-        slowest_findings.sort(key=lambda x: x[0], reverse=True)
-
-        findings_dir = stress_dir / 'findings'
-        findings_dir.mkdir(parents=True, exist_ok=True)
-        _renumber_slowest_findings(findings_dir, slowest_findings)
-
-        for duration, _, _, generator_call in slowest_findings:
-            findings.append(
-                StressFinding(
-                    generator=generator_call,  # pyright: ignore
-                    duration=duration,
-                )
-            )
+    except typer.Exit as e:
+        if e.exit_code == 0:
+            final_state = stress_manifest.StressState.DONE
+        raise
+    finally:
+        manifest.state = final_state
+        _sync_counters()
+        stress_manifest.write_manifest(manifest)
 
     return StressReport(findings=findings, executed=executed, skipped=skipped)
 

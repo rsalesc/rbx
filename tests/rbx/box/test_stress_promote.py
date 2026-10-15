@@ -49,13 +49,13 @@ def _skip_preset_check():
 
 
 def _write_findings(testing_pkg: testing_package.TestingPackage, *contents: bytes):
-    from rbx.box import package
+    from rbx.box import stress_manifest
 
-    findings_dir = package.get_problem_runs_dir() / '.stress' / 'findings'
-    findings_dir.mkdir(parents=True, exist_ok=True)
     findings = []
     for i, content in enumerate(contents):
-        (findings_dir / f'{i}.in').write_bytes(content)
+        input_path = stress_manifest.finding_input_path(i + 1)
+        input_path.parent.mkdir(parents=True, exist_ok=True)
+        input_path.write_bytes(content)
         findings.append(StressFinding(generator=GeneratorCall(name='gen', args=str(i))))
     return StressReport(findings=findings, executed=len(contents), skipped=0)
 
@@ -166,11 +166,11 @@ def test_stress_promote_missing_finding_writes_nothing(
     testing_pkg.add_testgroup_from_glob('corner', 'tests/manual/corner/*.in')
 
     # Report claims two findings, but only one finding `.in` file is on disk.
-    from rbx.box import package
+    from rbx.box import stress_manifest
 
-    findings_dir = package.get_problem_runs_dir() / '.stress' / 'findings'
-    findings_dir.mkdir(parents=True, exist_ok=True)
-    (findings_dir / '0.in').write_bytes(b'5 7\n')
+    input_path = stress_manifest.finding_input_path(1)
+    input_path.parent.mkdir(parents=True, exist_ok=True)
+    input_path.write_bytes(b'5 7\n')
     report = StressReport(
         findings=[
             StressFinding(generator=GeneratorCall(name='gen', args='0')),

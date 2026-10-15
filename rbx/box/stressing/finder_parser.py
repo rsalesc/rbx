@@ -450,3 +450,24 @@ def parse(
         raise e.orig_exc from None
     validate(tree, reference_solution)
     return tree
+
+
+def get_all_eval_calls(tree: lark.ParseTree) -> List[FinderCall]:
+    """Every solution evaluation `tree` makes, deduplicated, left to right.
+
+    `FinderTreeRunner` is a plain transformer, so it evaluates every `eval`
+    node -- there is no short-circuiting. Running these calls up front and
+    handing the runner their results is therefore exactly equivalent, and lets
+    an async caller await them instead of nesting an event loop.
+    """
+    calls: List[FinderCall] = []
+    for node in tree.iter_subtrees_topdown():
+        if node.data != 'eval':
+            continue
+        call = FinderCall(
+            typing.cast(Solution, node.children[0]),
+            checker=_get_eval_checker(node),
+        )
+        if call not in calls:
+            calls.append(call)
+    return calls
