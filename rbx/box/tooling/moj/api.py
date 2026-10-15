@@ -19,12 +19,14 @@ cannot create one, and says so when there is none.
 import os
 import pathlib
 import re
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
-import requests
 from pydantic import BaseModel
 
 from rbx.box.runners.moj.cli import MojCliError
+
+if TYPE_CHECKING:
+    import requests
 
 # Mirrors `lib/core.sh`: `MOJ_URL="${MOJ_URL:-https://moj.naquadah.com.br}"`.
 DEFAULT_MOJ_URL = 'https://moj.naquadah.com.br'
@@ -130,8 +132,14 @@ def read_token(contest: str) -> str:
     )
 
 
-def _get(path: str, contest: str, token: str, **params: str) -> requests.Response:
+def _get(path: str, contest: str, token: str, **params: str) -> 'requests.Response':
     """GET one API path, turning MOJ's error envelope into a readable failure."""
+    # Imported here, not at the top: `code` reaches this module through
+    # `remote`, so a top-level `requests` costs every command that compiles
+    # anything (~20ms), `rbx st b` included, for a client used only by
+    # `@moj/...` downloads.
+    import requests
+
     url = f'{base_url()}{API_PREFIX}{path}'
     try:
         response = requests.get(
