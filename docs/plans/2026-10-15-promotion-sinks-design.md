@@ -88,15 +88,17 @@ one and the setter can **override** it:
    common prefix and suffix: `edge-001.in`, `edge-002.in` -> `tests/edge/edge-*.in`.
 2. **Fallback convention**: `tests/<key>/*.in`.
 3. **Fill** the pattern's `*` with the next stem after the highest numeric stem
-   among the siblings and the files on disk, zero-padded to their width (at
-   least 3): `edge-003`. With no numeric stems, the lowest free `000`, `001`...
+   among the siblings and the files on disk, zero-padded to the widest of
+   them: `edge-003`. With no numeric stems, the lowest free `000`, `001`...
 4. **Override**: `--name STEM` fills the suggested pattern; `--path P` replaces
    it (a path with a `*` is a pattern, filled as above; one without is used
    verbatim). Either must end in `.in`, stay inside the package, and not land on
    an existing file or under another group's glob (which would silently add the
    test to that group too).
 
-Glob sinks keep today's rule (`--name`, else the lowest free counter).
+Glob sinks follow the same counter (`--name` overrides): after `01.in` to
+`03.in` comes `04.in`, so the new test sorts last, at the end of the group.
+(Promotion used to take the lowest free counter, `000`, which sorts first.)
 
 Answers travel with bytes: when the source has an answer and the form is
 `copy`, it is written as the `.ans` sibling of the new file, which glob and

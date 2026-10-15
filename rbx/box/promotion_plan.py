@@ -593,11 +593,12 @@ def default_stems(
 ) -> List[str]:
     """The names ``count`` new files of ``sink`` get unless told otherwise.
 
-    A glob keeps its long-standing rule (the lowest free counters); a plan
-    continues after the highest numbered file it already copies.
+    They continue after the highest numbered file the sink already has -- the
+    files its glob matches, or the ones its plan copies -- so the new tests
+    are the group's last.
     """
     if sink.kind == GLOB:
-        return promotion.default_stems(pattern, count)
+        return sinks.allocate_stems(pattern, count)
     if sink_text is None:
         sink_text = sinks.read_script(sink)
     taken = sinks.copy_siblings(sink, sink_text)

@@ -329,7 +329,7 @@ export class Promoter implements vscode.Disposable {
   private async askStem(label: string, group: string): Promise<string | undefined> {
     const stem = await vscode.window.showInputBox({
       title: `Promote ${label} into ${group}`,
-      prompt: 'The file name, without `.in`. Leave it empty for the next free one (000, 001, …).',
+      prompt: 'The file name, without `.in`. Leave it empty to number it after the last file of the group.',
       validateInput: (value) => stemError(value.trim()),
     });
     return stem?.trim();

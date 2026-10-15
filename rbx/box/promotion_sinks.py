@@ -277,15 +277,17 @@ def allocate_stems(
 
     In use are the files on disk matching the pattern and ``taken`` (what a
     plan already names). When some are numbers, the new stems continue after
-    the highest, at the same width (at least 3): ``003``, ``004``. Otherwise
-    they are the lowest free counters (``000``, ``001``, ...).
+    the highest, as wide as the widest of them: after ``01`` and ``02`` comes
+    ``03``, so a test promoted into a glob group sorts last, where a test
+    added to the end of a group belongs. Otherwise they are the lowest free
+    counters (``000``, ``001``, ...).
     """
     used = promotion.stems_matching_glob(pattern, base_dir=base_dir) | _captured(
         pattern, taken
     )
     numeric = [stem for stem in used if stem.isdigit()]
     if numeric:
-        width = max(3, max(len(stem) for stem in numeric))
+        width = max(len(stem) for stem in numeric)
         start = max(int(stem) for stem in numeric) + 1
         return [f'{n:0{width}d}' for n in range(start, start + count)]
     res: List[str] = []

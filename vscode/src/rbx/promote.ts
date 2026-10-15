@@ -540,7 +540,7 @@ export function copyPathError(path: string): string | undefined {
 
 /**
  * What a promoted file's stem may be: letters, digits, `.`, `_` or `-`, so the
- * file lands in the group's own folder. Empty means the next free one.
+ * file lands in the group's own folder. Empty means the one after the group's last file.
  */
 const STEM = /^[A-Za-z0-9._-]+$/;
 
@@ -550,7 +550,7 @@ export function stemError(stem: string): string | undefined {
     return undefined;
   }
   if (!STEM.test(stem) || stem === '.' || stem === '..') {
-    return 'A file name is letters, digits, `.`, `_` or `-`; leave it empty for the next free one.';
+    return 'A file name is letters, digits, `.`, `_` or `-`; leave it empty to number it after the last one.';
   }
   return undefined;
 }

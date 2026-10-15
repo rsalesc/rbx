@@ -217,10 +217,10 @@ async def test_a_glob_test_moves_with_its_answer_into_a_plan(
     await _promote(['handmade/0'], 'main')
 
     assert _read(testing_pkg, 'testplan/main.txt') == (
-        '@copy tests/main/main-01.in\n@copy tests/main/main-002.in\n'
+        '@copy tests/main/main-01.in\n@copy tests/main/main-02.in\n'
     )
-    assert _read(testing_pkg, 'tests/main/main-002.in') == '42\n'
-    assert _read(testing_pkg, 'tests/main/main-002.ans') == 'yes\n'
+    assert _read(testing_pkg, 'tests/main/main-02.in') == '42\n'
+    assert _read(testing_pkg, 'tests/main/main-02.ans') == 'yes\n'
     assert not (testing_pkg.root / 'tests/handmade/a.in').exists()
     assert not (testing_pkg.root / 'tests/handmade/a.ans').exists()
 
@@ -357,3 +357,16 @@ async def test_a_stale_plan_is_refused(testing_pkg: testing_package.TestingPacka
     with pytest.raises(pp.PromotionError, match='changed since'):
         pp.apply_plan(plan)
     assert not (testing_pkg.root / 'tests/main/000.in').exists()
+
+
+async def test_a_file_promoted_into_a_glob_sorts_last(
+    testing_pkg: testing_package.TestingPackage,
+):
+    testing_pkg.add_testgroup_from_glob('samples', 'tests/*.in')
+    for name in ('01', '02', '03'):
+        _write(testing_pkg, f'tests/{name}.in', f'{name}\n')
+    _write(testing_pkg, 'scratch/in.txt', '4\n')
+
+    await _promote(['file:scratch/in.txt'], 'samples')
+
+    assert _read(testing_pkg, 'tests/04.in') == '4\n'
