@@ -21,7 +21,7 @@ import pathlib
 import shutil
 from typing import Callable, Dict, List, Optional, Tuple
 
-from rbx.box.statements import overlay
+from rbx.box.statements import overlay, sourcemap
 from rbx.box.statements.context import SampleHandle
 
 SAMPLES_DIRNAME = '.samples'
@@ -163,7 +163,11 @@ def stage_samples(
             # the standalone and the contest-problem templates are LaTeX), so it
             # is written as `.tex` regardless of the source format; rbxMarkdown
             # explanations are converted upstream (see engine.render_problem_tex).
-            (folder / 'explanation.tex').write_bytes(explanation)
+            target = folder / 'explanation.tex'
+            text = explanation.decode('utf-8', 'surrogateescape')
+            target.write_bytes(
+                sourcemap.emit(target, text).encode('utf-8', 'surrogateescape')
+            )
             handle.dir = f'{SAMPLES_DIRNAME}/{folder_name}/'
             handle.explanation_file = 'explanation'
 

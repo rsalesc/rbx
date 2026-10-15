@@ -13,6 +13,7 @@ Assembles the recursive overlay and joins the problems via ``\\subimport``:
 never join on problems.
 """
 
+import contextlib
 import pathlib
 import shutil
 import typing
@@ -20,7 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import typer
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import cd, limits_info, naming, package, package_utils
 from rbx.box.contest.contest_package import (
     find_contest,
@@ -32,7 +33,14 @@ from rbx.box.exception import RbxException, describe_exception
 from rbx.box.formatting import href
 from rbx.box.sanitizers import issue_stack
 from rbx.box.sanitizers.issue_stack import Issue
-from rbx.box.statements import engine, overlay, render, resolver
+from rbx.box.statements import (
+    build_report,
+    engine,
+    overlay,
+    render,
+    resolver,
+    sourcemap,
+)
 from rbx.box.statements.build_statements import (
     get_environment_languages_for_statement,
 )
@@ -195,9 +203,57 @@ def _collect_problem_metadata(
     return ctxs
 
 
+def _recording(
+    statement: BaseStatement, kind: str, output_type: StatementType
+) -> 'contextlib.AbstractContextManager[sourcemap.SourceTracker]':
+    """Publish a contest output's build to the contest's statement report."""
+    contest_root = find_contest()
+    name: str = statement.name  # type: ignore[attr-defined]
+    return build_report.recording(
+        contest_root,
+        kind=kind,
+        output=_contest_output_path(name, output_type),
+        source=contest_root / statement.file if statement.file is not None else None,
+        name=name,
+        language=statement.language,
+        variant=statement.variant,
+        log=get_statement_build_dir(statement) / 'statement.log',
+    )
+
+
 async def build_statement(
     statement: ContestStatement,
     contest: Contest,
+    problems_of_interest: Optional[List[ContestProblem]] = None,
+    output_type: Optional[StatementType] = None,
+    use_samples: bool = True,
+    custom_vars: Optional[Dict[str, Any]] = None,
+    install_tex: bool = False,
+    kind: StatementKind = StatementKind.STATEMENTS,
+    partial: bool = False,
+) -> pathlib.Path:
+    """Build one contest statement (or tutorial) and return its output path,
+    publishing the outcome to the contest's statement build report (#909)."""
+    output_type = output_type or StatementType.PDF
+    with _recording(statement, kind.singular, output_type) as tracker:
+        return await _build_statement(
+            statement,
+            contest,
+            tracker.origins,
+            problems_of_interest=problems_of_interest,
+            output_type=output_type,
+            use_samples=use_samples,
+            custom_vars=custom_vars,
+            install_tex=install_tex,
+            kind=kind,
+            partial=partial,
+        )
+
+
+async def _build_statement(
+    statement: ContestStatement,
+    contest: Contest,
+    origins: sourcemap.Origins,
     problems_of_interest: Optional[List[ContestProblem]] = None,
     output_type: Optional[StatementType] = None,
     use_samples: bool = True,
@@ -238,7 +294,7 @@ async def build_statement(
         # A non-rbx contest statement is emitted like a document (no join), but
         # may still read problem metadata (see _emit_simple).
         return _emit_simple(
-            statement, contest, output_type, custom_vars, problems_of_interest
+            statement, contest, output_type, custom_vars, origins, problems_of_interest
         )
 
     if statement.file is None:
@@ -250,6 +306,7 @@ async def build_statement(
     overlay_root = _fresh_dir(get_statement_build_dir(statement))
     chrome_dir = (contest_root / statement.file).resolve().parent
     overlay.stage_chrome(overlay_root, chrome_dir)
+    origins.mount(overlay_root, chrome_dir)
 
     contest_ctx = ContestRenderContext(
         title=naming.get_contest_title(
@@ -276,6 +333,7 @@ async def build_statement(
                 languages,
                 use_samples,
                 custom_vars,
+                origins,
                 kind,
             )
         except Exception as exc:
@@ -315,8 +373,7 @@ async def build_statement(
 
     output_bytes = _finish(overlay_root, contest_doc, output_type)
     out_path = _contest_output_path(statement.name, output_type)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_bytes(output_bytes)
+    utils.write_bytes_atomic(out_path, output_bytes)
     console.console.print(
         f'[success]Contest statement [item]{statement.name}[/item] built for language '
         f'[item]{statement.language}[/item] at {href(out_path)}[/success]'
@@ -335,6 +392,7 @@ async def _render_problem_fragment_async(
     languages,
     use_samples: bool,
     custom_vars: Dict[str, Any],
+    origins: sourcemap.Origins,
     kind: StatementKind = StatementKind.STATEMENTS,
 ) -> Optional[ProblemRenderContext]:
     """Stage + render one problem's fragment for the join.
@@ -372,6 +430,8 @@ async def _render_problem_fragment_async(
         problem_root = problem_overlay_dir(overlay_root, short)
         root_prefix = f'.problems/{short}/'
         overlay.stage_join_problem(overlay_root, problem_dir, short)
+        origins.mount(problem_root, problem_dir)
+        origins.source(problem_statement.file)
 
         if contest_statement.contestProblemTemplate is None:
             with StatementResolverError() as err:
@@ -386,6 +446,7 @@ async def _render_problem_fragment_async(
             chrome_dir,
             contest_statement.contestProblemTemplate,
             overlay_root,
+            origins,
         )
 
         problem_ctx = ProblemRenderContext(
@@ -414,6 +475,9 @@ async def _render_problem_fragment_async(
             if use_samples
             else []
         )
+        for sample in samples:
+            if sample.explanationPath is not None:
+                origins.source(sample.explanationPath)
 
         fragment = engine.render_problem_tex(
             render_root=overlay_root,
@@ -429,7 +493,8 @@ async def _render_problem_fragment_async(
             use_samples=use_samples,
             statement_type=problem_statement.type,
         )
-        (problem_root / 'statement.tex').write_bytes(fragment)
+        fragment_path = problem_root / 'statement.tex'
+        fragment_path.write_text(sourcemap.emit(fragment_path, fragment.decode()))
         return problem_ctx
 
 
@@ -441,7 +506,7 @@ def _finish(
     if output_type == StatementType.PDF:
         return render.compile_pdf(overlay_root, tex)
     if output_type in (StatementType.TeX, StatementType.Markdown):
-        return tex
+        return sourcemap.strip(tex.decode()).encode()
     console.console.print(
         f'[error]statements v2 cannot yet emit contest output type '
         f'[item]{output_type}[/item].[/error]'
@@ -454,6 +519,7 @@ def _emit_simple(
     contest: Contest,
     output_type: StatementType,
     custom_vars: Dict[str, Any],
+    origins: sourcemap.Origins,
     problems_of_interest: Optional[List[ContestProblem]] = None,
 ) -> pathlib.Path:
     """Emit a non-joining contest statement/document (jinja or static).
@@ -474,6 +540,7 @@ def _emit_simple(
     overlay_root = _fresh_dir(get_contest_statements_build_path() / name)
     chrome_dir = (contest_root / statement.file).resolve().parent
     overlay.stage_chrome(overlay_root, chrome_dir)
+    origins.mount(overlay_root, chrome_dir)
     source_rel = (contest_root / statement.file).resolve().name
 
     contest_ctx = ContestRenderContext(
@@ -498,6 +565,8 @@ def _emit_simple(
             problems=problem_ctxs,
         )
         content = render.render_jinja_document(overlay_root, source_rel, kwargs)
+        if output_type != StatementType.PDF:
+            content = sourcemap.strip(content.decode()).encode()
     else:
         content = (overlay_root / source_rel).read_bytes()
 
@@ -512,8 +581,7 @@ def _emit_simple(
         output_bytes = content
 
     out_path = _contest_output_path(name, output_type)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_bytes(typing.cast(bytes, output_bytes))
+    utils.write_bytes_atomic(out_path, typing.cast(bytes, output_bytes))
     console.console.print(
         f'[success]Document [item]{name}[/item] built at {href(out_path)}[/success]'
     )
@@ -536,6 +604,12 @@ async def build_document(
     ``problems_of_interest`` bounding the covered problems (default: all).
     """
     output_type = output_type or StatementType.PDF
-    return _emit_simple(
-        document, contest, output_type, custom_vars or {}, problems_of_interest
-    )
+    with _recording(document, 'document', output_type) as tracker:
+        return _emit_simple(
+            document,
+            contest,
+            output_type,
+            custom_vars or {},
+            tracker.origins,
+            problems_of_interest,
+        )

@@ -20,7 +20,7 @@ import pathlib
 from typing import Dict, List, Optional
 
 from rbx import utils
-from rbx.box.statements import render, sample_staging
+from rbx.box.statements import render, sample_staging, sourcemap
 from rbx.box.statements.context import (
     ContestRenderContext,
     ProblemRenderContext,
@@ -254,7 +254,7 @@ def _write_blocks(
 ) -> None:
     """Persist a :class:`StatementBlocks` as YAML in ``root`` (the overlay /
     problem root), the source of truth the Polygon export path reads."""
-    (root / name).write_text(utils.model_to_yaml(blocks))
+    (root / name).write_text(sourcemap.strip(utils.model_to_yaml(blocks)))
 
 
 def relativize_template(
@@ -262,6 +262,7 @@ def relativize_template(
     chrome_dir: pathlib.Path,
     template_path: pathlib.Path,
     overlay_root: pathlib.Path,
+    origins: Optional[sourcemap.Origins] = None,
 ) -> str:
     """Return the template path relative to the overlay root after staging.
 
@@ -295,4 +296,6 @@ def relativize_template(
                     'directory, or rename it.[/warning]'
                 )
         shutil.copyfile(template_abs, dest)
+        if origins is not None:
+            origins.alias(dest, template_abs)
         return template_abs.name

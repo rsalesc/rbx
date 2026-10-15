@@ -16,6 +16,7 @@ import rich.pretty
 import typer
 
 from rbx import console
+from rbx.box.statements import sourcemap
 
 ######################################################################
 # J2_ARGS
@@ -440,6 +441,9 @@ def make_jinja_env(
         loader=loader,
         **_SYNTAX_ARGS[syntax],  # type: ignore[arg-type]
         undefined=StrictChainableUndefined,
+        # A statement build tracks where each line of its TeX came from (#909);
+        # only LaTeX-syntax renders end up in a TeX file pdflatex reads.
+        extensions=sourcemap.extensions() if syntax == JinjaSyntax.LATEX else [],
     )
     add_builtin_filters(j2_env, target=target)
     add_builtin_tests(j2_env)

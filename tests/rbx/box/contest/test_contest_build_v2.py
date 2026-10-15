@@ -161,3 +161,64 @@ async def test_document_metadata_exposes_group_resolved_vars(cleandir_with_testd
     assert '\\info{A}{sub2}{100}{200}' in info
     assert '\\info{A}{sub3}{1}{200}' in info
     assert '\\subimport' not in info
+
+
+@pytest.mark.test_pkg('contests/statements_v2')
+async def test_contest_report_locates_an_error_inside_a_problem_fragment(
+    cleandir_with_testdata, monkeypatch
+):
+    """#909: a LaTeX error in a `\\subimport`ed fragment lands on the problem's
+    own statement source, through the join's per-problem mount."""
+    import pathlib
+    import subprocess
+
+    import yaml
+
+    from rbx.box.statements import build_report
+    from rbx.box.statements.latex import Latex, LatexResult
+
+    def failing_build_pdf(self, temp_dir):
+        fragment = pathlib.Path('.problems') / 'B' / 'statement.tex'
+        lines = (temp_dir / fragment).read_text().split('\n')
+        line = next(i for i, t in enumerate(lines, 1) if 'Problem B, authored' in t)
+        log = f'./{fragment.as_posix()}:{line}: Undefined control sequence.\n'
+        return LatexResult(
+            result=subprocess.CompletedProcess('', 1, log.encode(), b''), pdf=None
+        )
+
+    monkeypatch.setattr(Latex, 'build_pdf', failing_build_pdf)
+    with pytest.raises(typer.Exit):
+        await _run(output=StatementType.PDF, names=['main-en'])
+
+    report = yaml.safe_load(
+        build_report.report_path(cleandir_with_testdata).read_text()
+    )
+    [output] = report['outputs']
+    assert (output['kind'], output['name'], output['status']) == (
+        'statement',
+        'main-en',
+        'failed',
+    )
+    assert output['source'] == 'statements/contest.rbx.tex'
+    [finding] = output['findings']
+    assert finding['file'] == 'B/statement/statement.rbx.tex'
+    assert finding['line'] == 2
+
+
+@pytest.mark.test_pkg('contests/statements_v2')
+async def test_contest_document_is_reported(cleandir_with_testdata):
+    import yaml
+
+    from rbx.box.statements import build_report
+
+    await _run(output=StatementType.TeX, names=['info-en'])
+    report = yaml.safe_load(
+        build_report.report_path(cleandir_with_testdata).read_text()
+    )
+    [output] = report['outputs']
+    assert (output['kind'], output['name'], output['path'], output['status']) == (
+        'document',
+        'info-en',
+        'build/info-en.tex',
+        'ok',
+    )
