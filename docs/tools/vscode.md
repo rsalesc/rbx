@@ -10,9 +10,10 @@ a terminal does, and does not care which editor you use; the extension gives
 you VS Code's own diff, its editors and its Problems panel, and it does not
 take over the terminal you are typing `rbx` into.
 
-!!! note "It never builds or runs for you"
-    Execution stays in the terminal. You type `rbx run`; the extension watches
-    the package and renders whatever lands there. It does call {{rbx}} itself
+!!! note "It never builds or runs behind your back"
+    Execution stays in a terminal. You type `rbx run`, or press a button that
+    runs the same command in a terminal you can see and interrupt, and the
+    extension shows what the command writes into the package. It does call {{rbx}} itself
     for a couple of small things -- drawing a visualization, asking what a
     variable expands to -- and for those it has to find an `rbx` to call, which
     [Finding rbx](#finding-rbx) covers.
@@ -256,6 +257,58 @@ it deliberately is not:
   not -- they are not problem statements, and their variables are not this
   package's.
 
+## Previewing a statement
+
+While you edit a statement, you can keep its PDF open in a panel beside it.
+Open a statement source and click the preview button in the editor's title bar,
+or run the **Open Statement Preview** command from the command palette.
+
+The panel shows what `rbx statements build` last produced, and reloads every
+time a build writes a new one, including a build you typed in a terminal
+yourself.
+
+The panel's **Build** button rebuilds what is on screen, in a terminal of its
+own. For a tutorial that's `rbx tutorials build`, and for the contest's
+statement it's the `rbx contest` form of the same command. A rebuild keeps your page and
+your zoom, so you can fix a sentence on page three and watch page three change.
+
+A package can have several statements: one per language, a tutorial, a
+variant, and the statement of the contest the problem is in. A picker at the
+top of the panel switches between them. It starts on the one built from the
+file you are editing, and follows you when you switch to another statement's
+source.
+
+To rebuild on every save instead of pressing **Build**, turn on
+`rbx.statements.buildOnSave`. It's off by default, because a statement build
+also builds the samples it shows, which can run your generators and your main
+solution.
+
+### Errors on the right line
+
+When a build fails, the Problems panel shows each error on the line of the
+file you wrote: the `.rbx.tex`, or the template {{rbx}} renders it into. It
+never points at the `statement.tex` that {{rbx}} generates and you never edit.
+That covers both kinds of mistake a statement build can hit:
+
+- a **LaTeX error**, such as an undefined command or a missing `$`
+- a **template error**, such as a `\VAR{...}` naming a variable that doesn't
+  exist, or an unclosed `%- for`
+
+An error {{rbx}} can't trace to a line, such as one inside a LaTeX package,
+shows on the first line of the statement source.
+
+The terminal prints the same errors in `file:line` form, so a build you run by
+hand points at the same lines, and VS Code's terminal turns each one into a
+link to its line:
+
+```{.text .no-copy}
+statement/statement-en.rbx.tex:3: Undefined control sequence.
+```
+
+The preview keeps showing the last PDF that did build, under a banner that
+lists what went wrong. Clicking an entry opens the source at that line, and
+**Log** opens the full output of `pdflatex` for anything the summary leaves out.
+
 ## Finding rbx
 
 Drawing a visualization and reading a statement's variables both call {{rbx}},
@@ -280,6 +333,8 @@ Every surface above can be turned off or adjusted on its own. Search for
 |---|---|---|
 | `rbx.compilationDiagnostics` | `true` | Report compiler warnings and failures in the Problems panel |
 | `rbx.statementVarHints` | `true` | Show what each `\VAR{...}` in a statement expands to, beside the reference |
+| `rbx.statementDiagnostics` | `true` | Report the errors of the last statement build in the Problems panel |
+| `rbx.statements.buildOnSave` | `false` | Rebuild a statement whenever you save its source or a file beside it |
 | `rbx.executable` | *(empty)* | The `rbx` to call, when finding it automatically does not work |
 | `rbx.solutionLabel` | `trimmed` | How much of a solution's path the run view shows: `full`, `trimmed` or `basename` |
 | `rbx.testcaseLayout` | `below` | Where the second testcase pane is *first* placed: `below` or `beside` |

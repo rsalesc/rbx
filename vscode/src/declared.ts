@@ -85,9 +85,18 @@ export class DeclaredIndex {
 
   /** Absolute paths of every declared solution, for the editor button's `when`. */
   solutionPaths(): string[] {
+    return this.pathsOf('solution');
+  }
+
+  /** Absolute paths of every declared statement source, likewise. */
+  statementPaths(): string[] {
+    return this.pathsOf('statement');
+  }
+
+  private pathsOf(role: DeclaredAsset['role']): string[] {
     const paths: string[] = [];
     for (const [fsPath, declared] of this.index) {
-      if (declared.asset.role === 'solution') {
+      if (declared.asset.role === role) {
         paths.push(fsPath);
       }
     }

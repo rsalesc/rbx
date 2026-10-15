@@ -231,6 +231,19 @@
         "category": "rbx"
       },
       {
+        "command": "rbx.openStatementPreview",
+        "title": "Open Statement Preview",
+        "category": "rbx",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "rbx.buildStatements",
+        "title": "Build Statements",
+        "category": "rbx",
+        "icon": "$(file-pdf)",
+        "enablement": "rbx.dispatchEnabled"
+      },
+      {
         "command": "rbx.runSolution",
         "title": "Run This Solution",
         "category": "rbx",
@@ -274,6 +287,16 @@
     ],
     "menus": {
       "editor/title": [
+        {
+          "command": "rbx.openStatementPreview",
+          "when": "resourceScheme == file && resourcePath in rbx.statementFiles",
+          "group": "navigation@2"
+        },
+        {
+          "command": "rbx.buildStatements",
+          "when": "rbx.dispatchEnabled && activeWebviewPanelId == 'rbx.statementPreview'",
+          "group": "navigation@1"
+        },
         {
           "command": "rbx.openVisualizationExternally",
           "when": "activeWebviewPanelId == 'rbx.visualization'",
@@ -725,6 +748,16 @@
           "scope": "resource",
           "markdownDescription": "Full path to the `rbx` executable, used when visualizing a testcase, when reading a problem's vars for statement hints, and as the command the Run and Build buttons start in a terminal. Leave empty to find it automatically: the extension tries `PATH` first, then asks a login shell, because the extension host's `PATH` is the one VS Code was launched with and often omits `~/.local/bin`."
         },
+        "rbx.statementDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Report the errors of the last statement build in the Problems panel, on the line of the statement source (or template) they come from."
+        },
+        "rbx.statements.buildOnSave": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Rebuild a statement whenever you save its source, or a file beside it: `rbx statements build`, or `rbx tutorials build` for a tutorial, in their contest form for a contest's. Runs as a task in a visible terminal, like the **Build** button of the statement preview, and is skipped while another rbx command runs in the same package."
+        },
         "rbx.dispatch.enabled": {
           "type": "boolean",
           "default": true,
@@ -754,13 +787,17 @@
             "enum": [
               "build",
               "run",
-              "contest-run"
+              "contest-run",
+              "statements",
+              "contest-statements",
+              "tutorials",
+              "contest-tutorials"
             ],
-            "description": "Describes the tasks the rbx extension starts from its buttons; rbx tasks cannot be declared in tasks.json. The rbx command: `build`, `run`, or `contest-run` (`rbx contest each --inline run`)."
+            "description": "Describes the tasks the rbx extension starts from its buttons; rbx tasks cannot be declared in tasks.json. The rbx command: `build`, `run`, `contest-run` (`rbx contest each --inline run`), `statements`/`tutorials` (`rbx statements build`/`rbx tutorials build`), or their `contest-` forms."
           },
           "cwd": {
             "type": "string",
-            "description": "The package root (or contest root, for contest-run) the command runs in."
+            "description": "The package root (or contest root, for a contest command) the command runs in."
           },
           "solutions": {
             "type": "array",
@@ -793,10 +830,11 @@
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
-    "@vscode/codicons": "^0.0.36",
     "@types/vscode": "^1.90.0",
+    "@vscode/codicons": "^0.0.36",
+    "@vscode/vsce": "^3.2.0",
     "esbuild": "^0.23.0",
-    "typescript": "^5.5.0",
-    "@vscode/vsce": "^3.2.0"
+    "pdfjs-dist": "4.10.38",
+    "typescript": "^5.5.0"
   }
 }

@@ -32,8 +32,10 @@ const webview = await esbuild.context({
     'src/webview/main.ts',
     'src/webview/testsetMain.ts',
     'src/webview/panelMain.ts',
+    'src/webview/statementMain.mts',
     'src/webview/style.css',
     'src/webview/panelStyle.css',
+    'src/webview/statementStyle.css',
   ],
   format: 'iife',
   platform: 'browser',
@@ -43,6 +45,9 @@ const webview = await esbuild.context({
   // exists next to the output rather than in the source tree: the url has to
   // survive bundling untouched instead of being resolved at build time.
   external: ['*.ttf'],
+  // pdf.js's viewer stylesheet draws its icons from small images; inlined, so
+  // the statement preview needs no image source beyond `data:`.
+  loader: { '.svg': 'dataurl', '.png': 'dataurl', '.gif': 'dataurl', '.cur': 'dataurl' },
 });
 
 // The codicon font and its stylesheet are copied rather than referenced from
@@ -53,6 +58,10 @@ fs.mkdirSync('dist/webview', { recursive: true });
 for (const name of ['codicon.css', 'codicon.ttf']) {
   fs.cpSync(`node_modules/@vscode/codicons/dist/${name}`, `dist/webview/${name}`);
 }
+// pdf.js parses in a worker, which the statement preview starts from this copy
+// (see webview/statementMain.ts). Already minified upstream, and not bundled:
+// it is a separate program that runs in its own global scope.
+fs.cpSync('node_modules/pdfjs-dist/build/pdf.worker.min.mjs', 'dist/webview/pdf.worker.mjs');
 
 if (watch) {
   await Promise.all([extension.watch(), webview.watch()]);

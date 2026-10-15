@@ -1,0 +1,145 @@
+@import 'pdfjs-dist/web/pdf_viewer.css';
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border, transparent);
+  flex-wrap: wrap;
+}
+
+#toolbar .spacer {
+  flex: 1;
+}
+
+select,
+button {
+  font: inherit;
+  color: var(--vscode-foreground);
+}
+
+select {
+  background: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border, transparent);
+  color: var(--vscode-dropdown-foreground);
+  padding: 2px 4px;
+}
+
+#toolbar button,
+#empty button {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: none;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+#toolbar button:hover,
+#empty button:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+#toolbar button#build,
+#empty button {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+#toolbar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+#status {
+  opacity: 0.8;
+}
+
+#status.failed {
+  color: var(--vscode-errorForeground);
+  opacity: 1;
+}
+
+#page {
+  opacity: 0.8;
+  min-width: 4em;
+  text-align: center;
+}
+
+#banner {
+  border-bottom: 1px solid var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
+  background: var(--vscode-inputValidation-errorBackground, transparent);
+  padding: 4px 8px;
+  max-height: 30%;
+  overflow: auto;
+}
+
+#banner .title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+#banner .finding {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  font-family: var(--vscode-editor-font-family);
+  white-space: pre-wrap;
+}
+
+#banner .finding:hover {
+  text-decoration: underline;
+}
+
+#banner .where {
+  color: var(--vscode-textLink-foreground);
+  margin-right: 0.75em;
+}
+
+#main {
+  position: relative;
+  flex: 1;
+}
+
+#viewerContainer {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+
+#empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  text-align: center;
+  opacity: 0.9;
+}

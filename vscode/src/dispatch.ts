@@ -76,6 +76,13 @@ export interface DispatchRequest {
   /** The package root, for both scopes: a contest command finds its root from it. */
   readonly root: string;
   readonly solutions?: readonly string[];
+  /**
+   * Never ask or alert: skip, and say so in the log, wherever a dispatch would
+   * otherwise prompt -- something already running there, a contest to choose,
+   * no rbx found. For dispatches the user did not click: a build on save must
+   * never put a modal in front of someone who is typing.
+   */
+  readonly quiet?: boolean;
 }
 
 /** An rbx task VS Code reports as running, and where it runs. */
@@ -219,14 +226,14 @@ export class Dispatcher implements vscode.Disposable {
     }
     const contest = await this.resolveContest(request, contestRoot);
     if (contest === undefined) {
-      return; // The user dismissed the picker.
+      return; // The user dismissed the picker, or a quiet request would have needed it.
     }
     const invocation: Invocation = {
       command: request.command,
       cwd: scope === 'contest' && contestRoot !== undefined ? contestRoot : request.root,
       solutions: request.solutions ?? [],
       extraArgs:
-        request.command === 'build'
+        request.command !== 'run' && request.command !== 'contest-run'
           ? []
           : asExtraArgs(
               vscode.workspace
@@ -235,7 +242,7 @@ export class Dispatcher implements vscode.Disposable {
             ),
       contest,
     };
-    if ((await this.execute(invocation)) && scope === 'problem') {
+    if ((await this.execute(invocation, request.quiet)) && scope === 'problem') {
       // The user acted on this problem, so the views should be showing it; the
       // skeleton watcher would get there for a run, but a build writes none.
       this.active.select(request.root);
@@ -276,6 +283,10 @@ export class Dispatcher implements vscode.Disposable {
     if (remembered !== undefined) {
       return selectionOf(remembered);
     }
+    if (request.quiet) {
+      log(`Skipped a ${request.command} in ${request.root}: no contest chosen yet to run it under.`);
+      return undefined;
+    }
     const picked = await this.pick(candidates, contestRoot);
     if (picked === undefined) {
       return undefined;
@@ -312,8 +323,12 @@ export class Dispatcher implements vscode.Disposable {
   }
 
   /** Start the task; false when nothing was started. */
-  private async execute(invocation: Invocation): Promise<boolean> {
+  private async execute(invocation: Invocation, quiet = false): Promise<boolean> {
     const executable = await resolveRbx(invocation.cwd);
+    if (executable === undefined && quiet) {
+      log(`Skipped "${taskName(invocation)}": no rbx executable found.`);
+      return false;
+    }
     if (executable === undefined) {
       const open = 'Open Settings';
       const choice = await vscode.window.showErrorMessage(
@@ -325,7 +340,7 @@ export class Dispatcher implements vscode.Disposable {
       }
       return false;
     }
-    if (!(await this.clearTheWay(invocation))) {
+    if (!(await this.clearTheWay(invocation, quiet))) {
       return false;
     }
     const task = this.task(invocation, executable);
@@ -375,12 +390,16 @@ export class Dispatcher implements vscode.Disposable {
    * The before half of the busy policy: true when nothing is in the way, or
    * when the user chose to stop what was and it has gone.
    */
-  private async clearTheWay(invocation: Invocation): Promise<boolean> {
+  private async clearTheWay(invocation: Invocation, quiet: boolean): Promise<boolean> {
     const blocking = collisions(runningRbxTasks(), invocation.cwd);
     if (blocking.length === 0) {
       return true;
     }
     const names = blocking.map((running) => `"${running.execution.task.name}"`).join(', ');
+    if (quiet) {
+      log(`Skipped "${taskName(invocation)}" in ${invocation.cwd}: ${names} is running there.`);
+      return false;
+    }
     const stop = 'Stop and Run';
     const choice = await vscode.window.showWarningMessage(
       `rbx is already running ${names} here.`,
