@@ -175,6 +175,12 @@ class GradingFileInput(BaseModel):
     # must stay inside the sandbox so the interpreter's module search root resolves to
     # the mirrored source dir rather than the content cache.
     symlink: bool = True
+    # The content digest of `src`, when the caller already knows it -- e.g. a
+    # blob in a content-addressed storage, named by its digest. Only keys the
+    # cache, which would otherwise hash `src` again on every run (a precompiled
+    # header is hundreds of megabytes); the file is still read from `src`.
+    # Excluded from dumps, so it never changes a cache key itself.
+    known_digest: Optional[str] = Field(default=None, exclude=True)
 
 
 class GradingFileOutput(BaseModel):
