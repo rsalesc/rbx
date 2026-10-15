@@ -40,7 +40,9 @@ function iconButton(
 
 /** `m:ss`, the way a stopwatch reads; a budget is never long enough for hours. */
 export function formatClock(seconds: number): string {
-  const whole = Math.max(0, Math.floor(seconds));
+  // A clock skewed against the manifest's start can read negative; NaN is a
+  // start time that did not parse. Neither is worth showing as such.
+  const whole = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
 }
 
@@ -62,6 +64,9 @@ export function renderElapsed(status: StressStatus, now: number): string {
     ? formatClock(shown)
     : `${formatClock(shown)} / ${formatClock(status.timeout)}`;
 }
+
+const NEW_STRESS =
+  `<button class="stress-link" data-action="new">${codicon('add')} New stress…</button>`;
 
 function declaredRow(row: StressDeclaredRow, dispatch: boolean): string {
   const actions = dispatch
@@ -85,25 +90,22 @@ export function renderDeclared(model: StressViewModel): string {
     );
   }
   const rows = model.declared.map((row) => declaredRow(row, model.dispatch)).join('');
-  const create = model.dispatch
-    ? '<li class="stress-row"><button class="stress-link" data-action="new">' +
-      `${codicon('add')} New stress…</button></li>`
-    : '';
+  const none =
+    model.declared.length === 0
+      ? '<li class="stress-row stress-none">No stresses declared in <code>problem.rbx.yml</code>.</li>'
+      : '';
+  const create = model.dispatch ? `<li class="stress-row">${NEW_STRESS}</li>` : '';
   return (
     '<h3 class="stress-heading">Stresses</h3>' +
-    `<ul class="stress-list" aria-label="Declared stresses">${rows}${create}</ul>`
+    `<ul class="stress-list" aria-label="Declared stresses">${rows}${none}${create}</ul>`
   );
 }
 
-export function renderStatus(model: StressViewModel, now: number): string {
-  const status = model.status;
-  if (model.noPackage || status === undefined) {
-    return '';
-  }
-  const stop =
-    model.dispatch && status.state === 'running'
-      ? iconButton('stop', 'debug-stop', 'Stop the stress test', {})
-      : '';
+/** The status line's two moving parts, which the client writes as text. */
+export function statusText(
+  status: StressStatus,
+  now: number,
+): { readonly elapsed: string; readonly counts: string } {
   const findings =
     status.findingsLimit === undefined
       ? `${status.findings}`
@@ -113,14 +115,38 @@ export function renderStatus(model: StressViewModel, now: number): string {
     ...(status.skipped > 0 ? [`${status.skipped} skipped`] : []),
     `${findings} found`,
   ].join(' · ');
+  return { elapsed: renderElapsed(status, now), counts };
+}
+
+/**
+ * The status block's frame: everything but the clock and the counters.
+ *
+ * Those two change every second while a session runs, and rewriting the
+ * block with them would take keyboard focus off Stop as often; so the frame
+ * is a function of what only changes with the state, and the client fills
+ * `.stress-elapsed` and `.stress-counts` from `statusText` by `textContent`.
+ */
+export function renderStatus(model: StressViewModel): string {
+  const status = model.status;
+  if (model.noPackage || status === undefined) {
+    return '';
+  }
+  const stop =
+    model.dispatch && status.stoppable
+      ? iconButton('stop', 'debug-stop', 'Stop the stress test', {})
+      : '';
+  const hint = status.external
+    ? '<div class="stress-hint">Started outside VS Code — stop it from its terminal.</div>'
+    : '';
   return (
     '<div class="stress-status">' +
     '<div class="stress-status-line">' +
     `<span class="stress-state hue-${status.hue}">${escapeHtml(status.label)}</span>` +
-    `<span class="stress-elapsed">${escapeHtml(renderElapsed(status, now))}</span>` +
+    '<span class="stress-elapsed"></span>' +
     `<span class="stress-actions">${stop}</span>` +
     '</div>' +
-    `<div class="stress-counts">${escapeHtml(counts)}</div>` +
+    '<div class="stress-counts"></div>' +
+    hint +
     `<div class="stress-spec" title="${escapeAttr(status.spec)}"><code>${escapeHtml(status.spec)}</code></div>` +
     '</div>'
   );
@@ -165,7 +191,11 @@ export function renderFindings(model: StressViewModel): string {
     return '';
   }
   if (model.status === undefined) {
-    return '<div class="welcome"><p>Run a stress to see findings here.</p></div>';
+    return (
+      '<div class="welcome"><p>Run a stress to see findings here.</p>' +
+      (model.dispatch ? `<p>${NEW_STRESS}</p>` : '') +
+      '</div>'
+    );
   }
   if (model.findings.length === 0) {
     return (

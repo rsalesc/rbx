@@ -14,7 +14,7 @@
 import * as path from 'path';
 
 import { Ext, PackageLayout, findingAnswerPath, findingArtifactPath, findingInputPath } from './layout';
-import { StressFinding } from './stress';
+import { StressFinding, StressManifest } from './stress';
 
 export interface FindingFile {
   readonly kind: 'input' | 'answer' | 'output' | 'stderr';
@@ -90,6 +90,26 @@ export function findingFiles(
     outputs,
     stderrs,
   };
+}
+
+/**
+ * `manifest`, if it is still the session a row was drawn from; undefined if
+ * a newer one replaced it.
+ *
+ * A row names its finding by index, and a new session's #1 is another input
+ * altogether -- opening or promoting it on the strength of an old row would
+ * act on something the user never saw. `session` is the `startedAt` the row
+ * was drawn with; a row (or a manifest) with none cannot be told apart and is
+ * taken at its word.
+ */
+export function sessionOf(
+  manifest: StressManifest | undefined,
+  session: string | undefined,
+): StressManifest | undefined {
+  if (manifest === undefined || session === undefined || manifest.startedAt === undefined) {
+    return manifest;
+  }
+  return manifest.startedAt === session ? manifest : undefined;
 }
 
 /** What Compare offers: the reference answer first, then every output. */

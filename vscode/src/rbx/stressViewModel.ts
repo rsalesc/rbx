@@ -52,6 +52,13 @@ export interface StressStatus {
   readonly startedAtMs?: number;
   /** What was run: the declared name, or the flags that said it. */
   readonly spec: string;
+  /**
+   * Whether Stop can stop it: running, and as a task VS Code knows of. A
+   * session started from a plain terminal is live but not ours to end.
+   */
+  readonly stoppable: boolean;
+  /** Running, alive, and not stoppable from here: say where to stop it. */
+  readonly external: boolean;
 }
 
 export interface StressChip {
@@ -108,6 +115,8 @@ export interface StressModelInput {
    * `stressLiveness` and the task-list fallback. Ignored for any other state.
    */
   readonly alive: boolean;
+  /** Whether a dispatched `rbx stress` task is running for this package. */
+  readonly task: boolean;
   /** Findings this session promoted, by index, to the group they went into. */
   readonly promoted?: ReadonlyMap<number, string>;
   /** Findings with at least two outputs to compare, by index. */
@@ -164,7 +173,7 @@ function stateOf(manifest: StressManifest, alive: boolean): StressViewState {
   return manifest.state === 'running' && !alive ? 'stale' : manifest.state;
 }
 
-function statusOf(manifest: StressManifest, alive: boolean): StressStatus {
+function statusOf(manifest: StressManifest, alive: boolean, task: boolean): StressStatus {
   const state = stateOf(manifest, alive);
   const started = manifest.startedAt === undefined ? NaN : Date.parse(manifest.startedAt);
   return {
@@ -178,6 +187,8 @@ function statusOf(manifest: StressManifest, alive: boolean): StressStatus {
     timeout: manifest.spec.timeout,
     startedAtMs: state === 'running' && !Number.isNaN(started) ? started : undefined,
     spec: specSummary(manifest.spec),
+    stoppable: state === 'running' && task,
+    external: state === 'running' && !task,
   };
 }
 
@@ -217,7 +228,7 @@ export function buildStressViewModel(input: StressModelInput): StressViewModel {
       name: stress.name,
       summary: `${generatorCallString(stress.generator)} · ${stress.finder}`,
     })),
-    status: manifest === undefined ? undefined : statusOf(manifest, input.alive),
+    status: manifest === undefined ? undefined : statusOf(manifest, input.alive, input.task),
     findings: manifest === undefined ? [] : findingRows(manifest, input.promoted, input.comparable),
     session: manifest?.startedAt,
   };

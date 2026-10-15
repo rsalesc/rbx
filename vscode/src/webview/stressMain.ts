@@ -9,7 +9,7 @@
 import type { ProblemChoice } from '../rbx/problems';
 import type { StressViewModel } from '../rbx/stressViewModel';
 import { renderSelector } from './render';
-import { renderDeclared, renderElapsed, renderFindings, renderStatus } from './stressRender';
+import { renderDeclared, renderFindings, renderStatus, statusText } from './stressRender';
 import { SelectorHost, setHtml } from './tree';
 
 interface VsCodeApi {
@@ -35,23 +35,38 @@ const findings = document.getElementById('findings') as HTMLElement;
 function render(): void {
   selector.render(renderSelector(problems, selectedProblem));
   setHtml(declared, renderDeclared(model));
-  setHtml(status, renderStatus(model, Date.now()));
+  // The frame only when it changed (`setHtml`), the numbers always: see
+  // `renderStatus` for why the two are apart.
+  setHtml(status, renderStatus(model));
+  tick();
   setHtml(findings, renderFindings(model));
+}
+
+/** Write the clock and the counters into the status frame, as text. */
+function tick(): void {
+  if (model.status === undefined) {
+    return;
+  }
+  const text = statusText(model.status, Date.now());
+  const clock = status.querySelector('.stress-elapsed');
+  const counts = status.querySelector('.stress-counts');
+  if (clock !== null && clock.textContent !== text.elapsed) {
+    clock.textContent = text.elapsed;
+  }
+  if (counts !== null && counts.textContent !== text.counts) {
+    counts.textContent = text.counts;
+  }
 }
 
 /**
  * The clock, client-side: a running session's manifest is rewritten at most
  * once a second and not at all while nothing changes, so a clock driven by
  * the host's posts would stall exactly when a stress is quietly searching.
- * Only the elapsed text is touched, so a tick never moves focus.
+ * Only text is touched, so a tick never moves focus.
  */
 setInterval(() => {
-  if (model.status?.startedAtMs === undefined) {
-    return;
-  }
-  const clock = status.querySelector('.stress-elapsed');
-  if (clock !== null) {
-    clock.textContent = renderElapsed(model.status, Date.now());
+  if (model.status?.startedAtMs !== undefined) {
+    tick();
   }
 }, 1000);
 

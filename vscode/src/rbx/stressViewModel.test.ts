@@ -44,7 +44,12 @@ function manifest(overrides: Partial<StressManifest> = {}): StressManifest {
 }
 
 test('declared stresses read as name plus `call · finder`', () => {
-  const model = buildStressViewModel({ declared: DECLARED, alive: true, dispatch: true });
+  const model = buildStressViewModel({
+    declared: DECLARED,
+    alive: true,
+    task: false,
+    dispatch: true,
+  });
   assert.deepStrictEqual(model.declared, [
     { name: 'wa-small', summary: 'gen [1..10] · [sols/wa.cpp] ~ WRONG_ANSWER' },
   ]);
@@ -58,6 +63,7 @@ test('a finished session: status, counters and one chip per result', () => {
     declared: DECLARED,
     manifest: manifest(),
     alive: true,
+    task: true,
     promoted: new Map([[1, 'main']]),
     comparable: new Set([1]),
     dispatch: true,
@@ -74,6 +80,8 @@ test('a finished session: status, counters and one chip per result', () => {
     timeout: 10,
     startedAtMs: undefined,
     spec: 'wa-small',
+    stoppable: false,
+    external: false,
   });
   assert.deepStrictEqual(model.findings, [
     {
@@ -93,14 +101,51 @@ test('a finished session: status, counters and one chip per result', () => {
 
 test('a running session keeps its start for the client clock; a dead one reads stale', () => {
   const running = manifest({ state: 'running' });
-  const live = buildStressViewModel({ declared: [], manifest: running, alive: true, dispatch: true });
+  const live = buildStressViewModel({
+    declared: [],
+    manifest: running,
+    alive: true,
+    task: true,
+    dispatch: true,
+  });
   assert.strictEqual(live.status?.state, 'running');
   assert.strictEqual(live.status?.startedAtMs, Date.parse('2026-10-15T12:00:00+00:00'));
 
-  const stale = buildStressViewModel({ declared: [], manifest: running, alive: false, dispatch: true });
+  const stale = buildStressViewModel({
+    declared: [],
+    manifest: running,
+    alive: false,
+    task: false,
+    dispatch: true,
+  });
   assert.strictEqual(stale.status?.state, 'stale');
   assert.strictEqual(stale.status?.hue, 'orange');
   assert.strictEqual(stale.status?.startedAtMs, undefined);
+  // Nothing left to stop, and nothing to stop it from either.
+  assert.strictEqual(stale.status?.stoppable, false);
+  assert.strictEqual(stale.status?.external, false);
+});
+
+test('only a session VS Code started can be stopped from here', () => {
+  const running = manifest({ state: 'running' });
+  const ours = buildStressViewModel({
+    declared: [],
+    manifest: running,
+    alive: true,
+    task: true,
+    dispatch: true,
+  });
+  assert.strictEqual(ours.status?.stoppable, true);
+  assert.strictEqual(ours.status?.external, false);
+  const theirs = buildStressViewModel({
+    declared: [],
+    manifest: running,
+    alive: true,
+    task: false,
+    dispatch: true,
+  });
+  assert.strictEqual(theirs.status?.stoppable, false);
+  assert.strictEqual(theirs.status?.external, true);
 });
 
 test('`alive` only matters for a running manifest', () => {
@@ -109,9 +154,11 @@ test('`alive` only matters for a running manifest', () => {
       declared: [],
       manifest: manifest({ state }),
       alive: false,
+      task: true,
       dispatch: true,
     });
     assert.strictEqual(model.status?.state, state);
+    assert.strictEqual(model.status?.stoppable, false);
   }
 });
 
@@ -124,6 +171,7 @@ test('a result naming no known solution still gets a chip', () => {
       ],
     }),
     alive: true,
+    task: true,
     dispatch: true,
   });
   assert.deepStrictEqual(model.findings[0].chips, [

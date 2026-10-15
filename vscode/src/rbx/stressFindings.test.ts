@@ -3,8 +3,27 @@ import * as path from 'path';
 import { test } from 'node:test';
 
 import { packageLayout } from './layout';
-import { StressFinding } from './stress';
-import { compareCandidates, findingFiles } from './stressFindings';
+import { StressFinding, StressManifest } from './stress';
+import { compareCandidates, findingFiles, sessionOf } from './stressFindings';
+
+test('a row acts on its own session only', () => {
+  const manifest: StressManifest = {
+    state: 'done',
+    spec: { slowest: false, doubleTL: false },
+    startedAt: 'T1',
+    elapsed: 0,
+    executed: 0,
+    skipped: 0,
+    solutions: [],
+    findings: [],
+  };
+  assert.strictEqual(sessionOf(manifest, 'T1'), manifest);
+  assert.strictEqual(sessionOf(manifest, 'T0'), undefined);
+  assert.strictEqual(sessionOf(undefined, 'T1'), undefined);
+  // Nothing to tell sessions apart by: taken at its word.
+  assert.strictEqual(sessionOf(manifest, undefined), manifest);
+  assert.strictEqual(sessionOf({ ...manifest, startedAt: undefined }, 'T1')?.startedAt, undefined);
+});
 
 const PKG = packageLayout('/p');
 const DIR = path.join('/p', '.rbx', 'runs', '.stress', 'findings', '2');

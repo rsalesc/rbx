@@ -1251,6 +1251,8 @@ body.dispatch-enabled .welcome-actions {
 .stress-summary,
 .stress-duration,
 .stress-counts,
+.stress-hint,
+.stress-none,
 .stress-promoted {
   color: var(--vscode-descriptionForeground);
 }

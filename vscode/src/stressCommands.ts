@@ -20,15 +20,18 @@ import { StressFinding, StressManifest } from './rbx/stress';
 import { FindingFile, FindingFiles, compareCandidates, findingFiles } from './rbx/stressFindings';
 import { generatorCallString } from './rbx/stressSpec';
 
-/** Said whenever a finding the view showed is no longer what is on disk. */
-function gone(k: number): void {
+/**
+ * Said whenever a finding the view showed is no longer what is on disk --
+ * here, and by promotion, which refuses a stale row the same way.
+ */
+export function findingGone(k: number): void {
   void vscode.window.showInformationMessage(
     `rbx: finding #${k} is no longer on disk -- a newer stress session has probably replaced it.`,
   );
 }
 
 /** Basename -> size for one finding's directory; empty when it is gone. */
-async function entries(pkg: PackageLayout, k: number): Promise<Map<string, number>> {
+export async function findingEntries(pkg: PackageLayout, k: number): Promise<Map<string, number>> {
   const dir = findingDir(pkg, k);
   let names: string[];
   try {
@@ -59,12 +62,12 @@ async function resolve(
 ): Promise<{ finding: StressFinding; files: FindingFiles } | undefined> {
   const finding = manifest?.findings.find((each) => each.index === k);
   if (manifest === undefined || finding === undefined) {
-    gone(k);
+    findingGone(k);
     return undefined;
   }
-  const files = findingFiles(pkg, manifest.solutions, finding, await entries(pkg, k));
+  const files = findingFiles(pkg, manifest.solutions, finding, await findingEntries(pkg, k));
   if (files.input === undefined && files.answer === undefined && files.outputs.length === 0) {
-    gone(k);
+    findingGone(k);
     return undefined;
   }
   return { finding, files };
@@ -116,10 +119,15 @@ export async function openFinding(
     return;
   }
   const { files } = resolved;
-  if (files.input !== undefined) {
-    await show(files.input, vscode.ViewColumn.Active);
-  }
-  for (const file of compareCandidates(files)) {
+  // The input where the user is, and the rest beside it; with no input,
+  // whatever is first takes its place, so there is still a column to be
+  // beside.
+  const [first, ...rest] = [
+    ...(files.input === undefined ? [] : [files.input]),
+    ...compareCandidates(files),
+  ];
+  await show(first, vscode.ViewColumn.Active);
+  for (const file of rest) {
     await show(file, vscode.ViewColumn.Beside);
   }
   if (files.stderrs.length > 0) {
@@ -186,7 +194,7 @@ export async function compareFinding(
 export async function copyFindingCall(manifest: StressManifest | undefined, k: number): Promise<void> {
   const finding = manifest?.findings.find((each) => each.index === k);
   if (finding === undefined) {
-    gone(k);
+    findingGone(k);
     return;
   }
   const call = generatorCallString(finding.generator);

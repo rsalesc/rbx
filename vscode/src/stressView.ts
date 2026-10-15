@@ -18,7 +18,6 @@
  *     one-task-at-a-time policy and the terminal.
  */
 import * as crypto from 'crypto';
-import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
 
 import { ActiveProblem } from './activeProblem';
@@ -27,9 +26,10 @@ import { log } from './log';
 import { touchesStress } from './rbx/artifactEvents';
 import { TASK_TYPE } from './rbx/dispatch';
 import { Latest } from './rbx/latest';
-import { PackageLayout, findingDir, manifestPath, packageLayout } from './rbx/layout';
+import { PackageLayout, manifestPath, packageLayout } from './rbx/layout';
 import { StressManifest } from './rbx/stress';
 import { StressDeclaration, parseStressDeclarations } from './rbx/stressDeclarations';
+import { compareCandidates, findingFiles, sessionOf } from './rbx/stressFindings';
 import { lastLaunchKey, stressArgv } from './rbx/stressSpec';
 import {
   EMPTY_STRESS_MODEL,
@@ -39,7 +39,7 @@ import {
 } from './rbx/stressViewModel';
 import { readYamlFile } from './rbx/store';
 import { RunDataProvider, stressLivenessHere } from './runData';
-import { compareFinding, copyFindingCall, openFinding } from './stressCommands';
+import { compareFinding, copyFindingCall, findingEntries, openFinding } from './stressCommands';
 
 /** What stressMain.ts posts back. */
 interface ClientMessage {
@@ -62,10 +62,22 @@ export interface OpenLauncherArgs {
 export interface PromoteArgs {
   readonly root: string;
   readonly finding: number;
+  /**
+   * The `startedAt` of the session the row was drawn from; resolve it with
+   * `StressViewProvider.sessionFor`, which refuses a replaced session.
+   */
+  readonly session?: string;
 }
 
 /** The context key the view title's Stop button keys on. */
 const RUNNING_CONTEXT = 'rbx.stressRunning';
+
+/**
+ * How often a running session's pid is re-probed. Slow on purpose: it only
+ * catches a session killed outside VS Code (a dispatched one is caught by its
+ * task ending), and that can wait a few seconds to be called stale.
+ */
+const PROBE_MS = 5000;
 
 function makeNonce(): string {
   return crypto.randomBytes(16).toString('base64');
@@ -74,36 +86,6 @@ function makeNonce(): string {
 /** Whether a task is a dispatched `rbx stress`. */
 function isStressTask(task: vscode.Task): boolean {
   return task.definition.type === TASK_TYPE && task.definition.command === 'stress';
-}
-
-/**
- * The findings with at least two outputs to put side by side, the reference
- * answer counting as one.
- *
- * Listed rather than inferred from the results: a solution that crashed has a
- * verdict and may have no output, and the reference solution may have an
- * output and no verdict.
- */
-async function comparableFindings(
-  pkg: PackageLayout,
-  manifest: StressManifest,
-): Promise<Set<number>> {
-  const comparable = new Set<number>();
-  await Promise.all(
-    manifest.findings.map(async (finding) => {
-      let names: string[];
-      try {
-        names = await fs.readdir(findingDir(pkg, finding.index));
-      } catch {
-        return; // Not there (yet, or any more): nothing to compare.
-      }
-      const outputs = names.filter((name) => name === 'input.ans' || name.endsWith('.out'));
-      if (outputs.length >= 2) {
-        comparable.add(finding.index);
-      }
-    }),
-  );
-  return comparable;
 }
 
 export class StressViewProvider implements vscode.WebviewViewProvider {
@@ -121,6 +103,19 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
   private readonly promoted = new Map<string, string>();
   /** The declarations as of the last post, for Run on a declared stress. */
   private declared: readonly StressDeclaration[] = [];
+  /**
+   * Where `declared` was read from, or undefined when it must be re-read.
+   * problem.rbx.yml is read on a manifest event or a change of problem, not
+   * on every tick of a stress session.
+   */
+  private declaredRoot?: string;
+  /**
+   * Whether a finding has two outputs to compare, `root \0 startedAt \0 k`.
+   * Only for sessions that have ended: a finding's files never change after
+   * that, while a running `--slowest` session may still renumber them.
+   */
+  private readonly comparable = new Map<string, boolean>();
+  private probe?: ReturnType<typeof setTimeout>;
 
   constructor(
     private readonly data: RunDataProvider,
@@ -153,11 +148,19 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
       this.data.onDidChange((change) => {
         // The session moved, or problem.rbx.yml did: the declared stresses are
         // read from it, and an edit reaches the store as a `manifest` event.
-        if (touchesStress(change.plan) || change.plan?.manifest === true) {
+        // No plan at all is a rediscovery, which may have moved either.
+        const manifestMoved = change.plan === undefined || change.plan.manifest;
+        if (manifestMoved) {
+          this.declaredRoot = undefined;
+        }
+        if (touchesStress(change.plan) || manifestMoved) {
           void this.post();
         }
       }),
-      this.active.onDidChange(() => void this.post()),
+      this.active.onDidChange(() => {
+        this.declaredRoot = undefined;
+        void this.post();
+      }),
       vscode.tasks.onDidStartTask((event) => onTask(event.execution.task)),
       vscode.tasks.onDidEndTask((event) => onTask(event.execution.task)),
       vscode.workspace.onDidChangeConfiguration((event) => {
@@ -169,6 +172,10 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
     view.onDidDispose(() => {
       subscriptions.forEach((subscription) => subscription.dispose());
       this.view = undefined;
+      this.reprobe(false);
+      // Nothing is showing a Stop to key on, and a stale `true` would leave
+      // the palette's Stop Stress offered for a session long gone.
+      void vscode.commands.executeCommand('setContext', RUNNING_CONTEXT, false);
     });
   }
 
@@ -178,9 +185,29 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
    * view has no other way to learn it, since `add-finding` writes nothing
    * back into the session.
    */
-  markPromoted(root: string, sessionStartedAt: string, k: number, group: string): void {
+  markPromoted(
+    root: string,
+    sessionStartedAt: string | undefined,
+    k: number,
+    group: string,
+  ): void {
+    // A session with no start cannot be told from the next one, so a badge
+    // on it could land on the wrong input; better none.
+    if (sessionStartedAt === undefined) {
+      return;
+    }
     this.promoted.set(`${root}\0${sessionStartedAt}\0${k}`, group);
     void this.post();
+  }
+
+  /**
+   * The session at `root`, if it is still the one a row was drawn from
+   * (`session` is that row's `startedAt`); undefined when a newer session
+   * replaced it or there is none. For every action on a finding row, so each
+   * refuses a stale row the same way (`findingGone`).
+   */
+  async sessionFor(root: string, session: string | undefined): Promise<StressManifest | undefined> {
+    return sessionOf(await this.data.stress(packageLayout(root)), session);
   }
 
   /** Open the launcher on the selected problem, blank. The title bar's `+`. */
@@ -234,7 +261,7 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
         return;
       case 'promote':
         if (typeof message.k === 'number') {
-          const args: PromoteArgs = { root, finding: message.k };
+          const args: PromoteArgs = { root, finding: message.k, session: message.session };
           this.execute('rbx.stress.promote', args);
         }
         return;
@@ -255,13 +282,9 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
     session: string | undefined,
   ): Promise<void> {
     const pkg = packageLayout(root);
-    let manifest = await this.data.stress(pkg);
-    // A row from a session that has since been replaced names a finding of
-    // that session; this one's #k is another input altogether. `resolve` in
-    // stressCommands.ts then says the finding is gone.
-    if (manifest !== undefined && session !== undefined && manifest.startedAt !== session) {
-      manifest = undefined;
-    }
+    // Undefined for a replaced session, which stressCommands.ts then reports
+    // as gone.
+    const manifest = await this.sessionFor(root, session);
     switch (action) {
       case 'open':
         return openFinding(pkg, manifest, k);
@@ -307,15 +330,66 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
    * the answer where it can be checked; elsewhere, whether VS Code is running
    * a stress task there (`Dispatcher.isRunning`).
    */
-  private alive(root: string, manifest: StressManifest): boolean {
+  private alive(root: string, manifest: StressManifest): { alive: boolean; probed: boolean } {
     switch (stressLivenessHere(manifest)) {
       case 'live':
-        return true;
+        return { alive: true, probed: manifest.state === 'running' };
       case 'stale':
-        return false;
+        return { alive: false, probed: true };
       case 'unknown':
-        return this.dispatcher.isRunning(root, 'stress');
+        return { alive: this.dispatcher.isRunning(root, 'stress'), probed: false };
     }
+  }
+
+  /**
+   * Re-post in a while, so a running session whose pid answered for it is
+   * probed again; or, with `on` false, stop doing so. A dispatched session
+   * needs none of this -- its task ending already re-posts -- but one started
+   * from a plain terminal and killed there says nothing anywhere.
+   */
+  private reprobe(on: boolean): void {
+    if (this.probe !== undefined) {
+      clearTimeout(this.probe);
+      this.probe = undefined;
+    }
+    if (on && this.view !== undefined) {
+      this.probe = setTimeout(() => {
+        this.probe = undefined;
+        void this.post();
+      }, PROBE_MS);
+    }
+  }
+
+  /** The findings of `manifest` with two outputs to compare. */
+  private async comparableIn(
+    root: string,
+    pkg: PackageLayout,
+    manifest: StressManifest,
+  ): Promise<Set<number>> {
+    const cacheable = manifest.state !== 'running' && manifest.startedAt !== undefined;
+    const comparable = new Set<number>();
+    await Promise.all(
+      manifest.findings.map(async (finding) => {
+        const key = `${root}\0${manifest.startedAt}\0${finding.index}`;
+        let can = cacheable ? this.comparable.get(key) : undefined;
+        if (can === undefined) {
+          const files = findingFiles(
+            pkg,
+            manifest.solutions,
+            finding,
+            await findingEntries(pkg, finding.index),
+          );
+          can = compareCandidates(files).length >= 2;
+          if (cacheable) {
+            this.comparable.set(key, can);
+          }
+        }
+        if (can) {
+          comparable.add(finding.index);
+        }
+      }),
+    );
+    return comparable;
   }
 
   private promotedIn(root: string, manifest: StressManifest | undefined): Map<number, string> {
@@ -337,19 +411,25 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
     const current = this.posts.begin();
     let model: StressViewModel = EMPTY_STRESS_MODEL;
     let declared: readonly StressDeclaration[] = [];
+    let probed = false;
     if (root !== undefined) {
       const pkg = packageLayout(root);
+      const reread = this.declaredRoot !== root;
       const [raw, manifest] = await Promise.all([
-        readYamlFile(manifestPath(pkg)),
+        reread ? readYamlFile(manifestPath(pkg)) : Promise.resolve(undefined),
         this.data.stress(pkg),
       ]);
-      declared = parseStressDeclarations(raw).stresses;
+      declared = reread ? parseStressDeclarations(raw).stresses : this.declared;
       const comparable =
-        manifest === undefined ? undefined : await comparableFindings(pkg, manifest);
+        manifest === undefined ? undefined : await this.comparableIn(root, pkg, manifest);
+      const liveness =
+        manifest === undefined ? { alive: true, probed: false } : this.alive(root, manifest);
+      probed = liveness.probed && liveness.alive;
       model = buildStressViewModel({
         declared,
         manifest,
-        alive: manifest === undefined || this.alive(root, manifest),
+        alive: liveness.alive,
+        task: this.dispatcher.isRunning(root, 'stress'),
         promoted: this.promotedIn(root, manifest),
         comparable,
         dispatch: dispatchEnabled(),
@@ -361,10 +441,14 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     this.declared = declared;
+    this.declaredRoot = root;
+    this.reprobe(probed);
+    // Stoppable, not merely running: the palette's Stop Stress can only end a
+    // task VS Code started.
     void vscode.commands.executeCommand(
       'setContext',
       RUNNING_CONTEXT,
-      model.status?.state === 'running',
+      model.status?.stoppable === true,
     );
     await this.view?.webview.postMessage({
       type: 'state',
