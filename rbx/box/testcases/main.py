@@ -1,4 +1,6 @@
 import contextlib
+import datetime
+import functools
 import json
 import os
 import pathlib
@@ -644,15 +646,42 @@ def _inside_package(path: pathlib.Path) -> bool:
     return pathlib.Path(os.path.abspath(path)).resolve().is_relative_to(root)
 
 
+def _is_session(manifest: stress_manifest.StressManifest, session: str) -> bool:
+    """Whether `session` (an ISO 8601 `startedAt`) names `manifest`'s session.
+
+    Compares datetimes, not strings, so `2026-10-15T12:00:00+00:00` and
+    `2026-10-15T12:00:00Z` match. A naive value never equals an aware one.
+    """
+    value = session.strip()
+    if value.endswith(('Z', 'z')):
+        # `fromisoformat` only accepts a `Z` suffix from Python 3.11 on.
+        value = value[:-1] + '+00:00'
+    try:
+        return datetime.datetime.fromisoformat(value) == manifest.startedAt
+    except ValueError:
+        return False
+
+
 def _selected_findings(
     indices: Optional[List[int]],
+    session: Optional[str] = None,
 ) -> Tuple[stress_manifest.StressManifest, List[stress_manifest.StressFindingEntry]]:
-    """The latest session and the findings `indices` name (all when empty)."""
+    """The latest session and the findings `indices` name (all when empty).
+
+    With `session`, the latest session must be that one: a client that picked
+    findings by index must not promote another session's findings under the
+    same numbers.
+    """
     manifest = stress_manifest.read_manifest()
     if manifest is None:
         _fail(
             'There is no stress session to take findings from. '
             'Run [item]rbx stress[/item] first.'
+        )
+    if session is not None and not _is_session(manifest, session):
+        _fail(
+            'The stress session changed since you picked this finding; '
+            'promote it again from the new session.'
         )
     if not manifest.findings:
         _fail('The latest stress session found nothing.')
@@ -840,11 +869,29 @@ def add_finding(
             help='List the test groups that can take findings, and exit.',
         ),
     ] = False,
+    session: Annotated[
+        Optional[str],
+        typer.Option(
+            '--session',
+            help='The startedAt of the stress session the findings were picked '
+            'from; refuse to run if the latest session is another one.',
+            hidden=True,
+        ),
+    ] = None,
 ):
+    run = functools.partial(
+        _add_finding,
+        indices=indices,
+        group=group,
+        new_script=new_script,
+        new_manual=new_manual,
+        glob=glob,
+        dry_run=dry_run,
+        list_groups=list_groups,
+        session=session,
+    )
     if not as_json:
-        _add_finding(
-            indices, group, new_script, new_manual, glob, dry_run, list_groups, None
-        )
+        run(json_out=None)
         return
     # Whatever else gets printed on the way -- including by the helpers this
     # calls -- goes to stderr, so stdout parses as JSON. `within_problem` prints
@@ -852,12 +899,11 @@ def add_finding(
     # add-finding records no issues.
     json_out = sys.stdout
     with contextlib.redirect_stdout(sys.stderr):
-        _add_finding(
-            indices, group, new_script, new_manual, glob, dry_run, list_groups, json_out
-        )
+        run(json_out=json_out)
 
 
 def _add_finding(
+    *,
     indices: Optional[List[int]],
     group: Optional[str],
     new_script: Optional[pathlib.Path],
@@ -865,6 +911,7 @@ def _add_finding(
     glob: Optional[str],
     dry_run: bool,
     list_groups: bool,
+    session: Optional[str],
     json_out: Optional[TextIO],
 ) -> None:
     destinations = [d for d in (group, new_script, new_manual) if d is not None]
@@ -883,7 +930,7 @@ def _add_finding(
     if dry_run and group is None:
         _fail(_DRY_RUN_ONLY_FOR_SCRIPTS)
 
-    manifest, findings = _selected_findings(indices)
+    manifest, findings = _selected_findings(indices, session)
     all_groups = package.get_test_groups_by_name()
     script_groups = promotion.get_script_groups_by_name()
     manual_groups = promotion.get_manual_groups_by_name()

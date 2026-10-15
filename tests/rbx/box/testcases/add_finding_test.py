@@ -26,6 +26,11 @@ def _skip_preset_check():
         yield
 
 
+STARTED_AT = datetime.datetime(
+    2026, 10, 15, 9, 0, 0, tzinfo=datetime.timezone(datetime.timedelta(hours=-3))
+)
+
+
 def _write_session(
     *inputs: bytes, name: Optional[str] = None, fuzz: Optional[List[str]] = None
 ) -> None:
@@ -52,7 +57,7 @@ def _write_session(
             timeout=10,
             findingsLimit=len(inputs),
         ),
-        startedAt=datetime.datetime(2026, 10, 15, 12, 0, 0),
+        startedAt=STARTED_AT,
         solutions=['sols/main.cpp'],
         findings=findings,
     )
@@ -457,6 +462,69 @@ def test_errors_stay_off_stdout_with_json(
     assert result.exit_code == 1
     assert result.stdout == ''
     assert 'nope' in result.stderr
+
+
+@pytest.mark.parametrize(
+    'session',
+    [
+        '2026-10-15T09:00:00-03:00',
+        # The same instant, written differently.
+        '2026-10-15T12:00:00Z',
+        '2026-10-15 12:00:00.000+00:00',
+    ],
+)
+def test_matching_session_is_accepted(
+    runner: CliRunner, testing_pkg: testing_package.TestingPackage, session: str
+):
+    _setup_groups(testing_pkg)
+    _write_session(b'1\n')
+
+    result = _invoke(runner, '1', '--group', 'main', '--session', session)
+
+    assert result.exit_code == 0, result.output
+    assert (
+        (testing_pkg.root / 'testplan/main.txt')
+        .read_text()
+        .endswith('\ngen 0 --seed=abc')
+    )
+
+
+@pytest.mark.parametrize(
+    'session', ['2026-10-15T09:00:01-03:00', '2026-10-15T09:00:00', 'yesterday']
+)
+def test_other_session_is_refused_and_writes_nothing(
+    runner: CliRunner, testing_pkg: testing_package.TestingPackage, session: str
+):
+    _setup_groups(testing_pkg)
+    _write_session(b'1\n')
+
+    result = _invoke(runner, '1', '--group', 'corner', '--session', session, '--json')
+
+    assert result.exit_code == 1
+    assert result.stdout == ''
+    assert 'The stress session changed' in result.stderr
+    assert not any((testing_pkg.root / 'tests/manual/corner').iterdir())
+
+
+def test_other_session_is_refused_on_dry_run(
+    runner: CliRunner, testing_pkg: testing_package.TestingPackage
+):
+    _setup_groups(testing_pkg)
+    _write_session(b'1\n')
+
+    result = _invoke(
+        runner,
+        '--group',
+        'main',
+        '--dry-run',
+        '--json',
+        '--session',
+        '2026-10-14T09:00:00-03:00',
+    )
+
+    assert result.exit_code == 1
+    assert result.stdout == ''
+    assert 'The stress session changed' in result.stderr
 
 
 def test_list_groups_rejects_a_glob(
