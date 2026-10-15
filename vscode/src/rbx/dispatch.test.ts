@@ -321,10 +321,11 @@ test('statement builds dispatch the build subcommands, contest ones at the conte
   assert.deepStrictEqual(rbxArgs(invocation({ command: 'statements', extraArgs: ['-v4'] })), [
     'statements',
     'build',
+    '--incremental',
   ]);
   assert.deepStrictEqual(
     rbxArgs(invocation({ command: 'contest-statements', contest: { kind: 'variant', id: 'div1' } })),
-    ['-C', 'div1', 'contest', 'statements', 'build'],
+    ['-C', 'div1', 'contest', 'statements', 'build', '--incremental'],
   );
   assert.strictEqual(scopeOf('statements'), 'problem');
   assert.strictEqual(scopeOf('contest-statements'), 'contest');
@@ -333,11 +334,16 @@ test('statement builds dispatch the build subcommands, contest ones at the conte
     taskName(invocation({ command: 'contest-tutorials' })),
     'build contest tutorials',
   );
-  assert.deepStrictEqual(rbxArgs(invocation({ command: 'tutorials' })), ['tutorials', 'build']);
+  assert.deepStrictEqual(rbxArgs(invocation({ command: 'tutorials' })), [
+    'tutorials',
+    'build',
+    '--incremental',
+  ]);
   assert.deepStrictEqual(rbxArgs(invocation({ command: 'contest-tutorials' })), [
     'contest',
     'tutorials',
     'build',
+    '--incremental',
   ]);
 });
 

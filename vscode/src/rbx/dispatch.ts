@@ -183,17 +183,20 @@ export function rbxArgs(invocation: Invocation): string[] {
     case 'contest-run':
       args.push('contest', 'each', '--inline', 'run', ...invocation.extraArgs);
       break;
+    // `--incremental` keeps the last build's LaTeX auxiliary files, so a
+    // rebuild of an unchanged document needs one pdflatex pass, not two. The
+    // editor rebuilds on every save; `rbx st b` in a terminal still starts clean.
     case 'statements':
-      args.push('statements', 'build');
+      args.push('statements', 'build', '--incremental');
       break;
     case 'contest-statements':
-      args.push('contest', 'statements', 'build');
+      args.push('contest', 'statements', 'build', '--incremental');
       break;
     case 'tutorials':
-      args.push('tutorials', 'build');
+      args.push('tutorials', 'build', '--incremental');
       break;
     case 'contest-tutorials':
-      args.push('contest', 'tutorials', 'build');
+      args.push('contest', 'tutorials', 'build', '--incremental');
       break;
     case 'stress':
       args.push('stress', ...(invocation.args ?? []));
