@@ -22,6 +22,25 @@ def test_edits_the_parent_file_when_the_key_is_inline(tmp_path):
     assert 'short_name: B' in main.read_text()
 
 
+def test_pending_says_what_save_would_write_without_writing_it(tmp_path):
+    frag = tmp_path / 'shared.yml'
+    frag.write_text('# kept\n- short_name: A\n')
+    main = tmp_path / 'contest.rbx.yml'
+    main.write_text('name: c\nproblems: !include shared.yml\n')
+
+    session = EditSession(main)
+    assert session.pending() == {}
+    session.target('problems').value.append({'short_name': 'B'})
+
+    assert session.pending() == {
+        frag.resolve(): (
+            '# kept\n- short_name: A\n',
+            '# kept\n- short_name: A\n- short_name: B\n',
+        )
+    }
+    assert frag.read_text() == '# kept\n- short_name: A\n'
+
+
 def test_routes_the_edit_into_the_included_fragment(tmp_path):
     frag = tmp_path / 'shared.yml'
     frag.write_text('- short_name: A\n')

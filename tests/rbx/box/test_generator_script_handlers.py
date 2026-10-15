@@ -161,7 +161,7 @@ gen2 arg2
         call = GeneratorCall(name='new_gen', args='new_arg')
         handler.append([call])
 
-        assert handler.script == 'existing_gen arg\nnew_gen new_arg'
+        assert handler.script == 'existing_gen arg\nnew_gen new_arg\n'
 
     def test_append_multiple_calls_with_comment(self):
         """Test appending multiple calls with a comment."""
@@ -177,7 +177,7 @@ gen2 arg2
         ]
         handler.append(calls, comment='Added by stress test')
 
-        expected = 'existing_gen\n# Added by stress test\ngen1 arg1\ngen2 '
+        expected = 'existing_gen\n\n# Added by stress test\ngen1 arg1\ngen2\n'
         assert handler.script == expected
 
     def test_append_with_root_normalization(self):
@@ -195,7 +195,7 @@ gen2 arg2
         call = GeneratorCall(name='generators/subdir/gen', args='arg')
         handler.append([call])
 
-        assert handler.script == '\nsubdir/gen arg'
+        assert handler.script == 'subdir/gen arg\n'
 
     def test_parse_with_group_filter(self):
         """Test parsing script with group filter applied."""

@@ -12,7 +12,7 @@ from rbx.box.schema import GeneratorCall, GeneratorScript, Testcase
 from rbx.box.stressing import generator_script_parser
 
 
-def _group_matches(annotation: Optional[str], key: str) -> bool:
+def group_matches(annotation: Optional[str], key: str) -> bool:
     """Whether a line's @testgroup ``annotation`` applies to run-key ``key``.
 
     Untagged lines (``None``) always match. Otherwise the annotation must equal
@@ -72,15 +72,17 @@ class RbxGeneratorScriptHandler(GeneratorScriptHandler):
             self.script, self.script_entry.path
         )
         if self.group is not None:
-            inputs = [inp for inp in inputs if _group_matches(inp.group, self.group)]
+            inputs = [inp for inp in inputs if group_matches(inp.group, self.group)]
         yield from inputs
 
     def append(self, calls: List[GeneratorCall], comment: Optional[str] = None):
-        if comment:
-            self.script += f'\n# {comment}'
-        for call in calls:
-            name = self.normalize_call_name(call.name)
-            self.script += f'\n{name} {call.args or ""}'
+        from rbx.box import testplan_edit
+
+        lines = [
+            f'{self.normalize_call_name(call.name)} {call.args or ""}'.rstrip()
+            for call in calls
+        ]
+        self.script = testplan_edit.append_top_level(self.script, lines, comment)
 
     def remove(self, start_lines: Set[int]) -> None:
         spans = {

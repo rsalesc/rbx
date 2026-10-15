@@ -93,7 +93,7 @@ def test_appends_all_findings_to_a_script_group(
         'gen 100\n'
         "\n# Found by: rbx stress -g 'gen [1..10]' -f '[sols/main.cpp ~ INCORRECT]'"
         '\ngen 0 --seed=abc'
-        '\ngen 1 --seed=abc'
+        '\ngen 1 --seed=abc\n'
     )
 
 
@@ -107,7 +107,7 @@ def test_appends_selected_findings_naming_the_stress(
 
     assert result.exit_code == 0, result.output
     assert (testing_pkg.root / 'testplan/main.txt').read_text() == (
-        'gen 100\n\n# Found by: rbx stress overflow\ngen 2 --seed=abc\ngen 0 --seed=abc'
+        'gen 100\n\n# Found by: rbx stress overflow\ngen 2 --seed=abc\ngen 0 --seed=abc\n'
     )
 
 
@@ -217,7 +217,7 @@ def test_dry_run_prints_the_change_as_json_and_writes_nothing(
     assert json.loads(result.stdout) == {
         'file': str((testing_pkg.root / 'testplan/main.txt').resolve()),
         'before': 'gen 100\n',
-        'after': 'gen 100\n\n# Found by: rbx stress overflow\ngen 0 --seed=abc',
+        'after': 'gen 100\n\n# Found by: rbx stress overflow\ngen 0 --seed=abc\n',
     }
     assert (testing_pkg.root / 'testplan/main.txt').read_text() == 'gen 100\n'
 
@@ -344,7 +344,7 @@ def test_readding_script_findings_skips_them(
         'skipped': [1],
     }
     assert script.read_text().count('gen 0 --seed=abc') == 1
-    assert script.read_text().endswith('\ngen 1 --seed=abc')
+    assert script.read_text().endswith('\ngen 1 --seed=abc\n')
 
 
 def test_readding_box_script_findings_skips_them(
@@ -485,7 +485,7 @@ def test_matching_session_is_accepted(
     assert (
         (testing_pkg.root / 'testplan/main.txt')
         .read_text()
-        .endswith('\ngen 0 --seed=abc')
+        .endswith('\ngen 0 --seed=abc\n')
     )
 
 

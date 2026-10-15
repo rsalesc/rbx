@@ -1,12 +1,10 @@
 import asyncio
-import pathlib
 from unittest import mock
 
-import pydantic
 import pytest
 from typer.testing import CliRunner
 
-from rbx.box import cli, promotion
+from rbx.box import cli
 from rbx.box.schema import GeneratorCall
 from rbx.box.stresses import StressFinding, StressReport
 from rbx.box.testing import testing_package
@@ -249,16 +247,35 @@ def test_stress_no_promote_skips_the_prompt(
     assert not (testing_pkg.root / 'testplan').exists()
 
 
-@pytest.mark.parametrize('create', ['manual', 'script'])
+@pytest.mark.parametrize(
+    'choice, answers',
+    [
+        ('(create new manual group)', ('ab', 'tests/ab/*.in')),
+        ('(create new script)', ('tests/ab.txt',)),
+    ],
+)
 def test_creating_a_group_with_an_invalid_name_leaves_the_yaml_alone(
-    testing_pkg: testing_package.TestingPackage, create: str
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+    choice: str,
+    answers,
 ):
+    report = _write_findings(testing_pkg, b'5 7\n')
     yml = testing_pkg.yml_path.read_text()
-    with pytest.raises(pydantic.ValidationError):
-        if create == 'manual':
-            promotion.create_manual_group('ab', 'tests/ab/*.in')
-        else:
-            promotion.create_script_group(pathlib.Path('tests/ab.txt'))
+
+    with (
+        mock.patch('rbx.box.stresses.run_stress', _mock_run_stress(report)),
+        mock.patch('rbx.box.stresses.print_stress_report'),
+        mock.patch('rich.prompt.Confirm.ask', return_value=True),
+        mock.patch('questionary.select', _scripted_prompt(choice)),
+        mock.patch('questionary.text', _scripted_prompt(*answers)),
+    ):
+        result = runner.invoke(
+            cli.app, ['stress', '-g', 'gen 1', '-f', 'sols/main.cpp']
+        )
+
+    assert result.exit_code == 0, result.output
+    assert 'not a valid test group name' in result.output
     assert testing_pkg.yml_path.read_text() == yml
     assert not (testing_pkg.root / 'tests').exists()
 
