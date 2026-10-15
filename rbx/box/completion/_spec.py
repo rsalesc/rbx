@@ -1036,6 +1036,23 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'List the stresses, solutions, generators and test groups a '
+                    'stress can use, then exit.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--list'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'With --list, print the listing as JSON on stdout.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--json'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,

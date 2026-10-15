@@ -5,10 +5,12 @@ only when one of its commands is invoked. A command added here needs a row
 there too.
 """
 
+import contextlib
+import json
 import pathlib
 import shlex
 import sys
-from typing import Annotated, List, Optional, Union
+from typing import Annotated, Any, Dict, List, Optional, Union
 
 import rich.prompt
 import syncer
@@ -20,6 +22,63 @@ from rbx.box.environment import VerificationLevel
 from rbx.grading import grading_context
 
 app = typer.Typer(cls=annotations.AliasGroup)
+
+
+def _listing() -> Dict[str, Any]:
+    """What a stress of this problem can use, as `--list --json` publishes it.
+
+    Solutions come from `package.get_solutions()`, so globs are expanded the
+    way a run sees them. Outcomes are `ExpectedOutcome` member *names*
+    (`WRONG_ANSWER`), the spelling finder expressions use.
+    """
+    pkg = package.find_problem_package_or_die()
+    return {
+        'stresses': [
+            {
+                'name': stress.name,
+                'generator': {
+                    'name': stress.generator.name,
+                    'args': stress.generator.args,
+                },
+                'finder': stress.finder,
+            }
+            for stress in pkg.stresses
+        ],
+        'solutions': [
+            {
+                'path': package.relpath(solution.path).as_posix(),
+                'outcome': solution.outcome.name,
+            }
+            for solution in package.get_solutions()
+        ],
+        'generators': [generator.name for generator in pkg.generators],
+        'groups': [group.name for group in pkg.testcases],
+    }
+
+
+def _print_listing(listing: Dict[str, Any]) -> None:
+    out = console.console
+    out.print('[bstatus]Stresses[/bstatus]')
+    for stress in listing['stresses']:
+        call = ' '.join(
+            part
+            for part in (stress['generator']['name'], stress['generator']['args'])
+            if part
+        )
+        # No markup: finders and generator args are full of `[...]`.
+        out.print(
+            f'  {stress["name"]}: -g {shlex.quote(call)} '
+            f'-f {shlex.quote(stress["finder"])}',
+            markup=False,
+        )
+    if not listing['stresses']:
+        out.print('  (none)')
+    out.print('[bstatus]Solutions[/bstatus]')
+    for solution in listing['solutions']:
+        out.print(f'  {solution["path"]} ({solution["outcome"]})', markup=False)
+    for title, key in (('Generators', 'generators'), ('Test groups', 'groups')):
+        out.print(f'[bstatus]{title}[/bstatus]')
+        out.print('  ' + (', '.join(listing[key]) or '(none)'), markup=False)
 
 
 @app.command(
@@ -158,7 +217,42 @@ async def stress(
             help='Do not offer to add the findings to a test group when the stress ends.',
         ),
     ] = False,
+    list_resources: Annotated[
+        bool,
+        typer.Option(
+            '--list',
+            help='List the stresses, solutions, generators and test groups a '
+            'stress can use, then exit.',
+        ),
+    ] = False,
+    as_json: Annotated[
+        bool,
+        typer.Option(
+            '--json', help='With --list, print the listing as JSON on stdout.'
+        ),
+    ] = False,
 ):
+    if list_resources:
+        if name or generator_args or finder or fuzz or fuzz_on:
+            console.stderr_console.print(
+                '[error]--list takes no stress name, --generator/-g, --finder/-f '
+                'or fuzz options.[/error]'
+            )
+            raise typer.Exit(1)
+        if not as_json:
+            _print_listing(_listing())
+            return
+        # Whatever else gets printed on the way goes to stderr, so stdout
+        # parses as JSON.
+        json_out = sys.stdout
+        with contextlib.redirect_stdout(sys.stderr):
+            listing = _listing()
+        print(json.dumps(listing), file=json_out)
+        return
+    if as_json:
+        console.stderr_console.print('[error]--json only applies to --list.[/error]')
+        raise typer.Exit(1)
+
     if generator_args and (fuzz or fuzz_on):
         console.console.print(
             '[error]Options --generator/-g and --fuzz/--fuzz-on cannot be used together.[/error]'
