@@ -339,3 +339,30 @@ class TestNeverChangesWhatIsWritten:
         # Jinja drops the final newline either way; nothing else may change.
         assert out == '# Why\n\n- item'
         assert doc == '# Title'
+
+
+def test_find_excerpt_long_truncated_argument_spanning_lines(tmp_path):
+    """The shape TeX prints for an error at the end of the default preset's
+    notes: a truncated argument running over several lines of the emitted
+    file, followed by a `\\par` TeX inserted itself (#909 manual test)."""
+    tex = (
+        '\\begin{problem}{Sum}\n'  # 1
+        '\\vspace{0.1cm}\n'  # 2
+        '\\subsection*{\\strExamples}\n'  # 3
+        '\\example{.samples/000/in}{.samples/000/out}\n'  # 4
+        '\\explanation{\\subimport{.samples/000/}{explanation}}\n'  # 5
+        '\\example{.samples/001/in}{.samples/001/out}\n'  # 6
+        '\\subsection*{\\strNotes}\n'  # 7
+        '\t\tHahaha \\badcmd\n'  # 8
+        '\n'  # 9
+        '}\\end{document}\n'  # 10
+    )
+    tracker = sourcemap.SourceTracker()
+    tracker.emit(tmp_path / 'statement.tex', tex)
+    before = (
+        '...0.1cm} \\subsection *{\\strExamples } \\example {.samples/000/in} '
+        '{.samples/000/out} \\explanation {\\subimport {.samples/000/}{explanation}} '
+        '\\example {.samples/001/in} {.samples/001/out} \\subsection *{\\strNotes } '
+        'Hahaha \\badcmd '
+    )
+    assert tracker.find_excerpt(tmp_path / 'statement.tex', 10, before, '\\par ') == 8

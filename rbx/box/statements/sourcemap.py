@@ -35,7 +35,7 @@ import os
 import pathlib
 import re
 import types
-from typing import Dict, Iterator, List, Optional, Tuple, Union
+from typing import Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 import jinja2
 import jinja2.ext
@@ -160,23 +160,41 @@ class SourceTracker:
         TeX expands text after reading it.
 
         Matched without whitespace, which TeX re-spaces when it prints tokens
-        (a control word is always shown followed by a space). The text before
-        the stop together with what follows is tried first, then the text
-        before it alone, in case what follows ran onto the next line."""
+        (a control word is always shown followed by a space).
+
+        The text before the stop usually spans many lines -- TeX prints up to
+        a few hundred characters of the argument, and truncates the start with
+        `...` -- so it is matched by its **longest suffix found on one line**:
+        that suffix is the error line's own text up to the offending token.
+        Any shorter suffix is found wherever a longer one is, so the longest is
+        well defined. What follows the stop only breaks ties, by its longest
+        prefix continuing the match on the same line: it may hold tokens TeX
+        inserted itself (a `\\par` for a blank line) and never appear at all.
+        """
         text = self._text.get(_key(path))
         if text is None:
             return None
         squashed = [_squash(raw) for raw in text]
         head, tail = _squash(before), _squash(after)
-        half = _EXCERPT_CHARS // 2
-        for needle in (head[-half:] + tail[:half], head[-_EXCERPT_CHARS:]):
-            if len(needle) < _EXCERPT_MIN_CHARS:
-                continue
-            hits = [i + 1 for i, raw in enumerate(squashed) if needle in raw]
+
+        def holding(needle: str, among: Iterable[int]) -> List[int]:
+            return [i for i in among if needle in squashed[i]]
+
+        everywhere = range(len(squashed))
+        for size in range(len(head), _EXCERPT_MIN_CHARS - 1, -1):
+            suffix = head[-size:]
+            hits = holding(suffix, everywhere)
             if hits:
-                above = [hit for hit in hits if hit <= line]
-                return above[-1] if above else hits[0]
-        return None
+                break
+        else:
+            return None
+        for size in range(len(tail), 0, -1):
+            narrowed = holding(suffix + tail[:size], hits)
+            if narrowed:
+                hits = narrowed
+                break
+        above = [hit + 1 for hit in hits if hit + 1 <= line]
+        return above[-1] if above else hits[0] + 1
 
     def locate(self, path: PathLike, line: int) -> Optional[SourcePos]:
         """The source position of ``line`` of a file pdflatex read.
@@ -217,8 +235,7 @@ class SourceTracker:
         return None
 
 
-# Long enough to be specific, short enough to stay on one source line.
-_EXCERPT_CHARS = 48
+# Shorter than this, a suffix like `\\x` would match lines by accident.
 _EXCERPT_MIN_CHARS = 4
 _WHITESPACE = re.compile(r'\s+')
 
