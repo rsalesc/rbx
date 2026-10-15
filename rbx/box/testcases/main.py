@@ -13,7 +13,7 @@ import typer
 
 from rbx import annotations, config, utils
 from rbx.annotations import PackagePath
-from rbx.box import package, promotion, stress_manifest
+from rbx.box import package, promotion, stress_manifest, validators
 from rbx.box.generators import (
     GenerationTestcaseEntry,
     generate_outputs_for_testcases,
@@ -100,6 +100,64 @@ async def _generate_for_editing(
     return res
 
 
+def _is_script_selector(selector: str) -> bool:
+    return ':' in selector
+
+
+def _parse_script_selector(selector: str) -> Tuple[pathlib.Path, int]:
+    path, _, line = selector.rpartition(':')
+    if not path or not line.isdigit() or int(line) < 1:
+        _fail(
+            f'Invalid test selector [item]{selector}[/item]: expected '
+            '[group]/[index] or [script]:[line].'
+        )
+    return utils.abspath(pathlib.Path(path)), int(line)
+
+
+async def _entries_for_selectors(
+    selectors: List[str],
+) -> List[GenerationTestcaseEntry]:
+    """Resolve ``[group]/[index]`` patterns and ``[script]:[line]`` selectors.
+
+    A ``[script]:[line]`` selector names the test whose statement starts at that
+    line of a generator script, so an editor can address a test by where it is
+    written, before the testset is ever built. Each script selector must match a
+    test. Pattern matches come first, then script matches, each test once.
+    """
+    patterns = [
+        TestcasePattern.parse(s) for s in selectors if not _is_script_selector(s)
+    ]
+    script_selectors = {
+        s: _parse_script_selector(s) for s in selectors if _is_script_selector(s)
+    }
+    wanted = set(script_selectors.values())
+
+    entries: List[GenerationTestcaseEntry] = []
+    if patterns:
+        entries.extend(await extract_generation_testcases_from_patterns(patterns))
+    if wanted:
+        seen = {entry.group_entry.key() for entry in entries}
+        found = set()
+        for entry in await extract_generation_testcases_from_groups():
+            gse = entry.metadata.generator_script
+            if gse is None:
+                continue
+            key = (utils.abspath(gse.path), gse.line)
+            if key not in wanted:
+                continue
+            found.add(key)
+            if entry.group_entry.key() not in seen:
+                seen.add(entry.group_entry.key())
+                entries.append(entry)
+        for selector, key in script_selectors.items():
+            if key not in found:
+                _fail(
+                    f'No test starts at [item]{selector}[/item]: it must be the '
+                    'first line of a statement in a generator script of this problem.'
+                )
+    return entries
+
+
 @app.command('view, v', help='View a testcase in your default editor.')
 @package.within_problem
 @syncer.sync
@@ -135,6 +193,157 @@ async def view(
             testcase, input=not output_only, output=not input_only, progress=s
         )
     config.edit_multiple(items, readonly=True)
+
+
+async def _validate_generated(
+    entry: GenerationTestcaseEntry,
+    input_path: pathlib.Path,
+    progress: Optional[utils.StatusProgress] = None,
+) -> List[validators.TestcaseValidationInfo]:
+    all_validators = ([entry.validator] if entry.validator is not None else []) + list(
+        entry.extra_validators
+    )
+    digests = await validators.compile_validators(all_validators, progress=progress)
+    if progress:
+        progress.update('Validating test...')
+    return await validators.validate_one_off(
+        input_path,
+        all_validators,
+        digests,
+        generation_metadata=entry.metadata,
+        testcase_entry=entry.group_entry,
+    )
+
+
+async def _generate(
+    selector: str, output: bool, validate: bool, json_out: Optional[TextIO]
+) -> None:
+    entries = await _entries_for_selectors([selector])
+    if not entries:
+        _fail(f'No test matches [item]{selector}[/item].')
+    if len(entries) > 1:
+        _fail(
+            f'[item]{selector}[/item] matches {len(entries)} tests; '
+            'name exactly one, as [group]/[index] or [script]:[line].'
+        )
+    entry = entries[0]
+
+    answer_path: Optional[pathlib.Path] = None
+    infos: Optional[List[validators.TestcaseValidationInfo]] = None
+    with utils.StatusProgress('Generating test...') as s:
+        input_path = await _generate_input_for_editing(entry, output=output, progress=s)
+        if output:
+            answer_path = await _generate_output_for_editing(entry, progress=s)
+        if validate:
+            infos = await _validate_generated(entry, input_path, progress=s)
+    valid = infos is None or all(info.ok for info in infos)
+
+    if json_out is not None:
+        md = entry.metadata
+        print(
+            json.dumps(
+                {
+                    'test': str(entry.group_entry),
+                    'source': (
+                        f'{package.relpath(md.generator_script.path).as_posix()}:'
+                        f'{md.generator_script.line}'
+                        if md.generator_script is not None
+                        else None
+                    ),
+                    'call': (
+                        str(md.generator_call)
+                        if md.generator_call is not None
+                        else None
+                    ),
+                    'input': str(utils.abspath(input_path)),
+                    'answer': (
+                        str(utils.abspath(answer_path))
+                        if answer_path is not None
+                        else None
+                    ),
+                    'validation': (
+                        None
+                        if infos is None
+                        else [
+                            {
+                                'validator': info.validator.path.as_posix(),
+                                'ok': info.ok,
+                                'message': info.message or None,
+                            }
+                            for info in infos
+                        ]
+                    ),
+                }
+            ),
+            file=json_out,
+        )
+    else:
+        console.print(
+            f'[success]Generated [item]{entry.group_entry}[/item] at '
+            f'[item]{package.relpath(input_path)}[/item].[/success]'
+        )
+        if answer_path is not None:
+            console.print(f'Answer at [item]{package.relpath(answer_path)}[/item].')
+        for info in infos or []:
+            if info.ok:
+                console.print(
+                    f'[success]Validator {info.validator.href()} accepted it.[/success]'
+                )
+                continue
+            console.print(
+                f'[error]Validator {info.validator.href()} rejected it.[/error]'
+            )
+            if info.message:
+                console.print(utils.escape_markup(info.message.strip()))
+        if infos == []:
+            console.print('[warning]No validator applies to this test.[/warning]')
+    if not valid:
+        raise typer.Exit(1)
+
+
+@app.command(
+    'generate, g',
+    help='Generate a single test, without building the rest of the testset.',
+)
+@package.within_problem
+@syncer.sync
+async def generate(
+    selector: Annotated[
+        str,
+        typer.Argument(
+            help='Test to generate, as [group]/[index] or as [script]:[line], the '
+            'line of a generator script its statement starts on.'
+        ),
+    ],
+    output: Annotated[
+        bool,
+        typer.Option(
+            '--output',
+            '-o',
+            help='Also generate the answer, by running the main solution.',
+        ),
+    ] = False,
+    validate: Annotated[
+        bool,
+        typer.Option(
+            '--validate',
+            '-v',
+            help="Run the test group's validators on the input; "
+            'exit with an error if any rejects it.',
+        ),
+    ] = False,
+    as_json: Annotated[
+        bool,
+        typer.Option('--json', help='Print the result as JSON on stdout.'),
+    ] = False,
+):
+    if not as_json:
+        await _generate(selector, output, validate, json_out=None)
+        return
+    # Everything else printed on the way goes to stderr, so stdout parses as JSON.
+    json_out = sys.stdout
+    with contextlib.redirect_stdout(sys.stderr):
+        await _generate(selector, output, validate, json_out=json_out)
 
 
 @app.command('info, i', help='Show information about testcases.')
@@ -511,8 +720,9 @@ async def promote(
     selectors: Annotated[
         Optional[List[str]],
         typer.Argument(
-            help='Tests to promote, as [group]/[index] selectors. '
-            'If omitted, tests are selected interactively.'
+            help='Tests to promote, as [group]/[index] selectors, or as '
+            '[script]:[line] for the test whose statement starts on that line '
+            'of a generator script. If omitted, tests are selected interactively.'
         ),
     ] = None,
     group: Annotated[
@@ -532,11 +742,94 @@ async def promote(
             'Only meaningful when promoting exactly one test.',
         ),
     ] = None,
+    new_manual: Annotated[
+        Optional[str],
+        typer.Option(
+            '--new-manual',
+            help='Create a manual group with this name (needs --glob), '
+            'and promote the tests into it.',
+        ),
+    ] = None,
+    glob: Annotated[
+        Optional[str],
+        typer.Option(
+            '--glob',
+            help='Glob of the group --new-manual creates, e.g. tests/manual/*.in.',
+        ),
+    ] = None,
+    list_groups: Annotated[
+        bool,
+        typer.Option(
+            '--list-groups',
+            help='List the manual test groups tests can be promoted into, and exit.',
+        ),
+    ] = False,
+    as_json: Annotated[
+        bool,
+        typer.Option('--json', help='Print the result as JSON on stdout.'),
+    ] = False,
 ):
+    run = functools.partial(
+        _promote,
+        selectors=selectors or [],
+        group=group,
+        name=name,
+        new_manual=new_manual,
+        glob=glob,
+        list_groups=list_groups,
+    )
+    if not as_json:
+        await run(json_out=None)
+        return
+    # Everything else printed on the way goes to stderr, so stdout parses as JSON.
+    json_out = sys.stdout
+    with contextlib.redirect_stdout(sys.stderr):
+        await run(json_out=json_out)
+
+
+def _list_manual_groups(json_out: Optional[TextIO]) -> None:
+    rows = [
+        {'name': name, 'kind': 'manual', 'path': group.testcaseGlob}
+        for name, group in promotion.get_manual_groups_by_name().items()
+    ]
+    if json_out is not None:
+        print(json.dumps(rows), file=json_out)
+        return
+    if not rows:
+        console.print('No manual test group exists yet.')
+        return
+    for row in rows:
+        console.print(f'[item]{row["name"]}[/item]: {row["path"]}')
+
+
+async def _promote(
+    *,
+    selectors: List[str],
+    group: Optional[str],
+    name: Optional[str],
+    new_manual: Optional[str],
+    glob: Optional[str],
+    list_groups: bool,
+    json_out: Optional[TextIO],
+) -> None:
+    if list_groups:
+        if selectors or group or new_manual or glob is not None or name:
+            _fail('--list-groups takes no tests, destination, --glob or --name.')
+        _list_manual_groups(json_out)
+        return
+    if group is not None and new_manual is not None:
+        _fail('Pass at most one of --group or --new-manual.')
+    if glob is not None and new_manual is None:
+        _fail('--glob only applies to --new-manual.')
+    if new_manual is not None and glob is None:
+        _fail('--new-manual needs a --glob for the files of the new group.')
+
     manual_groups = promotion.get_manual_groups_by_name()
     script_formats = promotion.script_format_by_path()
 
     if not selectors:
+        if json_out is not None or new_manual is not None:
+            _fail('Name the tests to promote to use --json or --new-manual.')
         if group is not None and group not in manual_groups:
             console.print(
                 f'[error]Manual group [item]{group}[/item] does not exist.[/error]'
@@ -545,10 +838,16 @@ async def promote(
         await _promote_interactive(manual_groups, script_formats, group=group)
         return
 
-    if group is None:
-        target = await _pick_manual_group(manual_groups)
-        if target is None:
+    if new_manual is not None:
+        assert glob is not None
+        target = _check_new_manual(new_manual, glob, package.get_test_groups_by_name())
+    elif group is None:
+        if json_out is not None:
+            _fail('Pass --group or --new-manual to use --json.')
+        picked = await _pick_manual_group(manual_groups)
+        if picked is None:
             return
+        target = picked
     else:
         if group not in manual_groups:
             console.print(
@@ -556,15 +855,15 @@ async def promote(
             )
             console.print(
                 '[error]Create it first by running [item]rbx testcases promote[/item] '
-                'interactively (without a [item]--group[/item]).[/error]'
+                'interactively (without a [item]--group[/item]), or pass '
+                '[item]--new-manual[/item].[/error]'
             )
             raise typer.Exit(1)
         target = manual_groups[group]
 
-    patterns = [TestcasePattern.parse(selector) for selector in selectors]
-    promoted_entries: List[GenerationTestcaseEntry] = []
+    promoted: List[Tuple[GenerationTestcaseEntry, pathlib.Path]] = []
     with utils.StatusProgress('Promoting tests...') as s:
-        entries = await extract_generation_testcases_from_patterns(patterns)
+        entries = await _entries_for_selectors(selectors)
         if not entries:
             console.print('[error]No tests matched the provided selectors.[/error]')
             raise typer.Exit(1)
@@ -602,12 +901,32 @@ async def promote(
                 f'[item]{written}[/item] (removed from '
                 f'[item]{package.relpath(gse.path)}:{gse.line}[/item]).[/success]'
             )
-            promoted_entries.append(entry)
+            promoted.append((entry, written))
+
+    # A new group is registered only after every write succeeded, so a failure
+    # never leaves it half-made in problem.rbx.yml.
+    if new_manual is not None:
+        assert glob is not None
+        target = promotion.create_manual_group(new_manual, glob)
 
     # Remove from scripts only AFTER every write succeeded.
     # Not transactional: if removal fails after the .in files were written, the
     # manual copies and the script lines both remain (duplicates) -- clean up by hand.
-    promotion.remove_script_entries(promoted_entries)
+    promotion.remove_script_entries([entry for entry, _ in promoted])
+
+    if json_out is not None:
+        rows = []
+        for entry, written in promoted:
+            gse = entry.metadata.generator_script
+            assert gse is not None
+            rows.append(
+                {
+                    'test': str(entry.group_entry),
+                    'from': f'{package.relpath(gse.path).as_posix()}:{gse.line}',
+                    'to': str(utils.abspath(written)),
+                }
+            )
+        print(json.dumps({'group': target.name, 'promoted': rows}), file=json_out)
 
 
 _DRY_RUN_ONLY_FOR_SCRIPTS = (

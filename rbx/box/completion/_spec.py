@@ -3404,6 +3404,56 @@ SPEC = {
                     ],
                 },
                 {
+                    'help': 'Generate a single test, without building...',
+                    'is_group': False,
+                    'name': 'generate, g',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': None,
+                            'kind': 'argument',
+                            'multiple': False,
+                            'names': [],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Also generate the answer, by running the main '
+                            'solution.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--output', '-o'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': "Run the test group's validators on the input; "
+                            'exit with an error if any rejects it.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--validate', '-v'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Print the result as JSON on stdout.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--json'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
                     'help': 'Show information about testcases.',
                     'is_group': False,
                     'name': 'info, i',
@@ -3457,6 +3507,41 @@ SPEC = {
                             'multiple': False,
                             'names': ['--name', '-n'],
                             'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Create a manual group with this name (needs '
+                            '--glob), and promote the tests into it.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--new-manual'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Glob of the group --new-manual creates, e.g. '
+                            'tests/manual/*.in.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--glob'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'List the manual test groups tests can be '
+                            'promoted into, and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--list-groups'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Print the result as JSON on stdout.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--json'],
+                            'takes_value': False,
                             'value': {'kind': 'none'},
                         },
                         {
