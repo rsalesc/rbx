@@ -1,0 +1,35 @@
+scenarios:
+  - name: generate-by-line
+    description: >
+      `testcases generate <script>:<line>` builds exactly that test (and its
+      answer), with no `rbx build` before it.
+    steps:
+      - cmd: testcases generate tests/plan.txt:3 --output
+        expect:
+          stdout_contains: 'Generated plan/1'
+          file_contains:
+            build/tests/plan/001.in: '30 40'
+          files_absent:
+            - build/tests/plan/000.in
+
+  - name: promote-by-line
+    description: >
+      `testcases promote <script>:<line>` moves the test into a manual group
+      and deletes its line, and the testset still builds afterwards.
+    steps:
+      - cmd: testcases promote tests/plan.txt:3 --group handmade --name big
+        expect:
+          file_contains:
+            tests/handmade/big.in: '30 40'
+      - cmd: testcases promote tests/plan.txt:3 --group handmade
+        expect:
+          # Line 3 is now the @input, which was the next statement down.
+          file_contains:
+            tests/handmade/001.in: '5 6'
+      - cmd: build
+        expect:
+          tests:
+            count: 4
+            groups:
+              plan: 1
+              handmade: 3

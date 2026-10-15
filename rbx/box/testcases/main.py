@@ -153,7 +153,8 @@ async def _entries_for_selectors(
             if key not in found:
                 _fail(
                     f'No test starts at [item]{selector}[/item]: it must be the '
-                    'first line of a statement in a generator script of this problem.'
+                    'first line of a statement in a generator script of this '
+                    'problem, outside any @testgroup naming a group it lacks.'
                 )
     return entries
 
@@ -885,6 +886,10 @@ async def _promote(
                 '[warning]--name is ignored when promoting more than one test; '
                 'using auto-generated names.[/warning]'
             )
+        if name is not None and single:
+            error = promotion.validate_stems([name])
+            if error is not None:
+                _fail(error)
         for entry in entries:
             input_path = await _generate_input_for_editing(
                 entry, output=False, progress=s
