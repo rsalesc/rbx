@@ -50,24 +50,33 @@ finding into the testset -- reviewing the change before it lands.
 - `startedAt`, `elapsed`, `executed`, `skipped`;
 - `solutions`: the solutions involved, in order -- `<sol>` above is the index
   into this list;
-- `findings`: `[{index, generator: {name, args}, duration}]`.
+- `findings`: `[{index, generator: {name, args}, duration, results}]`, where
+  `results` holds each finder-evaluated solution's worst outcome (enum value),
+  time and memory;
+- `pid`, `host`: the rbx process running the session, so a reader on the same
+  host can tell a live `running` session from a dead one.
 
 It is rewritten immediately when a finding lands and at most once a second
-for the counters. A `finally` writes `interrupted` (Ctrl-C) or `failed`
-(exception), so the file is always consistent. Only findings keep their
-outputs: they are copied out of the scratch area before the next iteration.
+for the counters. The final state is always written: Ctrl-C finishes the
+current test and ends `interrupted`; SIGTERM/SIGHUP (a terminated task) stamp
+`interrupted` and exit at once; any other exception ends `failed`. Only
+findings keep their outputs (plus `input.ans` when a reference answer was
+produced): they are copied out of the scratch area before the next iteration.
 `--slowest` renumbering moves whole finding directories.
 
 ### CLI
 
 - `rbx stress ... --no-promote` skips the end-of-run promotion prompt. The
   extension always passes it, so the dispatched task ends cleanly.
-- `rbx stress promote <k> --group G`, or `--new-script-group NAME --script
-  PATH`, or `--new-manual-group NAME --glob GLOB`: promotes finding `k` of the
-  latest session, read from `stress.yml`, reusing `rbx/box/promotion.py`.
-- `rbx stress promote ... --dry-run --json` is read-only (allowed headless,
-  like `rbx vars --json`) and prints `{file, before, after}` for a script-group
-  promotion.
+- `rbx testcases add-finding [K...] --group G`, or `--new-script PATH`, or
+  `--new-manual NAME --glob GLOB`: promotes findings of the latest session,
+  read from `stress.yml`, reusing `rbx/box/promotion.py`. It lives under
+  `testcases` because `rbx stress promote` would collide with `rbx stress`'s
+  positional stress name. Re-adding a finding a group already has is skipped.
+- `--dry-run --json` (script groups only) is read-only (allowed headless,
+  like `rbx vars --json`) and prints `{file, before, after}`;
+  `--list-groups --json` lists the eligible groups. Under `--json` everything
+  else goes to stderr.
 
 Phase 2 (not in the first PR): `rbx stress --sample N` to preview generator
 calls in the launcher, and `rbx stress declare NAME ... --dry-run --json` for
@@ -78,11 +87,15 @@ calls in the launcher, and `rbx stress declare NAME ... --dry-run --json` for
 ### Dispatch and watching
 
 - `RbxCommand` gains `stress`; `rbxArgs` builds the argv. It runs through the
-  existing `Dispatcher` (one task at a time, visible terminal). Stop
-  terminates the task; the manifest then reads `interrupted`.
-- New watch on `.stress/{stress.yml,findings/*/*.eval}` and a `stress` kind in
+  existing `Dispatcher` (one task at a time, visible terminal), with its
+  arguments strong-quoted. Stop terminates the task (SIGHUP); rbx then stamps
+  the manifest `interrupted`. Stop is offered only for sessions the extension
+  dispatched.
+- New watch on `.stress/stress.yml` (findings' files are copied before the
+  manifest names them, so the manifest alone is enough) and a `stress` kind in
   `classifyCachePath`, feeding a stress store with a versioned reader. A
-  `running` manifest with no live rbx task shows as stale.
+  `running` manifest whose `pid` is dead on this host shows as stale; without a
+  pid, the extension falls back to whether it has a stress task running.
 
 ### Sidebar view
 
@@ -110,8 +123,8 @@ The last ad-hoc configuration is kept per workspace.
 ### Open a finding
 
 The input plus each solution's output and stderr open in the read-only
-`rbx:` panes; Compare diffs two outputs; Visualize reuses the visualization
-panel.
+`rbx:` tabs; Compare diffs two of the reference answer and the outputs.
+Visualize is not in the first PR.
 
 ### Promote
 
@@ -119,7 +132,10 @@ panel.
   against a writable `rbx-proposed:` document. The user edits the right side,
   then Accept (applies and saves) or Discard. Accept refuses if the file
   changed since the dry-run.
-- Manual group: dispatch `rbx stress promote` in the terminal.
+- Manual group, new script group, new manual group: dispatch
+  `rbx testcases add-finding` in the terminal; the badge appears when the task
+  exits 0.
+- Promote is disabled while the session is still running.
 - The finding row then shows "in `<group>`", tracked by the extension for the
   current session.
 
