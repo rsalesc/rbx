@@ -394,17 +394,25 @@ def write_text_atomic(path: pathlib.Path, text: str) -> None:
     parses. The temp file sits beside the target so the rename never crosses a
     filesystem, which is what makes it atomic.
     """
+    write_bytes_atomic(path, text.encode('utf-8'))
+
+
+def write_bytes_atomic(path: pathlib.Path, data: bytes) -> None:
+    """`write_text_atomic` for binary content: a statement PDF an editor
+    reloads the moment it changes."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
-        'w',
-        encoding='utf-8',
+        'wb',
         dir=str(path.parent),
         prefix=f'.{path.name}.',
         delete=False,
     ) as handle:
         temp = pathlib.Path(handle.name)
-        handle.write(text)
+        handle.write(data)
     try:
+        # The temp file is created 0600; the file it replaces should not be.
+        mode = path.stat().st_mode & 0o777 if path.exists() else 0o644
+        os.chmod(temp, mode)
         os.replace(temp, path)
     except BaseException:
         temp.unlink(missing_ok=True)

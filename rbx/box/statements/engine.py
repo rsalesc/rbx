@@ -20,7 +20,7 @@ import pathlib
 from typing import Dict, List, Optional
 
 from rbx import utils
-from rbx.box.statements import render, sample_staging
+from rbx.box.statements import render, sample_staging, sourcemap
 from rbx.box.statements.context import (
     ContestRenderContext,
     ProblemRenderContext,
@@ -40,7 +40,12 @@ def _mode_for(statement_type: StatementType) -> str:
 def _md_to_latex(markdown: str) -> str:
     import pypandoc
 
-    return pypandoc.convert_text(markdown, 'latex', 'markdown')
+    # Markdown is never tagged (`sourcemap.LineTagExtension`); stripped anyway,
+    # since a tag at the start of a line would stop pandoc reading it as syntax.
+    # What pandoc writes has no line of its own in the setter's file: marked
+    # so, it does not inherit the template line it is spliced after.
+    latex = pypandoc.convert_text(sourcemap.strip(markdown), 'latex', 'markdown')
+    return sourcemap.unlocated(latex)
 
 
 def _resolve_file_explanation(
@@ -129,7 +134,7 @@ def render_problem_tex(
         mode=mode,
     )
     # Always persist the raw blocks — the Polygon source of truth (design §1).
-    _write_blocks(problem_root, 'blocks.yml', blocks)
+    write_blocks(problem_root, 'blocks.yml', blocks)
 
     # LaTeX-form blocks/explanations: the (LaTeX) template and the TikZ
     # externalization operate on TeX, so rbxMarkdown blocks are converted first
@@ -178,7 +183,7 @@ def render_problem_tex(
         latex_blocks = render.externalize_blocks(latex_blocks)
         latex_explanations = render.externalize_blocks(latex_explanations)
         file_latex_explanations = render.externalize_blocks(file_latex_explanations)
-        _write_blocks(
+        write_blocks(
             problem_root,
             'blocks.ext.yml',
             render.StatementBlocks(
@@ -234,7 +239,7 @@ def render_problem_tex(
     # The substituted blocks (TikZ -> \includegraphics) are what Polygon uploads;
     # persist them next to the figure PDFs the compile produces.
     if externalize:
-        _write_blocks(
+        write_blocks(
             problem_root,
             'blocks.sub.yml',
             render.StatementBlocks(
@@ -249,12 +254,18 @@ def render_problem_tex(
     return tex
 
 
-def _write_blocks(
-    root: pathlib.Path, name: str, blocks: render.StatementBlocks
-) -> None:
+def write_blocks(root: pathlib.Path, name: str, blocks: render.StatementBlocks) -> None:
     """Persist a :class:`StatementBlocks` as YAML in ``root`` (the overlay /
     problem root), the source of truth the Polygon export path reads."""
-    (root / name).write_text(utils.model_to_yaml(blocks))
+    # Stripped value by value, never as YAML text: the scalar style is chosen
+    # while a tag still leads the string, and removing it afterwards can leave
+    # a plain scalar that no longer parses (`- x`) or reads back as another
+    # type (`123`), or a quoted one that has lost its indentation.
+    clean = render.StatementBlocks(
+        blocks={k: sourcemap.strip(v) for k, v in blocks.blocks.items()},
+        explanations={k: sourcemap.strip(v) for k, v in blocks.explanations.items()},
+    )
+    (root / name).write_text(utils.model_to_yaml(clean))
 
 
 def relativize_template(
@@ -262,6 +273,7 @@ def relativize_template(
     chrome_dir: pathlib.Path,
     template_path: pathlib.Path,
     overlay_root: pathlib.Path,
+    origins: Optional[sourcemap.Origins] = None,
 ) -> str:
     """Return the template path relative to the overlay root after staging.
 
@@ -295,4 +307,6 @@ def relativize_template(
                     'directory, or rename it.[/warning]'
                 )
         shutil.copyfile(template_abs, dest)
+        if origins is not None:
+            origins.alias(dest, template_abs)
         return template_abs.name

@@ -35,6 +35,9 @@ import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
 import { registerSolutionLens } from './solutionLens';
 import { registerSolutionStatus } from './solutionStatus';
+import { registerStatementDiagnostics } from './statementDiagnostics';
+import { registerStatementPreview } from './statementPreview';
+import { StatementReports } from './statementReports';
 import { registerStatementVarHints } from './statementVarHints';
 import { StatementVarsIndex } from './statementVarsIndex';
 import { TestsetPanel } from './testsetPanel';
@@ -116,6 +119,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
   registerCommands(context, view, data, active, testset);
   const dispatcher = registerDispatch(context, active, declared, view);
+  // One watcher over every statement build report, shared by the preview and
+  // the Problems panel so a finished build is read once.
+  const statementReports = new StatementReports();
+  context.subscriptions.push(statementReports);
+  registerStatementPreview({ context, reports: statementReports, declared, active, dispatcher });
+  registerStatementDiagnostics(context, statementReports);
   registerInteractionDecorations(context);
 
   // The panel follows the sidebar's highlight, so arrowing the list scrolls the

@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Literal, TypeVar
 from pydantic import BaseModel, Field
 
 from rbx import console, tooling
-from rbx.box.statements import texsoup_utils
+from rbx.box.statements import sourcemap, texsoup_utils
 from rbx.box.statements.context import (
     ContestRenderContext,
     ProblemRenderContext,
@@ -261,7 +261,9 @@ def compile_pdf(
     from rbx.box.statements.latex import (
         MAX_PDFLATEX_RUNS,
         Latex,
+        LatexCompilationError,
         decode_latex_output,
+        parse_errors,
         should_rerun,
     )
 
@@ -272,7 +274,8 @@ def compile_pdf(
         (root / texsoup_utils.EXTERNALIZATION_DIR).mkdir(exist_ok=True, parents=True)
         input_str = str(tex_node)
 
-    import typer
+    # Tag-free, and remembered: pdflatex reports its errors against this file.
+    input_str = sourcemap.emit(root / 'statement.tex', input_str)
 
     latex = Latex(input_str)
     latex_result = latex.build_pdf(root)
@@ -289,7 +292,7 @@ def compile_pdf(
     if pdf is None:
         console.console.print(f'{logs}')
         console.console.print('[error]PdfLaTeX compilation failed.[/error]')
-        raise typer.Exit(1)
+        raise LatexCompilationError(parse_errors(logs), logs, root)
 
     if demacro:
         macro_defs = collect_macro_definitions(root / 'statement.tex')
@@ -308,7 +311,8 @@ def md_to_pdf(root: pathlib.Path, md: bytes) -> bytes:
 
     output = root / 'statement.pdf'
     pypandoc.convert_text(
-        md.decode(),
+        # See `engine._md_to_latex`: pandoc must never see a tag.
+        sourcemap.strip(md.decode()),
         'pdf',
         format='markdown',
         outputfile=str(output),

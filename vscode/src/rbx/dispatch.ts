@@ -21,9 +21,45 @@ export const TASK_TYPE = 'rbx';
  * default opens the contest TUI, which has no business inside a task terminal
  * whose whole point is that its output is the plain record of the run.
  */
-export type RbxCommand = 'build' | 'run' | 'contest-run';
+export type RbxCommand =
+  | 'build'
+  | 'run'
+  | 'contest-run'
+  | 'statements'
+  | 'contest-statements'
+  | 'tutorials'
+  | 'contest-tutorials';
 
-export const RBX_COMMANDS: readonly RbxCommand[] = ['build', 'run', 'contest-run'];
+export const RBX_COMMANDS: readonly RbxCommand[] = [
+  'build',
+  'run',
+  'contest-run',
+  'statements',
+  'contest-statements',
+  'tutorials',
+  'contest-tutorials',
+];
+
+/** The commands that build statements, which the statement preview watches for. */
+export const STATEMENT_COMMANDS: readonly RbxCommand[] = [
+  'statements',
+  'contest-statements',
+  'tutorials',
+  'contest-tutorials',
+];
+
+/**
+ * What rebuilds one statement output: `rbx tutorials build` for a tutorial,
+ * `rbx statements build` for anything else (a document is a contest statement
+ * build's), each in its contest form for a contest output.
+ */
+export function statementCommand(scope: DispatchScope, kind: string): RbxCommand {
+  const tutorial = kind === 'tutorial';
+  if (scope === 'contest') {
+    return tutorial ? 'contest-tutorials' : 'contest-statements';
+  }
+  return tutorial ? 'tutorials' : 'statements';
+}
 
 export function isRbxCommand(value: unknown): value is RbxCommand {
   return typeof value === 'string' && (RBX_COMMANDS as readonly string[]).includes(value);
@@ -41,7 +77,7 @@ export const WELCOME_COMMANDS: readonly string[] = ['rbx.runAll', 'rbx.build'];
 export type DispatchScope = 'problem' | 'contest';
 
 export function scopeOf(command: RbxCommand): DispatchScope {
-  return command === 'contest-run' ? 'contest' : 'problem';
+  return command.startsWith('contest-') ? 'contest' : 'problem';
 }
 
 /**
@@ -100,6 +136,18 @@ export function rbxArgs(invocation: Invocation): string[] {
     case 'contest-run':
       args.push('contest', 'each', '--inline', 'run', ...invocation.extraArgs);
       break;
+    case 'statements':
+      args.push('statements', 'build');
+      break;
+    case 'contest-statements':
+      args.push('contest', 'statements', 'build');
+      break;
+    case 'tutorials':
+      args.push('tutorials', 'build');
+      break;
+    case 'contest-tutorials':
+      args.push('contest', 'tutorials', 'build');
+      break;
   }
   return args;
 }
@@ -128,9 +176,11 @@ export function taskName(invocation: Invocation): string {
       ? 'build'
       : invocation.command === 'contest-run'
         ? 'run all problems'
-        : invocation.solutions.length === 0
-          ? 'run'
-          : `run ${invocation.solutions.join(' ')}`;
+        : invocation.command === 'run'
+          ? invocation.solutions.length === 0
+            ? 'run'
+            : `run ${invocation.solutions.join(' ')}`
+          : `build ${invocation.command.replace('-', ' ')}`;
   const contest = invocation.contest;
   if (contest.kind === 'variant') {
     return `${base} [${contest.id}]`;

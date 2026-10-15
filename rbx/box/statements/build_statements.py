@@ -16,7 +16,14 @@ from rbx.box import (
 from rbx.box.exception import describe_exception
 from rbx.box.formatting import href
 from rbx.box.schema import Package, expand_any_vars
-from rbx.box.statements import engine, overlay, render, resolver
+from rbx.box.statements import (
+    build_report,
+    engine,
+    overlay,
+    render,
+    resolver,
+    sourcemap,
+)
 from rbx.box.statements.context import (
     ContestRenderContext,
     GroupView,
@@ -197,7 +204,7 @@ def _emit_output(
             return render.md_to_pdf(root, tex)
         return render.compile_pdf(root, tex, externalize=externalize, demacro=demacro)
     if output_type in (StatementType.TeX, StatementType.Markdown):
-        return tex
+        return sourcemap.strip(tex.decode()).encode()
     console.console.print(
         f'[error]statements v2 cannot yet emit output type [item]{output_type}[/item] '
         '(only pdf/tex/md). See #569 (S13).[/error]'
@@ -218,6 +225,43 @@ async def build_statement(
     statement: Statement,
     pkg: Package,
     output_type: StatementType,
+    use_samples: bool = True,
+    custom_vars: Optional[Dict[str, Any]] = None,
+    extra_mergeable_params: Optional[List[ConversionStep]] = None,
+    kind: StatementKind = StatementKind.STATEMENTS,
+) -> pathlib.Path:
+    """Build one problem statement standalone and return its output path,
+    publishing the outcome to the statement build report (#909)."""
+    if statement.type == StatementType.PDF:
+        output_type = StatementType.PDF
+    with build_report.recording(
+        package.find_problem(),
+        kind=kind.singular,
+        output=get_statement_build_path(
+            statement, output_type, limits_info.get_active_profile(), kind
+        ),
+        source=statement.file,
+        language=statement.language,
+        variant=statement.variant,
+        log=_standalone_overlay_path(statement) / 'statement.log',
+    ) as tracker:
+        return await _build_statement(
+            statement,
+            pkg,
+            output_type,
+            tracker.origins,
+            use_samples=use_samples,
+            custom_vars=custom_vars,
+            extra_mergeable_params=extra_mergeable_params,
+            kind=kind,
+        )
+
+
+async def _build_statement(
+    statement: Statement,
+    pkg: Package,
+    output_type: StatementType,
+    origins: sourcemap.Origins,
     use_samples: bool = True,
     custom_vars: Optional[Dict[str, Any]] = None,
     extra_mergeable_params: Optional[List[ConversionStep]] = None,
@@ -251,8 +295,7 @@ async def build_statement(
         out_path = get_statement_build_path(
             statement, StatementType.PDF, limits_info.get_active_profile(), kind
         )
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(statement.file, out_path)
+        utils.write_bytes_atomic(out_path, statement.file.read_bytes())
         _report_built(statement, out_path, kind)
         return out_path
 
@@ -282,12 +325,15 @@ async def build_statement(
         overlay.stage_standalone_overlay(
             overlay_root, chrome_dir=chrome_dir, problem_dir=problem_dir
         )
+        origins.mount(overlay_root, problem_dir)
+        origins.mount(overlay_root, chrome_dir)
         assert contest_statement.standaloneProblemTemplate is not None
         template_rel = engine.relativize_template(
             contest_root,
             chrome_dir,
             contest_statement.standaloneProblemTemplate,
             overlay_root,
+            origins,
         )
 
         problem_ctx = ProblemRenderContext(
@@ -325,6 +371,10 @@ async def build_statement(
             if use_samples
             else []
         )
+        origins.source(statement.file, rendered_in=overlay_root)
+        for sample in samples:
+            if sample.explanationPath is not None:
+                origins.source(sample.explanationPath, rendered_in=overlay_root)
         tex = engine.render_problem_tex(
             render_root=overlay_root,
             problem_root=overlay_root,
@@ -345,6 +395,12 @@ async def build_statement(
         # then publish the (raw) content. No contest/template needed.
         overlay.mirror_tree(problem_dir, overlay_root)
         tex = statement.file.read_bytes()
+        if statement.type == StatementType.TeX:
+            # Handed to pdflatex as is; tagged so its errors map back too.
+            text = tex.decode('utf-8', 'surrogateescape')
+            tex = sourcemap.verbatim(text, statement.file).encode(
+                'utf-8', 'surrogateescape'
+            )
 
     output_bytes = _emit_output(
         overlay_root,
@@ -357,8 +413,7 @@ async def build_statement(
     out_path = get_statement_build_path(
         statement, output_type, limits_info.get_active_profile(), kind
     )
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_bytes(output_bytes)
+    utils.write_bytes_atomic(out_path, output_bytes)
     _report_built(statement, out_path, kind)
     return out_path
 

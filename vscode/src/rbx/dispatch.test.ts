@@ -11,6 +11,7 @@ import {
   rbxArgs,
   rbxEnv,
   scopeOf,
+  statementCommand,
   taskDefinition,
   taskName,
 } from './dispatch';
@@ -149,4 +150,37 @@ test('extra args keep only non-empty strings', () => {
   assert.deepStrictEqual(asExtraArgs(['-v4', '', 3, null, '--sanitized']), ['-v4', '--sanitized']);
   assert.deepStrictEqual(asExtraArgs('-v4'), []);
   assert.deepStrictEqual(asExtraArgs(undefined), []);
+});
+
+test('statement builds dispatch the build subcommands, contest ones at the contest', () => {
+  assert.deepStrictEqual(rbxArgs(invocation({ command: 'statements', extraArgs: ['-v4'] })), [
+    'statements',
+    'build',
+  ]);
+  assert.deepStrictEqual(
+    rbxArgs(invocation({ command: 'contest-statements', contest: { kind: 'variant', id: 'div1' } })),
+    ['-C', 'div1', 'contest', 'statements', 'build'],
+  );
+  assert.strictEqual(scopeOf('statements'), 'problem');
+  assert.strictEqual(scopeOf('contest-statements'), 'contest');
+  assert.strictEqual(taskName(invocation({ command: 'statements' })), 'build statements');
+  assert.strictEqual(
+    taskName(invocation({ command: 'contest-tutorials' })),
+    'build contest tutorials',
+  );
+  assert.deepStrictEqual(rbxArgs(invocation({ command: 'tutorials' })), ['tutorials', 'build']);
+  assert.deepStrictEqual(rbxArgs(invocation({ command: 'contest-tutorials' })), [
+    'contest',
+    'tutorials',
+    'build',
+  ]);
+});
+
+test('a statement output is rebuilt by the command for its kind and scope', () => {
+  assert.strictEqual(statementCommand('problem', 'statement'), 'statements');
+  assert.strictEqual(statementCommand('problem', 'tutorial'), 'tutorials');
+  assert.strictEqual(statementCommand('contest', 'statement'), 'contest-statements');
+  assert.strictEqual(statementCommand('contest', 'document'), 'contest-statements');
+  assert.strictEqual(statementCommand('contest', 'tutorial'), 'contest-tutorials');
+  assert.strictEqual(scopeOf('contest-tutorials'), 'contest');
 });
