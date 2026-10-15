@@ -1,0 +1,95 @@
+import * as assert from 'assert';
+import * as path from 'path';
+import { test } from 'node:test';
+
+import { packageLayout } from './layout';
+import { StressFinding } from './stress';
+import { compareCandidates, findingFiles } from './stressFindings';
+
+const PKG = packageLayout('/p');
+const DIR = path.join('/p', '.rbx', 'runs', '.stress', 'findings', '2');
+const SOLUTIONS = ['sols/main.cpp', 'sols/wa.cpp', 'brute.py'];
+const FINDING: StressFinding = {
+  index: 2,
+  generator: { name: 'gen', args: '5' },
+  results: [{ solution: 1, outcome: 'wrong-answer' }],
+};
+
+test('every file on disk, labelled with the finding, in solution order', () => {
+  const files = findingFiles(
+    PKG,
+    SOLUTIONS,
+    FINDING,
+    new Map([
+      ['input.in', 10],
+      ['input.ans', 3],
+      ['2.out', 3],
+      ['1.out', 3],
+      ['1.err', 0],
+      ['2.err', 12],
+    ]),
+  );
+  assert.deepStrictEqual(files, {
+    input: {
+      kind: 'input',
+      path: path.join(DIR, 'input.in'),
+      label: 'stress/#2/#2 input.in',
+      name: 'input',
+    },
+    answer: {
+      kind: 'answer',
+      path: path.join(DIR, 'input.ans'),
+      label: 'stress/#2/#2 answer.ans',
+      name: 'expected answer',
+    },
+    outputs: [
+      {
+        kind: 'output',
+        path: path.join(DIR, '1.out'),
+        label: 'stress/#2/sols/#2 wa.cpp.out',
+        name: 'sols/wa.cpp',
+      },
+      {
+        kind: 'output',
+        path: path.join(DIR, '2.out'),
+        label: 'stress/#2/#2 brute.py.out',
+        name: 'brute.py',
+      },
+    ],
+    // An empty stderr is no stderr at all.
+    stderrs: [
+      {
+        kind: 'stderr',
+        path: path.join(DIR, '2.err'),
+        label: 'stress/#2/#2 brute.py.err',
+        name: 'brute.py stderr',
+      },
+    ],
+  });
+  assert.deepStrictEqual(
+    compareCandidates(files).map((file) => file.name),
+    ['expected answer', 'sols/wa.cpp', 'brute.py'],
+  );
+});
+
+test('a wiped finding has nothing to open', () => {
+  const files = findingFiles(PKG, SOLUTIONS, FINDING, new Map());
+  assert.deepStrictEqual(files, { input: undefined, answer: undefined, outputs: [], stderrs: [] });
+  assert.deepStrictEqual(compareCandidates(files), []);
+});
+
+test('no label ends in a bare testcase pane title', () => {
+  const files = findingFiles(
+    PKG,
+    ['output.out'],
+    FINDING,
+    new Map([
+      ['input.in', 1],
+      ['0.out', 1],
+    ]),
+  );
+  for (const file of [files.input, ...files.outputs]) {
+    const title = file?.label.split('/').pop();
+    assert.ok(title !== 'input.in' && title !== 'output.out', title);
+  }
+});

@@ -39,6 +39,7 @@ import {
 } from './rbx/stressViewModel';
 import { readYamlFile } from './rbx/store';
 import { RunDataProvider, stressLivenessHere } from './runData';
+import { compareFinding, copyFindingCall, openFinding } from './stressCommands';
 
 /** What stressMain.ts posts back. */
 interface ClientMessage {
@@ -237,6 +238,37 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
           this.execute('rbx.stress.promote', args);
         }
         return;
+      case 'open':
+      case 'compare':
+      case 'copy':
+        if (typeof message.k === 'number') {
+          await this.onFinding(root, message.type, message.k, message.session);
+        }
+        return;
+    }
+  }
+
+  private async onFinding(
+    root: string,
+    action: 'open' | 'compare' | 'copy',
+    k: number,
+    session: string | undefined,
+  ): Promise<void> {
+    const pkg = packageLayout(root);
+    let manifest = await this.data.stress(pkg);
+    // A row from a session that has since been replaced names a finding of
+    // that session; this one's #k is another input altogether. `resolve` in
+    // stressCommands.ts then says the finding is gone.
+    if (manifest !== undefined && session !== undefined && manifest.startedAt !== session) {
+      manifest = undefined;
+    }
+    switch (action) {
+      case 'open':
+        return openFinding(pkg, manifest, k);
+      case 'compare':
+        return compareFinding(pkg, manifest, k);
+      case 'copy':
+        return copyFindingCall(manifest, k);
     }
   }
 
