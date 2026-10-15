@@ -197,3 +197,6 @@ rbx/resources/vscode/
 !.vale/styles/config/vocabularies/
 .vale/styles/config/vocabularies/*
 !.vale/styles/config/vocabularies/rbx/
+
+# Playwright MCP scratch (page snapshots, screenshots); never ship it.
+.playwright-mcp/
