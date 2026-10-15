@@ -212,7 +212,9 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     const view: PackageRunView | undefined =
       pkg === undefined
         ? undefined
-        : { pkg, run: source === 'irun' ? adhoc : await this.data.report(pkg) };
+        : source === 'irun'
+          ? { pkg, run: adhoc, flat: true }
+          : { pkg, run: await this.data.report(pkg) };
     // Read alongside the run rather than cached here: the store invalidates
     // both on the same watcher tick, so the buttons cannot describe a manifest
     // the rest of the card does not.

@@ -1233,6 +1233,43 @@ function testcaseRow(
   };
 }
 
+/**
+ * A solution of an ad-hoc run, drawn as the one testcase it ran (#907).
+ *
+ * The testcase's row -- its verdict, timings, card and commands -- under the
+ * solution's identity: its label, and its declared expectation in the same two
+ * channels a solution row uses. Drawn as a `solution` so the header's mismatch
+ * count and the next-mismatch button keep counting it.
+ */
+function adhocRow(
+  node: TestcaseNode,
+  label: string,
+  declarations: VisualizerDeclarations | undefined,
+  ended: boolean,
+): Row {
+  const row = testcaseRow(node, 0, undefined, declarations, ended);
+  const { run } = node;
+  // The solution's report already says everything the testcase could, so its
+  // warnings stand in for the row's rather than adding to them.
+  const warnings = run.report === undefined ? row.warnings : warningsOf(run.report, false);
+  const gutter = solutionGutter(run, warnings);
+  const mismatch = gutter === 'missed';
+  const declared = declaredExpectation(run.solution.expectedOutcome);
+  return {
+    ...row,
+    kind: 'solution',
+    gutter,
+    label,
+    labelTitle: label === run.solution.path ? undefined : run.solution.path,
+    labelHue: declared?.hue,
+    labelBold: declared?.bold ?? false,
+    expectation: declared,
+    warnings,
+    mismatch,
+    search: haystack(run.solution.path, row.verdict, mismatch, declared, warnings),
+  };
+}
+
 /** How deep each kind sits, counting the solution as the top level. */
 const DEPTHS: Record<Row['kind'], number> = {
   solution: 0,
@@ -1421,7 +1458,8 @@ export function buildViewModel(
 
   const rows: Row[] = [];
   for (const node of nodes) {
-    const depth = DEPTHS[node.kind];
+    // Flat rows are all top-level, whatever node stands behind them.
+    const depth = view.flat === true ? 0 : DEPTHS[node.kind];
     const parentId = parents.get(depth - 1);
     const row = ((): Row => {
       switch (node.kind) {
@@ -1432,6 +1470,15 @@ export function buildViewModel(
         case 'group':
           return groupRow(node, depth, parentId);
         case 'testcase':
+          if (view.flat === true) {
+            const path = node.run.solution.path;
+            return adhocRow(
+              node,
+              labels.get(path) ?? path,
+              declarations,
+              view.run?.ended !== undefined,
+            );
+          }
           return testcaseRow(
             node,
             depth,

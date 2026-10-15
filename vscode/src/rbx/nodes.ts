@@ -96,6 +96,13 @@ export function nodeId(node: RunNode): string {
 export interface PackageRunView {
   readonly pkg: PackageLayout;
   readonly run: PackageRun | undefined;
+  /**
+   * One row per solution, standing for its one testcase: an ad-hoc run
+   * (`rbx irun`, #907) runs exactly one testcase, so the group and testcase
+   * levels under each solution -- `interactive` and `000`, for typed input --
+   * are rbx's bookkeeping, not anything the setter asked to see.
+   */
+  readonly flat?: boolean;
 }
 
 /**
@@ -111,6 +118,19 @@ export function flattenNodes(view: PackageRunView): TreeNode[] {
   }
   const nodes: TreeNode[] = [];
   const solo = run.solutions.length === 1;
+  if (view.flat === true) {
+    for (const solutionRun of run.solutions) {
+      // The testcase node itself, not the solution's: every testcase command --
+      // the panes, the channels, the card -- then resolves the row unchanged.
+      const group = solutionRun.groups.find((candidate) => candidate.testcases.length > 0);
+      nodes.push(
+        group === undefined
+          ? { kind: 'solution', pkg, run: solutionRun, solo }
+          : { kind: 'testcase', pkg, run: solutionRun, group, testcase: group.testcases[0] },
+      );
+    }
+    return nodes;
+  }
   for (const solutionRun of run.solutions) {
     nodes.push({ kind: 'solution', pkg, run: solutionRun, solo });
     for (const group of solutionRun.groups) {
