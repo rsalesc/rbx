@@ -1,3 +1,9 @@
+## 2.1.2 (2026-10-15)
+
+### Fix
+
+- **vscode**: install npm deps from the lockfile before building the vsix
+
 ## 2.1.1 (2026-10-15)
 
 ### Fix
