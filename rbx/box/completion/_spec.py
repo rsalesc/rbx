@@ -3505,7 +3505,7 @@ SPEC = {
                         },
                         {
                             'help': 'Show how the generator script of --group would '
-                            'change, without writing it.',
+                            'change, without writing it (script groups only).',
                             'kind': 'option',
                             'multiple': False,
                             'names': ['--dry-run'],

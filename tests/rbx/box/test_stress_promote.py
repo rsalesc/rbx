@@ -1,10 +1,12 @@
 import asyncio
+import pathlib
 from unittest import mock
 
+import pydantic
 import pytest
 from typer.testing import CliRunner
 
-from rbx.box import cli
+from rbx.box import cli, promotion
 from rbx.box.schema import GeneratorCall
 from rbx.box.stresses import StressFinding, StressReport
 from rbx.box.testing import testing_package
@@ -228,6 +230,7 @@ def test_stress_no_promote_skips_the_prompt(
     testing_pkg: testing_package.TestingPackage,
 ):
     report = _write_findings(testing_pkg, b'5 7\n')
+    yml = testing_pkg.yml_path.read_text()
 
     confirm = mock.MagicMock(return_value=True)
     with (
@@ -241,6 +244,23 @@ def test_stress_no_promote_skips_the_prompt(
 
     assert result.exit_code == 0, result.output
     confirm.assert_not_called()
+    assert testing_pkg.yml_path.read_text() == yml
+    assert not (testing_pkg.root / 'tests').exists()
+    assert not (testing_pkg.root / 'testplan').exists()
+
+
+@pytest.mark.parametrize('create', ['manual', 'script'])
+def test_creating_a_group_with_an_invalid_name_leaves_the_yaml_alone(
+    testing_pkg: testing_package.TestingPackage, create: str
+):
+    yml = testing_pkg.yml_path.read_text()
+    with pytest.raises(pydantic.ValidationError):
+        if create == 'manual':
+            promotion.create_manual_group('ab', 'tests/ab/*.in')
+        else:
+            promotion.create_script_group(pathlib.Path('tests/ab.txt'))
+    assert testing_pkg.yml_path.read_text() == yml
+    assert not (testing_pkg.root / 'tests').exists()
 
 
 def test_stress_promote_existing_script_group(

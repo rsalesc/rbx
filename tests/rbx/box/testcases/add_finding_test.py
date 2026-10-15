@@ -1,8 +1,7 @@
-import asyncio
 import datetime
 import json
 import pathlib
-from typing import Optional
+from typing import List, Optional
 from unittest import mock
 
 import pytest
@@ -15,10 +14,7 @@ from rbx.box.testing import testing_package
 
 @pytest.fixture
 def runner() -> CliRunner:
-    try:
-        asyncio.get_event_loop()
-    except RuntimeError:
-        asyncio.set_event_loop(asyncio.new_event_loop())
+    # add-finding is synchronous, so it needs no event loop.
     return CliRunner()
 
 
@@ -30,7 +26,9 @@ def _skip_preset_check():
         yield
 
 
-def _write_session(*inputs: bytes, name: Optional[str] = None) -> None:
+def _write_session(
+    *inputs: bytes, name: Optional[str] = None, fuzz: Optional[List[str]] = None
+) -> None:
     """Write a finished stress session with one finding per input."""
     findings = []
     for i, content in enumerate(inputs):
@@ -48,7 +46,8 @@ def _write_session(*inputs: bytes, name: Optional[str] = None) -> None:
         state=stress_manifest.StressState.DONE,
         spec=stress_manifest.StressSpec(
             name=name,
-            generator=None if name else 'gen [1..10]',
+            generator=None if name or fuzz is not None else 'gen [1..10]',
+            fuzz=fuzz,
             finder='[sols/main.cpp ~ INCORRECT]',
             timeout=10,
             findingsLimit=len(inputs),
@@ -87,7 +86,7 @@ def test_appends_all_findings_to_a_script_group(
     assert result.exit_code == 0, result.output
     assert (testing_pkg.root / 'testplan/main.txt').read_text() == (
         'gen 100\n'
-        "\n# Found by rbx stress -g 'gen [1..10]' -f '[sols/main.cpp ~ INCORRECT]'"
+        "\n# Found by: rbx stress -g 'gen [1..10]' -f '[sols/main.cpp ~ INCORRECT]'"
         '\ngen 0 --seed=abc'
         '\ngen 1 --seed=abc'
     )
@@ -103,7 +102,7 @@ def test_appends_selected_findings_naming_the_stress(
 
     assert result.exit_code == 0, result.output
     assert (testing_pkg.root / 'testplan/main.txt').read_text() == (
-        'gen 100\n\n# Found by rbx stress overflow\ngen 2 --seed=abc\ngen 0 --seed=abc'
+        'gen 100\n\n# Found by: rbx stress overflow\ngen 2 --seed=abc\ngen 0 --seed=abc'
     )
 
 
@@ -213,7 +212,7 @@ def test_dry_run_prints_the_change_as_json_and_writes_nothing(
     assert json.loads(result.stdout) == {
         'file': str((testing_pkg.root / 'testplan/main.txt').resolve()),
         'before': 'gen 100\n',
-        'after': 'gen 100\n\n# Found by rbx stress overflow\ngen 0 --seed=abc',
+        'after': 'gen 100\n\n# Found by: rbx stress overflow\ngen 0 --seed=abc',
     }
     assert (testing_pkg.root / 'testplan/main.txt').read_text() == 'gen 100\n'
 
@@ -258,6 +257,7 @@ def test_json_reports_the_written_files(
         'group': 'corner',
         'kind': 'manual',
         'files': [str(folder / '000.in'), str(folder / '001.in')],
+        'skipped': [],
     }
 
 
@@ -298,3 +298,144 @@ def test_missing_manifest_errors(
     assert result.exit_code != 0
     assert 'rbx stress' in result.output
     assert (testing_pkg.root / 'testplan/main.txt').read_text() == 'gen 100\n'
+
+
+def test_fuzz_on_is_repeated_per_group_in_the_comment(
+    runner: CliRunner, testing_pkg: testing_package.TestingPackage
+):
+    _setup_groups(testing_pkg)
+    _write_session(b'1\n', fuzz=['main', 'corner'])
+
+    result = _invoke(runner, '--group', 'main')
+
+    assert result.exit_code == 0, result.output
+    lines = (testing_pkg.root / 'testplan/main.txt').read_text().splitlines()
+    assert lines[-2] == (
+        '# Found by: rbx stress --fuzz-on main --fuzz-on corner '
+        "-f '[sols/main.cpp ~ INCORRECT]'"
+    )
+
+
+def test_readding_script_findings_skips_them(
+    runner: CliRunner, testing_pkg: testing_package.TestingPackage
+):
+    _setup_groups(testing_pkg)
+    _write_session(b'1\n', b'2\n')
+    assert _invoke(runner, '1', '--group', 'main').exit_code == 0
+    script = testing_pkg.root / 'testplan/main.txt'
+    once = script.read_text()
+
+    dry = _invoke(runner, '1', '--group', 'main', '--dry-run', '--json')
+    assert dry.exit_code == 0, dry.output
+    assert json.loads(dry.stdout)['after'] == once
+
+    result = _invoke(runner, '--group', 'main', '--json')
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == {
+        'group': 'main',
+        'kind': 'script',
+        'files': [str(script.resolve())],
+        'skipped': [1],
+    }
+    assert script.read_text().count('gen 0 --seed=abc') == 1
+    assert script.read_text().endswith('\ngen 1 --seed=abc')
+
+
+def test_readding_manual_findings_skips_them(
+    runner: CliRunner, testing_pkg: testing_package.TestingPackage
+):
+    _setup_groups(testing_pkg)
+    _write_session(b'1\n', b'2\n')
+    assert _invoke(runner, '1', '--group', 'corner').exit_code == 0
+
+    result = _invoke(runner, '--group', 'corner')
+
+    assert result.exit_code == 0, result.output
+    assert 'Skipped' in result.output
+    folder = testing_pkg.root / 'tests/manual/corner'
+    assert sorted(p.read_bytes() for p in folder.iterdir()) == [b'1\n', b'2\n']
+
+
+def test_invalid_new_manual_name_leaves_the_package_alone(
+    runner: CliRunner, testing_pkg: testing_package.TestingPackage
+):
+    _write_session(b'1\n')
+    yml = testing_pkg.yml_path.read_text()
+
+    result = _invoke(runner, '--new-manual', 'ab', '--glob', 'tests/ab/*.in')
+
+    assert result.exit_code == 1
+    assert 'not a valid test group name' in result.output
+    assert testing_pkg.yml_path.read_text() == yml
+    assert not (testing_pkg.root / 'tests/ab').exists()
+
+
+def test_invalid_new_script_name_leaves_the_package_alone(
+    runner: CliRunner, testing_pkg: testing_package.TestingPackage
+):
+    _write_session(b'1\n')
+    yml = testing_pkg.yml_path.read_text()
+
+    result = _invoke(runner, '--new-script', 'tests/a.txt')
+
+    assert result.exit_code == 1
+    assert testing_pkg.yml_path.read_text() == yml
+    assert not (testing_pkg.root / 'tests/a.txt').exists()
+
+
+@pytest.mark.parametrize(
+    'args',
+    [
+        ['--new-script', 'tests/stress.py'],
+        ['--new-script', '../stress.txt'],
+        ['--new-script', 'testplan/main.txt'],
+        ['--new-manual', 'outside', '--glob', '../outside/*.in'],
+    ],
+)
+def test_bad_new_group_is_refused(
+    runner: CliRunner, testing_pkg: testing_package.TestingPackage, args
+):
+    _setup_groups(testing_pkg)
+    _write_session(b'1\n')
+    yml = testing_pkg.yml_path.read_text()
+
+    result = _invoke(runner, *args)
+
+    assert result.exit_code == 1, result.output
+    assert testing_pkg.yml_path.read_text() == yml
+
+
+def test_new_script_without_suffix_gets_txt(
+    runner: CliRunner, testing_pkg: testing_package.TestingPackage
+):
+    _write_session(b'1\n')
+
+    result = _invoke(runner, '--new-script', 'tests/stress')
+
+    assert result.exit_code == 0, result.output
+    assert (testing_pkg.root / 'tests/stress.txt').is_file()
+    assert 'stress' in _groups()
+
+
+def test_errors_stay_off_stdout_with_json(
+    runner: CliRunner, testing_pkg: testing_package.TestingPackage
+):
+    _setup_groups(testing_pkg)
+    _write_session(b'1\n')
+
+    result = _invoke(runner, '--group', 'nope', '--json')
+
+    assert result.exit_code == 1
+    assert result.stdout == ''
+    assert 'nope' in result.stderr
+
+
+def test_list_groups_rejects_a_glob(
+    runner: CliRunner, testing_pkg: testing_package.TestingPackage
+):
+    _setup_groups(testing_pkg)
+
+    result = _invoke(runner, '--list-groups', '--glob', 'tests/x/*.in')
+
+    assert result.exit_code == 1

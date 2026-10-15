@@ -1,7 +1,10 @@
+import contextlib
 import json
+import os
 import pathlib
 import shlex
-from typing import Annotated, Dict, List, NoReturn, Optional, Tuple
+import sys
+from typing import Annotated, Dict, List, NoReturn, Optional, TextIO, Tuple
 
 import syncer
 import typer
@@ -22,7 +25,7 @@ from rbx.box.testcase_extractors import (
 )
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testcase_utils import TestcasePattern
-from rbx.console import console
+from rbx.console import console, stderr_console
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 
@@ -605,23 +608,40 @@ async def promote(
     promotion.remove_script_entries(promoted_entries)
 
 
+_DRY_RUN_ONLY_FOR_SCRIPTS = (
+    '--dry-run only applies to a generator script group passed with --group.'
+)
+
+
 def _fail(message: str) -> NoReturn:
-    console.print(f'[error]{message}[/error]')
+    # stderr, so that with --json stdout carries the result and nothing else.
+    stderr_console.print(f'[error]{message}[/error]')
     raise typer.Exit(1)
 
 
 def _stress_comment(spec: stress_manifest.StressSpec) -> str:
-    """Describe the session that found the tests, the way it was asked for."""
+    """The command that runs the session again, as a one-line comment."""
+    args = ['rbx', 'stress']
     if spec.name is not None:
-        args = [spec.name]
+        args.append(spec.name)
     else:
-        args = []
         if spec.generator is not None:
             args += ['-g', spec.generator]
         if spec.fuzz is not None:
-            args += ['--fuzz-on', *spec.fuzz] if spec.fuzz else ['--fuzz']
+            if spec.fuzz:
+                for fuzzed in spec.fuzz:
+                    args += ['--fuzz-on', fuzzed]
+            else:
+                args.append('--fuzz')
         args += ['-f', spec.finder]
-    return f'Found by rbx stress {shlex.join(args)}'
+    command = shlex.join(args).replace('\r', ' ').replace('\n', ' ')
+    return f'Found by: {command}'
+
+
+def _inside_package(path: pathlib.Path) -> bool:
+    # The cwd is the package root here (`within_problem`).
+    root = pathlib.Path.cwd().resolve()
+    return pathlib.Path(os.path.abspath(path)).resolve().is_relative_to(root)
 
 
 def _selected_findings(
@@ -663,28 +683,69 @@ def _finding_inputs(
     return paths
 
 
-def _list_groups(as_json: bool) -> None:
-    rows = [
-        {
-            'name': name,
-            'kind': 'script',
-            # Relative to the package root, which is the cwd here.
-            'path': package.relpath(group.generatorScript.path).as_posix(),
-        }
-        for name, group in promotion.get_script_groups_by_name().items()
-        if group.generatorScript is not None
-    ] + [
-        {'name': name, 'kind': 'manual', 'path': group.testcaseGlob}
-        for name, group in promotion.get_manual_groups_by_name().items()
-    ]
-    if as_json:
-        print(json.dumps(rows))
+def _list_groups(json_out: Optional[TextIO]) -> None:
+    rows = []
+    for name, group in promotion.get_script_groups_by_name().items():
+        assert group.generatorScript is not None
+        # Relative to the package root, which is the cwd here.
+        path = package.relpath(group.generatorScript.path).as_posix()
+        rows.append({'name': name, 'kind': 'script', 'path': path})
+    for name, group in promotion.get_manual_groups_by_name().items():
+        rows.append({'name': name, 'kind': 'manual', 'path': group.testcaseGlob})
+
+    if json_out is not None:
+        print(json.dumps(rows), file=json_out)
         return
     if not rows:
         console.print('No test group can take stress findings.')
         return
     for row in rows:
         console.print(f'[item]{row["name"]}[/item] ({row["kind"]}): {row["path"]}')
+
+
+def _check_new_script(
+    path: pathlib.Path, all_groups: Dict[str, TestcaseGroup]
+) -> pathlib.Path:
+    """Validate the path of --new-script; return it relative to the package."""
+    if path.suffix not in ('', '.txt'):
+        _fail(f'--new-script must name a .txt file (got [item]{path}[/item]).')
+    path = path.with_suffix('.txt')
+    if not _inside_package(path):
+        _fail(f'--new-script must be inside the package (got [item]{path}[/item]).')
+    path = package.relpath(path)
+
+    error = promotion.group_name_error(path.stem)
+    if error is not None:
+        _fail(f'Cannot name a group after [item]{path}[/item]: {error}')
+    if path.stem in all_groups:
+        _fail(f'Test group [item]{path.stem}[/item] already exists.')
+    for name, other in all_groups.items():
+        gs = other.generatorScript
+        if gs is not None and package.relpath(gs.path) == path:
+            _fail(
+                f'[item]{path}[/item] is already the generator script of '
+                f'test group [item]{name}[/item].'
+            )
+    return path
+
+
+def _check_new_manual(
+    name: str, glob: str, all_groups: Dict[str, TestcaseGroup]
+) -> TestcaseGroup:
+    """Validate --new-manual and --glob; return the group, not yet registered."""
+    error = promotion.group_name_error(name)
+    if error is not None:
+        _fail(error)
+    if name in all_groups:
+        _fail(f'Test group [item]{name}[/item] already exists.')
+    if '*' not in glob or not glob.endswith('.in'):
+        _fail(
+            'The glob of a manual group must contain a `*` and end in '
+            f'`.in` (got [item]{glob}[/item]).'
+        )
+    if not _inside_package(pathlib.Path(glob.split('*')[0] or '.')):
+        _fail(f'--glob must be inside the package (got [item]{glob}[/item]).')
+    return TestcaseGroup(name=name, testcaseGlob=glob)
 
 
 @app.command(
@@ -699,10 +760,14 @@ def _list_groups(as_json: bool) -> None:
     them to add all of them. What the group receives depends on its kind:
 
     - A `.txt` generator script group gets the generator call of each finding
-      appended, under a comment naming the stress that found it. The test is
-      generated again on the next build, so it stays reproducible.
+      appended, under a comment with the `rbx stress` command that found it.
+      The test is generated again on the next build, so it stays reproducible.
     - A manual group (one declared with `testcaseGlob`) gets a copy of each
       finding's input, under the next free name its glob allows.
+
+    A finding the group already has -- the same generator call, or an input
+    with the same bytes -- is skipped, so adding the same findings twice is
+    harmless.
 
     `--new-script` and `--new-manual` create the group first. `--dry-run`
     shows what the file of a script group would become without writing it,
@@ -761,7 +826,7 @@ def add_finding(
         typer.Option(
             '--dry-run',
             help='Show how the generator script of --group would change, '
-            'without writing it.',
+            'without writing it (script groups only).',
         ),
     ] = False,
     as_json: Annotated[
@@ -776,11 +841,35 @@ def add_finding(
         ),
     ] = False,
 ):
+    if not as_json:
+        _add_finding(
+            indices, group, new_script, new_manual, glob, dry_run, list_groups, None
+        )
+        return
+    # Whatever else gets printed on the way -- including by the helpers this
+    # calls -- goes to stderr, so stdout parses as JSON.
+    json_out = sys.stdout
+    with contextlib.redirect_stdout(sys.stderr):
+        _add_finding(
+            indices, group, new_script, new_manual, glob, dry_run, list_groups, json_out
+        )
+
+
+def _add_finding(
+    indices: Optional[List[int]],
+    group: Optional[str],
+    new_script: Optional[pathlib.Path],
+    new_manual: Optional[str],
+    glob: Optional[str],
+    dry_run: bool,
+    list_groups: bool,
+    json_out: Optional[TextIO],
+) -> None:
     destinations = [d for d in (group, new_script, new_manual) if d is not None]
     if list_groups:
-        if destinations or indices or dry_run:
-            _fail('--list-groups takes no findings and no destination.')
-        _list_groups(as_json)
+        if destinations or indices or dry_run or glob is not None:
+            _fail('--list-groups takes no findings, destination or --glob.')
+        _list_groups(json_out)
         return
 
     if len(destinations) != 1:
@@ -790,13 +879,14 @@ def add_finding(
     if new_manual is not None and glob is None:
         _fail('--new-manual needs a --glob for the files of the new group.')
     if dry_run and group is None:
-        _fail('--dry-run only applies to --group.')
+        _fail(_DRY_RUN_ONLY_FOR_SCRIPTS)
 
     manifest, findings = _selected_findings(indices)
     all_groups = package.get_test_groups_by_name()
     script_groups = promotion.get_script_groups_by_name()
     manual_groups = promotion.get_manual_groups_by_name()
 
+    # `target` is None only for --new-script, created once everything checks out.
     target: Optional[TestcaseGroup] = None
     if group is not None:
         if group in script_groups:
@@ -812,74 +902,108 @@ def add_finding(
             _fail(f'Test group [item]{group}[/item] does not exist.')
     elif new_script is not None:
         kind = 'script'
-        if new_script.stem in all_groups:
-            _fail(f'Test group [item]{new_script.stem}[/item] already exists.')
+        new_script = _check_new_script(new_script, all_groups)
     else:
         assert new_manual is not None and glob is not None
         kind = 'manual'
-        if new_manual in all_groups:
-            _fail(f'Test group [item]{new_manual}[/item] already exists.')
-        if '*' not in glob or not glob.endswith('.in'):
-            _fail(
-                'The glob of a manual group must contain a `*` and end in '
-                f'`.in` (got [item]{glob}[/item]).'
-            )
+        target = _check_new_manual(new_manual, glob, all_groups)
 
     if dry_run and kind != 'script':
-        _fail('--dry-run only applies to a generator script group.')
+        _fail(_DRY_RUN_ONLY_FOR_SCRIPTS)
 
     calls = [finding.generator for finding in findings]
     comment = _stress_comment(manifest.spec)
-    # Checked before anything is created or written: all or nothing.
-    inputs = _finding_inputs(findings) if kind == 'manual' else []
 
     if dry_run:
-        assert target is not None
-        path, before, after = promotion.propose_script_append(target, calls, comment)
-        if as_json:
+        assert target is not None and target.generatorScript is not None
+        fresh = promotion.is_new_script_call(target, calls)
+        new_calls = [call for call, new in zip(calls, fresh) if new]
+        path = pathlib.Path(target.generatorScript.path)
+        before = after = path.read_text() if path.is_file() else ''
+        if new_calls:
+            path, before, after = promotion.propose_script_append(
+                target, new_calls, comment
+            )
+        if json_out is not None:
             print(
                 json.dumps(
                     {'file': str(utils.abspath(path)), 'before': before, 'after': after}
-                )
+                ),
+                file=json_out,
             )
             return
-        console.print(
-            f'Would append [item]{len(calls)}[/item] tests to '
-            f'[item]{package.relpath(path)}[/item]:'
-        )
-        console.print(after[len(before) :].strip('\n'), markup=False)
+        if new_calls:
+            console.print(
+                f'Would append [item]{len(new_calls)}[/item] tests to '
+                f'[item]{package.relpath(path)}[/item]:'
+            )
+            console.print(after[len(before) :].strip('\n'), markup=False)
+        _print_skipped(findings, fresh, target.name)
         return
 
-    if target is None:
-        if new_script is not None:
-            target = promotion.create_script_group(new_script)
-        else:
-            assert new_manual is not None and glob is not None
-            target = promotion.create_manual_group(new_manual, glob)
-
+    written: List[pathlib.Path]
     if kind == 'script':
-        written = [promotion.append_to_script_group(target, calls, comment)]
+        if target is None:
+            assert new_script is not None
+            target = promotion.create_script_group(new_script)
+        assert target.generatorScript is not None
+        fresh = promotion.is_new_script_call(target, calls)
+        new_calls = [call for call, new in zip(calls, fresh) if new]
+        written = []
+        if new_calls:
+            written = [promotion.append_to_script_group(target, new_calls, comment)]
         message = (
-            f'Added [item]{len(calls)}[/item] tests to the generator script of '
-            f'[item]{target.name}[/item] at [item]{package.relpath(written[0])}[/item].'
+            f'Added [item]{len(new_calls)}[/item] tests to the generator script of '
+            f'[item]{target.name}[/item] at '
+            f'[item]{package.relpath(target.generatorScript.path)}[/item].'
         )
     else:
-        written = [promotion.promote_input_to_group(p, target) for p in inputs]
+        assert target is not None
+        # Checked before anything is written.
+        inputs = _finding_inputs(findings)
+        fresh = promotion.is_new_manual_input(target, inputs)
+        # Not transactional: if a copy fails, the earlier ones stay in place --
+        # clean up by hand. A new group is registered only after every copy
+        # succeeded, so a failure never leaves it half-made in problem.rbx.yml.
+        written = [
+            promotion.promote_input_to_group(path, target)
+            for path, new in zip(inputs, fresh)
+            if new
+        ]
+        if new_manual is not None:
+            assert glob is not None
+            target = promotion.create_manual_group(new_manual, glob)
         message = (
             f'Added [item]{len(written)}[/item] tests to manual group '
             f'[item]{target.name}[/item] at '
             f'[item]{promotion.manual_group_dir(target)}[/item].'
         )
 
-    if as_json:
+    if json_out is not None:
         print(
             json.dumps(
                 {
                     'group': target.name,
                     'kind': kind,
                     'files': [str(utils.abspath(p)) for p in written],
+                    'skipped': [f.index for f, new in zip(findings, fresh) if not new],
                 }
-            )
+            ),
+            file=json_out,
         )
         return
     console.print(f'[success]{message}[/success]')
+    _print_skipped(findings, fresh, target.name)
+
+
+def _print_skipped(
+    findings: List[stress_manifest.StressFindingEntry],
+    fresh: List[bool],
+    group: str,
+) -> None:
+    skipped = [str(f.index) for f, new in zip(findings, fresh) if not new]
+    if skipped:
+        console.print(
+            f'[warning]Skipped findings [item]{", ".join(skipped)}[/item]: '
+            f'test group [item]{group}[/item] already has them.[/warning]'
+        )
