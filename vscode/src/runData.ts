@@ -6,6 +6,7 @@
  * the webview half turns what it loads into rows. The two meet at `PackageRun`,
  * which carries no editor API.
  */
+import * as os from 'os';
 import * as vscode from 'vscode';
 
 import { VisualizerDeclarations } from './rbx/declaredVisualizers';
@@ -15,6 +16,7 @@ import { RefreshPlan } from './rbx/artifactEvents';
 import { PackageFindings } from './rbx/diagnostics';
 import { PackageLayout } from './rbx/layout';
 import { ArtifactStore, ArtifactStores, PackageRun, StoreTrace } from './rbx/store';
+import { StressManifest, stressLiveness } from './rbx/stress';
 import { Testset } from './rbx/testset';
 
 /**
@@ -132,6 +134,17 @@ export class RunDataProvider {
     return this.storeFor(pkg).testset();
   }
 
+  /**
+   * The latest stress session `rbx stress` published for one package.
+   *
+   * A listener re-reads it when `touchesStress(change.plan)` holds; a run
+   * landing never does, and a stress session never moves the run. A missing
+   * manifest is what a package that has never been stressed looks like.
+   */
+  stress(pkg: PackageLayout): Promise<StressManifest | undefined> {
+    return this.storeFor(pkg).stress();
+  }
+
   /** What `problem.rbx.yml` declares about visualizers, for the lazy buttons. */
   visualizers(pkg: PackageLayout): Promise<VisualizerDeclarations | undefined> {
     return this.storeFor(pkg).visualizers();
@@ -151,4 +164,28 @@ export class RunDataProvider {
       packages.map(async (pkg) => ({ pkg, findings: await this.storeFor(pkg).findings() })),
     );
   }
+}
+
+/**
+ * Whether a process is alive on this host.
+ *
+ * Signal 0 delivers nothing and only checks: ESRCH means no such process,
+ * EPERM means one exists that this user may not signal. That one is alive,
+ * and reading it as dead would call a live session stale.
+ */
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/**
+ * `stressLiveness` against this host's name and process table. `unknown` is
+ * for the caller to settle with `Dispatcher.isRunning`.
+ */
+export function stressLivenessHere(manifest: StressManifest): 'live' | 'stale' | 'unknown' {
+  return stressLiveness(manifest, { hostname: os.hostname(), isAlive: processAlive });
 }

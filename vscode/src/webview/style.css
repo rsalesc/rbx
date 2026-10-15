@@ -1180,3 +1180,213 @@ body.dispatch-enabled .welcome-actions {
     display: none;
   }
 }
+
+/*
+ * The Stress view.
+ *
+ * Not a tree: a short list of declared stresses, a status block and a list of
+ * findings, each with its buttons on the right. The hues and the welcome text
+ * are the shared ones above; what follows is layout.
+ */
+#stress-root {
+  overflow-y: auto;
+  flex: 1;
+  padding-bottom: 8px;
+}
+
+.stress-heading {
+  margin: 8px 0 2px;
+  padding: 0 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+}
+
+.stress-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.stress-row,
+.stress-finding-head,
+.stress-status-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+}
+
+.stress-row,
+.stress-finding {
+  padding: 0 8px 0 12px;
+}
+
+.stress-row:hover,
+.stress-finding:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.stress-row-text {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.stress-name {
+  white-space: nowrap;
+}
+
+.stress-summary,
+.stress-call,
+.stress-spec {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.stress-summary,
+.stress-duration,
+.stress-counts,
+.stress-hint,
+.stress-none,
+.stress-promoted {
+  color: var(--vscode-descriptionForeground);
+}
+
+.stress-call,
+.stress-spec code {
+  font-family: var(--vscode-editor-font-family);
+  flex: 1;
+}
+
+.stress-index {
+  font-weight: 600;
+}
+
+/* The buttons stay out of the way until the row is pointed at or focused into,
+   the way a tree item's inline actions do. The status line's Stop is the
+   exception: it is the one thing a running session is likely to need. */
+.stress-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+}
+
+.stress-row:hover .stress-actions,
+.stress-row:focus-within .stress-actions,
+.stress-finding:hover .stress-actions,
+.stress-finding:focus-within .stress-actions,
+.stress-status-line .stress-actions {
+  opacity: 1;
+}
+
+.stress-icon-button,
+.stress-link {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  padding: 2px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stress-link {
+  color: var(--vscode-textLink-foreground);
+  padding: 2px 0;
+}
+
+.stress-icon-button:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.stress-icon-button[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.stress-icon-button[aria-disabled='true']:hover {
+  background: none;
+}
+
+.stress-icon-button:focus-visible,
+.stress-link:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.stress-status {
+  padding: 4px 8px 4px 12px;
+}
+
+.stress-state {
+  font-weight: 600;
+}
+
+.stress-elapsed {
+  font-variant-numeric: tabular-nums;
+}
+
+.stress-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  padding: 0 0 4px 16px;
+}
+
+/* A finding row opens its input on a click anywhere that is not a button. */
+.stress-finding {
+  cursor: pointer;
+}
+
+.stress-finding-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  min-height: 22px;
+  border-radius: 3px;
+}
+
+.stress-finding-main:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+/* A real button, drawn as the verdict it is. No `color` here: the `.hue-*`
+   class carries it, and a rule here would have to out-specify that table. */
+.stress-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+  font: inherit;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  padding: 0 3px;
+  margin: 0 -3px;
+  cursor: pointer;
+}
+
+.stress-chip:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.stress-chip:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.stress-promoted {
+  font-style: italic;
+}

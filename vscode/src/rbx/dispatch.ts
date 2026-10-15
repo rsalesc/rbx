@@ -20,6 +20,10 @@ export const TASK_TYPE = 'rbx';
  * `contest-run` is `rbx contest each --inline run`: `--inline` because the
  * default opens the contest TUI, which has no business inside a task terminal
  * whose whole point is that its output is the plain record of the run.
+ *
+ * `stress` and `add-finding` (`rbx testcases add-finding`) carry their whole
+ * argv tail in `Invocation.args`: the stress launcher and the Stress view build
+ * it (stressSpec.ts), and this module only puts the subcommand in front.
  */
 export type RbxCommand =
   | 'build'
@@ -28,7 +32,9 @@ export type RbxCommand =
   | 'statements'
   | 'contest-statements'
   | 'tutorials'
-  | 'contest-tutorials';
+  | 'contest-tutorials'
+  | 'stress'
+  | 'add-finding';
 
 export const RBX_COMMANDS: readonly RbxCommand[] = [
   'build',
@@ -38,6 +44,8 @@ export const RBX_COMMANDS: readonly RbxCommand[] = [
   'contest-statements',
   'tutorials',
   'contest-tutorials',
+  'stress',
+  'add-finding',
 ];
 
 /** The commands that build statements, which the statement preview watches for. */
@@ -110,6 +118,11 @@ export interface Invocation {
   readonly solutions: readonly string[];
   /** `rbx.run.extraArgs`, for `run` and `contest-run`. */
   readonly extraArgs: readonly string[];
+  /**
+   * For `stress` and `add-finding`: everything after the subcommand, built by
+   * whoever asked. Ignored by every other command.
+   */
+  readonly args?: readonly string[];
   readonly contest: ContestSelection;
 }
 
@@ -148,6 +161,12 @@ export function rbxArgs(invocation: Invocation): string[] {
     case 'contest-tutorials':
       args.push('contest', 'tutorials', 'build');
       break;
+    case 'stress':
+      args.push('stress', ...(invocation.args ?? []));
+      break;
+    case 'add-finding':
+      args.push('testcases', 'add-finding', ...(invocation.args ?? []));
+      break;
   }
   return args;
 }
@@ -180,7 +199,11 @@ export function taskName(invocation: Invocation): string {
           ? invocation.solutions.length === 0
             ? 'run'
             : `run ${invocation.solutions.join(' ')}`
-          : `build ${invocation.command.replace('-', ' ')}`;
+          : invocation.command === 'stress'
+            ? `stress ${stressSubject(invocation.args ?? [])}`
+            : invocation.command === 'add-finding'
+              ? 'add finding'
+              : `build ${invocation.command.replace('-', ' ')}`;
   const contest = invocation.contest;
   if (contest.kind === 'variant') {
     return `${base} [${contest.id}]`;
@@ -189,6 +212,24 @@ export function taskName(invocation: Invocation): string {
     return `${base} [default contest]`;
   }
   return base;
+}
+
+/**
+ * What a stress task is about, for its name: the declared stress, the generator
+ * call, or `fuzz`.
+ *
+ * Read back off the argv because the argv is all an invocation carries, and it
+ * is one this extension wrote (stressSpec.ts) -- never rbx's output.
+ */
+function stressSubject(args: readonly string[]): string {
+  if (args.length > 0 && !args[0].startsWith('-')) {
+    return args[0];
+  }
+  const generator = args.indexOf('-g');
+  if (generator >= 0 && generator + 1 < args.length) {
+    return args[generator + 1];
+  }
+  return args.includes('--fuzz') || args.includes('--fuzz-on') ? 'fuzz' : 'session';
 }
 
 /**
@@ -207,6 +248,12 @@ export interface RbxTaskDefinition {
   readonly solutions?: readonly string[];
   /** A variant id, `""` for the canonical, or absent to resolve it. */
   readonly contest?: string;
+  /**
+   * The argv tail of a `stress` or `add-finding`. Part of the identity: two
+   * stresses with different finders are different tasks, and a definition
+   * that dropped the finder would let VS Code mistake one for the other.
+   */
+  readonly args?: readonly string[];
 }
 
 export function taskDefinition(invocation: Invocation): RbxTaskDefinition {
@@ -216,6 +263,9 @@ export function taskDefinition(invocation: Invocation): RbxTaskDefinition {
     command: invocation.command,
     cwd: invocation.cwd,
     ...(invocation.solutions.length === 0 ? {} : { solutions: [...invocation.solutions] }),
+    ...(invocation.args === undefined || invocation.args.length === 0
+      ? {}
+      : { args: [...invocation.args] }),
     ...(contest.kind === 'variant'
       ? { contest: contest.id }
       : contest.kind === 'canonical'
@@ -266,6 +316,27 @@ export function collides(cwdA: string, cwdB: string): boolean {
   const b = path.resolve(cwdB);
   return containsPath(a, b) || containsPath(b, a);
 }
+
+/**
+ * The running tasks that are `command` in exactly `root`.
+ *
+ * Exactly, unlike `collides`: this answers "is *that* stress still going", not
+ * "would something be in the way", so a contest command above the package or
+ * a run in it is not an answer. `command` is whatever the task's definition
+ * holds, which for a task VS Code restored on its own is not checked by anyone.
+ */
+export function runningAt<T extends { readonly cwd: string; readonly command: unknown }>(
+  running: readonly T[],
+  root: string,
+  command: RbxCommand,
+): T[] {
+  const target = path.resolve(root);
+  return running.filter((task) => task.command === command && path.resolve(task.cwd) === target);
+}
+
+// Kept apart, in a module with no Node imports, so the stress launcher's
+// webview can quote its command preview exactly as the terminal is sent it.
+export { needsShellQuoting } from './shellQuote';
 
 /** The running tasks a new dispatch in `cwd` would collide with. */
 export function collisions<T extends { readonly cwd: string }>(

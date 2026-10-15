@@ -1027,6 +1027,32 @@ SPEC = {
                     },
                 },
                 {
+                    'help': 'Do not offer to add the findings to a test group when the '
+                    'stress ends.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--no-promote'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'List the stresses, solutions, generators and test groups a '
+                    'stress can use, then exit.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--list'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'With --list, print the listing as JSON on stdout.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--json'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,
@@ -3431,6 +3457,93 @@ SPEC = {
                             'multiple': False,
                             'names': ['--name', '-n'],
                             'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'Add findings of the latest stress session...',
+                    'is_group': False,
+                    'name': 'add-finding',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': None,
+                            'kind': 'argument',
+                            'multiple': False,
+                            'names': [],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                            'variadic': True,
+                        },
+                        {
+                            'help': 'Existing test group to add the findings to: a '
+                            '.txt generator script group or a manual group.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--group', '-G'],
+                            'takes_value': True,
+                            'value': {'completer': 'testgroup', 'kind': 'completer'},
+                        },
+                        {
+                            'help': 'Create a generator script group backed by this '
+                            '.txt file, and append the findings to it.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--new-script'],
+                            'takes_value': True,
+                            'value': {'kind': 'path', 'path': 'file'},
+                        },
+                        {
+                            'help': 'Create a manual group with this name (needs '
+                            '--glob), and copy the findings into it.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--new-manual'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Glob of the group --new-manual creates, e.g. '
+                            'tests/manual/stress/*.in.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--glob'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show how the generator script of --group would '
+                            'change, without writing it (script groups only).',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--dry-run'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Print the result as JSON on stdout.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--json'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'List the test groups that can take findings, and '
+                            'exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--list-groups'],
+                            'takes_value': False,
                             'value': {'kind': 'none'},
                         },
                         {

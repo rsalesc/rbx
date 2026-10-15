@@ -69,6 +69,11 @@ def _finish_run(status: str) -> None:
     run_report = sys.modules.get('rbx.box.run_report')
     if run_report is not None:
         run_report.finish_run(run_report.ExitStatus(status))
+    # Same for a stress session: `run_stress` finishes its own, so this only
+    # catches what escaped it (a second Ctrl-C). Never raises.
+    stress_manifest = sys.modules.get('rbx.box.stress_manifest')
+    if stress_manifest is not None:
+        stress_manifest.finish_open_session(status)
 
 
 def exit_status_of(exc: BaseException) -> str:

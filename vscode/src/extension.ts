@@ -20,6 +20,7 @@ import { registerDiagnostics } from './diagnostics';
 import { registerDispatch } from './dispatch';
 import { registerInteractionDecorations } from './interactionDecorations';
 import { initLog, log } from './log';
+import { PROPOSED_SCHEME, ProposedFileSystemProvider } from './proposedFs';
 import { CONTEST_FILE_GLOB, CONTEST_MANIFEST, isContestVariantFile } from './rbx/contest';
 import { resetBuildDirs, resolveBuildDir } from './rbx/environment';
 import {
@@ -30,7 +31,14 @@ import {
   planRefresh,
 } from './rbx/artifactEvents';
 import { Coalescer } from './rbx/coalescer';
-import { CACHE_DIR, Ext, PROBLEM_MANIFEST, TESTSET_MANIFEST } from './rbx/layout';
+import {
+  CACHE_DIR,
+  Ext,
+  PROBLEM_MANIFEST,
+  STRESS_DIR,
+  STRESS_MANIFEST,
+  TESTSET_MANIFEST,
+} from './rbx/layout';
 import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
 import { registerSolutionLens } from './solutionLens';
@@ -40,6 +48,9 @@ import { registerStatementPreview } from './statementPreview';
 import { StatementReports } from './statementReports';
 import { registerStatementVarHints } from './statementVarHints';
 import { StatementVarsIndex } from './statementVarsIndex';
+import { StressLauncher } from './stressLauncher';
+import { StressPromoter } from './stressPromote';
+import { StressViewProvider } from './stressView';
 import { TestsetPanel } from './testsetPanel';
 import { TestsetViewProvider } from './testsetView';
 import { openVisualization } from './visualizationPanel';
@@ -119,6 +130,45 @@ export function activate(context: vscode.ExtensionContext): void {
 
   registerCommands(context, view, data, active, testset);
   const dispatcher = registerDispatch(context, active, declared, view);
+  // The third view in the container, on the same `data` and `active` as the
+  // other two. It needs the dispatcher, which is why it is built only here.
+  const stress = new StressViewProvider(
+    data,
+    active,
+    dispatcher,
+    context.workspaceState,
+    context.extensionUri,
+  );
+  // Promote answers the view's `rbx.stress.promote`; its script-group
+  // proposals live in `proposed`, the one writable scheme the extension has.
+  const proposed = new ProposedFileSystemProvider();
+  const promoter = new StressPromoter(stress, dispatcher, proposed);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(StressViewProvider.viewType, stress),
+    vscode.commands.registerCommand('rbx.stress.new', () => stress.newStress()),
+    vscode.commands.registerCommand('rbx.stress.stop', () => stress.stop()),
+    vscode.workspace.registerFileSystemProvider(PROPOSED_SCHEME, proposed, {
+      isCaseSensitive: true,
+    }),
+    promoter,
+    vscode.commands.registerCommand('rbx.stress.promote', (args: unknown) => promoter.promote(args)),
+    vscode.commands.registerCommand('rbx.proposal.accept', (uri: unknown) => promoter.accept(uri)),
+    vscode.commands.registerCommand('rbx.proposal.discard', (uri: unknown) => promoter.discard(uri)),
+    // The view names the intent (`OpenLauncherArgs`) and this answers it; the
+    // launcher checks the argument itself, since a command takes anything.
+    vscode.commands.registerCommand('rbx.stress.openLauncher', (args: unknown) =>
+      StressLauncher.open(
+        {
+          extensionUri: context.extensionUri,
+          memento: context.workspaceState,
+          dispatcher,
+          onDidChange: data.onDidChange,
+          vars: statementVars,
+        },
+        args,
+      ),
+    ),
+  );
   // One watcher over every statement build report, shared by the preview and
   // the Problems panel so a finished build is read once.
   const statementReports = new StatementReports();
@@ -198,9 +248,10 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   // Only what something here reads. `.rbx` also holds the file cacher's
-  // storage, the dependency caches, remote and judge state, and `runs/.irun`
-  // and `runs/.stress` -- all of which churn through a build or a stress test,
-  // and each write used to schedule a reload of a run that had not changed.
+  // storage, the dependency caches, remote and judge state, `runs/.irun` and
+  // the bulk of `runs/.stress` -- all of which churn through a build or a
+  // stress test, and each write used to schedule a reload of a run that had
+  // not changed.
   //
   // The cache directory itself, and `runs/` itself, because removing either is
   // reported as that one directory and nothing under it: `rbx clean` removes
@@ -212,6 +263,14 @@ export function activate(context: vscode.ExtensionContext): void {
   // `runs/` too. The classifier checks the same shape, since a glob is a
   // filter on the watcher, not a promise about what reaches it.
   watch(`**/${CACHE_DIR}/runs/[0-9]*/*/*${Ext.Eval}`);
+  // The stress session, through its manifest alone: rbx rewrites it whenever a
+  // finding lands (and at most once a second for the counters), so it is the
+  // one file that says the session moved. A finding's own files are opened on
+  // demand, and the scratch area beside them is overwritten every iteration --
+  // watching either would wake the views as fast as the stress loop spins.
+  // `.stress` itself too, which a new session replaces as one directory.
+  watch(`**/${CACHE_DIR}/runs/${STRESS_DIR}`);
+  watch(`**/${CACHE_DIR}/runs/${STRESS_DIR}/${STRESS_MANIFEST}`);
 
   // The testset manifest, which `rbx build` writes last (design D2). Written
   // last is what lets this be a single glob rather than a heuristic about when

@@ -1,0 +1,166 @@
+/**
+ * The files of one stress finding, as the editor opens them (#908).
+ *
+ * Pure: the host lists the finding's directory and hands the names and sizes
+ * in, so what is opened, what Compare offers and what each tab is called are
+ * all decided here.
+ *
+ * Every label ends in a `#k ...` segment of its own. That last segment is the
+ * tab title (see artifactFs.ts), so a finding's tabs say which finding they
+ * are -- and, just as much, it keeps them from being taken for the testcase
+ * panes, which recognise their tabs by the bare `input.in` / `output.out`
+ * titles (panes.ts `paneKindOf`).
+ */
+import * as path from 'path';
+
+import { Ext, PackageLayout, findingAnswerPath, findingArtifactPath, findingInputPath } from './layout';
+import { StressFinding, StressManifest } from './stress';
+
+export interface FindingFile {
+  readonly kind: 'input' | 'answer' | 'output' | 'stderr';
+  /** Absolute, on disk. */
+  readonly path: string;
+  /** The `rbx:` display path; its last segment is the tab title. */
+  readonly label: string;
+  /** How a QuickPick or a diff title names it. */
+  readonly name: string;
+  /** For an output or a stderr: whose, as an index into `solutions`. */
+  readonly solution?: number;
+}
+
+export interface FindingFiles {
+  readonly input?: FindingFile;
+  /** The reference answer, when the finder needed one. */
+  readonly answer?: FindingFile;
+  /** Every solution that left an output, in the manifest's solution order. */
+  readonly outputs: readonly FindingFile[];
+  /** Every solution whose stderr has something in it. */
+  readonly stderrs: readonly FindingFile[];
+}
+
+/**
+ * The files of finding `finding`, given what its directory holds.
+ *
+ * `entries` maps a basename in `findings/<k>/` to its size. Solutions are
+ * walked in the manifest's order rather than the results', because the
+ * reference solution can have left an output without being one of the
+ * results (see `StressFinding.results`), and its output is worth a look too.
+ */
+export function findingFiles(
+  pkg: PackageLayout,
+  solutions: readonly string[],
+  finding: StressFinding,
+  entries: ReadonlyMap<string, number>,
+): FindingFiles {
+  const k = finding.index;
+  const prefix = `stress/#${k}`;
+  const has = (file: string) => entries.has(path.basename(file));
+  const input = findingInputPath(pkg, k);
+  const answer = findingAnswerPath(pkg, k);
+  const outputs: FindingFile[] = [];
+  const stderrs: FindingFile[] = [];
+  solutions.forEach((solution, index) => {
+    const dir = path.posix.dirname(solution);
+    const base = path.posix.basename(solution);
+    const at = (name: string) => (dir === '.' ? `${prefix}/${name}` : `${prefix}/${dir}/${name}`);
+    const output = findingArtifactPath(pkg, k, index, Ext.Output);
+    if (has(output)) {
+      outputs.push({
+        kind: 'output',
+        path: output,
+        label: at(`#${k} ${base}${Ext.Output}`),
+        name: solution,
+        solution: index,
+      });
+    }
+    const stderr = findingArtifactPath(pkg, k, index, Ext.Stderr);
+    if ((entries.get(path.basename(stderr)) ?? 0) > 0) {
+      stderrs.push({
+        kind: 'stderr',
+        path: stderr,
+        label: at(`#${k} ${base}${Ext.Stderr}`),
+        name: `${solution} stderr`,
+        solution: index,
+      });
+    }
+  });
+  return {
+    input: has(input)
+      ? { kind: 'input', path: input, label: `${prefix}/#${k} input.in`, name: 'input' }
+      : undefined,
+    answer: has(answer)
+      ? { kind: 'answer', path: answer, label: `${prefix}/#${k} answer.ans`, name: 'expected answer' }
+      : undefined,
+    outputs,
+    stderrs,
+  };
+}
+
+/**
+ * `manifest`, if it is still the session a row was drawn from; undefined if
+ * a newer one replaced it.
+ *
+ * A row names its finding by index, and a new session's #1 is another input
+ * altogether -- opening or promoting it on the strength of an old row would
+ * act on something the user never saw. `session` is the `startedAt` the row
+ * was drawn with; a row (or a manifest) with none cannot be told apart and is
+ * taken at its word.
+ */
+export function sessionOf(
+  manifest: StressManifest | undefined,
+  session: string | undefined,
+): StressManifest | undefined {
+  if (manifest === undefined || session === undefined || manifest.startedAt === undefined) {
+    return manifest;
+  }
+  return manifest.startedAt === session ? manifest : undefined;
+}
+
+/**
+ * What a gesture on a finding row opens: `active` where the user is, `beside`
+ * next to it.
+ */
+export interface FindingSelection {
+  readonly active?: FindingFile;
+  readonly beside: readonly FindingFile[];
+}
+
+/** A click on the row: just the input. */
+export function inputSelection(files: FindingFiles): FindingSelection {
+  return { active: files.input, beside: [] };
+}
+
+/**
+ * A click on a verdict chip: the input, and that one solution's output beside
+ * it. `missingOutput` is set when the solution left none (it crashed, or never
+ * ran), so the caller can say so rather than open half of what was asked.
+ */
+export function outputSelection(
+  files: FindingFiles,
+  solution: number,
+): FindingSelection & { readonly missingOutput: boolean } {
+  const output = files.outputs.find((file) => file.solution === solution);
+  return {
+    active: files.input,
+    beside: output === undefined ? [] : [output],
+    missingOutput: output === undefined,
+  };
+}
+
+/**
+ * The row's Open button: everything. The input where the user is and the
+ * answer and every output beside it; with no input, whatever is first takes
+ * its place, so there is still a column to be beside.
+ */
+export function everythingSelection(files: FindingFiles): FindingSelection {
+  const [active, ...beside] = [
+    ...(files.input === undefined ? [] : [files.input]),
+    ...compareCandidates(files),
+  ];
+  return { active, beside };
+}
+
+/** What Compare offers: the reference answer first, then every output. */
+export function compareCandidates(files: FindingFiles): FindingFile[] {
+  return [...(files.answer === undefined ? [] : [files.answer]), ...files.outputs];
+}

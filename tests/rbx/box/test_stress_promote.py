@@ -1,10 +1,12 @@
 import asyncio
+import pathlib
 from unittest import mock
 
+import pydantic
 import pytest
 from typer.testing import CliRunner
 
-from rbx.box import cli
+from rbx.box import cli, promotion
 from rbx.box.schema import GeneratorCall
 from rbx.box.stresses import StressFinding, StressReport
 from rbx.box.testing import testing_package
@@ -49,13 +51,13 @@ def _skip_preset_check():
 
 
 def _write_findings(testing_pkg: testing_package.TestingPackage, *contents: bytes):
-    from rbx.box import package
+    from rbx.box import stress_manifest
 
-    findings_dir = package.get_problem_runs_dir() / '.stress' / 'findings'
-    findings_dir.mkdir(parents=True, exist_ok=True)
     findings = []
     for i, content in enumerate(contents):
-        (findings_dir / f'{i}.in').write_bytes(content)
+        input_path = stress_manifest.finding_input_path(i + 1)
+        input_path.parent.mkdir(parents=True, exist_ok=True)
+        input_path.write_bytes(content)
         findings.append(StressFinding(generator=GeneratorCall(name='gen', args=str(i))))
     return StressReport(findings=findings, executed=len(contents), skipped=0)
 
@@ -166,11 +168,11 @@ def test_stress_promote_missing_finding_writes_nothing(
     testing_pkg.add_testgroup_from_glob('corner', 'tests/manual/corner/*.in')
 
     # Report claims two findings, but only one finding `.in` file is on disk.
-    from rbx.box import package
+    from rbx.box import stress_manifest
 
-    findings_dir = package.get_problem_runs_dir() / '.stress' / 'findings'
-    findings_dir.mkdir(parents=True, exist_ok=True)
-    (findings_dir / '0.in').write_bytes(b'5 7\n')
+    input_path = stress_manifest.finding_input_path(1)
+    input_path.parent.mkdir(parents=True, exist_ok=True)
+    input_path.write_bytes(b'5 7\n')
     report = StressReport(
         findings=[
             StressFinding(generator=GeneratorCall(name='gen', args='0')),
@@ -221,3 +223,66 @@ def test_stress_promote_skip_writes_nothing(
     assert result.exit_code == 0, result.output
     folder = testing_pkg.root / 'tests/manual/corner'
     assert not any(folder.glob('*.in'))
+
+
+def test_stress_no_promote_skips_the_prompt(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    report = _write_findings(testing_pkg, b'5 7\n')
+    yml = testing_pkg.yml_path.read_text()
+
+    confirm = mock.MagicMock(return_value=True)
+    with (
+        mock.patch('rbx.box.stresses.run_stress', _mock_run_stress(report)),
+        mock.patch('rbx.box.stresses.print_stress_report'),
+        mock.patch('rich.prompt.Confirm.ask', confirm),
+    ):
+        result = runner.invoke(
+            cli.app, ['stress', '-g', 'gen 1', '-f', 'sols/main.cpp', '--no-promote']
+        )
+
+    assert result.exit_code == 0, result.output
+    confirm.assert_not_called()
+    assert testing_pkg.yml_path.read_text() == yml
+    assert not (testing_pkg.root / 'tests').exists()
+    assert not (testing_pkg.root / 'testplan').exists()
+
+
+@pytest.mark.parametrize('create', ['manual', 'script'])
+def test_creating_a_group_with_an_invalid_name_leaves_the_yaml_alone(
+    testing_pkg: testing_package.TestingPackage, create: str
+):
+    yml = testing_pkg.yml_path.read_text()
+    with pytest.raises(pydantic.ValidationError):
+        if create == 'manual':
+            promotion.create_manual_group('ab', 'tests/ab/*.in')
+        else:
+            promotion.create_script_group(pathlib.Path('tests/ab.txt'))
+    assert testing_pkg.yml_path.read_text() == yml
+    assert not (testing_pkg.root / 'tests').exists()
+
+
+def test_stress_promote_existing_script_group(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    testing_pkg.add_testgroup_from_plan('main', 'gen 100\n')
+    report = _write_findings(testing_pkg, b'5 7\n', b'8 9\n')
+
+    with (
+        mock.patch('rbx.box.stresses.run_stress', _mock_run_stress(report)),
+        mock.patch('rbx.box.stresses.print_stress_report'),
+        mock.patch('rich.prompt.Confirm.ask', return_value=True),
+        mock.patch('questionary.select', _scripted_prompt('main')),
+        mock.patch('questionary.text', _scripted_prompt()),
+    ):
+        result = runner.invoke(
+            cli.app, ['stress', '-g', 'gen 1', '-f', 'sols/main.cpp']
+        )
+
+    assert result.exit_code == 0, result.output
+    lines = (testing_pkg.root / 'testplan/main.txt').read_text().splitlines()
+    assert lines[0] == 'gen 100'
+    assert lines[-2:] == ['gen 0', 'gen 1']
+    assert lines[-3].startswith('# Obtained by running `rbx ')

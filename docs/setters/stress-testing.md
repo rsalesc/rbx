@@ -152,9 +152,51 @@ rbx stress -g "gen 100 @" -f sols/main.cpp
 rbx stress -g "gen 100 @" -f "[sols/main.cpp] ~ INCORRECT" -n 3 -t 120
 ```
 
-The command will show a summary of what tests were found, and in case there's at least one match, it will
-prompt you to inform a testplan to add it to. If you skip this part, you can always copy the generator calls
-that were found and add them later.
+When the stress test ends, the command prints a summary of the tests it found. If it found at least one, it
+offers to add them to a test group. You can also skip that question and add them
+[later](#adding-findings-to-the-testset).
+
+To stop a stress test early, press <kbd>Ctrl</kbd>+<kbd>C</kbd>. {{rbx}} finishes the test it's running, keeps
+what it found so far, and prints the summary. Press it again to stop at once.
+
+## Adding findings to the testset
+
+Each test that matches the finder expression is a **finding**. The summary numbers the findings from 1, and
+{{rbx}} keeps the latest session's findings on disk, so you can add them to your testset after the command
+exits:
+
+```sh
+# Add every finding to the `secret` group.
+rbx testcases add-finding --group secret
+
+# Add only findings 1 and 3.
+rbx testcases add-finding 1 3 --group secret
+
+# List the groups that can take findings.
+rbx testcases add-finding --list-groups
+```
+
+You name findings by their number in the summary, or leave them out to add all of them.
+
+Only two kinds of group can take findings, and each stores them differently:
+
+- A group backed by a [testplan](testset/index.md#static-generator-script-aka-testplan) gets the generator
+  call that produced the finding, under a comment with the `rbx stress` command that found it. Like every
+  other line of the testplan, the test is generated again on the next build.
+- A group defined by a [testcase glob](testset/index.md#testcase-glob) gets a copy of the finding's input.
+
+{{rbx}} skips a finding the group already has, so adding the same findings twice is harmless. The command can
+also create the group first, and preview what a testplan would become without writing it. See
+[`rbx testcases add-finding`](reference/cli.md#rbx-testcases-add-finding) in the reference for those flags.
+
+When you plan to add findings this way, pass `--no-promote` to `rbx stress` to skip its question at the end.
+That also keeps a script that runs `rbx stress` from waiting on an answer.
+
+A new stress session replaces the findings of the previous one. They live under `.rbx/runs/.stress/`, with
+one directory per finding: `findings/<k>/` keeps the input of finding `k` (`input.in`), its expected answer
+when the finder needed one (`input.ans`), and each solution's output and stderr. Next to them, `stress.yml`
+describes the session as a whole. The [VS Code extension](../tools/vscode.md#stress-testing) reads these files
+to show findings and add them to the testset from the editor.
 
 ## Saving a stress test
 
@@ -195,6 +237,7 @@ When fuzzing, {{rbx}} takes the generator calls from the selected groups and app
 
 You can use the `--slowest` flag to find strict time limit violations or simply the testcases that make your solution run the slowest.
 When this flag is enabled, the time limit for the solution is removed, and {{rbx}} will keep track of the slowest testcases found so far.
+Those slowest tests are the session's findings.
 
 ```sh
 # Find the slowest testcases for the main solution using the given generator

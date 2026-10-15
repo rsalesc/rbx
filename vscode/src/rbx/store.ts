@@ -24,6 +24,7 @@ import {
   runArtifactPath,
   skeletonPath,
   solutionSourcePath,
+  stressManifestPath,
   testArtifactPath,
   testsetPath,
 } from './layout';
@@ -44,6 +45,7 @@ import {
   parseSkeleton,
 } from './model';
 import { GroupReport, RunEnd, RunReport, SolutionReport, parseReport } from './report';
+import { StressManifest, parseStressManifest } from './stress';
 import { Testset, parseTestset } from './testset';
 
 /** One (solution, testcase) pair, with wherever its artifacts live. */
@@ -268,6 +270,7 @@ export class ArtifactStore {
   private cachedSkeleton?: Promise<Skeleton | undefined>;
   private cachedTestset?: Promise<Testset | undefined>;
   private cachedVisualizers?: Promise<VisualizerDeclarations | undefined>;
+  private cachedStress?: Promise<StressManifest | undefined>;
   private readonly files: YamlFileCache;
   private readonly trace?: (trace: StoreTrace) => void;
 
@@ -292,6 +295,7 @@ export class ArtifactStore {
     this.cachedSkeleton = undefined;
     this.cachedTestset = undefined;
     this.cachedVisualizers = undefined;
+    this.cachedStress = undefined;
   }
 
   /**
@@ -308,6 +312,9 @@ export class ArtifactStore {
     }
     if (plan.manifest) {
       this.cachedVisualizers = undefined;
+    }
+    if (plan.stress) {
+      this.cachedStress = undefined;
     }
     if (plan.run === 'reload') {
       this.dropRun();
@@ -368,6 +375,21 @@ export class ArtifactStore {
       );
     }
     return this.cachedVisualizers;
+  }
+
+  /**
+   * The latest stress session, or undefined if there is none readable.
+   *
+   * Cached apart from the run, like the testset: a stress test rewrites its
+   * manifest whenever a finding lands, and none of that may cost the run view
+   * a re-read. Only the manifest is read -- a finding's files are opened on
+   * demand, from the paths layout.ts builds.
+   */
+  stress(): Promise<StressManifest | undefined> {
+    if (this.cachedStress === undefined) {
+      this.cachedStress = readYamlFile(stressManifestPath(this.pkg)).then(parseStressManifest);
+    }
+    return this.cachedStress;
   }
 
   private dropRun(): void {

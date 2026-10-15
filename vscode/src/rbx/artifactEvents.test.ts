@@ -6,6 +6,7 @@ import {
   classifyCachePath,
   classifyPath,
   planRefresh,
+  touchesStress,
   touchesTestset,
 } from './artifactEvents';
 
@@ -48,6 +49,15 @@ test('everything nothing reads is ignored', () => {
     `${ROOT}/.rbx/runs/compilation/0.log`,
     `${ROOT}/.rbx/runs/.irun/0/main/000.eval`,
     `${ROOT}/.rbx/runs/.stress/0/main/000.eval`,
+    `${ROOT}/.rbx/runs/.stress/findings/1/0.eval`,
+    `${ROOT}/.rbx/runs/.stress/findings/1/input.in`,
+    `${ROOT}/.rbx/runs/.stress/findings`,
+    `${ROOT}/.rbx/runs/.stress/.stress.yml.tmp42`,
+    // `write_text_atomic`'s temp file, renamed over stress.yml.
+    `${ROOT}/.rbx/runs/.stress/.stress.yml.k3j2x9`,
+    // The scratch input each iteration overwrites.
+    `${ROOT}/.rbx/runs/.stress/input`,
+    `${ROOT}/.rbx/runs/.stress/findings/1/stress.yml`,
     `${ROOT}/.rbx/runs/0/samples/000.out`,
     `${ROOT}/.rbx/runs/0/samples/000.err`,
     `${ROOT}/.rbx/runs/0/samples/.000.eval.tmp123`,
@@ -85,6 +95,7 @@ test('a batch of evaluations patches exactly those, once each', () => {
     ],
     testset: false,
     manifest: false,
+    stress: false,
   });
 });
 
@@ -101,6 +112,7 @@ test('a new skeleton reloads the run and patches nothing in it', () => {
     evals: [],
     testset: false,
     manifest: false,
+    stress: false,
   });
 });
 
@@ -111,6 +123,7 @@ test('a testset landing leaves the run alone, and the other way round', () => {
     evals: [],
     testset: true,
     manifest: false,
+    stress: false,
   });
   const run = planRefresh([{ kind: 'report' }]);
   assert.strictEqual(run.testset, false);
@@ -120,4 +133,33 @@ test('a testset landing leaves the run alone, and the other way round', () => {
 test('a rediscovery may have moved the testset', () => {
   assert.strictEqual(touchesTestset(undefined), true);
   assert.strictEqual(touchesTestset(planRefresh([{ kind: 'manifest' }])), true);
+});
+
+test('the stress manifest, and .stress itself, are stress events', () => {
+  assert.deepStrictEqual(event(`${ROOT}/.rbx/runs/.stress/stress.yml`), { kind: 'stress' });
+  assert.deepStrictEqual(event(`${ROOT}/.rbx/runs/.stress`), { kind: 'stress' });
+});
+
+test('a stress event leaves the run, the testset and the manifest alone', () => {
+  const plan = planRefresh([{ kind: 'stress' }]);
+  assert.deepStrictEqual(plan, {
+    run: 'keep',
+    report: false,
+    evals: [],
+    testset: false,
+    manifest: false,
+    stress: true,
+  });
+  assert.strictEqual(touchesStress(plan), true);
+  assert.strictEqual(touchesTestset(plan), false);
+});
+
+test('only a vanished cache, of the run events, touches the stress session', () => {
+  assert.strictEqual(touchesStress(planRefresh([{ kind: 'cache' }])), true);
+  assert.strictEqual(touchesStress(planRefresh([{ kind: 'skeleton' }])), false);
+  assert.strictEqual(
+    touchesStress(planRefresh([{ kind: 'eval', solution: 0, group: 'main', stem: '001' }])),
+    false,
+  );
+  assert.strictEqual(touchesStress(undefined), true);
 });

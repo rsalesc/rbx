@@ -121,6 +121,7 @@ def _isolate_global_state() -> Iterator[None]:
     from rbx.box import global_package as _global_package
     from rbx.box import package as _package
     from rbx.box import state as _state
+    from rbx.box import stress_manifest as _stress_manifest
     from rbx.box.contest import contest_state as _contest_state
     from rbx.box.sanitizers import issue_stack as _issue_stack
     from rbx.grading import grading_context as _gc
@@ -166,3 +167,6 @@ def _isolate_global_state() -> Iterator[None]:
             var.set(value)
         testing_utils.clear_all_functools_cache()
         _global_package.clear_cache_session_locks()
+        # A stress session a test left open (a leaked KeyboardInterrupt, say)
+        # must not be stamped by a later test's exit path.
+        _stress_manifest.end_session()

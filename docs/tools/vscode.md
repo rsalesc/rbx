@@ -14,8 +14,9 @@ take over the terminal you are typing `rbx` into.
     Execution stays in a terminal. You type `rbx run`, or press a button that
     runs the same command in a terminal you can see and interrupt, and the
     extension shows what the command writes into the package. It does call {{rbx}} itself
-    for a couple of small things -- drawing a visualization, asking what a
-    variable expands to -- and for those it has to find an `rbx` to call, which
+    for a few small things -- drawing a visualization, asking what a
+    variable expands to, listing the groups a stress finding can go to and
+    previewing a testplan change -- and for those it has to find an `rbx` to call, which
     [Finding rbx](#finding-rbx) covers.
 
 ## Installing
@@ -178,6 +179,67 @@ your desktop associates with the file.
     These are the pictures {{rbx}} draws from a testcase and its expected
     answer. Visualizing what a *solution* printed is not available in the
     extension yet -- use `rbx ui` for that.
+
+## Stress testing
+
+The **Stress** view is next to the run view and the **Tests** view. It starts
+[stress tests](../setters/stress-testing.md) and shows what they find, read
+from the files `rbx stress` writes, so a stress you start in a terminal shows
+up there too.
+
+At the top are the stresses declared in `problem.rbx.yml`, each with a button
+that runs it and one that opens it in the [launcher](#the-stress-launcher).
+While a stress runs, a status line counts the tests it ran and the findings so
+far. The stop button ends a stress you started from the view. Unlike
+<kbd>Ctrl</kbd>+<kbd>C</kbd>, it doesn't wait for the current test to finish,
+and the findings so far are kept. A stress started in a terminal has to be
+stopped from that terminal.
+
+Each finding gets a row with the generator call that produced it, and a chip
+per solution with its verdict on that test. From the row you can:
+
+- **open** the input, with the expected answer and each solution's output
+  beside it (a solution's stderr, when it isn't empty, is offered in a
+  notification);
+- **compare** the outputs of two solutions, in VS Code's diff;
+- **copy** the generator call;
+- **promote** the finding into the testset.
+
+Promoting is available once the stress finishes, and first asks which group
+to add the finding to. For a group backed by a testplan, it opens a diff of the
+testplan against the version {{rbx}} proposes, with the new generator call. You
+can edit the proposed side, then save it with the check-mark button
+(**Accept Proposed Change**) in the editor title. If the testplan changed after
+the proposal was made, accepting refuses and offers to copy your edits and
+promote again. Promoting into a
+testcase-glob group, or into a group that doesn't exist yet, runs
+[`rbx testcases add-finding`](../setters/stress-testing.md#adding-findings-to-the-testset)
+in a terminal.
+
+### The stress launcher
+
+The **New stress** button opens the launcher, a form in an editor tab that
+builds an `rbx stress` command and shows it as you fill the form in. It has
+three sections:
+
+- **Inputs** -- a declared stress, a generator expression, or the test groups
+  to fuzz.
+- **Find** -- the finder, as rows joined by **All of** or **Any of**. A
+  **Break** row matches a test where the solution you pick gets the verdict
+  you pick, such as `INCORRECT`, and a **Disagree** row a test where two
+  solutions get different verdicts. **Slowest
+  tests** looks for the slowest tests instead.
+- **Budget** -- how long to run, how many findings to stop after, and the time
+  limit, with the rarer options under **Advanced**.
+
+**Run** starts the stress in a terminal, and **Copy** copies the command
+instead. When the form can't build a valid command, the footer says why and
+**Run** stays off.
+
+The rows cover the finders most stresses use. For anything they can't
+express, write the finder expression yourself and run `rbx stress` in a
+terminal, or [save it as a declared stress](../setters/stress-testing.md#saving-a-stress-test):
+the launcher runs a declared finder as written.
 
 ## Variables in a statement
 

@@ -1,0 +1,466 @@
+/*
+ * The stress launcher's look.
+ *
+ * Its own stylesheet, like the testset panel's: an editor tab with a form in
+ * it shares nothing with the ~300px sidebar but the vocabulary, and every
+ * colour is a `--vscode-*` variable so the form follows the theme, high
+ * contrast included.
+ */
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+}
+
+.codicon {
+  font-family: 'codicon';
+  font-size: 14px;
+  line-height: 1;
+  display: inline-block;
+  vertical-align: text-bottom;
+  user-select: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* The form scrolls; the footer with Run stays in view. */
+.launcher {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 20px 24px;
+}
+
+.launcher-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  max-width: 760px;
+}
+
+.launcher-header h1 {
+  font-size: 1.4em;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.root {
+  color: var(--vscode-descriptionForeground);
+}
+
+.notice {
+  max-width: 760px;
+  margin: 4px 0 0;
+  color: var(--vscode-descriptionForeground);
+}
+
+.launcher-form {
+  max-width: 760px;
+}
+
+.section {
+  padding: 12px 0 16px;
+  border-bottom: 1px solid var(--vscode-panel-border, transparent);
+}
+
+.section h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.05em;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 0.85em;
+  color: var(--vscode-badge-foreground);
+  background: var(--vscode-badge-background);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.field.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.field.inline > .label-row {
+  min-width: 130px;
+}
+
+.label-row,
+.segmented-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.segmented-row {
+  display: flex;
+  margin-bottom: 8px;
+}
+
+.segmented-row .segmented {
+  margin-bottom: 0;
+}
+
+/*
+ * The `?` beside an ambiguous control, and its tooltip. Drawn from
+ * `data-help` on hover and on keyboard focus, since a `title` never shows on
+ * focus; colours are the editor hover widget's, so it reads like VS Code's own.
+ */
+.help {
+  position: relative;
+  margin-left: 4px;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+  cursor: help;
+  user-select: none;
+}
+
+.help:hover,
+.help:focus-visible {
+  color: var(--vscode-foreground);
+}
+
+.help:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.help::after {
+  content: attr(data-help);
+  display: none;
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  left: -8px;
+  width: max-content;
+  max-width: 340px;
+  padding: 6px 8px;
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  font-weight: normal;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: left;
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-panel-border, transparent));
+  border-radius: 3px;
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, transparent);
+}
+
+.help:hover::after,
+.help:focus-visible::after {
+  display: block;
+}
+
+.unit {
+  color: var(--vscode-descriptionForeground);
+}
+
+.hint {
+  margin: 6px 0;
+  color: var(--vscode-descriptionForeground);
+}
+
+.hint.warn {
+  color: var(--vscode-editorWarning-foreground);
+}
+
+code,
+.mono {
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+}
+
+input[type='text'],
+select {
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, transparent));
+  border-radius: 2px;
+  padding: 3px 6px;
+}
+
+select {
+  color: var(--vscode-dropdown-foreground);
+  background: var(--vscode-dropdown-background);
+  border-color: var(--vscode-dropdown-border, transparent);
+}
+
+input[type='text']:not(.num) {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+input.mono {
+  font-family: var(--vscode-editor-font-family);
+}
+
+input.num {
+  width: 90px;
+}
+
+input:focus,
+select:focus,
+button:focus-visible,
+summary:focus-visible,
+.segment:focus-within {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: inherit;
+  font-size: inherit;
+  padding: 4px 12px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--vscode-button-hoverBackground);
+}
+
+button.secondary {
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+}
+
+button.secondary:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.icon-button {
+  padding: 2px;
+  color: var(--vscode-icon-foreground);
+  background: transparent;
+}
+
+.icon-button:hover:not(:disabled) {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.link-button {
+  display: inline;
+  padding: 0;
+  border: none;
+  color: var(--vscode-textLink-foreground);
+  background: transparent;
+  text-decoration: underline;
+}
+
+.link-button:hover:not(:disabled) {
+  color: var(--vscode-textLink-activeForeground);
+  background: transparent;
+}
+
+/* Radio groups drawn as one segmented control; still radios to the keyboard. */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, transparent));
+  border-radius: 2px;
+  margin-bottom: 8px;
+}
+
+.segmented.small {
+  margin-bottom: 0;
+}
+
+.segment {
+  position: relative;
+  cursor: pointer;
+}
+
+.segment input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.segment span {
+  display: block;
+  padding: 3px 12px;
+}
+
+.segment input:checked + span {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.chip {
+  font-family: var(--vscode-editor-font-family);
+  padding: 2px 8px;
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+}
+
+.chip:hover:not(:disabled) {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  margin: 6px 0;
+}
+
+.check > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.groups {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.groups legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+.finder-rows {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
+
+.finder-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.row-kind {
+  min-width: 64px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.row-op {
+  font-family: var(--vscode-editor-font-family);
+  color: var(--vscode-descriptionForeground);
+}
+
+.row-solution {
+  min-width: 200px;
+}
+
+.row-buttons {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.finder-chip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--vscode-panel-border, var(--vscode-descriptionForeground));
+  border-radius: 2px;
+  margin: 4px 0 8px;
+}
+
+.finder-chip-label {
+  color: var(--vscode-descriptionForeground);
+}
+
+details {
+  margin-top: 8px;
+}
+
+summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.launcher-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 20px 12px;
+  border-top: 1px solid var(--vscode-panel-border, transparent);
+  background: var(--vscode-editor-background);
+}
+
+.preview {
+  display: block;
+  padding: 6px 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-radius: 2px;
+  background: var(--vscode-textCodeBlock-background);
+  user-select: text;
+}
+
+.problem {
+  margin: 0;
+  color: var(--vscode-errorForeground);
+}
+
+.footer-buttons {
+  display: flex;
+  gap: 8px;
+}

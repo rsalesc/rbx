@@ -627,6 +627,51 @@ Commands*, to change it.
 - `rbx.solutionCodeLens` also hides the ▶ Run lens; the editor-title button
   stays.
 
+## Stress testing
+
+A third view, **Stress**, sits next to Run and Tests. It starts
+[`rbx stress`](https://rsalesc.github.io/rbx/setters/stress-testing/) and shows
+what it finds, read from the session `rbx stress` publishes under
+`.rbx/runs/.stress/` -- so a stress started in a terminal shows up too.
+
+- **Declared stresses** from `problem.rbx.yml`, each with *Run*
+  (`rbx stress <name>`) and *Edit* (opens it in the launcher).
+- **A status line** while a session runs: elapsed time, tests run, findings
+  so far, and *Stop*. Stop terminates the task, and rbx stamps the session
+  `interrupted` at once -- unlike Ctrl-C, without finishing the current test.
+  It is offered only for a session the extension started; one started in a
+  terminal is stopped from there. A session left `running` by a process that
+  is gone shows as stale.
+- **One row per finding**: the generator call, its duration, and a verdict
+  chip per solution. *Open* shows the input, the expected answer and each
+  solution's output (a non-empty stderr is offered, not opened), *Compare* diffs two solutions' outputs, *Copy* copies the generator
+  call, and *Promote* adds the finding to the testset.
+
+*New Stress...* opens the **launcher**, an editor-tab form that compiles to one
+`rbx stress` command, previewed live as you fill it in, with *Run* and *Copy*
+in its footer:
+
+| Section | Holds |
+|---|---|
+| Inputs | a declared stress, a generator expression, or the test groups to fuzz |
+| Find | *Break* rows (`[sol] ~ OUTCOME`) and *Disagree* rows (`[a] != [b]`), joined by *All of* or *Any of*; or *Slowest tests* (`--slowest`) |
+| Budget | time, findings to stop after, time limit; *Advanced*: sanitized, skip invalid inputs, validate inputs, reference solution |
+
+The finder is built from rows only: anything they cannot express is a job for
+the terminal. The last launch is remembered per package. Every launch passes
+`--no-promote`, so the task never stops to ask a question in its terminal.
+
+*Promote* goes through `rbx testcases add-finding`, which decides what lands in
+the testset, and is disabled until the session ends. Into a generator script
+group, it runs a `--dry-run --json` headless and opens a diff of the script
+against a writable proposed version; edit the right side, then accept (the
+check mark in the editor title, *Accept Proposed Change*) or *Discard Proposed
+Change*. Accept creates the script if it does not exist yet, asks you to save
+or revert unsaved edits to it in an editor first, and refuses a proposal the
+script has moved past, offering *Copy my edits* and *Promote again*. Into a
+manual group, or a new group of either kind, it dispatches
+`rbx testcases add-finding` in a terminal.
+
 ## Status
 
 Milestone 1 of the [v1 design](../docs/plans/2026-08-11-vscode-extension-design.md):
@@ -730,6 +775,8 @@ Everything comes from files rbx already writes. The layout is a contract, and
 | `<pkg>/.rbx/runs/<i>/<group>/<stem>.err` | solution stderr (`.sol.err` for communication tasks) |
 | `<pkg>/build/tests/<group>/<stem>.in` | generated input |
 | `<pkg>/build/tests/<group>/<stem>.out` | expected answer |
+| `<pkg>/.rbx/runs/.stress/stress.yml` | the latest stress session: state, spec, counters, and every finding with its generator call and per-solution verdicts |
+| `<pkg>/.rbx/runs/.stress/findings/<k>/` | finding `k` (from 1): `input.in`, `input.ans`, and `<sol>.out`/`.err`/`.eval` per solution |
 
 Two things are easy to get wrong here:
 
@@ -747,8 +794,10 @@ Two things are easy to get wrong here:
   themselves, `skeleton.yml`, `report.yml`, `runs/<i>/<group>/*.eval` and the
   testset manifest. Each event is classified (`rbx/artifactEvents.ts`) and the
   store does the least that accounts for it: one `.eval` landing re-reads that
-  one file. The rest of `.rbx` -- storage, caches, `.irun`, `.stress` -- churns
-  through every build and is deliberately not watched.
+  one file. Of `.stress`, only `stress.yml` (and the directory itself coming
+  or going) is watched; a finding's files are read on demand. The rest of
+  `.rbx` -- storage, caches, `.irun`, the stress scratch area -- churns through
+  every build and is deliberately not watched.
 - `skeleton.yml` carries each solution's `limits` already resolved through its
   language. The table above it is keyed by language, and mapping a solution onto
   one of its entries needs rbx's own `find_language_name` -- so the resolved

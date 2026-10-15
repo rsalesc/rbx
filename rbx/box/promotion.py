@@ -1,12 +1,15 @@
+import hashlib
 import itertools
 import pathlib
 import re
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set, Tuple
+
+import pydantic
 
 from rbx.box import generator_script_handlers as gsh
 from rbx.box import package, package_utils, yaml_include
 from rbx.box.generation_schema import GenerationTestcaseEntry
-from rbx.box.schema import GeneratorScript, TestcaseGroup
+from rbx.box.schema import GeneratorCall, GeneratorScript, TestcaseGroup
 
 
 def manual_group_dir(group: TestcaseGroup) -> pathlib.Path:
@@ -179,6 +182,136 @@ def get_manual_groups_by_name() -> Dict[str, TestcaseGroup]:
     return res
 
 
+def get_script_groups_by_name() -> Dict[str, TestcaseGroup]:
+    """Return test groups backed by a static ``.txt`` generator script.
+
+    These are the groups new generator calls can be appended to: a dynamic
+    script (a program that emits the plan, e.g. ``.py``) cannot be edited.
+    """
+    return {
+        name: group
+        for name, group in package.get_test_groups_by_name().items()
+        if group.generatorScript is not None
+        and group.generatorScript.path.suffix == '.txt'
+    }
+
+
+def propose_script_append(
+    group: TestcaseGroup,
+    calls: List[GeneratorCall],
+    comment: Optional[str] = None,
+) -> Tuple[pathlib.Path, str, str]:
+    """Compute the text of ``group``'s generator script with ``calls`` appended.
+
+    Returns ``(path, before, after)``: the script's path (as recorded in the
+    package, relative to its root), its current text and the text it would
+    have. Writes nothing; :func:`append_to_script_group` does.
+    """
+    assert group.generatorScript is not None
+    path = pathlib.Path(group.generatorScript.path)
+    before = path.read_text() if path.is_file() else ''
+    handler = gsh.get_generator_script_handler(
+        before,
+        gsh.GeneratorScriptHandlerParams(group.generatorScript),
+    )
+    handler.append(calls, comment=comment)
+    return path, before, handler.script
+
+
+def group_name_error(name: str) -> Optional[str]:
+    """Why ``name`` cannot name a new test group, or ``None`` if it can."""
+    try:
+        TestcaseGroup(name=name)
+    except pydantic.ValidationError:
+        return (
+            f'{name!r} is not a valid test group name: it must be 3 to 32 letters, '
+            'digits, `-` or `_`, starting with a letter or digit.'
+        )
+    return None
+
+
+def _parsed_calls(group: TestcaseGroup, script: str) -> List[Tuple[str, str]]:
+    """The generator calls ``script`` holds, as ``(name, args)`` keys.
+
+    Args are whitespace-normalized so formatting alone never makes two calls
+    differ.
+    """
+    assert group.generatorScript is not None
+    handler = gsh.get_generator_script_handler(
+        script, gsh.GeneratorScriptHandlerParams(group.generatorScript)
+    )
+    return [
+        (inp.generator_call.name, ' '.join((inp.generator_call.args or '').split()))
+        for inp in handler.parse()
+        if inp.generator_call is not None
+    ]
+
+
+def is_new_script_call(group: TestcaseGroup, calls: List[GeneratorCall]) -> List[bool]:
+    """For each call, whether ``group``'s script lacks that call yet.
+
+    Compares parsed calls rather than lines: each call is appended the way
+    :func:`append_to_script_group` would, and only the appended text is parsed
+    back, so format-specific decoration (a ``box`` script's ``N ;`` group
+    prefix and ``.exe`` suffix) compares equal. A call repeated within
+    ``calls`` is new only the first time.
+    """
+    assert group.generatorScript is not None
+    path = pathlib.Path(group.generatorScript.path)
+    text = path.read_text() if path.is_file() else ''
+    seen = set(_parsed_calls(group, text))
+    res = []
+    for call in calls:
+        handler = gsh.get_generator_script_handler(
+            text, gsh.GeneratorScriptHandlerParams(group.generatorScript)
+        )
+        handler.append([call])
+        keys = _parsed_calls(group, handler.script[len(text) :])
+        res.append(not seen.issuperset(keys))
+        seen.update(keys)
+    return res
+
+
+def is_new_manual_input(
+    group: TestcaseGroup,
+    inputs: List[pathlib.Path],
+    base_dir: pathlib.Path = pathlib.Path(),
+) -> List[bool]:
+    """For each input, whether no file of ``group`` has the same bytes yet.
+
+    An input repeated within ``inputs`` is new only the first time.
+    """
+    assert group.testcaseGlob is not None
+
+    def digest(path: pathlib.Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    seen = {
+        digest(path) for path in base_dir.glob(group.testcaseGlob) if path.is_file()
+    }
+    res = []
+    for path in inputs:
+        h = digest(path)
+        res.append(h not in seen)
+        seen.add(h)
+    return res
+
+
+def append_to_script_group(
+    group: TestcaseGroup,
+    calls: List[GeneratorCall],
+    comment: Optional[str] = None,
+) -> pathlib.Path:
+    """Append ``calls`` to ``group``'s ``.txt`` generator script.
+
+    Returns the path of the script it wrote.
+    """
+    path, _, after = propose_script_append(group, calls, comment=comment)
+    path.write_text(after)
+    package_utils.clear_package_cache()
+    return path
+
+
 def create_manual_group(name: str, glob: str) -> TestcaseGroup:
     """Create a new glob-backed manual test group in ``problem.rbx.yml``.
 
@@ -186,6 +319,8 @@ def create_manual_group(name: str, glob: str) -> TestcaseGroup:
     to the ``testcases`` list (preserving comments via ruyaml), saves it, clears
     the package cache, and returns the created ``TestcaseGroup``.
     """
+    # Validate before touching anything: an invalid name must not reach the yaml.
+    group = TestcaseGroup(name=name, testcaseGlob=glob)
     pathlib.Path(glob).parent.mkdir(parents=True, exist_ok=True)
 
     dest = package.find_problem_yaml()
@@ -200,7 +335,7 @@ def create_manual_group(name: str, glob: str) -> TestcaseGroup:
     target.save()
     package_utils.clear_package_cache()
 
-    return TestcaseGroup(name=name, testcaseGlob=glob)
+    return group
 
 
 def create_script_group(path: pathlib.Path) -> TestcaseGroup:
@@ -217,10 +352,13 @@ def create_script_group(path: pathlib.Path) -> TestcaseGroup:
     created in a subdirectory leaves the group pointing at nothing.
     """
     path = path.with_suffix('.txt')
+    name = path.stem
+    # Validate before touching anything: an invalid name must not reach the yaml.
+    group = TestcaseGroup(name=name, generatorScript=GeneratorScript(path=path))
+
     path.parent.mkdir(parents=True, exist_ok=True)
     path.touch()
 
-    name = path.stem
     dest = package.find_problem_yaml()
     assert dest is not None
     target = yaml_include.open_for_edit(dest, 'testcases')
@@ -232,7 +370,7 @@ def create_script_group(path: pathlib.Path) -> TestcaseGroup:
     target.save()
     package_utils.clear_package_cache()
 
-    return TestcaseGroup(name=name, generatorScript=GeneratorScript(path=path))
+    return group
 
 
 def script_format_by_path() -> Dict[pathlib.Path, str]:

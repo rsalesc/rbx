@@ -1,11 +1,19 @@
+import contextlib
+import datetime
+import functools
+import json
+import os
 import pathlib
-from typing import Annotated, Dict, List, Optional, Tuple
+import shlex
+import sys
+from typing import Annotated, Dict, List, NoReturn, Optional, TextIO, Tuple
 
 import syncer
 import typer
 
 from rbx import annotations, config, utils
-from rbx.box import package, promotion
+from rbx.annotations import PackagePath
+from rbx.box import package, promotion, stress_manifest
 from rbx.box.generators import (
     GenerationTestcaseEntry,
     generate_outputs_for_testcases,
@@ -19,7 +27,7 @@ from rbx.box.testcase_extractors import (
 )
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testcase_utils import TestcasePattern
-from rbx.console import console
+from rbx.console import console, stderr_console
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
 
@@ -600,3 +608,451 @@ async def promote(
     # Not transactional: if removal fails after the .in files were written, the
     # manual copies and the script lines both remain (duplicates) -- clean up by hand.
     promotion.remove_script_entries(promoted_entries)
+
+
+_DRY_RUN_ONLY_FOR_SCRIPTS = (
+    '--dry-run only applies to a generator script group passed with --group.'
+)
+
+
+def _fail(message: str) -> NoReturn:
+    # stderr, so that with --json stdout carries the result and nothing else.
+    stderr_console.print(f'[error]{message}[/error]')
+    raise typer.Exit(1)
+
+
+def _stress_comment(spec: stress_manifest.StressSpec) -> str:
+    """The command that runs the session again, as a one-line comment."""
+    args = ['rbx', 'stress']
+    if spec.name is not None:
+        args.append(spec.name)
+    else:
+        if spec.generator is not None:
+            args += ['-g', spec.generator]
+        if spec.fuzz is not None:
+            if spec.fuzz:
+                for fuzzed in spec.fuzz:
+                    args += ['--fuzz-on', fuzzed]
+            else:
+                args.append('--fuzz')
+        args += ['-f', spec.finder]
+    command = shlex.join(args).replace('\r', ' ').replace('\n', ' ')
+    return f'Found by: {command}'
+
+
+def _inside_package(path: pathlib.Path) -> bool:
+    # The cwd is the package root here (`within_problem`).
+    root = pathlib.Path.cwd().resolve()
+    return pathlib.Path(os.path.abspath(path)).resolve().is_relative_to(root)
+
+
+def _is_session(manifest: stress_manifest.StressManifest, session: str) -> bool:
+    """Whether `session` (an ISO 8601 `startedAt`) names `manifest`'s session.
+
+    Compares datetimes, not strings, so `2026-10-15T12:00:00+00:00` and
+    `2026-10-15T12:00:00Z` match. A naive value never equals an aware one.
+    """
+    value = session.strip()
+    if value.endswith(('Z', 'z')):
+        # `fromisoformat` only accepts a `Z` suffix from Python 3.11 on.
+        value = value[:-1] + '+00:00'
+    try:
+        return datetime.datetime.fromisoformat(value) == manifest.startedAt
+    except ValueError:
+        return False
+
+
+def _selected_findings(
+    indices: Optional[List[int]],
+    session: Optional[str] = None,
+) -> Tuple[stress_manifest.StressManifest, List[stress_manifest.StressFindingEntry]]:
+    """The latest session and the findings `indices` name (all when empty).
+
+    With `session`, the latest session must be that one: a client that picked
+    findings by index must not promote another session's findings under the
+    same numbers.
+    """
+    manifest = stress_manifest.read_manifest()
+    if manifest is None:
+        _fail(
+            'There is no stress session to take findings from. '
+            'Run [item]rbx stress[/item] first.'
+        )
+    if session is not None and not _is_session(manifest, session):
+        _fail(
+            'The stress session changed since you picked this finding; '
+            'promote it again from the new session.'
+        )
+    if not manifest.findings:
+        _fail('The latest stress session found nothing.')
+    if not indices:
+        return manifest, list(manifest.findings)
+
+    by_index = {finding.index: finding for finding in manifest.findings}
+    unknown = [k for k in indices if k not in by_index]
+    if unknown:
+        known = ', '.join(str(k) for k in sorted(by_index))
+        _fail(
+            f'Unknown finding [item]{unknown[0]}[/item] '
+            f'(the latest stress session has: {known}).'
+        )
+    return manifest, [by_index[k] for k in dict.fromkeys(indices)]
+
+
+def _finding_inputs(
+    findings: List[stress_manifest.StressFindingEntry],
+) -> List[pathlib.Path]:
+    paths = [stress_manifest.finding_input_path(f.index) for f in findings]
+    for finding, path in zip(findings, paths):
+        if not path.is_file():
+            _fail(
+                f'Could not find the input of finding [item]{finding.index}[/item] '
+                f'at [item]{path}[/item].'
+            )
+    return paths
+
+
+def _list_groups(json_out: Optional[TextIO]) -> None:
+    rows = []
+    for name, group in promotion.get_script_groups_by_name().items():
+        assert group.generatorScript is not None
+        # Relative to the package root, which is the cwd here.
+        path = package.relpath(group.generatorScript.path).as_posix()
+        rows.append({'name': name, 'kind': 'script', 'path': path})
+    for name, group in promotion.get_manual_groups_by_name().items():
+        rows.append({'name': name, 'kind': 'manual', 'path': group.testcaseGlob})
+
+    if json_out is not None:
+        print(json.dumps(rows), file=json_out)
+        return
+    if not rows:
+        console.print('No test group can take stress findings.')
+        return
+    for row in rows:
+        console.print(f'[item]{row["name"]}[/item] ({row["kind"]}): {row["path"]}')
+
+
+def _check_new_script(
+    path: pathlib.Path, all_groups: Dict[str, TestcaseGroup]
+) -> pathlib.Path:
+    """Validate the path of --new-script; return it relative to the package."""
+    if path.suffix not in ('', '.txt'):
+        _fail(f'--new-script must name a .txt file (got [item]{path}[/item]).')
+    path = path.with_suffix('.txt')
+    if not _inside_package(path):
+        _fail(f'--new-script must be inside the package (got [item]{path}[/item]).')
+    path = package.relpath(path)
+
+    error = promotion.group_name_error(path.stem)
+    if error is not None:
+        _fail(f'Cannot name a group after [item]{path}[/item]: {error}')
+    if path.stem in all_groups:
+        _fail(f'Test group [item]{path.stem}[/item] already exists.')
+    for name, other in all_groups.items():
+        gs = other.generatorScript
+        if gs is not None and package.relpath(gs.path) == path:
+            _fail(
+                f'[item]{path}[/item] is already the generator script of '
+                f'test group [item]{name}[/item].'
+            )
+    return path
+
+
+def _check_new_manual(
+    name: str, glob: str, all_groups: Dict[str, TestcaseGroup]
+) -> TestcaseGroup:
+    """Validate --new-manual and --glob; return the group, not yet registered."""
+    error = promotion.group_name_error(name)
+    if error is not None:
+        _fail(error)
+    if name in all_groups:
+        _fail(f'Test group [item]{name}[/item] already exists.')
+    if '*' not in glob or not glob.endswith('.in'):
+        _fail(
+            'The glob of a manual group must contain a `*` and end in '
+            f'`.in` (got [item]{glob}[/item]).'
+        )
+    if not _inside_package(pathlib.Path(glob.split('*')[0] or '.')):
+        _fail(f'--glob must be inside the package (got [item]{glob}[/item]).')
+    return TestcaseGroup(name=name, testcaseGlob=glob)
+
+
+@app.command(
+    'add-finding',
+    help='Add findings of the latest stress session to a test group.',
+)
+@annotations.docs("""
+    Adds tests found by the latest `rbx stress` session to a test group: the
+    non-interactive counterpart of the prompt `rbx stress` shows when it ends.
+
+    Name the findings by their number in the stress report (from 1), or omit
+    them to add all of them. What the group receives depends on its kind:
+
+    - A `.txt` generator script group gets the generator call of each finding
+      appended, under a comment with the `rbx stress` command that found it.
+      The test is generated again on the next build, so it stays reproducible.
+    - A manual group (one declared with `testcaseGlob`) gets a copy of each
+      finding's input, under the next free name its glob allows.
+
+    A finding the group already has -- the same generator call, or an input
+    with the same bytes -- is skipped, so adding the same findings twice is
+    harmless.
+
+    `--new-script` and `--new-manual` create the group first. `--dry-run`
+    shows what the file of a script group would become without writing it,
+    and `--list-groups` lists the groups that can take findings. With
+    `--json`, the command prints its result as JSON on stdout and nothing else.
+""")
+@package.within_problem
+def add_finding(
+    indices: Annotated[
+        Optional[List[int]],
+        typer.Argument(
+            help='Findings to add, by their number in the stress report (from 1). '
+            'All of them if omitted.',
+            metavar='K',
+            show_default=False,
+        ),
+    ] = None,
+    group: Annotated[
+        Optional[str],
+        typer.Option(
+            '--group',
+            '-G',
+            help='Existing test group to add the findings to: a .txt generator '
+            'script group or a manual group.',
+            autocompletion=annotations._adapt('testgroup'),  # noqa: SLF001
+        ),
+    ] = None,
+    new_script: Annotated[
+        Optional[pathlib.Path],
+        typer.Option(
+            '--new-script',
+            help='Create a generator script group backed by this .txt file, '
+            'and append the findings to it.',
+        ),
+        PackagePath,
+    ] = None,
+    new_manual: Annotated[
+        Optional[str],
+        typer.Option(
+            '--new-manual',
+            help='Create a manual group with this name (needs --glob), '
+            'and copy the findings into it.',
+        ),
+    ] = None,
+    glob: Annotated[
+        Optional[str],
+        typer.Option(
+            '--glob',
+            help='Glob of the group --new-manual creates, '
+            'e.g. tests/manual/stress/*.in.',
+        ),
+        PackagePath,
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            '--dry-run',
+            help='Show how the generator script of --group would change, '
+            'without writing it (script groups only).',
+        ),
+    ] = False,
+    as_json: Annotated[
+        bool,
+        typer.Option('--json', help='Print the result as JSON on stdout.'),
+    ] = False,
+    list_groups: Annotated[
+        bool,
+        typer.Option(
+            '--list-groups',
+            help='List the test groups that can take findings, and exit.',
+        ),
+    ] = False,
+    session: Annotated[
+        Optional[str],
+        typer.Option(
+            '--session',
+            help='The startedAt of the stress session the findings were picked '
+            'from; refuse to run if the latest session is another one.',
+            hidden=True,
+        ),
+    ] = None,
+):
+    run = functools.partial(
+        _add_finding,
+        indices=indices,
+        group=group,
+        new_script=new_script,
+        new_manual=new_manual,
+        glob=glob,
+        dry_run=dry_run,
+        list_groups=list_groups,
+        session=session,
+    )
+    if not as_json:
+        run(json_out=None)
+        return
+    # Whatever else gets printed on the way -- including by the helpers this
+    # calls -- goes to stderr, so stdout parses as JSON. `within_problem` prints
+    # its issue report after this returns, outside the redirect: safe today, as
+    # add-finding records no issues.
+    json_out = sys.stdout
+    with contextlib.redirect_stdout(sys.stderr):
+        run(json_out=json_out)
+
+
+def _add_finding(
+    *,
+    indices: Optional[List[int]],
+    group: Optional[str],
+    new_script: Optional[pathlib.Path],
+    new_manual: Optional[str],
+    glob: Optional[str],
+    dry_run: bool,
+    list_groups: bool,
+    session: Optional[str],
+    json_out: Optional[TextIO],
+) -> None:
+    destinations = [d for d in (group, new_script, new_manual) if d is not None]
+    if list_groups:
+        if destinations or indices or dry_run or glob is not None:
+            _fail('--list-groups takes no findings, destination or --glob.')
+        _list_groups(json_out)
+        return
+
+    if len(destinations) != 1:
+        _fail('Pass exactly one of --group, --new-script or --new-manual.')
+    if glob is not None and new_manual is None:
+        _fail('--glob only applies to --new-manual.')
+    if new_manual is not None and glob is None:
+        _fail('--new-manual needs a --glob for the files of the new group.')
+    if dry_run and group is None:
+        _fail(_DRY_RUN_ONLY_FOR_SCRIPTS)
+
+    manifest, findings = _selected_findings(indices, session)
+    all_groups = package.get_test_groups_by_name()
+    script_groups = promotion.get_script_groups_by_name()
+    manual_groups = promotion.get_manual_groups_by_name()
+
+    # `target` is None only for --new-script, created once everything checks out.
+    target: Optional[TestcaseGroup] = None
+    if group is not None:
+        if group in script_groups:
+            target, kind = script_groups[group], 'script'
+        elif group in manual_groups:
+            target, kind = manual_groups[group], 'manual'
+        elif group in all_groups:
+            _fail(
+                f'Test group [item]{group}[/item] cannot take findings: only a '
+                '.txt generatorScript group or a manual (testcaseGlob) group can.'
+            )
+        else:
+            _fail(f'Test group [item]{group}[/item] does not exist.')
+    elif new_script is not None:
+        kind = 'script'
+        new_script = _check_new_script(new_script, all_groups)
+    else:
+        assert new_manual is not None and glob is not None
+        kind = 'manual'
+        target = _check_new_manual(new_manual, glob, all_groups)
+
+    if dry_run and kind != 'script':
+        _fail(_DRY_RUN_ONLY_FOR_SCRIPTS)
+
+    calls = [finding.generator for finding in findings]
+    comment = _stress_comment(manifest.spec)
+
+    if dry_run:
+        assert target is not None and target.generatorScript is not None
+        fresh = promotion.is_new_script_call(target, calls)
+        new_calls = [call for call, new in zip(calls, fresh) if new]
+        path = pathlib.Path(target.generatorScript.path)
+        before = after = path.read_text() if path.is_file() else ''
+        if new_calls:
+            path, before, after = promotion.propose_script_append(
+                target, new_calls, comment
+            )
+        if json_out is not None:
+            print(
+                json.dumps(
+                    {'file': str(utils.abspath(path)), 'before': before, 'after': after}
+                ),
+                file=json_out,
+            )
+            return
+        if new_calls:
+            console.print(
+                f'Would append [item]{len(new_calls)}[/item] tests to '
+                f'[item]{package.relpath(path)}[/item]:'
+            )
+            console.print(after[len(before) :].strip('\n'), markup=False)
+        _print_skipped(findings, fresh, target.name)
+        return
+
+    written: List[pathlib.Path]
+    if kind == 'script':
+        if target is None:
+            assert new_script is not None
+            target = promotion.create_script_group(new_script)
+        assert target.generatorScript is not None
+        fresh = promotion.is_new_script_call(target, calls)
+        new_calls = [call for call, new in zip(calls, fresh) if new]
+        written = []
+        if new_calls:
+            written = [promotion.append_to_script_group(target, new_calls, comment)]
+        message = (
+            f'Added [item]{len(new_calls)}[/item] tests to the generator script of '
+            f'[item]{target.name}[/item] at '
+            f'[item]{package.relpath(target.generatorScript.path)}[/item].'
+        )
+    else:
+        assert target is not None
+        # Checked before anything is written.
+        inputs = _finding_inputs(findings)
+        fresh = promotion.is_new_manual_input(target, inputs)
+        # Not transactional: if a copy fails, the earlier ones stay in place --
+        # clean up by hand. A new group is registered only after every copy
+        # succeeded, so a failure never leaves it half-made in problem.rbx.yml.
+        written = [
+            promotion.promote_input_to_group(path, target)
+            for path, new in zip(inputs, fresh)
+            if new
+        ]
+        if new_manual is not None:
+            assert glob is not None
+            target = promotion.create_manual_group(new_manual, glob)
+        message = (
+            f'Added [item]{len(written)}[/item] tests to manual group '
+            f'[item]{target.name}[/item] at '
+            f'[item]{promotion.manual_group_dir(target)}[/item].'
+        )
+
+    if json_out is not None:
+        print(
+            json.dumps(
+                {
+                    'group': target.name,
+                    'kind': kind,
+                    'files': [str(utils.abspath(p)) for p in written],
+                    'skipped': [f.index for f, new in zip(findings, fresh) if not new],
+                }
+            ),
+            file=json_out,
+        )
+        return
+    console.print(f'[success]{message}[/success]')
+    _print_skipped(findings, fresh, target.name)
+
+
+def _print_skipped(
+    findings: List[stress_manifest.StressFindingEntry],
+    fresh: List[bool],
+    group: str,
+) -> None:
+    skipped = [str(f.index) for f, new in zip(findings, fresh) if not new]
+    if skipped:
+        console.print(
+            f'[warning]Skipped findings [item]{", ".join(skipped)}[/item]: '
+            f'test group [item]{group}[/item] already has them.[/warning]'
+        )

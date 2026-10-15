@@ -5,24 +5,80 @@ only when one of its commands is invoked. A command added here needs a row
 there too.
 """
 
+import contextlib
+import json
 import pathlib
 import shlex
 import sys
-from typing import Annotated, List, Optional, Union
+from typing import Annotated, Any, Dict, List, Optional, Union
 
 import rich.prompt
 import syncer
 import typer
 
 from rbx import annotations, console, utils
-from rbx.box import (
-    generator_script_handlers,
-    package,
-)
+from rbx.box import package, stress_manifest
 from rbx.box.environment import VerificationLevel
 from rbx.grading import grading_context
 
 app = typer.Typer(cls=annotations.AliasGroup)
+
+
+def _listing() -> Dict[str, Any]:
+    """What a stress of this problem can use, as `--list --json` publishes it.
+
+    Solutions come from `package.get_solutions()`, so globs are expanded the
+    way a run sees them. Outcomes are `ExpectedOutcome` member *names*
+    (`WRONG_ANSWER`), the spelling finder expressions use.
+    """
+    pkg = package.find_problem_package_or_die()
+    return {
+        'stresses': [
+            {
+                'name': stress.name,
+                'generator': {
+                    'name': stress.generator.name,
+                    'args': stress.generator.args,
+                },
+                'finder': stress.finder,
+            }
+            for stress in pkg.stresses
+        ],
+        'solutions': [
+            {
+                'path': package.relpath(solution.path).as_posix(),
+                'outcome': solution.outcome.name,
+            }
+            for solution in package.get_solutions()
+        ],
+        'generators': [generator.name for generator in pkg.generators],
+        'groups': [group.name for group in pkg.testcases],
+    }
+
+
+def _print_listing(listing: Dict[str, Any]) -> None:
+    out = console.console
+    out.print('[bstatus]Stresses[/bstatus]')
+    for stress in listing['stresses']:
+        call = ' '.join(
+            part
+            for part in (stress['generator']['name'], stress['generator']['args'])
+            if part
+        )
+        # No markup: finders and generator args are full of `[...]`.
+        out.print(
+            f'  {stress["name"]}: -g {shlex.quote(call)} '
+            f'-f {shlex.quote(stress["finder"])}',
+            markup=False,
+        )
+    if not listing['stresses']:
+        out.print('  (none)')
+    out.print('[bstatus]Solutions[/bstatus]')
+    for solution in listing['solutions']:
+        out.print(f'  {solution["path"]} ({solution["outcome"]})', markup=False)
+    for title, key in (('Generators', 'generators'), ('Test groups', 'groups')):
+        out.print(f'[bstatus]{title}[/bstatus]')
+        out.print('  ' + (', '.join(listing[key]) or '(none)'), markup=False)
 
 
 @app.command(
@@ -154,7 +210,49 @@ async def stress(
         help='Reference solution to use for the stress test.',
         autocompletion=annotations._adapt('solutions', file=True),  # noqa: SLF001
     ),
+    no_promote: Annotated[
+        bool,
+        typer.Option(
+            '--no-promote',
+            help='Do not offer to add the findings to a test group when the stress ends.',
+        ),
+    ] = False,
+    list_resources: Annotated[
+        bool,
+        typer.Option(
+            '--list',
+            help='List the stresses, solutions, generators and test groups a '
+            'stress can use, then exit.',
+        ),
+    ] = False,
+    as_json: Annotated[
+        bool,
+        typer.Option(
+            '--json', help='With --list, print the listing as JSON on stdout.'
+        ),
+    ] = False,
 ):
+    if list_resources:
+        if name or generator_args or finder or fuzz or fuzz_on:
+            console.stderr_console.print(
+                '[error]--list takes no stress name, --generator/-g, --finder/-f '
+                'or fuzz options.[/error]'
+            )
+            raise typer.Exit(1)
+        if not as_json:
+            _print_listing(_listing())
+            return
+        # Whatever else gets printed on the way goes to stderr, so stdout
+        # parses as JSON.
+        json_out = sys.stdout
+        with contextlib.redirect_stdout(sys.stderr):
+            listing = _listing()
+        print(json.dumps(listing), file=json_out)
+        return
+    if as_json:
+        console.stderr_console.print('[error]--json only applies to --list.[/error]')
+        raise typer.Exit(1)
+
     if generator_args and (fuzz or fuzz_on):
         console.console.print(
             '[error]Options --generator/-g and --fuzz/--fuzz-on cannot be used together.[/error]'
@@ -214,7 +312,7 @@ async def stress(
 
     stresses.print_stress_report(report)
 
-    if not report.findings:
+    if no_promote or not report.findings:
         return
 
     # Add found tests.
@@ -228,12 +326,7 @@ async def stress(
 
     testgroup = None
     while testgroup is None or testgroup:
-        groups_by_name = {
-            name: group
-            for name, group in package.get_test_groups_by_name().items()
-            if group.generatorScript is not None
-            and group.generatorScript.path.suffix == '.txt'
-        }
+        groups_by_name = promotion.get_script_groups_by_name()
         manual_groups = promotion.get_manual_groups_by_name()
 
         import questionary
@@ -260,12 +353,12 @@ async def stress(
 
         if testgroup in manual_groups:
             manual_target = manual_groups[testgroup]
-            findings_dir = package.get_problem_runs_dir() / '.stress' / 'findings'
             finding_paths = [
-                findings_dir / f'{i}.in' for i in range(len(report.findings))
+                stress_manifest.finding_input_path(i + 1)
+                for i in range(len(report.findings))
             ]
             missing = next(
-                (i for i, p in enumerate(finding_paths) if not p.exists()), None
+                (i + 1 for i, p in enumerate(finding_paths) if not p.exists()), None
             )
             if missing is not None:
                 console.console.print(
@@ -295,20 +388,12 @@ async def stress(
         try:
             subgroup = groups_by_name[testgroup]
             assert subgroup.generatorScript is not None
-            generator_script = pathlib.Path(subgroup.generatorScript.path)
-            handler = generator_script_handlers.get_generator_script_handler(
-                generator_script.read_text(),
-                generator_script_handlers.GeneratorScriptHandlerParams(
-                    subgroup.generatorScript,
-                ),
-            )
-
             stress_text = f'Obtained by running `rbx {shlex.join(sys.argv[1:])}`'
-            handler.append(
+            promotion.append_to_script_group(
+                subgroup,
                 [finding.generator for finding in report.findings],
                 comment=stress_text,
             )
-            generator_script.write_text(handler.script)
 
             console.console.print(
                 f"Added [item]{len(report.findings)}[/item] tests to test group [item]{testgroup}[/item]'s generatorScript at {subgroup.generatorScript.href()}"

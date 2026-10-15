@@ -172,3 +172,38 @@ test('a rediscovery reuses every evaluation that did not change', async () => {
   assert.strictEqual(files.stats.reads, 1);
   assert.strictEqual(files.stats.hits, 1);
 });
+
+function writeStress(root: string, state: string): void {
+  const dir = path.join(root, '.rbx', 'runs', '.stress');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, 'stress.yml'),
+    `version: 1\nstate: ${state}\nspec: {finder: sols/s1.cpp}\nsolutions: [sols/s1.cpp]\n`,
+  );
+}
+
+test('the stress session is cached apart from the run, and dropped only by its own event', async () => {
+  const { root, files, store } = setup();
+  writeEval(root, 0, '000', 'accepted');
+  writeStress(root, 'running');
+  await store.load();
+  assert.strictEqual((await store.stress())?.state, 'running');
+
+  writeStress(root, 'done');
+  const reads = files.stats.reads;
+  store.apply(planRefresh([{ kind: 'stress' }]));
+  await store.load();
+
+  // The run was not touched -- not one `.eval` re-read -- and the session was.
+  assert.strictEqual(files.stats.reads, reads);
+  assert.strictEqual((await store.stress())?.state, 'done');
+
+  writeStress(root, 'interrupted');
+  store.apply(planRefresh([{ kind: 'skeleton' }]));
+  assert.strictEqual((await store.stress())?.state, 'done');
+});
+
+test('a package never stressed has no session', async () => {
+  const { store } = setup();
+  assert.strictEqual(await store.stress(), undefined);
+});

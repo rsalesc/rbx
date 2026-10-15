@@ -51,8 +51,10 @@ import {
   TASK_TYPE,
   asExtraArgs,
   collisions,
+  needsShellQuoting,
   rbxArgs,
   rbxEnv,
+  runningAt,
   scopeOf,
   taskDefinition,
   taskName,
@@ -77,6 +79,12 @@ export interface DispatchRequest {
   readonly root: string;
   readonly solutions?: readonly string[];
   /**
+   * The argv tail of a `stress` or `add-finding`, as stressSpec.ts (or the
+   * Stress view) built it. Passed through untouched; ignored by every other
+   * command, as `rbx.run.extraArgs` is by everything but a run.
+   */
+  readonly args?: readonly string[];
+  /**
    * Never ask or alert: skip, and say so in the log, wherever a dispatch would
    * otherwise prompt -- something already running there, a contest to choose,
    * no rbx found. For dispatches the user did not click: a build on save must
@@ -89,6 +97,8 @@ export interface DispatchRequest {
 interface Running {
   readonly execution: vscode.TaskExecution;
   readonly cwd: string;
+  /** The definition's `command`, unchecked: a restored task may hold anything. */
+  readonly command: unknown;
 }
 
 export function dispatchEnabled(): boolean {
@@ -122,7 +132,7 @@ function runningRbxTasks(): Running[] {
     }
     const cwd = cwdOf(execution.task);
     if (cwd !== undefined) {
-      running.push({ execution, cwd });
+      running.push({ execution, cwd, command: execution.task.definition.command });
     }
   }
   return running;
@@ -240,6 +250,12 @@ export class Dispatcher implements vscode.Disposable {
                 .getConfiguration(undefined, vscode.Uri.file(request.root))
                 .get(EXTRA_ARGS_SETTING),
             ),
+      // Only where it means something, so no other command's task identity
+      // (its definition) changes because a caller passed args it ignores.
+      ...(request.args !== undefined &&
+      (request.command === 'stress' || request.command === 'add-finding')
+        ? { args: request.args }
+        : {}),
       contest,
     };
     if ((await this.execute(invocation, request.quiet)) && scope === 'problem') {
@@ -353,9 +369,56 @@ export class Dispatcher implements vscode.Disposable {
       this.release(key);
       throw error;
     }
-    this.last = invocation;
-    void vscode.commands.executeCommand('setContext', 'rbx.canRerun', true);
+    // Not an `add-finding`: it is a one-shot action on particular findings of
+    // a particular session, and Rerun is a button pressed without looking at
+    // what it reruns -- by then the session may be another one, whose finding
+    // 1 is a different input altogether.
+    if (invocation.command !== 'add-finding') {
+      this.last = invocation;
+      void vscode.commands.executeCommand('setContext', 'rbx.canRerun', true);
+    }
     return true;
+  }
+
+  /**
+   * Whether an rbx task running `command` in exactly `root` is alive.
+   *
+   * The fallback for a stress manifest that reads `running` but cannot be
+   * checked directly -- `stressLiveness` says `unknown` when it names no pid,
+   * or another host's. Any such task counts, including one VS Code started on
+   * its own (*Rerun Last Task*), since the definition is what it reads; a
+   * stress typed into a terminal by hand is not a task, and so is not seen.
+   */
+  isRunning(root: string, command: RbxCommand): boolean {
+    return matching(root, command).length > 0;
+  }
+
+  /**
+   * Stop every rbx task running `command` in `root`, and wait for it to go.
+   *
+   * `terminate()` closes the task's terminal, whose process gets a SIGHUP. On
+   * SIGHUP or SIGTERM rbx stamps the stress manifest `interrupted` and exits at
+   * once -- unlike Ctrl-C, it does not let the current iteration finish -- so
+   * nothing here touches the artifacts. Resolves once the tasks have ended, or after the same timeout a
+   * dispatch waits for; the views follow the manifest either way.
+   *
+   * Queued behind any dispatch in flight, like every request here, so a Stop
+   * pressed right after a Run cannot look for the task before it has started.
+   */
+  stop(root: string, command: RbxCommand): Promise<void> {
+    return this.enqueue(async () => {
+      const running = matching(root, command);
+      if (running.length === 0) {
+        return;
+      }
+      for (const task of running) {
+        task.execution.terminate();
+      }
+      const stopped = await waitFor(() => matching(root, command).length === 0, STOP_TIMEOUT_MS);
+      if (!stopped) {
+        log(`${command} in ${root} did not stop within ${STOP_TIMEOUT_MS / 1000}s.`);
+      }
+    });
   }
 
   private task(invocation: Invocation, executable: string): vscode.Task {
@@ -367,7 +430,7 @@ export class Dispatcher implements vscode.Disposable {
       'rbx',
       // An argv, not a command line: VS Code quotes each argument for whatever
       // shell the terminal runs, so a path with a space stays one argument.
-      new vscode.ShellExecution(executable, rbxArgs(invocation), {
+      new vscode.ShellExecution(executable, shellArgs(invocation), {
         cwd: invocation.cwd,
         ...(env === undefined ? {} : { env }),
       }),
@@ -511,6 +574,32 @@ export class Dispatcher implements vscode.Disposable {
   dispose(): void {
     this.disposables.forEach((disposable) => disposable.dispose());
   }
+}
+
+/** The running rbx tasks for `command` whose directory is exactly `root`. */
+function matching(root: string, command: RbxCommand): Running[] {
+  return runningAt(runningRbxTasks(), root, command);
+}
+
+/**
+ * The argv as the terminal gets it.
+ *
+ * A `stress` or `add-finding` carries finders and generator calls, full of
+ * what a shell reads as syntax (`[`, `|`, `&`, `!`, `$`, `"`, `@`), which
+ * VS Code's quoting of a plain string does not protect (`needsShellQuoting`).
+ * Those arguments go strongly quoted -- never `Escape`, whose escaping differs
+ * per shell -- and `validateLaunch` has refused the single quote that cannot
+ * be. Every other command keeps plain strings: its arguments are solution
+ * paths and flags, and its terminal line stays as it always read.
+ */
+function shellArgs(invocation: Invocation): (string | vscode.ShellQuotedString)[] {
+  const args = rbxArgs(invocation);
+  if (invocation.command !== 'stress' && invocation.command !== 'add-finding') {
+    return args;
+  }
+  return args.map((arg) =>
+    needsShellQuoting(arg) ? { value: arg, quoting: vscode.ShellQuoting.Strong } : arg,
+  );
 }
 
 /**

@@ -20,7 +20,8 @@
   "activationEvents": [
     "workspaceContains:**/problem.rbx.yml",
     "onView:rbx.run",
-    "onView:rbx.testset"
+    "onView:rbx.testset",
+    "onView:rbx.stress"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -45,6 +46,12 @@
           "id": "rbx.testset",
           "type": "webview",
           "name": "Tests",
+          "contextualTitle": "rbx"
+        },
+        {
+          "id": "rbx.stress",
+          "type": "webview",
+          "name": "Stress",
           "contextualTitle": "rbx"
         }
       ]
@@ -283,6 +290,43 @@
         "title": "Change Contest for Dispatched Commands",
         "category": "rbx",
         "enablement": "rbx.dispatchEnabled"
+      },
+      {
+        "command": "rbx.stress.new",
+        "title": "New Stress…",
+        "category": "rbx",
+        "icon": "$(add)",
+        "enablement": "rbx.dispatchEnabled"
+      },
+      {
+        "command": "rbx.stress.stop",
+        "title": "Stop Stress",
+        "category": "rbx",
+        "icon": "$(debug-stop)",
+        "enablement": "rbx.dispatchEnabled"
+      },
+      {
+        "command": "rbx.stress.openLauncher",
+        "title": "Open Stress Launcher",
+        "category": "rbx",
+        "enablement": "rbx.dispatchEnabled"
+      },
+      {
+        "command": "rbx.stress.promote",
+        "title": "Promote Stress Finding",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.proposal.accept",
+        "title": "Accept Proposed Change",
+        "category": "rbx",
+        "icon": "$(check)"
+      },
+      {
+        "command": "rbx.proposal.discard",
+        "title": "Discard Proposed Change",
+        "category": "rbx",
+        "icon": "$(discard)"
       }
     ],
     "menus": {
@@ -311,9 +355,27 @@
           "command": "rbx.runSolution",
           "when": "rbx.dispatchEnabled && resourceScheme == file && resourcePath in rbx.solutionFiles",
           "group": "navigation@0"
+        },
+        {
+          "command": "rbx.proposal.accept",
+          "when": "resourceScheme == rbx-proposed",
+          "group": "navigation@0"
+        },
+        {
+          "command": "rbx.proposal.discard",
+          "when": "resourceScheme == rbx-proposed",
+          "group": "navigation@1"
         }
       ],
       "commandPalette": [
+        {
+          "command": "rbx.proposal.accept",
+          "when": "resourceScheme == rbx-proposed"
+        },
+        {
+          "command": "rbx.proposal.discard",
+          "when": "resourceScheme == rbx-proposed"
+        },
         {
           "command": "rbx.openVisualizationExternally",
           "when": "activeWebviewPanelId == 'rbx.visualization'"
@@ -341,6 +403,22 @@
         {
           "command": "rbx.changeContest",
           "when": "rbx.dispatchEnabled && rbx.activeInContest"
+        },
+        {
+          "command": "rbx.stress.new",
+          "when": "rbx.dispatchEnabled"
+        },
+        {
+          "command": "rbx.stress.stop",
+          "when": "rbx.dispatchEnabled && rbx.stressRunning"
+        },
+        {
+          "command": "rbx.stress.openLauncher",
+          "when": "false"
+        },
+        {
+          "command": "rbx.stress.promote",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -361,12 +439,12 @@
         },
         {
           "command": "rbx.selectProblem",
-          "when": "view == rbx.run || view == rbx.testset",
+          "when": "view == rbx.run || view == rbx.testset || view == rbx.stress",
           "group": "navigation@1"
         },
         {
           "command": "rbx.refresh",
-          "when": "view == rbx.run || view == rbx.testset",
+          "when": "view == rbx.run || view == rbx.testset || view == rbx.stress",
           "group": "navigation@2"
         },
         {
@@ -378,6 +456,16 @@
           "command": "rbx.changeContest",
           "when": "(view == rbx.run || view == rbx.testset) && rbx.dispatchEnabled && rbx.activeInContest",
           "group": "dispatch@2"
+        },
+        {
+          "command": "rbx.stress.stop",
+          "when": "view == rbx.stress && rbx.dispatchEnabled && rbx.stressRunning",
+          "group": "navigation@0"
+        },
+        {
+          "command": "rbx.stress.new",
+          "when": "view == rbx.stress && rbx.dispatchEnabled",
+          "group": "navigation@0"
         }
       ],
       "webview/context": [
@@ -791,9 +879,11 @@
               "statements",
               "contest-statements",
               "tutorials",
-              "contest-tutorials"
+              "contest-tutorials",
+              "stress",
+              "add-finding"
             ],
-            "description": "Describes the tasks the rbx extension starts from its buttons; rbx tasks cannot be declared in tasks.json. The rbx command: `build`, `run`, `contest-run` (`rbx contest each --inline run`), `statements`/`tutorials` (`rbx statements build`/`rbx tutorials build`), or their `contest-` forms."
+            "description": "Describes the tasks the rbx extension starts from its buttons; rbx tasks cannot be declared in tasks.json. The rbx command: `build`, `run`, `contest-run` (`rbx contest each --inline run`), `statements`/`tutorials` (`rbx statements build`/`rbx tutorials build`), or their `contest-` forms, `stress`, or `add-finding` (`rbx testcases add-finding`)."
           },
           "cwd": {
             "type": "string",
@@ -809,6 +899,13 @@
           "contest": {
             "type": "string",
             "description": "The contest variant id passed as `-C`, or an empty string for the canonical contest.rbx.yml."
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "For `stress` and `add-finding`: the arguments after the subcommand."
           }
         }
       }

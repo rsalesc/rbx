@@ -107,6 +107,12 @@ const ALIASES: Record<string, readonly string[]> = {
   COMPILATION_ERROR: ['compilation error', 'ce'],
 };
 
+/**
+ * Every `ExpectedOutcome` member, in rbx's declaration order. rbxEnums.test.ts
+ * keeps `ALIASES` -- and so this -- covering the enum.
+ */
+export const EXPECTED_OUTCOMES: readonly string[] = Object.keys(ALIASES);
+
 const BY_SPELLING = new Map<string, string>();
 for (const [member, aliases] of Object.entries(ALIASES)) {
   BY_SPELLING.set(normalize(member), member);
