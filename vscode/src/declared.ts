@@ -93,6 +93,17 @@ export class DeclaredIndex {
     return this.pathsOf('statement');
   }
 
+  /** Absolute paths of every testplan, for the editor context menu's `when`. */
+  testplanPaths(): string[] {
+    const paths: string[] = [];
+    for (const [fsPath, declared] of this.index) {
+      if (declared.asset.testplan === true) {
+        paths.push(fsPath);
+      }
+    }
+    return paths;
+  }
+
   private pathsOf(role: DeclaredAsset['role']): string[] {
     const paths: string[] = [];
     for (const [fsPath, declared] of this.index) {

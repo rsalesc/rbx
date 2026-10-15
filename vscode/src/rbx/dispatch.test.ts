@@ -134,6 +134,26 @@ test('add-finding is a testcases subcommand', () => {
   );
 });
 
+test('irun and promote carry their argv tail, and are named for the test', () => {
+  const irun = invocation({ command: 'irun', args: ['-t', 'tests/plan.txt:3'] });
+  const promote = invocation({
+    command: 'promote',
+    args: ['tests/plan.txt:3', '--group', 'corner'],
+  });
+  assert.deepStrictEqual(rbxArgs(irun), ['irun', '-t', 'tests/plan.txt:3']);
+  assert.deepStrictEqual(rbxArgs(promote), [
+    'testcases',
+    'promote',
+    'tests/plan.txt:3',
+    '--group',
+    'corner',
+  ]);
+  assert.strictEqual(taskName(irun), 'run on tests/plan.txt:3');
+  assert.strictEqual(taskName(promote), 'promote tests/plan.txt:3');
+  assert.strictEqual(scopeOf('irun'), 'problem');
+  assert.strictEqual(scopeOf('promote'), 'problem');
+});
+
 test('a stress task is named for what it stresses', () => {
   const name = (args: string[]) => taskName(invocation({ command: 'stress', args }));
   assert.strictEqual(name(['wa-small', '--no-promote']), 'stress wa-small');

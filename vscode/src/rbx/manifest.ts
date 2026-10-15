@@ -67,6 +67,13 @@ export interface DeclaredAsset {
    * `expectedScore` already filled in exactly this way.
    */
   readonly score?: readonly [number, number];
+  /**
+   * For generators: a `generatorScript` rbx reads line by line -- a `.txt`
+   * file in its own (`rbx`) format -- so each of its lines can be addressed as
+   * `<script>:<line>` (testplan.ts). A script program, or one in the `box`
+   * format, is a generator like any other.
+   */
+  readonly testplan?: boolean;
 }
 
 /**
@@ -136,6 +143,7 @@ export function normalizeExpectation(spelled: string): string {
 /** Collects one declaration, keeping the most specific role per path. */
 class Collector {
   private readonly byPath = new Map<string, DeclaredAsset>();
+  private readonly testplans = new Set<string>();
 
   add(
     rawPath: Wire,
@@ -170,8 +178,22 @@ class Collector {
     this.add(field(item, 'path'), role);
   }
 
+  /** A `generatorScript`, which is a testplan when rbx reads it line by line. */
+  addScript(item: Wire): void {
+    this.addItem(item, 'generator');
+    const declared = asString(field(item, 'path'));
+    const format = asString(field(item, 'format')) ?? 'rbx';
+    if (declared !== undefined && declared.endsWith('.txt') && format === 'rbx') {
+      this.testplans.add(declared);
+    }
+  }
+
   assets(): DeclaredAsset[] {
-    return [...this.byPath.values()];
+    return [...this.byPath.values()].map((asset) =>
+      asset.role === 'generator' && this.testplans.has(asset.path)
+        ? { ...asset, testplan: true }
+        : asset,
+    );
   }
 }
 
@@ -246,7 +268,7 @@ function collectGroup(collector: Collector, group: Wire, depth: number): void {
   }
   collector.addItem(field(group, 'validator'), 'validator');
   collector.addItem(field(group, 'visualizer'), 'visualizer');
-  collector.addItem(field(group, 'generatorScript'), 'generator');
+  collector.addScript(field(group, 'generatorScript'));
   for (const subgroup of asArray(field(group, 'subgroups'))) {
     collectGroup(collector, subgroup, depth + 1);
   }
@@ -315,7 +337,7 @@ export function parseManifest(raw: Wire): DeclaredAsset[] {
   collector.addItem(root.interactor, 'interactor');
   collector.addItem(root.validator, 'validator');
   collector.addItem(root.visualizer, 'visualizer');
-  collector.addItem(root.generatorScript, 'generator');
+  collector.addScript(root.generatorScript);
   for (const generator of asArray(root.generators)) {
     collector.addItem(generator, 'generator');
   }

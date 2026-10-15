@@ -1,0 +1,14 @@
+// Each statement is one test. A comment gets no lens.
+gen 1 1
+gen 100 100
+gen 1 100
+gen 100 1
+
+// Inline inputs, on one line or several.
+@input "3 4"
+@input {
+50 50
+}
+
+// A copy is already a file, so it has no Promote.
+@copy tests/handmade/000.in

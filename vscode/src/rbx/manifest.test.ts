@@ -128,6 +128,28 @@ testcases:
   assert.strictEqual(roleOf(list, 'gen/script.txt'), 'generator');
 });
 
+test('only an rbx-format .txt generatorScript is a testplan', () => {
+  const list = assets(`
+generatorScript: {path: plans/default.txt}
+testcases:
+  - name: a
+    generatorScript: {path: plans/a.txt, format: rbx}
+  - name: b
+    generatorScript: {path: plans/b.txt, format: box}
+  - name: c
+    generatorScript: {path: plans/c.py}
+generators:
+  - {name: gen, path: gen.cpp}
+`);
+  const testplan = (path: string) => list.find((asset) => asset.path === path)?.testplan;
+  assert.strictEqual(testplan('plans/default.txt'), true);
+  assert.strictEqual(testplan('plans/a.txt'), true);
+  assert.strictEqual(testplan('plans/b.txt'), undefined);
+  assert.strictEqual(testplan('plans/c.py'), undefined);
+  assert.strictEqual(testplan('gen.cpp'), undefined);
+  assert.strictEqual(roleOf(list, 'plans/a.txt'), 'generator');
+});
+
 test('a file claimed twice takes the more specific role', () => {
   const list = assets(`
 validator: {path: dual.cpp}

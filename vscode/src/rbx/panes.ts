@@ -286,6 +286,32 @@ export function builtAnswerArtifact(
 }
 
 /**
+ * What a test `rbx testcases generate` just wrote opens into: the files it
+ * named, under the same two labels as a built testcase, so it lands in the
+ * panes the user already arranged.
+ */
+export function generatedArtifacts(
+  input: string,
+  answer: string | undefined,
+): { input: Artifact; answer: Artifact | undefined } {
+  return {
+    input: {
+      paths: [input],
+      label: LABELS.input,
+      missing: 'rbx generated the test, but its input is no longer on disk.',
+    },
+    answer:
+      answer === undefined
+        ? undefined
+        : {
+            paths: [answer],
+            label: LABELS.answer,
+            missing: 'rbx generated the test, but its answer is no longer on disk.',
+          },
+  };
+}
+
+/**
  * How the two panes are arranged the *first* time they are opened.
  *
  * A seed and nothing more: once the panes exist, the opener finds them and this

@@ -34,6 +34,7 @@ import {
   builtInputArtifact,
   builtLabelPrefix,
   channelArtifact,
+  generatedArtifacts,
   inputArtifact,
   isDiff,
   labelPrefix,
@@ -143,6 +144,23 @@ export class TestcasePanes {
     const prefix = builtLabelPrefix(group, stem);
     await this.showArtifact(builtInputArtifact(pkg, group, stem), prefix, columns.input);
     await this.showArtifact(builtAnswerArtifact(pkg, group, stem), prefix, columns.channel);
+  }
+
+  /**
+   * Open a test `rbx testcases generate` just wrote, by the paths it printed:
+   * the testplan lens's opener. `test` is its `group/index`. Without an answer
+   * only the input pane is touched, so a stale answer from another test is not
+   * left beside it unless the user had one open already.
+   */
+  async openGenerated(test: string, input: string, answer: string | undefined): Promise<void> {
+    this.current = undefined;
+    const columns = await this.columns();
+    const prefix = `generated/${test}`;
+    const artifacts = generatedArtifacts(input, answer);
+    await this.showArtifact(artifacts.input, prefix, columns.input);
+    if (artifacts.answer !== undefined) {
+      await this.showArtifact(artifacts.answer, prefix, columns.channel);
+    }
   }
 
   /**

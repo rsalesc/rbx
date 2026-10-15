@@ -58,6 +58,26 @@
     },
     "commands": [
       {
+        "command": "rbx.testplan.generate",
+        "title": "Generate This Test",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.testplan.validate",
+        "title": "Validate This Test",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.testplan.run",
+        "title": "Run Solutions on This Test",
+        "category": "rbx"
+      },
+      {
+        "command": "rbx.testplan.promote",
+        "title": "Promote This Test to a Manual Test",
+        "category": "rbx"
+      },
+      {
         "command": "rbx.refresh",
         "title": "Refresh",
         "category": "rbx",
@@ -369,6 +389,22 @@
       ],
       "commandPalette": [
         {
+          "command": "rbx.testplan.generate",
+          "when": "resourceScheme == file && resourcePath in rbx.testplanFiles"
+        },
+        {
+          "command": "rbx.testplan.validate",
+          "when": "resourceScheme == file && resourcePath in rbx.testplanFiles"
+        },
+        {
+          "command": "rbx.testplan.run",
+          "when": "rbx.dispatchEnabled && resourceScheme == file && resourcePath in rbx.testplanFiles"
+        },
+        {
+          "command": "rbx.testplan.promote",
+          "when": "resourceScheme == file && resourcePath in rbx.testplanFiles"
+        },
+        {
           "command": "rbx.proposal.accept",
           "when": "resourceScheme == rbx-proposed"
         },
@@ -652,6 +688,26 @@
           "command": "rbx.runSolution",
           "when": "rbx.dispatchEnabled && resourceScheme == file && resourcePath in rbx.solutionFiles",
           "group": "0_rbx@1"
+        },
+        {
+          "command": "rbx.testplan.generate",
+          "when": "resourceScheme == file && resourcePath in rbx.testplanFiles",
+          "group": "0_rbx@1"
+        },
+        {
+          "command": "rbx.testplan.validate",
+          "when": "resourceScheme == file && resourcePath in rbx.testplanFiles",
+          "group": "0_rbx@2"
+        },
+        {
+          "command": "rbx.testplan.run",
+          "when": "rbx.dispatchEnabled && resourceScheme == file && resourcePath in rbx.testplanFiles",
+          "group": "0_rbx@3"
+        },
+        {
+          "command": "rbx.testplan.promote",
+          "when": "resourceScheme == file && resourcePath in rbx.testplanFiles",
+          "group": "0_rbx@4"
         }
       ]
     },
@@ -787,6 +843,11 @@
           "default": true,
           "markdownDescription": "Show what `problem.rbx.yml` declares a solution to do on a CodeLens above its first line."
         },
+        "rbx.testplanCodeLens": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show *Generate · Validate · Run · Promote* on a CodeLens above every test of a testplan (a `.txt` `generatorScript`)."
+        },
         "rbx.solutionStatus": {
           "type": "boolean",
           "default": true,
@@ -881,9 +942,11 @@
               "tutorials",
               "contest-tutorials",
               "stress",
-              "add-finding"
+              "add-finding",
+              "irun",
+              "promote"
             ],
-            "description": "Describes the tasks the rbx extension starts from its buttons; rbx tasks cannot be declared in tasks.json. The rbx command: `build`, `run`, `contest-run` (`rbx contest each --inline run`), `statements`/`tutorials` (`rbx statements build`/`rbx tutorials build`), or their `contest-` forms, `stress`, or `add-finding` (`rbx testcases add-finding`)."
+            "description": "Describes the tasks the rbx extension starts from its buttons; rbx tasks cannot be declared in tasks.json. The rbx command: `build`, `run`, `contest-run` (`rbx contest each --inline run`), `statements`/`tutorials` (`rbx statements build`/`rbx tutorials build`), or their `contest-` forms, `stress`, `add-finding` (`rbx testcases add-finding`), `irun`, or `promote` (`rbx testcases promote`)."
           },
           "cwd": {
             "type": "string",
@@ -905,7 +968,7 @@
             "items": {
               "type": "string"
             },
-            "description": "For `stress` and `add-finding`: the arguments after the subcommand."
+            "description": "For `stress`, `add-finding`, `irun` and `promote`: the arguments after the subcommand."
           }
         }
       }

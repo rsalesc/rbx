@@ -23,7 +23,9 @@ export const TASK_TYPE = 'rbx';
  *
  * `stress` and `add-finding` (`rbx testcases add-finding`) carry their whole
  * argv tail in `Invocation.args`: the stress launcher and the Stress view build
- * it (stressSpec.ts), and this module only puts the subcommand in front.
+ * it (stressSpec.ts), and this module only puts the subcommand in front. So do
+ * `irun` and `promote` (`rbx testcases promote`), which the testplan lens
+ * builds (testplan.ts).
  */
 export type RbxCommand =
   | 'build'
@@ -34,7 +36,9 @@ export type RbxCommand =
   | 'tutorials'
   | 'contest-tutorials'
   | 'stress'
-  | 'add-finding';
+  | 'add-finding'
+  | 'irun'
+  | 'promote';
 
 export const RBX_COMMANDS: readonly RbxCommand[] = [
   'build',
@@ -46,6 +50,8 @@ export const RBX_COMMANDS: readonly RbxCommand[] = [
   'contest-tutorials',
   'stress',
   'add-finding',
+  'irun',
+  'promote',
 ];
 
 /** The commands that build statements, which the statement preview watches for. */
@@ -167,6 +173,12 @@ export function rbxArgs(invocation: Invocation): string[] {
     case 'add-finding':
       args.push('testcases', 'add-finding', ...(invocation.args ?? []));
       break;
+    case 'irun':
+      args.push('irun', ...(invocation.args ?? []));
+      break;
+    case 'promote':
+      args.push('testcases', 'promote', ...(invocation.args ?? []));
+      break;
   }
   return args;
 }
@@ -203,7 +215,11 @@ export function taskName(invocation: Invocation): string {
             ? `stress ${stressSubject(invocation.args ?? [])}`
             : invocation.command === 'add-finding'
               ? 'add finding'
-              : `build ${invocation.command.replace('-', ' ')}`;
+              : invocation.command === 'irun'
+                ? `run on ${testSubject(invocation.args ?? [])}`
+                : invocation.command === 'promote'
+                  ? `promote ${testSubject(invocation.args ?? [])}`
+                  : `build ${invocation.command.replace('-', ' ')}`;
   const contest = invocation.contest;
   if (contest.kind === 'variant') {
     return `${base} [${contest.id}]`;
@@ -230,6 +246,18 @@ function stressSubject(args: readonly string[]): string {
     return args[generator + 1];
   }
   return args.includes('--fuzz') || args.includes('--fuzz-on') ? 'fuzz' : 'session';
+}
+
+/**
+ * Which test an `irun` or `promote` is about, for its name: the `-t` value of
+ * an irun, the first positional argument of a promote.
+ */
+function testSubject(args: readonly string[]): string {
+  const flag = args.indexOf('-t');
+  if (flag >= 0 && flag + 1 < args.length) {
+    return args[flag + 1];
+  }
+  return args.find((arg) => !arg.startsWith('-')) ?? 'tests';
 }
 
 /**

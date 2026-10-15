@@ -42,6 +42,7 @@ import {
 import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
 import { registerSolutionLens } from './solutionLens';
+import { registerTestplanLens } from './testplanLens';
 import { registerSolutionStatus } from './solutionStatus';
 import { registerStatementDiagnostics } from './statementDiagnostics';
 import { registerStatementPreview } from './statementPreview';
@@ -128,8 +129,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  registerCommands(context, view, data, active, testset);
+  const panes = registerCommands(context, view, data, active, testset);
   const dispatcher = registerDispatch(context, active, declared, view);
+  registerTestplanLens(context, declared, dispatcher, panes);
   // The third view in the container, on the same `data` and `active` as the
   // other two. It needs the dispatcher, which is why it is built only here.
   const stress = new StressViewProvider(
