@@ -14,7 +14,7 @@
  * it is being typed -- and `launchOf` reads the launch out of it.
  */
 import { FINDER_OUTCOMES, FinderRow, Join, defaultOutcomeFor, recognizeFinder } from '../rbx/finder';
-import { needsShellQuoting } from '../rbx/shellQuote';
+import { shellQuote } from '../rbx/shellQuote';
 import type { StressDeclaration, StressDeclarations } from '../rbx/stressDeclarations';
 import {
   StressLaunch,
@@ -225,16 +225,6 @@ export function launchProblem(
 }
 
 /**
- * One argument as the terminal is sent it: strongly quoted unless plainly
- * safe. A single quote is refused before anything runs (`singleQuoteProblem`),
- * but the line is shown and copied before that, so it is escaped POSIX-style
- * rather than left to end the quoting early.
- */
-function displayArg(arg: string): string {
-  return needsShellQuoting(arg) ? `'${arg.replace(/'/g, "'\\''")}'` : arg;
-}
-
-/**
  * The `rbx stress ...` line the launcher shows and Copy copies, or undefined
  * when there is no line to show (a replaced finder of a stress that is gone).
  *
@@ -248,7 +238,7 @@ export function commandLine(
   const declared =
     launch.source.kind === 'declared' ? findDeclared(declarations, launch.source.name) : undefined;
   try {
-    return ['rbx', ...stressArgv(launch, declared).map(displayArg)].join(' ');
+    return ['rbx', ...stressArgv(launch, declared).map(shellQuote)].join(' ');
   } catch {
     return undefined;
   }

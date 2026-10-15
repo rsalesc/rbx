@@ -9,7 +9,8 @@
  * the user has to go read.
  */
 
-import { needsShellQuoting } from './shellQuote';
+import { singleQuoteProblem } from './finder';
+import { shellQuote } from './shellQuote';
 
 /** The subcommand, for the headless runs; a dispatch puts it in front itself. */
 export const ADD_FINDING = ['testcases', 'add-finding'] as const;
@@ -138,24 +139,34 @@ export function listGroupsArgs(): string[] {
   return ['--list-groups', '--json'];
 }
 
+/**
+ * `--session S`, when the session's start is known: add-finding reads the
+ * latest session, and a stress started from a terminal between the click and
+ * the command would make finding `k` another input altogether. rbx refuses
+ * a session that is no longer the latest instead of promoting the wrong one.
+ */
+function sessionArgs(session: string | undefined): string[] {
+  return session === undefined ? [] : ['--session', session];
+}
+
 /** The script group's proposal, after the subcommand. */
-export function dryRunArgs(k: number, group: string): string[] {
-  return [String(k), '--group', group, '--dry-run', '--json'];
+export function dryRunArgs(k: number, group: string, session?: string): string[] {
+  return [String(k), ...sessionArgs(session), '--group', group, '--dry-run', '--json'];
 }
 
 /** Add finding `k` to an existing group, after the subcommand. */
-export function addToGroupArgs(k: number, group: string): string[] {
-  return [String(k), '--group', group];
+export function addToGroupArgs(k: number, group: string, session?: string): string[] {
+  return [String(k), ...sessionArgs(session), '--group', group];
 }
 
 /** Create a script group at `path` and add finding `k`, after the subcommand. */
-export function newScriptArgs(k: number, path: string): string[] {
-  return [String(k), '--new-script', path];
+export function newScriptArgs(k: number, path: string, session?: string): string[] {
+  return [String(k), ...sessionArgs(session), '--new-script', path];
 }
 
 /** Create a manual group and copy finding `k` in, after the subcommand. */
-export function newManualArgs(k: number, name: string, glob: string): string[] {
-  return [String(k), '--new-manual', name, '--glob', glob];
+export function newManualArgs(k: number, name: string, glob: string, session?: string): string[] {
+  return [String(k), ...sessionArgs(session), '--new-manual', name, '--glob', glob];
 }
 
 // --- the picker -------------------------------------------------------------
@@ -270,6 +281,10 @@ export function newScriptPathError(
   if (path.length === 0) {
     return 'Name the script, e.g. tests/stress.txt.';
   }
+  // Every dispatched argument is single-quoted, which cannot hold one.
+  if (path.includes("'")) {
+    return singleQuoteProblem(path);
+  }
   if (!insidePackage(path)) {
     return 'The script must be inside the package: a relative path, without `..`.';
   }
@@ -292,6 +307,9 @@ export function scriptGroupName(path: string): string {
 
 /** Why `glob` cannot be a new manual group's glob, or undefined if it can. */
 export function manualGlobError(glob: string): string | undefined {
+  if (glob.includes("'")) {
+    return singleQuoteProblem(glob);
+  }
   if (!glob.includes('*') || !glob.endsWith('.in')) {
     return 'The glob of a manual group must contain a `*` and end in `.in`, e.g. tests/corner/*.in.';
   }
@@ -339,6 +357,6 @@ export function failureMessage(code: number | null, stderr: string): string {
  */
 export function commandLine(args: readonly string[]): string {
   return ['rbx', ...ADD_FINDING, ...args]
-    .map((arg) => (needsShellQuoting(arg) ? `'${arg.replace(/'/g, "'\\''")}'` : arg))
+    .map(shellQuote)
     .join(' ');
 }

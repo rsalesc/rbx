@@ -242,7 +242,7 @@ export class StressPromoter implements vscode.Disposable {
         if (row.group.kind === 'script') {
           await this.propose(root, k, row.group, startedAt, args.session);
         } else {
-          await this.dispatchAdd(root, addToGroupArgs(k, row.group.name), k, startedAt, row.group.name);
+          await this.dispatchAdd(root, addToGroupArgs(k, row.group.name, startedAt), k, startedAt, row.group.name);
         }
         return;
       case 'new-script': {
@@ -260,7 +260,7 @@ export class StressPromoter implements vscode.Disposable {
         const scriptPath = script.trim();
         await this.dispatchAdd(
           root,
-          newScriptArgs(k, scriptPath),
+          newScriptArgs(k, scriptPath, startedAt),
           k,
           startedAt,
           scriptGroupName(scriptPath),
@@ -286,7 +286,7 @@ export class StressPromoter implements vscode.Disposable {
         if (glob === undefined) {
           return;
         }
-        await this.dispatchAdd(root, newManualArgs(k, groupName, glob.trim()), k, startedAt, groupName);
+        await this.dispatchAdd(root, newManualArgs(k, groupName, glob.trim(), startedAt), k, startedAt, groupName);
         return;
       }
     }
@@ -437,9 +437,12 @@ export class StressPromoter implements vscode.Disposable {
     startedAt: string | undefined,
     session: string | undefined,
   ): Promise<void> {
+    if (!(await this.stillThere(root, k, startedAt))) {
+      return;
+    }
     const stdout = await this.headless(
       root,
-      dryRunArgs(k, group.name),
+      dryRunArgs(k, group.name, startedAt),
       `rbx: proposing finding #${k} for ${group.name}…`,
     );
     if (stdout === undefined) {
@@ -629,6 +632,9 @@ export class StressPromoter implements vscode.Disposable {
     startedAt: string | undefined,
     group: string,
   ): Promise<void> {
+    if (!(await this.stillThere(root, k, startedAt))) {
+      return;
+    }
     if (!dispatchEnabled()) {
       const copy = 'Copy command';
       const choice = await vscode.window.showInformationMessage(
@@ -685,6 +691,22 @@ export class StressPromoter implements vscode.Disposable {
         stop();
       }
     }
+  }
+
+  /**
+   * Whether finding `k` of the session that started at `startedAt` is still
+   * the latest session's -- or false, having said so. Checked again after the
+   * picker and the input boxes, which wait on the user for as long as they
+   * like. `--session` is what actually guards it (rbx refuses a session that
+   * is no longer the latest); this only says so sooner and more plainly.
+   */
+  private async stillThere(root: string, k: number, startedAt: string | undefined): Promise<boolean> {
+    const manifest = await this.stress.sessionFor(root, startedAt);
+    if (manifest === undefined || !manifest.findings.some((each) => each.index === k)) {
+      findingGone(k);
+      return false;
+    }
+    return true;
   }
 
   // --- headless -------------------------------------------------------------

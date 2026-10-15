@@ -31,3 +31,13 @@ const SHELL_SAFE = /^[A-Za-z0-9\-./][A-Za-z0-9_\-./=:+%]*$/;
 export function needsShellQuoting(arg: string): boolean {
   return !SHELL_SAFE.test(arg);
 }
+
+/**
+ * One argument as a line shown or copied for a POSIX shell: single-quoted
+ * unless plainly safe. A dispatch refuses a single quote before anything
+ * runs (`singleQuoteProblem`), but a line is shown and copied before that,
+ * so one is escaped (`'\''`) rather than left to end the quoting early.
+ */
+export function shellQuote(arg: string): string {
+  return needsShellQuoting(arg) ? `'${arg.replace(/'/g, "'\\''")}'` : arg;
+}

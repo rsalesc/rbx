@@ -95,6 +95,32 @@ test('the argv tails', () => {
   ]);
 });
 
+test('every argv that names a finding pins its session when known', () => {
+  const at = '2026-10-15T12:00:00.123456';
+  const pinned = ['--session', at];
+  assert.deepStrictEqual(dryRunArgs(3, 'main', at), ['3', ...pinned, '--group', 'main', '--dry-run', '--json']);
+  assert.deepStrictEqual(addToGroupArgs(3, 'corner', at), ['3', ...pinned, '--group', 'corner']);
+  assert.deepStrictEqual(newScriptArgs(1, 'tests/stress.txt', at), [
+    '1',
+    ...pinned,
+    '--new-script',
+    'tests/stress.txt',
+  ]);
+  assert.deepStrictEqual(newManualArgs(2, 'hard', 'tests/hard/*.in', at), [
+    '2',
+    ...pinned,
+    '--new-manual',
+    'hard',
+    '--glob',
+    'tests/hard/*.in',
+  ]);
+});
+
+test('a single quote is refused in a new script path or glob', () => {
+  assert.match(newScriptPathError("tests/it's.txt") ?? '', /single quote/);
+  assert.match(manualGlobError("tests/it's/*.in") ?? '', /single quote/);
+});
+
 test('the picker puts script groups first, then manual, then the new ones', () => {
   const rows = pickRows([
     { name: 'corner', kind: 'manual', path: 'tests/corner/*.in' },
