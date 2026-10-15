@@ -350,6 +350,7 @@ class _SigintStop:
 
     def __init__(self):
         self.requested = False
+        self._announced = False
         self._previous = None
         self._installed = False
 
@@ -369,11 +370,19 @@ class _SigintStop:
         if self.requested:
             self._restore()
             raise KeyboardInterrupt()
+        # Only a flag: printing here could interleave with a live status line.
         self.requested = True
-        console.console.print(
-            '[warning]Stopping after the current test. '
-            'Press Ctrl-C again to abort immediately.[/warning]'
-        )
+
+    def check(self) -> bool:
+        """Whether a stop was requested, announcing it the first time it is
+        seen, from the loop rather than from the signal handler."""
+        if self.requested and not self._announced:
+            self._announced = True
+            console.console.print(
+                '[warning]Stopping after the current test. '
+                'Press Ctrl-C again to abort immediately.[/warning]'
+            )
+        return self.requested
 
     def _restore(self) -> None:
         if self._installed:
@@ -631,7 +640,7 @@ async def run_stress(
         with _SigintStop() as stop:
             interrupted = False
             try:
-                while not stop.requested:
+                while not stop.check():
                     # Check for timeout first
                     if session.elapsed() > timeout_in_seconds:
                         break
@@ -716,7 +725,7 @@ async def run_stress(
                             err.print(
                                 '[warning]You can use the [item]--skip[/item] flag to skip invalid testcases without halting.[/warning]'
                             )
-                    if stop.requested:
+                    if stop.check():
                         break
 
                     # The last evaluation of each solution this iteration: the
@@ -754,7 +763,7 @@ async def run_stress(
                     answer_path: Optional[pathlib.Path] = None
                     if needs_expected_output:
                         eval = await run_solution_fn(solutions[0])
-                        if stop.requested:
+                        if stop.check():
                             break
                         if eval.result.outcome != Outcome.ACCEPTED:
                             console.console.print(
@@ -812,14 +821,14 @@ async def run_stress(
                     # in the expression anyway, so run them all up front and
                     # hand it the results.
                     call_results = {}
+                    # Once the finder calls start, the iteration is let finish
+                    # even if a stop is requested: sandboxed programs run in
+                    # their own process group (`program.py` calls `setpgid`),
+                    # so a terminal Ctrl-C never reaches them and their verdicts
+                    # stand. The `while` condition stops the next iteration.
                     for call in eval_calls:
                         call_results[call] = await run_solution_and_checker_fn(call)
-                        if stop.requested:
-                            break
-                    # A Ctrl-C at the terminal reaches the solutions too, so
-                    # whatever they reported after it is not to be trusted.
-                    if stop.requested:
-                        break
+                    stop.check()
                     runner = finder_parser.FinderTreeRunner(
                         runner=call_results.__getitem__,
                         eval_only_outcome=eval_only_outcome,

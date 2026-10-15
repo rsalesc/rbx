@@ -195,6 +195,48 @@ async def test_sigint_stops_the_loop_and_marks_interrupted(
     assert signal.getsignal(signal.SIGINT) == previous_handler
 
 
+async def test_sigint_during_the_finder_lets_the_iteration_finish(
+    pkg: testing_package.TestingPackage,
+):
+    real_run = tasks.run_solution_on_testcase
+    sent = False
+
+    async def run(solution, *args, **kwargs):
+        nonlocal sent
+        evaluation = await real_run(solution, *args, **kwargs)
+        if str(solution.path) == 'sols/wa.cpp' and not sent:
+            sent = True
+            # Delivered synchronously, while the finder calls are in flight.
+            os.kill(os.getpid(), signal.SIGINT)
+        return evaluation
+
+    with (
+        mock.patch('rbx.box.stresses.tasks.run_solution_on_testcase', run),
+        mock.patch('rbx.box.stresses.console.console.print') as console_print,
+    ):
+        report = await _run_stress(
+            timeout_in_seconds=30,
+            generator_call='gens/gen.cpp [1..1000]',
+            finder='sols/wa.cpp',
+            findings_limit=5,
+        )
+
+    assert sent
+    manifest = _read()
+    assert manifest.state == StressState.INTERRUPTED
+    # The iteration the stop landed in completed, and its finding was kept.
+    assert manifest.executed == report.executed == 1
+    assert [f.index for f in manifest.findings] == [1]
+    assert len(report.findings) == 1
+    assert stress_manifest.finding_input_path(1).is_file()
+    notices = [
+        call
+        for call in console_print.call_args_list
+        if 'Stopping after the current test' in str(call)
+    ]
+    assert len(notices) == 1
+
+
 async def test_other_exceptions_mark_failed(pkg: testing_package.TestingPackage):
     async def boom(*args, **kwargs):
         raise RuntimeError('boom')
