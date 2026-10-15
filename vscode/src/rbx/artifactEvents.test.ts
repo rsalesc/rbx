@@ -53,6 +53,11 @@ test('everything nothing reads is ignored', () => {
     `${ROOT}/.rbx/runs/.stress/findings/1/input.in`,
     `${ROOT}/.rbx/runs/.stress/findings`,
     `${ROOT}/.rbx/runs/.stress/.stress.yml.tmp42`,
+    // `write_text_atomic`'s temp file, renamed over stress.yml.
+    `${ROOT}/.rbx/runs/.stress/.stress.yml.k3j2x9`,
+    // The scratch input each iteration overwrites.
+    `${ROOT}/.rbx/runs/.stress/input`,
+    `${ROOT}/.rbx/runs/.stress/findings/1/stress.yml`,
     `${ROOT}/.rbx/runs/0/samples/000.out`,
     `${ROOT}/.rbx/runs/0/samples/000.err`,
     `${ROOT}/.rbx/runs/0/samples/.000.eval.tmp123`,

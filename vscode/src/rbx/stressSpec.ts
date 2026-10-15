@@ -12,7 +12,15 @@
  * the same reason report.ts mirrors field names -- a rename fails loudly and in
  * one place.
  */
-import { FinderRow, Join, compileFinder, finderPathProblem } from './finder';
+import {
+  FinderRow,
+  Join,
+  compileFinder,
+  finderPathProblem,
+  singleQuoteProblem,
+} from './finder';
+import { GeneratorCall } from './stress';
+import { StressDeclaration } from './stressDeclarations';
 
 /** rbx stress's own defaults, which the argv leaves out rather than repeats. */
 export const STRESS_DEFAULTS = { timeout: 10, findings: 1 } as const;
@@ -54,13 +62,10 @@ export interface StressLaunch {
 }
 
 /** What the argv needs of a declared stress: its generator call and finder. */
-export interface DeclaredStress {
-  readonly generator: { readonly name: string; readonly args?: string };
-  readonly finder: string;
-}
+export type DeclaredStress = Pick<StressDeclaration, 'generator' | 'finder'>;
 
 /** A generator call as `-g` takes it: `GeneratorCall.__str__`, name then args. */
-export function generatorCallString(generator: DeclaredStress['generator']): string {
+export function generatorCallString(generator: GeneratorCall): string {
   const args = generator.args?.trim();
   return args === undefined || args === '' ? generator.name : `${generator.name} ${args}`;
 }
@@ -96,19 +101,42 @@ function rowsProblem(rows: readonly FinderRow[]): string | undefined {
  * anything is dispatched -- a terminal that opens just to print an error and
  * close is the worst place to learn it. Where rbx would refuse the same thing,
  * the message says what rbx says, in the launcher's terms.
+ *
+ * `declared` is the declared stress the source names, when it names one: its
+ * generator call is what the argv spells out once its finder is replaced.
+ *
+ * Every value that becomes an argument is also refused if it holds a single
+ * quote, which the terminal cannot pass on (see `singleQuoteProblem`).
  */
-export function validateLaunch(launch: StressLaunch): string | undefined {
+export function validateLaunch(launch: StressLaunch, declared?: DeclaredStress): string | undefined {
   const source = launch.source;
   const rows = launch.finder?.rows;
-  if (source.kind === 'declared' && source.name.trim() === '') {
-    return 'Choose a declared stress to run.';
-  }
-  if (source.kind === 'declared' && rows !== undefined && rows.length === 0) {
-    return "Add at least one finder row, or keep the stress's own finder.";
+  if (source.kind === 'declared') {
+    if (source.name.trim() === '') {
+      return 'Choose a declared stress to run.';
+    }
+    if (source.name.includes("'")) {
+      return singleQuoteProblem(source.name);
+    }
+    if (rows !== undefined && rows.length === 0) {
+      return "Add at least one finder row, or keep the stress's own finder.";
+    }
+    if (rows !== undefined) {
+      if (declared === undefined) {
+        return `The stress ${source.name} is no longer declared in problem.rbx.yml.`;
+      }
+      const call = generatorCallString(declared.generator);
+      if (call.includes("'")) {
+        return singleQuoteProblem(call);
+      }
+    }
   }
   if (source.kind === 'generator') {
     if (source.expression.trim() === '') {
       return 'Write a generator call to run, such as `gens/gen.cpp [1..1000]`.';
+    }
+    if (source.expression.includes("'")) {
+      return singleQuoteProblem(source.expression.trim());
     }
     // rbx: "Option --generator/-g requires --finder/-f." Even under --slowest,
     // whose finder still names the solutions being timed.
@@ -118,8 +146,18 @@ export function validateLaunch(launch: StressLaunch): string | undefined {
         : 'A generator call needs at least one finder row to say what counts as a finding.';
     }
   }
-  if (source.kind === 'fuzz' && rows !== undefined && rows.length === 0) {
-    return 'Add at least one finder row, or leave the finder out to check the main solution.';
+  if (source.kind === 'fuzz') {
+    if (rows !== undefined && rows.length === 0) {
+      return 'Add at least one finder row, or leave the finder out to check the main solution.';
+    }
+    for (const group of source.groups) {
+      if (group.trim() === '') {
+        return 'Every testgroup to fuzz needs a name.';
+      }
+      if (group.includes("'")) {
+        return singleQuoteProblem(group);
+      }
+    }
   }
   const problem = rows === undefined ? undefined : rowsProblem(rows);
   if (problem !== undefined) {
@@ -137,6 +175,9 @@ export function validateLaunch(launch: StressLaunch): string | undefined {
   if (launch.reference !== undefined && launch.reference.trim() === '') {
     return 'Choose a reference solution, or leave it out.';
   }
+  if (launch.reference !== undefined && launch.reference.includes("'")) {
+    return singleQuoteProblem(launch.reference);
+  }
   return undefined;
 }
 
@@ -152,7 +193,7 @@ export function validateLaunch(launch: StressLaunch): string | undefined {
  * finder override, and `-f` without `-g` is refused. The session then carries
  * no stress name -- it is, as far as rbx can tell, an ad-hoc stress with the
  * same generator. Throws when `declared` is missing for exactly that case,
- * which `validateLaunch` cannot see and the caller must not let happen.
+ * which `validateLaunch` refuses when given the same `declared`.
  */
 export function stressArgv(launch: StressLaunch, declared?: DeclaredStress): string[] {
   const args = ['stress'];

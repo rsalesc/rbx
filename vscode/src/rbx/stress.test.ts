@@ -2,7 +2,12 @@ import * as assert from 'assert';
 import { test } from 'node:test';
 import { parse as parseYaml } from 'yaml';
 
-import { STRESS_SUPPORTED_VERSION, parseStressManifest } from './stress';
+import {
+  STRESS_SUPPORTED_VERSION,
+  StressManifest,
+  parseStressManifest,
+  stressLiveness,
+} from './stress';
 
 /** Verbatim from a real `rbx stress -g 'gens/gen.cpp [1..1000]' -f sols/wa.cpp -n 2`. */
 const REAL_MANIFEST = `
@@ -81,6 +86,8 @@ test('a real manifest reads in full', () => {
         results: [{ solution: 1, outcome: 'wrong-answer', time: 0.0039, memory: undefined }],
       },
     ],
+    pid: undefined,
+    host: undefined,
   });
 });
 
@@ -177,5 +184,55 @@ test('counters and lists default to empty rather than failing the session', () =
     skipped: 0,
     solutions: [],
     findings: [],
+    pid: undefined,
+    host: undefined,
   });
+});
+
+test('the process writing the session is read when rbx names it', () => {
+  const raw = parseYaml(REAL_MANIFEST) as Record<string, unknown>;
+  const parsed = parseStressManifest({ ...raw, pid: 4242, host: 'box' });
+  assert.strictEqual(parsed?.pid, 4242);
+  assert.strictEqual(parsed?.host, 'box');
+  const odd = parseStressManifest({ ...raw, pid: '4242', host: 7 });
+  assert.strictEqual(odd?.pid, undefined);
+  assert.strictEqual(odd?.host, undefined);
+});
+
+function session(overrides: Partial<StressManifest>): StressManifest {
+  const raw = parseYaml(REAL_MANIFEST) as Record<string, unknown>;
+  return { ...parseStressManifest(raw)!, ...overrides };
+}
+
+test('a running session whose process is gone from this host is stale', () => {
+  const asked: number[] = [];
+  const probe = (alive: boolean) => ({
+    hostname: 'box',
+    isAlive: (pid: number) => {
+      asked.push(pid);
+      return alive;
+    },
+  });
+  const running = session({ state: 'running', pid: 4242, host: 'box' });
+  assert.strictEqual(stressLiveness(running, probe(false)), 'stale');
+  assert.strictEqual(stressLiveness(running, probe(true)), 'live');
+  assert.deepStrictEqual(asked, [4242, 4242]);
+});
+
+test('liveness cannot be told without a pid on this host, and an ended session stands', () => {
+  const dead = { hostname: 'box', isAlive: () => false };
+  for (const overrides of [
+    { pid: undefined, host: 'box' },
+    { pid: 4242, host: undefined },
+    { pid: 4242, host: 'elsewhere' },
+  ]) {
+    assert.strictEqual(
+      stressLiveness(session({ state: 'running', ...overrides }), dead),
+      'unknown',
+      JSON.stringify(overrides),
+    );
+  }
+  for (const state of ['done', 'interrupted', 'failed'] as const) {
+    assert.strictEqual(stressLiveness(session({ state, pid: 4242, host: 'box' }), dead), 'live');
+  }
 });

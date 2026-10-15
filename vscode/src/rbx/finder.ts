@@ -42,17 +42,23 @@ export const FINDER_OUTCOMES: readonly string[] = EXPECTED_OUTCOMES;
  * declares it gets.
  *
  * A solution declared to fail some way is stressed to find an input where it
- * does, so its declaration is the answer. A solution declared correct -- or
- * declared nothing, which rbx reads as ACCEPTED -- is stressed to find one
- * where it is *not*, which is INCORRECT; so are the declarations that already
- * allow an accepted run, since breaking those means getting something else.
+ * does, so its declaration is the answer. A solution declared correct is
+ * stressed to find one where it is *not*, which is INCORRECT; so is one that
+ * declares nothing, which rbx reads as ANY and which says nothing to go on.
+ *
+ * ACCEPTED_OR_TLE is the exception: INCORRECT includes a TLE, so it would
+ * report as findings the very timeouts the declaration allows. What breaks
+ * such a solution is a wrong answer, so that is what is preselected.
  */
 export function defaultOutcomeFor(declared?: string): string {
   if (declared === undefined) {
     return 'INCORRECT';
   }
   const member = normalizeExpectation(declared);
-  if (member === 'ACCEPTED' || member === 'ANY' || member === 'ACCEPTED_OR_TLE') {
+  if (member === 'ACCEPTED_OR_TLE') {
+    return 'WRONG_ANSWER';
+  }
+  if (member === 'ACCEPTED' || member === 'ANY') {
     return 'INCORRECT';
   }
   return FINDER_OUTCOMES.includes(member) ? member : 'INCORRECT';
@@ -75,6 +81,10 @@ const CNAME = /^[A-Za-z_][A-Za-z0-9_+]*$/;
  * Quoting covers every reserved character but one: a quoted path runs to the
  * next `"`, and the grammar has no escape, so a path holding a double quote --
  * or a line break, which a quoted path may not span -- cannot be written at all.
+ *
+ * A single quote is refused too, for the terminal rather than the grammar: the
+ * finder reaches rbx as one argument in single quotes (dispatch.ts), and a
+ * single-quoted shell word cannot hold one.
  */
 export function finderPathProblem(path: string): string | undefined {
   if (path === '') {
@@ -86,7 +96,26 @@ export function finderPathProblem(path: string): string | undefined {
   if (/[\r\n]/.test(path)) {
     return `A finder cannot name ${path}: it has a line break, which no finder can spell.`;
   }
+  if (path.includes("'")) {
+    return singleQuoteProblem(path);
+  }
   return undefined;
+}
+
+/**
+ * Why `value` cannot be passed to a dispatched rbx command, for holding a
+ * single quote.
+ *
+ * Every argument of a dispatched `stress` or `add-finding` is single-quoted
+ * for the terminal's shell (dispatch.ts), which is the only quoting that leaves
+ * a finder's `[`, `|`, `&`, `!`, `$` and `"` alone in every shell VS Code
+ * may run -- and the one thing it cannot do is hold a single quote.
+ */
+export function singleQuoteProblem(value: string): string {
+  return (
+    `${value} has a single quote ('), which cannot be passed through the terminal; ` +
+    'rename it, or run the command in a terminal by hand.'
+  );
 }
 
 /** A path as the grammar wants it: bare when it can be, quoted when it must. */
@@ -121,7 +150,9 @@ function tokenize(expr: string): Token[] | undefined {
   const tokens: Token[] = [];
   let rest = expr;
   for (;;) {
-    rest = rest.replace(/^\s+/, '');
+    // Spaces only, as the grammar's `%ignore " "`: a tab or a line break
+    // outside quotes is something rbx would refuse, so it is not recognized.
+    rest = rest.replace(/^ +/, '');
     if (rest === '') {
       return tokens;
     }

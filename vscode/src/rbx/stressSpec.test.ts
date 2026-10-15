@@ -171,3 +171,46 @@ test('budgets are positive whole numbers', () => {
   assert.match(validateLaunch(launch({ tl: { kind: 'custom', ms: 0 } })) ?? '', /milliseconds/);
   assert.match(validateLaunch(launch({ reference: ' ' })) ?? '', /reference/);
 });
+
+test('a declared stress whose finder is replaced must still be declared', () => {
+  const replaced = launch({ source: { kind: 'declared', name: 'wa-small' } });
+  assert.strictEqual(validateLaunch(replaced, DECLARED), undefined);
+  assert.match(validateLaunch(replaced) ?? '', /no longer declared/);
+});
+
+test('fuzzed groups need names', () => {
+  assert.match(
+    validateLaunch(launch({ source: { kind: 'fuzz', groups: ['main', ' '] } })) ?? '',
+    /testgroup/,
+  );
+});
+
+test("nothing that becomes an argument may hold a single quote, which the terminal cannot pass", () => {
+  const quoted = /single quote/;
+  assert.match(
+    validateLaunch(launch({ source: { kind: 'generator', expression: "gens/gen.cpp 'x'" } })) ?? '',
+    quoted,
+  );
+  assert.match(
+    validateLaunch(launch({ source: { kind: 'declared', name: "it's" }, finder: undefined })) ?? '',
+    quoted,
+  );
+  assert.match(
+    validateLaunch(launch({ source: { kind: 'declared', name: 'x' } }), {
+      generator: { name: 'gen', args: "'a b'" },
+      finder: 'a',
+    }) ?? '',
+    quoted,
+  );
+  assert.match(
+    validateLaunch(launch({ source: { kind: 'fuzz', groups: ["o'clock"] } })) ?? '',
+    quoted,
+  );
+  assert.match(validateLaunch(launch({ reference: "sols/it's.cpp" })) ?? '', quoted);
+  assert.match(
+    validateLaunch(
+      launch({ finder: { rows: [{ kind: 'disagree', a: 'a', b: "b'c" }], join: 'all' } }),
+    ) ?? '',
+    quoted,
+  );
+});

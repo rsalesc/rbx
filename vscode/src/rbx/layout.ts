@@ -44,6 +44,9 @@ export const CACHE_DIR = '.rbx';
  * cannot drift, and `rbx clean` -- which wipes `.rbx` -- can never orphan it.
  */
 export const TESTSET_MANIFEST = 'testset.yml';
+/** The stress session's directory under `runs/`, and the manifest in it (see `stressDir`). */
+export const STRESS_DIR = '.stress';
+export const STRESS_MANIFEST = 'stress.yml';
 
 /** Artifact suffixes, as they appear on disk. */
 export const enum Ext {
@@ -237,10 +240,6 @@ export function testsetFilePath(pkg: PackageLayout, relative: string): string {
 export function stressDir(pkg: PackageLayout): string {
   return path.join(runsDir(pkg), STRESS_DIR);
 }
-
-/** The stress session's directory name under `runs/`, for the watcher's classifier. */
-export const STRESS_DIR = '.stress';
-export const STRESS_MANIFEST = 'stress.yml';
 
 export function stressManifestPath(pkg: PackageLayout): string {
   return path.join(stressDir(pkg), STRESS_MANIFEST);

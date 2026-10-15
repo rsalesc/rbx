@@ -12,12 +12,13 @@
  * `.testcases`).
  */
 import { normalizeExpectation } from './manifest';
+import { GeneratorCall } from './stress';
 import { Wire, asArray, asString, field } from './wire';
 
 export interface StressDeclaration {
   readonly name: string;
-  /** A `GeneratorCall`: the generator's name, and its args as written. */
-  readonly generator: { readonly name: string; readonly args?: string };
+  /** The generator's name, and its args as written. */
+  readonly generator: GeneratorCall;
   /** The finder expression, as written. */
   readonly finder: string;
 }

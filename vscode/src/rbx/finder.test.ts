@@ -38,7 +38,7 @@ test('a path using a character the grammar reserves is quoted; any other is not'
     const path = `sols/a${reserved}b.cpp`;
     assert.strictEqual(compileFinder([brk(path)], 'all'), `["${path}"] ~ INCORRECT`, path);
   }
-  for (const plain of ['sols/a+b.cpp', 'sols/a,b#1%.cpp', "sols/it's.cpp", 'sols/{x}.py']) {
+  for (const plain of ['sols/a+b.cpp', 'sols/a,b#1%.cpp', 'sols/{x}.py']) {
     assert.strictEqual(compileFinder([brk(plain)], 'all'), `[${plain}] ~ INCORRECT`, plain);
   }
 });
@@ -49,6 +49,7 @@ test('a path no finder can name is reported', () => {
   assert.match(finderPathProblem('sols/a"b.cpp') ?? '', /double quote/);
   assert.match(finderPathProblem('sols/a\nb.cpp') ?? '', /line break/);
   assert.match(finderPathProblem('') ?? '', /solution/);
+  assert.match(finderPathProblem("sols/it's.cpp") ?? '', /single quote/);
 });
 
 test('whatever compileFinder emits is recognized back', () => {
@@ -70,6 +71,17 @@ test('a bare path, bracketed or not, is a break row for INCORRECT', () => {
   assert.deepStrictEqual(recognizeFinder('  [ sols/wa.cpp ]  '), expected);
   assert.deepStrictEqual(recognizeFinder('"sols/w a.cpp"'), {
     rows: [brk('sols/w a.cpp')],
+    join: 'all',
+  });
+});
+
+test('quoted paths are read on either side of a row', () => {
+  assert.deepStrictEqual(recognizeFinder('["a b.cpp"] ~ WA'), {
+    rows: [brk('a b.cpp', 'WRONG_ANSWER')],
+    join: 'all',
+  });
+  assert.deepStrictEqual(recognizeFinder('[a] != "b"'), {
+    rows: [disagree('a', 'b')],
     join: 'all',
   });
 });
@@ -115,6 +127,9 @@ test('anything the rows cannot express is not recognized', () => {
     '[a',
     '[a] [b]',
     '"unterminated',
+    // The grammar ignores spaces, and nothing else.
+    '[a]\t~ WA',
+    '[a] ~ WA &&\n[b]',
   ]) {
     assert.strictEqual(recognizeFinder(expr), undefined, expr);
   }
@@ -132,7 +147,9 @@ test('a break row preselects what the solution declared, or INCORRECT for a corr
   assert.strictEqual(defaultOutcomeFor('ACCEPTED'), 'INCORRECT');
   assert.strictEqual(defaultOutcomeFor('ac'), 'INCORRECT');
   assert.strictEqual(defaultOutcomeFor('ANY'), 'INCORRECT');
-  assert.strictEqual(defaultOutcomeFor('ACCEPTED_OR_TLE'), 'INCORRECT');
+  // INCORRECT would count the timeouts the declaration allows.
+  assert.strictEqual(defaultOutcomeFor('ACCEPTED_OR_TLE'), 'WRONG_ANSWER');
+  assert.strictEqual(defaultOutcomeFor('ac/tle'), 'WRONG_ANSWER');
   assert.strictEqual(defaultOutcomeFor('WRONG_ANSWER'), 'WRONG_ANSWER');
   assert.strictEqual(defaultOutcomeFor('wa'), 'WRONG_ANSWER');
   assert.strictEqual(defaultOutcomeFor('tle'), 'TIME_LIMIT_EXCEEDED');

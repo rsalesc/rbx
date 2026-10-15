@@ -8,8 +8,10 @@ import {
   collides,
   collisions,
   definedContest,
+  needsShellQuoting,
   rbxArgs,
   rbxEnv,
+  runningAt,
   scopeOf,
   statementCommand,
   taskDefinition,
@@ -142,6 +144,43 @@ test('a stress task is named for what it stresses', () => {
     taskName(invocation({ command: 'add-finding', args: ['1', '--group', 'main'] })),
     'add finding',
   );
+  // Nothing to name it after: an argv this extension would not build.
+  assert.strictEqual(name(['--slowest', '--no-promote']), 'stress session');
+  assert.strictEqual(taskName(invocation({ command: 'stress' })), 'stress session');
+});
+
+test('runningAt finds that command in exactly that package', () => {
+  const running = [
+    { id: 1, command: 'stress', cwd: '/c/A' },
+    { id: 2, command: 'stress', cwd: '/c/A/../A/' },
+    { id: 3, command: 'run', cwd: '/c/A' },
+    { id: 4, command: 'stress', cwd: '/c/AB' },
+    { id: 5, command: 'stress', cwd: '/c' },
+    { id: 6, command: undefined, cwd: '/c/A' },
+  ];
+  assert.deepStrictEqual(
+    runningAt(running, '/c/A', 'stress').map((task) => task.id),
+    [1, 2],
+  );
+  assert.deepStrictEqual(runningAt(running, '/c/B', 'stress'), []);
+});
+
+test('only what a shell would read as syntax needs quoting', () => {
+  for (const safe of ['stress', '--no-promote', '-g', 'sols/main.cpp', '1', '-C', 'div1', 'a=b']) {
+    assert.strictEqual(needsShellQuoting(safe), false, safe);
+  }
+  for (const unsafe of [
+    'gens/gen.cpp [1..9]',
+    '[sols/a.cpp] ~ WA && [b] != [c]',
+    '"a b.cpp"',
+    'gen $x',
+    'a|b',
+    'a!b',
+    'a*b',
+    '',
+  ]) {
+    assert.strictEqual(needsShellQuoting(unsafe), true, unsafe);
+  }
 });
 
 test('the argv tail is part of a stress task identity', () => {

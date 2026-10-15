@@ -317,6 +317,40 @@ export function collides(cwdA: string, cwdB: string): boolean {
   return containsPath(a, b) || containsPath(b, a);
 }
 
+/**
+ * The running tasks that are `command` in exactly `root`.
+ *
+ * Exactly, unlike `collides`: this answers "is *that* stress still going", not
+ * "would something be in the way", so a contest command above the package or
+ * a run in it is not an answer. `command` is whatever the task's definition
+ * holds, which for a task VS Code restored on its own is not checked by anyone.
+ */
+export function runningAt<T extends { readonly cwd: string; readonly command: unknown }>(
+  running: readonly T[],
+  root: string,
+  command: RbxCommand,
+): T[] {
+  const target = path.resolve(root);
+  return running.filter((task) => task.command === command && path.resolve(task.cwd) === target);
+}
+
+/** What a shell may see unquoted: no space, quote, glob, or operator. */
+const SHELL_SAFE = /^[A-Za-z0-9_\-.,/=:+%@]+$/;
+
+/**
+ * Whether an argument has to be quoted for the terminal's shell.
+ *
+ * VS Code's own quoting of a plain argument only reacts to spaces, takes an
+ * argument already wrapped in quotes as pre-quoted, and never escapes a quote
+ * inside -- fine for a solution path, not for a finder like `[a] ~ WA && [b]`
+ * or a generator call like `gen [1..9] @`. Those go strongly (single-)quoted
+ * instead; an argument holding a single quote cannot be, which is why
+ * stressSpec.ts refuses one before it gets here.
+ */
+export function needsShellQuoting(arg: string): boolean {
+  return !SHELL_SAFE.test(arg);
+}
+
 /** The running tasks a new dispatch in `cwd` would collide with. */
 export function collisions<T extends { readonly cwd: string }>(
   running: readonly T[],

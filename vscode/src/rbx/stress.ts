@@ -23,13 +23,23 @@ export const STRESS_SUPPORTED_VERSION = 1;
  *
  * `interrupted` (Ctrl-C) and `failed` (an exception) are written by a `finally`
  * on rbx's way out, so a session that ended always says so. A `running` one
- * with no rbx task alive is the one case the file cannot describe -- rbx was
- * killed outright -- and telling it apart is the caller's job, from the tasks
- * it can see.
+ * that is no longer true is the one case the file cannot describe -- rbx was
+ * killed outright (SIGKILL, a crash of the host) -- and `stressLiveness` is
+ * what tells it apart.
  */
 export type StressState = 'running' | 'done' | 'interrupted' | 'failed';
 
 const STATES: readonly StressState[] = ['running', 'done', 'interrupted', 'failed'];
+
+/**
+ * A generator call, `rbx.box.schema.GeneratorCall`: the generator's name and
+ * its args as one string. The one shape for it in the extension -- a finding's
+ * call, a declared stress's generator, and what `-g` is built from.
+ */
+export interface GeneratorCall {
+  readonly name: string;
+  readonly args?: string;
+}
 
 /** What the session was asked to do. */
 export interface StressSpec {
@@ -72,7 +82,7 @@ export interface StressFinding {
   /** From 1; also the directory name under `findings/`. */
   readonly index: number;
   /** The expanded call, with its seed: re-running it reproduces the input. */
-  readonly generator: { readonly name: string; readonly args?: string };
+  readonly generator: GeneratorCall;
   /** Milliseconds. */
   readonly duration?: number;
   /**
@@ -95,6 +105,13 @@ export interface StressManifest {
   /** The solutions involved, in order; `StressResult.solution` indexes this. */
   readonly solutions: readonly string[];
   readonly findings: readonly StressFinding[];
+  /**
+   * The rbx process writing the session, and the host it runs on
+   * (`socket.gethostname()`). Absent on an rbx that predates them; see
+   * `stressLiveness`.
+   */
+  readonly pid?: number;
+  readonly host?: string;
 }
 
 function strings(raw: Wire): string[] {
@@ -195,5 +212,39 @@ export function parseStressManifest(raw: Wire): StressManifest | undefined {
     skipped: asNumber(field(raw, 'skipped')) ?? 0,
     solutions: strings(field(raw, 'solutions')),
     findings,
+    pid: asNumber(field(raw, 'pid')),
+    host: asString(field(raw, 'host')),
   };
+}
+
+/**
+ * Whether the session a manifest describes is still being written.
+ *
+ * - `live`: the state stands as written. Always so for a session that is not
+ *   `running` -- rbx wrote its ending -- and for a `running` one whose process
+ *   is alive on this host.
+ * - `stale`: `running`, on this host, and its process is gone. rbx stamps
+ *   `interrupted` on Ctrl-C, SIGTERM and SIGHUP -- which is what a task
+ *   terminal sends when it is stopped or closed -- so this is only ever a
+ *   SIGKILL or a crash, and the file will never be finished.
+ * - `unknown`: `running`, but the manifest cannot be checked here -- no pid
+ *   (an older rbx), no host, or another host's (a shared or remote checkout,
+ *   where a pid means nothing). The caller falls back to the task list.
+ *
+ * Pure: the host and the process table come in from the caller.
+ */
+export function stressLiveness(
+  manifest: StressManifest,
+  probe: { readonly hostname: string; readonly isAlive: (pid: number) => boolean },
+): 'live' | 'stale' | 'unknown' {
+  if (manifest.state !== 'running') {
+    return 'live';
+  }
+  if (manifest.pid === undefined || manifest.host === undefined) {
+    return 'unknown';
+  }
+  if (manifest.host !== probe.hostname) {
+    return 'unknown';
+  }
+  return probe.isAlive(manifest.pid) ? 'live' : 'stale';
 }
