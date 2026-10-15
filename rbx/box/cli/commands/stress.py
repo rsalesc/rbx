@@ -18,6 +18,7 @@ from rbx import annotations, console, utils
 from rbx.box import (
     generator_script_handlers,
     package,
+    stress_manifest,
 )
 from rbx.box.environment import VerificationLevel
 from rbx.grading import grading_context
@@ -260,8 +261,6 @@ async def stress(
 
         if testgroup in manual_groups:
             manual_target = manual_groups[testgroup]
-            from rbx.box import stress_manifest
-
             finding_paths = [
                 stress_manifest.finding_input_path(i + 1)
                 for i in range(len(report.findings))

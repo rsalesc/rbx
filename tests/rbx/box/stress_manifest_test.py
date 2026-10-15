@@ -106,3 +106,65 @@ def test_read_unparsable_manifest(testing_pkg: testing_package.TestingPackage):
     path.write_text('state: [unclosed\n')
 
     assert stress_manifest.read_manifest() is None
+
+
+def test_finish_open_session_stamps_a_running_session(
+    testing_pkg: testing_package.TestingPackage,
+):
+    stress_manifest.write_manifest(_manifest())
+    stress_manifest.begin_session(stress_manifest.manifest_path())
+
+    stress_manifest.finish_open_session('interrupted')
+
+    manifest = stress_manifest.read_manifest()
+    assert manifest is not None
+    assert manifest.state == StressState.INTERRUPTED
+
+
+def test_finish_open_session_stamps_errors_as_failed(
+    testing_pkg: testing_package.TestingPackage,
+):
+    stress_manifest.write_manifest(_manifest())
+    stress_manifest.begin_session(stress_manifest.manifest_path())
+
+    stress_manifest.finish_open_session('error')
+
+    manifest = stress_manifest.read_manifest()
+    assert manifest is not None
+    assert manifest.state == StressState.FAILED
+
+
+def test_finish_open_session_leaves_a_finished_session_alone(
+    testing_pkg: testing_package.TestingPackage,
+):
+    done = _manifest().model_copy(update={'state': StressState.DONE})
+    stress_manifest.write_manifest(done)
+    stress_manifest.begin_session(stress_manifest.manifest_path())
+
+    stress_manifest.finish_open_session('interrupted')
+
+    assert stress_manifest.read_manifest() == done
+
+
+def test_finish_open_session_without_a_session_is_a_no_op(
+    testing_pkg: testing_package.TestingPackage,
+):
+    stress_manifest.write_manifest(_manifest())
+    stress_manifest.end_session()
+
+    stress_manifest.finish_open_session('interrupted')
+
+    manifest = stress_manifest.read_manifest()
+    assert manifest is not None
+    assert manifest.state == StressState.RUNNING
+
+
+def test_finish_open_session_never_raises(
+    testing_pkg: testing_package.TestingPackage,
+):
+    path = stress_manifest.manifest_path()
+    # Not a file: reading it fails.
+    path.mkdir(parents=True)
+    stress_manifest.begin_session(path)
+
+    stress_manifest.finish_open_session('interrupted')

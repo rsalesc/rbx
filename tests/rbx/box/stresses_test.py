@@ -4,7 +4,13 @@ The VS Code extension never parses terminal output: it reads `stress.yml` and
 the per-finding directories. These tests pin that layout.
 """
 
+import os
+import signal
+import threading
+from unittest import mock
+
 import pytest
+import typer
 import yaml
 
 from rbx.box import stress_manifest, stresses, tasks
@@ -48,6 +54,12 @@ async def _run_stress(**kwargs) -> stresses.StressReport:
         return await stresses.run_stress(limits=limits, **kwargs)
 
 
+def _read() -> stress_manifest.StressManifest:
+    manifest = stress_manifest.read_manifest()
+    assert manifest is not None
+    return manifest
+
+
 async def test_findings_are_published(pkg: testing_package.TestingPackage):
     report = await _run_stress(
         timeout_in_seconds=30,
@@ -57,8 +69,7 @@ async def test_findings_are_published(pkg: testing_package.TestingPackage):
     )
 
     assert len(report.findings) == 2
-    manifest = stress_manifest.read_manifest()
-    assert manifest is not None
+    manifest = _read()
     assert manifest.state == StressState.DONE
     assert manifest.spec.generator == 'gens/gen.cpp [1..1000]'
     assert manifest.spec.finder == 'sols/wa.cpp'
@@ -67,8 +78,8 @@ async def test_findings_are_published(pkg: testing_package.TestingPackage):
     assert manifest.solutions == ['sols/ac.cpp', 'sols/wa.cpp']
     assert manifest.executed == report.executed
     assert [f.index for f in manifest.findings] == [1, 2]
-    assert [f.generator for f in manifest.findings] == [
-        f.generator for f in report.findings
+    assert [(f.generator, f.duration) for f in manifest.findings] == [
+        (f.generator, f.duration) for f in report.findings
     ]
 
     findings_dir = stress_manifest.findings_dir()
@@ -85,6 +96,8 @@ async def test_findings_are_published(pkg: testing_package.TestingPackage):
         assert int(finding.generator.args) == n
 
         directory = stress_manifest.finding_dir(finding.index)
+        answer = stress_manifest.finding_answer_path(finding.index)
+        assert answer.read_text().strip() == str(n)
         # The reference solution, which produced the expected answer...
         assert (directory / '0.out').read_text().strip() == str(n)
         # ...and the breaking one.
@@ -95,20 +108,17 @@ async def test_findings_are_published(pkg: testing_package.TestingPackage):
         assert eval_data['log']['stdout_absolute_path'] == str(
             (directory / '1.out').absolute()
         )
+        assert eval_data['testcase']['output'] == str(answer.absolute())
 
 
 async def test_manifest_is_running_while_the_loop_runs(
     pkg: testing_package.TestingPackage,
 ):
-    from unittest import mock
-
     seen = []
     real = stresses.generate_standalone
 
     async def spy(*args, **kwargs):
-        manifest = stress_manifest.read_manifest()
-        assert manifest is not None
-        seen.append(manifest.state)
+        seen.append(_read().state)
         return await real(*args, **kwargs)
 
     with mock.patch('rbx.box.stresses.generate_standalone', spy):
@@ -120,16 +130,12 @@ async def test_manifest_is_running_while_the_loop_runs(
         )
 
     assert seen and set(seen) == {StressState.RUNNING}
-    manifest = stress_manifest.read_manifest()
-    assert manifest is not None
-    assert manifest.state == StressState.DONE
+    assert _read().state == StressState.DONE
 
 
 async def test_keyboard_interrupt_marks_interrupted(
     pkg: testing_package.TestingPackage,
 ):
-    from unittest import mock
-
     calls = 0
     real = stresses.generate_standalone
 
@@ -148,16 +154,48 @@ async def test_keyboard_interrupt_marks_interrupted(
             findings_limit=5,
         )
 
-    manifest = stress_manifest.read_manifest()
-    assert manifest is not None
+    manifest = _read()
     assert manifest.state == StressState.INTERRUPTED
     assert len(manifest.findings) == len(report.findings) == 1
     assert manifest.executed == 2
 
 
-async def test_other_exceptions_mark_failed(pkg: testing_package.TestingPackage):
-    from unittest import mock
+async def test_sigint_stops_the_loop_and_marks_interrupted(
+    pkg: testing_package.TestingPackage,
+):
+    previous_handler = signal.getsignal(signal.SIGINT)
+    real = stresses.generate_standalone
+    timer = None
 
+    async def send_sigint_once_running(*args, **kwargs):
+        nonlocal timer
+        if timer is None:
+            # A real signal, delivered while the loop awaits the sandbox.
+            timer = threading.Timer(0.2, lambda: os.kill(os.getpid(), signal.SIGINT))
+            timer.start()
+        return await real(*args, **kwargs)
+
+    with mock.patch('rbx.box.stresses.generate_standalone', send_sigint_once_running):
+        # The finder never matches, so only the signal can end this early.
+        report = await _run_stress(
+            timeout_in_seconds=30,
+            generator_call='gens/gen.cpp [1..1000]',
+            finder='sols/ac.cpp',
+            findings_limit=1,
+        )
+
+    assert timer is not None
+    timer.join()
+    manifest = _read()
+    assert manifest.state == StressState.INTERRUPTED
+    assert manifest.elapsed < 30
+    assert report.findings == []
+    assert manifest.executed == report.executed
+    # The handler is gone once the stress is over.
+    assert signal.getsignal(signal.SIGINT) == previous_handler
+
+
+async def test_other_exceptions_mark_failed(pkg: testing_package.TestingPackage):
     async def boom(*args, **kwargs):
         raise RuntimeError('boom')
 
@@ -169,31 +207,110 @@ async def test_other_exceptions_mark_failed(pkg: testing_package.TestingPackage)
                 finder='sols/wa.cpp',
             )
 
-    manifest = stress_manifest.read_manifest()
-    assert manifest is not None
-    assert manifest.state == StressState.FAILED
+    assert _read().state == StressState.FAILED
 
 
-async def test_slowest_renumbers_contiguously(pkg: testing_package.TestingPackage):
-    report = await _run_stress(
-        timeout_in_seconds=2,
-        generator_call='gens/gen.cpp [1..1000]',
-        finder='sols/ac.cpp',
-        findings_limit=2,
-        find_slowest=True,
-    )
+async def test_exit_with_error_marks_failed(pkg: testing_package.TestingPackage):
+    async def exit_1(*args, **kwargs):
+        raise typer.Exit(1)
 
-    # Every execution is a candidate, so the heap evicted some.
-    assert report.executed > 2
-    manifest = stress_manifest.read_manifest()
-    assert manifest is not None
+    with mock.patch('rbx.box.stresses.generate_standalone', exit_1):
+        with pytest.raises(typer.Exit):
+            await _run_stress(
+                timeout_in_seconds=30,
+                generator_call='gens/gen.cpp [1..1000]',
+                finder='sols/wa.cpp',
+            )
+
+    assert _read().state == StressState.FAILED
+
+
+async def test_manifest_write_failure_does_not_mask_the_error(
+    pkg: testing_package.TestingPackage,
+):
+    async def boom(*args, **kwargs):
+        raise RuntimeError('boom')
+
+    real_write = stress_manifest.write_manifest
+
+    def fail_on_final_write(manifest, path=None):
+        if manifest.state != StressState.RUNNING:
+            raise OSError('disk full')
+        real_write(manifest, path)
+
+    with (
+        mock.patch('rbx.box.stresses.generate_standalone', boom),
+        mock.patch(
+            'rbx.box.stress_manifest.write_manifest', side_effect=fail_on_final_write
+        ),
+        pytest.raises(RuntimeError, match='boom'),
+    ):
+        await _run_stress(
+            timeout_in_seconds=30,
+            generator_call='gens/gen.cpp [1..1000]',
+            finder='sols/wa.cpp',
+        )
+
+
+# Scripted per-iteration durations (ms) for the slowest test, with a findings
+# limit of 2. Candidates are numbered by iteration while running:
+#   1 (10ms) kept; 2 (30ms) kept; 3 (20ms) evicts 1; 4 (50ms) evicts 3;
+#   5 (5ms) and every later 0ms iteration are too fast to be candidates.
+_SLOWEST_DURATIONS = [10, 30, 20, 50, 5]
+
+
+async def test_slowest_evicts_and_renumbers(pkg: testing_package.TestingPackage):
+    iteration = 0
+    calls_by_iteration = {}
+    findings_before = {}
+    real_generate = stresses.generate_standalone
+    real_run = tasks.run_solution_on_testcase
+
+    async def generate(metadata, *args, **kwargs):
+        nonlocal iteration
+        iteration += 1
+        calls_by_iteration[iteration] = metadata.generator_call
+        findings_before[iteration] = (
+            [f.index for f in _read().findings],
+            sorted(p.name for p in stress_manifest.findings_dir().glob('*')),
+        )
+        return await real_generate(metadata, *args, **kwargs)
+
+    async def run(*args, **kwargs):
+        evaluation = await real_run(*args, **kwargs)
+        durations = _SLOWEST_DURATIONS
+        ms = durations[iteration - 1] if iteration <= len(durations) else 0
+        evaluation.log.time = ms / 1000
+        return evaluation
+
+    with (
+        mock.patch('rbx.box.stresses.generate_standalone', generate),
+        mock.patch('rbx.box.stresses.tasks.run_solution_on_testcase', run),
+    ):
+        report = await _run_stress(
+            timeout_in_seconds=3,
+            generator_call='gens/gen.cpp [1..1000]',
+            finder='sols/ac.cpp',
+            findings_limit=2,
+            find_slowest=True,
+        )
+
+    assert iteration > len(_SLOWEST_DURATIONS)
+    # Mid-run, candidates keep their running number and evictions are gone
+    # from both the manifest and the disk.
+    assert findings_before[4] == ([2, 3], ['2', '3'])
+    assert findings_before[5] == ([2, 4], ['2', '4'])
+
+    manifest = _read()
     assert manifest.state == StressState.DONE
     assert manifest.spec.slowest
-    assert [f.index for f in manifest.findings] == [1, 2]
-    durations = [f.duration for f in manifest.findings]
-    assert durations == sorted(durations, reverse=True)
+    assert [(f.index, f.duration) for f in manifest.findings] == [(1, 50), (2, 30)]
     assert [f.generator for f in manifest.findings] == [
-        f.generator for f in report.findings
+        calls_by_iteration[4],
+        calls_by_iteration[2],
+    ]
+    assert [(f.generator, f.duration) for f in report.findings] == [
+        (f.generator, f.duration) for f in manifest.findings
     ]
 
     findings_dir = stress_manifest.findings_dir()

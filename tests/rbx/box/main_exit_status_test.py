@@ -1,3 +1,5 @@
+from unittest import mock
+
 import pytest
 import typer
 
@@ -21,3 +23,12 @@ from rbx.box import main
 )
 def testexit_status_of(exc, status):
     assert main.exit_status_of(exc) == status
+
+
+def test_finish_run_stamps_an_open_stress_session():
+    from rbx.box import stress_manifest
+
+    with mock.patch.object(stress_manifest, 'finish_open_session') as finish:
+        main._finish_run('interrupted')  # noqa: SLF001
+
+    finish.assert_called_once_with('interrupted')
