@@ -1,25 +1,19 @@
-import hashlib
+"""Naming files of glob-backed test groups, and checking new group names.
+
+What a promotion does lives in :mod:`rbx.box.promotion_plan`; where a test can
+go, in :mod:`rbx.box.promotion_sinks`. These are the small pieces both share
+with the interactive prompts.
+"""
+
 import itertools
 import pathlib
 import re
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 
 import pydantic
 
-from rbx.box import generator_script_handlers as gsh
-from rbx.box import package, package_utils, yaml_include
-from rbx.box.generation_schema import GenerationTestcaseEntry
-from rbx.box.schema import GeneratorCall, GeneratorScript, TestcaseGroup
-
-
-def manual_group_dir(group: TestcaseGroup) -> pathlib.Path:
-    """Return the folder backing a glob-based manual group.
-
-    This is the directory portion of the group's ``testcaseGlob`` (e.g.
-    ``tests/manual/corner/*.in`` -> ``tests/manual/corner``).
-    """
-    assert group.testcaseGlob is not None
-    return pathlib.Path(group.testcaseGlob).parent
+from rbx.box import package
+from rbx.box.schema import TestcaseGroup
 
 
 def fill_glob(glob: str, stem: str) -> pathlib.Path:
@@ -141,34 +135,6 @@ def validate_stems(stems: List[str]) -> Optional[str]:
     return None
 
 
-def promote_input_to_group(
-    input_path: pathlib.Path,
-    group: TestcaseGroup,
-    *,
-    name: Optional[str] = None,
-    base_dir: pathlib.Path = pathlib.Path(),
-) -> pathlib.Path:
-    """Write the bytes of ``input_path`` as a static ``.in`` file into the group.
-
-    The destination path is ``base_dir / fill_glob(group.testcaseGlob, stem)``,
-    so the written file always MATCHES the group's glob. The stem is ``name`` if
-    provided, else the next free counter name. INPUT ONLY -- never writes a
-    ``.out``/``.ans`` file.
-
-    Returns the path of the written file.
-    """
-    assert group.testcaseGlob is not None
-    stem = (
-        name
-        if name is not None
-        else next_testcase_name(group.testcaseGlob, base_dir=base_dir)
-    )
-    dest = base_dir / fill_glob(group.testcaseGlob, stem)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_bytes(input_path.read_bytes())
-    return dest
-
-
 def get_manual_groups_by_name() -> Dict[str, TestcaseGroup]:
     """Return test groups backed by a glob-based manual folder.
 
@@ -182,42 +148,6 @@ def get_manual_groups_by_name() -> Dict[str, TestcaseGroup]:
     return res
 
 
-def get_script_groups_by_name() -> Dict[str, TestcaseGroup]:
-    """Return test groups backed by a static ``.txt`` generator script.
-
-    These are the groups new generator calls can be appended to: a dynamic
-    script (a program that emits the plan, e.g. ``.py``) cannot be edited.
-    """
-    return {
-        name: group
-        for name, group in package.get_test_groups_by_name().items()
-        if group.generatorScript is not None
-        and group.generatorScript.path.suffix == '.txt'
-    }
-
-
-def propose_script_append(
-    group: TestcaseGroup,
-    calls: List[GeneratorCall],
-    comment: Optional[str] = None,
-) -> Tuple[pathlib.Path, str, str]:
-    """Compute the text of ``group``'s generator script with ``calls`` appended.
-
-    Returns ``(path, before, after)``: the script's path (as recorded in the
-    package, relative to its root), its current text and the text it would
-    have. Writes nothing; :func:`append_to_script_group` does.
-    """
-    assert group.generatorScript is not None
-    path = pathlib.Path(group.generatorScript.path)
-    before = path.read_text() if path.is_file() else ''
-    handler = gsh.get_generator_script_handler(
-        before,
-        gsh.GeneratorScriptHandlerParams(group.generatorScript),
-    )
-    handler.append(calls, comment=comment)
-    return path, before, handler.script
-
-
 def group_name_error(name: str) -> Optional[str]:
     """Why ``name`` cannot name a new test group, or ``None`` if it can."""
     try:
@@ -228,227 +158,3 @@ def group_name_error(name: str) -> Optional[str]:
             'digits, `-` or `_`, starting with a letter or digit.'
         )
     return None
-
-
-def _parsed_calls(group: TestcaseGroup, script: str) -> List[Tuple[str, str]]:
-    """The generator calls ``script`` holds, as ``(name, args)`` keys.
-
-    Args are whitespace-normalized so formatting alone never makes two calls
-    differ.
-    """
-    assert group.generatorScript is not None
-    handler = gsh.get_generator_script_handler(
-        script, gsh.GeneratorScriptHandlerParams(group.generatorScript)
-    )
-    return [
-        (inp.generator_call.name, ' '.join((inp.generator_call.args or '').split()))
-        for inp in handler.parse()
-        if inp.generator_call is not None
-    ]
-
-
-def is_new_script_call(group: TestcaseGroup, calls: List[GeneratorCall]) -> List[bool]:
-    """For each call, whether ``group``'s script lacks that call yet.
-
-    Compares parsed calls rather than lines: each call is appended the way
-    :func:`append_to_script_group` would, and only the appended text is parsed
-    back, so format-specific decoration (a ``box`` script's ``N ;`` group
-    prefix and ``.exe`` suffix) compares equal. A call repeated within
-    ``calls`` is new only the first time.
-    """
-    assert group.generatorScript is not None
-    path = pathlib.Path(group.generatorScript.path)
-    text = path.read_text() if path.is_file() else ''
-    seen = set(_parsed_calls(group, text))
-    res = []
-    for call in calls:
-        handler = gsh.get_generator_script_handler(
-            text, gsh.GeneratorScriptHandlerParams(group.generatorScript)
-        )
-        handler.append([call])
-        keys = _parsed_calls(group, handler.script[len(text) :])
-        res.append(not seen.issuperset(keys))
-        seen.update(keys)
-    return res
-
-
-def is_new_manual_input(
-    group: TestcaseGroup,
-    inputs: List[pathlib.Path],
-    base_dir: pathlib.Path = pathlib.Path(),
-) -> List[bool]:
-    """For each input, whether no file of ``group`` has the same bytes yet.
-
-    An input repeated within ``inputs`` is new only the first time.
-    """
-    assert group.testcaseGlob is not None
-
-    def digest(path: pathlib.Path) -> str:
-        return hashlib.sha256(path.read_bytes()).hexdigest()
-
-    seen = {
-        digest(path) for path in base_dir.glob(group.testcaseGlob) if path.is_file()
-    }
-    res = []
-    for path in inputs:
-        h = digest(path)
-        res.append(h not in seen)
-        seen.add(h)
-    return res
-
-
-def append_to_script_group(
-    group: TestcaseGroup,
-    calls: List[GeneratorCall],
-    comment: Optional[str] = None,
-) -> pathlib.Path:
-    """Append ``calls`` to ``group``'s ``.txt`` generator script.
-
-    Returns the path of the script it wrote.
-    """
-    path, _, after = propose_script_append(group, calls, comment=comment)
-    path.write_text(after)
-    package_utils.clear_package_cache()
-    return path
-
-
-def create_manual_group(name: str, glob: str) -> TestcaseGroup:
-    """Create a new glob-backed manual test group in ``problem.rbx.yml``.
-
-    Creates the folder for ``glob``, appends a ``{'name', 'testcaseGlob'}`` entry
-    to the ``testcases`` list (preserving comments via ruyaml), saves it, clears
-    the package cache, and returns the created ``TestcaseGroup``.
-    """
-    # Validate before touching anything: an invalid name must not reach the yaml.
-    group = TestcaseGroup(name=name, testcaseGlob=glob)
-    pathlib.Path(glob).parent.mkdir(parents=True, exist_ok=True)
-
-    dest = package.find_problem_yaml()
-    assert dest is not None
-    # `testcases` may live in an `!include`d fragment; edit whichever file owns it.
-    target = yaml_include.open_for_edit(dest, 'testcases')
-    entry = {'name': name, 'testcaseGlob': glob}
-    if target.value is None:
-        target.replace([entry])
-    else:
-        target.value.append(entry)
-    target.save()
-    package_utils.clear_package_cache()
-
-    return group
-
-
-def create_script_group(path: pathlib.Path) -> TestcaseGroup:
-    """Create a new ``.txt`` generator-script test group in ``problem.rbx.yml``.
-
-    The script-backed sibling of :func:`create_manual_group`: creates the file at
-    ``path``, appends a ``{'name', 'generatorScript'}`` entry to ``testcases``
-    (preserving comments via ruyaml), saves it, clears the package cache, and
-    returns the created ``TestcaseGroup``. The group takes the file's stem for
-    its name.
-
-    ``path`` is recorded as given. ``GeneratorScript.path`` is a ``CodeItem``
-    path resolved from the package root, so recording a bare basename for a file
-    created in a subdirectory leaves the group pointing at nothing.
-    """
-    path = path.with_suffix('.txt')
-    name = path.stem
-    # Validate before touching anything: an invalid name must not reach the yaml.
-    group = TestcaseGroup(name=name, generatorScript=GeneratorScript(path=path))
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.touch()
-
-    dest = package.find_problem_yaml()
-    assert dest is not None
-    target = yaml_include.open_for_edit(dest, 'testcases')
-    entry = {'name': name, 'generatorScript': {'path': str(path)}}
-    if target.value is None:
-        target.replace([entry])
-    else:
-        target.value.append(entry)
-    target.save()
-    package_utils.clear_package_cache()
-
-    return group
-
-
-def script_format_by_path() -> Dict[pathlib.Path, str]:
-    """Map each generator-script path in the package to its format ('rbx'/'box')."""
-    res: Dict[pathlib.Path, str] = {}
-    for group in package.get_test_groups_by_name().values():
-        gs = group.generatorScript
-        if gs is not None:
-            res[gs.path] = gs.format
-    return res
-
-
-def is_promotable(
-    entry: GenerationTestcaseEntry, script_formats: Dict[pathlib.Path, str]
-) -> bool:
-    """True iff entry came from an rbx generator script and is not a @copy."""
-    md = entry.metadata
-    if md.generator_script is None or md.copied_from is not None:
-        return False
-    # Only static ``.txt`` scripts are line-addressable; dynamic scripts (a
-    # program that emits the plan, e.g. ``.py``) cannot be edited line-by-line.
-    if md.generator_script.path.suffix != '.txt':
-        return False
-    return script_formats.get(md.generator_script.path) == 'rbx'
-
-
-def remove_script_entries(entries: Iterable[GenerationTestcaseEntry]) -> None:
-    """Delete each entry's originating statement from its rbx generator script."""
-    by_path: Dict[pathlib.Path, Set[int]] = {}
-    for entry in entries:
-        gse = entry.metadata.generator_script
-        assert gse is not None
-        by_path.setdefault(gse.path, set()).add(gse.line)
-
-    groups = package.get_test_groups_by_name()
-    script_entry_by_path = {
-        g.generatorScript.path: g.generatorScript
-        for g in groups.values()
-        if g.generatorScript is not None
-    }
-
-    for path, start_lines in by_path.items():
-        assert path in script_entry_by_path, (
-            f'No registered generator script found for {path}.'
-        )
-        script_entry = script_entry_by_path[path]
-        handler = gsh.get_generator_script_handler(
-            path.read_text(),
-            gsh.GeneratorScriptHandlerParams(script_entry),
-        )
-        handler.remove(start_lines)
-        new_text = (
-            handler.script if handler.script.endswith('\n') else handler.script + '\n'
-        )
-        path.write_text(new_text)
-
-    package_utils.clear_package_cache()
-
-
-async def create_manual_group_interactively() -> Optional[TestcaseGroup]:
-    """Interactively prompt for a new manual group's name and glob, then create it.
-
-    Prompts for the group NAME and then the GLOB path (e.g.
-    ``tests/manual/corner/*.in``). If either prompt is aborted (``None`` from
-    Ctrl-C) or left empty/whitespace, returns ``None`` without creating anything.
-    Otherwise delegates to :func:`create_manual_group` and returns the resulting
-    ``TestcaseGroup``.
-    """
-    import questionary
-
-    name = await questionary.text('Name for the new manual group:').ask_async()
-    if name is None or not name.strip():
-        return None
-
-    glob = await questionary.text(
-        'Glob for the new manual group (e.g. tests/manual/corner/*.in):'
-    ).ask_async()
-    if glob is None or not glob.strip():
-        return None
-
-    return create_manual_group(name, glob)

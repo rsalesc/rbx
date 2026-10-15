@@ -2,28 +2,54 @@ import * as assert from 'assert';
 import { test } from 'node:test';
 
 import {
-  MANUAL_SEPARATOR,
-  SCRIPT_SEPARATOR,
-  addToGroupArgs,
+  Plan,
+  Sink,
   commandLine,
+  copyPathError,
   defaultManualGlob,
   defaultScriptPath,
-  dryRunArgs,
+  doneMessage,
   failureMessage,
+  formRows,
   groupNameError,
   lastJson,
-  listGroupsArgs,
+  listSinksArgs,
   manualGlobError,
-  newManualArgs,
-  newScriptArgs,
   newScriptPathError,
-  parseDryRun,
-  parseGroupList,
+  nothingToDo,
+  parsePlan,
+  parseSinks,
   pickRows,
+  planArgs,
+  planSummary,
   proposalLabel,
+  promoteArgs,
   sameText,
-  scriptGroupName,
+  stemError,
+  textChanges,
 } from './promote';
+
+const PLAN_SINK: Sink = {
+  name: 'main',
+  kind: 'plan',
+  path: 'tests/plan.txt',
+  scope: null,
+  forms: ['recipe', 'copy'],
+  form: 'recipe',
+  suggested: 'tests/main/*.in',
+  inPlace: true,
+};
+
+const GLOB_SINK: Sink = {
+  name: 'samples',
+  kind: 'glob',
+  path: 'tests/samples/*.in',
+  scope: null,
+  forms: ['copy'],
+  form: 'copy',
+  suggested: 'tests/samples/*.in',
+  inPlace: false,
+};
 
 test('lastJson takes the last line that parses, past a stray notice', () => {
   assert.deepStrictEqual(lastJson('Creating the cache…\n[{"a": 1}]\n\n'), [{ a: 1 }]);
@@ -32,42 +58,77 @@ test('lastJson takes the last line that parses, past a stray notice', () => {
   assert.strictEqual(lastJson('nothing here\n'), undefined);
 });
 
-test('the group list is read, in order', () => {
-  const stdout =
-    '[{"name": "main", "kind": "script", "path": "tests/testplan.txt"},' +
-    ' {"name": "corner", "kind": "manual", "path": "tests/corner/*.in"}]\n';
-  assert.deepStrictEqual(parseGroupList(stdout), [
-    { name: 'main', kind: 'script', path: 'tests/testplan.txt' },
-    { name: 'corner', kind: 'manual', path: 'tests/corner/*.in' },
-  ]);
-  assert.deepStrictEqual(parseGroupList('[]'), []);
+test('the sink list is read, in order', () => {
+  const stdout = `notice\n${JSON.stringify([PLAN_SINK, { ...GLOB_SINK, scope: 'large' }])}\n`;
+  assert.deepStrictEqual(parseSinks(stdout), [PLAN_SINK, { ...GLOB_SINK, scope: 'large' }]);
+  assert.deepStrictEqual(parseSinks('[]'), []);
 });
 
-test('a group list with one malformed row is refused whole', () => {
-  for (const stdout of [
-    '{"name": "main"}',
-    '[{"name": "main", "kind": "generator", "path": "x"}]',
-    '[{"name": "main", "kind": "script"}]',
-    '[null]',
-    '',
+test('a sink list with one malformed row is refused whole', () => {
+  for (const row of [
+    { ...PLAN_SINK, kind: 'script' },
+    { ...PLAN_SINK, forms: ['input'] },
+    { ...PLAN_SINK, inPlace: undefined },
+    { ...PLAN_SINK, scope: 3 },
+    null,
   ]) {
-    assert.strictEqual(parseGroupList(stdout), undefined, stdout);
+    assert.strictEqual(parseSinks(JSON.stringify([PLAN_SINK, row])), undefined, JSON.stringify(row));
   }
+  assert.strictEqual(parseSinks('{"name": "main"}'), undefined);
 });
 
-test('the dry run is read, and refused when a field is missing', () => {
+const PLAN = {
+  sink: { name: 'main', kind: 'plan', path: 'tests/plan.txt', scope: null },
+  changes: [
+    { path: '/p/tests/plan.txt', action: 'modify', before: 'gen 1\n', after: '@copy tests/main/000.in\n' },
+    { path: '/p/tests/main/000.in', action: 'create', from: '/p/build/tests/main/000.in' },
+    { path: '/p/tests/new.txt', action: 'create', content: 'gen 2\n' },
+    { path: '/p/tests/old/001.in', action: 'delete' },
+  ],
+  promoted: [{ source: 'tests/plan.txt:1', form: 'copy', to: 'tests/main/000.in', inPlace: true, moved: true }],
+  skipped: [],
+};
+
+test('the plan is read, every kind of change', () => {
+  const plan = parsePlan(JSON.stringify(PLAN));
+  assert.ok(plan !== undefined);
+  assert.deepStrictEqual(plan.sink, { name: 'main', kind: 'plan', path: 'tests/plan.txt' });
+  assert.deepStrictEqual(plan.changes, PLAN.changes);
+  assert.deepStrictEqual(plan.promoted, PLAN.promoted);
+});
+
+test('a plan with a change rbx would not make is refused whole', () => {
+  for (const change of [
+    { path: '/p/a', action: 'rename' },
+    { path: '/p/a', action: 'modify', before: '' },
+    { path: '/p/a', action: 'create' },
+    { action: 'delete' },
+  ]) {
+    assert.strictEqual(parsePlan(JSON.stringify({ ...PLAN, changes: [change] })), undefined, JSON.stringify(change));
+  }
+  assert.strictEqual(parsePlan('[]'), undefined);
+});
+
+test('a plan says what it does', () => {
+  const plan = parsePlan(JSON.stringify(PLAN)) as Plan;
+  assert.strictEqual(planSummary(plan), '2 files created, 1 file edited, 1 file deleted');
   assert.deepStrictEqual(
-    parseDryRun('{"file": "/p/tests/a.txt", "before": "gen 1\\n", "after": "gen 1\\ngen 2\\n"}'),
-    { file: '/p/tests/a.txt', before: 'gen 1\n', after: 'gen 1\ngen 2\n' },
+    textChanges(plan).map((change) => change.path),
+    ['/p/tests/plan.txt', '/p/tests/new.txt'],
   );
-  assert.strictEqual(parseDryRun('{"file": "/p/a.txt", "before": ""}'), undefined);
-  assert.strictEqual(parseDryRun('[]'), undefined);
+  assert.strictEqual(doneMessage('tests/plan.txt:1', plan), 'turned tests/plan.txt:1 into a copy at tests/main/000.in, in place.');
+  const moved = { ...plan, promoted: [{ ...plan.promoted[0], inPlace: false, form: 'recipe' as const }] };
+  assert.strictEqual(doneMessage('finding #2', moved), 'moved finding #2 into main, as its generator call.');
+  assert.strictEqual(
+    nothingToDo({ ...plan, changes: [], skipped: [{ source: 'finding:1', reason: 'main already has it' }] }),
+    'finding:1: main already has it.',
+  );
 });
 
 test('sameText ignores line endings and a BOM only', () => {
   assert.ok(sameText('a\r\nb\r\n', 'a\nb\n'));
   assert.ok(sameText('a\rb\r', 'a\nb\n'));
-  assert.ok(sameText('\uFEFFgen 1\n', 'gen 1\n'));
+  assert.ok(sameText('﻿gen 1\n', 'gen 1\n'));
   assert.ok(!sameText('a\nb\n', 'a\nb'));
   assert.ok(!sameText('gen 1\n', 'gen 2\n'));
 });
@@ -78,78 +139,107 @@ test('a proposal is labelled by its package-relative path', () => {
   assert.strictEqual(proposalLabel('tests\\sub\\plan.txt'), 'tests/sub/plan.txt');
   assert.strictEqual(proposalLabel('../shared/plan.txt'), 'plan.txt');
   assert.strictEqual(proposalLabel('/abs/plan.txt'), 'plan.txt');
-  assert.strictEqual(proposalLabel('C:\\abs\\plan.txt'), 'plan.txt');
 });
 
 test('the argv tails', () => {
-  assert.deepStrictEqual(listGroupsArgs(), ['--list-groups', '--json']);
-  assert.deepStrictEqual(dryRunArgs(3, 'main'), ['3', '--group', 'main', '--dry-run', '--json']);
-  assert.deepStrictEqual(addToGroupArgs(3, 'corner'), ['3', '--group', 'corner']);
-  assert.deepStrictEqual(newScriptArgs(1, 'tests/stress.txt'), ['1', '--new-script', 'tests/stress.txt']);
-  assert.deepStrictEqual(newManualArgs(2, 'hard', 'tests/hard/*.in'), [
-    '2',
+  assert.deepStrictEqual(listSinksArgs(['tests/plan.txt:3']), ['tests/plan.txt:3', '--list-sinks', '--json']);
+  assert.deepStrictEqual(promoteArgs(['main/2'], { kind: 'sink', name: 'samples' }), ['main/2', '--to', 'samples']);
+  assert.deepStrictEqual(
+    planArgs(['finding:3'], { kind: 'sink', name: 'main' }, {
+      form: 'copy',
+      path: 'tests/edge/*.in',
+      keepSource: true,
+      session: '2026-10-15T12:00:00',
+    }),
+    [
+      'finding:3',
+      '--session',
+      '2026-10-15T12:00:00',
+      '--to',
+      'main',
+      '--as',
+      'copy',
+      '--path',
+      'tests/edge/*.in',
+      '--keep-source',
+      '--dry-run',
+      '--json',
+    ],
+  );
+  assert.deepStrictEqual(planArgs(['file:/tmp/a.in'], { kind: 'new-manual', name: 'hard', glob: 'tests/hard/*.in' }, { name: 'big' }), [
+    'file:/tmp/a.in',
     '--new-manual',
     'hard',
     '--glob',
     'tests/hard/*.in',
+    '--name',
+    'big',
+    '--dry-run',
+    '--json',
   ]);
-});
-
-test('every argv that names a finding pins its session when known', () => {
-  const at = '2026-10-15T12:00:00.123456';
-  const pinned = ['--session', at];
-  assert.deepStrictEqual(dryRunArgs(3, 'main', at), ['3', ...pinned, '--group', 'main', '--dry-run', '--json']);
-  assert.deepStrictEqual(addToGroupArgs(3, 'corner', at), ['3', ...pinned, '--group', 'corner']);
-  assert.deepStrictEqual(newScriptArgs(1, 'tests/stress.txt', at), [
-    '1',
-    ...pinned,
+  assert.deepStrictEqual(planArgs(['main/0'], { kind: 'new-script', path: 'tests/edge.txt' }, { path: '' }), [
+    'main/0',
     '--new-script',
-    'tests/stress.txt',
-  ]);
-  assert.deepStrictEqual(newManualArgs(2, 'hard', 'tests/hard/*.in', at), [
-    '2',
-    ...pinned,
-    '--new-manual',
-    'hard',
-    '--glob',
-    'tests/hard/*.in',
+    'tests/edge.txt',
+    '--dry-run',
+    '--json',
   ]);
 });
 
-test('a single quote is refused in a new script path or glob', () => {
-  assert.match(newScriptPathError("tests/it's.txt") ?? '', /single quote/);
-  assert.match(manualGlobError("tests/it's/*.in") ?? '', /single quote/);
-});
-
-test('the picker puts script groups first, then manual, then the new ones', () => {
-  const rows = pickRows([
-    { name: 'corner', kind: 'manual', path: 'tests/corner/*.in' },
-    { name: 'main', kind: 'script', path: 'tests/testplan.txt' },
-  ]);
+test('the picker puts where the test is first, then the rest, then new groups', () => {
+  const rows = pickRows([PLAN_SINK, GLOB_SINK]);
   assert.deepStrictEqual(
     rows.map((row) => [row.kind, row.label]),
     [
-      ['separator', SCRIPT_SEPARATOR],
-      ['group', 'main'],
-      ['separator', MANUAL_SEPARATOR],
-      ['group', 'corner'],
+      ['separator', 'Where it is now'],
+      ['sink', 'main'],
+      ['separator', 'Test groups'],
+      ['sink', 'samples'],
       ['separator', 'New group'],
       ['new-script', 'New script group…'],
       ['new-manual', 'New manual group…'],
     ],
   );
   const main = rows[1];
-  assert.ok(main.kind === 'group');
-  assert.strictEqual(main.description, 'tests/testplan.txt');
-});
-
-test('a kind with no groups gets no separator', () => {
-  const rows = pickRows([{ name: 'corner', kind: 'manual', path: 'tests/corner/*.in' }]);
-  assert.ok(!rows.some((row) => row.label === SCRIPT_SEPARATOR));
+  assert.ok(main.kind === 'sink');
+  assert.strictEqual(main.description, 'testplan tests/plan.txt');
+  assert.match(main.detail ?? '', /freeze/);
+  const scoped = pickRows([{ ...PLAN_SINK, inPlace: false, scope: 'large' }])[1];
+  assert.ok(scoped.kind === 'sink');
+  assert.strictEqual(scoped.description, 'testplan tests/plan.txt · @testgroup large');
   assert.deepStrictEqual(
     pickRows([]).map((row) => row.kind),
     ['separator', 'new-script', 'new-manual'],
   );
+});
+
+test('the form picker offers what the sink takes, the default first', () => {
+  assert.deepStrictEqual(
+    formRows(PLAN_SINK).map((row) => row.form),
+    ['recipe', 'copy'],
+  );
+  assert.deepStrictEqual(
+    formRows(GLOB_SINK).map((row) => row.form),
+    ['copy'],
+  );
+});
+
+test('a @copy path is a file or a pattern ending in .in, in the package', () => {
+  for (const ok of ['tests/edge/*.in', 'tests/edge/big.in', 'tests/edge/edge-*.in']) {
+    assert.strictEqual(copyPathError(ok), undefined, ok);
+  }
+  assert.ok(copyPathError('') !== undefined);
+  assert.match(copyPathError('tests/edge/*.txt') ?? '', /\.in/);
+  assert.match(copyPathError('../edge/*.in') ?? '', /inside the package/);
+  assert.match(copyPathError('tests/*/a.in') ?? '', /file name/);
+});
+
+test('stems allow empty (auto) and plain names only', () => {
+  assert.strictEqual(stemError(''), undefined);
+  assert.strictEqual(stemError('big-1.v2'), undefined);
+  assert.notStrictEqual(stemError('a b'), undefined);
+  assert.notStrictEqual(stemError('sub/x'), undefined);
+  assert.notStrictEqual(stemError('..'), undefined);
 });
 
 test('group names follow rbx: 3 to 32, letters, digits, - and _', () => {
@@ -174,12 +264,6 @@ test('a new script must be a .txt (or bare) path inside the package, named as a 
   assert.ok(newScriptPathError('') !== undefined);
 });
 
-test('a new script group is named after its stem', () => {
-  assert.strictEqual(scriptGroupName('tests/stress.txt'), 'stress');
-  assert.strictEqual(scriptGroupName('tests/stress'), 'stress');
-  assert.strictEqual(scriptGroupName('a\\b\\hard-1.txt'), 'hard-1');
-});
-
 test('a manual glob must hold a * and end in .in, inside the package', () => {
   assert.strictEqual(manualGlobError('tests/hard/*.in'), undefined);
   assert.ok(manualGlobError('tests/hard/a.in') !== undefined);
@@ -188,15 +272,15 @@ test('a manual glob must hold a * and end in .in, inside the package', () => {
 });
 
 test('the defaults are free names', () => {
-  assert.strictEqual(defaultScriptPath([]), 'tests/stress.txt');
-  assert.strictEqual(defaultScriptPath(['stress', 'stress-2']), 'tests/stress-3.txt');
+  assert.strictEqual(defaultScriptPath([]), 'tests/edge.txt');
+  assert.strictEqual(defaultScriptPath(['edge', 'edge-2']), 'tests/edge-3.txt');
   assert.strictEqual(defaultManualGlob('hard'), 'tests/hard/*.in');
 });
 
 test('the command line to paste quotes what a shell would read', () => {
   assert.strictEqual(
-    commandLine(newManualArgs(2, 'hard', 'tests/hard/*.in')),
-    "rbx testcases add-finding 2 --new-manual hard --glob 'tests/hard/*.in'",
+    commandLine(promoteArgs(['finding:2'], { kind: 'new-manual', name: 'hard', glob: 'tests/hard/*.in' })),
+    "rbx testcases promote finding:2 --new-manual hard --glob 'tests/hard/*.in'",
   );
 });
 

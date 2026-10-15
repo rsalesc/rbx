@@ -192,31 +192,63 @@ acts on that statement's test, without building the rest of the testset:
 - **Validate** writes the test and runs its group's validators on it, then
   shows whether they accepted it, with the message of any that rejected it.
 - **Run** runs your solutions on it, with `rbx irun` in a terminal.
-- **Promote** turns the test into a file in a
-  [manual test group](../setters/testset/index.md#testcase-glob): one you pick,
-  or a new one that **Promote** adds to `problem.rbx.yml`. Once you have
-  picked, it runs `rbx testcases promote` in a terminal, which also deletes the
-  line from the testplan. A `@copy` line is already a file, so it has no
-  **Promote** action.
+- **Promote** moves the test into another test group, or freezes it into a
+  `@copy` where it is. See [Promoting a test](#promoting-a-test).
 
 The same actions are in the editor's context menu, acting on the test under the
 cursor. Each one saves the testplan first, since {{rbx}} reads it from disk.
-**Run** and **Promote** need the extension to start commands in a terminal:
-with `rbx.dispatch.enabled` off, the extension hides **Run**, and **Promote**
-offers to copy its command for you to run.
+**Run** needs the extension to start commands in a terminal, so with
+`rbx.dispatch.enabled` off, the extension hides it.
 
 On the command line, you name a test by its testplan, relative to the problem
 folder, and the line its statement starts on: `tests/plan.txt:12`.
 
 ```bash
 rbx testcases generate tests/plan.txt:12 --validate
-rbx testcases promote tests/plan.txt:12 --group handmade
+rbx testcases promote tests/plan.txt:12 --to handmade
 ```
 
 The first command writes the test on line 12 of `tests/plan.txt` and runs its
-validators on it. The second moves that test into `handmade`, a manual group
-that must already exist, and deletes the line. To create the group instead,
-pass `--new-manual NAME --glob GLOB`.
+validators on it. The second moves that test into the `handmade` group and
+deletes the line.
+
+### Promoting a test
+
+**Promote** [promotes the test](../setters/testset/index.md#promoting-tests)
+with `rbx testcases promote`, and first asks:
+
+1. Which group the test goes into. The list starts with the testplan group the
+   test is already in, if any, then the samples, then every other group backed
+   by a testplan or a testcase glob, and ends with **New script group…** and
+   **New manual group…**.
+2. Whether to add the test's generator call or a `@copy` of its input, only
+   when the group is backed by a testplan and can take either.
+3. Where a `@copy` file goes, starting from where {{rbx}} would put it. For a
+   testcase-glob group, it asks for the filename instead: leave it empty, and
+   the file is numbered after the group's last one.
+
+The extension doesn't write anything yet: {{rbx}} works out what the promotion
+changes, and the extension opens each file it edits as a diff against the
+version {{rbx}} proposes.
+
+You can edit the proposed side, for example to reword a generator call, then
+apply it with the check-mark button (**Accept Proposed Change**) in the editor
+title, or drop it with **Discard Proposed Change**. Accepting applies the whole
+promotion at once, input files written and deleted included, so **Undo** takes
+all of it back.
+
+A promotion with nothing to edit, such as an input copied into a testcase glob
+folder, asks you to confirm instead, and so does any promotion that deletes a
+file. If a file changed after the proposal was made, accepting refuses and
+offers to promote again, and to copy your edits first if you made any.
+
+A testplan isn't the only place to promote a test from:
+
+- **Promote This Test…**, in the context menu of a testcase in the run view or
+  the **Tests** view, promotes that test, for example to move it into another group.
+- **Promote This Input to a Test…**, in the editor's context menu and on a
+  `.in` file in the Explorer, promotes an input file, or the text of an editor
+  (only the selection, when there is one).
 
 ## Running solutions on one test
 
@@ -287,16 +319,9 @@ per solution with its verdict on that test. From the row you can:
 - **copy** the generator call;
 - **promote** the finding into the testset.
 
-Promoting is available once the stress finishes, and first asks which group
-to add the finding to. For a group backed by a testplan, it opens a diff of the
-testplan against the version {{rbx}} proposes, with the new generator call. You
-can edit the proposed side, then save it with the check-mark button
-(**Accept Proposed Change**) in the editor title. If the testplan changed after
-the proposal was made, accepting refuses and offers to copy your edits and
-promote again. Promoting into a
-testcase-glob group, or into a group that doesn't exist yet, runs
-[`rbx testcases add-finding`](../setters/stress-testing.md#adding-findings-to-the-testset)
-in a terminal.
+Promoting is available once the stress finishes, and works like
+[promoting a test](#promoting-a-test) from a testplan. A finding is always
+copied, and once the promotion is applied its row shows the group it went to.
 
 ### The stress launcher
 

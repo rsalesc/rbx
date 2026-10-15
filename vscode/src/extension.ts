@@ -21,6 +21,8 @@ import { registerDiagnostics } from './diagnostics';
 import { registerDispatch } from './dispatch';
 import { registerInteractionDecorations } from './interactionDecorations';
 import { initLog, log } from './log';
+import { registerPromoteCommands } from './promoteCommands';
+import { Promoter } from './promoter';
 import { PROPOSED_SCHEME, ProposedFileSystemProvider } from './proposedFs';
 import { CONTEST_FILE_GLOB, CONTEST_MANIFEST, isContestVariantFile } from './rbx/contest';
 import { resetBuildDirs, resolveBuildDir } from './rbx/environment';
@@ -133,8 +135,22 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const panes = registerCommands(context, view, data, active, testset);
   const dispatcher = registerDispatch(context, active, declared, view);
-  registerTestplanLens(context, declared, dispatcher, panes);
+  // Promotion's proposals live in `proposed`, the one writable scheme the
+  // extension has; every entry point shares one promoter, so Accept and
+  // Discard find a proposal whoever opened it.
+  const proposed = new ProposedFileSystemProvider();
+  const promoter = new Promoter(proposed);
+  context.subscriptions.push(
+    vscode.workspace.registerFileSystemProvider(PROPOSED_SCHEME, proposed, {
+      isCaseSensitive: true,
+    }),
+    promoter,
+    vscode.commands.registerCommand('rbx.proposal.accept', (uri: unknown) => promoter.accept(uri)),
+    vscode.commands.registerCommand('rbx.proposal.discard', (uri: unknown) => promoter.discard(uri)),
+  );
+  registerTestplanLens(context, declared, dispatcher, panes, promoter);
   registerIrunCommands(context, { dispatcher, active, data, view, testset, panes });
+  registerPromoteCommands(context, { promoter, data, active, view, testset });
   // The third view in the container, on the same `data` and `active` as the
   // other two. It needs the dispatcher, which is why it is built only here.
   const stress = new StressViewProvider(
@@ -144,21 +160,15 @@ export function activate(context: vscode.ExtensionContext): void {
     context.workspaceState,
     context.extensionUri,
   );
-  // Promote answers the view's `rbx.stress.promote`; its script-group
-  // proposals live in `proposed`, the one writable scheme the extension has.
-  const proposed = new ProposedFileSystemProvider();
-  const promoter = new StressPromoter(stress, dispatcher, proposed);
+  // Promote answers the view's `rbx.stress.promote`.
+  const stressPromoter = new StressPromoter(stress, promoter);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(StressViewProvider.viewType, stress),
     vscode.commands.registerCommand('rbx.stress.new', () => stress.newStress()),
     vscode.commands.registerCommand('rbx.stress.stop', () => stress.stop()),
-    vscode.workspace.registerFileSystemProvider(PROPOSED_SCHEME, proposed, {
-      isCaseSensitive: true,
-    }),
-    promoter,
-    vscode.commands.registerCommand('rbx.stress.promote', (args: unknown) => promoter.promote(args)),
-    vscode.commands.registerCommand('rbx.proposal.accept', (uri: unknown) => promoter.accept(uri)),
-    vscode.commands.registerCommand('rbx.proposal.discard', (uri: unknown) => promoter.discard(uri)),
+    vscode.commands.registerCommand('rbx.stress.promote', (args: unknown) =>
+      stressPromoter.promote(args),
+    ),
     // The view names the intent (`OpenLauncherArgs`) and this answers it; the
     // launcher checks the argument itself, since a command takes anything.
     vscode.commands.registerCommand('rbx.stress.openLauncher', (args: unknown) =>

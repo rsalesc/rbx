@@ -3,6 +3,7 @@ new manual group, and with `--list-groups` / `--json` -- what an editor calls.""
 
 import asyncio
 import json
+import pathlib
 
 import pytest
 from typer.testing import CliRunner
@@ -49,10 +50,26 @@ def test_promote_by_script_line(runner: CliRunner, pkg):
 
     assert result.exit_code == 0, result.output
     dest = pkg.root / 'tests/manual/corner/000.in'
-    assert _last_json(result) == {
-        'group': 'corner',
-        'promoted': [{'test': 'gen/1', 'from': 'testplan/gen.txt:2', 'to': str(dest)}],
+    out = _last_json(result)
+    assert out['sink'] == {
+        'name': 'corner',
+        'kind': 'glob',
+        'path': 'tests/manual/corner/*.in',
+        'scope': None,
     }
+    assert out['promoted'] == [
+        {
+            'source': 'testplan/gen.txt:2',
+            'form': 'copy',
+            'to': 'tests/manual/corner/000.in',
+            'inPlace': False,
+            'moved': True,
+        }
+    ]
+    assert [(c['action'], c['path']) for c in out['changes']] == [
+        ('modify', str(_script(pkg).resolve())),
+        ('create', str(dest.resolve())),
+    ]
     assert dest.read_bytes() == b'456\n'
     assert _script(pkg).read_text() == 'gens/gen.cpp 123\n'
 
@@ -124,7 +141,7 @@ def test_promote_into_new_manual_group(runner: CliRunner, pkg):
     )
 
     assert result.exit_code == 0, result.output
-    assert _last_json(result)['group'] == 'handmade'
+    assert _last_json(result)['sink']['name'] == 'handmade'
     assert (pkg.root / 'tests/handmade/000.in').read_bytes() == b'123\n'
     assert 'name: handmade' in pkg.yml_path.read_text()
     assert 'tests/handmade/*.in' in pkg.yml_path.read_text()
@@ -165,4 +182,96 @@ def test_promote_json_needs_a_destination(runner: CliRunner, pkg):
     result = runner.invoke(testcases_main.app, ['promote', 'gen/0', '--json'])
 
     assert result.exit_code == 1
-    assert '--group or --new-manual' in result.output
+    assert '--to, --new-manual or --new-script' in result.output
+
+
+def test_list_sinks_says_what_each_group_takes(runner: CliRunner, pkg):
+    pkg.add_testgroup_from_glob('corner', 'tests/manual/corner/*.in')
+
+    result = runner.invoke(
+        testcases_main.app,
+        ['promote', 'testplan/gen.txt:2', '--list-sinks', '--json'],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == [
+        {
+            'name': 'gen',
+            'kind': 'plan',
+            'path': 'testplan/gen.txt',
+            'scope': None,
+            'forms': ['recipe', 'copy'],
+            'form': 'recipe',
+            'suggested': 'tests/gen/*.in',
+            'inPlace': True,
+        },
+        {
+            'name': 'corner',
+            'kind': 'glob',
+            'path': 'tests/manual/corner/*.in',
+            'scope': None,
+            'forms': ['copy'],
+            'form': 'copy',
+            'suggested': 'tests/manual/corner/*.in',
+            'inPlace': False,
+        },
+    ]
+
+
+def test_freezing_a_call_in_place(runner: CliRunner, pkg):
+    result = runner.invoke(
+        testcases_main.app,
+        ['promote', 'testplan/gen.txt:2', '--to', 'gen', '--as', 'copy'],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert _script(pkg).read_text() == 'gens/gen.cpp 123\n@copy tests/gen/000.in\n'
+    assert (pkg.root / 'tests/gen/000.in').read_bytes() == b'456\n'
+
+
+def test_dry_run_prints_the_plan_and_writes_nothing(runner: CliRunner, pkg):
+    result = runner.invoke(
+        testcases_main.app,
+        [
+            'promote',
+            'gen/0',
+            '--to',
+            'gen',
+            '--as',
+            'copy',
+            '--path',
+            'tests/frozen/big.in',
+            '--dry-run',
+            '--json',
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    out = _last_json(result)
+    script = str(_script(pkg).resolve())
+    assert out['changes'][0] == {
+        'path': script,
+        'action': 'modify',
+        'before': 'gens/gen.cpp 123\ngens/gen.cpp 456\n',
+        'after': '@copy tests/frozen/big.in\ngens/gen.cpp 456\n',
+    }
+    assert out['changes'][1]['path'] == str(
+        (pkg.root / 'tests/frozen/big.in').resolve()
+    )
+    assert out['changes'][1]['action'] == 'create'
+    assert pathlib.Path(out['changes'][1]['from']).read_bytes() == b'123\n'
+    assert _script(pkg).read_text() == 'gens/gen.cpp 123\ngens/gen.cpp 456\n'
+    assert not (pkg.root / 'tests/frozen').exists()
+
+
+def test_keep_source_leaves_the_statement(runner: CliRunner, pkg):
+    pkg.add_testgroup_from_glob('corner', 'tests/manual/corner/*.in')
+
+    result = runner.invoke(
+        testcases_main.app,
+        ['promote', 'gen/1', '--to', 'corner', '--keep-source'],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (pkg.root / 'tests/manual/corner/000.in').read_bytes() == b'456\n'
+    assert _script(pkg).read_text() == 'gens/gen.cpp 123\ngens/gen.cpp 456\n'

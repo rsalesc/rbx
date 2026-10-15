@@ -1,15 +1,13 @@
-import fnmatch
 import pathlib
 
 import pytest
 
-from rbx.box import package, promotion
+from rbx.box import promotion
 from rbx.box.generation_schema import (
     GenerationMetadata,
     GenerationTestcaseEntry,
-    GeneratorScriptEntry,
 )
-from rbx.box.schema import GeneratorCall, Testcase, TestcaseGroup
+from rbx.box.schema import Testcase
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
 
@@ -28,90 +26,6 @@ def _md(**kw):
 
 SCRIPT = pathlib.Path('tests/plan.txt')
 FORMATS = {SCRIPT: 'rbx'}
-
-
-def test_promotable_rbx_generator_call():
-    md = _md(
-        generator_call=GeneratorCall(name='g'),
-        generator_script=GeneratorScriptEntry(path=SCRIPT, line=1),
-    )
-    assert promotion.is_promotable(_entry(md), FORMATS) is True
-
-
-def test_promotable_input_content():
-    md = _md(
-        content='1 2 3',
-        generator_script=GeneratorScriptEntry(path=SCRIPT, line=1),
-    )
-    assert promotion.is_promotable(_entry(md), FORMATS) is True
-
-
-def test_not_promotable_copy():
-    md = _md(
-        copied_from=Testcase(inputPath=pathlib.Path('a.in')),
-        generator_script=GeneratorScriptEntry(path=SCRIPT, line=1),
-    )
-    assert promotion.is_promotable(_entry(md), FORMATS) is False
-
-
-def test_not_promotable_no_script():
-    md = _md(generator_call=GeneratorCall(name='g'))
-    assert promotion.is_promotable(_entry(md), FORMATS) is False
-
-
-def test_not_promotable_box_format():
-    md = _md(
-        generator_call=GeneratorCall(name='g'),
-        generator_script=GeneratorScriptEntry(path=SCRIPT, line=1),
-    )
-    assert promotion.is_promotable(_entry(md), {SCRIPT: 'box'}) is False
-
-
-def test_not_promotable_dynamic_script():
-    # A non-.txt generator script is dynamic (a program emits the plan) and is
-    # not line-addressable, so it cannot be promoted even when it is rbx-format.
-    dynamic = pathlib.Path('testplan/random.py')
-    md = _md(
-        generator_call=GeneratorCall(name='g'),
-        generator_script=GeneratorScriptEntry(path=dynamic, line=1),
-    )
-    assert promotion.is_promotable(_entry(md), {dynamic: 'rbx'}) is False
-
-
-def test_script_format_by_path(testing_pkg: testing_package.TestingPackage):
-    testing_pkg.add_testgroup_from_plan('main', 'gen 1\ngen 2\n')
-
-    formats = promotion.script_format_by_path()
-
-    plan_path = testing_pkg.root / 'testplan' / 'main.txt'
-    assert formats[plan_path] == 'rbx'
-
-
-def test_remove_script_entries_removes_originating_statement(
-    testing_pkg: testing_package.TestingPackage,
-):
-    testing_pkg.add_testgroup_from_plan('main', 'gen 1\ngen 2\n')
-    plan_path = testing_pkg.root / 'testplan' / 'main.txt'
-
-    md = _md(
-        generator_call=GeneratorCall(name='gen', args='1'),
-        generator_script=GeneratorScriptEntry(path=plan_path, line=1),
-    )
-    promotion.remove_script_entries([_entry(md)])
-
-    remaining = plan_path.read_text()
-    assert 'gen 1' not in remaining
-    assert 'gen 2' in remaining
-
-
-def test_manual_group_dir_returns_directory_of_glob():
-    group = TestcaseGroup(name='corner', testcaseGlob='tests/manual/corner/*.in')
-    assert promotion.manual_group_dir(group) == pathlib.Path('tests/manual/corner')
-
-
-def test_manual_group_dir_with_flat_glob():
-    group = TestcaseGroup(name='manual', testcaseGlob='tests/*.in')
-    assert promotion.manual_group_dir(group) == pathlib.Path('tests')
 
 
 # --- fill_glob -------------------------------------------------------------
@@ -230,81 +144,6 @@ def test_next_testcase_name_honours_used_reserve_set(tmp_path: pathlib.Path):
 # --- promote_input_to_group ------------------------------------------------
 
 
-def test_promote_input_to_group_writes_input(tmp_path: pathlib.Path):
-    src = tmp_path / 'src.in'
-    src.write_text('1 2 3\n')
-    group = TestcaseGroup(name='corner', testcaseGlob='tests/manual/corner/*.in')
-
-    written = promotion.promote_input_to_group(src, group, base_dir=tmp_path)
-
-    assert written == tmp_path / 'tests/manual/corner/000.in'
-    assert written.read_text() == '1 2 3\n'
-    # INPUT only: no .out / .ans written.
-    assert not (tmp_path / 'tests/manual/corner/000.out').exists()
-    assert not (tmp_path / 'tests/manual/corner/000.ans').exists()
-
-
-def test_promote_input_to_group_with_explicit_name(tmp_path: pathlib.Path):
-    src = tmp_path / 'src.in'
-    src.write_bytes(b'binary\x00content')
-    group = TestcaseGroup(name='corner', testcaseGlob='tests/manual/corner/*.in')
-
-    written = promotion.promote_input_to_group(
-        src, group, name='custom', base_dir=tmp_path
-    )
-
-    assert written == tmp_path / 'tests/manual/corner/custom.in'
-    assert written.read_bytes() == b'binary\x00content'
-
-
-def test_promote_input_to_group_auto_increments(tmp_path: pathlib.Path):
-    src = tmp_path / 'src.in'
-    src.write_text('x')
-    group = TestcaseGroup(name='corner', testcaseGlob='tests/manual/corner/*.in')
-
-    first = promotion.promote_input_to_group(src, group, base_dir=tmp_path)
-    second = promotion.promote_input_to_group(src, group, base_dir=tmp_path)
-
-    assert first.name == '000.in'
-    assert second.name == '001.in'
-
-
-def test_promote_input_to_group_fills_prefixed_glob(tmp_path: pathlib.Path):
-    """Regression: the destination must MATCH the group's own glob.
-
-    The bug wrote ``manual_tests/000.in`` for a ``manual_tests/manual-*.in``
-    group, so the promoted test did not match the glob and was silently dropped
-    at build. The written path must satisfy the glob.
-    """
-    src = tmp_path / 'src.in'
-    src.write_text('payload\n')
-    group = TestcaseGroup(name='manual', testcaseGlob='manual_tests/manual-*.in')
-
-    written = promotion.promote_input_to_group(src, group, base_dir=tmp_path)
-
-    assert written == tmp_path / 'manual_tests/manual-000.in'
-    # The written path matches the group's glob (the whole point of the fix).
-    rel = written.relative_to(tmp_path).as_posix()
-    assert fnmatch.fnmatch(rel, group.testcaseGlob)
-    assert written.read_text() == 'payload\n'
-
-
-def test_promote_input_to_group_explicit_name_fills_prefixed_glob(
-    tmp_path: pathlib.Path,
-):
-    src = tmp_path / 'src.in'
-    src.write_text('payload\n')
-    group = TestcaseGroup(name='manual', testcaseGlob='manual_tests/manual-*.in')
-
-    written = promotion.promote_input_to_group(
-        src, group, name='edge', base_dir=tmp_path
-    )
-
-    assert written == tmp_path / 'manual_tests/manual-edge.in'
-    rel = written.relative_to(tmp_path).as_posix()
-    assert fnmatch.fnmatch(rel, group.testcaseGlob)
-
-
 # --- batch helpers: default_stems / validate_stems -------------------------
 
 
@@ -375,63 +214,3 @@ def test_get_manual_groups_by_name_only_glob_groups(
     assert 'corner' in groups
     assert 'generated' not in groups
     assert groups['corner'].testcaseGlob == 'tests/manual/corner/*.in'
-
-
-def test_create_manual_group_writes_folder_and_yaml(
-    testing_pkg: testing_package.TestingPackage,
-):
-    group = promotion.create_manual_group('corner', 'tests/manual/corner/*.in')
-
-    assert group.name == 'corner'
-    assert group.testcaseGlob == 'tests/manual/corner/*.in'
-    # Folder is created.
-    assert (testing_pkg.root / 'tests/manual/corner').is_dir()
-    # Group is appended and visible after cache clear.
-    groups = package.get_test_groups_by_name()
-    assert 'corner' in groups
-    assert groups['corner'].testcaseGlob == 'tests/manual/corner/*.in'
-
-
-def test_create_script_group_writes_file_and_yaml(
-    testing_pkg: testing_package.TestingPackage,
-):
-    group = promotion.create_script_group(pathlib.Path('tests/corner'))
-
-    assert group.name == 'corner'
-    assert (testing_pkg.root / 'tests/corner.txt').is_file()
-
-    groups = package.get_test_groups_by_name()
-    assert 'corner' in groups
-    assert groups['corner'].generatorScript is not None
-
-
-def test_create_script_group_records_the_path_the_file_was_created_at(
-    testing_pkg: testing_package.TestingPackage,
-):
-    # `rbx stress` offers to save a finding into a new script, and the setter
-    # types a path like `tests/corner`. The group used to record only the
-    # basename, so `problem.rbx.yml` said `corner.txt` while the file lived at
-    # `tests/corner.txt`. `GeneratorScript.path` resolves from the package root,
-    # so the next `rbx build` failed with `Generator script not found` -- the
-    # bug the stress-testing walkthrough documented its way around.
-    group = promotion.create_script_group(pathlib.Path('tests/corner'))
-
-    assert group.generatorScript is not None
-    recorded = pathlib.Path(group.generatorScript.path)
-    assert recorded == pathlib.Path('tests/corner.txt')
-    assert (testing_pkg.root / recorded).is_file()
-
-    # And the same path survives the round trip through problem.rbx.yml.
-    reloaded = package.get_test_groups_by_name()['corner']
-    assert reloaded.generatorScript is not None
-    assert (testing_pkg.root / reloaded.generatorScript.path).is_file()
-
-
-def test_create_script_group_at_the_package_root_still_works(
-    testing_pkg: testing_package.TestingPackage,
-):
-    group = promotion.create_script_group(pathlib.Path('corner.txt'))
-
-    assert group.generatorScript is not None
-    assert pathlib.Path(group.generatorScript.path) == pathlib.Path('corner.txt')
-    assert (testing_pkg.root / 'corner.txt').is_file()

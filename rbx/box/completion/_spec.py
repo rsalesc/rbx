@@ -3497,7 +3497,7 @@ SPEC = {
                     ],
                 },
                 {
-                    'help': 'Promote generated tests into a manual test...',
+                    'help': 'Promote tests into a test group: as files,...',
                     'is_group': False,
                     'name': 'promote',
                     'panel': None,
@@ -3512,20 +3512,50 @@ SPEC = {
                             'variadic': True,
                         },
                         {
-                            'help': 'Destination manual test group.',
+                            'help': 'Test group (or group/subgroup) to promote into.',
                             'kind': 'option',
                             'multiple': False,
-                            'names': ['--group', '-G'],
+                            'names': ['--to', '--group', '-G'],
+                            'takes_value': True,
+                            'value': {'completer': 'testgroup', 'kind': 'completer'},
+                        },
+                        {
+                            'help': 'Promote into a generator script as `recipe` (the '
+                            'generator call) or `copy` (a @copy of the '
+                            'input). Default: the call, when the test has '
+                            'one.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--as'],
                             'takes_value': True,
                             'value': {'kind': 'none'},
                         },
                         {
-                            'help': 'Filename stem for the promoted test. Only '
-                            'meaningful when promoting exactly one test.',
+                            'help': 'File name, without `.in`, of the promoted input. '
+                            'Only meaningful when promoting exactly one test.',
                             'kind': 'option',
                             'multiple': False,
                             'names': ['--name', '-n'],
                             'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Where a @copy file goes, instead of where the '
+                            'group suggests: a file, or a pattern whose `*` '
+                            'is filled with the next free name.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--path'],
+                            'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Copy the tests instead of moving them: leave '
+                            'their statement or file where it is.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--keep-source'],
+                            'takes_value': False,
                             'value': {'kind': 'none'},
                         },
                         {
@@ -3547,11 +3577,28 @@ SPEC = {
                             'value': {'kind': 'none'},
                         },
                         {
-                            'help': 'List the manual test groups tests can be '
-                            'promoted into, and exit.',
+                            'help': 'Create a generator script group backed by this '
+                            '.txt file, and promote the tests into it.',
                             'kind': 'option',
                             'multiple': False,
-                            'names': ['--list-groups'],
+                            'names': ['--new-script'],
+                            'takes_value': True,
+                            'value': {'kind': 'path', 'path': 'file'},
+                        },
+                        {
+                            'help': 'Show what would change, without changing it.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--dry-run'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'List the test groups the tests can be promoted '
+                            'into, and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--list-sinks'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
                         },

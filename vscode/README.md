@@ -661,16 +661,42 @@ The finder is built from rows only: anything they cannot express is a job for
 the terminal. The last launch is remembered per package. Every launch passes
 `--no-promote`, so the task never stops to ask a question in its terminal.
 
-*Promote* goes through `rbx testcases add-finding`, which decides what lands in
-the testset, and is disabled until the session ends. Into a generator script
-group, it runs a `--dry-run --json` headless and opens a diff of the script
-against a writable proposed version; edit the right side, then accept (the
-check mark in the editor title, *Accept Proposed Change*) or *Discard Proposed
-Change*. Accept creates the script if it does not exist yet, asks you to save
-or revert unsaved edits to it in an editor first, and refuses a proposal the
-script has moved past, offering *Copy my edits* and *Promote again*. Into a
-manual group, or a new group of either kind, it dispatches
-`rbx testcases add-finding` in a terminal.
+*Promote* is disabled until the session ends, and then works like promoting
+any other test (below); the finding's row shows the group it went to.
+
+## Promoting tests
+
+*Promote* turns a test into part of the testset, or moves it within it. It is
+on every place the extension shows a test:
+
+| Where | What is promoted |
+|---|---|
+| The *Promote* lens over a testplan statement, or its context menu | that statement, `@copy` and `@input` ones included |
+| *Promote* on a stress finding | the finding |
+| *Promote This Test…* on a test row of the Run or Tests view | the test; an ad-hoc `irun` input as a file |
+| *Promote This Input to a Test…* on a `.in` file, or in an editor | the file, or the editor's text (the selection, if any) |
+
+It asks where the test goes: any group backed by a `.txt` testplan or by a
+`testcaseGlob`, with the place the test already is listed first, or a new
+group. For a testplan, it asks whether to add the generator call or a `@copy`
+of the input, and for a `@copy` where the file goes, suggested from the other
+`@copy` lines of the group.
+
+What promoting changes comes from `rbx testcases promote --dry-run --json`,
+run headless, and opens for review before anything is written: every file it
+edits opens as a diff against a writable proposed version. Edit the right side
+if you like, then accept (the check mark in the editor title, *Accept Proposed
+Change*) or *Discard Proposed Change*. Accept applies the whole promotion --
+the edits, the input files it writes, and the ones it deletes when the test
+moves -- as one edit, so Undo takes it all back. A promotion with nothing to
+review, such as a file copied into a folder, is confirmed in a dialog instead,
+and so is anything that deletes a file. Accept refuses a proposal the files
+have moved past, offering *Copy my edits* and *Promote again*.
+
+A test already in the chosen group's testplan is changed where it is: turning
+a generator call into a `@copy` freezes it on the same line. Anything else
+lands at the end of the group -- inside its `@testgroup` block when several
+groups share the testplan -- and leaves where it was.
 
 ## Status
 

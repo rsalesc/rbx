@@ -13,10 +13,10 @@
  *     files under `build/`, exactly as `rbx build` would -- and what they
  *     produce is shown here: the files in the testcase panes, the validators'
  *     verdict in a notification.
- *   - **Run** (`rbx irun -t`) and **Promote** (`rbx testcases promote`) are
- *     dispatched to a terminal: one runs solutions, the other writes the
- *     package -- a new `.in`, the plan without that line, perhaps a new group
- *     in `problem.rbx.yml` -- and the user reads the outcome there.
+ *   - **Run** (`rbx irun -t`) is dispatched to a terminal, where the user
+ *     reads the verdicts.
+ *   - **Promote** is promoter.ts: rbx plans the promotion headless, and the
+ *     plan opens for review before the editor applies it.
  *
  * Every action saves the plan first: rbx reads it from disk, and a line number
  * counted in unsaved text would name another statement there.
@@ -27,20 +27,15 @@ import * as vscode from 'vscode';
 import { DeclaredIndex } from './declared';
 import { Dispatcher, dispatchEnabled } from './dispatch';
 import { log } from './log';
-import { defaultManualGlob, failureMessage, groupNameError, manualGlobError, parseGroupList } from './rbx/promote';
+import { Promoter } from './promoter';
+import { failureMessage } from './rbx/promote';
 import {
   Generated,
-  PROMOTE,
   StatementKind,
   generateArgs,
   parseGenerated,
-  promoteCommandLine,
-  promoteListArgs,
-  promoteNewManualArgs,
-  promoteToGroupArgs,
   selector,
   statementAt,
-  stemError,
   testplanStatements,
   validationSummary,
 } from './rbx/testplan';
@@ -54,7 +49,6 @@ const SETTING = 'rbx.testplanCodeLens';
  * first, which on a cold cache takes far longer than listing groups does.
  */
 const GENERATE_TIMEOUT_MS = 5 * 60_000;
-const LIST_TIMEOUT_MS = 60_000;
 
 const COMMANDS = {
   generate: 'rbx.testplan.generate',
@@ -102,17 +96,15 @@ export class TestplanLensProvider implements vscode.CodeLensProvider {
           }),
         );
       }
-      // A `@copy` is already a file; rbx refuses to promote one.
-      if (statement.kind !== 'copy') {
-        lenses.push(
-          new vscode.CodeLens(range, {
-            title: '$(arrow-up) Promote',
-            tooltip: 'Move this test into a manual test group, as a file',
-            command: COMMANDS.promote,
-            arguments: args,
-          }),
-        );
-      }
+      lenses.push(
+        new vscode.CodeLens(range, {
+          title: '$(arrow-up) Promote',
+          tooltip:
+            'Move this test into another group, or freeze it into a @copy where it is',
+          command: COMMANDS.promote,
+          arguments: args,
+        }),
+      );
     }
     return lenses;
   }
@@ -144,6 +136,7 @@ class TestplanActions {
     private readonly declared: DeclaredIndex,
     private readonly dispatcher: Dispatcher,
     private readonly panes: TestcasePanes,
+    private readonly promoter: Promoter,
   ) {}
 
   /**
@@ -244,102 +237,9 @@ class TestplanActions {
 
   async promote(rawUri: unknown, rawLine: unknown): Promise<void> {
     const target = await this.target(rawUri, rawLine);
-    if (target === undefined) {
-      return;
+    if (target !== undefined) {
+      await this.promoter.promote({ root: target.root, sources: [target.sel], label: target.sel });
     }
-    // The lens leaves a `@copy` out; the context menu cannot, so say why here
-    // rather than in a terminal rbx then refuses it in.
-    if (target.kind === 'copy') {
-      void vscode.window.showInformationMessage(
-        `rbx: ${target.sel} is a @copy, which is already a file -- there is nothing to promote.`,
-      );
-      return;
-    }
-    const listed = await this.headless(
-      target.root,
-      [...PROMOTE, ...promoteListArgs()],
-      'rbx: listing the manual test groups…',
-      LIST_TIMEOUT_MS,
-    );
-    if (listed === undefined) {
-      return;
-    }
-    const groups = parseGroupList(listed.stdout)?.filter((group) => group.kind === 'manual');
-    if (groups === undefined) {
-      this.unreadable('promote --list-groups', listed.stdout);
-      return;
-    }
-
-    const NEW = '$(add) New manual group…';
-    const picked = await vscode.window.showQuickPick(
-      [
-        ...groups.map((group) => ({ label: group.name, description: group.path, group })),
-        { label: NEW, description: 'a folder of .in files, added to problem.rbx.yml' },
-      ],
-      {
-        title: `Promote ${target.sel}`,
-        placeHolder: 'Into which manual test group? The line is removed from the testplan.',
-        matchOnDescription: true,
-      },
-    );
-    if (picked === undefined) {
-      return;
-    }
-
-    let groupName: string;
-    let glob: string | undefined;
-    if ('group' in picked) {
-      groupName = picked.group.name;
-    } else {
-      const existing = groups.map((group) => group.name);
-      const name = await vscode.window.showInputBox({
-        title: `Promote ${target.sel} into a new manual group`,
-        prompt: 'The name of the new test group.',
-        validateInput: (value) => groupNameError(value.trim(), existing),
-      });
-      if (name === undefined) {
-        return;
-      }
-      groupName = name.trim();
-      const typed = await vscode.window.showInputBox({
-        title: `Promote ${target.sel} into ${groupName}`,
-        prompt: 'Where the group keeps its inputs: a glob with a `*`, ending in `.in`.',
-        value: defaultManualGlob(groupName),
-        validateInput: (value) => manualGlobError(value.trim()),
-      });
-      if (typed === undefined) {
-        return;
-      }
-      glob = typed.trim();
-    }
-
-    const stem = await vscode.window.showInputBox({
-      title: `Promote ${target.sel} into ${groupName}`,
-      prompt: 'The file name, without `.in`. Leave it empty for the next free one (000, 001, …).',
-      validateInput: (value) => stemError(value.trim()),
-    });
-    if (stem === undefined) {
-      return;
-    }
-    const args =
-      glob === undefined
-        ? promoteToGroupArgs(target.sel, groupName, stem.trim())
-        : promoteNewManualArgs(target.sel, groupName, glob, stem.trim());
-
-    if (!dispatchEnabled()) {
-      const line = promoteCommandLine(args);
-      const copy = 'Copy command';
-      const choice = await vscode.window.showInformationMessage(
-        `rbx: dispatching to the terminal is disabled (rbx.dispatch.enabled), so ${target.sel} ` +
-          `was not promoted. Run \`${line}\` yourself.`,
-        copy,
-      );
-      if (choice === copy) {
-        await vscode.env.clipboard.writeText(line);
-      }
-      return;
-    }
-    await this.dispatcher.dispatch({ command: 'promote', root: target.root, args });
   }
 
   /**
@@ -431,9 +331,10 @@ export function registerTestplanLens(
   declared: DeclaredIndex,
   dispatcher: Dispatcher,
   panes: TestcasePanes,
+  promoter: Promoter,
 ): void {
   const provider = new TestplanLensProvider(declared);
-  const actions = new TestplanActions(declared, dispatcher, panes);
+  const actions = new TestplanActions(declared, dispatcher, panes, promoter);
   const syncContext = () => {
     // The context menu keys on this list, since a `when` cannot ask the index
     // whether a file is a testplan.
