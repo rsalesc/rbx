@@ -4,6 +4,7 @@
 import pathlib
 import subprocess
 
+import jinja2
 import pytest
 import typer
 import yaml
@@ -93,7 +94,8 @@ async def test_latex_error_is_located_in_the_statement_source(
             'message': 'Undefined control sequence.',
             'file': STATEMENT,
             'line': 3,
-            'context': 'x',
+            # The line pdflatex read, which is what the setter wrote.
+            'context': 'This problem belongs to Statements v2 Contest.',
         }
     ]
 
@@ -174,3 +176,80 @@ async def test_error_in_a_deferred_argument_lands_where_it_was_written(
 
     [finding] = _read(cleandir_with_testdata / 'A')['outputs'][0]['findings']
     assert (finding['file'], finding['line']) == (STATEMENT, 3)
+
+
+@pytest.mark.test_pkg('contests/statements_v2')
+async def test_var_syntax_error_reads_as_the_setter_wrote_it(cleandir_with_testdata):
+    """Line tagging rewrites a `\\VAR{}` that starts a line; a syntax error in
+    it must not mention the parentheses the rewrite added."""
+    source = cleandir_with_testdata / 'A' / STATEMENT
+    source.write_text(source.read_text() + '\\VAR{ 1 + }\n')
+
+    with pytest.raises(jinja2.TemplateSyntaxError):
+        await _build()
+
+    [finding] = _read(cleandir_with_testdata / 'A')['outputs'][0]['findings']
+    assert finding['origin'] == 'template'
+    assert finding['file'] == STATEMENT
+    assert ')' not in finding['message']
+
+
+@pytest.mark.test_pkg('contests/statements_v2')
+async def test_error_blamed_on_a_closing_brace_is_unlocated(
+    cleandir_with_testdata, monkeypatch
+):
+    """TeX names the `}` ending a stored argument when it printed nothing of the
+    setter's to say where in it the error was: that `}` is never the answer."""
+
+    def build_pdf(self: Latex, temp_dir: pathlib.Path) -> LatexResult:
+        lines = self.latex.split('\n')
+        closing = next(
+            i for i, t in enumerate(lines, 1) if t.strip() == '\\end{document}'
+        )
+        log = (
+            f'./statement.tex:{closing}: Missing $ inserted.\n'
+            '<inserted text> \n'
+            '                $\n'
+            f'l.{closing} \\end{{document}}\n'
+        )
+        return LatexResult(
+            result=subprocess.CompletedProcess('', 1, log.encode(), b''), pdf=None
+        )
+
+    monkeypatch.setattr(Latex, 'build_pdf', build_pdf)
+    with pytest.raises(typer.Exit):
+        await _build()
+
+    [finding] = _read(cleandir_with_testdata / 'A')['outputs'][0]['findings']
+    # `\\end{document}` alone is not a closing `}`: it stays located.
+    assert finding['line'] is not None
+
+
+@pytest.mark.test_pkg('contests/statements_v2')
+async def test_error_on_a_line_that_only_closes_a_group_is_unlocated(
+    cleandir_with_testdata, monkeypatch
+):
+    template = cleandir_with_testdata / 'statements' / 'problem-standalone.rbx.tex'
+    template.write_text(
+        template.read_text().replace('\\end{document}', '{\n}\n\\end{document}')
+    )
+
+    def build_pdf(self: Latex, temp_dir: pathlib.Path) -> LatexResult:
+        lines = self.latex.split('\n')
+        closing = next(i for i, t in enumerate(lines, 1) if t.strip() == '}')
+        log = (
+            f'./statement.tex:{closing}: Missing $ inserted.\n'
+            '<inserted text> \n'
+            '                $\n'
+            f'l.{closing} }}\n'
+        )
+        return LatexResult(
+            result=subprocess.CompletedProcess('', 1, log.encode(), b''), pdf=None
+        )
+
+    monkeypatch.setattr(Latex, 'build_pdf', build_pdf)
+    with pytest.raises(typer.Exit):
+        await _build()
+
+    [finding] = _read(cleandir_with_testdata / 'A')['outputs'][0]['findings']
+    assert 'line' not in finding and 'file' not in finding

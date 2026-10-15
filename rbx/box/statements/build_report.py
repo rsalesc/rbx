@@ -28,13 +28,15 @@ import contextlib
 import datetime
 import enum
 import pathlib
+import re
 import time
-from typing import Iterator, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple
 
 import jinja2
 import yaml
 from pydantic import BaseModel, ValidationError
 
+import rbx
 from rbx import console, utils
 from rbx.box.exception import describe_exception
 from rbx.box.statements import sourcemap
@@ -165,47 +167,160 @@ def _finding(
     )
 
 
+# rbx's own files -- the bundled preset's templates and `icpc.sty` -- are not
+# the setter's to edit. An error TeX blames on one of them is really in the
+# statement it was rendering, so it is reported there, unlocated.
+_BUNDLED = pathlib.Path(rbx.__file__).resolve().parent / 'resources'
+
+# Below this many matched characters, a printed macro body is as likely to be
+# some package's internals as the setter's text.
+_EXCERPT_EVIDENCE = 6
+
+
+def _editable(pos: Optional[sourcemap.SourcePos]) -> Optional[sourcemap.SourcePos]:
+    if pos is None or pos.path.resolve().is_relative_to(_BUNDLED):
+        return None
+    return pos
+
+
 def _locate_latex_error(
     tracker: sourcemap.SourceTracker, cwd: pathlib.Path, error: LatexError
-) -> Optional[sourcemap.SourcePos]:
+) -> Tuple[Optional[sourcemap.SourcePos], Optional[str]]:
+    """Where a pdflatex error is in the setter's files, and the text of the
+    line TeX was reading there.
+
+    TeX names the line it was reading, but a macro that stores its argument and
+    expands it later makes that the line of the *expansion* -- `\end{document}`
+    in the bundled preset, for any error in a statement's body. The context
+    levels TeX prints (`LatexError.excerpts`) still hold the text being read, so
+    the level that best matches the emitted file says which line wrote it; the
+    line TeX named is the fallback."""
     if error.file is None or error.line is None:
-        return None
+        return None, None
     path = cwd / error.file
-    line = error.line
-    if error.argument is not None:
-        # TeX names the line a stored argument was expanded on; the argument
-        # itself is still on the line that wrote it.
-        line = tracker.find_excerpt(path, line, *error.argument) or line
-    return tracker.locate(path, line)
+    found = None
+    for before, after in error.excerpts:
+        excerpt = tracker.find_excerpt(path, error.line, before, after)
+        if excerpt is None or excerpt.score < _EXCERPT_EVIDENCE:
+            continue
+        if found is None or excerpt.score > found.score:
+            found = excerpt
+    if found is None and error.reading is not None:
+        found = tracker.find_excerpt(path, error.line, *error.reading, only_line=True)
+    if found is None:
+        text = tracker.text_of(path, error.line)
+        if text is not None and _CLOSING.match(text):
+            # The `}` that ends a stored argument (`\\includeProblem{..}{<body>}`
+            # in the bundled preset): TeX names it when the error was somewhere
+            # in the body and it printed nothing of the setter's to say where.
+            # Blaming the `}` would be a confident wrong answer.
+            return None, None
+        return tracker.locate(path, error.line), text.strip() if text else None
+    text = tracker.text_of(path, found.line)
+    return (
+        tracker.locate(path, found.line, found.start),
+        text.strip() if text else None,
+    )
+
+
+# A line that only closes groups, maybe ending the document too.
+_CLOSING = re.compile(r'^\s*\}[\s}]*(\\end\s*\{document\}\s*)?$')
+
+_MISSING_ATTRIBUTE = re.compile(r"has no attribute '([^']+)'")
+
+
+def _missing_block(message: str, pos: Optional[sourcemap.SourcePos]) -> Optional[str]:
+    """A plain reading of the error a template raises for a block the statement
+    does not define: Jinja says `'dict object' has no attribute 'legend'`."""
+    match = _MISSING_ATTRIBUTE.search(message)
+    if match is None or pos is None:
+        return None
+    try:
+        line = pos.path.read_text().splitlines()[pos.line - 1]
+    except (OSError, UnicodeDecodeError, IndexError):
+        return None
+    name = match.group(1)
+    if f'blocks.{name}' not in line and f"blocks['{name}']" not in line:
+        return None
+    return (
+        f'The template uses a `{name}` block, which this statement does not '
+        f'define (`%- block {name}`). Check the block names in the statement.'
+    )
+
+
+def _untagged_message(error: jinja2.TemplateError) -> Optional[str]:
+    """A syntax error as the setter's template causes it.
+
+    Line tagging rewrites a `\\VAR{expr}` that starts a line into
+    `\\VAR{(expr)|...}`, so a broken expression fails on tokens the setter never
+    wrote (`unexpected ')'`). Parsing the source again without the tagging
+    says what is really wrong with it."""
+    if not isinstance(error, jinja2.TemplateSyntaxError) or not error.source:
+        return None
+    from rbx.box.statements.latex_jinja import J2_ARGS
+
+    try:
+        jinja2.Environment(**J2_ARGS).parse(error.source)  # type: ignore[arg-type]
+    except jinja2.TemplateSyntaxError as plain:
+        return plain.message
+    return None
 
 
 def findings_for(
     root: pathlib.Path, exc: BaseException, tracker: sourcemap.SourceTracker
 ) -> List[StatementFinding]:
     """What went wrong, located in the setter's files where the map allows."""
+    findings: List[StatementFinding] = []
     if isinstance(exc, LatexCompilationError):
-        return [
-            _finding(
-                root,
-                FindingOrigin.LATEX,
-                error.message,
-                _locate_latex_error(tracker, exc.cwd, error),
-                error.context,
+        for error in exc.errors:
+            pos, text = _locate_latex_error(tracker, exc.cwd, error)
+            findings.append(
+                _finding(
+                    root,
+                    FindingOrigin.LATEX,
+                    error.message,
+                    _editable(pos),
+                    text if pos is not None and text else error.context,
+                )
             )
-            for error in exc.errors
-        ] or [_finding(root, FindingOrigin.LATEX, 'pdflatex failed.', None)]
-    template_error = _jinja_error(exc)
-    if template_error is not None:
-        message = template_error.message or type(template_error).__name__
-        return [
-            _finding(
-                root,
-                FindingOrigin.TEMPLATE,
-                message,
-                tracker.locate_template_error(exc),
+        if not findings:
+            findings.append(
+                _finding(root, FindingOrigin.LATEX, 'pdflatex failed.', None)
             )
-        ]
-    return [_finding(root, FindingOrigin.BUILD, describe_exception(exc), None)]
+    else:
+        template_error = _jinja_error(exc)
+        pos = tracker.locate_template_error(exc)
+        if template_error is not None:
+            message = _untagged_message(template_error) or (
+                template_error.message or type(template_error).__name__
+            )
+            rewritten = _missing_block(message, pos)
+            if rewritten is not None:
+                # On the template line when the setter owns the template; on
+                # the statement when it is rbx's own.
+                findings.append(
+                    _finding(root, FindingOrigin.TEMPLATE, rewritten, _editable(pos))
+                )
+            else:
+                findings.append(
+                    _finding(root, FindingOrigin.TEMPLATE, message, _editable(pos))
+                )
+        elif _editable(pos) is not None:
+            # Not a Jinja error, but raised while a template ran (a `1 // 0`).
+            findings.append(
+                _finding(root, FindingOrigin.TEMPLATE, describe_exception(exc), pos)
+            )
+        else:
+            findings.append(
+                _finding(root, FindingOrigin.BUILD, describe_exception(exc), None)
+            )
+    # TeX reports one mistake several times when it is read more than once (a
+    # `\section` title also goes to the table of contents); once mapped, those
+    # are the same finding.
+    unique: Dict[Tuple[Optional[str], Optional[int], str], StatementFinding] = {}
+    for finding in findings:
+        unique.setdefault((finding.file, finding.line, finding.message), finding)
+    return list(unique.values())
 
 
 def _print_findings(findings: List[StatementFinding]) -> None:

@@ -42,7 +42,10 @@ def _md_to_latex(markdown: str) -> str:
 
     # Markdown is never tagged (`sourcemap.LineTagExtension`); stripped anyway,
     # since a tag at the start of a line would stop pandoc reading it as syntax.
-    return pypandoc.convert_text(sourcemap.strip(markdown), 'latex', 'markdown')
+    # What pandoc writes has no line of its own in the setter's file: marked
+    # so, it does not inherit the template line it is spliced after.
+    latex = pypandoc.convert_text(sourcemap.strip(markdown), 'latex', 'markdown')
+    return sourcemap.unlocated(latex)
 
 
 def _resolve_file_explanation(

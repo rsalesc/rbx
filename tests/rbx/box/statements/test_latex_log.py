@@ -1,7 +1,7 @@
 """`latex.parse_errors` over logs captured from a real pdflatex (TeX Live 2024)
 run with `-file-line-error` and an unwrapped log."""
 
-from rbx.box.statements.latex import LatexError, parse_errors
+from rbx.box.statements.latex import parse_errors
 
 UNDEFINED_AND_MATH = r"""This is pdfTeX, Version 3.141592653-2.6-1.40.26 (TeX Live 2024)
 (./statement.tex
@@ -45,29 +45,51 @@ Transcript written on statement.log.
 """
 
 
+def _summary(errors):
+    return [(e.message, e.file, e.line, e.context) for e in errors]
+
+
 def test_located_errors_with_context():
-    assert parse_errors(UNDEFINED_AND_MATH) == [
-        LatexError('Undefined control sequence.', './statement.tex', 5, '\\foo{x}'),
-        LatexError('Missing { inserted.', './statement.tex', 6, '$a^$'),
-        LatexError('Missing } inserted.', './statement.tex', 6, '$a^$'),
+    errors = parse_errors(UNDEFINED_AND_MATH)
+    # The two halves of a split line are joined with a space: TeX drops the
+    # space after a control word where it breaks, and `\foo` + `{x}` must not
+    # read as one longer command name.
+    assert _summary(errors) == [
+        ('Undefined control sequence.', './statement.tex', 5, '\\foo {x}'),
+        ('Missing { inserted.', './statement.tex', 6, '$a^$'),
+        ('Missing } inserted.', './statement.tex', 6, '$a^$'),
     ]
+    assert errors[0].reading == ('\\foo', '{x}')
+    # `<to be read again>` and `<inserted text>` are TeX's, never source.
+    assert errors[1].excerpts == ()
 
 
 def test_bare_error_takes_the_emergency_stop_location():
-    assert parse_errors(MISSING_PACKAGE) == [
-        LatexError(
+    assert _summary(parse_errors(MISSING_PACKAGE)) == [
+        (
             "LaTeX Error: File `nopenope.sty' not found.",
             './statement.tex',
             3,
-            '\\begin{document}',
+            '\\begin {document}',
         )
     ]
 
 
 def test_emergency_stop_alone_is_an_error():
     log = './statement.tex:9: Emergency stop.\nl.9 \\end\n'
-    assert parse_errors(log) == [
-        LatexError('Emergency stop.', './statement.tex', 9, '\\end')
+    assert _summary(parse_errors(log)) == [
+        ('Emergency stop.', './statement.tex', 9, '\\end')
+    ]
+
+
+def test_fatal_trailers_are_not_errors():
+    log = (
+        '! File ended while scanning use of \\includeProblem.\n'
+        '! Emergency stop.\n'
+        '!  ==> Fatal error occurred, no output PDF file produced!\n'
+    )
+    assert [e.message for e in parse_errors(log)] == [
+        'File ended while scanning use of \\includeProblem.'
     ]
 
 
@@ -105,13 +127,34 @@ The control sequence at the end of the top line
 def test_error_in_a_stored_argument_keeps_the_argument():
     [error] = parse_errors(DEFERRED_ARGUMENT)
     assert (error.file, error.line) == ('./statement.tex', 35)
-    assert error.argument == (
-        '\\badcmd ',
-        'The input is a single line containing two integers $A$ and $B$.',
+    assert error.excerpts == (
+        (
+            '\\badcmd ',
+            'The input is a single line containing two integers $A$ and $B$.',
+        ),
     )
     assert error.context == (
         '\\badcmd The input is a single line containing two integers $A$ and $B$.'
     )
+
+
+# `\errorcontextlines=1000`: every level, here a macro body holding the text.
+MACRO_BODY = r"""./statement.tex:7: Missing { inserted.
+<to be read again>
+                   $
+\stored ->Some text here with a formula $a^$
+                                             inside and more.
+l.7 \stored
+
+"""
+
+
+def test_macro_body_levels_are_excerpts():
+    [error] = parse_errors(MACRO_BODY)
+    assert error.excerpts == (
+        ('Some text here with a formula $a^$', 'inside and more.'),
+    )
+    assert error.reading == ('\\stored', '')
 
 
 def test_bare_error_keeps_its_argument_through_the_emergency_stop():
@@ -124,4 +167,20 @@ def test_bare_error_keeps_its_argument_through_the_emergency_stop():
     )
     [error] = parse_errors(log)
     assert (error.file, error.line) == ('./statement.tex', 9)
-    assert error.argument == ('\\badcmd ', 'rest of it')
+    assert error.excerpts == (('\\badcmd ', 'rest of it'),)
+
+
+def test_a_bang_line_inside_a_printed_macro_body_is_not_an_error():
+    """With every context level printed, LaTeX's own error macros show their
+    bodies -- which hold lines starting with `! `."""
+    log = (
+        "./statement.tex:3: LaTeX Error: File `nope.sty' not found.\n"
+        '\\@missingfileerror #1#2->\\typeout {^^J\n'
+        "! LaTeX Error: File `#1.#2' not found.^^J}\n"
+        '                         \\@latex@error\n'
+        'l.3 \\usepackage{nope}\n'
+        '                       \n'
+    )
+    assert [e.message for e in parse_errors(log)] == [
+        "LaTeX Error: File `nope.sty' not found."
+    ]

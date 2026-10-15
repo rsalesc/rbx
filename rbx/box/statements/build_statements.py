@@ -371,9 +371,10 @@ async def _build_statement(
             if use_samples
             else []
         )
+        origins.source(statement.file, rendered_in=overlay_root)
         for sample in samples:
             if sample.explanationPath is not None:
-                origins.source(sample.explanationPath)
+                origins.source(sample.explanationPath, rendered_in=overlay_root)
         tex = engine.render_problem_tex(
             render_root=overlay_root,
             problem_root=overlay_root,
@@ -394,6 +395,12 @@ async def _build_statement(
         # then publish the (raw) content. No contest/template needed.
         overlay.mirror_tree(problem_dir, overlay_root)
         tex = statement.file.read_bytes()
+        if statement.type == StatementType.TeX:
+            # Handed to pdflatex as is; tagged so its errors map back too.
+            text = tex.decode('utf-8', 'surrogateescape')
+            tex = sourcemap.verbatim(text, statement.file).encode(
+                'utf-8', 'surrogateescape'
+            )
 
     output_bytes = _emit_output(
         overlay_root,

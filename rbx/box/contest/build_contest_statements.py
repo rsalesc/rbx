@@ -431,7 +431,7 @@ async def _render_problem_fragment_async(
         root_prefix = f'.problems/{short}/'
         overlay.stage_join_problem(overlay_root, problem_dir, short)
         origins.mount(problem_root, problem_dir)
-        origins.source(problem_statement.file)
+        origins.source(problem_statement.file, rendered_in=problem_root)
 
         if contest_statement.contestProblemTemplate is None:
             with StatementResolverError() as err:
@@ -477,7 +477,7 @@ async def _render_problem_fragment_async(
         )
         for sample in samples:
             if sample.explanationPath is not None:
-                origins.source(sample.explanationPath)
+                origins.source(sample.explanationPath, rendered_in=problem_root)
 
         fragment = engine.render_problem_tex(
             render_root=overlay_root,
@@ -569,6 +569,12 @@ def _emit_simple(
             content = sourcemap.strip(content.decode()).encode()
     else:
         content = (overlay_root / source_rel).read_bytes()
+        if statement.type == StatementType.TeX and output_type == StatementType.PDF:
+            # Handed to pdflatex as is; tagged so its errors map back too.
+            text = content.decode('utf-8', 'surrogateescape')
+            content = sourcemap.verbatim(text, contest_root / statement.file).encode(
+                'utf-8', 'surrogateescape'
+            )
 
     if statement.type == StatementType.PDF:
         output_bytes = content

@@ -136,21 +136,33 @@ class TestTracking:
         line = _line_of(tex, '\\section{Input}')
         assert tracker.locate('./statement.tex', line) == SourcePos(template, 4)
 
-    def test_tags_survive_filters(self, tmp_path):
+    def test_captured_bodies_are_never_tagged(self, tmp_path):
+        """Jinja hands a `set` block, a macro or a filter block to the template
+        as a string to compute with; a tag would change what it computes."""
         source = _write(
-            tmp_path / 'src' / 'doc.tex', 'a\n%- filter upper\nb\n%- endfilter\n'
+            tmp_path / 'src' / 'doc.tex',
+            '%- set n\n'
+            '5\n'
+            '%- endset\n'
+            'n+1=\\VAR{n|int + 1}\n'
+            '%- macro greet()\n'
+            'hello\n'
+            '%- endmacro\n'
+            '\\VAR{"yes" if greet().strip() == "hello" else "no"}\n'
+            '\\VAR{greet()|trim|length}\n'
+            '%- filter trim\n'
+            '   x\n'
+            '%- endfilter\n',
         )
         overlay = tmp_path / 'overlay'
         _write(overlay / 'doc.tex', source.read_text())
         origins = Origins()
         origins.mount(overlay, source.parent)
-        with sourcemap.tracking(origins) as tracker:
-            out = render.render_jinja(overlay, b'%- extends "doc.tex"').decode()
-            tex = tracker.emit(overlay / 'statement.tex', out)
-        assert tex == 'a\nB\n'
-        assert tracker.locate(overlay / 'statement.tex', 2) == SourcePos(
-            _real(source), 3
-        )
+        plain = render.render_jinja(overlay, b'%- extends "doc.tex"').decode()
+        with sourcemap.tracking(origins):
+            tracked = render.render_jinja(overlay, b'%- extends "doc.tex"').decode()
+        assert sourcemap.strip(tracked) == plain
+        assert 'n+1=6' in plain and 'yes' in plain and '\n5\n' in plain + '\n'
 
     def test_nothing_is_tagged_outside_tracking(self, staged):
         overlay, _, _, _ = staged
@@ -276,12 +288,21 @@ class TestFindExcerpt:
         found = tracker.find_excerpt(
             tmp_path / 'statement.tex', 5, '\\badcmd ', '{} The input is two integers.'
         )
-        assert found == 2
+        assert found is not None and found.line == 2
+        # Just past the stop: `\\inputdesc{\\badcmd` is 18 characters.
+        assert found.column == len('\\inputdesc{\\badcmd')
 
     def test_nearest_above_the_reported_line_wins(self, tmp_path):
         tracker = self._tracker(tmp_path)
-        assert tracker.find_excerpt(tmp_path / 'statement.tex', 5, '\\badcmd ', '') == 4
-        assert tracker.find_excerpt(tmp_path / 'statement.tex', 3, '\\badcmd ', '') == 2
+
+        def line(at: int):
+            found = tracker.find_excerpt(
+                tmp_path / 'statement.tex', at, '\\badcmd ', ''
+            )
+            return found.line if found is not None else None
+
+        assert line(5) == 4
+        assert line(3) == 2
 
     def test_falls_back_to_the_text_before_the_stop(self, tmp_path):
         # What follows ran onto the next source line, so only the head matches.
@@ -289,7 +310,7 @@ class TestFindExcerpt:
         found = tracker.find_excerpt(
             tmp_path / 'statement.tex', 5, 'two integers. ', 'More input.'
         )
-        assert found == 2
+        assert found is not None and found.line == 2
 
     def test_nothing_found(self, tmp_path):
         tracker = self._tracker(tmp_path)
@@ -365,4 +386,145 @@ def test_find_excerpt_long_truncated_argument_spanning_lines(tmp_path):
         '\\example {.samples/001/in} {.samples/001/out} \\subsection *{\\strNotes } '
         'Hahaha \\badcmd '
     )
-    assert tracker.find_excerpt(tmp_path / 'statement.tex', 10, before, '\\par ') == 8
+    found = tracker.find_excerpt(tmp_path / 'statement.tex', 10, before, '\\par ')
+    assert found is not None and found.line == 8
+
+
+def test_find_excerpt_picks_the_occurrence_whose_surroundings_match(tmp_path):
+    """The same bad line in two blocks: the text TeX printed before it says
+    which one (the stress test's case B)."""
+    tex = (
+        'Legend first line.\n'  # 1
+        'Same bad \\badDup here.\n'  # 2
+        '\n'  # 3
+        'Notes first line.\n'  # 4
+        'Same bad \\badDup here.\n'  # 5
+        '}\\end{document}\n'  # 6
+    )
+    tracker = sourcemap.SourceTracker()
+    tracker.emit(tmp_path / 'statement.tex', tex)
+    found = tracker.find_excerpt(
+        tmp_path / 'statement.tex', 6, 'Legend first line. Same bad \\badDup ', 'here.'
+    )
+    assert found is not None and found.line == 2
+    found = tracker.find_excerpt(
+        tmp_path / 'statement.tex', 6, 'Notes first line. Same bad \\badDup ', 'here.'
+    )
+    assert found is not None and found.line == 5
+
+
+def test_a_line_starting_with_a_var_maps_to_its_own_line(tmp_path):
+    """No literal text carries the tag of a line that starts with `\\VAR{}`,
+    so the value does -- but only when it renders something."""
+    source = _write(
+        tmp_path / 'src' / 'doc.tex',
+        'first\n'  # 1
+        '\\VAR{word}\n'  # 2
+        '%- block empty\n'  # 3
+        '\\VAR{nothing}\n'  # 4
+        '%- endblock\n',  # 5
+    )
+    overlay = tmp_path / 'overlay'
+    _write(overlay / 'doc.tex', source.read_text())
+    origins = Origins()
+    origins.mount(overlay, source.parent)
+    with sourcemap.tracking(origins) as tracker:
+        blocks = render.render_jinja_blocks(
+            overlay, source.read_bytes(), word='\\badOnly', nothing=''
+        )
+        out = render.render_jinja(
+            overlay, b'%- extends "doc.tex"', word='\\badOnly', nothing=''
+        ).decode()
+        tex = tracker.emit(overlay / 'statement.tex', out)
+    assert blocks.blocks['empty'].strip() == ''
+    assert tracker.locate(
+        overlay / 'statement.tex', _line_of(tex, '\\badOnly')
+    ) == SourcePos(_real(source), 2)
+
+
+def test_a_line_of_two_origins_maps_by_column(tmp_path):
+    """Template text and a spliced block on one output line: where the token TeX
+    stopped on starts says which (the stress test's case E). Glued to the
+    block's text, `\\badBody` + `Given` reads as one control word that starts
+    in the template and ends in the block -- it is the template's."""
+    tracker = sourcemap.SourceTracker()
+    template = tracker.intern(_real(tmp_path))
+    statement = tracker.intern(_real(tmp_path / 'src'))
+    tag = sourcemap.TAG_OPEN + '{}:{}' + sourcemap.TAG_CLOSE
+    tracker.emit(
+        tmp_path / 'statement.tex',
+        tag.format(template, 21) + '\\badBody' + tag.format(statement, 2) + 'Given.',
+    )
+    path = tmp_path / 'statement.tex'
+    assert tracker.locate(path, 1, 0) == SourcePos(_real(tmp_path), 21)
+    assert tracker.locate(path, 1, len('\\badBody')) == SourcePos(
+        _real(tmp_path / 'src'), 2
+    )
+    found = tracker.find_excerpt(path, 1, '\\badBodyGiven ', '.', only_line=True)
+    assert found is not None
+    assert found.start == 0
+    assert tracker.locate(path, found.line, found.start) == SourcePos(
+        _real(tmp_path), 21
+    )
+
+
+def test_verbatim_text_maps_line_for_line(tmp_path):
+    source = _write(tmp_path / 'plain.tex', 'a\n\nb \\badPlain\n')
+    with sourcemap.tracking() as tracker:
+        tagged = sourcemap.verbatim(source.read_text(), source)
+        tex = tracker.emit(tmp_path / 'statement.tex', tagged)
+    assert tex == source.read_text()
+    assert tracker.locate(tmp_path / 'statement.tex', 3) == SourcePos(_real(source), 3)
+
+
+def test_unlocated_text_does_not_inherit_the_line_above(tmp_path):
+    with sourcemap.tracking() as tracker:
+        here = tracker.intern(_real(tmp_path))
+        tagged = (
+            sourcemap.TAG_OPEN
+            + f'{here}:7'
+            + sourcemap.TAG_CLOSE
+            + 'template\n'
+            + sourcemap.unlocated('from pandoc')
+        )
+        tracker.emit(tmp_path / 'statement.tex', tagged)
+    assert tracker.locate(tmp_path / 'statement.tex', 1) == SourcePos(
+        _real(tmp_path), 7
+    )
+    assert tracker.locate(tmp_path / 'statement.tex', 2) is None
+
+
+def test_identical_sources_stay_apart_by_where_they_render(tmp_path):
+    """Two problems of a contest with byte-identical statements: each scratch
+    copy maps back to its own problem."""
+    a = _write(tmp_path / 'A' / 'statement.rbx.tex', 'same')
+    b = _write(tmp_path / 'B' / 'statement.rbx.tex', 'same')
+    origins = Origins()
+    origins.source(a, rendered_in=tmp_path / 'overlay' / 'A')
+    origins.source(b, rendered_in=tmp_path / 'overlay' / 'B')
+    scratch_a = _write(tmp_path / 'overlay' / 'A' / '__input__.tex', 'same')
+    scratch_b = _write(tmp_path / 'overlay' / 'B' / '__input__.tex', 'same')
+    assert origins.resolve(scratch_a) == _real(a)
+    assert origins.resolve(scratch_b) == _real(b)
+
+
+def test_find_excerpt_ignores_the_par_tex_inserted(tmp_path):
+    """`$a_1 here` with no closing `$`: TeX notices at the blank line after,
+    and the text it prints ends in the `\\par` that blank line became."""
+    tracker = sourcemap.SourceTracker()
+    tracker.emit(tmp_path / 'statement.tex', 'one\nwe have $a_1 here b\n\nnext\n')
+    found = tracker.find_excerpt(
+        tmp_path / 'statement.tex', 4, 'one we have $a_1 here b \\par ', 'next'
+    )
+    assert found is not None and found.line == 2
+
+
+def test_find_excerpt_across_a_short_last_line(tmp_path):
+    """A paragraph ending in a one-character line: no suffix long enough fits
+    on that line alone, so the match runs across it and the line above."""
+    tracker = sourcemap.SourceTracker()
+    tracker.emit(tmp_path / 'statement.tex', 'one\nwe have $a_1 here\nb\n\nnext\n')
+    found = tracker.find_excerpt(
+        tmp_path / 'statement.tex', 5, 'we have $a_1 here b \\par ', 'next'
+    )
+    assert found is not None and found.line == 3
