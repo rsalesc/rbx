@@ -283,7 +283,13 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
       this.declared,
       this.memento.get(lastLaunchKey(root)),
     );
-    await this.dispatcher.dispatch({ command: 'stress', root, args: stressArgv(launch, declared) });
+    // `stressArgv` starts with `stress`, which the dispatcher puts in front of
+    // `args` itself.
+    await this.dispatcher.dispatch({
+      command: 'stress',
+      root,
+      args: stressArgv(launch, declared).slice(1),
+    });
   }
 
   private openLauncher(args: OpenLauncherArgs): void {
