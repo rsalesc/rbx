@@ -11,7 +11,6 @@ import {
   initialLaunch,
   launchOf,
   launchProblem,
-  parseLaunch,
   reduce,
 } from './launcherState';
 
@@ -223,6 +222,14 @@ test('a form survives a manifest edit, and a kept finder follows it', () => {
   assert.deepStrictEqual(reduce(replaced, { type: 'declarations' }, edited), replaced);
 });
 
+test('the shown line escapes a single quote POSIX-style instead of ending the quoting', () => {
+  const launch: StressLaunch = {
+    ...defaultLaunch({ kind: 'generator', expression: "gen 'x'" }),
+    finder: { rows: [], join: 'all' },
+  };
+  assert.strictEqual(commandLine(launch, DECLS), "rbx stress -g 'gen '\\''x'\\''' -f '' --no-promote");
+});
+
 test('a launch round-trips through its form', () => {
   const launches: StressLaunch[] = [
     {
@@ -237,29 +244,5 @@ test('a launch round-trips through its form', () => {
   ];
   for (const launch of launches) {
     assert.deepStrictEqual(launchOf(formOf(launch, DECLS)), launch);
-  }
-});
-
-test('parseLaunch rebuilds a launch and refuses anything else', () => {
-  const launch: StressLaunch = {
-    ...defaultLaunch({ kind: 'generator', expression: 'gen @' }),
-    finder: { rows: [{ kind: 'break', solution: 'a', outcome: 'WRONG_ANSWER' }], join: 'all' },
-    tl: { kind: 'custom', ms: 100 },
-    reference: 'sols/main.cpp',
-  };
-  assert.deepStrictEqual(parseLaunch(JSON.parse(JSON.stringify(launch))), launch);
-  assert.deepStrictEqual(parseLaunch({ ...launch, extra: 1 }), launch);
-  for (const bad of [
-    undefined,
-    null,
-    'stress',
-    { ...launch, source: { kind: 'shell', command: 'rm' } },
-    { ...launch, timeout: '10' },
-    { ...launch, tl: { kind: 'custom' } },
-    { ...launch, finder: { rows: [{ kind: 'break', solution: 1, outcome: 'WA' }], join: 'all' } },
-    { ...launch, finder: { rows: [], join: 'xor' } },
-    { ...launch, reference: 3 },
-  ]) {
-    assert.strictEqual(parseLaunch(bad), undefined, JSON.stringify(bad));
   }
 });

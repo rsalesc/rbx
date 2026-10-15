@@ -4,9 +4,9 @@
  *
  * Pure, and shared by both halves: the client keeps a `LauncherForm` and folds
  * every input into it through `reduce`; the host builds the form's starting
- * launch (`initialLaunch`) and re-checks whatever launch the client sends back
- * (`parseLaunch`), because a message from a webview is a request, never a
- * fact.
+ * launch (`initialLaunch`) and checks whatever launch the client sends back
+ * (`launchProblem`, after stressSpec.ts's `parseLaunch`), because a message
+ * from a webview is a request, never a fact.
  *
  * The form is not the launch. It keeps what the launch has no room for -- the
  * rows of the two sources not currently selected, so flipping the segmented
@@ -224,9 +224,14 @@ export function launchProblem(
   return validateLaunch(launch, declared);
 }
 
-/** One argument as the terminal is sent it: strongly quoted unless plainly safe. */
+/**
+ * One argument as the terminal is sent it: strongly quoted unless plainly
+ * safe. A single quote is refused before anything runs (`singleQuoteProblem`),
+ * but the line is shown and copied before that, so it is escaped POSIX-style
+ * rather than left to end the quoting early.
+ */
 function displayArg(arg: string): string {
-  return needsShellQuoting(arg) ? `'${arg}'` : arg;
+  return needsShellQuoting(arg) ? `'${arg.replace(/'/g, "'\\''")}'` : arg;
 }
 
 /**
@@ -412,106 +417,4 @@ export function reduce(
     case 'flag':
       return { ...form, [action.field]: action.on };
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string');
-}
-
-function parseRow(raw: unknown): FinderRow | undefined {
-  if (!isRecord(raw)) {
-    return undefined;
-  }
-  if (raw.kind === 'break' && typeof raw.solution === 'string' && typeof raw.outcome === 'string') {
-    return { kind: 'break', solution: raw.solution, outcome: raw.outcome };
-  }
-  if (raw.kind === 'disagree' && typeof raw.a === 'string' && typeof raw.b === 'string') {
-    return { kind: 'disagree', a: raw.a, b: raw.b };
-  }
-  return undefined;
-}
-
-function parseSource(raw: unknown): StressLaunch['source'] | undefined {
-  if (!isRecord(raw)) {
-    return undefined;
-  }
-  if (raw.kind === 'declared' && typeof raw.name === 'string') {
-    return { kind: 'declared', name: raw.name };
-  }
-  if (raw.kind === 'generator' && typeof raw.expression === 'string') {
-    return { kind: 'generator', expression: raw.expression };
-  }
-  if (raw.kind === 'fuzz' && isStringArray(raw.groups)) {
-    return { kind: 'fuzz', groups: [...raw.groups] };
-  }
-  return undefined;
-}
-
-function parseTl(raw: unknown): StressLaunch['tl'] | undefined {
-  if (!isRecord(raw)) {
-    return undefined;
-  }
-  if (raw.kind === 'normal' || raw.kind === 'double') {
-    return { kind: raw.kind };
-  }
-  if (raw.kind === 'custom' && typeof raw.ms === 'number') {
-    return { kind: 'custom', ms: raw.ms };
-  }
-  return undefined;
-}
-
-/**
- * A `StressLaunch` rebuilt field by field out of something untrusted -- a
- * webview message, or a value remembered by an older extension -- or undefined
- * when it is not one. Only the shape: whether it can *run* is `launchProblem`'s.
- *
- * Rebuilt rather than cast, so nothing but the known fields reaches the argv.
- */
-export function parseLaunch(raw: unknown): StressLaunch | undefined {
-  if (!isRecord(raw)) {
-    return undefined;
-  }
-  const source = parseSource(raw.source);
-  const tl = parseTl(raw.tl);
-  if (
-    source === undefined ||
-    tl === undefined ||
-    typeof raw.slowest !== 'boolean' ||
-    typeof raw.timeout !== 'number' ||
-    typeof raw.findings !== 'number' ||
-    typeof raw.sanitized !== 'boolean' ||
-    typeof raw.skipInvalid !== 'boolean' ||
-    typeof raw.validate !== 'boolean' ||
-    (raw.reference !== undefined && typeof raw.reference !== 'string')
-  ) {
-    return undefined;
-  }
-  let finder: StressLaunch['finder'];
-  if (raw.finder !== undefined) {
-    if (!isRecord(raw.finder) || !Array.isArray(raw.finder.rows)) {
-      return undefined;
-    }
-    const rows = raw.finder.rows.map(parseRow);
-    const join = raw.finder.join;
-    if (rows.some((row) => row === undefined) || (join !== 'all' && join !== 'any')) {
-      return undefined;
-    }
-    finder = { rows: rows as FinderRow[], join };
-  }
-  return {
-    source,
-    ...(finder === undefined ? {} : { finder }),
-    slowest: raw.slowest,
-    timeout: raw.timeout,
-    findings: raw.findings,
-    tl,
-    sanitized: raw.sanitized,
-    skipInvalid: raw.skipInvalid,
-    validate: raw.validate,
-    ...(raw.reference === undefined ? {} : { reference: raw.reference }),
-  };
 }

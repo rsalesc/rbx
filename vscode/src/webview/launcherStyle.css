@@ -7,12 +7,6 @@
  * contrast included.
  */
 
-@font-face {
-  /* esbuild copies codicon.ttf next to this stylesheet. */
-  font-family: 'codicon';
-  src: url('codicon.ttf') format('truetype');
-}
-
 html,
 body {
   height: 100%;
@@ -140,7 +134,6 @@ code,
 }
 
 input[type='text'],
-input[type='number'],
 select {
   font-family: inherit;
   font-size: inherit;
@@ -157,7 +150,7 @@ select {
   border-color: var(--vscode-dropdown-border, transparent);
 }
 
-input[type='text'] {
+input[type='text']:not(.num) {
   width: 100%;
   box-sizing: border-box;
 }
@@ -166,7 +159,7 @@ input.mono {
   font-family: var(--vscode-editor-font-family);
 }
 
-input[type='number'] {
+input.num {
   width: 90px;
 }
 

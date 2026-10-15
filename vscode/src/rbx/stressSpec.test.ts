@@ -7,7 +7,9 @@ import {
   defaultLaunch,
   generatorCallString,
   lastLaunchKey,
+  parseLaunch,
   stressArgv,
+  stressDispatchArgs,
   validateLaunch,
 } from './stressSpec';
 
@@ -227,4 +229,46 @@ test('the default launch adds nothing to the source but --no-promote', () => {
   assert.strictEqual(validateLaunch(declared), undefined);
   assert.deepStrictEqual(stressArgv(declared), ['stress', 'wa-small', '--no-promote']);
   assert.strictEqual(lastLaunchKey('/p/a'), 'rbx.stress.lastLaunch:/p/a');
+});
+
+test('the dispatched argv is the argv without its subcommand', () => {
+  assert.deepStrictEqual(stressDispatchArgs(launch()), stressArgv(launch()).slice(1));
+  assert.deepStrictEqual(
+    stressDispatchArgs(defaultLaunch({ kind: 'declared', name: 'wa' })),
+    ['wa', '--no-promote'],
+  );
+});
+
+test('a break row naming anything but an outcome member is refused', () => {
+  for (const outcome of ["WA' ; rm -rf ~ ; '", 'wa', 'WRONG_ANSWER && [x]']) {
+    assert.match(
+      validateLaunch(launch({ finder: { rows: [{ ...WA_ROW, outcome }], join: 'all' } })) ?? '',
+      /not an outcome/,
+      outcome,
+    );
+  }
+});
+
+test('parseLaunch rebuilds a launch and refuses anything else', () => {
+  const full: StressLaunch = {
+    ...launch(),
+    tl: { kind: 'custom', ms: 100 },
+    reference: 'sols/main.cpp',
+  };
+  assert.deepStrictEqual(parseLaunch(JSON.parse(JSON.stringify(full))), full);
+  assert.deepStrictEqual(parseLaunch({ ...full, extra: 1 }), full);
+  for (const bad of [
+    undefined,
+    null,
+    'stress',
+    { ...full, source: { kind: 'shell', command: 'rm' } },
+    { ...full, timeout: '10' },
+    { ...full, tl: { kind: 'custom' } },
+    { ...full, finder: { rows: [{ kind: 'break', solution: 1, outcome: 'WRONG_ANSWER' }], join: 'all' } },
+    { ...full, finder: { rows: [{ kind: 'break', solution: 'a', outcome: "WA' x '" }], join: 'all' } },
+    { ...full, finder: { rows: [], join: 'xor' } },
+    { ...full, reference: 3 },
+  ]) {
+    assert.strictEqual(parseLaunch(bad), undefined, JSON.stringify(bad));
+  }
 });

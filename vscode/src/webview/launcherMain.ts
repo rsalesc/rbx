@@ -73,7 +73,9 @@ function persist(): void {
 function updateFooter(): void {
   if (form === undefined) {
     preview.textContent = '';
-    problem.textContent = '';
+    if (problem.textContent !== '') {
+      problem.textContent = '';
+    }
     runButton.disabled = true;
     copyButton.disabled = true;
     return;
@@ -81,9 +83,14 @@ function updateFooter(): void {
   const footer = footerState(form, declarations);
   const blocker = runBlocker(footer, dispatch);
   preview.textContent = footer.command ?? '';
-  problem.textContent = blocker ?? '';
+  // Written only when it changes: the line is a live region, and rewriting it
+  // with the same words would have a screen reader repeat them per keystroke.
+  if (problem.textContent !== (blocker ?? '')) {
+    problem.textContent = blocker ?? '';
+  }
   runButton.disabled = blocker !== undefined;
-  copyButton.disabled = footer.command === undefined;
+  // Copy is the terminal's Run: no line rbx would refuse.
+  copyButton.disabled = footer.command === undefined || footer.problem !== undefined;
 }
 
 /**
@@ -97,6 +104,7 @@ function renderAll(focusId?: string): void {
   if (form !== undefined) {
     const active = document.activeElement as HTMLElement | null;
     const activeId = focusId ?? (formHost.contains(active) ? active?.id : undefined);
+    // Every text field, the numeric ones included (they are `type="text"` for this).
     const text = active instanceof HTMLInputElement && active.type === 'text' ? active : undefined;
     const selection = text === undefined ? undefined : [text.selectionStart, text.selectionEnd];
     if (setHtml(formHost, renderForm({ form, declarations, vars })) && activeId) {
@@ -266,10 +274,10 @@ document.addEventListener('click', (event) => {
       apply({ type: 'keep-finder' }, true, 'add-break');
       return;
     case 'run':
-      vscode.postMessage({ type: 'run', launch: launchOf(form) });
+      vscode.postMessage({ type: 'run', target, launch: launchOf(form) });
       return;
     case 'copy':
-      vscode.postMessage({ type: 'copy', launch: launchOf(form) });
+      vscode.postMessage({ type: 'copy', target, launch: launchOf(form) });
       return;
   }
 });

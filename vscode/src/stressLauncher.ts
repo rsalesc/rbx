@@ -22,7 +22,7 @@ import { Latest } from './rbx/latest';
 import { manifestPath, packageLayout } from './rbx/layout';
 import { readYamlFile } from './rbx/store';
 import { StressDeclarations, parseStressDeclarations } from './rbx/stressDeclarations';
-import { StressLaunch, lastLaunchKey, stressArgv } from './rbx/stressSpec';
+import { StressLaunch, lastLaunchKey, parseLaunch, stressDispatchArgs } from './rbx/stressSpec';
 import { declaredRunLaunch } from './rbx/stressViewModel';
 import type { RunDataChange } from './runData';
 import type { StatementVarsIndex } from './statementVarsIndex';
@@ -32,7 +32,6 @@ import {
   findDeclared,
   initialLaunch,
   launchProblem,
-  parseLaunch,
 } from './webview/launcherState';
 
 /** What the launcher needs from the rest of the extension. */
@@ -51,6 +50,8 @@ export interface LauncherDeps {
 interface ClientMessage {
   readonly type?: string;
   readonly launch?: unknown;
+  /** The target the form was made for; a Run from an earlier one is dropped. */
+  readonly target?: unknown;
 }
 
 /** One open of the launcher: the id the client keys its form on, and the launch it starts from. */
@@ -96,6 +97,8 @@ export class StressLauncher {
   private readonly posts = new Latest();
   private readonly subscriptions: vscode.Disposable[] = [];
   private target: Target = { id: StressLauncher.newId() };
+  /** Set once the panel is gone; every await below re-checks it. */
+  private disposed = false;
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -104,7 +107,11 @@ export class StressLauncher {
   ) {
     panel.webview.html = this.html(panel.webview);
     this.subscriptions.push(
-      panel.webview.onDidReceiveMessage((message: ClientMessage) => void this.receive(message)),
+      panel.webview.onDidReceiveMessage((message: ClientMessage) => {
+        this.receive(message).catch((error) => {
+          log(`The stress launcher failed to handle ${String(message.type)}: ${String(error)}`);
+        });
+      }),
       deps.onDidChange((change) => {
         // The same signal the Stress view redraws its declared stresses on.
         if (change.plan?.manifest === true && this.concerns(change.root)) {
@@ -119,6 +126,7 @@ export class StressLauncher {
       }),
     );
     panel.onDidDispose(() => {
+      this.disposed = true;
       this.subscriptions.forEach((subscription) => subscription.dispose());
       if (StressLauncher.current === this) {
         StressLauncher.current = undefined;
@@ -157,6 +165,16 @@ export class StressLauncher {
   }
 
   private retarget(args: OpenLauncherArgs): void {
+    // The same open again -- a second click on New stress, or on Edit for the
+    // stress already being edited -- is a reveal: re-targeting would throw
+    // away the draft for the very launch it is a draft of.
+    if (
+      path.resolve(args.root) === path.resolve(this.args.root) &&
+      args.stress === this.args.stress
+    ) {
+      this.panel.reveal(undefined, false);
+      return;
+    }
     this.args = args;
     this.target = { id: StressLauncher.newId() };
     this.panel.title = titleOf(args);
@@ -182,7 +200,7 @@ export class StressLauncher {
     const current = this.posts.begin();
     const root = this.args.root;
     const declarations = await readDeclarations(root);
-    if (!current()) {
+    if (!current() || this.disposed) {
       return;
     }
     const target = this.target;
@@ -210,7 +228,7 @@ export class StressLauncher {
     } catch (error) {
       log(`rbx vars for the stress launcher failed: ${String(error)}`);
     }
-    if (root === this.args.root) {
+    if (!this.disposed && root === this.args.root) {
       await this.panel.webview.postMessage({ type: 'vars', names });
     }
   }
@@ -221,10 +239,14 @@ export class StressLauncher {
         await Promise.all([this.post(), this.postVars()]);
         return;
       case 'run':
-        await this.run(message.launch);
-        return;
       case 'copy':
-        await this.copy(message.launch);
+        // A launch from a form made for an earlier open names that open's
+        // package, which may not be the one this panel now runs in.
+        if (message.target !== this.target.id) {
+          log(`The stress launcher dropped a ${message.type} from a launcher since re-targeted.`);
+          return;
+        }
+        await (message.type === 'run' ? this.run(message.launch) : this.copy(message.launch));
         return;
     }
   }
@@ -246,6 +268,9 @@ export class StressLauncher {
       return;
     }
     const declarations = await readDeclarations(root);
+    if (this.disposed || root !== this.args.root) {
+      return;
+    }
     const problem = launchProblem(launch, declarations);
     if (problem !== undefined) {
       void vscode.window.showErrorMessage(`rbx stress: ${problem}`);
@@ -256,12 +281,10 @@ export class StressLauncher {
     // Remembered before the dispatch, which may wait on a contest prompt: what
     // was asked for is worth keeping even if that prompt is dismissed.
     await this.deps.memento.update(lastLaunchKey(root), launch);
-    // `stressArgv` is the argv after `rbx`, and the dispatcher puts `stress` in
-    // front of `args` itself.
     await this.deps.dispatcher.dispatch({
       command: 'stress',
       root,
-      args: stressArgv(launch, declared).slice(1),
+      args: stressDispatchArgs(launch, declared),
     });
     // The view is where the session shows up; the launcher stays open behind
     // it for the next run.
@@ -273,8 +296,14 @@ export class StressLauncher {
     if (launch === undefined) {
       return;
     }
-    const line = commandLine(launch, await readDeclarations(this.args.root));
-    if (line !== undefined) {
+    const declarations = await readDeclarations(this.args.root);
+    // Only a line that would run: Copy is the terminal's Run, and a copied
+    // command rbx refuses is the same surprise later.
+    const line =
+      launchProblem(launch, declarations) === undefined
+        ? commandLine(launch, declarations)
+        : undefined;
+    if (line !== undefined && !this.disposed) {
       await vscode.env.clipboard.writeText(line);
       vscode.window.setStatusBarMessage('rbx: stress command copied.', 3000);
     }
@@ -313,7 +342,10 @@ export class StressLauncher {
       <div id="form" class="launcher-form"></div>
     </main>
     <footer class="launcher-footer">
-      <code id="preview" class="preview" aria-label="Command to run"></code>
+      <div role="group" aria-labelledby="preview-label">
+        <span id="preview-label" class="sr-only">Command to run</span>
+        <code id="preview" class="preview"></code>
+      </div>
       <p id="problem" class="problem" role="status"></p>
       <div class="footer-buttons">
         <button type="button" id="run" data-act="run" disabled><span class="codicon codicon-play" aria-hidden="true"></span>Run</button>

@@ -317,7 +317,9 @@ function renderFind(view: LauncherView): string {
 function numberField(id: string, bind: string, label: string, value: string, unit: string): string {
   return (
     `<div class="field inline"><label for="${id}">${escapeHtml(label)}</label>` +
-    `<input type="number" id="${id}" data-bind="${bind}" min="1" step="1" value="${escapeAttr(value)}">` +
+    // Text with a numeric keyboard rather than `type="number"`, which has no
+    // caret to put back after a redraw and turns a half-typed value into ''.
+    `<input type="text" inputmode="numeric" id="${id}" class="num" data-bind="${bind}" value="${escapeAttr(value)}">` +
     `<span class="unit">${escapeHtml(unit)}</span></div>`
   );
 }
@@ -332,7 +334,7 @@ function renderBudget(view: LauncherView): string {
     radio('tl', 'custom', 'Custom', form.tl === 'custom', 'tl') +
     '</div>' +
     (form.tl === 'custom'
-      ? `<input type="number" id="tl-ms" data-bind="tlMs" min="1" step="1" aria-label="Time limit in milliseconds" value="${escapeAttr(form.tlMs)}"><span class="unit">ms</span>`
+      ? `<input type="text" inputmode="numeric" id="tl-ms" class="num" data-bind="tlMs" aria-label="Time limit in milliseconds" value="${escapeAttr(form.tlMs)}"><span class="unit">ms</span>`
       : '') +
     '</div>';
   const reference =
@@ -348,7 +350,7 @@ function renderBudget(view: LauncherView): string {
     numberField('timeout', 'timeout', 'Time budget', form.timeout, 's') +
     numberField('findings', 'findings', 'Stop after', form.findings, 'findings') +
     tl +
-    `<details id="advanced" data-bind="advanced"${form.advancedOpen ? ' open' : ''}>` +
+    `<details id="advanced"${form.advancedOpen ? ' open' : ''}>` +
     '<summary id="advanced-summary">Advanced</summary>' +
     checkbox('sanitized', 'sanitized', 'Sanitized', form.sanitized) +
     checkbox('skip-invalid', 'skipInvalid', 'Skip invalid inputs', form.skipInvalid) +

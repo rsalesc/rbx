@@ -13,6 +13,7 @@
  * one place.
  */
 import {
+  FINDER_OUTCOMES,
   FinderRow,
   Join,
   compileFinder,
@@ -113,8 +114,12 @@ function rowsProblem(rows: readonly FinderRow[]): string | undefined {
     if (row.kind === 'disagree' && row.a === row.b) {
       return `A disagreement needs two different solutions, not ${row.a} twice.`;
     }
-    if (row.kind === 'break' && row.outcome === '') {
-      return `Choose an outcome for ${row.solution}.`;
+    // Membership, not just non-empty: the outcome is spliced into the finder
+    // as written, so anything but a known member name is refused here.
+    if (row.kind === 'break' && !FINDER_OUTCOMES.includes(row.outcome)) {
+      return row.outcome === ''
+        ? `Choose an outcome for ${row.solution}.`
+        : `${row.outcome} is not an outcome a finder can name.`;
     }
   }
   return undefined;
@@ -287,4 +292,122 @@ export function stressArgv(launch: StressLaunch, declared?: DeclaredStress): str
   }
   args.push('--no-promote');
   return args;
+}
+
+/**
+ * The argv tail a dispatched `stress` takes: `stressArgv` without the
+ * subcommand, which the dispatcher puts in front of `args` itself (rbx/
+ * dispatch.ts). One helper so the launcher and the Stress view cannot drift.
+ */
+export function stressDispatchArgs(launch: StressLaunch, declared?: DeclaredStress): string[] {
+  return stressArgv(launch, declared).slice(1);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function parseRow(raw: unknown): FinderRow | undefined {
+  if (!isRecord(raw)) {
+    return undefined;
+  }
+  if (
+    raw.kind === 'break' &&
+    typeof raw.solution === 'string' &&
+    typeof raw.outcome === 'string' &&
+    FINDER_OUTCOMES.includes(raw.outcome)
+  ) {
+    return { kind: 'break', solution: raw.solution, outcome: raw.outcome };
+  }
+  if (raw.kind === 'disagree' && typeof raw.a === 'string' && typeof raw.b === 'string') {
+    return { kind: 'disagree', a: raw.a, b: raw.b };
+  }
+  return undefined;
+}
+
+function parseSource(raw: unknown): StressLaunch['source'] | undefined {
+  if (!isRecord(raw)) {
+    return undefined;
+  }
+  if (raw.kind === 'declared' && typeof raw.name === 'string') {
+    return { kind: 'declared', name: raw.name };
+  }
+  if (raw.kind === 'generator' && typeof raw.expression === 'string') {
+    return { kind: 'generator', expression: raw.expression };
+  }
+  if (raw.kind === 'fuzz' && isStringArray(raw.groups)) {
+    return { kind: 'fuzz', groups: [...raw.groups] };
+  }
+  return undefined;
+}
+
+function parseTl(raw: unknown): StressLaunch['tl'] | undefined {
+  if (!isRecord(raw)) {
+    return undefined;
+  }
+  if (raw.kind === 'normal' || raw.kind === 'double') {
+    return { kind: raw.kind };
+  }
+  if (raw.kind === 'custom' && typeof raw.ms === 'number') {
+    return { kind: 'custom', ms: raw.ms };
+  }
+  return undefined;
+}
+
+/**
+ * A `StressLaunch` rebuilt field by field out of something untrusted -- a
+ * webview message, or a value remembered by an older extension -- or undefined
+ * when it is not one. Mostly the shape -- whether it can *run* is
+ * `validateLaunch`'s -- but a break row's outcome must already be an outcome
+ * member: it is the one value spliced into the finder unchecked by the grammar.
+ *
+ * Rebuilt rather than cast, so nothing but the known fields reaches the argv.
+ */
+export function parseLaunch(raw: unknown): StressLaunch | undefined {
+  if (!isRecord(raw)) {
+    return undefined;
+  }
+  const source = parseSource(raw.source);
+  const tl = parseTl(raw.tl);
+  if (
+    source === undefined ||
+    tl === undefined ||
+    typeof raw.slowest !== 'boolean' ||
+    typeof raw.timeout !== 'number' ||
+    typeof raw.findings !== 'number' ||
+    typeof raw.sanitized !== 'boolean' ||
+    typeof raw.skipInvalid !== 'boolean' ||
+    typeof raw.validate !== 'boolean' ||
+    (raw.reference !== undefined && typeof raw.reference !== 'string')
+  ) {
+    return undefined;
+  }
+  let finder: StressLaunch['finder'];
+  if (raw.finder !== undefined) {
+    if (!isRecord(raw.finder) || !Array.isArray(raw.finder.rows)) {
+      return undefined;
+    }
+    const rows = raw.finder.rows.map(parseRow);
+    const join = raw.finder.join;
+    if (rows.some((row) => row === undefined) || (join !== 'all' && join !== 'any')) {
+      return undefined;
+    }
+    finder = { rows: rows as FinderRow[], join };
+  }
+  return {
+    source,
+    ...(finder === undefined ? {} : { finder }),
+    slowest: raw.slowest,
+    timeout: raw.timeout,
+    findings: raw.findings,
+    tl,
+    sanitized: raw.sanitized,
+    skipInvalid: raw.skipInvalid,
+    validate: raw.validate,
+    ...(raw.reference === undefined ? {} : { reference: raw.reference }),
+  };
 }

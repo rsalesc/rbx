@@ -18,6 +18,7 @@ import {
   StressLaunch,
   defaultLaunch,
   generatorCallString,
+  parseLaunch,
   validateLaunch,
 } from './stressSpec';
 
@@ -250,21 +251,13 @@ export function declaredRunLaunch(
 ): { readonly launch: StressLaunch; readonly declared?: StressDeclaration } {
   const declaration = declared.find((stress) => stress.name === name);
   const fallback = { launch: defaultLaunch({ kind: 'declared', name }), declared: declaration };
-  const candidate = remembered as StressLaunch | undefined;
-  if (
-    typeof candidate !== 'object' ||
-    candidate === null ||
-    candidate.source?.kind !== 'declared' ||
-    candidate.source.name !== name
-  ) {
+  // Rebuilt field by field rather than cast: a shape no launcher this
+  // extension shipped would write is no launch at all.
+  const candidate = parseLaunch(remembered);
+  if (candidate?.source.kind !== 'declared' || candidate.source.name !== name) {
     return fallback;
   }
-  try {
-    return validateLaunch(candidate, declaration) === undefined
-      ? { launch: candidate, declared: declaration }
-      : fallback;
-  } catch {
-    // A shape no launcher this extension shipped would write.
-    return fallback;
-  }
+  return validateLaunch(candidate, declaration) === undefined
+    ? { launch: candidate, declared: declaration }
+    : fallback;
 }

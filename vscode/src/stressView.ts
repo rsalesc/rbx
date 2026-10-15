@@ -30,7 +30,7 @@ import { PackageLayout, manifestPath, packageLayout } from './rbx/layout';
 import { StressManifest } from './rbx/stress';
 import { StressDeclaration, parseStressDeclarations } from './rbx/stressDeclarations';
 import { compareCandidates, findingFiles, sessionOf } from './rbx/stressFindings';
-import { lastLaunchKey, stressArgv } from './rbx/stressSpec';
+import { lastLaunchKey, stressDispatchArgs } from './rbx/stressSpec';
 import {
   EMPTY_STRESS_MODEL,
   StressViewModel,
@@ -306,12 +306,10 @@ export class StressViewProvider implements vscode.WebviewViewProvider {
       this.declared,
       this.memento.get(lastLaunchKey(root)),
     );
-    // `stressArgv` starts with `stress`, which the dispatcher puts in front of
-    // `args` itself.
     await this.dispatcher.dispatch({
       command: 'stress',
       root,
-      args: stressArgv(launch, declared).slice(1),
+      args: stressDispatchArgs(launch, declared),
     });
   }
 
