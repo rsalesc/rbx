@@ -1003,7 +1003,7 @@
         "rbx.statements.buildOnSave": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Rebuild a statement whenever you save its source, or a file beside it: `rbx statements build`, or `rbx tutorials build` for a tutorial, in their contest form for a contest's. Runs as a task in a visible terminal, like the **Build** button of the statement preview, and is skipped while another rbx command runs in the same package."
+          "markdownDescription": "Rebuild a statement whenever you save its source, or a file beside it: `rbx statements build --no-validate`, or `rbx tutorials build --no-validate` for a tutorial, in their contest form for a contest's. The samples are not validated; `rbx build` does that. Runs as a task in a visible terminal, like the **Build** button of the statement preview, and is skipped while another rbx command runs in the same package."
         },
         "rbx.dispatch.enabled": {
           "type": "boolean",

@@ -166,6 +166,10 @@ export interface Invocation {
  * is the one spelling every subcommand accepts. Extra args come before the
  * solutions, which is where a user typing the command would put them -- the
  * terminal shows this exact line, so it should read like one they would type.
+ *
+ * Statement builds pass `--no-validate`: they only refresh the preview, so the
+ * samples are built without running the validators over them. A sample that
+ * breaks its constraints is still caught by `rbx build`.
  */
 export function rbxArgs(invocation: Invocation): string[] {
   const args: string[] = [];
@@ -184,16 +188,16 @@ export function rbxArgs(invocation: Invocation): string[] {
       args.push('contest', 'each', '--inline', 'run', ...invocation.extraArgs);
       break;
     case 'statements':
-      args.push('statements', 'build');
+      args.push('statements', 'build', '--no-validate');
       break;
     case 'contest-statements':
-      args.push('contest', 'statements', 'build');
+      args.push('contest', 'statements', 'build', '--no-validate');
       break;
     case 'tutorials':
-      args.push('tutorials', 'build');
+      args.push('tutorials', 'build', '--no-validate');
       break;
     case 'contest-tutorials':
-      args.push('contest', 'tutorials', 'build');
+      args.push('contest', 'tutorials', 'build', '--no-validate');
       break;
     case 'stress':
       args.push('stress', ...(invocation.args ?? []));
