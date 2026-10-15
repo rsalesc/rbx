@@ -47,6 +47,7 @@ import { registerStatementPreview } from './statementPreview';
 import { StatementReports } from './statementReports';
 import { registerStatementVarHints } from './statementVarHints';
 import { StatementVarsIndex } from './statementVarsIndex';
+import { StressLauncher } from './stressLauncher';
 import { StressViewProvider } from './stressView';
 import { TestsetPanel } from './testsetPanel';
 import { TestsetViewProvider } from './testsetView';
@@ -140,6 +141,20 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewViewProvider(StressViewProvider.viewType, stress),
     vscode.commands.registerCommand('rbx.stress.new', () => stress.newStress()),
     vscode.commands.registerCommand('rbx.stress.stop', () => stress.stop()),
+    // The view names the intent (`OpenLauncherArgs`) and this answers it; the
+    // launcher checks the argument itself, since a command takes anything.
+    vscode.commands.registerCommand('rbx.stress.openLauncher', (args: unknown) =>
+      StressLauncher.open(
+        {
+          extensionUri: context.extensionUri,
+          memento: context.workspaceState,
+          dispatcher,
+          onDidChange: data.onDidChange,
+          vars: statementVars,
+        },
+        args,
+      ),
+    ),
   );
   // One watcher over every statement build report, shared by the preview and
   // the Problems panel so a finished build is read once.
