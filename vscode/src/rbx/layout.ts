@@ -17,6 +17,7 @@
  *   <pkg>/.rbx/runs/<i>/<group>/<stem>.out  solution stdout      (symlink)
  *   <pkg>/.rbx/runs/<i>/<group>/<stem>.err  solution stderr      (symlink)
  *   <pkg>/.rbx/runs/<i>/<group>/<stem>.pio  interaction capture  (communication tasks)
+ *   <pkg>/.rbx/runs/.irun/...               the last `rbx irun`  (see `RunSource`)
  *
  * Note the expected answer is `.out`, not `.ans`, and the cache directory is
  * `.rbx`, not `.box` -- the v1 design doc is wrong on both counts.
@@ -47,6 +48,24 @@ export const TESTSET_MANIFEST = 'testset.yml';
 /** The stress session's directory under `runs/`, and the manifest in it (see `stressDir`). */
 export const STRESS_DIR = '.stress';
 export const STRESS_MANIFEST = 'stress.yml';
+/** Where `rbx irun` writes its ad-hoc run, under `runs/` (see `RunSource`). */
+export const IRUN_DIR = '.irun';
+
+/**
+ * Which run a path belongs to: the last `rbx run`, or the last `rbx irun`.
+ *
+ * `rbx irun` writes the same shapes as `rbx run` -- a `SolutionReportSkeleton`,
+ * a `report.yml`, an `.eval` per (solution, testcase) -- into its own root,
+ * `.rbx/runs/.irun`, so an ad-hoc run is read through the very same model
+ * (#907). Two things differ, both because it runs exactly one testcase:
+ *
+ *   .irun/<i>/<stem>.eval        no `<group>/` level under the solution
+ *   .irun/inputs/<stem>.in|.out  the input and answer, not under `<build>/tests`
+ *
+ * Every helper below that names a run artifact takes the source, defaulting to
+ * the main run, so a caller that never heard of `irun` keeps meaning `rbx run`.
+ */
+export type RunSource = 'run' | 'irun';
 
 /** Artifact suffixes, as they appear on disk. */
 export const enum Ext {
@@ -97,8 +116,13 @@ export function runsDir(pkg: PackageLayout): string {
   return path.join(cacheDir(pkg), 'runs');
 }
 
-export function skeletonPath(pkg: PackageLayout): string {
-  return path.join(runsDir(pkg), 'skeleton.yml');
+/** The root one source's run is written under: `runs/`, or `runs/.irun`. */
+export function runRoot(pkg: PackageLayout, source: RunSource = 'run'): string {
+  return source === 'irun' ? path.join(runsDir(pkg), IRUN_DIR) : runsDir(pkg);
+}
+
+export function skeletonPath(pkg: PackageLayout, source: RunSource = 'run'): string {
+  return path.join(runRoot(pkg, source), 'skeleton.yml');
 }
 
 /**
@@ -107,8 +131,8 @@ export function skeletonPath(pkg: PackageLayout): string {
  * Written once per solution as it finishes, and removed when a new skeleton is
  * written -- so its absence means "no solution has finished yet", never "stale".
  */
-export function reportPath(pkg: PackageLayout): string {
-  return path.join(runsDir(pkg), 'report.yml');
+export function reportPath(pkg: PackageLayout, source: RunSource = 'run'): string {
+  return path.join(runRoot(pkg, source), 'report.yml');
 }
 
 /**
@@ -119,8 +143,12 @@ export function reportPath(pkg: PackageLayout): string {
  * recorded by the machine that ran rbx is not one this host can necessarily
  * open.
  */
-export function compilationLogPath(pkg: PackageLayout, relative: string): string {
-  return path.join(runsDir(pkg), relative);
+export function compilationLogPath(
+  pkg: PackageLayout,
+  relative: string,
+  source: RunSource = 'run',
+): string {
+  return path.join(runRoot(pkg, source), relative);
 }
 
 /**
@@ -158,29 +186,53 @@ export function testsetPath(pkg: PackageLayout): string {
  * package moved since the run (and so a remote-executed run does not send us
  * chasing paths that do not exist on this host).
  */
-export function solutionRunsDir(pkg: PackageLayout, solutionIndex: number): string {
-  return path.join(runsDir(pkg), String(solutionIndex));
+export function solutionRunsDir(
+  pkg: PackageLayout,
+  solutionIndex: number,
+  source: RunSource = 'run',
+): string {
+  return path.join(runRoot(pkg, source), String(solutionIndex));
 }
 
-/** Path to one artifact of one (solution, testcase) pair. */
+/**
+ * Path to one artifact of one (solution, testcase) pair.
+ *
+ * An ad-hoc run has no `<group>/` level: `rbx irun` hands the solution's runs
+ * directory straight to the grading step, which names the artifact after the
+ * input's stem alone.
+ */
 export function runArtifactPath(
   pkg: PackageLayout,
   solutionIndex: number,
   group: string,
   stem: string,
   ext: Ext,
+  source: RunSource = 'run',
 ): string {
-  return path.join(solutionRunsDir(pkg, solutionIndex), group, `${stem}${ext}`);
+  const dir = solutionRunsDir(pkg, solutionIndex, source);
+  return source === 'irun'
+    ? path.join(dir, `${stem}${ext}`)
+    : path.join(dir, group, `${stem}${ext}`);
 }
 
-/** Path to a generated testcase artifact (input or expected answer). */
+/**
+ * Path to a testcase artifact (input or expected answer) of a run.
+ *
+ * A main run's testcases are the testset's, under `<build>/tests/<group>`. An
+ * ad-hoc run's one testcase is copied into `.irun/inputs` whatever it came
+ * from -- a testset entry (`-t`), a generator call (`-g`) or typed input -- so
+ * that is where its input and answer are, whatever group the entry names.
+ */
 export function testArtifactPath(
   pkg: PackageLayout,
   group: string,
   stem: string,
   ext: Ext.Input | Ext.Output,
+  source: RunSource = 'run',
 ): string {
-  return path.join(testsDir(pkg), group, `${stem}${ext}`);
+  return source === 'irun'
+    ? path.join(runRoot(pkg, source), 'inputs', `${stem}${ext}`)
+    : path.join(testsDir(pkg), group, `${stem}${ext}`);
 }
 
 /**

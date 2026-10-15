@@ -8,11 +8,12 @@ from unittest.mock import patch
 import pytest
 import rich.console
 import rich.style
+import yaml
 from rich.text import Text
 
 from rbx import utils
 from rbx.box import benchmark as benchmark_module
-from rbx.box import package, schema
+from rbx.box import package, run_report, schema
 from rbx.box import solutions as solutions_module
 from rbx.box.benchmark import BenchmarkLevel
 from rbx.box.deferred import Deferred
@@ -3362,6 +3363,33 @@ async def test_interactive_run_reports_judging_time_per_testcase(
         'Checker time: 20 ms',
         'Checker time: 48 ms',
     ]
+
+
+async def test_interactive_run_publishes_its_report_beside_its_skeleton(
+    mock_problem_root, mock_skeleton, mock_binary_scoring
+):
+    """The extension reads `.irun` as a run, so irun leaves a `report.yml` (#907)."""
+    solutions = interactive_solutions()
+    skeleton = mock_skeleton(solutions, entries_per_group={'group1': 1})
+    wrong = make_evaluation(Outcome.WRONG_ANSWER, time_ms=100, memory_bytes=1024)
+
+    with stubbed_interactive_run(
+        skeleton, [interactive_eval(), wrong], recording_console()
+    ):
+        await solutions_module.run_and_print_interactive_solutions(
+            verification=VerificationLevel.ALL_SOLUTIONS,
+        )
+
+    irun_dir = skeleton.solutions[0].runs_dir / 'iruns'
+    report = run_report.RunReport.model_validate(
+        yaml.safe_load(run_report.report_path(irun_dir).read_text())
+    )
+    assert [(s.index, s.outcome) for s in report.solutions] == [
+        (0, Outcome.ACCEPTED),
+        (1, Outcome.WRONG_ANSWER),
+    ]
+    assert [g.name for g in report.solutions[1].groups] == ['group1']
+    run_report.finish_run(run_report.ExitStatus.OK)
 
 
 async def test_interactive_run_reports_the_interactor_when_there_is_one(

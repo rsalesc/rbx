@@ -13,6 +13,7 @@
  * events, focus, persistence -- precisely because that part cannot be tested,
  * which is why nothing that decides anything is allowed to live there.
  */
+import type { SourceChoice } from '../rbx/adhoc';
 import type { DeclaredVisualizers } from '../rbx/declaredVisualizers';
 import type { LimitLine } from '../rbx/limitsView';
 import type { ProblemChoice } from '../rbx/problems';
@@ -856,6 +857,29 @@ export function renderFilter(state: UiState): string {
  * declaration, which is why `contest.ts` drops anything that is not a colour
  * before it ever gets here.
  */
+/**
+ * The two runs a problem can have on disk: the last `rbx run`, and the last
+ * `rbx irun` (#907). Two buttons rather than a second dropdown -- there are only
+ * ever two, and which one is showing should be readable at a glance.
+ *
+ * Nothing when there is no ad-hoc run: the toggle would offer one choice.
+ */
+export function renderSourceToggle(choice: SourceChoice | undefined): string {
+  if (choice === undefined) {
+    return '';
+  }
+  const button = (source: string, label: string, title: string): string =>
+    `<button type="button" class="source-option" data-source="${source}"` +
+    ` aria-pressed="${choice.selected === source}" title="${escapeAttr(title)}">` +
+    `${escapeHtml(label)}</button>`;
+  return (
+    '<div class="source-toggle" role="group" aria-label="Which run">' +
+    button('run', 'Last run', 'The last rbx run') +
+    button('irun', 'Ad-hoc run', `The last rbx irun: ${choice.adhoc}`) +
+    '</div>'
+  );
+}
+
 export function renderSelector(problems: readonly ProblemChoice[], selected?: string): string {
   if (problems.length <= 1) {
     return '';

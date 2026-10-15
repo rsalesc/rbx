@@ -16,6 +16,7 @@
  * It talks to the extension host only through `acquireVsCodeApi`; importing the
  * `vscode` module is impossible in a webview and would not work if it were.
  */
+import type { SourceChoice } from '../rbx/adhoc';
 import type { ProblemChoice } from '../rbx/problems';
 import { EMPTY_MODEL, type Row, type RunViewModel } from '../rbx/viewModel';
 import { rowClick } from './gesture';
@@ -26,6 +27,7 @@ import {
   renderFindings,
   renderHeader,
   renderSelector,
+  renderSourceToggle,
   renderTree,
   visibleRows,
 } from './render';
@@ -72,6 +74,8 @@ let model: RunViewModel = EMPTY_MODEL;
  */
 let problems: readonly ProblemChoice[] = [];
 let selectedProblem: string | undefined;
+/** Last run or ad-hoc run -- the host's too, for the same reason as above. */
+let sourceChoice: SourceChoice | undefined;
 let filter = persisted?.filter ?? '';
 let pendingScrollTop: number | undefined = persisted?.scrollTop ?? 0;
 let findingsOpen = persisted?.findingsOpen ?? false;
@@ -158,7 +162,7 @@ function renderAll(): void {
   // element holding the focus, which would drop a keyboard or screen-reader
   // user out to `<body>` on every tick of a run.
   const inTree = controller.holdsFocus();
-  selector.render(renderSelector(problems, selectedProblem));
+  selector.render(renderSelector(problems, selectedProblem) + renderSourceToggle(sourceChoice));
   const keptFilter = filterBox.render();
   render();
   if (!keptFilter && inTree) {
@@ -263,6 +267,16 @@ selectorHost.addEventListener('change', (event) => {
     // Nothing is re-rendered here: the host is the one that decides what is
     // showing, and it answers with a fresh `state` message.
     vscode.postMessage({ type: 'select', root: target.value });
+  }
+});
+
+// The toggle lives in the same host, and is replaced with it.
+selectorHost.addEventListener('click', (event) => {
+  const button = (event.target as HTMLElement).closest('.source-option') as HTMLElement | null;
+  const source = button?.dataset.source;
+  if (source !== undefined && button?.getAttribute('aria-pressed') !== 'true') {
+    // Answered, like a problem pick, by a fresh `state` message.
+    vscode.postMessage({ type: 'source', source });
   }
 });
 
@@ -386,6 +400,7 @@ window.addEventListener('message', (event: MessageEvent) => {
     model?: RunViewModel;
     problems?: readonly ProblemChoice[];
     selected?: string;
+    source?: SourceChoice;
     dispatch?: boolean;
   };
   if (message.type === 'state' && message.model !== undefined) {
@@ -393,6 +408,7 @@ window.addEventListener('message', (event: MessageEvent) => {
     document.body.classList.toggle('dispatch-enabled', message.dispatch === true);
     problems = message.problems ?? [];
     selectedProblem = message.selected;
+    sourceChoice = message.source;
     setModel(message.model);
   }
 });

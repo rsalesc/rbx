@@ -14,7 +14,7 @@ import { discoverPackages } from './discovery';
 import { log } from './log';
 import { RefreshPlan } from './rbx/artifactEvents';
 import { PackageFindings } from './rbx/diagnostics';
-import { PackageLayout } from './rbx/layout';
+import { PackageLayout, RunSource } from './rbx/layout';
 import { ArtifactStore, ArtifactStores, PackageRun, StoreTrace } from './rbx/store';
 import { StressManifest, stressLiveness } from './rbx/stress';
 import { Testset } from './rbx/testset';
@@ -116,9 +116,11 @@ export class RunDataProvider {
    *
    * A package with no readable run is not an error: one that has never been run
    * still has to be selectable, and `flattenNodes` renders it as nothing.
+   *
+   * `source` picks the last `rbx run` (the default) or the last `rbx irun`.
    */
-  report(pkg: PackageLayout): Promise<PackageRun | undefined> {
-    return this.storeFor(pkg).load();
+  report(pkg: PackageLayout, source: RunSource = 'run'): Promise<PackageRun | undefined> {
+    return this.storeFor(pkg).load(source);
   }
 
   /**

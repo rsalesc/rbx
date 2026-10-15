@@ -262,6 +262,23 @@ def _evals_per_group(evals: List[Evaluation], skeleton) -> Dict[str, List[Evalua
     return _get_evals_per_group(evals, skeleton)
 
 
+def _group_names_and_scores(skeleton) -> List[Tuple[str, int]]:
+    """The groups a client draws a row for, with each one's maximum score.
+
+    The skeleton's declared groups, in order. `rbx irun` declares none -- its
+    skeleton holds the one testcase it ran, under whatever group that testcase
+    came from -- so there the groups are read off the entries instead, worth no
+    points: an ad-hoc run scores nothing.
+    """
+    if skeleton.groups:
+        return [(group.name, group.score) for group in skeleton.groups]
+    names: List[str] = []
+    for entry in skeleton.entries:
+        if entry.group_entry.group not in names:
+            names.append(entry.group_entry.group)
+    return [(name, 0) for name in names]
+
+
 def build_solution_report(
     index: int,
     skeleton,
@@ -282,17 +299,17 @@ def build_solution_report(
     evals_per_group = _evals_per_group(report.evals, skeleton)
 
     groups = []
-    for group in skeleton.groups:
-        group_evals = evals_per_group.get(group.name, [])
-        per_group = report.perGroup.get(group.name)
+    for name, max_score in _group_names_and_scores(skeleton):
+        group_evals = evals_per_group.get(name, [])
+        per_group = report.perGroup.get(name)
         groups.append(
             RunGroupReport(
-                name=group.name,
+                name=name,
                 outcome=_worst_outcome(group_evals),
                 expectedOutcome=per_group.expectedOutcome if per_group else None,
                 matchesExpectation=per_group.status.ok() if per_group else True,
-                score=report.gotScorePerGroup.get(group.name, 0),
-                maxScore=group.score,
+                score=report.gotScorePerGroup.get(name, 0),
+                maxScore=max_score,
                 maxTime=_max_of(eval.log.time for eval in group_evals),
                 maxMemory=_max_of(eval.log.memory for eval in group_evals),
                 runUnderDoubleTl=per_group.runUnderDoubleTl if per_group else False,

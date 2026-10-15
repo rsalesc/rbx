@@ -1435,6 +1435,12 @@ async def run_and_print_interactive_solutions(
     # Collected as the loop streams, since there is no reporter here holding a
     # list of them -- same shape as the `--detailed` path in `print_run_report`.
     solution_benchmarks: List[benchmark.SolutionBenchmark] = []
+    # Published beside the irun skeleton, exactly as `rbx run` publishes its
+    # own: the extension reads an ad-hoc run through the same model (#907), and
+    # without a report it could never tell a finished solution from a running
+    # one. `begin_run` is what gets the end marker stamped on the way out.
+    run_report.begin_run(irun_dir)
+    report_writer = run_report.RunReportWriter(irun_dir)
 
     async for item in items:
         sol = skeleton.find_solution_skeleton(item.solution)
@@ -1447,8 +1453,13 @@ async def run_and_print_interactive_solutions(
 
         with utils.no_progress(progress):
             _print_solution_header(sol, console.console)
-            _print_solution_outcome(
+            outcome_report = _print_solution_outcome(
                 sol, skeleton, [eval], console.console, verification, subset=True
+            )
+            report_writer.add(
+                run_report.build_solution_report(
+                    skeleton.solutions.index(sol), skeleton, outcome_report
+                )
             )
             _print_interactive_judging_time(console.console, benchmark_level, eval)
 
