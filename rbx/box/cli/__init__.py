@@ -126,6 +126,12 @@ _COMMANDS = [
         rich_help_panel='Testing',
     ),
     LazyCommand(
+        'assets',
+        'rbx.box.cli.commands.assets:app',
+        help='List the assets of this problem, by category, as rbx resolves them.',
+        rich_help_panel='Management',
+    ),
+    LazyCommand(
         'header',
         'rbx.box.cli.commands.assets:app',
         help='Generate the rbx.h header file.',

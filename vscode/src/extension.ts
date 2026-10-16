@@ -13,6 +13,7 @@ import * as vscode from 'vscode';
 
 import { ActiveProblem } from './activeProblem';
 import { ArtifactFileSystemProvider, SCHEME } from './artifactFs';
+import { registerAssetsView } from './assetsView';
 import { registerCommands } from './commands';
 import { DeclaredIndex } from './declared';
 import { registerIrunCommands } from './irunCommands';
@@ -190,6 +191,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const statementReports = new StatementReports();
   context.subscriptions.push(statementReports);
   const statementSources = registerStatementSources(context, data, declared);
+  registerAssetsView(context, data, active, dispatcher, declared);
   registerStatementPreview({ context, reports: statementReports, sources: statementSources, active, dispatcher });
   registerStatementDiagnostics(context, statementReports);
   registerInteractionDecorations(context);

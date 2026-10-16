@@ -155,6 +155,9 @@ export class Dispatcher implements vscode.Disposable {
   /** Starts this file approved and has not yet seen `onDidStartTask` for. */
   private readonly approved = new Map<string, number>();
   private last?: Invocation;
+  private readonly contestChanged = new vscode.EventEmitter<string>();
+  /** Fired with the contest root whose remembered variant just changed. */
+  readonly onDidChangeContest: vscode.Event<string> = this.contestChanged.event;
 
   constructor(
     private readonly memento: vscode.Memento,
@@ -210,6 +213,33 @@ export class Dispatcher implements vscode.Disposable {
       void vscode.window.showInformationMessage(
         'rbx: this problem belongs to one contest only, so there is nothing to choose.',
       );
+      return;
+    }
+    const picked = await this.pick(candidates, contestRoot);
+    if (picked !== undefined) {
+      await this.remember(contestRoot, picked);
+    }
+    await this.refreshStatus();
+  }
+
+  /**
+   * The variant remembered for `contestRoot` -- `undefined` when none was
+   * chosen, `''` for the canonical contest.rbx.yml, else the variant id.
+   */
+  rememberedVariant(contestRoot: string): string | undefined {
+    return this.memento.get<string>(CONTEST_KEY_PREFIX + contestRoot);
+  }
+
+  /** The contest-wide candidates of `contestRoot`, canonical first. */
+  async contestChoices(contestRoot: string): Promise<ContestCandidate[]> {
+    return contestCandidates('contest', contestRoot, await readContestFiles(contestRoot));
+  }
+
+  /** Ask which contest of `contestRoot` to use, and remember it. */
+  async chooseContest(contestRoot: string): Promise<void> {
+    const candidates = await this.contestChoices(contestRoot);
+    if (candidates.length < 2) {
+      void vscode.window.showInformationMessage('rbx: this directory holds one contest only.');
       return;
     }
     const picked = await this.pick(candidates, contestRoot);
@@ -342,6 +372,7 @@ export class Dispatcher implements vscode.Disposable {
 
   private async remember(contestRoot: string, candidate: ContestCandidate): Promise<void> {
     await this.memento.update(CONTEST_KEY_PREFIX + contestRoot, candidate.variantId ?? '');
+    this.contestChanged.fire(contestRoot);
   }
 
   /** Start the task; false when nothing was started. */
@@ -579,6 +610,7 @@ export class Dispatcher implements vscode.Disposable {
 
   dispose(): void {
     this.disposables.forEach((disposable) => disposable.dispose());
+    this.contestChanged.dispose();
   }
 }
 
