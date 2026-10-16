@@ -12,7 +12,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { log } from './log';
-import { expandLangTemplate } from './rbx/langTemplate';
+import { expandLangTemplate, langTemplatePattern } from './rbx/langTemplate';
 import { PackageLayout, manifestPath } from './rbx/layout';
 import { DeclaredAsset, parseManifest } from './rbx/manifest';
 import { readYamlFile } from './rbx/store';
@@ -44,6 +44,13 @@ export class DeclaredIndex {
   readonly onDidChange: vscode.Event<void> = this.changed.event;
 
   private index = new Map<string, Declared>();
+  /**
+   * The `{lang}` templates the manifests declare, as patterns. A file created
+   * or deleted under one changes what the template expands to without any
+   * manifest changing -- `rbx lang add` at a contest root copies a statement
+   * into every problem and edits only the contest's list.
+   */
+  private templates: RegExp[] = [];
 
   constructor(private readonly data: RunDataProvider) {}
 
@@ -51,10 +58,12 @@ export class DeclaredIndex {
   async refresh(): Promise<void> {
     const packages = await this.data.discovered();
     const next = new Map<string, Declared>();
+    const templates: RegExp[] = [];
     for (const pkg of packages) {
-      await this.indexPackage(pkg, next);
+      await this.indexPackage(pkg, next, templates);
     }
     this.index = next;
+    this.templates = templates;
     log(`Indexed ${this.index.size} declared file(s).`);
     this.changed.fire();
   }
@@ -62,6 +71,7 @@ export class DeclaredIndex {
   private async indexPackage(
     pkg: PackageLayout,
     into: Map<string, Declared>,
+    templates: RegExp[],
   ): Promise<void> {
     const raw = await readYamlFile(manifestPath(pkg));
     if (raw === undefined) {
@@ -72,6 +82,10 @@ export class DeclaredIndex {
       // an absolute one alone, which rbx permits and some packages use. A
       // wildcard statement's `{lang}` template stands for one file per language.
       const declared = path.resolve(pkg.root, asset.path);
+      const pattern = langTemplatePattern(declared);
+      if (pattern !== undefined) {
+        templates.push(pattern);
+      }
       for (const fsPath of await expandLangTemplate(declared, readdirOrEmpty)) {
         into.set(fsPath, { asset, root: pkg.root });
       }
@@ -97,14 +111,28 @@ export class DeclaredIndex {
     return uri.scheme === 'file' ? this.index.get(uri.fsPath) : undefined;
   }
 
+  /** Whether `fsPath` is a file some declared `{lang}` template stands for. */
+  matchesLangTemplate(fsPath: string): boolean {
+    return this.templates.some((pattern) => pattern.test(fsPath));
+  }
+
   /** Absolute paths of every declared solution, for the editor button's `when`. */
   solutionPaths(): string[] {
     return this.pathsOf('solution');
   }
 
-  /** Absolute paths of every declared statement source, likewise. */
-  statementPaths(): string[] {
-    return this.pathsOf('statement');
+  /**
+   * Every declared statement source and the package declaring it: what the
+   * manifest parse alone says, for a package rbx has not listed (statementSources.ts).
+   */
+  statementDeclarations(): { file: string; root: string }[] {
+    const declarations: { file: string; root: string }[] = [];
+    for (const [fsPath, declared] of this.index) {
+      if (declared.asset.role === 'statement') {
+        declarations.push({ file: fsPath, root: declared.root });
+      }
+    }
+    return declarations;
   }
 
   /** Absolute paths of every testplan, for the editor context menu's `when`. */

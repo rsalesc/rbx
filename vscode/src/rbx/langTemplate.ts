@@ -29,6 +29,23 @@ function segmentPattern(segment: string): RegExp {
 }
 
 /**
+ * A pattern matching every path `template` (absolute) could expand to, with
+ * one language throughout -- or `undefined` for a template without `{lang}`.
+ *
+ * What a watcher asks of a created or deleted file: whether it is one more (or
+ * one fewer) statement the template stands for.
+ */
+export function langTemplatePattern(template: string): RegExp | undefined {
+  if (!template.includes(LANG_PLACEHOLDER)) {
+    return undefined;
+  }
+  const [first, ...rest] = template.split(LANG_PLACEHOLDER).map(escapeRegExp);
+  // The first `{lang}` captures; every later one must repeat it.
+  const body = rest.map((part, i) => (i === 0 ? `([^/\\\\]+)${part}` : `\\1${part}`)).join('');
+  return new RegExp(`^${first}${body}$`);
+}
+
+/**
  * Every existing path `template` (absolute) expands to, in no particular order.
  *
  * A template without `{lang}` is returned as is, whether or not it exists: a

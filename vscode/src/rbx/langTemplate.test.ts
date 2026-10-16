@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { test } from 'node:test';
 
-import { expandLangTemplate } from './langTemplate';
+import { expandLangTemplate, langTemplatePattern } from './langTemplate';
 
 /** A fake directory tree: directory -> its entries. */
 function readdirOf(tree: Record<string, string[]>) {
@@ -33,6 +33,17 @@ test('{lang} in a directory expands too, binding one language for the whole path
   });
   const expanded = await expandLangTemplate('/p/{lang}/statement-{lang}.tex', readdir);
   assert.deepStrictEqual(expanded.sort(), ['/p/en/statement-en.tex', '/p/pt/statement-pt.tex']);
+});
+
+test('a template pattern matches the paths it could expand to, one language throughout', () => {
+  const pattern = langTemplatePattern('/p/{lang}/statement-{lang}.rbx.tex');
+  assert.ok(pattern !== undefined);
+  assert.ok(pattern.test('/p/pt/statement-pt.rbx.tex'));
+  assert.ok(!pattern.test('/p/pt/statement-en.rbx.tex'));
+  assert.ok(!pattern.test('/p/pt/statement-pt.rbx.texx'));
+  // Dots are literal, not "any character".
+  assert.ok(!pattern.test('/p/pt/statement-ptXrbxXtex'));
+  assert.strictEqual(langTemplatePattern('/p/statement.rbx.tex'), undefined);
 });
 
 test('a template that fits no file expands to nothing', async () => {
