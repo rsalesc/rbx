@@ -126,6 +126,20 @@ export class AssetListings implements vscode.Disposable {
     return this.results.get(root);
   }
 
+  /** The listed problem declaring `file`, as rbx expanded it (globs included). */
+  problemDeclaring(file: string): ListedProblem | undefined {
+    for (const result of this.results.values()) {
+      if (result.kind !== 'ok') {
+        continue;
+      }
+      const problem = result.listing.problems.find((each) => each.assets.some((asset) => asset.path === file));
+      if (problem !== undefined) {
+        return problem;
+      }
+    }
+    return undefined;
+  }
+
   /** The contest roots that hold more than one contest. */
   async variantRoots(): Promise<string[]> {
     const res: string[] = [];
@@ -770,9 +784,28 @@ export function registerAssetsView(
         await dispatcher.chooseContest(root);
       }
     }),
-    vscode.commands.registerCommand('rbx.assets.run', (element: unknown) =>
-      vscode.commands.executeCommand('rbx.runSolution', uriOf(element)),
-    ),
+    // Dispatched from rbx's own listing rather than through `rbx.runSolution`,
+    // which recognises a solution only by the extension's manifest parse --
+    // and that does not expand globs (`solutions/good/*.*`).
+    vscode.commands.registerCommand('rbx.assets.run', async (element: unknown) => {
+      const uri = uriOf(element);
+      const problem = uri === undefined ? undefined : store.problemDeclaring(uri.fsPath);
+      if (uri === undefined || problem === undefined) {
+        return vscode.commands.executeCommand('rbx.runSolution', uri);
+      }
+      // rbx reads the file from disk; running a stale save would surprise.
+      const open = vscode.workspace.textDocuments.find(
+        (document) => document.uri.scheme === 'file' && document.uri.fsPath === uri.fsPath,
+      );
+      if (open?.isDirty) {
+        await open.save();
+      }
+      await dispatcher.dispatch({
+        command: 'run',
+        root: problem.root,
+        solutions: [path.relative(problem.root, uri.fsPath)],
+      });
+    }),
     vscode.commands.registerCommand('rbx.assets.openToSide', (element: unknown) => {
       const uri = uriOf(element);
       return uri === undefined
