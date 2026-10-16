@@ -28,11 +28,30 @@ import {
   helpOffersOnInvalid,
   loginShellProbe,
   parseLoginShellPath,
+  probeIsDefinite,
+  probeKey,
   rbxCandidates,
 } from './rbx/executable';
+import { Limiter } from './rbx/limiter';
 
 /** How long the login-shell probe may take before we give up on it. */
 const PROBE_TIMEOUT_MS = 5_000;
+
+/**
+ * At most this many `run` processes alive at once, across the whole extension.
+ *
+ * Each is a Python interpreter importing rbx. Every caller is meant to ask
+ * about a handful of packages, but a caller that loops over every discovered
+ * one -- in a workspace with thousands -- once started them all together,
+ * exhausted the file descriptors and put the machine's load average in the
+ * hundreds. This is the backstop for the next such loop, not the fix for it.
+ */
+const MAX_CONCURRENT_SPAWNS = 10;
+
+/** How long a binary that failed `--version` stays failed before it is asked again. */
+const FAILED_CHECK_TTL_MS = 30_000;
+
+const spawns = new Limiter(MAX_CONCURRENT_SPAWNS);
 
 export interface SpawnResult {
   readonly code: number | null;
@@ -43,7 +62,10 @@ export interface SpawnResult {
 }
 
 /**
- * Run `command` and collect what it printed.
+ * Run `command` and collect what it printed, waiting for a free slot first.
+ *
+ * The timeout starts when the process does, not while it waits: a queue behind
+ * a busy contest must not make a healthy rbx look stuck.
  *
  * `stdin` is optional and, when omitted, the child's stdin is left exactly as
  * it was before this parameter existed: a pipe nobody writes to and nobody
@@ -52,6 +74,16 @@ export interface SpawnResult {
  * and login-shell probes below -- running as it did.
  */
 export function run(
+  command: string,
+  args: string[],
+  cwd: string,
+  timeoutMs: number,
+  stdin?: string,
+): Promise<SpawnResult> {
+  return spawns.run(() => spawnAndCollect(command, args, cwd, timeoutMs, stdin));
+}
+
+function spawnAndCollect(
   command: string,
   args: string[],
   cwd: string,
@@ -116,8 +148,25 @@ export function run(
  */
 const resolved = new Map<string, string>();
 
+/**
+ * Resolutions in flight, per root, so features asking about one root at the
+ * same moment share its probes instead of each starting their own.
+ */
+const resolving = new Map<string, Promise<string | undefined>>();
+
+interface Check {
+  readonly answer: Promise<boolean>;
+  /** When the binary failed, so the failure can expire; unset while pending or once it passed. */
+  failedAt?: number;
+}
+
+/** Per binary (see `probeKey`): whether it answers `--version`. */
+const checks = new Map<string, Check>();
+
 export function resetRbxExecutables(): void {
   resolved.clear();
+  resolving.clear();
+  checks.clear();
   onInvalidSupport.clear();
 }
 
@@ -144,10 +193,38 @@ export function supportsOnInvalid(executable: string, cwd: string): Promise<bool
   return answer;
 }
 
-/** Whether this candidate is an rbx that actually runs. */
-async function validate(command: string, root: string): Promise<boolean> {
-  const result = await run(command, ['--version'], root, PROBE_TIMEOUT_MS);
-  return result.spawnError === undefined && result.code === 0;
+/**
+ * Whether this candidate is an rbx that actually runs.
+ *
+ * Asked once per binary rather than once per root, and the failures are
+ * remembered too, for a while: a stale `rbx.executable` would otherwise cost a
+ * failed spawn for every package before each one fell through to `PATH`. A
+ * timeout is not remembered at all (`probeIsDefinite`).
+ */
+function validate(command: string, root: string): Promise<boolean> {
+  const key = probeKey(command, root);
+  const cached = checks.get(key);
+  if (
+    cached !== undefined &&
+    (cached.failedAt === undefined || Date.now() - cached.failedAt < FAILED_CHECK_TTL_MS)
+  ) {
+    return cached.answer;
+  }
+  const check: Check = {
+    answer: run(command, ['--version'], root, PROBE_TIMEOUT_MS).then((result) => {
+      const usable = result.spawnError === undefined && result.code === 0;
+      if (checks.get(key) === check) {
+        if (!probeIsDefinite(result)) {
+          checks.delete(key);
+        } else if (!usable) {
+          check.failedAt = Date.now();
+        }
+      }
+      return usable;
+    }),
+  };
+  checks.set(key, check);
+  return check.answer;
 }
 
 async function resolveCandidate(
@@ -174,12 +251,20 @@ async function resolveCandidate(
   return (await validate(found, root)) ? found : undefined;
 }
 
-export async function resolveRbx(root: string): Promise<string | undefined> {
+export function resolveRbx(root: string): Promise<string | undefined> {
   const cached = resolved.get(root);
   if (cached !== undefined) {
-    return cached;
+    return Promise.resolve(cached);
   }
+  let pending = resolving.get(root);
+  if (pending === undefined) {
+    pending = resolveUncached(root).finally(() => resolving.delete(root));
+    resolving.set(root, pending);
+  }
+  return pending;
+}
 
+async function resolveUncached(root: string): Promise<string | undefined> {
   const configured = vscode.workspace
     .getConfiguration('rbx', vscode.Uri.file(root))
     .get<string>('executable');

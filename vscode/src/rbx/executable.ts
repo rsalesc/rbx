@@ -17,8 +17,16 @@
  * the rbx it expects. A session-global cache would pin whichever package was
  * visualized first and be wrong for every other one.
  *
+ * What *is* the same for every root is whether a given binary runs: an
+ * absolute path, or a bare name looked up on the extension host's own `PATH`,
+ * answers `--version` identically wherever it is asked. That check is shared
+ * across roots (`probeKey`), so a contest of a dozen problems costs one
+ * `rbx --version`, not a dozen.
+ *
  * Nothing here imports `vscode`; the settings value is passed in.
  */
+import * as path from 'path';
+
 import { ON_INVALID_FLAG } from './dispatch';
 
 /** How one candidate was arrived at, for logging when it turns out to be wrong. */
@@ -92,4 +100,29 @@ export function parseLoginShellPath(stdout: string): string | undefined {
  */
 export function helpOffersOnInvalid(helpText: string): boolean {
   return helpText.includes(ON_INVALID_FLAG);
+}
+
+/**
+ * What a `--version` check of `command`, run in `root`, is really about.
+ *
+ * An absolute path, or a bare name the host's `PATH` resolves, is the same
+ * binary from any `cwd`, so one check answers for every root. Only a relative
+ * path with a directory in it (`.venv/bin/rbx`) is resolved against `cwd` and
+ * so names a different binary per root.
+ */
+export function probeKey(command: string, root: string): string {
+  const relative = !path.isAbsolute(command) && command.includes('/');
+  return relative ? path.join(root, command) : command;
+}
+
+/**
+ * Whether a probe gave an answer worth remembering.
+ *
+ * A process that could not start, or that exited, has said what it has to say.
+ * One killed by the timeout has not: it may be a fine rbx on a machine too
+ * loaded to start Python in time, and remembering that as "unusable" would
+ * outlive the load that caused it.
+ */
+export function probeIsDefinite(result: { readonly code: number | null; readonly spawnError?: unknown }): boolean {
+  return result.spawnError !== undefined || result.code !== null;
 }

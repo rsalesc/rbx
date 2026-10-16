@@ -5,6 +5,8 @@ import {
   helpOffersOnInvalid,
   loginShellProbe,
   parseLoginShellPath,
+  probeIsDefinite,
+  probeKey,
   rbxCandidates,
 } from './executable';
 
@@ -54,4 +56,22 @@ test('the --on-invalid probe reads the run help', () => {
     true,
   );
   assert.strictEqual(helpOffersOnInvalid('│ --validate --no-validate │'), false);
+});
+
+test('an absolute path or a bare name is one probe for every root', () => {
+  assert.strictEqual(probeKey('/opt/rbx/bin/rbx', '/c/a'), probeKey('/opt/rbx/bin/rbx', '/c/b'));
+  assert.strictEqual(probeKey('rbx', '/c/a'), 'rbx');
+  assert.strictEqual(probeKey('rbx', '/c/b'), 'rbx');
+});
+
+test('a relative path with a directory is probed per root', () => {
+  assert.strictEqual(probeKey('.venv/bin/rbx', '/c/a'), '/c/a/.venv/bin/rbx');
+  assert.notStrictEqual(probeKey('.venv/bin/rbx', '/c/a'), probeKey('.venv/bin/rbx', '/c/b'));
+});
+
+test('an exit or a failed start is definite; a timeout is not', () => {
+  assert.ok(probeIsDefinite({ code: 0 }));
+  assert.ok(probeIsDefinite({ code: 1 }));
+  assert.ok(probeIsDefinite({ code: null, spawnError: new Error('ENOENT') }));
+  assert.ok(!probeIsDefinite({ code: null }));
 });
