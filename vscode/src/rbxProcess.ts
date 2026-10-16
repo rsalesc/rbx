@@ -46,7 +46,7 @@ const PROBE_TIMEOUT_MS = 5_000;
  * exhausted the file descriptors and put the machine's load average in the
  * hundreds. This is the backstop for the next such loop, not the fix for it.
  */
-const MAX_CONCURRENT_SPAWNS = 6;
+const MAX_CONCURRENT_SPAWNS = 10;
 
 /** How long a binary that failed `--version` stays failed before it is asked again. */
 const FAILED_CHECK_TTL_MS = 30_000;
