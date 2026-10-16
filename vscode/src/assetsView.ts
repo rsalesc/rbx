@@ -1,5 +1,5 @@
 /**
- * The Assets and Across Problems views, both drawn from rbx's asset listing.
+ * The Assets view, drawn from rbx's asset listing.
  *
  * Neither is a second Explorer. They show only what a manifest declares -- no
  * build output, no scratch files -- under the names rbx gives it (`A · cats`,
@@ -7,15 +7,19 @@
  * is `rbx contest assets --json` per contest and `rbx assets --json` per
  * problem outside one (rbx/assetListing.ts); this module only draws it.
  *
- * - **Assets**: contest > problem > asset, split into categories or flat.
- * - **Across Problems**: the inverted index -- slot > problem, where a slot is
- *   an asset every problem may have ("en statement", "Main solution") and each
- *   problem is a leaf opening its own file.
+ * One view, two layouts, toggled from its title bar:
+ * - **Across problems** (the default): the inverted index -- slot > problem,
+ *   where a slot is an asset every problem may have ("en statement", "Main
+ *   solution") and each problem is a leaf opening its own file.
+ * - **By problem**: contest > problem > asset, split into categories or flat.
+ *
+ * A statement row opens the statement preview; its inline button opens the
+ * source.
  *
  * Read-only: nothing here creates, renames or deletes a file. Rows open what
  * they name, and the inline actions reuse commands that already exist.
  *
- * One `AssetListings` store feeds both views, so rbx is asked once per root.
+ * One `AssetListings` store feeds both layouts, so rbx is asked once per root.
  * A listing is dropped when one of its `sources` changes, when a file appears
  * or disappears under the root (a glob may now match it), or when the contest
  * variant the dispatcher remembers changes.
@@ -43,7 +47,7 @@ import { resolveRbx, run } from './rbxProcess';
 import { RunDataProvider } from './runData';
 
 const ASSETS_VIEW = 'rbx.assets';
-const ACROSS_VIEW = 'rbx.across';
+const LAYOUT_KEY = 'rbx.assets.layout';
 const MODE_KEY = 'rbx.assets.mode';
 const SLOTS_KEY = 'rbx.across.slots';
 const LISTING_TIMEOUT_MS = 30_000;
@@ -328,7 +332,12 @@ function fileItem(id: string, label: string, description: string, asset: ListedA
   item.description = description;
   item.tooltip = asset.path;
   item.iconPath = vscode.ThemeIcon.File;
-  item.command = { command: 'vscode.open', title: 'Open', arguments: [uri] };
+  // A statement is read, not just edited: clicking one opens its preview, and
+  // the inline button (or Open to the Side) opens the source.
+  item.command =
+    asset.category === 'statement'
+      ? { command: 'rbx.openStatementPreview', title: 'Preview Statement', arguments: [uri] }
+      : { command: 'vscode.open', title: 'Open', arguments: [uri] };
   item.contextValue = `rbx.asset.${asset.category}`;
   return item;
 }
@@ -607,6 +616,59 @@ export class AcrossProblemsProvider implements vscode.TreeDataProvider<Element> 
 }
 
 // ---------------------------------------------------------------------------
+// One view, two layouts: across problems (the default) or by problem.
+
+type Layout = 'across' | 'problem';
+
+class LayoutSwitch implements vscode.TreeDataProvider<Element>, vscode.Disposable {
+  private readonly changed = new vscode.EventEmitter<Element | undefined>();
+  readonly onDidChangeTreeData = this.changed.event;
+  private readonly subscriptions: vscode.Disposable[];
+
+  constructor(
+    private readonly byProblem: AssetsViewProvider,
+    private readonly across: AcrossProblemsProvider,
+    private readonly memento: vscode.Memento,
+  ) {
+    // Either layout redrawing redraws the view; the inactive one is cheap,
+    // since nothing asks it for children.
+    this.subscriptions = [
+      byProblem.onDidChangeTreeData(() => this.changed.fire(undefined)),
+      across.onDidChangeTreeData(() => this.changed.fire(undefined)),
+    ];
+  }
+
+  get layout(): Layout {
+    return this.memento.get<Layout>(LAYOUT_KEY, 'across');
+  }
+
+  async setLayout(layout: Layout): Promise<void> {
+    await this.memento.update(LAYOUT_KEY, layout);
+    this.syncContext();
+    this.changed.fire(undefined);
+  }
+
+  syncContext(): void {
+    void vscode.commands.executeCommand('setContext', 'rbx.assets.across', this.layout === 'across');
+  }
+
+  private get current(): vscode.TreeDataProvider<Element> {
+    return this.layout === 'across' ? this.across : this.byProblem;
+  }
+
+  getTreeItem(element: Element): vscode.TreeItem | Thenable<vscode.TreeItem> {
+    return this.current.getTreeItem(element);
+  }
+
+  getChildren(element?: Element): vscode.ProviderResult<Element[]> {
+    return this.current.getChildren(element);
+  }
+
+  dispose(): void {
+    this.subscriptions.forEach((each) => each.dispose());
+    this.changed.dispose();
+  }
+}
 
 function uriOf(element: unknown): vscode.Uri | undefined {
   if (element instanceof vscode.Uri) {
@@ -628,16 +690,15 @@ export function registerAssetsView(
   const store = new AssetListings(data, dispatcher);
   const assets = new AssetsViewProvider(store, active, context.workspaceState);
   const across = new AcrossProblemsProvider(store, context.workspaceState);
-  const assetsView = vscode.window.createTreeView(ASSETS_VIEW, { treeDataProvider: assets, showCollapseAll: true });
-  const acrossView = vscode.window.createTreeView(ACROSS_VIEW, { treeDataProvider: across, showCollapseAll: true });
+  const layout = new LayoutSwitch(assets, across, context.workspaceState);
+  const assetsView = vscode.window.createTreeView(ASSETS_VIEW, { treeDataProvider: layout, showCollapseAll: true });
   void vscode.commands.executeCommand('setContext', 'rbx.assets.flat', assets.mode === 'flat');
+  layout.syncContext();
 
   const redraw = () => {
     assets.redraw();
     across.redraw();
-    const description = store.variantDescription();
-    assetsView.description = description;
-    acrossView.description = description;
+    assetsView.description = store.variantDescription();
   };
 
   const watcher = vscode.workspace.createFileSystemWatcher('**/*');
@@ -649,8 +710,8 @@ export function registerAssetsView(
 
   context.subscriptions.push(
     store,
+    layout,
     assetsView,
-    acrossView,
     watcher,
     watcher.onDidCreate(on('create')),
     watcher.onDidChange(on('change')),
@@ -668,6 +729,12 @@ export function registerAssetsView(
     vscode.commands.registerCommand('rbx.assets.flat', () => assets.setMode('flat')),
     vscode.commands.registerCommand('rbx.assets.split', () => assets.setMode('split')),
     vscode.commands.registerCommand('rbx.across.chooseSlots', () => across.chooseSlots()),
+    vscode.commands.registerCommand('rbx.assets.showAcross', () => layout.setLayout('across')),
+    vscode.commands.registerCommand('rbx.assets.showByProblem', () => layout.setLayout('problem')),
+    vscode.commands.registerCommand('rbx.assets.openSource', (element: unknown) => {
+      const uri = uriOf(element);
+      return uri === undefined ? undefined : vscode.commands.executeCommand('vscode.open', uri);
+    }),
     vscode.commands.registerCommand('rbx.assets.chooseContest', async (arg?: unknown) => {
       let root = typeof arg === 'string' ? arg : undefined;
       if (root === undefined) {
@@ -683,9 +750,6 @@ export function registerAssetsView(
         await dispatcher.chooseContest(root);
       }
     }),
-    vscode.commands.registerCommand('rbx.assets.preview', (element: unknown) =>
-      vscode.commands.executeCommand('rbx.openStatementPreview', uriOf(element)),
-    ),
     vscode.commands.registerCommand('rbx.assets.run', (element: unknown) =>
       vscode.commands.executeCommand('rbx.runSolution', uriOf(element)),
     ),

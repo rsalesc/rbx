@@ -42,11 +42,6 @@
           "contextualTitle": "rbx"
         },
         {
-          "id": "rbx.across",
-          "name": "Across Problems",
-          "contextualTitle": "rbx"
-        },
-        {
           "id": "rbx.run",
           "type": "webview",
           "name": "Run",
@@ -407,19 +402,13 @@
         "command": "rbx.assets.split",
         "title": "Group Assets by Category",
         "category": "rbx",
-        "icon": "$(list-tree)"
+        "icon": "$(symbol-folder)"
       },
       {
         "command": "rbx.assets.chooseContest",
         "title": "Choose Contest Variant",
         "category": "rbx",
         "icon": "$(versions)"
-      },
-      {
-        "command": "rbx.assets.preview",
-        "title": "Preview Statement",
-        "category": "rbx",
-        "icon": "$(open-preview)"
       },
       {
         "command": "rbx.assets.run",
@@ -447,6 +436,24 @@
         "title": "Choose Assets to Line Up",
         "category": "rbx",
         "icon": "$(filter)"
+      },
+      {
+        "command": "rbx.assets.showAcross",
+        "title": "Line Up Assets Across Problems",
+        "category": "rbx",
+        "icon": "$(layers)"
+      },
+      {
+        "command": "rbx.assets.showByProblem",
+        "title": "Show Assets by Problem",
+        "category": "rbx",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "rbx.assets.openSource",
+        "title": "Open Statement Source",
+        "category": "rbx",
+        "icon": "$(go-to-file)"
       }
     ],
     "menus": {
@@ -582,10 +589,6 @@
           "when": "rbx.dispatchEnabled"
         },
         {
-          "command": "rbx.assets.preview",
-          "when": "false"
-        },
-        {
           "command": "rbx.assets.run",
           "when": "false"
         },
@@ -599,6 +602,10 @@
         },
         {
           "command": "rbx.assets.copyPath",
+          "when": "false"
+        },
+        {
+          "command": "rbx.assets.openSource",
           "when": "false"
         }
       ],
@@ -649,39 +656,39 @@
           "group": "navigation@0"
         },
         {
-          "command": "rbx.assets.chooseContest",
-          "when": "view == rbx.assets && rbx.assets.hasVariants",
+          "command": "rbx.assets.showByProblem",
+          "when": "view == rbx.assets && rbx.assets.across",
           "group": "navigation@0"
         },
         {
+          "command": "rbx.assets.showAcross",
+          "when": "view == rbx.assets && !rbx.assets.across",
+          "group": "navigation@0"
+        },
+        {
+          "command": "rbx.across.chooseSlots",
+          "when": "view == rbx.assets && rbx.assets.across",
+          "group": "navigation@1"
+        },
+        {
           "command": "rbx.assets.flat",
-          "when": "view == rbx.assets && !rbx.assets.flat",
+          "when": "view == rbx.assets && !rbx.assets.across && !rbx.assets.flat",
           "group": "navigation@1"
         },
         {
           "command": "rbx.assets.split",
-          "when": "view == rbx.assets && rbx.assets.flat",
+          "when": "view == rbx.assets && !rbx.assets.across && rbx.assets.flat",
           "group": "navigation@1"
+        },
+        {
+          "command": "rbx.assets.chooseContest",
+          "when": "view == rbx.assets && rbx.assets.hasVariants",
+          "group": "navigation@2"
         },
         {
           "command": "rbx.assets.refresh",
           "when": "view == rbx.assets",
-          "group": "navigation@2"
-        },
-        {
-          "command": "rbx.across.chooseSlots",
-          "when": "view == rbx.across",
-          "group": "navigation@0"
-        },
-        {
-          "command": "rbx.assets.chooseContest",
-          "when": "view == rbx.across && rbx.assets.hasVariants",
-          "group": "navigation@1"
-        },
-        {
-          "command": "rbx.assets.refresh",
-          "when": "view == rbx.across",
-          "group": "navigation@2"
+          "group": "navigation@3"
         }
       ],
       "webview/context": [
@@ -932,33 +939,33 @@
       ],
       "view/item/context": [
         {
-          "command": "rbx.assets.preview",
-          "when": "view =~ /^rbx\\.(assets|across)$/ && viewItem == rbx.asset.statement",
+          "command": "rbx.assets.openSource",
+          "when": "view == rbx.assets && viewItem == rbx.asset.statement",
           "group": "inline"
         },
         {
           "command": "rbx.assets.run",
-          "when": "view =~ /^rbx\\.(assets|across)$/ && viewItem == rbx.asset.solution && rbx.dispatchEnabled",
+          "when": "view == rbx.assets && viewItem == rbx.asset.solution && rbx.dispatchEnabled",
           "group": "inline"
         },
         {
           "command": "rbx.assets.chooseContest",
-          "when": "view =~ /^rbx\\.(assets|across)$/ && viewItem == rbx.assets.contest && rbx.assets.hasVariants",
+          "when": "view == rbx.assets && viewItem == rbx.assets.contest && rbx.assets.hasVariants",
           "group": "inline"
         },
         {
           "command": "rbx.assets.openToSide",
-          "when": "view =~ /^rbx\\.(assets|across)$/ && viewItem =~ /^rbx\\.asset\\./",
+          "when": "view == rbx.assets && viewItem =~ /^rbx\\.asset\\./",
           "group": "navigation@1"
         },
         {
           "command": "rbx.assets.reveal",
-          "when": "view =~ /^rbx\\.(assets|across)$/ && viewItem =~ /^rbx\\.asset\\./",
+          "when": "view == rbx.assets && viewItem =~ /^rbx\\.asset\\./",
           "group": "navigation@2"
         },
         {
           "command": "rbx.assets.copyPath",
-          "when": "view =~ /^rbx\\.(assets|across)$/ && viewItem =~ /^rbx\\.asset\\./",
+          "when": "view == rbx.assets && viewItem =~ /^rbx\\.asset\\./",
           "group": "6_copypath@1"
         }
       ]
