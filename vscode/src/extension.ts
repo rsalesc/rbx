@@ -191,7 +191,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const statementReports = new StatementReports();
   context.subscriptions.push(statementReports);
   const statementSources = registerStatementSources(context, data, declared);
-  registerAssetsView(context, data, active, dispatcher);
+  registerAssetsView(context, data, active, dispatcher, declared);
   registerStatementPreview({ context, reports: statementReports, sources: statementSources, active, dispatcher });
   registerStatementDiagnostics(context, statementReports);
   registerInteractionDecorations(context);

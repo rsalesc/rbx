@@ -14,6 +14,9 @@ import * as vscode from 'vscode';
 import { log } from './log';
 import { expandLangTemplate, langTemplatePattern } from './rbx/langTemplate';
 import { PackageLayout, manifestPath } from './rbx/layout';
+import { ListedProblem } from './rbx/assetListing';
+import { globPattern, isGlob } from './rbx/globPattern';
+import { GlobRule, mergeListed } from './rbx/listedDeclarations';
 import { DeclaredAsset, parseManifest } from './rbx/manifest';
 import { readYamlFile } from './rbx/store';
 import { RunDataProvider } from './runData';
@@ -43,7 +46,14 @@ export class DeclaredIndex {
   /** Fired after every re-read, whether or not anything actually moved. */
   readonly onDidChange: vscode.Event<void> = this.changed.event;
 
+  /** What the manifests and rbx's listings together declare: what lookups read. */
   private index = new Map<string, Declared>();
+  /** What the manifest parse alone found, keyed by absolute path. */
+  private manifestIndex = new Map<string, Declared>();
+  /** The manifest entries whose path is a glob, to trace listed files back to. */
+  private rules: GlobRule[] = [];
+  /** rbx's listings (assetsView.ts), every problem of every root. */
+  private listed: readonly ListedProblem[] = [];
   /**
    * The `{lang}` templates the manifests declare, as patterns. A file created
    * or deleted under one changes what the template expands to without any
@@ -59,11 +69,27 @@ export class DeclaredIndex {
     const packages = await this.data.discovered();
     const next = new Map<string, Declared>();
     const templates: RegExp[] = [];
+    const rules: GlobRule[] = [];
     for (const pkg of packages) {
-      await this.indexPackage(pkg, next, templates);
+      await this.indexPackage(pkg, next, templates, rules);
     }
-    this.index = next;
+    this.manifestIndex = next;
     this.templates = templates;
+    this.rules = rules;
+    this.remerge();
+  }
+
+  /**
+   * rbx listed the workspace's assets again (assetsView.ts). Its files fill in
+   * what the manifest parse cannot see: globs, includes, fields it skips.
+   */
+  setListings(problems: readonly ListedProblem[]): void {
+    this.listed = problems;
+    this.remerge();
+  }
+
+  private remerge(): void {
+    this.index = mergeListed(this.manifestIndex, this.rules, this.listed);
     log(`Indexed ${this.index.size} declared file(s).`);
     this.changed.fire();
   }
@@ -72,6 +98,7 @@ export class DeclaredIndex {
     pkg: PackageLayout,
     into: Map<string, Declared>,
     templates: RegExp[],
+    rules: GlobRule[],
   ): Promise<void> {
     const raw = await readYamlFile(manifestPath(pkg));
     if (raw === undefined) {
@@ -82,6 +109,11 @@ export class DeclaredIndex {
       // an absolute one alone, which rbx permits and some packages use. A
       // wildcard statement's `{lang}` template stands for one file per language.
       const declared = path.resolve(pkg.root, asset.path);
+      if (isGlob(declared)) {
+        // No file of its own; rbx's listing supplies the files it expands to.
+        rules.push({ root: pkg.root, asset, pattern: globPattern(declared) });
+        continue;
+      }
       const pattern = langTemplatePattern(declared);
       if (pattern !== undefined) {
         templates.push(pattern);

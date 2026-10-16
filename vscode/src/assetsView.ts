@@ -29,6 +29,7 @@ import * as vscode from 'vscode';
 
 import { ActiveProblem } from './activeProblem';
 import { findContestRoot } from './contestIndex';
+import { DeclaredIndex } from './declared';
 import { Dispatcher } from './dispatch';
 import { log } from './log';
 import {
@@ -111,6 +112,13 @@ export class AssetListings implements vscode.Disposable {
     const variants = await this.variantRoots();
     void vscode.commands.executeCommand('setContext', 'rbx.assets.hasVariants', variants.length > 0);
     this.changed.fire();
+    // Eagerly, not when the view first asks: the declared-file index -- the
+    // Explorer badges, the editor's Run button -- reads these listings too.
+    for (const { root } of roots) {
+      if (!this.results.has(root)) {
+        void this.load(root);
+      }
+    }
   }
 
   /** The listing of `root`, asking rbx if it has not been asked yet. */
@@ -126,18 +134,15 @@ export class AssetListings implements vscode.Disposable {
     return this.results.get(root);
   }
 
-  /** The listed problem declaring `file`, as rbx expanded it (globs included). */
-  problemDeclaring(file: string): ListedProblem | undefined {
+  /** Every problem of every root rbx has listed. */
+  listedProblems(): ListedProblem[] {
+    const problems: ListedProblem[] = [];
     for (const result of this.results.values()) {
-      if (result.kind !== 'ok') {
-        continue;
-      }
-      const problem = result.listing.problems.find((each) => each.assets.some((asset) => asset.path === file));
-      if (problem !== undefined) {
-        return problem;
+      if (result.kind === 'ok') {
+        problems.push(...result.listing.problems);
       }
     }
-    return undefined;
+    return problems;
   }
 
   /** The contest roots that hold more than one contest. */
@@ -702,6 +707,7 @@ export function registerAssetsView(
   data: RunDataProvider,
   active: ActiveProblem,
   dispatcher: Dispatcher,
+  declared: DeclaredIndex,
 ): void {
   const store = new AssetListings(data, dispatcher);
   const assets = new AssetsViewProvider(store, active, context.workspaceState);
@@ -733,6 +739,7 @@ export function registerAssetsView(
     watcher.onDidChange(on('change')),
     watcher.onDidDelete(on('delete')),
     store.onDidChange(redraw),
+    store.onDidChange(() => declared.setListings(store.listedProblems())),
     dispatcher.onDidChangeContest((root) => store.onContestChanged(root)),
     data.onDidChange((change) => {
       // A rediscovery (no root) may have added or removed a package.
@@ -784,28 +791,9 @@ export function registerAssetsView(
         await dispatcher.chooseContest(root);
       }
     }),
-    // Dispatched from rbx's own listing rather than through `rbx.runSolution`,
-    // which recognises a solution only by the extension's manifest parse --
-    // and that does not expand globs (`solutions/good/*.*`).
-    vscode.commands.registerCommand('rbx.assets.run', async (element: unknown) => {
-      const uri = uriOf(element);
-      const problem = uri === undefined ? undefined : store.problemDeclaring(uri.fsPath);
-      if (uri === undefined || problem === undefined) {
-        return vscode.commands.executeCommand('rbx.runSolution', uri);
-      }
-      // rbx reads the file from disk; running a stale save would surprise.
-      const open = vscode.workspace.textDocuments.find(
-        (document) => document.uri.scheme === 'file' && document.uri.fsPath === uri.fsPath,
-      );
-      if (open?.isDirty) {
-        await open.save();
-      }
-      await dispatcher.dispatch({
-        command: 'run',
-        root: problem.root,
-        solutions: [path.relative(problem.root, uri.fsPath)],
-      });
-    }),
+    vscode.commands.registerCommand('rbx.assets.run', (element: unknown) =>
+      vscode.commands.executeCommand('rbx.runSolution', uriOf(element)),
+    ),
     vscode.commands.registerCommand('rbx.assets.openToSide', (element: unknown) => {
       const uri = uriOf(element);
       return uri === undefined
