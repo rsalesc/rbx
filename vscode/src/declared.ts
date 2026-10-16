@@ -7,10 +7,12 @@
  * disagree for as long as the two reads are apart -- which is exactly the
  * window in which the setter is editing the file.
  */
+import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { log } from './log';
+import { expandLangTemplate } from './rbx/langTemplate';
 import { PackageLayout, manifestPath } from './rbx/layout';
 import { DeclaredAsset, parseManifest } from './rbx/manifest';
 import { readYamlFile } from './rbx/store';
@@ -26,6 +28,14 @@ export interface Declared {
    * may be absolute, and then nothing about it says which root claimed it.
    */
   readonly root: string;
+}
+
+async function readdirOrEmpty(dir: string): Promise<string[]> {
+  try {
+    return await fs.readdir(dir);
+  } catch {
+    return [];
+  }
 }
 
 export class DeclaredIndex {
@@ -59,8 +69,12 @@ export class DeclaredIndex {
     }
     for (const asset of parseManifest(raw)) {
       // Declared paths are relative to the package root. `resolve` also leaves
-      // an absolute one alone, which rbx permits and some packages use.
-      into.set(path.resolve(pkg.root, asset.path), { asset, root: pkg.root });
+      // an absolute one alone, which rbx permits and some packages use. A
+      // wildcard statement's `{lang}` template stands for one file per language.
+      const declared = path.resolve(pkg.root, asset.path);
+      for (const fsPath of await expandLangTemplate(declared, readdirOrEmpty)) {
+        into.set(fsPath, { asset, root: pkg.root });
+      }
     }
   }
 
