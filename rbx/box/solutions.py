@@ -42,6 +42,7 @@ from rbx.box import (
     remote,
     retries,
     run_report,
+    run_validation,
     setter_config,
     visualizers,
 )
@@ -330,6 +331,10 @@ class SolutionReportSkeleton(BaseModel):
     # while a client showing a silently shortened list has no way to tell the
     # reader that the rest were never run.
     only_accepted: bool = False
+    # Which testcases failed validation, when the run went ahead anyway
+    # (`--on-invalid=warn`), and how the testcases were validated at all. Absent
+    # on a run that did not say (`rbx time`, `rbx build`'s own verification).
+    validation: Optional[run_validation.RunValidation] = None
 
     def get_solution_limits(self, solution: Solution) -> Limits:
         return _resolve_solution_limits(solution, self.limits, self.verification)
@@ -703,6 +708,7 @@ async def _get_report_skeleton(
     sanitized: bool = False,
     keep_checker_stderr: bool = False,
     only_accepted: bool = False,
+    validation: Optional[run_validation.RunValidation] = None,
 ) -> SolutionReportSkeleton:
     pkg = package.find_problem_package_or_die()
 
@@ -780,6 +786,7 @@ async def _get_report_skeleton(
         keep_checker_stderr=keep_checker_stderr,
         sanitized=sanitized,
         only_accepted=only_accepted,
+        validation=validation,
     )
 
     skeleton_file = runs_dir / 'skeleton.yml'
@@ -1038,6 +1045,7 @@ async def run_solutions(
     runner: Optional['SolutionRunner'] = None,
     purpose: Optional['RunPurpose'] = None,
     keep_checker_stderr: bool = False,
+    validation: Optional[run_validation.RunValidation] = None,
 ) -> RunSolutionResult:
     # Imported here, not at module scope: `runners.local` imports this module
     # back -- for `run_solution_on_testcase` and for `SolutionSkeleton` -- so an
@@ -1077,6 +1085,7 @@ async def run_solutions(
         sanitized=sanitized,
         keep_checker_stderr=keep_checker_stderr,
         only_accepted=only_accepted,
+        validation=validation,
     )
 
     checker_digest, interactor_digest = await _compile_checking_digests(check)
@@ -1122,7 +1131,9 @@ async def _generate_testcase_interactively(
     print: bool = False,
     input_file: Optional[pathlib.Path] = None,
     answer_file: Optional[pathlib.Path] = None,
-) -> GenerationTestcaseEntry:
+    on_invalid: run_validation.OnInvalid = run_validation.OnInvalid.FAIL,
+) -> Tuple[GenerationTestcaseEntry, run_validation.RunValidation]:
+    """The testcase an interactive run runs on, and what validating it found."""
     main_solution = package.get_main_solution()
     testcase = _get_interactive_testcase(check)
     interactive_entry = GenerationTestcaseEntry.make_interactive(copied_to=testcase)
@@ -1175,12 +1186,14 @@ async def _generate_testcase_interactively(
 
     # 1. Generate testcase.
     should_print_testcase = False
+    validation_infos = None
     if interactive_entry.metadata is not None:
-        await generate_standalone(
+        validation_infos = await generate_standalone(
             interactive_entry.metadata,
             entry=entry_for_validation,
             progress=progress,
             validate=validate,
+            on_invalid=on_invalid,
         )
         if print and not is_manual:
             should_print_testcase = True
@@ -1266,7 +1279,9 @@ async def _generate_testcase_interactively(
         )
         raise typer.Exit(1)
 
-    return interactive_entry
+    return interactive_entry, run_validation.run_validation(
+        on_invalid, validation_infos, testcase=interactive_entry.group_entry
+    )
 
 
 async def _run_interactive_solutions(
@@ -1334,6 +1349,7 @@ async def _get_interactive_skeleton(
     check: bool = True,
     merge_stderr: bool = False,
     keep_checker_stderr: bool = False,
+    validation: Optional[run_validation.RunValidation] = None,
 ) -> SolutionReportSkeleton:
     solutions, compiled_solutions, _, _ = await _get_compiled_solutions_for_skeleton(
         tracked_solutions,
@@ -1371,6 +1387,7 @@ async def _get_interactive_skeleton(
         keep_checker_stderr=keep_checker_stderr,
         sanitized=sanitized,
         only_accepted=only_accepted,
+        validation=validation,
     )
 
     skeleton_file = irun_dir / 'skeleton.yml'
@@ -1397,6 +1414,7 @@ async def run_and_print_interactive_solutions(
     benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
     input_file: Optional[pathlib.Path] = None,
     answer_file: Optional[pathlib.Path] = None,
+    on_invalid: run_validation.OnInvalid = run_validation.OnInvalid.FAIL,
 ):
     pkg = package.find_problem_package_or_die()
 
@@ -1418,7 +1436,7 @@ async def run_and_print_interactive_solutions(
     with grading_context.cache_level(
         grading_context.CacheLevel.CACHE_COMPILATION, when=not should_cache
     ):
-        entry = await _generate_testcase_interactively(
+        entry, validation = await _generate_testcase_interactively(
             progress=progress,
             generator=generator,
             testcase_entry=testcase_entry,
@@ -1430,6 +1448,7 @@ async def run_and_print_interactive_solutions(
             visualize=visualize,
             input_file=input_file,
             answer_file=answer_file,
+            on_invalid=on_invalid,
         )
         skeleton = await _get_interactive_skeleton(
             entry,
@@ -1441,6 +1460,7 @@ async def run_and_print_interactive_solutions(
             check=check,
             merge_stderr=merge_stderr,
             keep_checker_stderr=keep_checker_stderr,
+            validation=validation,
         )
         items = _run_interactive_solutions(
             entry,

@@ -216,12 +216,23 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
-                    'help': 'Whether to not validate outputs for tests.',
+                    'help': 'Whether to validate the testcases before running the '
+                    'solutions.',
                     'kind': 'option',
                     'multiple': False,
                     'names': ['--validate', '--no-validate'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'What to do when a testcase fails validation: fail the run '
+                    'before running anything, or warn and run every testcase '
+                    'anyway.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--on-invalid'],
+                    'takes_value': True,
+                    'value': {'choices': ['fail', 'warn'], 'kind': 'choice'},
                 },
                 {
                     'help': 'Whether to print a detailed view of the tests using tables.',
@@ -720,6 +731,15 @@ SPEC = {
                     'names': ['--validate', '--no-validate'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'What to do when the testcase fails validation: fail before '
+                    'running anything, or warn and run it anyway.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--on-invalid'],
+                    'takes_value': True,
+                    'value': {'choices': ['fail', 'warn'], 'kind': 'choice'},
                 },
                 {
                     'help': 'Generator call to use to generate a single test for execution.',

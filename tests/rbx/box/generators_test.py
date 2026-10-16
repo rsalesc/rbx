@@ -654,3 +654,46 @@ async def test_generator_determinism_check_skipped_at_verification_none(
     # No verification → no determinism check → no error even though the
     # generator is non-deterministic.
     await generate_testcases(verification=VerificationLevel.NONE)
+
+
+async def test_generate_standalone_warn_returns_the_rejection_instead_of_raising(
+    testing_pkg: testing_package.TestingPackage,
+    capsys: pytest.CaptureFixture[str],
+):
+    from rbx.box.run_validation import OnInvalid
+
+    testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
+    input_file = testing_pkg.add_file('manual_tests/000.in')
+    input_file.write_text('123 456\n')
+
+    tmpd = testing_pkg.mkdtemp()
+    spec = GenerationMetadata(
+        copied_to=Testcase(inputPath=tmpd / '000.in'),
+        copied_from=Testcase(inputPath=input_file),
+    )
+    infos = await generate_standalone(spec, on_invalid=OnInvalid.WARN)
+
+    assert infos is not None
+    assert [(info.ok, str(info.validator.path)) for info in infos] == [
+        (False, 'validator.cpp')
+    ]
+    # Still generated: the run goes on with it.
+    assert (tmpd / '000.in').read_bytes() == b'123 456\n'
+    out = ' '.join(capsys.readouterr().out.split())
+    assert 'Running it anyway' in out
+
+
+async def test_generate_standalone_without_validation_returns_none(
+    testing_pkg: testing_package.TestingPackage,
+):
+    testing_pkg.set_validator('validator.cpp', src='validators/int-validator.cpp')
+    input_file = testing_pkg.add_file('manual_tests/000.in')
+    input_file.write_text('123 456\n')
+
+    tmpd = testing_pkg.mkdtemp()
+    spec = GenerationMetadata(
+        copied_to=Testcase(inputPath=tmpd / '000.in'),
+        copied_from=Testcase(inputPath=input_file),
+    )
+
+    assert await generate_standalone(spec, validate=False) is None

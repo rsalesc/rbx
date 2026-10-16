@@ -43,7 +43,9 @@ def _skip_preset_check():
 
 
 async def _build_ok(*args, **kwargs):
-    return True
+    from rbx.box.builder import BuildResult
+
+    return BuildResult(ok=True, input_validation=None)
 
 
 class _Invocation:
@@ -62,7 +64,9 @@ class _Invocation:
         return _flat(self.shared[0].export_text(clear=False))
 
 
-def _invoke_run(runner: CliRunner, *args: str) -> Tuple[Any, _Invocation]:
+def _invoke_run(
+    runner: CliRunner, *args: str, build=_build_ok
+) -> Tuple[Any, _Invocation]:
     calls = _Invocation()
 
     async def run_solutions(**kwargs):
@@ -82,7 +86,7 @@ def _invoke_run(runner: CliRunner, *args: str) -> Tuple[Any, _Invocation]:
         calls.shared.append(console)
 
     with (
-        mock.patch('rbx.box.builder.build', _build_ok),
+        mock.patch('rbx.box.builder.build_with_result', build),
         mock.patch('rbx.box.cli.commands.run.run_solutions', run_solutions),
         mock.patch('rbx.box.cli.commands.run.print_run_report', print_run_report),
         mock.patch('rbx.box.sharing.capture_and_share', capture_and_share),
@@ -159,3 +163,74 @@ def test_the_shared_report_of_a_plain_run_is_unchanged(
 
     assert result.exit_code == 0, result.output
     assert FAIL_FAST_WARNING not in calls.shared_text
+
+
+def test_on_invalid_warn_reaches_the_build_and_the_skeleton(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    from rbx.box.builder import BuildResult
+    from rbx.box.run_validation import (
+        InvalidTestcase,
+        OnInvalid,
+        RunValidation,
+        RunValidationMode,
+    )
+    from rbx.box.schema import CodeItem
+    from rbx.box.testcase_schema import TestcaseEntry
+    from rbx.box.validators import TestcaseValidationInfo
+
+    build_kwargs: Dict[str, Any] = {}
+
+    async def build_with_rejection(*args, **kwargs):
+        build_kwargs.update(kwargs)
+        return BuildResult(
+            ok=True,
+            input_validation=[
+                TestcaseValidationInfo(
+                    validator=CodeItem(path='validator.cpp'),
+                    testcase=TestcaseEntry(group='main', index=2),
+                    generation_metadata=None,
+                    path='x.in',
+                    ok=False,
+                    hit_bounds={},
+                    message='Expected EOLN',
+                )
+            ],
+        )
+
+    result, calls = _invoke_run(
+        runner, '--on-invalid', 'warn', build=build_with_rejection
+    )
+
+    assert result.exit_code == 0, result.output
+    assert build_kwargs['on_invalid'] == OnInvalid.WARN
+    assert calls.run_solutions_kwargs['validation'] == RunValidation(
+        mode=RunValidationMode.WARN,
+        invalid=[
+            InvalidTestcase(
+                group='main',
+                index=2,
+                validator='validator.cpp',
+                message='Expected EOLN',
+            )
+        ],
+    )
+
+
+def test_a_plain_run_fails_on_invalid_testcases(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    from rbx.box.run_validation import OnInvalid
+
+    build_kwargs: Dict[str, Any] = {}
+
+    async def build(*args, **kwargs):
+        build_kwargs.update(kwargs)
+        return await _build_ok()
+
+    result, calls = _invoke_run(runner, build=build)
+
+    assert result.exit_code == 0, result.output
+    assert build_kwargs['on_invalid'] == OnInvalid.FAIL

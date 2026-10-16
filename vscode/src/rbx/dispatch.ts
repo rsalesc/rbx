@@ -146,6 +146,16 @@ export interface Invocation {
   /** `rbx.run.extraArgs`, for `run` and `contest-run`. */
   readonly extraArgs: readonly string[];
   /**
+   * Run past testcases that fail validation (`--on-invalid=warn`), for the
+   * commands `takesOnInvalid` names.
+   *
+   * At a terminal an invalid testcase aborting the run is the right call: the
+   * setter is right there to fix it. A run started from the editor has no such
+   * loop, so it goes on and the Run view flags the invalid testcases instead.
+   * Set only when the resolved rbx takes the flag, decided at dispatch time.
+   */
+  readonly warnOnInvalid?: boolean;
+  /**
    * For `stress` and `add-finding`: everything after the subcommand, built by
    * whoever asked. Ignored by every other command.
    */
@@ -185,10 +195,22 @@ export function rbxArgs(invocation: Invocation): string[] {
       args.push('build');
       break;
     case 'run':
-      args.push('run', ...invocation.extraArgs, ...invocation.solutions);
+      args.push(
+        'run',
+        ...onInvalidArgs(invocation),
+        ...invocation.extraArgs,
+        ...invocation.solutions,
+      );
       break;
     case 'contest-run':
-      args.push('contest', 'each', '--inline', 'run', ...invocation.extraArgs);
+      args.push(
+        'contest',
+        'each',
+        '--inline',
+        'run',
+        ...onInvalidArgs(invocation),
+        ...invocation.extraArgs,
+      );
       break;
     case 'statements':
       args.push('statements', 'build', '--no-validate', '--incremental');
@@ -209,13 +231,31 @@ export function rbxArgs(invocation: Invocation): string[] {
       args.push('testcases', 'add-finding', ...(invocation.args ?? []));
       break;
     case 'irun':
-      args.push('irun', ...(invocation.args ?? []));
+      args.push('irun', ...onInvalidArgs(invocation), ...(invocation.args ?? []));
       break;
     case 'promote':
       args.push('testcases', 'promote', ...(invocation.args ?? []));
       break;
   }
   return args;
+}
+
+/** The flag that lets a run go on past testcases that fail validation. */
+export const ON_INVALID_FLAG = '--on-invalid';
+
+/** The commands that validate testcases before running solutions on them. */
+export function takesOnInvalid(command: RbxCommand): boolean {
+  return command === 'run' || command === 'contest-run' || command === 'irun';
+}
+
+/**
+ * Ahead of `rbx.run.extraArgs`, so a user who wants the terminal's behaviour
+ * back can put `--on-invalid=fail` there: the last occurrence of an option wins.
+ */
+function onInvalidArgs(invocation: Invocation): string[] {
+  return invocation.warnOnInvalid === true && takesOnInvalid(invocation.command)
+    ? [`${ON_INVALID_FLAG}=warn`]
+    : [];
 }
 
 /**

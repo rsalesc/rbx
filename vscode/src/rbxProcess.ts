@@ -25,6 +25,7 @@ import * as vscode from 'vscode';
 import { log } from './log';
 import {
   RbxCandidate,
+  helpOffersOnInvalid,
   loginShellProbe,
   parseLoginShellPath,
   rbxCandidates,
@@ -117,6 +118,30 @@ const resolved = new Map<string, string>();
 
 export function resetRbxExecutables(): void {
   resolved.clear();
+  onInvalidSupport.clear();
+}
+
+/** Per executable: whether its `rbx run` takes `--on-invalid`. */
+const onInvalidSupport = new Map<string, Promise<boolean>>();
+
+/**
+ * Whether this rbx can be asked to run past invalid testcases.
+ *
+ * Probed once per executable and remembered, failures included: a probe that
+ * failed answers `false`, so the run goes out exactly as it did before the
+ * flag existed rather than not at all.
+ */
+export function supportsOnInvalid(executable: string, cwd: string): Promise<boolean> {
+  let answer = onInvalidSupport.get(executable);
+  if (answer === undefined) {
+    answer = run(executable, ['run', '--help'], cwd, PROBE_TIMEOUT_MS).then((result) => {
+      const supported = result.code === 0 && helpOffersOnInvalid(result.stdout);
+      log(`rbx at ${executable} ${supported ? 'takes' : 'does not take'} --on-invalid.`);
+      return supported;
+    });
+    onInvalidSupport.set(executable, answer);
+  }
+  return answer;
 }
 
 /** Whether this candidate is an rbx that actually runs. */

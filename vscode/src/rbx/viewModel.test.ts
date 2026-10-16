@@ -1590,3 +1590,49 @@ test('an ad-hoc run draws one row per solution, standing for its one testcase', 
   assert.notStrictEqual(first.card, undefined);
   assert.strictEqual(model.mismatches, 1);
 });
+
+test('a run past invalid testcases flags them, and says so up top', () => {
+  const model = buildViewModel(
+    view([MAIN], [], {
+      validation: {
+        mode: 'warn',
+        invalid: [
+          { group: 'main', index: 0, validator: 'validator.cpp', message: 'Expected EOLN' },
+        ],
+      },
+    }),
+  );
+
+  assert.deepStrictEqual(model.notices, [{ kind: 'invalid-tests', count: 1 }]);
+  const row = model.rows.find((candidate) => candidate.kind === 'testcase');
+  assert.ok(row !== undefined);
+  assert.strictEqual(row.gutter, 'warned');
+  assert.deepStrictEqual(
+    row.warnings.map((warning) => warning.kind),
+    ['invalid-input'],
+  );
+  assert.deepStrictEqual(row.card?.invalid, ['validator.cpp: Expected EOLN']);
+  // A testcase's bad input is not the solution's warning.
+  assert.strictEqual(model.warned, 0);
+});
+
+test('a valid testcase of a run past invalid ones carries nothing extra', () => {
+  const model = buildViewModel(
+    view([MAIN], [], {
+      validation: {
+        mode: 'warn',
+        invalid: [{ group: 'main', index: 7, validator: 'validator.cpp' }],
+      },
+    }),
+  );
+
+  const row = model.rows.find((candidate) => candidate.kind === 'testcase');
+  assert.ok(row !== undefined);
+  assert.strictEqual(row.gutter, 'none');
+  assert.strictEqual(row.card?.invalid, undefined);
+});
+
+test('a run that skipped validation says so', () => {
+  const model = buildViewModel(view([MAIN], [], { validation: { mode: 'off', invalid: [] } }));
+  assert.deepStrictEqual(model.notices, [{ kind: 'unvalidated' }]);
+});
