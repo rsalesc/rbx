@@ -2,7 +2,7 @@
   "name": "rbx-vscode",
   "displayName": "rbx",
   "description": "Browse rbx testcases and solution verdicts without leaving the editor.",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "publisher": "rsalesc",
   "license": "MIT",
   "icon": "resources/icon.png",
@@ -74,7 +74,7 @@
       },
       {
         "command": "rbx.testplan.promote",
-        "title": "Promote This Test to a Manual Test",
+        "title": "Promote This Test…",
         "category": "rbx"
       },
       {
@@ -358,6 +358,18 @@
         "category": "rbx"
       },
       {
+        "command": "rbx.promoteTest",
+        "title": "Promote This Test…",
+        "category": "rbx",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "rbx.promoteInput",
+        "title": "Promote This Input to a Test…",
+        "category": "rbx",
+        "icon": "$(arrow-up)"
+      },
+      {
         "command": "rbx.proposal.accept",
         "title": "Accept Proposed Change",
         "category": "rbx",
@@ -489,6 +501,14 @@
         {
           "command": "rbx.irunInput",
           "when": "rbx.dispatchEnabled && editorIsOpen"
+        },
+        {
+          "command": "rbx.promoteTest",
+          "when": "false"
+        },
+        {
+          "command": "rbx.promoteInput",
+          "when": "editorIsOpen"
         },
         {
           "command": "rbx.irunGenerator",
@@ -722,6 +742,16 @@
           "command": "rbx.irunTest",
           "when": "rbx.dispatchEnabled && webviewSection == 'rbx.testsetTestcase'",
           "group": "0_run@1"
+        },
+        {
+          "command": "rbx.promoteTest",
+          "when": "webviewSection == 'rbx.testcase'",
+          "group": "0_run@2"
+        },
+        {
+          "command": "rbx.promoteTest",
+          "when": "webviewSection == 'rbx.testsetTestcase'",
+          "group": "0_run@2"
         }
       ],
       "explorer/context": [
@@ -729,6 +759,11 @@
           "command": "rbx.runSolution",
           "when": "rbx.dispatchEnabled && resourceScheme == file && resourcePath in rbx.solutionFiles",
           "group": "0_rbx@1"
+        },
+        {
+          "command": "rbx.promoteInput",
+          "when": "resourceScheme == file && resourceExtname == .in",
+          "group": "0_rbx@2"
         }
       ],
       "editor/context": [
@@ -760,6 +795,11 @@
         {
           "command": "rbx.irunInput",
           "when": "rbx.dispatchEnabled && editorTextFocus",
+          "group": "0_rbx@5"
+        },
+        {
+          "command": "rbx.promoteInput",
+          "when": "editorTextFocus && !(resourcePath in rbx.testplanFiles)",
           "group": "0_rbx@5"
         },
         {
@@ -963,7 +1003,7 @@
         "rbx.statements.buildOnSave": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Rebuild a statement whenever you save its source, or a file beside it: `rbx statements build`, or `rbx tutorials build` for a tutorial, in their contest form for a contest's. Runs as a task in a visible terminal, like the **Build** button of the statement preview, and is skipped while another rbx command runs in the same package."
+          "markdownDescription": "Rebuild a statement whenever you save its source, or a file beside it: `rbx statements build --no-validate`, or `rbx tutorials build --no-validate` for a tutorial, in their contest form for a contest's. The samples are not validated; `rbx build` does that. Runs as a task in a visible terminal, like the **Build** button of the statement preview, and is skipped while another rbx command runs in the same package."
         },
         "rbx.dispatch.enabled": {
           "type": "boolean",

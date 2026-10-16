@@ -21,7 +21,7 @@ import io
 import os
 import pathlib
 import tempfile
-from typing import Any, List, NamedTuple, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple, Union
 
 import ruyaml
 import typer
@@ -698,6 +698,20 @@ class EditSession:
         """A handle on the value at `keys`, in whichever file owns it."""
         self.resolve(keys)  # resolve eagerly so errors surface here
         return EditTarget(self, keys)
+
+    def pending(self) -> Dict[pathlib.Path, Tuple[str, str]]:
+        """What `save` would write, without writing it.
+
+        Maps every file whose tree changed to its ``(before, after)`` text,
+        ``before`` being the file as it is on disk (``''`` if it is not there).
+        """
+        res = {}
+        for path, tree in self._trees.items():
+            after = self._render(tree, path)
+            if after == self._baseline.get(path):
+                continue
+            res[path] = (path.read_text() if path.is_file() else '', after)
+        return res
 
     def save(self) -> None:
         """Write every file whose tree changed.

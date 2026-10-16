@@ -33,3 +33,22 @@ scenarios:
             groups:
               plan: 1
               handmade: 3
+
+  - name: freeze-in-place
+    description: >
+      Promoting a test into the group whose plan already holds it, as a copy,
+      freezes the generator call into a `@copy` on the same line, so no test
+      moves.
+    steps:
+      - cmd: testcases promote tests/plan.txt:2 --to plan --as copy
+        expect:
+          file_contains:
+            tests/plan/000.in: '1 2'
+            tests/plan.txt: "@copy tests/plan/000.in\ngen 30 40"
+      - cmd: build
+        expect:
+          tests:
+            count: 4
+            groups:
+              plan: 3
+              handmade: 1

@@ -20,7 +20,6 @@ import * as vscode from 'vscode';
 
 import { ActiveProblem } from './activeProblem';
 import { findContestRoot } from './contestIndex';
-import { DeclaredIndex } from './declared';
 import { Dispatcher } from './dispatch';
 import { log } from './log';
 import { RbxCommand, STATEMENT_COMMANDS, TASK_TYPE, collides, statementCommand } from './rbx/dispatch';
@@ -28,6 +27,7 @@ import { Latest } from './rbx/latest';
 import { SaveTarget, StatementOutput, defaultOutput, saveTargets } from './rbx/statementReport';
 import { previewModel } from './rbx/statementPreviewModel';
 import { StatementReports, scopeOf } from './statementReports';
+import { StatementSources } from './statementSources';
 import type { ClientMessage, HostMessage } from './webview/statementProtocol';
 
 const BUILD_ON_SAVE_SETTING = 'rbx.statements.buildOnSave';
@@ -47,7 +47,7 @@ function makeNonce(): string {
 export interface PreviewDeps {
   readonly context: vscode.ExtensionContext;
   readonly reports: StatementReports;
-  readonly declared: DeclaredIndex;
+  readonly sources: StatementSources;
   readonly active: ActiveProblem;
   readonly dispatcher: Dispatcher;
 }
@@ -61,16 +61,15 @@ interface Target {
 /**
  * The root a file's statement lives under.
  *
- * A file a `problem.rbx.yml` declares belongs to that package. Anything else
- * may still be the source of an output some report knows -- a contest's
- * statement file, which no problem declares. Failing both, the problem the
- * sidebar has selected.
+ * A statement source belongs to the package that lists it -- a problem, or a
+ * contest (statementSources.ts). Anything else may still be the source of an
+ * output some report knows. Failing both, the problem the sidebar has selected.
  */
 async function targetFor(deps: PreviewDeps, uri: vscode.Uri | undefined): Promise<Target | undefined> {
   if (uri !== undefined && uri.scheme === 'file') {
-    const declared = deps.declared.declarationFor(uri);
-    if (declared !== undefined) {
-      return { root: declared.root, file: uri.fsPath };
+    const source = deps.sources.sourceFor(uri.fsPath);
+    if (source !== undefined) {
+      return { root: source.root, file: uri.fsPath };
     }
     for (const root of await deps.reports.roots()) {
       const outputs = await deps.reports.outputs(root);
@@ -202,9 +201,9 @@ export class StatementPreviewPanel {
       await this.refresh();
       return;
     }
-    const declared = this.deps.declared.declarationFor(file);
-    if (declared?.asset.role === 'statement' && declared.root !== this.home) {
-      await this.retarget({ root: declared.root, file: file.fsPath });
+    const source = this.deps.sources.sourceFor(file.fsPath);
+    if (source !== undefined && source.root !== this.home) {
+      await this.retarget({ root: source.root, file: file.fsPath });
     }
   }
 
@@ -482,10 +481,13 @@ function registerBuildOnSave(deps: PreviewDeps): void {
         await Promise.all((await deps.reports.roots()).map((root) => deps.reports.outputs(root)))
       ).flat();
       const targets = saveTargets(outputs, file);
-      // A declared statement that has never been built is in no report yet.
-      const declared = deps.declared.declarationFor(document.uri);
-      if (targets.length === 0 && declared?.asset.role === 'statement') {
-        targets.push({ command: 'statements', root: declared.root });
+      // A statement that has never been built is in no report yet.
+      const source = deps.sources.sourceFor(file);
+      if (targets.length === 0 && source !== undefined) {
+        targets.push({
+          command: statementCommand(source.scope, source.kind === 'tutorial' ? 'tutorial' : 'statement'),
+          root: source.root,
+        });
       }
       targets.forEach(schedule);
     }),
@@ -495,9 +497,9 @@ function registerBuildOnSave(deps: PreviewDeps): void {
 export function registerStatementPreview(deps: PreviewDeps): void {
   const syncContext = async () => {
     // The editor button keys on this list, as the run button keys on
-    // `rbx.solutionFiles`: declared statements, plus every source a report
-    // names (a contest's statement file is declared by no problem).
-    const files = new Set(deps.declared.statementPaths());
+    // `rbx.solutionFiles`: every statement source rbx lists (or the manifests
+    // declare, where it could not), plus every source a report names.
+    const files = new Set(deps.sources.paths());
     for (const root of await deps.reports.roots()) {
       for (const output of await deps.reports.outputs(root)) {
         if (output.source !== undefined) {
@@ -510,7 +512,7 @@ export function registerStatementPreview(deps: PreviewDeps): void {
   void syncContext();
 
   deps.context.subscriptions.push(
-    deps.declared.onDidChange(() => void syncContext()),
+    deps.sources.onDidChange(() => void syncContext()),
     deps.reports.onDidChange(() => void syncContext()),
     vscode.commands.registerCommand('rbx.openStatementPreview', (uri?: unknown) =>
       StatementPreviewPanel.show(deps, uri instanceof vscode.Uri ? uri : undefined),

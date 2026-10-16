@@ -322,82 +322,96 @@ async def stress(
     )
     if not res:
         return
-    from rbx.box import promotion
+    await _promote_findings(report)
 
-    testgroup = None
-    while testgroup is None or testgroup:
-        groups_by_name = promotion.get_script_groups_by_name()
-        manual_groups = promotion.get_manual_groups_by_name()
 
-        import questionary
+async def _promote_findings(report) -> None:
+    """Promote every finding of ``report`` into a group the setter picks.
 
-        testgroup = await questionary.select(
-            'Choose the testgroup to add the tests to.\n'
-            'Script groups (.txt generatorScript) and manual (glob-backed) groups are shown below: ',
-            choices=list(groups_by_name)
-            + list(manual_groups)
-            + [
-                '(create new script)',
-                '(create new manual group)',
-                '(skip)',
-            ],
+    The same sinks and the same plan as `rbx testcases promote finding:K`; a
+    script group gets the findings' generator calls, a glob group copies of
+    their inputs.
+    """
+    import questionary
+
+    from rbx.box import promotion, promotion_plan, promotion_sinks
+
+    sources = [
+        promotion_plan.Source(
+            selector=f'finding:{i + 1}',
+            recipe=finding.generator,
+            input_path=stress_manifest.finding_input_path(i + 1),
+            copy_only=True,
+        )
+        for i, finding in enumerate(report.findings)
+    ]
+    sinks_by_name = {sink.name: sink for sink in promotion_sinks.list_sinks()}
+    choice = await questionary.select(
+        'Choose the testgroup to add the tests to.\n'
+        'Script groups (.txt generatorScript) and manual (glob-backed) groups are shown below: ',
+        choices=list(sinks_by_name)
+        + ['(create new script)', '(create new manual group)', '(skip)'],
+    ).ask_async()
+    if choice is None or choice == '(skip)':
+        return
+
+    sink: Optional[promotion_sinks.Sink] = None
+    new_group: Optional[promotion_plan.NewGroup] = None
+    if choice == '(create new manual group)':
+        name = await questionary.text('Name for the new manual group:').ask_async()
+        if name is None or not name.strip():
+            # Aborted (Ctrl-C or empty input): write nothing, register nothing.
+            return
+        glob = await questionary.text(
+            'Glob for the new manual group (e.g. tests/manual/corner/*.in):'
         ).ask_async()
+        if glob is None or not glob.strip():
+            return
+        new_group = promotion_plan.NewGroup(name=name.strip(), glob=glob.strip())
+    elif choice == '(create new script)':
+        script = await questionary.text(
+            'Enter the name of the new .txt generatorScript file: '
+        ).ask_async()
+        if script is None or not script.strip():
+            return
+        path = pathlib.Path(script.strip()).with_suffix('.txt')
+        new_group = promotion_plan.NewGroup(name=path.stem, script=path)
+    else:
+        sink = sinks_by_name[choice]
 
-        if testgroup == '(create new manual group)':
-            manual_target = await promotion.create_manual_group_interactively()
-            if manual_target is None:
-                # Aborted (Ctrl-C or empty input): write nothing, register nothing.
-                break
-            manual_groups[manual_target.name] = manual_target
-            testgroup = manual_target.name
-
-        if testgroup in manual_groups:
-            manual_target = manual_groups[testgroup]
-            finding_paths = [
-                stress_manifest.finding_input_path(i + 1)
-                for i in range(len(report.findings))
-            ]
-            missing = next(
-                (i + 1 for i, p in enumerate(finding_paths) if not p.exists()), None
-            )
-            if missing is not None:
-                console.console.print(
-                    f'[error]Could not find the input file for finding {missing}; '
-                    'aborting.[/error]'
-                )
-                break
-            for p in finding_paths:
-                promotion.promote_input_to_group(p, manual_target)
+    target = new_group.sink() if new_group is not None else sink
+    assert target is not None
+    error = promotion.group_name_error(target.name) if new_group else None
+    if error is not None:
+        console.console.print(f'[error]{error}[/error]')
+        return
+    if target.kind == promotion_sinks.GLOB:
+        missing = next(
+            (
+                s.selector
+                for s in sources
+                if not (s.input_path or pathlib.Path()).is_file()
+            ),
+            None,
+        )
+        if missing is not None:
             console.console.print(
-                f'[success]Added [item]{len(finding_paths)}[/item] static tests to manual test group [item]{testgroup}[/item] at {promotion.manual_group_dir(manual_target)}.[/success]'
+                f'[error]Could not find the input file for {missing}; aborting.[/error]'
             )
-            # Break so the just-selected/created manual group is not re-processed
-            # by the script-route code below.
-            break
+            return
 
-        if testgroup == '(create new script)':
-            new_script_name = await questionary.text(
-                'Enter the name of the new .txt generatorScript file: '
-            ).ask_async()
-            group = promotion.create_script_group(pathlib.Path(new_script_name))
-            testgroup = group.name
-            groups_by_name[testgroup] = group
-
-        if testgroup not in groups_by_name:
-            break
-        try:
-            subgroup = groups_by_name[testgroup]
-            assert subgroup.generatorScript is not None
-            stress_text = f'Obtained by running `rbx {shlex.join(sys.argv[1:])}`'
-            promotion.append_to_script_group(
-                subgroup,
-                [finding.generator for finding in report.findings],
-                comment=stress_text,
-            )
-
-            console.console.print(
-                f"Added [item]{len(report.findings)}[/item] tests to test group [item]{testgroup}[/item]'s generatorScript at {subgroup.generatorScript.href()}"
-            )
-        except typer.Exit:
-            continue
-        break
+    try:
+        plan = await promotion_plan.plan_promotion(
+            sources,
+            sink,
+            new_group=new_group,
+            comment=f'Obtained by running `rbx {shlex.join(sys.argv[1:])}`',
+        )
+        promotion_plan.apply_plan(plan)
+    except promotion_plan.PromotionError as e:
+        console.console.print(f'[error]{e}[/error]')
+        return
+    console.console.print(
+        f'[success]Added [item]{len(plan.promoted)}[/item] tests to test group '
+        f'[item]{target.name}[/item] ([item]{target.path}[/item]).[/success]'
+    )

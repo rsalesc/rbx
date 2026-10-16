@@ -121,17 +121,18 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 
 ### Testcase CLI
 
-| Task                                 | Command                                               |
-| ------------------------------------ | ----------------------------------------------------- |
-| Open a testcase in your editor       | `rbx testcases view samples/0`                        |
-| Open only the input of a testcase    | `rbx testcases view samples/0 -i`                     |
-| Show how a testcase was generated    | `rbx testcases info samples/0`                        |
-| Show information about a whole group | `rbx testcases info main`                             |
-| Generate and validate one test       | `rbx testcases generate main/3 --validate`            |
-| Generate the test on a testplan line | `rbx testcases generate tests/plan.txt:12`            |
-| Pick generated tests and freeze them | `rbx testcases promote`                               |
-| Freeze a specific generated test     | `rbx testcases promote main/3`                        |
-| Freeze the test on a testplan line   | `rbx testcases promote tests/plan.txt:12 -G handmade` |
+| Task                                  | Command                                                       |
+| ------------------------------------- | ------------------------------------------------------------- |
+| Open a testcase in your editor        | `rbx testcases view samples/0`                                |
+| Open only the input of a testcase     | `rbx testcases view samples/0 -i`                             |
+| Show how a testcase was generated     | `rbx testcases info samples/0`                                |
+| Show information about a whole group  | `rbx testcases info main`                                     |
+| Generate and validate one test        | `rbx testcases generate main/3 --validate`                    |
+| Generate the test on a testplan line  | `rbx testcases generate tests/plan.txt:12`                    |
+| Pick tests and promote them           | `rbx testcases promote`                                       |
+| Move a test into another group        | `rbx testcases promote main/3 --to samples`                   |
+| Freeze a testplan line into a `@copy` | `rbx testcases promote tests/plan.txt:12 --as copy --to main` |
+| Turn an input file into a test        | `rbx testcases promote file:debug.in --to main`               |
 
 !!! tip
     `rbx testcases` is also spelled `rbx tc`.

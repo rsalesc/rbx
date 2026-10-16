@@ -1,6 +1,6 @@
 [project]
 name = "rbx-cp"
-version = "2.0.0"
+version = "2.2.0"
 description = ""
 readme = "README.md"
 requires-python = ">=3.10"
@@ -121,7 +121,18 @@ exclude = ["rbx/testdata", "docs"]
 artifacts = ["rbx/resources/vscode/*.vsix"]
 
 [tool.hatch.build.targets.sdist]
-exclude = ["rbx/testdata", ".claude", ".worktrees", "docs", "vscode/node_modules"]
+# vscode/'s build outputs too: hatch ignores vscode/.gitignore, and `npm test`
+# leaves ~10 MB of compiled tests in vscode/out-test (2.1.2 tripped the limit).
+exclude = [
+  "rbx/testdata",
+  ".claude",
+  ".worktrees",
+  "docs",
+  "vscode/node_modules",
+  "vscode/dist",
+  "vscode/out",
+  "vscode/out-test",
+]
 # Also here, not just on the wheel: `uv build` builds the sdist first and then
 # the wheel *from that sdist*, so a vsix dropped here never reaches the wheel
 # however the wheel target is configured.

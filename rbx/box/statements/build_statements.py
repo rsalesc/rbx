@@ -647,6 +647,31 @@ async def build(
         )
 
 
+@app.command(
+    'ls, list',
+    help='List the statements and tutorials of this problem, as rbx resolves them.',
+)
+@package.within_problem
+def list_statements(
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            '--json',
+            help='Print the resolved entries, and the YAML files they were read '
+            'from, as a JSON object.',
+        ),
+    ] = False,
+):
+    """``rbx st ls`` -- read-only; see `rbx/box/statements/listing.py`."""
+    from rbx.box.statements import listing
+
+    resolved = listing.problem_listing()
+    if json_output:
+        typer.echo(resolved.model_dump_json())
+        return
+    listing.print_listing(resolved)
+
+
 @app.callback()
 def callback():
     pass

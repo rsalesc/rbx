@@ -153,7 +153,9 @@ run = "npm run package"
 [tasks."vscode:vsix"]
 description = "Build the extension .vsix that ships inside the wheel"
 dir = "vscode"
-run = "npm run package && npm run vsix"
+# `npm ci` first: the release builds from whatever node_modules is on disk, and a
+# stale one (a dependency added since the last `npm install`) breaks the bundle.
+run = "npm ci && npm run package && npm run vsix"
 
 [tasks."docs:lint"]
 description = "Lint docs prose with Vale (Google style + house rules, see .vale.ini)"

@@ -192,6 +192,15 @@ also create the group first, and preview what a testplan would become without wr
 When you plan to add findings this way, pass `--no-promote` to `rbx stress` to skip its question at the end.
 That also keeps a script that runs `rbx stress` from waiting on an answer.
 
+To freeze a finding into a `@copy` of its input instead of its generator call,
+[promote](testset/index.md#promoting-tests) it by its number:
+
+```sh
+rbx testcases promote finding:1 --to secret --as copy
+```
+
+This copies the input of finding 1 into a file, and adds a `@copy` of it to the testplan of `secret`.
+
 A new stress session replaces the findings of the previous one. They live under `.rbx/runs/.stress/`, with
 one directory per finding: `findings/<k>/` keeps the input of finding `k` (`input.in`), its expected answer
 when the finder needed one (`input.ans`), and each solution's output and stderr. Next to them, `stress.yml`
