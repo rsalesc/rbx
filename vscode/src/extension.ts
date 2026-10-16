@@ -51,6 +51,7 @@ import { registerSolutionStatus } from './solutionStatus';
 import { registerStatementDiagnostics } from './statementDiagnostics';
 import { registerStatementPreview } from './statementPreview';
 import { StatementReports } from './statementReports';
+import { registerStatementSources } from './statementSources';
 import { registerStatementVarHints } from './statementVarHints';
 import { StatementVarsIndex } from './statementVarsIndex';
 import { StressLauncher } from './stressLauncher';
@@ -188,7 +189,8 @@ export function activate(context: vscode.ExtensionContext): void {
   // the Problems panel so a finished build is read once.
   const statementReports = new StatementReports();
   context.subscriptions.push(statementReports);
-  registerStatementPreview({ context, reports: statementReports, declared, active, dispatcher });
+  const statementSources = registerStatementSources(context, data, declared);
+  registerStatementPreview({ context, reports: statementReports, sources: statementSources, active, dispatcher });
   registerStatementDiagnostics(context, statementReports);
   registerInteractionDecorations(context);
 

@@ -36,7 +36,7 @@ import { Vars, VarsPayload } from './statementVars';
  */
 const ANSI_ESCAPE = /\u001b\[[0-9;?]*[ -\/]*[@-~]/g;
 
-function parseLeadingObject(raw: string): unknown {
+export function parseLeadingObject(raw: string): unknown {
   const stdout = raw.replace(ANSI_ESCAPE, '');
   for (let start = stdout.indexOf('{'); start >= 0; start = stdout.indexOf('{', start + 1)) {
     try {
