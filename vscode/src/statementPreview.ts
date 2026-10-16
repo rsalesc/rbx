@@ -87,8 +87,15 @@ async function targetFor(deps: PreviewDeps, uri: vscode.Uri | undefined): Promis
  * own kind (statement, tutorial) in its own package, or the package's
  * statements when the preview was opened on some other file of a problem.
  */
-async function openBuild(deps: PreviewDeps, target: Target): Promise<{ command: RbxCommand; root: string }> {
+async function openBuild(
+  deps: PreviewDeps,
+  target: Target,
+): Promise<{ command: RbxCommand; root: string } | undefined> {
   const source = target.file === undefined ? undefined : deps.sources.sourceFor(target.file);
+  if (target.file !== undefined && (await builtAndFresh(deps, target.file))) {
+    log(`Statement preview: ${target.file} is up to date; not rebuilding.`);
+    return undefined;
+  }
   if (source !== undefined) {
     return {
       command: statementCommand(source.scope, source.kind === 'tutorial' ? 'tutorial' : 'statement'),
@@ -96,6 +103,59 @@ async function openBuild(deps: PreviewDeps, target: Target): Promise<{ command: 
     };
   }
   return { command: statementCommand(await scopeOf(target.root), 'statement'), root: target.root };
+}
+
+async function mtimeOf(file: string): Promise<number | undefined> {
+  try {
+    return (await fs.stat(file)).mtimeMs;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether the PDF last built from `file` is still current, so opening the
+ * preview can show it rather than rebuild.
+ *
+ * A heuristic, deliberately conservative: the output must exist, its last
+ * build must have succeeded, and it must be newer than the source, every file
+ * beside the source (includes, images), and the package's manifest (vars,
+ * samples). Anything it misses -- a contest-wide include, an edited sample --
+ * is one Build click away, and the incremental build would have found
+ * nothing to do in most of the cases it would have run for.
+ */
+async function builtAndFresh(deps: PreviewDeps, file: string): Promise<boolean> {
+  const outputs: StatementOutput[] = [];
+  for (const root of await deps.reports.roots()) {
+    outputs.push(...(await deps.reports.outputs(root)));
+  }
+  const built = outputs.filter((output) => output.source === file && output.format === 'pdf');
+  if (built.length === 0) {
+    return false;
+  }
+  const inputs = [file];
+  try {
+    const dir = path.dirname(file);
+    for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+      if (entry.isFile()) {
+        inputs.push(path.join(dir, entry.name));
+      }
+    }
+  } catch {
+    // An unreadable directory just leaves the source itself to compare with.
+  }
+  for (const output of built) {
+    inputs.push(path.join(output.root, 'problem.rbx.yml'));
+  }
+  const inputTimes = (await Promise.all(inputs.map(mtimeOf))).filter((t): t is number => t !== undefined);
+  const newestInput = Math.max(0, ...inputTimes);
+  for (const output of built) {
+    const outputTime = await mtimeOf(output.path);
+    if (!output.ok || outputTime === undefined || outputTime < newestInput) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export class StatementPreviewPanel {
@@ -155,11 +215,12 @@ export class StatementPreviewPanel {
       );
       return;
     }
-    // Opening the preview builds what it shows: a preview of whatever was last
-    // built is stale the moment the source has moved on, and one never built
-    // would show nothing. Builds are incremental, so an unchanged statement
-    // costs next to nothing; the panel follows the report as the build lands.
-    void openBuild(deps, target).then((request) => deps.dispatcher.dispatch(request));
+    // Opening the preview builds what it shows when what was last built is
+    // missing, failed or older than its inputs (`builtAndFresh`); the panel
+    // follows the report as the build lands.
+    void openBuild(deps, target).then((request) =>
+      request === undefined ? undefined : deps.dispatcher.dispatch(request),
+    );
     const existing = StatementPreviewPanel.current;
     if (existing !== undefined) {
       existing.panel.reveal(undefined, true);
