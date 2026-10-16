@@ -1,3 +1,9 @@
+## 2.3.1 (2026-10-17)
+
+### Fix
+
+- **vscode**: confine eager rbx calls to the focused contest or problem (#936)
+
 ## 2.3.0 (2026-10-16)
 
 ### Feat
