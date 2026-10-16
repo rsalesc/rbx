@@ -82,6 +82,22 @@ async function targetFor(deps: PreviewDeps, uri: vscode.Uri | undefined): Promis
   return selected === undefined ? undefined : { root: selected, file: uri?.fsPath };
 }
 
+/**
+ * The build an explicit open of the preview runs: the asked-about statement's
+ * own kind (statement, tutorial) in its own package, or the package's
+ * statements when the preview was opened on some other file of a problem.
+ */
+async function openBuild(deps: PreviewDeps, target: Target): Promise<{ command: RbxCommand; root: string }> {
+  const source = target.file === undefined ? undefined : deps.sources.sourceFor(target.file);
+  if (source !== undefined) {
+    return {
+      command: statementCommand(source.scope, source.kind === 'tutorial' ? 'tutorial' : 'statement'),
+      root: source.root,
+    };
+  }
+  return { command: statementCommand(await scopeOf(target.root), 'statement'), root: target.root };
+}
+
 export class StatementPreviewPanel {
   static readonly viewType = 'rbx.statementPreview';
   private static current?: StatementPreviewPanel;
@@ -139,6 +155,11 @@ export class StatementPreviewPanel {
       );
       return;
     }
+    // Opening the preview builds what it shows: a preview of whatever was last
+    // built is stale the moment the source has moved on, and one never built
+    // would show nothing. Builds are incremental, so an unchanged statement
+    // costs next to nothing; the panel follows the report as the build lands.
+    void openBuild(deps, target).then((request) => deps.dispatcher.dispatch(request));
     const existing = StatementPreviewPanel.current;
     if (existing !== undefined) {
       existing.panel.reveal(undefined, true);
@@ -221,10 +242,12 @@ export class StatementPreviewPanel {
 
   private async refresh(): Promise<void> {
     const current = this.refreshes.begin();
-    const outputs = (await Promise.all(this.roots.map((root) => this.deps.reports.outputs(root)))).flat();
+    const built = (await Promise.all(this.roots.map((root) => this.deps.reports.outputs(root)))).flat();
     if (!current()) {
       return;
     }
+    const pending = this.unbuiltOutput(built);
+    const outputs = pending === undefined ? built : [pending, ...built];
     this.outputs = outputs;
     this.selected = defaultOutput(outputs, this.activeFile, this.selected?.id);
     const revision = await this.revisionOf(this.selected);
@@ -232,7 +255,9 @@ export class StatementPreviewPanel {
       return;
     }
     this.panel.title =
-      this.selected === undefined ? 'Statement Preview' : `Preview ${path.basename(this.selected.path)}`;
+      this.selected === undefined
+        ? 'Statement Preview'
+        : `Preview ${path.basename(this.selected.path || this.selected.source || '')}`;
     this.post({
       type: 'model',
       model: previewModel({
@@ -247,9 +272,37 @@ export class StatementPreviewPanel {
     }
   }
 
+  /**
+   * A stand-in for the statement the preview was opened on, when that file is
+   * a statement source no report has an output for yet.
+   *
+   * Without it `defaultOutput` falls back to the best output it can find --
+   * typically the contest's PDF -- so asking for problem C's statement showed
+   * a different document. The stand-in reads as "has not been built", and its
+   * Build button builds this statement's package.
+   */
+  private unbuiltOutput(outputs: readonly StatementOutput[]): StatementOutput | undefined {
+    const file = this.activeFile;
+    const source = file === undefined ? undefined : this.deps.sources.sourceFor(file);
+    if (file === undefined || source === undefined || outputs.some((output) => output.source === file)) {
+      return undefined;
+    }
+    return {
+      id: `unbuilt:${file}`,
+      scope: source.scope,
+      root: source.root,
+      kind: source.kind,
+      format: 'pdf',
+      path: '',
+      source: file,
+      ok: true,
+      findings: [],
+    };
+  }
+
   /** The file's revision, or undefined when it is not on disk. */
   private async revisionOf(output: StatementOutput | undefined): Promise<string | undefined> {
-    if (output === undefined) {
+    if (output === undefined || output.path === '') {
       return undefined;
     }
     try {
