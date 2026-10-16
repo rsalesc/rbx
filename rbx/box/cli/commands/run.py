@@ -29,6 +29,7 @@ from rbx.box import (
 )
 from rbx.box.environment import VerificationLevel
 from rbx.box.generation_schema import get_parsed_entry
+from rbx.box.run_validation import OnInvalid
 from rbx.box.runners import registry as runners_registry
 from rbx.box.runners.base import RunPurpose
 from rbx.box.schema import ExpectedOutcome
@@ -116,8 +117,16 @@ async def run(
     ),
     validate: bool = typer.Option(
         True,
-        help='Whether to not validate outputs for tests.',
+        help='Whether to validate the testcases before running the solutions.',
     ),
+    on_invalid: Annotated[
+        OnInvalid,
+        typer.Option(
+            '--on-invalid',
+            help='What to do when a testcase fails validation: fail the run before '
+            'running anything, or warn and run every testcase anyway.',
+        ),
+    ] = OnInvalid.FAIL,
     detailed: bool = typer.Option(
         False,
         '--detailed',
@@ -230,11 +239,16 @@ async def run(
             console.console.print('[error]No solutions selected. Exiting.[/error]')
             raise typer.Exit(1)
 
-    from rbx.box import builder
+    from rbx.box import builder, run_validation
 
-    if not await builder.build(
-        verification=verification, output=check, validate=validate, is_run=True
-    ):
+    build_result = await builder.build_with_result(
+        verification=verification,
+        output=check,
+        validate=validate,
+        is_run=True,
+        on_invalid=on_invalid,
+    )
+    if not build_result.ok:
         raise typer.Exit(1)
 
     # After the build, and keyed on the profile the run is actually judged
@@ -287,6 +301,9 @@ async def run(
             abort_on=fail_fast_abort_predicate if fail_fast else None,
             runner=solution_runner,
             keep_checker_stderr=keep_checker_stderr,
+            validation=run_validation.run_validation(
+                on_invalid, build_result.input_validation
+            ),
             # Said explicitly even though it is the default: this is the purpose
             # a backend stages for, and a remote one uploads to a different
             # problem for each. Leaving it implicit here would make the two
@@ -482,6 +499,14 @@ async def irun(
         True,
         help='Whether to validate inputs.',
     ),
+    on_invalid: Annotated[
+        OnInvalid,
+        typer.Option(
+            '--on-invalid',
+            help='What to do when the testcase fails validation: fail before running '
+            'anything, or warn and run it anyway.',
+        ),
+    ] = OnInvalid.FAIL,
     generator: Optional[str] = typer.Option(
         None,
         '--generator',
@@ -662,6 +687,7 @@ async def irun(
             sanitized=sanitized,
             only_accepted=only_accepted,
             validate=validate,
+            on_invalid=on_invalid,
             visualize=visualize,
             benchmark_level=level,
         )

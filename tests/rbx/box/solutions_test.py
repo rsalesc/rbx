@@ -23,6 +23,7 @@ from rbx.box.generators import (
     generate_outputs_for_testcases,
     generate_testcases,
 )
+from rbx.box.run_validation import RunValidation, RunValidationMode
 from rbx.box.runners.base import RunnerChip, RunProgress
 from rbx.box.sanitizers.issue_stack import IssueAccumulator, issue_stack_var
 from rbx.box.schema import (
@@ -3268,8 +3269,8 @@ def stubbed_interactive_run(
     pkg.type = task_type
     entry = skeleton.entries[0]
 
-    async def fake_generate(*args, **kwargs) -> GenerationTestcaseEntry:
-        return entry
+    async def fake_generate(*args, **kwargs):
+        return entry, RunValidation(mode=RunValidationMode.OFF)
 
     async def fake_skeleton(*args, **kwargs) -> SolutionReportSkeleton:
         return skeleton

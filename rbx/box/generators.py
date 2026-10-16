@@ -21,6 +21,7 @@ from rbx.box.environment import VerificationLevel
 from rbx.box.exception import RbxException
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.parallel import live_tasks
+from rbx.box.run_validation import OnInvalid
 from rbx.box.sanitizers import compilation_warnings
 from rbx.box.schema import (
     CodeItem,
@@ -355,7 +356,15 @@ async def generate_standalone(
     generator_digest: Optional[str] = None,
     validators_digests: Optional[Dict[str, str]] = None,
     progress: Optional[StatusProgress] = None,
-):
+    on_invalid: OnInvalid = OnInvalid.FAIL,
+) -> Optional[List[validators.TestcaseValidationInfo]]:
+    """Generate (and validate) one testcase on its own.
+
+    Returns what validation found, or None when the testcase was not validated.
+    A rejected testcase raises `ValidationError`, unless `on_invalid` is `WARN`:
+    then the same report is printed as a warning and the rejection is returned.
+    """
+
     def _print_error_header(console: Console, text: Optional[str] = None):
         prefix = 'Failed generating test'
         if group_entry is not None:
@@ -441,21 +450,33 @@ async def generate_standalone(
             testcase_entry=group_entry,
         )
         if not all(info.ok for info in validation_infos):
-            with ValidationError() as err:
-                _print_error_header(err.console, 'failed validating testcase.')
+
+            def _print_rejections(console: Console):
                 for info in validation_infos:
                     if info.ok:
                         continue
-                    err.print(
+                    console.print(
                         f'[error]Validator {info.validator.href()} failed validation:[/error]'
                     )
                     if info.message is not None:
-                        err.print(
+                        console.print(
                             f'[error]Message:[/error] {utils.escape_markup(info.message.strip())}'
                         )
-                    err.print(
+                    console.print(
                         f'Testcase written at [item]{spec.copied_to.inputPath}[/item]'
                     )
+
+            if on_invalid == OnInvalid.WARN:
+                _print_rejections(console.console)
+                console.console.print(
+                    '[warning]Running it anyway ([item]--on-invalid=warn[/item]).[/warning]'
+                )
+            else:
+                with ValidationError() as err:
+                    _print_error_header(err.console, 'failed validating testcase.')
+                    _print_rejections(err.console)
+        return validation_infos
+    return None
 
 
 async def generate_testcases(

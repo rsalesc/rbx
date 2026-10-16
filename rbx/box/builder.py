@@ -1,3 +1,4 @@
+import dataclasses
 from typing import List, Optional, Set
 
 from rbx import console, utils
@@ -7,6 +8,7 @@ from rbx.box.generators import (
     generate_outputs_for_testcases,
     generate_testcases,
 )
+from rbx.box.run_validation import OnInvalid
 from rbx.box.solutions import (
     is_fast,
     print_run_report,
@@ -25,6 +27,13 @@ from rbx.box.validators import (
 from rbx.box.visualizers import run_visualizers_for_entries
 
 
+@dataclasses.dataclass
+class BuildResult:
+    ok: bool
+    # What input validation found, or None when the build did not validate.
+    input_validation: Optional[List[TestcaseValidationInfo]] = None
+
+
 async def build(
     verification: environment.VerificationParam,
     groups: Optional[Set[str]] = None,
@@ -40,6 +49,33 @@ async def build(
     marks a build whose only purpose is feeding a statement its samples: coverage
     of the constraint bounds is never the question there, so the hit-bounds
     section of the validation report is dropped entirely.
+    """
+    result = await build_with_result(
+        verification,
+        groups=groups,
+        output=output,
+        validate=validate,
+        visualize=visualize,
+        is_run=is_run,
+        is_statement=is_statement,
+    )
+    return result.ok
+
+
+async def build_with_result(
+    verification: environment.VerificationParam,
+    groups: Optional[Set[str]] = None,
+    output: Optional[bool] = True,
+    validate: bool = True,
+    visualize: bool = False,
+    is_run: bool = False,
+    is_statement: bool = False,
+    on_invalid: OnInvalid = OnInvalid.FAIL,
+) -> BuildResult:
+    """`build`, also handing back what input validation found.
+
+    With `on_invalid=WARN`, testcases that fail validation are reported and the
+    build goes on, rather than stopping before any output is built.
     """
     no_main_solution_report = False
     # None, not [], when the build did not validate: the manifest omits its
@@ -74,7 +110,17 @@ async def build(
                 infos, groups=groups, report_hit_bounds=not is_statement
             )
 
-        if has_validation_errors(infos):
+        if has_validation_errors(infos) and on_invalid == OnInvalid.WARN:
+            invalid = {
+                (info.testcase.group, info.testcase.index)
+                for info in infos
+                if not info.ok and info.testcase is not None
+            }
+            console.console.print(
+                f'[warning]{len(invalid)} testcase(s) failed validation, '
+                'running them anyway ([item]--on-invalid=warn[/item]).[/warning]'
+            )
+        elif has_validation_errors(infos):
             console.console.print(
                 '[error]Validation failed, check the report above.[/error]'
             )
@@ -86,7 +132,7 @@ async def build(
                 console.console.print(
                     '[error]You can use the [item]-v0[/item] flag to skip validation.[/error]'
                 )
-            return False
+            return BuildResult(ok=False, input_validation=input_validation_infos)
 
     entries = await extract_generation_testcases_from_groups(groups)
     with utils.StatusProgress(
@@ -155,7 +201,7 @@ async def build(
         partial=groups is not None,
     )
 
-    return True
+    return BuildResult(ok=True, input_validation=input_validation_infos)
 
 
 async def verify(
