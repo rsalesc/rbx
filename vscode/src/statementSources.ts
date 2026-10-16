@@ -1,12 +1,12 @@
 /**
  * Which files are statement sources, and which package builds each.
  *
- * rbx says, through `rbx statements ls --json` in every discovered problem and
- * `rbx contest statements ls --json` in every contest above one
- * (rbx/statementListing.ts). The manifest parse (declared.ts) answers for a
- * package rbx could not -- an rbx too old to have the command, or a manifest
- * mid-edit -- so a statement's button never waits on a process, and never
- * depends on one existing.
+ * rbx says, through `rbx statements ls --json` in every problem of the focus
+ * (focus.ts) and `rbx contest statements ls --json` in its contest
+ * (rbx/statementListing.ts). The manifest parse (declared.ts) answers for every
+ * other package, and for one rbx could not -- an rbx too old to have the
+ * command, or a manifest mid-edit -- so a statement's button never waits on a
+ * process, and never depends on one existing.
  *
  * Each answer is cached per root, and dropped when a YAML file it was read from
  * changes -- `sources`, which names the contest and every `!include`d fragment,
@@ -21,8 +21,8 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-import { findContestRoot } from './contestIndex';
 import { DeclaredIndex } from './declared';
+import { FocusScope } from './focus';
 import { log } from './log';
 import { DispatchScope } from './rbx/dispatch';
 import {
@@ -33,7 +33,6 @@ import {
   parseStatementListing,
 } from './rbx/statementListing';
 import { resolveRbx, run } from './rbxProcess';
-import { RunDataProvider } from './runData';
 
 /**
  * How long one listing may take. It only loads YAML, so anything near this is
@@ -76,7 +75,7 @@ export class StatementSources implements vscode.Disposable {
   private readonly waiting: (() => void)[] = [];
 
   constructor(
-    private readonly data: RunDataProvider,
+    private readonly focus: FocusScope,
     private readonly declared: DeclaredIndex,
   ) {}
 
@@ -90,19 +89,11 @@ export class StatementSources implements vscode.Disposable {
     return [...this.merged.keys()];
   }
 
-  /** Re-read which packages exist, and ask rbx about any not yet asked. */
+  /** Re-read which packages are in focus, and ask rbx about any not yet asked. */
   async refresh(): Promise<void> {
-    const problems = (await this.data.discovered()).map((pkg) => pkg.root);
-    const roots: Root[] = [];
-    const contests = new Set<string>();
-    for (const root of problems) {
-      const contest = await findContestRoot(root);
-      roots.push({ root, scope: 'problem', contest });
-      if (contest !== undefined) {
-        contests.add(contest);
-      }
-    }
-    for (const contest of contests) {
+    const { contest, problems } = await this.focus.get();
+    const roots: Root[] = problems.map((root) => ({ root, scope: 'problem', contest }));
+    if (contest !== undefined) {
       roots.push({ root: contest, scope: 'contest' });
     }
     this.roots = roots;
@@ -237,10 +228,10 @@ export class StatementSources implements vscode.Disposable {
  */
 export function registerStatementSources(
   context: vscode.ExtensionContext,
-  data: RunDataProvider,
+  focus: FocusScope,
   declared: DeclaredIndex,
 ): StatementSources {
-  const sources = new StatementSources(data, declared);
+  const sources = new StatementSources(focus, declared);
   void sources.refresh();
 
   const yaml = vscode.workspace.createFileSystemWatcher(YAML_GLOB);
@@ -274,6 +265,7 @@ export function registerStatementSources(
     files.onDidDelete(onFile),
     // A package appearing or disappearing, or the fallback moving.
     declared.onDidChange(() => void sources.refresh()),
+    focus.onDidChange(() => void sources.refresh()),
   );
   return sources;
 }

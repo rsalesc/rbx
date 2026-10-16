@@ -4,8 +4,9 @@
  * Neither is a second Explorer. They show only what a manifest declares -- no
  * build output, no scratch files -- under the names rbx gives it (`A · cats`,
  * not `problems/cats/`), with what each file is *for* beside it. The listing
- * is `rbx contest assets --json` per contest and `rbx assets --json` per
- * problem outside one (rbx/assetListing.ts); this module only draws it.
+ * is `rbx contest assets --json` for the focused contest, or `rbx assets
+ * --json` for the focused problem when it is in none (focus.ts,
+ * rbx/assetListing.ts); this module only draws it.
  *
  * One view, two layouts, toggled from its title bar:
  * - **Across problems** (the default): the inverted index -- slot > problem,
@@ -28,9 +29,9 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { ActiveProblem } from './activeProblem';
-import { findContestRoot } from './contestIndex';
 import { DeclaredIndex } from './declared';
 import { Dispatcher } from './dispatch';
+import { FocusScope } from './focus';
 import { log } from './log';
 import {
   AssetListing,
@@ -45,7 +46,6 @@ import {
   slotCatalog,
 } from './rbx/assetListing';
 import { resolveRbx, run } from './rbxProcess';
-import { RunDataProvider } from './runData';
 import { StatementPreviewPanel } from './statementPreview';
 
 const ASSETS_VIEW = 'rbx.assets';
@@ -83,7 +83,7 @@ export class AssetListings implements vscode.Disposable {
   private reloadTimer?: ReturnType<typeof setTimeout>;
 
   constructor(
-    private readonly data: RunDataProvider,
+    private readonly focus: FocusScope,
     private readonly dispatcher: Dispatcher,
   ) {}
 
@@ -91,23 +91,23 @@ export class AssetListings implements vscode.Disposable {
     return this.roots;
   }
 
-  /** Re-discover the roots; with `hard`, also drop every cached listing. */
+  /**
+   * Re-read the roots from the focus; with `hard`, also drop every cached
+   * listing. A listing that left the focus is dropped either way: the views
+   * and the declared-file index read every listing on file.
+   */
   async refresh(hard = false): Promise<void> {
-    const problems = (await this.data.discovered()).map((pkg) => pkg.root);
-    const roots: Root[] = [];
-    const contests = new Set<string>();
-    for (const root of problems) {
-      const contest = await findContestRoot(root);
-      if (contest === undefined) {
-        roots.push({ root, scope: 'problem' });
-      } else if (!contests.has(contest)) {
-        contests.add(contest);
-        roots.push({ root: contest, scope: 'contest' });
-      }
-    }
+    const { contest, problems } = await this.focus.get();
+    const roots: Root[] =
+      contest !== undefined
+        ? [{ root: contest, scope: 'contest' }]
+        : problems.map((root) => ({ root, scope: 'problem' }));
     this.roots = roots;
-    if (hard) {
-      this.results.clear();
+    const current = new Set(roots.map(({ root }) => root));
+    for (const root of [...this.results.keys()]) {
+      if (hard || !current.has(root)) {
+        this.results.delete(root);
+      }
     }
     const variants = await this.variantRoots();
     void vscode.commands.executeCommand('setContext', 'rbx.assets.hasVariants', variants.length > 0);
@@ -225,6 +225,10 @@ export class AssetListings implements vscode.Disposable {
     const work: Promise<void> = this.list(spec).then((result) => {
       if (this.inflight.get(root) === work) {
         this.inflight.delete(root);
+      }
+      if (!this.roots.some((each) => each.root === root)) {
+        // The focus moved on while rbx was answering.
+        return;
       }
       this.results.set(root, result);
       this.changed.fire();
@@ -704,12 +708,12 @@ function uriOf(element: unknown): vscode.Uri | undefined {
 
 export function registerAssetsView(
   context: vscode.ExtensionContext,
-  data: RunDataProvider,
+  focus: FocusScope,
   active: ActiveProblem,
   dispatcher: Dispatcher,
   declared: DeclaredIndex,
 ): void {
-  const store = new AssetListings(data, dispatcher);
+  const store = new AssetListings(focus, dispatcher);
   const assets = new AssetsViewProvider(store, active, context.workspaceState);
   const across = new AcrossProblemsProvider(store, context.workspaceState);
   const layout = new LayoutSwitch(assets, across, context.workspaceState);
@@ -741,12 +745,8 @@ export function registerAssetsView(
     store.onDidChange(redraw),
     store.onDidChange(() => declared.setListings(store.listedProblems())),
     dispatcher.onDidChangeContest((root) => store.onContestChanged(root)),
-    data.onDidChange((change) => {
-      // A rediscovery (no root) may have added or removed a package.
-      if (change.root === undefined) {
-        void store.refresh();
-      }
-    }),
+    // Also what a rediscovery reaches this through: the focus recomputes on it.
+    focus.onDidChange(() => void store.refresh()),
     active.onDidChange(() => assets.redraw()),
     vscode.commands.registerCommand('rbx.assets.refresh', () => store.refresh(true)),
     vscode.commands.registerCommand('rbx.assets.flat', () => assets.setMode('flat')),

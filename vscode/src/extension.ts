@@ -20,6 +20,7 @@ import { registerIrunCommands } from './irunCommands';
 import { registerDecorations } from './decorations';
 import { registerDiagnostics } from './diagnostics';
 import { registerDispatch } from './dispatch';
+import { FocusScope } from './focus';
 import { registerInteractionDecorations } from './interactionDecorations';
 import { initLog, log } from './log';
 import { registerPromoteCommands } from './promoteCommands';
@@ -44,6 +45,7 @@ import {
   STRESS_MANIFEST,
   TESTSET_MANIFEST,
 } from './rbx/layout';
+import { resetRbxExecutables } from './rbxProcess';
 import { RunDataProvider } from './runData';
 import { RunViewProvider } from './runView';
 import { registerSolutionLens } from './solutionLens';
@@ -190,8 +192,19 @@ export function activate(context: vscode.ExtensionContext): void {
   // the Problems panel so a finished build is read once.
   const statementReports = new StatementReports();
   context.subscriptions.push(statementReports);
-  const statementSources = registerStatementSources(context, data, declared);
-  registerAssetsView(context, data, active, dispatcher, declared);
+  // What the eager rbx callers below are confined to: the selected problem's
+  // contest, or the problem alone. See focus.ts.
+  const focus = new FocusScope(data, active);
+  context.subscriptions.push(
+    focus,
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('rbx.executable')) {
+        resetRbxExecutables();
+      }
+    }),
+  );
+  const statementSources = registerStatementSources(context, focus, declared);
+  registerAssetsView(context, focus, active, dispatcher, declared);
   registerStatementPreview({ context, reports: statementReports, sources: statementSources, active, dispatcher });
   registerStatementDiagnostics(context, statementReports);
   registerInteractionDecorations(context);
