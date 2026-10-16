@@ -177,3 +177,30 @@ async def unit_tests():
 @package.within_problem
 def header():
     generate_header()
+
+
+@app.command(
+    'assets',
+    rich_help_panel='Management',
+    help='List the assets of this problem, by category, as rbx resolves them.',
+)
+@package.within_problem
+def list_assets(
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            '--json',
+            help='Print the listing, and the YAML files it was read from, as a '
+            'JSON object.',
+        ),
+    ] = False,
+):
+    """``rbx assets`` -- read-only; see `rbx/box/asset_listing.py`."""
+    from rbx.box import asset_listing
+
+    if json_output:
+        with asset_listing.console_to_stderr():
+            resolved = asset_listing.problem_asset_listing()
+        typer.echo(resolved.model_dump_json())
+        return
+    asset_listing.print_asset_listing(asset_listing.problem_asset_listing())

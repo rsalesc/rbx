@@ -1179,6 +1179,31 @@ SPEC = {
             ],
         },
         {
+            'help': 'List the assets of this problem, by...',
+            'is_group': False,
+            'name': 'assets',
+            'panel': 'Management',
+            'params': [
+                {
+                    'help': 'Print the listing, and the YAML files it was read from, as a '
+                    'JSON object.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--json'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+            ],
+        },
+        {
             'help': 'Generate the rbx.h header file.',
             'is_group': False,
             'name': 'header',
@@ -2837,6 +2862,31 @@ SPEC = {
                             'names': ['--format'],
                             'takes_value': True,
                             'value': {'choices': ['rich', 'json'], 'kind': 'choice'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
+                {
+                    'help': 'List the selected contest and the assets...',
+                    'is_group': False,
+                    'name': 'assets',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Print the listing, and the YAML files it was '
+                            'read from, as a JSON object.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--json'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
                         },
                         {
                             'help': 'Show this message and exit.',

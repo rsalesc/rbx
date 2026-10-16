@@ -742,6 +742,34 @@ async def issues_cmd(
     issues.print_contest_report(rows, detailed=detailed)
 
 
+@app.command(
+    'assets',
+    help='List the selected contest and the assets of each of its problems.',
+)
+def list_contest_assets(
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            '--json',
+            help='Print the listing, and the YAML files it was read from, as a '
+            'JSON object.',
+        ),
+    ] = False,
+):
+    """``rbx contest assets`` -- read-only; see `rbx/box/asset_listing.py`."""
+    from rbx.box import asset_listing
+
+    if contest_package.find_contest_root() is None:
+        console.console.print('[error]No contest found in this directory.[/error]')
+        raise typer.Exit(1)
+    if json_output:
+        with asset_listing.console_to_stderr():
+            resolved = asset_listing.contest_asset_listing()
+        typer.echo(resolved.model_dump_json())
+        return
+    asset_listing.print_asset_listing(asset_listing.contest_asset_listing())
+
+
 @app.command('list, ls', help='List all contests in the current directory.')
 def list_contests():
     contest_root = contest_package.find_contest_root()
