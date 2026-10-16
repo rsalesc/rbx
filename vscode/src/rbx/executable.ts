@@ -19,6 +19,7 @@
  *
  * Nothing here imports `vscode`; the settings value is passed in.
  */
+import { ON_INVALID_FLAG } from './dispatch';
 
 /** How one candidate was arrived at, for logging when it turns out to be wrong. */
 export type RbxSource = 'setting' | 'path' | 'login-shell';
@@ -79,4 +80,16 @@ export function parseLoginShellPath(stdout: string): string | undefined {
     .map((line) => line.trim())
     .filter((line) => line.startsWith('/'));
   return lines.length > 0 ? lines[lines.length - 1] : undefined;
+}
+
+/**
+ * Whether `rbx run --help` advertises `--on-invalid`.
+ *
+ * Asked of the help text rather than read off `--version`: a development
+ * install reports the last release's version while already carrying the flag,
+ * and an older rbx refuses an option it does not know, which would break every
+ * run the extension starts.
+ */
+export function helpOffersOnInvalid(helpText: string): boolean {
+  return helpText.includes(ON_INVALID_FLAG);
 }

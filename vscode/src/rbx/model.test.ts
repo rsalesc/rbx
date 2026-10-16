@@ -11,6 +11,42 @@ import { parseEvaluation, parseSkeleton } from './model';
 
 const MINIMAL = { solutions: [], entries: [], groups: [] };
 
+test('a skeleton too old for validation says nothing about it', () => {
+  assert.strictEqual(parseSkeleton(MINIMAL)?.validation, undefined);
+});
+
+test('the testcases a run went ahead past are read whole', () => {
+  const skeleton = parseSkeleton(
+    parseYaml(
+      [
+        'solutions: []',
+        'entries: []',
+        'groups: []',
+        'validation:',
+        '  mode: warn',
+        '  invalid:',
+        '  - {group: main, index: 2, validator: validator.cpp, message: Expected EOLN}',
+        '  - {group: main, index: 3, validator: validator.cpp, message: null}',
+        '  - {group: main, validator: broken.cpp}',
+      ].join('\n'),
+    ),
+  );
+  assert.deepStrictEqual(skeleton?.validation, {
+    mode: 'warn',
+    invalid: [
+      { group: 'main', index: 2, validator: 'validator.cpp', message: 'Expected EOLN' },
+      { group: 'main', index: 3, validator: 'validator.cpp' },
+    ],
+  });
+});
+
+test('an unknown validation mode is ignored rather than guessed at', () => {
+  assert.strictEqual(
+    parseSkeleton({ ...MINIMAL, validation: { mode: 'strict', invalid: [] } })?.validation,
+    undefined,
+  );
+});
+
 test('a skeleton written before compilation findings existed reads as clean', () => {
   const skeleton = parseSkeleton(MINIMAL);
   assert.deepStrictEqual(skeleton?.compilation, []);

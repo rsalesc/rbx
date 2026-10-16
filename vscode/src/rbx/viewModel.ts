@@ -33,7 +33,8 @@ import {
   memoryAgainstLimit,
   solutionTimeLimits,
 } from './limitsView';
-import { Evaluation, TestcaseEntry } from './model';
+import { invalidByTestcase, invalidKey } from './invalidTests';
+import { Evaluation, InvalidTestcase, TestcaseEntry } from './model';
 import {
   FindingNode,
   GroupNode,
@@ -147,7 +148,12 @@ export interface GroupMismatch {
  * Which run deserves a warning is rbx's decision, published in `report.yml`; the
  * only thing decided here is which words and which glyph carry it.
  */
-export type WarningKind = 'double-tl-passed' | 'double-tl-verdicts' | 'sanitizer';
+export type WarningKind =
+  | 'double-tl-passed'
+  | 'double-tl-verdicts'
+  | 'sanitizer'
+  /** The testcase failed validation, and the run went ahead anyway. */
+  | 'invalid-input';
 
 export interface WarningVerdict {
   readonly text: string;
@@ -185,12 +191,18 @@ export type NoticeKind =
   /** rbx suspects a solution failed because the limits are not tuned to this machine. */
   | 'untuned-limits'
   /** The run used a verification level other than `rbx run`'s default. */
-  | 'verification';
+  | 'verification'
+  /** The run went ahead past testcases that failed validation. */
+  | 'invalid-tests'
+  /** The run's testcases were not validated at all. */
+  | 'unvalidated';
 
 export interface RunNotice {
   readonly kind: NoticeKind;
   /** The `VerificationLevel`, for `verification`; absent otherwise. */
   readonly level?: number;
+  /** How many testcases failed validation, for `invalid-tests`. */
+  readonly count?: number;
 }
 
 export interface Mismatched {
@@ -290,6 +302,11 @@ export interface TestcaseCard {
    * filled with a placeholder.
    */
   readonly checker?: string;
+  /**
+   * Why this testcase failed validation, one line per validator that rejected
+   * it: `validator.cpp: Expected EOLN`. Absent on a valid testcase.
+   */
+  readonly invalid?: readonly string[];
   readonly origins: readonly CardOrigin[];
   /**
    * Which visualizers `problem.rbx.yml` declares for this testcase.
@@ -510,6 +527,15 @@ function noticesOf(run: PackageRun | undefined): RunNotice[] {
   // testcase is complete, and a banner saying otherwise would be false.
   if (run?.ended !== undefined && hasUnevaluated(run)) {
     notices.push({ kind: run.ended.status === 'interrupted' ? 'interrupted' : 'ended-early' });
+  }
+  // Ahead of the run-mode notices: every verdict on an invalid testcase is a
+  // verdict on an input the problem promises never to give, so it changes how
+  // the rows below read more than any of them.
+  const invalid = invalidByTestcase(skeleton.validation).size;
+  if (invalid > 0) {
+    notices.push({ kind: 'invalid-tests', count: invalid });
+  } else if (skeleton.validation?.mode === 'off') {
+    notices.push({ kind: 'unvalidated' });
   }
   if (skeleton.sanitized) {
     notices.push({ kind: 'sanitized-run' });
@@ -1130,6 +1156,7 @@ function cardOrigins(entry: TestcaseEntry): CardOrigin[] {
 function testcaseCard(
   node: TestcaseNode,
   declarations: VisualizerDeclarations | undefined,
+  invalid: readonly InvalidTestcase[],
 ): TestcaseCard {
   return {
     title: `${node.group.name}/${node.testcase.stem}`,
@@ -1140,6 +1167,7 @@ function testcaseCard(
       node.testcase.evaluation?.message === ''
         ? undefined
         : node.testcase.evaluation?.message,
+    ...(invalid.length === 0 ? {} : { invalid: invalid.map(invalidLine) }),
     origins: cardOrigins(node.testcase.entry),
     // Resolved against the testcase's own subgroup, so a group that declares
     // its own visualizer gets the buttons and its siblings do not.
@@ -1163,13 +1191,29 @@ function timings(evaluation: Evaluation | undefined): string | undefined {
   return parts.length === 0 ? undefined : parts.join(' · ');
 }
 
+function invalidLine(invalid: InvalidTestcase): string {
+  return invalid.message === undefined
+    ? invalid.validator
+    : `${invalid.validator}: ${invalid.message}`;
+}
+
+/** The rejections of a testcase, by its entry. */
+type InvalidLookup = ReadonlyMap<string, readonly InvalidTestcase[]>;
+
+function invalidOf(node: TestcaseNode, lookup: InvalidLookup): readonly InvalidTestcase[] {
+  const { entry } = node.testcase;
+  return lookup.get(invalidKey(entry.group, entry.index)) ?? [];
+}
+
 function testcaseRow(
   node: TestcaseNode,
   depth: number,
   parentId: string | undefined,
   declarations: VisualizerDeclarations | undefined,
   ended: boolean,
+  invalidLookup: InvalidLookup = new Map(),
 ): Row {
+  const invalid = invalidOf(node, invalidLookup);
   const { testcase } = node;
   const evaluation = testcase.evaluation;
   const limits = against(node.run);
@@ -1179,10 +1223,13 @@ function testcaseRow(
   // against the expectation the layer above it declared. A sanitizer finding
   // needed no such weighing -- it is exactly a fact about this run -- and this
   // is the only row that can say *which* stderr is worth opening.
-  const warnings: RunWarning[] =
-    evaluation?.sanitizerWarnings === true
-      ? [{ kind: 'sanitizer', verdicts: [], groups: [] }]
-      : [];
+  // A failed validation is the same kind of fact: about this testcase alone.
+  const warnings: RunWarning[] = [
+    ...(invalid.length > 0 ? [{ kind: 'invalid-input' as const, verdicts: [], groups: [] }] : []),
+    ...(evaluation?.sanitizerWarnings === true
+      ? [{ kind: 'sanitizer' as const, verdicts: [], groups: [] }]
+      : []),
+  ];
   return {
     id: nodeId(node),
     parentId,
@@ -1216,7 +1263,7 @@ function testcaseRow(
     mismatch: false,
     expandable: false,
     defaultExpanded: false,
-    card: testcaseCard(node, declarations),
+    card: testcaseCard(node, declarations, invalid),
     search: haystack(
       `${node.group.name}/${testcase.stem}`,
       verdict,
@@ -1246,8 +1293,12 @@ function adhocRow(
   label: string,
   declarations: VisualizerDeclarations | undefined,
   ended: boolean,
+  invalidLookup: InvalidLookup = new Map(),
 ): Row {
-  const row = testcaseRow(node, 0, undefined, declarations, ended);
+  // Its rejection rides the card and the run's notice. Kept off `warnings`,
+  // which the solution's report replaces below and which the header counts as
+  // solutions that "warned" -- one bad input is not every solution's warning.
+  const row = testcaseRow(node, 0, undefined, declarations, ended, invalidLookup);
   const { run } = node;
   // The solution's report already says everything the testcase could, so its
   // warnings stand in for the row's rather than adding to them.
@@ -1455,6 +1506,7 @@ export function buildViewModel(
   // The most recent row at each level, so a child can name its parent without
   // the walk having to carry a stack.
   const parents = new Map<number, string>();
+  const invalidLookup = invalidByTestcase(view.run?.skeleton.validation);
 
   const rows: Row[] = [];
   for (const node of nodes) {
@@ -1477,6 +1529,7 @@ export function buildViewModel(
               labels.get(path) ?? path,
               declarations,
               view.run?.ended !== undefined,
+              invalidLookup,
             );
           }
           return testcaseRow(
@@ -1485,6 +1538,7 @@ export function buildViewModel(
             parentId,
             declarations,
             view.run?.ended !== undefined,
+            invalidLookup,
           );
       }
     })();

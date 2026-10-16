@@ -981,6 +981,29 @@ body.dispatch-enabled .welcome-actions {
   color: var(--vscode-foreground);
 }
 
+/* Why the testcase failed validation. Laid out like `.warning-card`: the
+   validator's message is as free-form as the checker's, so it wraps. */
+.card-invalid {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--vscode-foreground);
+}
+
+.card-invalid > .codicon {
+  color: var(--vscode-charts-yellow);
+}
+
+.card-invalid p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.card-invalid-title {
+  color: var(--vscode-charts-yellow);
+}
+
 /* Provenance. Dimmed and monospaced -- it is a generator call or a path, and
    both are things the setter typed rather than prose. */
 .card-origin {

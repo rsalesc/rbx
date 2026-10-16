@@ -60,9 +60,14 @@ import {
   scopeOf,
   taskDefinition,
   taskName,
+  takesOnInvalid,
 } from './rbx/dispatch';
+import { invalidTestsMessage } from './rbx/invalidTests';
+import { packageLayout, skeletonPath } from './rbx/layout';
+import { parseSkeleton } from './rbx/model';
 import { SolutionNode } from './rbx/nodes';
-import { resolveRbx } from './rbxProcess';
+import { readYamlFile } from './rbx/store';
+import { resolveRbx, supportsOnInvalid } from './rbxProcess';
 import type { RunViewProvider } from './runView';
 
 const ENABLED_SETTING = 'rbx.dispatch.enabled';
@@ -168,6 +173,7 @@ export class Dispatcher implements vscode.Disposable {
     this.disposables.push(
       this.status,
       vscode.tasks.onDidStartTask((event) => void this.guard(event.execution)),
+      vscode.tasks.onDidEndTaskProcess((event) => void this.reportInvalidTests(event.execution)),
       active.onDidChange(() => void this.refreshStatus()),
       vscode.workspace.onDidChangeConfiguration((event) => {
         if (event.affectsConfiguration(ENABLED_SETTING)) {
@@ -176,6 +182,40 @@ export class Dispatcher implements vscode.Disposable {
       }),
     );
     void vscode.commands.executeCommand('setContext', 'rbx.canRerun', false);
+  }
+
+  /**
+   * Say so when a dispatched run went ahead past invalid testcases.
+   *
+   * On the task's end rather than off the Run view's watcher, so it is said
+   * once per run, and only for runs the extension itself started with
+   * `--on-invalid=warn` -- the skeleton of one typed at a terminal is none of
+   * this notification's business. Problem runs only: a contest run walks many
+   * packages, and each one's Run view carries its own notice.
+   */
+  private async reportInvalidTests(execution: vscode.TaskExecution): Promise<void> {
+    const definition = execution.task.definition;
+    if (definition.type !== TASK_TYPE || typeof definition.cwd !== 'string') {
+      return;
+    }
+    if (definition.command !== 'run' && definition.command !== 'irun') {
+      return;
+    }
+    const raw = await readYamlFile(
+      skeletonPath(packageLayout(definition.cwd), definition.command === 'irun' ? 'irun' : 'run'),
+    );
+    const message = invalidTestsMessage(parseSkeleton(raw)?.validation);
+    if (message === undefined) {
+      return;
+    }
+    const showRun = 'Show Run View';
+    const showTests = 'Show Tests View';
+    const choice = await vscode.window.showWarningMessage(message, showRun, showTests);
+    if (choice === showRun) {
+      void vscode.commands.executeCommand('rbx.run.focus');
+    } else if (choice === showTests) {
+      void vscode.commands.executeCommand('rbx.testset.focus');
+    }
   }
 
   /** Dispatch one command, after every request ahead of it has settled. */
@@ -392,6 +432,12 @@ export class Dispatcher implements vscode.Disposable {
         void vscode.commands.executeCommand('workbench.action.openSettings', 'rbx.executable');
       }
       return false;
+    }
+    if (takesOnInvalid(invocation.command)) {
+      invocation = {
+        ...invocation,
+        warnOnInvalid: await supportsOnInvalid(executable, invocation.cwd),
+      };
     }
     if (!(await this.clearTheWay(invocation, quiet))) {
       return false;

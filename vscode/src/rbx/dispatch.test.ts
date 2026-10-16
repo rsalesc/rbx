@@ -358,3 +358,44 @@ test('a statement output is rebuilt by the command for its kind and scope', () =
   assert.strictEqual(statementCommand('contest', 'tutorial'), 'contest-tutorials');
   assert.strictEqual(scopeOf('contest-tutorials'), 'contest');
 });
+
+test('an editor run warns past invalid testcases, ahead of the extra args', () => {
+  assert.deepStrictEqual(
+    rbxArgs(invocation({ warnOnInvalid: true, extraArgs: ['-s'], solutions: ['a.cpp'] })),
+    ['run', '--on-invalid=warn', '-s', 'a.cpp'],
+  );
+});
+
+test('a user can take the terminal behaviour back through the extra args', () => {
+  // The last occurrence wins, which is why the extension's own goes first.
+  assert.deepStrictEqual(
+    rbxArgs(invocation({ warnOnInvalid: true, extraArgs: ['--on-invalid=fail'] })),
+    ['run', '--on-invalid=warn', '--on-invalid=fail'],
+  );
+});
+
+test('contest runs and irun warn past invalid testcases too', () => {
+  assert.deepStrictEqual(rbxArgs(invocation({ command: 'contest-run', warnOnInvalid: true })), [
+    'contest',
+    'each',
+    '--inline',
+    'run',
+    '--on-invalid=warn',
+  ]);
+  assert.deepStrictEqual(
+    rbxArgs(invocation({ command: 'irun', warnOnInvalid: true, args: ['-t', 'main/1'] })),
+    ['irun', '--on-invalid=warn', '-t', 'main/1'],
+  );
+});
+
+test('commands that do not validate never get the flag', () => {
+  assert.deepStrictEqual(rbxArgs(invocation({ command: 'build', warnOnInvalid: true })), ['build']);
+  assert.deepStrictEqual(
+    rbxArgs(invocation({ command: 'stress', warnOnInvalid: true, args: ['-g', 'gen'] })),
+    ['stress', '-g', 'gen'],
+  );
+});
+
+test('an rbx too old for the flag gets the command it always got', () => {
+  assert.deepStrictEqual(rbxArgs(invocation({ warnOnInvalid: false })), ['run']);
+});

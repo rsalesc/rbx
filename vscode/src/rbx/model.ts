@@ -184,6 +184,31 @@ export interface Skeleton {
   readonly limits: readonly LanguageLimits[];
   /** `VerificationLevel`, as its number; absent on a skeleton too old to say. */
   readonly verification?: number;
+  /**
+   * How the run's testcases were validated, and which ones failed it.
+   *
+   * Absent on a skeleton too old to say, and on runs that do not say (`rbx
+   * time`), which read like a run whose every testcase passed.
+   */
+  readonly validation?: RunValidation;
+}
+
+/** One (testcase, validator) rejection a run went ahead past. */
+export interface InvalidTestcase {
+  readonly group: string;
+  readonly index: number;
+  /** The validator that rejected it, package-relative. */
+  readonly validator: string;
+  readonly message?: string;
+}
+
+export interface RunValidation {
+  /**
+   * `warn`: the run went ahead past invalid testcases (`--on-invalid=warn`).
+   * `fail`: it would have stopped at one, so none were. `off`: not validated.
+   */
+  readonly mode: 'fail' | 'warn' | 'off';
+  readonly invalid: readonly InvalidTestcase[];
 }
 
 export interface Evaluation {
@@ -331,7 +356,27 @@ export function parseSkeleton(raw: Wire): Skeleton | undefined {
       (asBoolean(root.capture_pipes) ?? false) || (asBoolean(root.merge_stderr) ?? false),
     limits: parseLanguageLimits(root.limits),
     verification: asNumber(root.verification),
+    validation: parseValidation(root.validation),
   };
+}
+
+function parseValidation(raw: Wire): RunValidation | undefined {
+  const mode = asString(field(raw, 'mode'));
+  if (mode !== 'fail' && mode !== 'warn' && mode !== 'off') {
+    return undefined;
+  }
+  const invalid: InvalidTestcase[] = [];
+  for (const rawInvalid of asArray(field(raw, 'invalid'))) {
+    const group = asString(field(rawInvalid, 'group'));
+    const index = asNumber(field(rawInvalid, 'index'));
+    const validator = asString(field(rawInvalid, 'validator'));
+    if (group === undefined || index === undefined || validator === undefined) {
+      continue;
+    }
+    const message = asString(field(rawInvalid, 'message'));
+    invalid.push({ group, index, validator, ...(message === undefined ? {} : { message }) });
+  }
+  return { mode, invalid };
 }
 
 function parseLanguageLimits(raw: Wire): LanguageLimits[] {

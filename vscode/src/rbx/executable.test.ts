@@ -1,7 +1,12 @@
 import * as assert from 'assert';
 import { test } from 'node:test';
 
-import { loginShellProbe, parseLoginShellPath, rbxCandidates } from './executable';
+import {
+  helpOffersOnInvalid,
+  loginShellProbe,
+  parseLoginShellPath,
+  rbxCandidates,
+} from './executable';
 
 test('without a setting, PATH is tried before the login shell', () => {
   // PATH is free and right whenever VS Code was launched from a shell; the
@@ -41,4 +46,12 @@ test('parseLoginShellPath ignores rc chatter and takes the path', () => {
 test('parseLoginShellPath returns undefined when rbx was not found', () => {
   assert.strictEqual(parseLoginShellPath(''), undefined);
   assert.strictEqual(parseLoginShellPath('rbx not found\n'), undefined);
+});
+
+test('the --on-invalid probe reads the run help', () => {
+  assert.strictEqual(
+    helpOffersOnInvalid('│ --on-invalid   [fail|warn]  What to do when a testcase │'),
+    true,
+  );
+  assert.strictEqual(helpOffersOnInvalid('│ --validate --no-validate │'), false);
 });

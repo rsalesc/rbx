@@ -132,6 +132,8 @@ function warningText(warning: RunWarning): string {
       // sanitizer's complaint is there in full, and nothing shorter than it
       // says what was actually wrong.
       return `Sanitizer errors or warnings${where}. See the testcase's stderr.`;
+    case 'invalid-input':
+      return 'This testcase failed validation; the run went ahead anyway.';
   }
 }
 
@@ -163,6 +165,10 @@ function noticeText(notice: RunNotice): string {
       return 'limits look untuned';
     case 'verification':
       return `-v${notice.level ?? '?'}`;
+    case 'invalid-tests':
+      return notice.count === 1 ? '1 invalid test' : `${notice.count ?? '?'} invalid tests`;
+    case 'unvalidated':
+      return 'not validated';
   }
 }
 
@@ -201,6 +207,15 @@ function noticeTitle(notice: RunNotice): string {
         'default 4, so it may have skipped validation or some solutions, or judged ' +
         'at 1\u00d7 the time limit instead of 2\u00d7.'
       );
+    case 'invalid-tests':
+      return (
+        'Some testcases failed validation, and the run went ahead anyway ' +
+        '(--on-invalid=warn). Their verdicts are on inputs this problem promises ' +
+        'never to give. The invalid ones are marked; select one to see why, or ' +
+        'open the Tests view.'
+      );
+    case 'unvalidated':
+      return 'This run skipped validation (--no-validate), so any testcase may be invalid.';
   }
 }
 
@@ -772,7 +787,10 @@ export function renderHeader(model: RunViewModel, _state: UiState): string {
         model.notices
           .map(
             (notice) =>
-              `<span class="header-notice" title="${escapeAttr(noticeTitle(notice))}">` +
+              // Invalid tests are the one notice that *is* an alarm: the
+              // verdicts on them are not to be trusted.
+              `<span class="header-notice${notice.kind === 'invalid-tests' ? ' header-warned' : ''}" ` +
+              `title="${escapeAttr(noticeTitle(notice))}">` +
               `${escapeHtml(noticeText(notice))}</span>`,
           )
           .join(SEPARATOR) +
@@ -1121,8 +1139,20 @@ export function renderCard(model: RunViewModel, state: UiState): string {
     card.timings === undefined
       ? ''
       : `<div class="card-origin">${escapeHtml(card.timings)}</div>`;
+  // Above the checker: a verdict on an input the problem promises never to
+  // give is the first thing to know about it.
+  const invalid =
+    card.invalid === undefined
+      ? ''
+      : '<div class="card-invalid">' +
+        codicon('warning') +
+        '<div>' +
+        '<p class="card-invalid-title">Failed validation — ran anyway</p>' +
+        card.invalid.map((line) => `<p>${escapeHtml(line)}</p>`).join('') +
+        '</div></div>';
   return (
     `<div class="card-title">${escapeHtml(card.title)}</div>` +
+    invalid +
     checker +
     card.origins.map(originLine).join('') +
     judges +
