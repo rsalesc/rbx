@@ -13,8 +13,8 @@
  *   solution") and each problem is a leaf opening its own file.
  * - **By problem**: contest > problem > asset, split into categories or flat.
  *
- * A statement row opens the statement preview; its inline button opens the
- * source.
+ * A statement row opens the source with the statement preview beside it; its
+ * inline button opens the source alone.
  *
  * Read-only: nothing here creates, renames or deletes a file. Rows open what
  * they name, and the inline actions reuse commands that already exist.
@@ -45,6 +45,7 @@ import {
 } from './rbx/assetListing';
 import { resolveRbx, run } from './rbxProcess';
 import { RunDataProvider } from './runData';
+import { StatementPreviewPanel } from './statementPreview';
 
 const ASSETS_VIEW = 'rbx.assets';
 const LAYOUT_KEY = 'rbx.assets.layout';
@@ -332,11 +333,12 @@ function fileItem(id: string, label: string, description: string, asset: ListedA
   item.description = description;
   item.tooltip = asset.path;
   item.iconPath = vscode.ThemeIcon.File;
-  // A statement is read, not just edited: clicking one opens its preview, and
-  // the inline button (or Open to the Side) opens the source.
+  // A statement is read as much as edited: clicking one opens the source with
+  // its preview beside it (which builds it); the inline button opens the
+  // source alone.
   item.command =
     asset.category === 'statement'
-      ? { command: 'rbx.openStatementPreview', title: 'Preview Statement', arguments: [uri] }
+      ? { command: 'rbx.assets.openStatement', title: 'Open Statement and Preview', arguments: [uri] }
       : { command: 'vscode.open', title: 'Open', arguments: [uri] };
   item.contextValue = `rbx.asset.${asset.category}`;
   return item;
@@ -731,6 +733,24 @@ export function registerAssetsView(
     vscode.commands.registerCommand('rbx.across.chooseSlots', () => across.chooseSlots()),
     vscode.commands.registerCommand('rbx.assets.showAcross', () => layout.setLayout('across')),
     vscode.commands.registerCommand('rbx.assets.showByProblem', () => layout.setLayout('problem')),
+    vscode.commands.registerCommand('rbx.assets.openStatement', async (uri: unknown) => {
+      if (!(uri instanceof vscode.Uri)) {
+        return;
+      }
+      // The source first, so the preview -- which opens beside the active
+      // editor -- lands next to it; and never in the column an open preview
+      // already holds, or one would cover the other.
+      const taken = StatementPreviewPanel.column();
+      const active = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
+      const column =
+        taken === undefined || taken !== active
+          ? active
+          : taken === vscode.ViewColumn.One
+            ? vscode.ViewColumn.Two
+            : vscode.ViewColumn.One;
+      await vscode.commands.executeCommand('vscode.open', uri, { preview: false, viewColumn: column });
+      await vscode.commands.executeCommand('rbx.openStatementPreview', uri);
+    }),
     vscode.commands.registerCommand('rbx.assets.openSource', (element: unknown) => {
       const uri = uriOf(element);
       return uri === undefined ? undefined : vscode.commands.executeCommand('vscode.open', uri);

@@ -184,6 +184,11 @@ export class StatementPreviewPanel {
     deps.context.subscriptions.push(panel);
   }
 
+  /** The column the open preview sits in, if one is open. */
+  static column(): vscode.ViewColumn | undefined {
+    return StatementPreviewPanel.current?.panel.viewColumn;
+  }
+
   /** The output on screen while the panel is the active tab, for its title-bar Build button. */
   static focusedBuild(): { command: RbxCommand; root: string } | undefined {
     const current = StatementPreviewPanel.current;
