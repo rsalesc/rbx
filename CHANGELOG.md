@@ -1,3 +1,18 @@
+## 2.3.0 (2026-10-16)
+
+### Feat
+
+- run past invalid testcases from the VS Code extension (--on-invalid=warn) (#935)
+- **vscode**: Assets view (across problems / by problem) backed by rbx assets listing (#934)
+
+### Fix
+
+- **vscode**: show the statement preview button for every statement, as rbx resolves them (#933)
+
+### Perf
+
+- **statements**: incremental pdflatex and faster startup for rbx st b (#932)
+
 ## 2.2.0 (2026-10-15)
 
 ### Feat
