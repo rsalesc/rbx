@@ -17,13 +17,73 @@ Two layouts:
   problems can both ship ``imgs/fig.png`` with zero collision.
 """
 
+import contextlib
+import contextvars
 import pathlib
 import shutil
-from typing import List, Optional
+from typing import Dict, Iterator, List, Optional
 
 from rbx.box.exception import RbxException
 
 PROBLEMS_DIRNAME = '.problems'
+
+# What pdflatex leaves behind for the next pass to read: cross-references, the
+# hyperref outline, the tables of contents/figures/tables. The job is always
+# `statement` (`latex.Latex.build_pdf`), run from the overlay root.
+LATEX_AUX_FILES = tuple(
+    f'statement{suffix}' for suffix in ('.aux', '.out', '.toc', '.lof', '.lot')
+)
+
+_keep_latex_aux: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    'keep_latex_aux', default=False
+)
+
+
+@contextlib.contextmanager
+def incremental(enabled: bool = True) -> Iterator[None]:
+    """Within this block, :func:`fresh_root` carries the previous build's LaTeX
+    auxiliary files into the new overlay (#920).
+
+    An overlay is wiped on every build, and with it the ``.aux``/``.out`` the
+    last compile wrote, so a document using hyperref always needs a second
+    pdflatex pass to settle its outline -- about a third of a warm build. With
+    last build's files in place, one pass usually suffices, and the rerun loop
+    in ``render.compile_pdf`` still catches a real change.
+
+    Opt-in (``--incremental``), and never entered by a packager: a published
+    PDF is always built from a clean overlay."""
+    token = _keep_latex_aux.set(enabled)
+    try:
+        yield
+    finally:
+        _keep_latex_aux.reset(token)
+
+
+def fresh_root(root: pathlib.Path) -> pathlib.Path:
+    """Wipe and recreate the overlay ``root``, keeping its LaTeX auxiliary files
+    when inside :func:`incremental`. Returns ``root``."""
+    kept: Dict[str, bytes] = {}
+    if _keep_latex_aux.get():
+        for name in LATEX_AUX_FILES:
+            path = root / name
+            if path.is_file():
+                kept[name] = path.read_bytes()
+    shutil.rmtree(root, ignore_errors=True)
+    root.mkdir(parents=True, exist_ok=True)
+    for name, data in kept.items():
+        (root / name).write_bytes(data)
+    return root
+
+
+def clear_latex_aux(root: pathlib.Path) -> bool:
+    """Delete the LaTeX auxiliary files in ``root``. Returns whether any existed."""
+    found = False
+    for name in LATEX_AUX_FILES:
+        path = root / name
+        if path.is_file():
+            path.unlink()
+            found = True
+    return found
 
 
 class OverlayCollisionError(RbxException):

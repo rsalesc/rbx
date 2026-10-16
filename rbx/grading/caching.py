@@ -238,7 +238,9 @@ async def _build_cache_input(
         for input in artifacts.inputs:
             if input.src is None:
                 continue
-            inferred_digest = await cacher.digest_from_symlink(input.src)
+            inferred_digest = input.known_digest
+            if inferred_digest is None:
+                inferred_digest = await cacher.digest_from_symlink(input.src)
             if inferred_digest is None and input.src.is_file():
                 # Key on content, not on the absolute path. Two byte-identical
                 # files are interchangeable: the compiler command references

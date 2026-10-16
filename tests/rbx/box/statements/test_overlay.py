@@ -111,3 +111,75 @@ class TestStageJoin:
         root = tmp_path / 'root'
         overlay.stage_chrome(root, chrome)
         assert (root / 'icpc.sty').read_text() == 'sty'
+
+
+class TestFreshRoot:
+    def _seed(self, root: pathlib.Path) -> None:
+        _write(root / 'statement.aux', 'aux')
+        _write(root / 'statement.out', 'out')
+        _write(root / 'statement.toc', 'toc')
+        _write(root / 'statement.log', 'log')
+        _write(root / 'statement.tex', 'tex')
+        _write(root / 'imgs' / 'fig.png', 'png')
+
+    def test_wipes_everything_by_default(self, tmp_path):
+        root = tmp_path / 'root'
+        self._seed(root)
+
+        assert overlay.fresh_root(root) == root
+
+        assert root.is_dir()
+        assert list(root.iterdir()) == []
+
+    def test_creates_a_missing_root(self, tmp_path):
+        root = tmp_path / 'a' / 'root'
+        with overlay.incremental():
+            overlay.fresh_root(root)
+        assert root.is_dir()
+
+    def test_keeps_only_latex_aux_files_when_incremental(self, tmp_path):
+        root = tmp_path / 'root'
+        self._seed(root)
+
+        with overlay.incremental():
+            overlay.fresh_root(root)
+
+        assert sorted(p.name for p in root.iterdir()) == [
+            'statement.aux',
+            'statement.out',
+            'statement.toc',
+        ]
+        assert (root / 'statement.aux').read_text() == 'aux'
+
+    def test_incremental_disabled_wipes(self, tmp_path):
+        root = tmp_path / 'root'
+        self._seed(root)
+
+        with overlay.incremental(False):
+            overlay.fresh_root(root)
+
+        assert list(root.iterdir()) == []
+
+    def test_incremental_is_scoped_to_its_block(self, tmp_path):
+        root = tmp_path / 'root'
+        with overlay.incremental():
+            pass
+        self._seed(root)
+
+        overlay.fresh_root(root)
+
+        assert list(root.iterdir()) == []
+
+
+class TestClearLatexAux:
+    def test_removes_aux_files_and_reports_it(self, tmp_path):
+        _write(tmp_path / 'statement.aux')
+        _write(tmp_path / 'statement.out')
+        _write(tmp_path / 'statement.tex')
+
+        assert overlay.clear_latex_aux(tmp_path) is True
+
+        assert sorted(p.name for p in tmp_path.iterdir()) == ['statement.tex']
+
+    def test_reports_nothing_to_clear(self, tmp_path):
+        assert overlay.clear_latex_aux(tmp_path) is False

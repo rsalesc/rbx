@@ -15,7 +15,6 @@ never join on problems.
 
 import contextlib
 import pathlib
-import shutil
 import typing
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -137,10 +136,9 @@ def _contest_output_path(name: str, output_type: StatementType) -> pathlib.Path:
 
 
 def _fresh_dir(path: pathlib.Path) -> pathlib.Path:
-    """Wipe and recreate ``path`` (a clean scratch overlay root)."""
-    shutil.rmtree(path, ignore_errors=True)
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    """Wipe and recreate ``path`` (a clean scratch overlay root), keeping the
+    LaTeX auxiliary files under ``--incremental`` (:func:`overlay.incremental`)."""
+    return overlay.fresh_root(path)
 
 
 def _problems_to_build(

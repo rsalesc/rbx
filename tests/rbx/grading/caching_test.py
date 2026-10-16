@@ -1,8 +1,12 @@
+import hashlib
 import pathlib
 import sys
+from typing import Optional
+from unittest import mock
 
 from rbx.grading import caching, steps_with_caching
 from rbx.grading.caching import DependencyCache
+from rbx.grading.judge import digester
 from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.judge.sandbox import SandboxBase, SandboxParams
 from rbx.grading.steps import (
@@ -19,10 +23,13 @@ async def _run_from(
     out: pathlib.Path,
     sandbox: SandboxBase,
     dependency_cache: DependencyCache,
+    known_digest: Optional[str] = None,
 ) -> GradingArtifacts:
     artifacts = GradingArtifacts()
     artifacts.inputs.append(
-        GradingFileInput(src=src, dest=pathlib.Path('executable.py'))
+        GradingFileInput(
+            src=src, dest=pathlib.Path('executable.py'), known_digest=known_digest
+        )
     )
     artifacts.outputs.append(
         GradingFileOutput(src=pathlib.Path('box-out.txt'), dest=out)
@@ -83,6 +90,59 @@ async def test_cache_misses_when_content_differs(
     assert (cleandir / 'out-b.txt').read_text().strip() == '8'
     assert artifacts.logs is not None
     assert not artifacts.logs.cached
+
+
+async def test_known_digest_keys_the_cache_without_hashing_the_file(
+    cleandir: pathlib.Path,
+    dependency_cache: DependencyCache,
+    sandbox: SandboxBase,
+    file_cacher: FileCacher,
+):
+    first = cleandir / 'a' / 'executable.py'
+    second = cleandir / 'b' / 'executable.py'
+    for path in (first, second):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('print(7)')
+    await _run_from(first, pathlib.Path('out-a.txt'), sandbox, dependency_cache)
+
+    # The same key as hashing would give, so a run keyed this way hits the
+    # entry a hashed run left -- and never reads the file to get there.
+    known = hashlib.sha1(b'print(7)').hexdigest()
+    with mock.patch.object(
+        digester, 'digest_file', side_effect=AssertionError('hashed')
+    ):
+        artifacts = await _run_from(
+            second, pathlib.Path('out-b.txt'), sandbox, dependency_cache, known
+        )
+
+    assert (cleandir / 'out-b.txt').read_text().strip() == '7'
+    assert artifacts.logs is not None
+    assert artifacts.logs.cached
+
+
+async def test_known_digest_is_what_keys_the_cache(
+    cleandir: pathlib.Path,
+    dependency_cache: DependencyCache,
+    sandbox: SandboxBase,
+    file_cacher: FileCacher,
+):
+    src = cleandir / 'executable.py'
+    src.write_text('print(7)')
+    await _run_from(src, pathlib.Path('out-a.txt'), sandbox, dependency_cache)
+
+    artifacts = await _run_from(
+        src, pathlib.Path('out-b.txt'), sandbox, dependency_cache, 'f' * 40
+    )
+
+    assert artifacts.logs is not None
+    assert not artifacts.logs.cached
+
+
+def test_known_digest_is_left_out_of_dumps():
+    entry = GradingFileInput(
+        src=pathlib.Path('a'), dest=pathlib.Path('b'), known_digest='abc'
+    )
+    assert 'known_digest' not in entry.model_dump()
 
 
 async def _run_with_hashed_outputs(

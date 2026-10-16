@@ -1,5 +1,6 @@
 import ast
 import dataclasses
+import functools
 import pathlib
 import re
 from typing import List, Optional
@@ -80,7 +81,14 @@ _NEWLINE: /\r?\n/
 %ignore _WS
 '''
 
-LARK_PARSER = lark.Lark(LARK_GRAMMAR, propagate_positions=True)
+
+@functools.cache
+def _lark_parser() -> lark.Lark:
+    # Built on first use: compiling the grammar costs ~40ms, and every command
+    # that builds a testset imports this module, most without a script to parse
+    # (`rbx st b` builds only the samples).
+    return lark.Lark(LARK_GRAMMAR, propagate_positions=True)
+
 
 _GROUP_PATH_SEGMENT = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9\-_]*$')
 
@@ -294,7 +302,7 @@ def statement_spans(script: str) -> List[StatementSpan]:
 
 def parse(script: str) -> lark.ParseTree:
     """Parse a test plan script and return the parse tree."""
-    return LARK_PARSER.parse(script)
+    return _lark_parser().parse(script)
 
 
 def parse_and_transform(

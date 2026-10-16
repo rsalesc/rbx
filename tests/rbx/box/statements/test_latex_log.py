@@ -1,6 +1,7 @@
 """`latex.parse_errors` over logs captured from a real pdflatex (TeX Live 2024)
 run with `-file-line-error` and an unwrapped log."""
 
+from rbx.box.statements import latex
 from rbx.box.statements.latex import parse_errors
 
 UNDEFINED_AND_MATH = r"""This is pdfTeX, Version 3.141592653-2.6-1.40.26 (TeX Live 2024)
@@ -184,3 +185,14 @@ def test_a_bang_line_inside_a_printed_macro_body_is_not_an_error():
     assert [e.message for e in parse_errors(log)] == [
         "LaTeX Error: File `nope.sty' not found."
     ]
+
+
+def test_decode_latex_output_reads_utf8():
+    assert latex.decode_latex_output('Overfull \\hbox — ç'.encode()) == (
+        'Overfull \\hbox — ç'
+    )
+
+
+def test_decode_latex_output_detects_a_non_utf8_log():
+    text = 'Underfull \\hbox in paragraph: acentuação é comum em português. ' * 20
+    assert latex.decode_latex_output(text.encode('latin-1')) == text

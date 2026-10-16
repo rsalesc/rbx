@@ -1,5 +1,7 @@
 import pathlib
 
+import pytest
+
 from rbx.box.statements import render
 from rbx.box.statements.context import ContestRenderContext, ProblemRenderContext
 
@@ -185,3 +187,86 @@ class TestCompilePdf:
             tmp_path, b'\\documentclass{article}\\begin{document}x\\end{document}'
         )
         assert isinstance(pdf, bytes)
+
+
+class _ScriptedPdflatex:
+    """Stands in for `Latex.build_pdf`: answers each pass from `script` (a pdf,
+    or None for a failed run, plus its log) and records whether the aux file
+    was present when that pass started."""
+
+    def __init__(self, script):
+        self.script = list(script)
+        self.saw_aux: list = []
+
+    def __call__(self, *args):
+        temp_dir = args[-1]
+        import subprocess
+
+        from rbx.box.statements.latex import LatexResult
+
+        self.saw_aux.append((temp_dir / 'statement.aux').is_file())
+        pdf, log = self.script.pop(0)
+        if pdf is not None:
+            (temp_dir / 'statement.aux').write_text('fresh')
+        return LatexResult(
+            result=subprocess.CompletedProcess(
+                args='', returncode=0 if pdf is not None else 1, stdout=log, stderr=b''
+            ),
+            pdf=pdf,
+        )
+
+
+_RERUN_LOG = b"Package rerunfilecheck Warning: File `statement.out' has changed.\n"
+_DOC = b'\\documentclass{article}\\begin{document}x\\end{document}'
+
+
+class TestCompilePdfAuxFiles:
+    def test_success_with_seeded_aux_runs_once(self, tmp_path, monkeypatch):
+        fake = _ScriptedPdflatex([(b'pdf', b'')])
+        monkeypatch.setattr('rbx.box.statements.latex.Latex.build_pdf', fake)
+        (tmp_path / 'statement.aux').write_text('stale')
+
+        assert render.compile_pdf(tmp_path, _DOC) == b'pdf'
+        assert fake.saw_aux == [True]
+
+    def test_rerun_warning_still_triggers_a_second_pass(self, tmp_path, monkeypatch):
+        fake = _ScriptedPdflatex([(b'pdf1', _RERUN_LOG), (b'pdf2', b'')])
+        monkeypatch.setattr('rbx.box.statements.latex.Latex.build_pdf', fake)
+        (tmp_path / 'statement.aux').write_text('stale')
+
+        assert render.compile_pdf(tmp_path, _DOC) == b'pdf2'
+        assert len(fake.saw_aux) == 2
+
+    def test_failure_with_seeded_aux_retries_from_scratch(self, tmp_path, monkeypatch):
+        fake = _ScriptedPdflatex(
+            [(None, b'! Undefined control sequence.'), (b'pdf', b'')]
+        )
+        monkeypatch.setattr('rbx.box.statements.latex.Latex.build_pdf', fake)
+        (tmp_path / 'statement.aux').write_text('stale')
+        (tmp_path / 'statement.out').write_text('stale')
+
+        assert render.compile_pdf(tmp_path, _DOC) == b'pdf'
+        assert fake.saw_aux == [True, False]
+        assert not (tmp_path / 'statement.out').exists()
+
+    def test_failure_without_aux_is_not_retried(self, tmp_path, monkeypatch):
+        from rbx.box.statements.latex import LatexCompilationError
+
+        fake = _ScriptedPdflatex([(None, b'! Undefined control sequence.')])
+        monkeypatch.setattr('rbx.box.statements.latex.Latex.build_pdf', fake)
+
+        with pytest.raises(LatexCompilationError):
+            render.compile_pdf(tmp_path, _DOC)
+        assert fake.saw_aux == [False]
+
+    def test_failure_leaves_no_aux_for_the_next_build(self, tmp_path, monkeypatch):
+        from rbx.box.statements.latex import LatexCompilationError
+
+        fake = _ScriptedPdflatex([(None, b'! a'), (None, b'! a')])
+        monkeypatch.setattr('rbx.box.statements.latex.Latex.build_pdf', fake)
+        (tmp_path / 'statement.aux').write_text('stale')
+
+        with pytest.raises(LatexCompilationError):
+            render.compile_pdf(tmp_path, _DOC)
+        assert len(fake.saw_aux) == 2
+        assert not (tmp_path / 'statement.aux').exists()

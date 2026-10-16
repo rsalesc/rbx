@@ -1559,6 +1559,17 @@ SPEC = {
                             'value': {'completer': 'profile', 'kind': 'completer'},
                         },
                         {
+                            'help': 'Reuse the LaTeX auxiliary files of the previous '
+                            'build, so an unchanged document usually compiles '
+                            'in a single pdflatex pass. Meant for repeated '
+                            'rebuilds while editing.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--incremental'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
                             'multiple': False,
@@ -1698,6 +1709,17 @@ SPEC = {
                             'multiple': False,
                             'names': ['-p', '--profile'],
                             'takes_value': True,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Reuse the LaTeX auxiliary files of the previous '
+                            'build, so an unchanged document usually compiles '
+                            'in a single pdflatex pass. Meant for repeated '
+                            'rebuilds while editing.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--incremental'],
+                            'takes_value': False,
                             'value': {'kind': 'none'},
                         },
                         {
@@ -2965,6 +2987,19 @@ SPEC = {
                                     'value': {'kind': 'none'},
                                 },
                                 {
+                                    'help': 'Reuse the LaTeX auxiliary files of '
+                                    'the previous build, so an '
+                                    'unchanged document usually '
+                                    'compiles in a single pdflatex '
+                                    'pass. Meant for repeated rebuilds '
+                                    'while editing.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--incremental'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
                                     'help': 'Show this message and exit.',
                                     'kind': 'option',
                                     'multiple': False,
@@ -3132,6 +3167,19 @@ SPEC = {
                                     'kind': 'option',
                                     'multiple': False,
                                     'names': ['--partial'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Reuse the LaTeX auxiliary files of '
+                                    'the previous build, so an '
+                                    'unchanged document usually '
+                                    'compiles in a single pdflatex '
+                                    'pass. Meant for repeated rebuilds '
+                                    'while editing.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--incremental'],
                                     'takes_value': False,
                                     'value': {'kind': 'none'},
                                 },

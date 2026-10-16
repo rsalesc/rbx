@@ -222,3 +222,29 @@ async def test_contest_document_is_reported(cleandir_with_testdata):
         'build/info-en.tex',
         'ok',
     )
+
+
+@pytest.mark.test_pkg('contests/statements_v2')
+@pytest.mark.parametrize('incremental', [True, False])
+async def test_contest_incremental_keeps_latex_aux(cleandir_with_testdata, incremental):
+    overlay_root = cleandir_with_testdata / 'build' / 'statements' / 'main-en'
+    overlay_root.mkdir(parents=True)
+    (overlay_root / 'statement.aux').write_text('last build')
+    (overlay_root / 'leftover.tex').write_text('stale')
+
+    await _build_async(
+        verification=0,
+        names=['main-en'],
+        languages=None,
+        validate=False,
+        output=StatementType.PDF,
+        samples=False,
+        vars=None,
+        install_tex=False,
+        profile=None,
+        incremental=incremental,
+    )
+
+    assert (overlay_root / 'statement.aux').is_file() is incremental
+    assert not (overlay_root / 'leftover.tex').exists()
+    assert (cleandir_with_testdata / 'build' / 'main-en.pdf').is_file()

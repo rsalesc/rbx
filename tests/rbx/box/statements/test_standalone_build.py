@@ -3,7 +3,7 @@ import pathlib
 import pytest
 
 from rbx.box import cd, package_utils
-from rbx.box.statements import build_statements
+from rbx.box.statements import build_statements, overlay
 from rbx.box.statements.overlay import OverlayCollisionError
 from rbx.box.statements.schema import StatementKind, StatementType
 
@@ -60,6 +60,31 @@ async def test_standalone_overlay_merges_contest_chrome(cleandir_with_testdata):
         )
         overlay_root = pathlib.Path('build') / 'statements' / 'st' / 'en-default'
         # Contest chrome (the templates) was merged into the problem overlay root.
+        assert (overlay_root / 'problem-standalone.rbx.tex').is_file()
+
+
+@pytest.mark.test_pkg('contests/statements_v2')
+@pytest.mark.parametrize('incremental', [True, False])
+async def test_standalone_incremental_keeps_latex_aux(
+    cleandir_with_testdata, incremental
+):
+    with cd.new_package_cd(pathlib.Path('A')):
+        package_utils.clear_package_cache()
+        overlay_root = pathlib.Path('build') / 'statements' / 'st' / 'en-default'
+        overlay_root.mkdir(parents=True)
+        (overlay_root / 'statement.aux').write_text('last build')
+        (overlay_root / 'leftover.tex').write_text('stale')
+
+        with overlay.incremental(incremental):
+            await build_statements.execute_build(
+                verification=0,
+                samples=False,
+                validate=False,
+                output=StatementType.PDF,
+            )
+
+        assert (overlay_root / 'statement.aux').is_file() is incremental
+        assert not (overlay_root / 'leftover.tex').exists()
         assert (overlay_root / 'problem-standalone.rbx.tex').is_file()
 
 

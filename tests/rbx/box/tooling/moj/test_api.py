@@ -56,7 +56,7 @@ def get_calls():
         response = holder['response']
         return response(url, params or {}) if callable(response) else response
 
-    with mock.patch.object(api.requests, 'get', fake):
+    with mock.patch('requests.get', fake):
         yield calls, holder
 
 

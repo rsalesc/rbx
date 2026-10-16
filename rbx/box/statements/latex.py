@@ -5,7 +5,6 @@ import re
 import subprocess
 from typing import List, Optional, Tuple
 
-import chardet
 import typer
 
 from rbx import tooling
@@ -24,7 +23,15 @@ def should_rerun(logs: str) -> bool:
 
 
 def decode_latex_output(output: bytes) -> str:
+    # Almost always ASCII or UTF-8, which needs no detection: `chardet` costs
+    # ~15ms to import and a few more per pass over a 50KB log, on every build.
+    try:
+        return output.decode('utf-8')
+    except UnicodeDecodeError:
+        pass
     # Latex output can be tricky with decoding
+    import chardet
+
     encoding = chardet.detect(output)['encoding'] or 'utf-8'
     return output.decode(encoding)
 

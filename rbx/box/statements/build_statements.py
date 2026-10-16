@@ -1,5 +1,4 @@
 import pathlib
-import shutil
 from typing import Annotated, Any, Dict, Iterable, List, Optional, Tuple
 
 import syncer
@@ -162,13 +161,11 @@ def _standalone_overlay_root(statement: Statement) -> pathlib.Path:
     standalone build gets its own subtree under it, keyed by
     ``(language, variant)``, to avoid clobbering other statements' overlays. The
     merged contest-chrome + problem-dir overlay is staged here and ``pdflatex``
-    runs from it; it is wiped and recreated on every build. The final PDF is
-    copied out to :func:`get_statement_build_path`.
+    runs from it; it is wiped and recreated on every build (keeping the LaTeX
+    auxiliary files under ``--incremental``, see :func:`overlay.incremental`).
+    The final PDF is copied out to :func:`get_statement_build_path`.
     """
-    root = _standalone_overlay_path(statement)
-    shutil.rmtree(root, ignore_errors=True)
-    root.mkdir(parents=True, exist_ok=True)
-    return root
+    return overlay.fresh_root(_standalone_overlay_path(statement))
 
 
 def _explanation_suffix(statement: Statement) -> str:
@@ -623,23 +620,31 @@ async def build(
             autocompletion=annotations._adapt('profile'),  # noqa: SLF001
         ),
     ] = None,
+    incremental: Annotated[
+        bool,
+        typer.Option(
+            '--incremental',
+            help='Reuse the LaTeX auxiliary files of the previous build, so an unchanged document usually compiles in a single pdflatex pass. Meant for repeated rebuilds while editing.',
+        ),
+    ] = False,
 ):
     """``rbx st b`` — build this problem's statements (standalone).
 
     Thin Typer wrapper over :func:`execute_build`; see the option help above for
     each argument.
     """
-    await execute_build(
-        verification,
-        names,
-        languages,
-        output,
-        samples,
-        vars,
-        validate,
-        profile=profile,
-        keep_going=True,
-    )
+    with overlay.incremental(incremental):
+        await execute_build(
+            verification,
+            names,
+            languages,
+            output,
+            samples,
+            vars,
+            validate,
+            profile=profile,
+            keep_going=True,
+        )
 
 
 @app.command(
@@ -719,6 +724,13 @@ async def build_tutorials(
             help='Timing profile to render the tutorial against. Must exist in this problem.',
         ),
     ] = None,
+    incremental: Annotated[
+        bool,
+        typer.Option(
+            '--incremental',
+            help='Reuse the LaTeX auxiliary files of the previous build, so an unchanged document usually compiles in a single pdflatex pass. Meant for repeated rebuilds while editing.',
+        ),
+    ] = False,
 ):
     """``rbx tut b`` — build this problem's tutorials (editorials), standalone.
 
@@ -727,18 +739,19 @@ async def build_tutorials(
     no contest / no match — S15/#571); writes
     ``build/tutorial-<lang>[-<variant>].pdf``.
     """
-    await execute_build(
-        verification,
-        names,
-        languages,
-        output,
-        samples,
-        vars,
-        validate,
-        profile=profile,
-        kind=StatementKind.TUTORIALS,
-        keep_going=True,
-    )
+    with overlay.incremental(incremental):
+        await execute_build(
+            verification,
+            names,
+            languages,
+            output,
+            samples,
+            vars,
+            validate,
+            profile=profile,
+            kind=StatementKind.TUTORIALS,
+            keep_going=True,
+        )
 
 
 @tutorials_app.callback()

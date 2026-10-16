@@ -609,9 +609,13 @@ async def _precompile_header(
         digest_path = await dependency_cache.cacher.path_for_symlink(
             precompiled_digest.value
         )
+        known_digest = None
         if digest_path is not None and digest_path.is_file():
             # If storage backend supports symlinks, use it as the grading input.
             input = DigestOrSource.create(digest_path)
+            # The blob is named by its digest: key the compile cache on that
+            # rather than hashing the header again on every compile.
+            known_digest = precompiled_digest.value
         else:
             # Otherwise, copy the file to the local cache, transiently.
             local_cacher = package.get_file_cacher()
@@ -629,6 +633,7 @@ async def _precompile_header(
             # Do not track fingerprint of the precompiled header file,
             # trust the compilation step above.
             hash=False,
+            known_digest=known_digest,
         )
         return res
 

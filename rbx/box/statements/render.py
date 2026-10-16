@@ -20,12 +20,12 @@ The contest joining document is rendered by :func:`render_contest_document`.
 import pathlib
 import re
 import typing
-from typing import Any, Dict, List, Literal, TypeVar
+from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar
 
 from pydantic import BaseModel, Field
 
 from rbx import console, tooling
-from rbx.box.statements import sourcemap, texsoup_utils
+from rbx.box.statements import overlay, sourcemap, texsoup_utils
 from rbx.box.statements.context import (
     ContestRenderContext,
     ProblemRenderContext,
@@ -278,18 +278,35 @@ def compile_pdf(
     input_str = sourcemap.emit(root / 'statement.tex', input_str)
 
     latex = Latex(input_str)
-    latex_result = latex.build_pdf(root)
-    pdf = latex_result.pdf
-    logs = decode_latex_output(latex_result.result.stdout)
-    runs = 1
-    while pdf is not None and should_rerun(logs) and runs < MAX_PDFLATEX_RUNS:
-        console.console.print('Re-running pdfLaTeX to get cross-references right...')
+
+    def run_until_settled() -> Tuple[Optional[bytes], str]:
         latex_result = latex.build_pdf(root)
         pdf = latex_result.pdf
         logs = decode_latex_output(latex_result.result.stdout)
-        runs += 1
+        runs = 1
+        while pdf is not None and should_rerun(logs) and runs < MAX_PDFLATEX_RUNS:
+            console.console.print(
+                'Re-running pdfLaTeX to get cross-references right...'
+            )
+            latex_result = latex.build_pdf(root)
+            pdf = latex_result.pdf
+            logs = decode_latex_output(latex_result.result.stdout)
+            runs += 1
+        return pdf, logs
+
+    # Auxiliary files here were carried over from the last build (`overlay.
+    # incremental`). They can trip a document whose preamble changed since --
+    # a stale `.aux` still calls the macros of a package no longer loaded -- so
+    # a failure with them present is retried once from scratch before it counts.
+    seeded = any((root / name).is_file() for name in overlay.LATEX_AUX_FILES)
+    pdf, logs = run_until_settled()
+    if pdf is None and seeded:
+        overlay.clear_latex_aux(root)
+        pdf, logs = run_until_settled()
 
     if pdf is None:
+        # Never seed the next incremental build with what a failed one wrote.
+        overlay.clear_latex_aux(root)
         console.console.print(f'{logs}')
         console.console.print('[error]PdfLaTeX compilation failed.[/error]')
         raise LatexCompilationError(parse_errors(logs), logs, root)

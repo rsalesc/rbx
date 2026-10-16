@@ -27,6 +27,7 @@ from rbx.box.exception import describe_exception
 from rbx.box.formatting import href
 from rbx.box.sanitizers import issue_stack
 from rbx.box.schema import expand_any_vars
+from rbx.box.statements import overlay
 from rbx.box.statements.schema import StatementKind, StatementType
 
 app = typer.Typer(no_args_is_help=True, cls=annotations.AliasGroup)
@@ -334,21 +335,29 @@ async def build(
             help='Build a statement even if some of its problems fail, omitting them. Without this, a problem that fails makes its statement fail.',
         ),
     ] = False,
+    incremental: Annotated[
+        bool,
+        typer.Option(
+            '--incremental',
+            help='Reuse the LaTeX auxiliary files of the previous build, so an unchanged document usually compiles in a single pdflatex pass. Meant for repeated rebuilds while editing.',
+        ),
+    ] = False,
 ):
-    await _execute_build(
-        verification=verification,
-        names=names,
-        languages=languages,
-        validate=validate,
-        output=output,
-        samples=samples,
-        vars=vars,
-        install_tex=install_tex,
-        profile=profile,
-        kind=StatementKind.STATEMENTS,
-        build_documents=True,
-        partial=partial,
-    )
+    with overlay.incremental(incremental):
+        await _execute_build(
+            verification=verification,
+            names=names,
+            languages=languages,
+            validate=validate,
+            output=output,
+            samples=samples,
+            vars=vars,
+            install_tex=install_tex,
+            profile=profile,
+            kind=StatementKind.STATEMENTS,
+            build_documents=True,
+            partial=partial,
+        )
 
 
 @app.command(
@@ -448,21 +457,29 @@ async def build_tutorials(
             help='Build a statement even if some of its problems fail, omitting them. Without this, a problem that fails makes its statement fail.',
         ),
     ] = False,
+    incremental: Annotated[
+        bool,
+        typer.Option(
+            '--incremental',
+            help='Reuse the LaTeX auxiliary files of the previous build, so an unchanged document usually compiles in a single pdflatex pass. Meant for repeated rebuilds while editing.',
+        ),
+    ] = False,
 ):
-    await _execute_build(
-        verification=verification,
-        names=names,
-        languages=languages,
-        validate=validate,
-        output=output,
-        samples=samples,
-        vars=vars,
-        install_tex=install_tex,
-        profile=profile,
-        kind=StatementKind.TUTORIALS,
-        build_documents=False,
-        partial=partial,
-    )
+    with overlay.incremental(incremental):
+        await _execute_build(
+            verification=verification,
+            names=names,
+            languages=languages,
+            validate=validate,
+            output=output,
+            samples=samples,
+            vars=vars,
+            install_tex=install_tex,
+            profile=profile,
+            kind=StatementKind.TUTORIALS,
+            build_documents=False,
+            partial=partial,
+        )
 
 
 @tutorials_app.callback()

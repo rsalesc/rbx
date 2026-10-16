@@ -169,7 +169,10 @@ export interface Invocation {
  *
  * Statement builds pass `--no-validate`: they only refresh the preview, so the
  * samples are built without running the validators over them. A sample that
- * breaks its constraints is still caught by `rbx build`.
+ * breaks its constraints is still caught by `rbx build`. They also pass
+ * `--incremental`, which keeps the last build's LaTeX auxiliary files, so a
+ * rebuild of an unchanged document needs one pdflatex pass, not two; `rbx st b`
+ * in a terminal still starts clean.
  */
 export function rbxArgs(invocation: Invocation): string[] {
   const args: string[] = [];
@@ -188,16 +191,16 @@ export function rbxArgs(invocation: Invocation): string[] {
       args.push('contest', 'each', '--inline', 'run', ...invocation.extraArgs);
       break;
     case 'statements':
-      args.push('statements', 'build', '--no-validate');
+      args.push('statements', 'build', '--no-validate', '--incremental');
       break;
     case 'contest-statements':
-      args.push('contest', 'statements', 'build', '--no-validate');
+      args.push('contest', 'statements', 'build', '--no-validate', '--incremental');
       break;
     case 'tutorials':
-      args.push('tutorials', 'build', '--no-validate');
+      args.push('tutorials', 'build', '--no-validate', '--incremental');
       break;
     case 'contest-tutorials':
-      args.push('contest', 'tutorials', 'build', '--no-validate');
+      args.push('contest', 'tutorials', 'build', '--no-validate', '--incremental');
       break;
     case 'stress':
       args.push('stress', ...(invocation.args ?? []));
