@@ -207,15 +207,33 @@ def _problem_assets(pkg: Package, root: pathlib.Path) -> List[ListedAsset]:
         assets += _code_assets('checker', [pkg.checker], root)
     if pkg.interactor is not None:
         assets += _code_assets('interactor', [pkg.interactor], root)
-    validators: List[CodeItem] = []
     if pkg.validator is not None:
-        validators.append(pkg.validator)
-    validators += pkg.extraValidators
-    assets += _code_assets('validator', validators, root)
+        assets += _code_assets('validator', [pkg.validator], root, _main_detail)
+    assets += _code_assets('validator', list(pkg.extraValidators), root)
     if pkg.visualizer is not None:
         assets += _code_assets('visualizer', [pkg.visualizer], root)
     assets += _test_assets(pkg, root)
+    _mark_main(assets, root)
     return assets
+
+
+def _main_detail(_item: CodeItem) -> Dict[str, Any]:
+    return {'main': True}
+
+
+def _mark_main(assets: List[ListedAsset], root: pathlib.Path) -> None:
+    """Tag the problem's main solution (rbx's: the first accepted one) and
+    its first testplan with `main`, so a client can line them up across
+    problems without guessing."""
+    main_solution = package.get_main_solution(root)
+    main_path = None if main_solution is None else _abs(root, main_solution.path)
+    first_testplan = True
+    for asset in assets:
+        if asset.category == 'solution' and asset.path == main_path:
+            asset.detail['main'] = True
+        if asset.category == 'testplan' and first_testplan:
+            asset.detail['main'] = True
+            first_testplan = False
 
 
 def _dedup(assets: List[ListedAsset]) -> List[ListedAsset]:

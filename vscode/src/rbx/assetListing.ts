@@ -94,6 +94,8 @@ function readDetail(value: Wire): Record<string, string> {
   for (const [key, each] of Object.entries(asRecord(value) ?? {})) {
     if (typeof each === 'string') {
       res[key] = each;
+    } else if (each === true) {
+      res[key] = 'true';
     }
   }
   return res;
@@ -380,4 +382,89 @@ function categoryDescription(spec: CategorySpec, members: readonly ListedAsset[]
 export function problemLabel(problem: ListedProblem): string {
   const name = problem.name ?? path.basename(problem.root);
   return problem.shortName === undefined ? name : `${problem.shortName} · ${name}`;
+}
+
+// ---------------------------------------------------------------------------
+// Slots: what the same asset is called across problems, for the Across
+// Problems view -- "en statement" is one slot, and each problem fills it with
+// its own file (or does not).
+
+export interface Slot {
+  /** Stable, for the remembered selection: `statement:en`, `solution:main`. */
+  readonly key: string;
+  readonly label: string;
+  /** Display order among slots; lower first. */
+  readonly order: number;
+}
+
+const STATEMENT_KIND_ORDER: Record<string, number> = { statement: 0, tutorial: 1 };
+
+/** The slot an asset fills, or `undefined` for one with no counterpart elsewhere. */
+export function slotOf(asset: ListedAsset): Slot | undefined {
+  const d = asset.detail;
+  switch (asset.category) {
+    case 'statement': {
+      const kind = d.kind ?? 'statement';
+      const variant = d.variant === undefined || d.variant === 'default' ? '' : ` (${d.variant})`;
+      const noun = kind === 'tutorial' ? 'editorial' : kind;
+      return {
+        key: `${kind}:${d.language ?? ''}:${d.variant ?? 'default'}`,
+        label: `${d.language ?? '?'} ${noun}${variant}`,
+        order: 100 + (STATEMENT_KIND_ORDER[kind] ?? 2) * 10,
+      };
+    }
+    case 'solution':
+      return d.main === 'true' ? { key: 'solution:main', label: 'Main solution', order: 200 } : undefined;
+    case 'testplan':
+      return d.main === 'true' ? { key: 'testplan:main', label: 'Main testplan', order: 300 } : undefined;
+    case 'checker':
+      return { key: 'checker', label: 'Checker', order: 400 };
+    case 'interactor':
+      return { key: 'interactor', label: 'Interactor', order: 410 };
+    case 'validator':
+      return d.main === 'true' ? { key: 'validator:main', label: 'Validator', order: 420 } : undefined;
+    case 'visualizer':
+      return { key: 'visualizer', label: 'Visualizer', order: 430 };
+    case 'manifest':
+      return { key: 'manifest', label: 'problem.rbx.yml', order: 900 };
+    default:
+      return undefined;
+  }
+}
+
+/** Each slot a problem fills, with the first asset filling it. */
+export function problemSlots(problem: ListedProblem): Map<string, ListedAsset> {
+  const res = new Map<string, ListedAsset>();
+  for (const asset of problem.assets) {
+    const slot = slotOf(asset);
+    if (slot !== undefined && !res.has(slot.key)) {
+      res.set(slot.key, asset);
+    }
+  }
+  return res;
+}
+
+export interface SlotEntry {
+  readonly slot: Slot;
+  /** How many of the problems fill it. */
+  readonly count: number;
+}
+
+/** Every slot some problem fills, in display order (statements by language). */
+export function slotCatalog(problems: readonly ListedProblem[]): SlotEntry[] {
+  const slots = new Map<string, { slot: Slot; count: number }>();
+  for (const problem of problems) {
+    for (const asset of problemSlots(problem).values()) {
+      const slot = slotOf(asset) as Slot;
+      const entry = slots.get(slot.key);
+      if (entry === undefined) {
+        slots.set(slot.key, { slot, count: 1 });
+      } else {
+        entry.count++;
+      }
+    }
+  }
+  return [...slots.values()].sort(
+    (a, b) => a.slot.order - b.slot.order || a.slot.label.localeCompare(b.slot.label),
+  );
 }

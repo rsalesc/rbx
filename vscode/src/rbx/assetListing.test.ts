@@ -7,6 +7,8 @@ import {
   assetNodes,
   parseAssetListing,
   problemLabel,
+  problemSlots,
+  slotCatalog,
 } from './assetListing';
 
 const PAYLOAD = {
@@ -105,4 +107,47 @@ test('flat mode: one row per asset, role first, sorted by category', () => {
       ['manual/2.in', 'manual test · group samples'],
     ],
   );
+});
+
+test('slots: line up the same asset across problems, main ones only', () => {
+  const listing = parseAssetListing(
+    JSON.stringify({
+      ...PAYLOAD,
+      problems: [
+        {
+          short_name: 'A',
+          root: '/c/A',
+          assets: [
+            { category: 'statement', path: '/c/A/en.tex', detail: { kind: 'statement', language: 'en', variant: 'default' } },
+            { category: 'statement', path: '/c/A/pt.tex', detail: { kind: 'statement', language: 'pt', variant: 'default' } },
+            { category: 'solution', path: '/c/A/main.cpp', detail: { outcome: 'ACCEPTED', main: true } },
+            { category: 'solution', path: '/c/A/wa.cpp', detail: { outcome: 'WRONG_ANSWER' } },
+            { category: 'checker', path: '/c/A/checker.cpp', detail: {} },
+          ],
+        },
+        {
+          short_name: 'B',
+          root: '/c/B',
+          assets: [
+            { category: 'statement', path: '/c/B/en.tex', detail: { kind: 'statement', language: 'en', variant: 'default' } },
+            { category: 'statement', path: '/c/B/ed.tex', detail: { kind: 'tutorial', language: 'en', variant: 'default' } },
+            { category: 'solution', path: '/c/B/main.py', detail: { outcome: 'ACCEPTED', main: true } },
+          ],
+        },
+      ],
+    }),
+  );
+  assert.ok(listing);
+  assert.deepStrictEqual(
+    slotCatalog(listing.problems).map((entry) => [entry.slot.label, entry.count]),
+    [
+      ['en statement', 2],
+      ['pt statement', 1],
+      ['en editorial', 1],
+      ['Main solution', 2],
+      ['Checker', 1],
+    ],
+  );
+  assert.strictEqual(problemSlots(listing.problems[1]).get('solution:main')?.path, '/c/B/main.py');
+  assert.strictEqual(problemSlots(listing.problems[1]).get('checker'), undefined);
 });
