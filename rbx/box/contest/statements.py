@@ -351,6 +351,40 @@ async def build(
     )
 
 
+@app.command(
+    'ls, list',
+    help='List the statements, tutorials and documents of this contest and of '
+    'each of its variants, as rbx resolves them.',
+)
+def list_statements(
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            '--json',
+            help='Print the resolved entries, and the YAML files they were read '
+            'from, as a JSON object.',
+        ),
+    ] = False,
+):
+    """``rbx contest st ls`` -- read-only; see `rbx/box/statements/listing.py`.
+
+    Not `within_contest`: that resolves one selected variant and dies in a
+    dispatcher with none selected, and this lists every variant.
+    """
+    from rbx.box.contest.contest_package import find_contest_root
+    from rbx.box.statements import listing
+
+    contest_root = find_contest_root()
+    if contest_root is None:
+        console.console.print('[error]No contest found.[/error]')
+        raise typer.Exit(1)
+    resolved = listing.contest_listing(contest_root)
+    if json_output:
+        typer.echo(resolved.model_dump_json())
+        return
+    listing.print_listing(resolved)
+
+
 @app.callback()
 def callback():
     pass

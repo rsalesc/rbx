@@ -1567,7 +1567,32 @@ SPEC = {
                             'value': {'kind': 'none'},
                         },
                     ],
-                }
+                },
+                {
+                    'help': 'List the statements and tutorials of this...',
+                    'is_group': False,
+                    'name': 'ls, list',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Print the resolved entries, and the YAML files '
+                            'they were read from, as a JSON object.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--json'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                    ],
+                },
             ],
             'help': 'Manage statements (sub-command).',
             'is_group': True,
@@ -2948,7 +2973,33 @@ SPEC = {
                                     'value': {'kind': 'none'},
                                 },
                             ],
-                        }
+                        },
+                        {
+                            'help': 'List the statements, tutorials and...',
+                            'is_group': False,
+                            'name': 'ls, list',
+                            'panel': None,
+                            'params': [
+                                {
+                                    'help': 'Print the resolved entries, and '
+                                    'the YAML files they were read '
+                                    'from, as a JSON object.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--json'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                                {
+                                    'help': 'Show this message and exit.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--help'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                },
+                            ],
+                        },
                     ],
                     'help': 'Manage contest-level statements.',
                     'is_group': True,
