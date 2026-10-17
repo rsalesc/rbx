@@ -1,0 +1,54 @@
+name: array-sum
+timeLimit: 1000
+memoryLimit: 256
+
+# Problem C exists for one surface: the Run view with *many* testcases. Its
+# siblings have a handful each, which is too few to judge the tiles layout --
+# a strip of six squares says nothing about counting by blocks of five or about
+# how a group wraps. This one has ~70 tests across five groups, and each wrong
+# solution fails in a different pattern, so every strip looks different:
+#
+#   int-overflow   WA in clusters, wherever the values are large enough
+#   skip-last      WA scattered, on exactly the tests whose n is a multiple of 7
+#   quadratic      TLE only in `large` (and the biggest `edge` tests)
+#   fixed-buffer   RTE only on the tests with n > 100000
+#
+# The task itself is deliberately trivial (sum n integers) so nothing about it
+# distracts from the view.
+validator:
+  path: validator.cpp
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+  - path: sols/int-overflow.cpp
+    outcome: wa
+  - path: sols/skip-last.cpp
+    outcome: wa
+  - path: sols/quadratic.cpp
+    outcome: tle
+  - path: sols/fixed-buffer.cpp
+    outcome: rte
+
+# One generator script per group, so each group's size is visible at a glance
+# in its own file. Every line is `gen <n> <max value> <seed> [rand|max|zero]`.
+testcases:
+  - name: samples
+    generatorScript:
+      path: tests/samples.txt
+  - name: small
+    generatorScript:
+      path: tests/small.txt
+  - name: medium
+    generatorScript:
+      path: tests/medium.txt
+  - name: large
+    generatorScript:
+      path: tests/large.txt
+  - name: edge
+    generatorScript:
+      path: tests/edge.txt

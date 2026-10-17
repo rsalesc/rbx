@@ -15,7 +15,7 @@ def test_demo_contest_parses():
     contest = contest_package.find_contest_package(DEMO_DIR)
 
     assert contest is not None
-    assert [p.short_name for p in contest.problems] == ['A', 'B']
+    assert [p.short_name for p in contest.problems] == ['A', 'B', 'C']
 
 
 def test_demo_problems_parse():

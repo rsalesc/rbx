@@ -143,6 +143,31 @@ const filterBox = new FilterBox({
   value: () => filter,
 });
 
+/**
+ * The rows Collapse All and Expand All act on: every row that opens, except a
+ * group in the tiles layout, which draws no row of its own to open.
+ */
+function foldable(): string[] {
+  return model.rows
+    .filter((row) => row.expandable && !(compact && row.kind === 'group'))
+    .map((row) => row.id);
+}
+
+/** What the host was last told, so a render that changed nothing posts nothing. */
+let reportedExpanded: boolean | undefined;
+
+/**
+ * Tell the host whether anything is open, which picks the title-bar button:
+ * Collapse All while something is, Expand All once nothing is.
+ */
+function reportExpansion(): void {
+  const expanded = foldable().some((id) => controller.expanded.has(id));
+  if (expanded !== reportedExpanded) {
+    reportedExpanded = expanded;
+    vscode.postMessage({ type: 'expansion', expanded });
+  }
+}
+
 /** Re-render the tree, the card and the findings panel, keeping scroll where it was. */
 function render(): void {
   const scrollTop = controller.scrollTop;
@@ -163,6 +188,7 @@ function render(): void {
   // does not leave an empty flex item taking the bottom border with it.
   findings.classList.toggle('has-findings', model.findings !== undefined);
   findings.classList.toggle('open', model.findings !== undefined && findingsOpen);
+  reportExpansion();
 }
 
 /** Re-render everything, including the filter box, and restore its caret. */
@@ -415,6 +441,10 @@ window.addEventListener('message', (event: MessageEvent) => {
   };
   if (message.type === 'collapseAll') {
     controller.collapseAll();
+    return;
+  }
+  if (message.type === 'expandAll') {
+    controller.expandAll(foldable());
     return;
   }
   if (message.type === 'state' && message.model !== undefined) {

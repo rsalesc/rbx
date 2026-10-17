@@ -139,6 +139,23 @@ const filterBox = new FilterBox({
 });
 
 /** Re-render the header, the tree and the card, keeping scroll where it was. */
+/** The rows Collapse All and Expand All act on. */
+function foldable(): string[] {
+  return model.rows.filter((row) => row.expandable).map((row) => row.id);
+}
+
+/** What the host was last told, so a render that changed nothing posts nothing. */
+let reportedExpanded: boolean | undefined;
+
+/** Tell the host whether anything is open; it picks Collapse All or Expand All. */
+function reportExpansion(): void {
+  const expanded = foldable().some((id) => controller.expanded.has(id));
+  if (expanded !== reportedExpanded) {
+    reportedExpanded = expanded;
+    vscode.postMessage({ type: 'expansion', expanded });
+  }
+}
+
 function render(): void {
   const scrollTop = controller.scrollTop;
   // Each section only if its markup moved -- see `setHtml`.
@@ -150,6 +167,7 @@ function render(): void {
   // Empty means "the selection is not a testcase", and an empty flex item would
   // still take its border and padding with it.
   card.classList.toggle('has-card', cardHtml !== '');
+  reportExpansion();
 }
 
 function renderAll(): void {
@@ -258,6 +276,10 @@ window.addEventListener('message', (event: MessageEvent) => {
   };
   if (message.type === 'collapseAll') {
     controller.collapseAll();
+    return;
+  }
+  if (message.type === 'expandAll') {
+    controller.expandAll(foldable());
     return;
   }
   if (message.type === 'state' && message.model !== undefined) {

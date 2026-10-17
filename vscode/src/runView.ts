@@ -36,6 +36,8 @@ interface ClientMessage {
   readonly commandId?: string;
   readonly nodeId?: string;
   readonly root?: string;
+  /** For `expansion`: whether any node of the tree is open. */
+  readonly expanded?: boolean;
   readonly source?: string;
 }
 
@@ -109,6 +111,11 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     void this.view?.webview.postMessage({ type: 'collapseAll' });
   }
 
+  /** Open every node of the tree -- the other face of the same button. */
+  expandAll(): void {
+    void this.view?.webview.postMessage({ type: 'expandAll' });
+  }
+
   private syncContext(): void {
     void vscode.commands.executeCommand('setContext', 'rbx.run.tiles', this.compact);
   }
@@ -122,6 +129,12 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     view.webview.html = this.html(view.webview);
 
     view.webview.onDidReceiveMessage((message: ClientMessage) => {
+      if (message.type === 'expansion') {
+        // Only the client knows what is open; the title bar's Collapse All /
+        // Expand All button reads this key to know which face to show.
+        void vscode.commands.executeCommand('setContext', 'rbx.run.expanded', message.expanded === true);
+        return;
+      }
       if (message.type === 'ready') {
         // A fresh client holds no model, so nothing it was sent still counts.
         this.lastPosted = undefined;

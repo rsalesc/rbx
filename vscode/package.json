@@ -462,6 +462,18 @@
         "icon": "$(collapse-all)"
       },
       {
+        "command": "rbx.run.expandAll",
+        "title": "Expand All",
+        "category": "rbx",
+        "icon": "$(expand-all)"
+      },
+      {
+        "command": "rbx.testset.expandAll",
+        "title": "Expand All",
+        "category": "rbx",
+        "icon": "$(expand-all)"
+      },
+      {
         "command": "rbx.run.showTiles",
         "title": "Show Testcases as Tiles",
         "category": "rbx",
@@ -530,6 +542,14 @@
         },
         {
           "command": "rbx.testset.collapseAll",
+          "when": "false"
+        },
+        {
+          "command": "rbx.run.expandAll",
+          "when": "false"
+        },
+        {
+          "command": "rbx.testset.expandAll",
           "when": "false"
         },
         {
@@ -687,12 +707,22 @@
         },
         {
           "command": "rbx.run.collapseAll",
-          "when": "view == rbx.run",
+          "when": "view == rbx.run && rbx.run.expanded",
+          "group": "navigation@4"
+        },
+        {
+          "command": "rbx.run.expandAll",
+          "when": "view == rbx.run && !rbx.run.expanded",
           "group": "navigation@4"
         },
         {
           "command": "rbx.testset.collapseAll",
-          "when": "view == rbx.testset",
+          "when": "view == rbx.testset && rbx.testset.expanded",
+          "group": "navigation@4"
+        },
+        {
+          "command": "rbx.testset.expandAll",
+          "when": "view == rbx.testset && !rbx.testset.expanded",
           "group": "navigation@4"
         },
         {

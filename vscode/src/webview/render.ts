@@ -570,10 +570,47 @@ function valuesCard(detail: SolutionDetail): string {
 }
 
 /**
+ * The tiles layout's stand-in for the histogram and the values: one dim line.
+ *
+ * The strip under it already *is* the histogram, testcase by testcase, so the
+ * bar would draw the same fact twice; and the row above already carries the
+ * max time, memory and score. What is left worth a line is the counts -- `68
+ * AC · 2 WA` is quicker to read than counting red squares -- and the limits
+ * the row's figures were measured against.
+ */
+function summaryLine(detail: SolutionDetail): string {
+  const counts = detail.histogram.map(
+    (slice) =>
+      `<span class="span hue-${slice.hue}">${slice.count} ${escapeHtml(slice.short)}</span>`,
+  );
+  const values = [detail.maxTime, detail.maxMemory]
+    .filter((text): text is string => text !== undefined && text !== '')
+    .map((text) => `<span class="span hue-dim">${escapeHtml(text)}</span>`);
+  const parts = [...counts, ...values];
+  return parts.length === 0 ? '' : `<div class="detail-summary">${parts.join(SEPARATOR)}</div>`;
+}
+
+/**
  * The card under an expanded solution -- empty string when it would be a box
  * with nothing in it, which is what a solution still running would get.
+ *
+ * `compact` is the tiles layout's version: no box, and the histogram and
+ * values folded into `summaryLine`, so a fully expanded run is a solution row,
+ * a line of counts and a strip -- not a card per solution pushing the strips
+ * apart. A miss or a warning keeps its words: those are the lines a reader
+ * expanded the solution to find.
  */
-function renderDetail(row: Row, detail: SolutionDetail, id: string): string {
+function renderDetail(row: Row, detail: SolutionDetail, id: string, compact = false): string {
+  if (compact) {
+    const body =
+      (detail.mismatch === undefined ? '' : mismatchCard(detail.mismatch)) +
+      warningCard(detail.warnings ?? []) +
+      summaryLine(detail);
+    return body === ''
+      ? ''
+      : `<div class="detail detail-compact" id="${escapeAttr(id)}" ` +
+          `style="margin-left: ${indent(row.depth + 1)}px">${body}</div>`;
+  }
   const body =
     (detail.mismatch === undefined ? '' : mismatchCard(detail.mismatch)) +
     warningCard(detail.warnings ?? []) +
@@ -943,7 +980,7 @@ function renderCompact(
     const id = detailId(row.id);
     const detail =
       row.detail !== undefined && state.expanded.has(row.id)
-        ? renderDetail(row, row.detail, id)
+        ? renderDetail(row, row.detail, id, true)
         : '';
     out.push(
       renderRow(

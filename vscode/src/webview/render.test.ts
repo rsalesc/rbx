@@ -1497,3 +1497,39 @@ test('a tile with no verdict worth a colour is drawn hollow, and the selection i
   assert.match(html, /class="tile hue-dim tile-hollow"/);
   assert.match(html, /aria-selected="true" tabindex="0"/);
 });
+
+test('compact folds the solution card into one line of counts and limits', () => {
+  const solution = row({
+    ...MAIN,
+    detail: {
+      histogram: [
+        { short: 'AC', hue: 'green', count: 7 },
+        { short: 'WA', hue: 'red', count: 1 },
+      ],
+      maxTime: '120 / 1000 ms',
+      maxMemory: '12 MiB / 256 MiB',
+      score: '100',
+      scoreHue: 'green',
+    },
+  });
+  const html = renderTree(
+    model([solution, MAIN_GROUP, tileCase('main', 0)]),
+    state({ compact: true, expanded: new Set(['sol0']) }),
+  );
+
+  assert.match(html, /class="detail detail-compact"/);
+  const sep = '<span class="sep">·</span>';
+  assert.ok(
+    html.includes(
+      '<div class="detail-summary">' +
+        `<span class="span hue-green">7 AC</span>${sep}` +
+        `<span class="span hue-red">1 WA</span>${sep}` +
+        `<span class="span hue-dim">120 / 1000 ms</span>${sep}` +
+        '<span class="span hue-dim">12 MiB / 256 MiB</span></div>',
+    ),
+    html,
+  );
+  // The strip is the histogram now, and the row already carries the score.
+  assert.doesNotMatch(html, /class="bars"/);
+  assert.doesNotMatch(html, /class="values"/);
+});

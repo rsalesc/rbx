@@ -63,6 +63,8 @@ interface ClientMessage {
   readonly commandId?: string;
   readonly nodeId?: string;
   readonly root?: string;
+  /** For `expansion`: whether any node of the tree is open. */
+  readonly expanded?: boolean;
   readonly tab?: string;
 }
 
@@ -128,6 +130,11 @@ export class TestsetViewProvider implements vscode.WebviewViewProvider {
     void this.view?.webview.postMessage({ type: 'collapseAll' });
   }
 
+  /** Open every node of the tree -- the other face of the same button. */
+  expandAll(): void {
+    void this.view?.webview.postMessage({ type: 'expandAll' });
+  }
+
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
     view.webview.options = {
@@ -137,6 +144,12 @@ export class TestsetViewProvider implements vscode.WebviewViewProvider {
     view.webview.html = this.html(view.webview);
 
     view.webview.onDidReceiveMessage((message: ClientMessage) => {
+      if (message.type === 'expansion') {
+        // Only the client knows what is open; the title bar's Collapse All /
+        // Expand All button reads this key to know which face to show.
+        void vscode.commands.executeCommand('setContext', 'rbx.testset.expanded', message.expanded === true);
+        return;
+      }
       if (message.type === 'ready') {
         void this.post();
         return;

@@ -1,5 +1,5 @@
 ---
-# A two-problem contest for exercising the Run view's problem selector.
+# A small contest for exercising the Run view's problem selector.
 #
 # The directory names deliberately DISAGREE with the contest order: `apples`
 # sorts before `sum-of-pairs`, so a view that ordered problems by path would
@@ -18,3 +18,7 @@ problems:
   - short_name: 'B'
     path: 'apples'
     color: 'blue'
+  # Many testcases, for the Run view's tiles layout -- see its problem.rbx.yml.
+  - short_name: 'C'
+    path: 'array-sum'
+    color: 'green'

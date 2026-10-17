@@ -185,6 +185,19 @@ export class TreeController<R extends TreeRow> {
     this.options.save();
   }
 
+  /** Open every one of `ids`, as the user's call -- Collapse All's inverse. */
+  expandAll(ids: Iterable<string>): void {
+    for (const id of ids) {
+      this.expandedIds.add(id);
+      this.touched.add(id);
+    }
+    this.options.render();
+    if (this.holdsFocus()) {
+      this.focusSelected();
+    }
+    this.options.save();
+  }
+
   /** Open every ancestor of `id`, so a jump can land on a buried row. */
   reveal(id: string): void {
     let row = this.options.rowById(id);

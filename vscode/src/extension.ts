@@ -133,6 +133,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewViewProvider(TestsetViewProvider.viewType, testset),
     vscode.commands.registerCommand('rbx.run.collapseAll', () => view.collapseAll()),
     vscode.commands.registerCommand('rbx.testset.collapseAll', () => testset.collapseAll()),
+    vscode.commands.registerCommand('rbx.run.expandAll', () => view.expandAll()),
+    vscode.commands.registerCommand('rbx.testset.expandAll', () => testset.expandAll()),
     vscode.commands.registerCommand('rbx.run.showTiles', () => view.setCompact(true)),
     vscode.commands.registerCommand('rbx.run.showRows', () => view.setCompact(false)),
     vscode.workspace.registerFileSystemProvider(SCHEME, new ArtifactFileSystemProvider(), {

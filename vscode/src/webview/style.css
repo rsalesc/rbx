@@ -468,6 +468,24 @@ body {
   outline-offset: -1px;
 }
 
+/* The tiles layout's detail: no box, just the lines, at the strip's indent.
+   The border is reserved and transparent so its text lines up with the tiles,
+   which reserve the same rule. */
+.detail.detail-compact {
+  margin-bottom: 0;
+  padding: 2px 4px 0 0;
+  border-left: 2px solid transparent;
+  gap: 2px;
+  font-size: 0.9em;
+}
+
+.detail-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 4px;
+}
+
 /*
  * The compact layout: one solution's testcases as a wrapping strip of tiles.
  *
@@ -482,8 +500,8 @@ body {
   align-items: center;
   column-gap: 12px;
   row-gap: 4px;
-  padding-top: 3px;
-  padding-bottom: 5px;
+  padding-top: 4px;
+  padding-bottom: 6px;
   padding-right: 4px;
   /* The same rule a row reserves, so the strip lines up with the rows above. */
   border-left: 2px solid transparent;
