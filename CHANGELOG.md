@@ -1,3 +1,9 @@
+## 2.3.2 (2026-10-17)
+
+### Feat
+
+- **vscode**: collapse/expand all and a testcases-as-tiles layout in the run view (#937)
+
 ## 2.3.1 (2026-10-17)
 
 ### Fix
