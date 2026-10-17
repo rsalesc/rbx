@@ -450,6 +450,30 @@
         "icon": "$(list-tree)"
       },
       {
+        "command": "rbx.run.collapseAll",
+        "title": "Collapse All",
+        "category": "rbx",
+        "icon": "$(collapse-all)"
+      },
+      {
+        "command": "rbx.testset.collapseAll",
+        "title": "Collapse All",
+        "category": "rbx",
+        "icon": "$(collapse-all)"
+      },
+      {
+        "command": "rbx.run.showTiles",
+        "title": "Show Testcases as Tiles",
+        "category": "rbx",
+        "icon": "$(table)"
+      },
+      {
+        "command": "rbx.run.showRows",
+        "title": "Show Testcases as Rows",
+        "category": "rbx",
+        "icon": "$(list-tree)"
+      },
+      {
         "command": "rbx.assets.openSource",
         "title": "Open Statement Source",
         "category": "rbx",
@@ -500,6 +524,22 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "rbx.run.collapseAll",
+          "when": "false"
+        },
+        {
+          "command": "rbx.testset.collapseAll",
+          "when": "false"
+        },
+        {
+          "command": "rbx.run.showTiles",
+          "when": "!rbx.run.tiles"
+        },
+        {
+          "command": "rbx.run.showRows",
+          "when": "rbx.run.tiles"
+        },
         {
           "command": "rbx.testplan.generate",
           "when": "resourceScheme == file && resourcePath in rbx.testplanFiles"
@@ -634,6 +674,26 @@
           "command": "rbx.refresh",
           "when": "view == rbx.run || view == rbx.testset || view == rbx.stress",
           "group": "navigation@2"
+        },
+        {
+          "command": "rbx.run.showTiles",
+          "when": "view == rbx.run && !rbx.run.tiles",
+          "group": "navigation@3"
+        },
+        {
+          "command": "rbx.run.showRows",
+          "when": "view == rbx.run && rbx.run.tiles",
+          "group": "navigation@3"
+        },
+        {
+          "command": "rbx.run.collapseAll",
+          "when": "view == rbx.run",
+          "group": "navigation@4"
+        },
+        {
+          "command": "rbx.testset.collapseAll",
+          "when": "view == rbx.testset",
+          "group": "navigation@4"
         },
         {
           "command": "rbx.runContest",

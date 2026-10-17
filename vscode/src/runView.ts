@@ -39,6 +39,9 @@ interface ClientMessage {
   readonly source?: string;
 }
 
+/** Where the tiles toggle is remembered, per workspace. */
+const COMPACT_KEY = 'rbx.run.tiles';
+
 /** A CSP nonce. Fresh per resolve, from a real random source. */
 function makeNonce(): string {
   return crypto.randomBytes(16).toString('base64');
@@ -80,7 +83,35 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
     private readonly data: RunDataProvider,
     private readonly active: ActiveProblem,
     private readonly extensionUri: vscode.Uri,
-  ) {}
+    private readonly memento: vscode.Memento,
+  ) {
+    this.syncContext();
+  }
+
+  /**
+   * Whether testcases are drawn as tiles rather than rows.
+   *
+   * The host's, not the client's, because the switch is a title-bar button:
+   * its icon is chosen by a context key, and only the host can set one.
+   */
+  get compact(): boolean {
+    return this.memento.get<boolean>(COMPACT_KEY, false);
+  }
+
+  async setCompact(compact: boolean): Promise<void> {
+    await this.memento.update(COMPACT_KEY, compact);
+    this.syncContext();
+    await this.post();
+  }
+
+  /** Fold every node of the tree, as a TreeView's Collapse All button does. */
+  collapseAll(): void {
+    void this.view?.webview.postMessage({ type: 'collapseAll' });
+  }
+
+  private syncContext(): void {
+    void vscode.commands.executeCommand('setContext', 'rbx.run.tiles', this.compact);
+  }
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
@@ -259,6 +290,7 @@ export class RunViewProvider implements vscode.WebviewViewProvider {
       problems: this.active.problems(),
       selected,
       source: choice,
+      compact: this.compact,
     };
     // A tick whose events moved nothing visible -- a report rewritten with the
     // same aggregates, an `.eval` rewritten whole -- builds the model it built

@@ -1376,3 +1376,124 @@ test('the source toggle is drawn only when there is an ad-hoc run to switch to',
   // What was run, escaped, in the tooltip.
   assert.match(html, /title="The last rbx irun: gen &quot;a&lt;b&quot;"/);
 });
+
+// The compact layout: testcases as tiles.
+
+function tileCase(group: string, index: number, hue: 'green' | 'red' | 'dim' = 'green'): Row {
+  const stem = String(index).padStart(3, '0');
+  return row({
+    id: `sol0::${group}::${stem}`,
+    parentId: `sol0::${group}`,
+    depth: 2,
+    kind: 'testcase',
+    label: stem,
+    section: 'rbx.testcase',
+    search: `${group}/${stem} ${hue === 'green' ? 'ac' : 'wa'}`,
+    primaryCommand: 'rbx.openTestcase',
+    verdict: { icon: 'pass', hue, short: hue === 'green' ? 'AC' : 'WA' },
+  });
+}
+
+const SAMPLES_GROUP = row({
+  id: 'sol0::samples',
+  parentId: 'sol0',
+  depth: 1,
+  kind: 'group',
+  label: 'samples',
+  expandable: true,
+  section: 'rbx.group',
+  search: 'samples ac',
+});
+
+function tiledModel(): RunViewModel {
+  return model([
+    MAIN,
+    SAMPLES_GROUP,
+    tileCase('samples', 0),
+    tileCase('samples', 1),
+    MAIN_GROUP,
+    ...Array.from({ length: 7 }, (_, i) => tileCase('main', i, i === 6 ? 'red' : 'green')),
+  ]);
+}
+
+test('compact rows drop the groups and hang testcases off their solution', () => {
+  // The groups are closed, and it does not matter: compact ignores them.
+  const rows = visibleRows(tiledModel(), state({ compact: true, expanded: new Set(['sol0']) }));
+
+  assert.deepStrictEqual(
+    rows.map((r) => [r.id, r.parentId]),
+    [
+      ['sol0', undefined],
+      ['sol0::samples::000', 'sol0'],
+      ['sol0::samples::001', 'sol0'],
+      ...Array.from({ length: 7 }, (_, i) => [`sol0::main::00${i}`, 'sol0']),
+    ],
+  );
+});
+
+test('compact rows still hide the testcases of a collapsed solution', () => {
+  const rows = visibleRows(tiledModel(), state({ compact: true }));
+
+  assert.deepStrictEqual(
+    rows.map((r) => r.id),
+    ['sol0'],
+  );
+});
+
+test('a group name still filters its tiles in compact mode', () => {
+  const rows = visibleRows(
+    tiledModel(),
+    state({ compact: true, expanded: new Set(['sol0']), filter: 'samples' }),
+  );
+
+  assert.deepStrictEqual(
+    rows.map((r) => r.id),
+    ['sol0', 'sol0::samples::000', 'sol0::samples::001'],
+  );
+});
+
+test('compact draws one strip of tiles per solution, split by group and blocks of five', () => {
+  const html = renderTree(tiledModel(), state({ compact: true, expanded: new Set(['sol0']) }));
+
+  // One strip, no group rows.
+  assert.strictEqual(html.match(/class="tiles"/g)?.length, 1);
+  assert.doesNotMatch(html, /kind-group/);
+  // A segment per group, each named.
+  assert.strictEqual(html.match(/class="tile-group"/g)?.length, 2);
+  assert.match(html, /<span class="tile-group-name" title="samples">samples<\/span>/);
+  // samples: one block of 2; main: a block of 5 and a block of 2.
+  const sizes = html
+    .split('<span class="tile-block">')
+    .slice(1)
+    .map((chunk) => (chunk.match(/class="tile /g) ?? []).length);
+  assert.deepStrictEqual(sizes, [2, 5, 2]);
+  // Coloured by verdict, and carrying where it is and what it got.
+  assert.match(html, /class="tile hue-red" role="treeitem" data-id="sol0::main::006"/);
+  assert.match(html, /title="main\/006 · WA"/);
+});
+
+test('a filtered-out tile does not shift the blocks after it', () => {
+  // The filter keeps only main/006, which still sits in the second block of five:
+  // its block is its index in the group, not among the tiles on screen.
+  const html = renderTree(
+    tiledModel(),
+    state({ compact: true, expanded: new Set(['sol0']), filter: 'main/006' }),
+  );
+
+  const sizes = html
+    .split('<span class="tile-block">')
+    .slice(1)
+    .map((chunk) => (chunk.match(/class="tile /g) ?? []).length);
+  assert.deepStrictEqual(sizes, [1]);
+  assert.match(html, /data-id="sol0::main::006"/);
+});
+
+test('a tile with no verdict worth a colour is drawn hollow, and the selection is marked', () => {
+  const html = renderTree(
+    model([MAIN, MAIN_GROUP, tileCase('main', 0, 'dim')]),
+    state({ compact: true, expanded: new Set(['sol0']), selected: 'sol0::main::000' }),
+  );
+
+  assert.match(html, /class="tile hue-dim tile-hollow"/);
+  assert.match(html, /aria-selected="true" tabindex="0"/);
+});

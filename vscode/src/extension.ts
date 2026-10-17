@@ -103,7 +103,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // about this contest checkout, and remembering it across unrelated windows
   // would land each of them on a root the other opened.
   const active = new ActiveProblem(data, context.workspaceState);
-  const view = new RunViewProvider(data, active, context.extensionUri);
+  const view = new RunViewProvider(data, active, context.extensionUri, context.workspaceState);
   // The Tests view shares `data` and `active` with the Run view rather than
   // discovering the workspace a second time: the two are two readings of one
   // package, and a second `ActiveProblem` would let them drift onto different
@@ -131,6 +131,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(RunViewProvider.viewType, view),
     vscode.window.registerWebviewViewProvider(TestsetViewProvider.viewType, testset),
+    vscode.commands.registerCommand('rbx.run.collapseAll', () => view.collapseAll()),
+    vscode.commands.registerCommand('rbx.testset.collapseAll', () => testset.collapseAll()),
+    vscode.commands.registerCommand('rbx.run.showTiles', () => view.setCompact(true)),
+    vscode.commands.registerCommand('rbx.run.showRows', () => view.setCompact(false)),
     vscode.workspace.registerFileSystemProvider(SCHEME, new ArtifactFileSystemProvider(), {
       isReadonly: true,
       isCaseSensitive: true,

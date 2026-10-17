@@ -76,6 +76,8 @@ let problems: readonly ProblemChoice[] = [];
 let selectedProblem: string | undefined;
 /** Last run or ad-hoc run -- the host's too, for the same reason as above. */
 let sourceChoice: SourceChoice | undefined;
+/** Testcases as tiles -- the host's too, since the title-bar toggle lives there. */
+let compact = false;
 let filter = persisted?.filter ?? '';
 let pendingScrollTop: number | undefined = persisted?.scrollTop ?? 0;
 let findingsOpen = persisted?.findingsOpen ?? false;
@@ -89,7 +91,13 @@ const card = document.getElementById('card') as HTMLElement;
 const findings = document.getElementById('findings') as HTMLElement;
 
 function uiState(): UiState {
-  return { expanded: controller.expanded, selected: controller.selected, filter, findingsOpen };
+  return {
+    expanded: controller.expanded,
+    selected: controller.selected,
+    filter,
+    findingsOpen,
+    compact,
+  };
 }
 
 function rowById(id: string | undefined): Row | undefined {
@@ -113,6 +121,7 @@ const controller = new TreeController<Row>({
   invoke: (row) => invoke(row),
   click: rowClick,
   save,
+  inline: (row) => compact && row.kind === 'testcase',
   memory: persisted,
 });
 
@@ -402,13 +411,19 @@ window.addEventListener('message', (event: MessageEvent) => {
     selected?: string;
     source?: SourceChoice;
     dispatch?: boolean;
+    compact?: boolean;
   };
+  if (message.type === 'collapseAll') {
+    controller.collapseAll();
+    return;
+  }
   if (message.type === 'state' && message.model !== undefined) {
     // Shows the empty state's Run/Build buttons (#906); see style.css.
     document.body.classList.toggle('dispatch-enabled', message.dispatch === true);
     problems = message.problems ?? [];
     selectedProblem = message.selected;
     sourceChoice = message.source;
+    compact = message.compact === true;
     setModel(message.model);
   }
 });

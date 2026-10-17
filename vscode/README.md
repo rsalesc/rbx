@@ -100,6 +100,23 @@ workspace, so reopening the window returns to the problem you were reading.
 For the keyboard, `rbx: Select Problem` offers the same list as a quick pick.
 `rbx: Reveal Problem in Explorer` reveals whichever problem is selected.
 
+### Testcases as tiles
+
+The title bar's **Show Testcases as Tiles** button draws each expanded solution's
+testcases as one wrapping strip of small squares, each one filled with its
+verdict's colour, instead of a row per testcase. The strip is split by group,
+each segment led by the group's name, and inside a group the squares sit in
+blocks of five, so a testcase's index can be counted off by eye: the first
+square after the second gap is test 10. A square still pending, or never run, is
+drawn hollow; one that carries a warning has a yellow dot in its corner. Hover a
+square for its name, verdict and timings; click it to select and open it, as
+with a row. The left and right arrow keys step between squares.
+
+**Collapse All**, beside it, folds every solution, so the view reads as one
+line per solution; expand the ones you care about to see their strips. Together
+they fit a whole problem's run on one screen. The Tests view has the same
+Collapse All button. The tiles setting is remembered per workspace.
+
 ### Warnings on a run that passed
 
 A **yellow triangle in the gutter** -- where a met declaration draws a green tick

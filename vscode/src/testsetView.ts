@@ -123,6 +123,11 @@ export class TestsetViewProvider implements vscode.WebviewViewProvider {
     private readonly onOpenPanel: (request: TestsetPanelRequest) => void,
   ) {}
 
+  /** Fold every node of the tree, as a TreeView's Collapse All button does. */
+  collapseAll(): void {
+    void this.view?.webview.postMessage({ type: 'collapseAll' });
+  }
+
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
     view.webview.options = {

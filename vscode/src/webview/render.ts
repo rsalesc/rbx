@@ -46,6 +46,16 @@ export interface UiState {
    * the seed that opens it is a fact about the run rather than about a node.
    */
   readonly findingsOpen: boolean;
+  /**
+   * Whether testcases are drawn as tiles rather than rows.
+   *
+   * The compact reading of a run: under an expanded solution, one wrapping
+   * strip of verdict-coloured squares, split by group and spaced in blocks of
+   * five so a testcase's index can be counted off by eye. Group rows are not
+   * drawn at all -- the strip's own segments stand in for them -- so their
+   * expansion is ignored while this is on rather than forgotten.
+   */
+  readonly compact?: boolean;
 }
 
 /**
@@ -610,6 +620,9 @@ export function matchesFilter(row: Row, filter: string): boolean {
  * visible rather than rearranging the tree under them.
  */
 export function visibleRows(model: RunViewModel, state: UiState): Row[] {
+  if (state.compact === true) {
+    return compactRows(model, state);
+  }
   const rows = model.rows;
   const self = new Map<string, boolean>();
   for (const row of rows) {
@@ -656,6 +669,145 @@ export function visibleRows(model: RunViewModel, state: UiState): Row[] {
     }
   }
   return result;
+}
+
+/**
+ * The rows on screen in the compact layout: no group rows, and every testcase
+ * hung directly off its solution.
+ *
+ * Computed on the full tree with every group forced open, so the filter still
+ * answers to a group's name -- typing `samples` keeps the samples' tiles -- and
+ * only then flattened. The testcases are re-parented on the copies returned
+ * here, not in the model: the tree's keyboard walks `parentId`, and stepping
+ * out of a tile has to land on a row that is actually drawn.
+ */
+function compactRows(model: RunViewModel, state: UiState): Row[] {
+  const byId = new Map(model.rows.map((row) => [row.id, row]));
+  const expanded = new Set(state.expanded);
+  for (const row of model.rows) {
+    if (row.kind === 'group') {
+      expanded.add(row.id);
+    }
+  }
+  const rows = visibleRows(model, { ...state, compact: false, expanded });
+  const result: Row[] = [];
+  for (const row of rows) {
+    if (row.kind === 'group') {
+      continue;
+    }
+    const parent = row.parentId === undefined ? undefined : byId.get(row.parentId);
+    result.push(
+      row.kind === 'testcase' && parent?.kind === 'group'
+        ? { ...row, parentId: parent.parentId }
+        : row,
+    );
+  }
+  return result;
+}
+
+/** How many tiles sit together before a gap, so an index can be counted off. */
+const TILE_BLOCK = 5;
+
+/** A tile's hover: where it is, what it got, and what it measured. */
+function tileTitle(row: Row, group: Row | undefined): string {
+  const name = group === undefined ? row.label : `${group.label}/${row.label}`;
+  const parts = [name, row.verdict?.short, ...row.meta.map((span) => span.text)];
+  if (row.warnings.length > 0) {
+    parts.push(row.warnings.map(warningText).join(' '));
+  }
+  return parts.filter((part) => part !== undefined && part !== '').join(' \u00b7 ');
+}
+
+function tileHtml(
+  row: Row,
+  group: Row | undefined,
+  state: UiState,
+  position: Position,
+  tabStop: string | undefined,
+): string {
+  const hue = row.verdict?.hue ?? 'dim';
+  const classes = ['tile', `hue-${hue}`];
+  // Hollow rather than filled for what has no verdict worth a colour yet --
+  // pending, or never run -- so a strip mid-run reads as filling up.
+  if (hue === 'dim') {
+    classes.push('tile-hollow');
+  }
+  if (row.warnings.length > 0) {
+    classes.push('tile-warned');
+  }
+  const title = tileTitle(row, group);
+  const attrs = [
+    `class="${classes.join(' ')}"`,
+    'role="treeitem"',
+    `data-id="${escapeAttr(row.id)}"`,
+    `aria-label="${escapeAttr(title)}"`,
+    `title="${escapeAttr(title)}"`,
+    `aria-level="${position.level}"`,
+    `aria-setsize="${position.setsize}"`,
+    `aria-posinset="${position.posinset}"`,
+    `aria-selected="${state.selected === row.id}"`,
+    `tabindex="${tabStop === row.id ? 0 : -1}"`,
+    contextAttr(row),
+  ];
+  return `<span ${attrs.join(' ')}></span>`;
+}
+
+/**
+ * One solution's testcases as a single wrapping strip of tiles.
+ *
+ * A segment per group, labelled with the group's name, and inside it blocks of
+ * five that wrap as a unit, so the gaps fall at the same indices on every line.
+ * The block a tile lands in is decided by its index in the *group*, not among
+ * the tiles on screen: a filter that hides a few must not shift every gap after
+ * them and make the count lie.
+ */
+function tileStrip(
+  tiles: readonly Row[],
+  byId: ReadonlyMap<string, Row>,
+  ranks: ReadonlyMap<string, number>,
+  state: UiState,
+  tabStop: string | undefined,
+): string {
+  const segments: { group?: Row; key: string; blocks: string[][] }[] = [];
+  let lastBlock = -1;
+  tiles.forEach((tile, i) => {
+    const original = byId.get(tile.id);
+    const parent = original?.parentId === undefined ? undefined : byId.get(original.parentId);
+    const group = parent?.kind === 'group' ? parent : undefined;
+    const key = group?.id ?? '';
+    let segment = segments[segments.length - 1];
+    if (segment === undefined || segment.key !== key) {
+      segment = { group, key, blocks: [] };
+      segments.push(segment);
+      lastBlock = -1;
+    }
+    const block = Math.floor((ranks.get(tile.id) ?? 0) / TILE_BLOCK);
+    if (block !== lastBlock || segment.blocks.length === 0) {
+      segment.blocks.push([]);
+      lastBlock = block;
+    }
+    segment.blocks[segment.blocks.length - 1].push(
+      tileHtml(tile, group, state, { level: 2, setsize: tiles.length, posinset: i + 1 }, tabStop),
+    );
+  });
+  const html = segments
+    .map((segment) => {
+      const label =
+        segment.group === undefined
+          ? ''
+          : `<span class="tile-group-name${
+              segment.group.labelHue === undefined ? '' : ` hue-${segment.group.labelHue}`
+            }" title="${escapeAttr(segment.group.label)}">${escapeHtml(segment.group.label)}</span>`;
+      const blocks = segment.blocks
+        .map((block) => `<span class="tile-block">${block.join('')}</span>`)
+        .join('');
+      // The blocks wrap inside a box of their own, so a group's second line
+      // starts under its first tile rather than under its name.
+      return `<span class="tile-group">${label}<span class="tile-blocks">${blocks}</span></span>`;
+    })
+    .join('');
+  // Indented one level, as the group rows it replaces were.
+  return `<div class="tiles" role="group" style="padding-left: ${indent(1)}px">${html}</div>`;
 }
 
 /** The welcome text, verbatim from the `viewsWelcome` block it replaces. */
@@ -721,6 +873,10 @@ export function renderTree(model: RunViewModel, state: UiState): string {
   // so a Tab into the view lands somewhere useful.
   const tabStop = rows.some((row) => row.id === state.selected) ? state.selected : rows[0]?.id;
 
+  if (state.compact === true) {
+    return renderCompact(rows, model, state, siblings, ranks, tabStop);
+  }
+
   return rows
     .map((row) => {
       const bucket = siblings.get(row.parentId ?? '') ?? [row];
@@ -743,6 +899,64 @@ export function renderTree(model: RunViewModel, state: UiState): string {
       return html + detail;
     })
     .join('');
+}
+
+/**
+ * `renderTree` for the compact layout: solution rows as ever, and each run of
+ * testcases under one of them collapsed into a strip of tiles.
+ */
+function renderCompact(
+  rows: readonly Row[],
+  model: RunViewModel,
+  state: UiState,
+  siblings: ReadonlyMap<string, Row[]>,
+  ranks: ReadonlyMap<string, number>,
+  tabStop: string | undefined,
+): string {
+  const byId = new Map(model.rows.map((row) => [row.id, row]));
+  // A testcase's index in its group, over the whole model -- see `tileStrip`.
+  const groupRanks = new Map<string, number>();
+  const counts = new Map<string, number>();
+  for (const row of model.rows) {
+    if (row.kind === 'testcase') {
+      const key = row.parentId ?? '';
+      const count = counts.get(key) ?? 0;
+      groupRanks.set(row.id, count);
+      counts.set(key, count + 1);
+    }
+  }
+  const out: string[] = [];
+  let tiles: Row[] = [];
+  const flush = (): void => {
+    if (tiles.length > 0) {
+      out.push(tileStrip(tiles, byId, groupRanks, state, tabStop));
+      tiles = [];
+    }
+  };
+  for (const row of rows) {
+    if (row.kind === 'testcase') {
+      tiles.push(row);
+      continue;
+    }
+    flush();
+    const bucket = siblings.get(row.parentId ?? '') ?? [row];
+    const id = detailId(row.id);
+    const detail =
+      row.detail !== undefined && state.expanded.has(row.id)
+        ? renderDetail(row, row.detail, id)
+        : '';
+    out.push(
+      renderRow(
+        row,
+        state,
+        { level: row.depth + 1, setsize: bucket.length, posinset: ranks.get(row.id) ?? 1 },
+        tabStop,
+        detail === '' ? undefined : id,
+      ) + detail,
+    );
+  }
+  flush();
+  return out.join('');
 }
 
 /**

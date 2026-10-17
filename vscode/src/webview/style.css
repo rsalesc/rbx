@@ -468,6 +468,101 @@ body {
   outline-offset: -1px;
 }
 
+/*
+ * The compact layout: one solution's testcases as a wrapping strip of tiles.
+ *
+ * Three levels of spacing, widest first, so the eye can count without reading:
+ * between groups, between blocks of five, and between tiles. A block is its own
+ * flex item, so a line only ever breaks between blocks and the gaps fall at the
+ * same indices on every line.
+ */
+.tiles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 4px;
+  padding-top: 3px;
+  padding-bottom: 5px;
+  padding-right: 4px;
+  /* The same rule a row reserves, so the strip lines up with the rows above. */
+  border-left: 2px solid transparent;
+}
+
+.tile-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+}
+
+.tile-blocks {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 5px;
+  row-gap: 4px;
+  min-width: 0;
+}
+
+.tile-group-name {
+  flex: none;
+  /* One tile tall, so the name sits level with the first line of tiles. */
+  line-height: 10px;
+  max-width: 10em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
+.tile-block {
+  display: flex;
+  gap: 2px;
+}
+
+/* Filled with the verdict's own hue: `.hue-*` sets `color`, and the tile paints
+   `currentColor`, so one table serves the chips and the tiles alike. */
+.tile {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: currentColor;
+  border: 1px solid currentColor;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.tile-hollow {
+  background: transparent;
+  opacity: 0.7;
+}
+
+/* A warned testcase -- an invalid input, a sanitizer finding -- gets a corner
+   notch in the warning hue, the tile-sized echo of the row's gutter triangle. */
+.tile-warned::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--vscode-charts-yellow);
+}
+
+.tile:hover {
+  outline: 1px solid var(--vscode-list-hoverForeground, var(--vscode-foreground));
+  outline-offset: 1px;
+}
+
+.tile[aria-selected='true'],
+.tile:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
 /* Indented by margin rather than padding, so the padding below is free to be
    the card's own breathing room instead of its indentation. */
 .detail {

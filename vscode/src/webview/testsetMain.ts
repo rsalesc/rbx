@@ -256,6 +256,10 @@ window.addEventListener('message', (event: MessageEvent) => {
     selected?: string;
     dispatch?: boolean;
   };
+  if (message.type === 'collapseAll') {
+    controller.collapseAll();
+    return;
+  }
   if (message.type === 'state' && message.model !== undefined) {
     // Shows the empty state's Run/Build buttons (#906); see style.css.
     document.body.classList.toggle('dispatch-enabled', message.dispatch === true);
