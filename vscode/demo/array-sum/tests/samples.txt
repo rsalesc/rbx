@@ -1,0 +1,3 @@
+// Two tiny tests, readable by eye.
+gen 3 10 1
+gen 5 10 2

@@ -76,6 +76,8 @@ let problems: readonly ProblemChoice[] = [];
 let selectedProblem: string | undefined;
 /** Last run or ad-hoc run -- the host's too, for the same reason as above. */
 let sourceChoice: SourceChoice | undefined;
+/** Testcases as tiles -- the host's too, since the title-bar toggle lives there. */
+let compact = false;
 let filter = persisted?.filter ?? '';
 let pendingScrollTop: number | undefined = persisted?.scrollTop ?? 0;
 let findingsOpen = persisted?.findingsOpen ?? false;
@@ -89,7 +91,13 @@ const card = document.getElementById('card') as HTMLElement;
 const findings = document.getElementById('findings') as HTMLElement;
 
 function uiState(): UiState {
-  return { expanded: controller.expanded, selected: controller.selected, filter, findingsOpen };
+  return {
+    expanded: controller.expanded,
+    selected: controller.selected,
+    filter,
+    findingsOpen,
+    compact,
+  };
 }
 
 function rowById(id: string | undefined): Row | undefined {
@@ -113,6 +121,13 @@ const controller = new TreeController<Row>({
   invoke: (row) => invoke(row),
   click: rowClick,
   save,
+  inline: (row) => compact && row.kind === 'testcase',
+  // Tiles are only worth switching to if they are on screen, so in that layout
+  // every solution starts open; rows keep their own defaults.
+  openByDefault: () =>
+    compact
+      ? model.rows.filter((row) => row.kind === 'solution' && row.expandable).map((row) => row.id)
+      : [],
   memory: persisted,
 });
 
@@ -134,6 +149,31 @@ const filterBox = new FilterBox({
   value: () => filter,
 });
 
+/**
+ * The rows Collapse All and Expand All act on: every row that opens, except a
+ * group in the tiles layout, which draws no row of its own to open.
+ */
+function foldable(): string[] {
+  return model.rows
+    .filter((row) => row.expandable && !(compact && row.kind === 'group'))
+    .map((row) => row.id);
+}
+
+/** What the host was last told, so a render that changed nothing posts nothing. */
+let reportedExpanded: boolean | undefined;
+
+/**
+ * Tell the host whether anything is open, which picks the title-bar button:
+ * Collapse All while something is, Expand All once nothing is.
+ */
+function reportExpansion(): void {
+  const expanded = foldable().some((id) => controller.expanded.has(id));
+  if (expanded !== reportedExpanded) {
+    reportedExpanded = expanded;
+    vscode.postMessage({ type: 'expansion', expanded });
+  }
+}
+
 /** Re-render the tree, the card and the findings panel, keeping scroll where it was. */
 function render(): void {
   const scrollTop = controller.scrollTop;
@@ -154,6 +194,7 @@ function render(): void {
   // does not leave an empty flex item taking the bottom border with it.
   findings.classList.toggle('has-findings', model.findings !== undefined);
   findings.classList.toggle('open', model.findings !== undefined && findingsOpen);
+  reportExpansion();
 }
 
 /** Re-render everything, including the filter box, and restore its caret. */
@@ -402,13 +443,23 @@ window.addEventListener('message', (event: MessageEvent) => {
     selected?: string;
     source?: SourceChoice;
     dispatch?: boolean;
+    compact?: boolean;
   };
+  if (message.type === 'collapseAll') {
+    controller.collapseAll();
+    return;
+  }
+  if (message.type === 'expandAll') {
+    controller.expandAll(foldable());
+    return;
+  }
   if (message.type === 'state' && message.model !== undefined) {
     // Shows the empty state's Run/Build buttons (#906); see style.css.
     document.body.classList.toggle('dispatch-enabled', message.dispatch === true);
     problems = message.problems ?? [];
     selectedProblem = message.selected;
     sourceChoice = message.source;
+    compact = message.compact === true;
     setModel(message.model);
   }
 });

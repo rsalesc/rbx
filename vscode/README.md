@@ -100,6 +100,36 @@ workspace, so reopening the window returns to the problem you were reading.
 For the keyboard, `rbx: Select Problem` offers the same list as a quick pick.
 `rbx: Reveal Problem in Explorer` reveals whichever problem is selected.
 
+### Testcases as tiles
+
+The title bar's **Show Testcases as Tiles** button draws each expanded solution's
+testcases as one wrapping strip of small squares, each one filled with its
+verdict's colour, instead of a row per testcase. The strip is split by group,
+each segment led by the group's name, and inside a group the squares sit in
+blocks of five, so a testcase's index can be counted off by eye: the first
+square after the second gap is test 10. A square still pending, or never run, is
+drawn hollow; one that carries a warning has a yellow dot in its corner. Hover a
+square for its name, verdict and timings; click it to select and open it, as
+with a row. The left and right arrow keys step between squares.
+
+In this layout every solution starts expanded, since the strips are the point
+of switching to it; one you fold stays folded, and switching back to rows
+restores the usual defaults. An expanded solution drops its usual card for one
+dim line above its strip:
+the verdict counts and the max time and memory against their limits. The strip
+already shows the histogram, test by test, and the row already carries the
+figures themselves. A missed declaration or a warning keeps its sentence.
+
+**Collapse All**, beside it, folds every solution, so the view reads as one
+line per solution; once everything is folded the same button becomes **Expand
+All**, which opens every solution at once. Together they fit a whole problem's
+run on one screen. The Tests view has the same button. The tiles setting is
+remembered per workspace.
+
+Problem C of the demo contest, `array-sum`, exists for this layout: about
+seventy tests in five groups, and four wrong solutions that each fail in a
+different pattern.
+
 ### Warnings on a run that passed
 
 A **yellow triangle in the gutter** -- where a met declaration draws a green tick
@@ -770,13 +800,14 @@ mise run vscode:package
 
 ### The demo contest
 
-`vscode/demo/` is a two-problem contest built for looking at the extension
+`vscode/demo/` is a three-problem contest built for looking at the extension
 rather than for testing rbx: every solution, group and visualizer in it exists
 to light up one surface described above -- the whole verdict icon set at once,
 a skipped group, compiler warnings and a solution that does not compile, the
 double-TL and sanitizer warnings on a green run, both shapes of the
 constraint-coverage table, SVG and HTML visualizers, and a problem order that
-disagrees with the directory order. The comments in its `problem.rbx.yml` and
+disagrees with the directory order, plus a problem with enough testcases to judge
+the tiles layout by. The comments in its `problem.rbx.yml` and
 `contest.rbx.yml` say which is which.
 
 It is a manual fixture: nothing builds or judges it in CI. The one test over it

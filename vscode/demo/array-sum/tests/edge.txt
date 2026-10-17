@@ -1,0 +1,8 @@
+// Extremes: single elements, all zeros, all at the maximum.
+gen 1 0 1 zero
+gen 1 1000000000 2 max
+gen 7 1000000000 3 max
+gen 200000 0 4 zero
+gen 200000 1000000000 5 max
+gen 100000 1000000000 6 max
+gen 2 1000000000 7 max
