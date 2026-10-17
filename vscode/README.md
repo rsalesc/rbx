@@ -112,7 +112,10 @@ drawn hollow; one that carries a warning has a yellow dot in its corner. Hover a
 square for its name, verdict and timings; click it to select and open it, as
 with a row. The left and right arrow keys step between squares.
 
-An expanded solution drops its usual card for one dim line above its strip:
+In this layout every solution starts expanded, since the strips are the point
+of switching to it; one you fold stays folded, and switching back to rows
+restores the usual defaults. An expanded solution drops its usual card for one
+dim line above its strip:
 the verdict counts and the max time and memory against their limits. The strip
 already shows the histogram, test by test, and the row already carries the
 figures themselves. A missed declaration or a warning keeps its sentence.

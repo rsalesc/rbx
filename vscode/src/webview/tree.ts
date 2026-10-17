@@ -65,6 +65,15 @@ export interface TreeOptions<R extends TreeRow> {
    * along a line of text, instead of collapsing to the parent.
    */
   inline?(row: R): boolean;
+  /**
+   * Ids that are open unless the user closed them, on top of what is stored.
+   *
+   * Derived on every read rather than written into the expansion set, so a
+   * default that only holds in one layout -- the run view opens every solution
+   * while testcases are tiles -- leaves nothing behind when the layout changes
+   * back. A node the user has touched follows the user instead.
+   */
+  openByDefault?(): Iterable<string>;
   readonly memory?: TreeMemory;
 }
 
@@ -91,8 +100,12 @@ export class TreeController<R extends TreeRow> {
     options.container.addEventListener('scroll', () => options.save());
   }
 
+  /** What is open: the stored set, plus any untouched `openByDefault` id. */
   get expanded(): ReadonlySet<string> {
-    return this.expandedIds;
+    const defaults = [...(this.options.openByDefault?.() ?? [])].filter(
+      (id) => !this.touched.has(id),
+    );
+    return defaults.length === 0 ? this.expandedIds : new Set([...this.expandedIds, ...defaults]);
   }
 
   get selected(): string | undefined {
@@ -117,7 +130,7 @@ export class TreeController<R extends TreeRow> {
   }
 
   toggle(id: string, open?: boolean): void {
-    const shouldOpen = open ?? !this.expandedIds.has(id);
+    const shouldOpen = open ?? !this.expanded.has(id);
     if (shouldOpen) {
       this.expandedIds.add(id);
     } else {
@@ -169,7 +182,7 @@ export class TreeController<R extends TreeRow> {
    * highlight -- and the keyboard -- stay on something drawn.
    */
   collapseAll(): void {
-    for (const id of this.expandedIds) {
+    for (const id of this.expanded) {
       this.touched.add(id);
     }
     this.expandedIds.clear();
@@ -300,7 +313,7 @@ export class TreeController<R extends TreeRow> {
         }
         if (inline) {
           move(at + 1);
-        } else if (row.expandable && !this.expandedIds.has(row.id)) {
+        } else if (row.expandable && !this.expanded.has(row.id)) {
           this.toggle(row.id, true);
         } else {
           move(at + 1);
@@ -312,7 +325,7 @@ export class TreeController<R extends TreeRow> {
         }
         if (inline) {
           move(at - 1);
-        } else if (row.expandable && this.expandedIds.has(row.id)) {
+        } else if (row.expandable && this.expanded.has(row.id)) {
           this.toggle(row.id, false);
         } else if (row.parentId !== undefined) {
           this.select(row.parentId);

@@ -122,6 +122,12 @@ const controller = new TreeController<Row>({
   click: rowClick,
   save,
   inline: (row) => compact && row.kind === 'testcase',
+  // Tiles are only worth switching to if they are on screen, so in that layout
+  // every solution starts open; rows keep their own defaults.
+  openByDefault: () =>
+    compact
+      ? model.rows.filter((row) => row.kind === 'solution' && row.expandable).map((row) => row.id)
+      : [],
   memory: persisted,
 });
 
