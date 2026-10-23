@@ -2836,7 +2836,7 @@ requires-dist = [
     { name = "throttlex", specifier = ">=1.0.0" },
     { name = "tree-sitter", specifier = ">=0.22.0" },
     { name = "tree-sitter-cpp", specifier = ">=0.22.0" },
-    { name = "typer", specifier = ">=0.15.1" },
+    { name = "typer", specifier = ">=0.20.0" },
     { name = "typing-extensions", specifier = ">=4.14.1" },
     { name = "uvicorn", specifier = ">=0.38.0" },
     { name = "yamlfix", specifier = ">=1.17.0" },

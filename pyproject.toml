@@ -15,7 +15,7 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 dependencies = [
-  "typer>=0.15.1",
+  "typer>=0.20.0",
   "fastapi>=0.115.8",
   "filelock>=3.14.0",
   "mechanize>=0.4.10",
