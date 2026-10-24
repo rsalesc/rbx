@@ -62,15 +62,6 @@ async def polygon(
         '--validate-statement',
         help='If set, will validate the statement for Polygon.',
     ),
-    cms: bool = typer.Option(
-        False,
-        '--cms',
-        help=(
-            'If set, the package also carries what CMS (cms-dev) reads when '
-            'importing it with its Polygon loader: group scoring, problem '
-            'statements and, for contests, problem directories.'
-        ),
-    ),
 ):
     from rbx.box.packaging.polygon.packager import PolygonPackager
 
@@ -88,7 +79,6 @@ async def polygon(
         samples_only=not should_build,
         skip_packaging=not should_build,
         main_language=language,
-        cms=cms,
     )
 
     if validate_statement:

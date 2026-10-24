@@ -82,8 +82,8 @@ class Testset(BaseXmlModel, search_mode='unordered'):
 
 
 class Judging(BaseXmlModel, search_mode='unordered'):
-    inputFile: str = attr('input-file', default='')
-    outputFile: str = attr('output-file', default='')
+    inputFile: str = attr(default='')
+    outputFile: str = attr(default='')
 
     testsets: List[Testset] = element(tag='testset', default_factory=list)
 
@@ -155,7 +155,6 @@ class Problem(BaseXmlModel, tag='problem', search_mode='unordered'):
 class ContestProblem(BaseXmlModel, search_mode='unordered'):
     index: str = attr()
     path: str = attr()
-    url: Optional[str] = attr(default=None)
 
 
 class Contest(BaseXmlModel, tag='contest', search_mode='unordered'):

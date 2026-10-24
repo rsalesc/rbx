@@ -102,15 +102,6 @@ async def polygon(
         help='If set, will use the given language as the main language.',
         autocompletion=annotations._adapt('language'),  # noqa: SLF001
     ),
-    cms: bool = typer.Option(
-        False,
-        '--cms',
-        help=(
-            'If set, the package also carries what CMS (cms-dev) reads when '
-            'importing it with its Polygon loader: group scoring, problem '
-            'statements and, for contests, problem directories.'
-        ),
-    ),
 ):
     from rbx.box.packaging.polygon.packager import (
         PolygonContestPackager,
@@ -122,7 +113,6 @@ async def polygon(
         PolygonPackager,
         verification=verification,
         main_language=language,
-        cms=cms,
     )
 
 
