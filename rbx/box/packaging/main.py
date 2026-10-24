@@ -62,8 +62,22 @@ async def polygon(
         '--validate-statement',
         help='If set, will validate the statement for Polygon.',
     ),
+    cms: bool = typer.Option(
+        False,
+        '--cms',
+        help=(
+            'If set, the package also carries what CMS (cms-dev) reads when '
+            'importing it with its Polygon loader: group scoring, problem '
+            'statements, a manager for interactive problems and, for contests, '
+            'problem directories.'
+        ),
+    ),
 ):
+    from rbx.box.packaging.cms import support as cms_support
     from rbx.box.packaging.polygon.packager import PolygonPackager
+
+    if cms:
+        cms_support.ensure_supported(package.find_problem_package_or_die())
 
     if upload_tests_raw and not upload:
         raise typer.BadParameter(
@@ -79,6 +93,7 @@ async def polygon(
         samples_only=not should_build,
         skip_packaging=not should_build,
         main_language=language,
+        cms=cms,
     )
 
     if validate_statement:

@@ -102,17 +102,36 @@ async def polygon(
         help='If set, will use the given language as the main language.',
         autocompletion=annotations._adapt('language'),  # noqa: SLF001
     ),
+    cms: bool = typer.Option(
+        False,
+        '--cms',
+        help=(
+            'If set, the package also carries what CMS (cms-dev) reads when '
+            'importing it with its Polygon loader: group scoring, problem '
+            'statements, a manager for interactive problems and, for contests, '
+            'problem directories.'
+        ),
+    ),
 ):
+    from rbx.box.packaging.cms import support as cms_support
     from rbx.box.packaging.polygon.packager import (
         PolygonContestPackager,
         PolygonPackager,
     )
+
+    if cms:
+        # Before any problem is built: one interactive problem fails the lot.
+        for problem in contest_package.find_contest_package_or_die().problems:
+            with cd.new_package_cd(problem.get_path()):
+                package_utils.clear_package_cache()
+                cms_support.ensure_supported(package.find_problem_package_or_die())
 
     await run_contest_packager(
         PolygonContestPackager,
         PolygonPackager,
         verification=verification,
         main_language=language,
+        cms=cms,
     )
 
 

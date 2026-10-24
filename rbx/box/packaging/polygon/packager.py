@@ -9,6 +9,8 @@ from rbx.box import header, limits_info, naming, package
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.lang import code_to_lang, code_to_langs, is_valid_lang_code
 from rbx.box.packaging import flattening
+from rbx.box.packaging.cms import polygon_loader as cms_polygon_loader
+from rbx.box.packaging.cms import support as cms_support
 from rbx.box.packaging.packager import (
     BaseContestPackager,
     BasePackager,
@@ -86,9 +88,12 @@ class PolygonPackager(BasePackager):
         self,
         testcase_entries: List[GenerationTestcaseEntry],
         main_language: Optional[str] = None,
+        cms: bool = False,
     ):
         super().__init__(testcase_entries)
         self.main_language = main_language
+        # Also ship what only CMS's Polygon importer reads (`--cms`).
+        self.cms = cms
 
     @classmethod
     def task_types(cls) -> List[TaskType]:
@@ -227,8 +232,10 @@ class PolygonPackager(BasePackager):
             timelimit=limits.time,
             memorylimit=limits.memory * 1024 * 1024,
             size=len(entries),
-            inputPattern='tests/%03d',
-            answerPattern='tests/%03d.a',
+            # Polygon's own default; CMS's importer hardcodes it, whatever the
+            # pattern says.
+            inputPattern='tests/%02d',
+            answerPattern='tests/%02d.a',
             tests=tests,
             groups=groups,
         )
@@ -350,6 +357,7 @@ class PolygonPackager(BasePackager):
             # it falls back to the contest statement. Checked live, 2026-10.
             # Polygon's own `statements/.pdf/` path fares no better: the
             # taskbook drops dot-directories when it unpacks a contest.zip.
+            # That is what `cms_polygon_loader.write_statements` relies on.
         )
 
         descriptor: str = problem.to_xml(
@@ -390,15 +398,22 @@ class PolygonPackager(BasePackager):
         for i, testcase in enumerate(testcases):
             shutil.copyfile(
                 testcase.inputPath,
-                into_path / f'tests/{i + 1:03d}',
+                into_path / f'tests/{i + 1:02d}',
             )
             if testcase.outputPath is not None:
                 shutil.copyfile(
                     testcase.outputPath,
-                    into_path / f'tests/{i + 1:03d}.a',
+                    into_path / f'tests/{i + 1:02d}.a',
                 )
             else:
-                (into_path / f'tests/{i + 1:03d}.a').touch()
+                (into_path / f'tests/{i + 1:02d}.a').touch()
+
+        if self.cms:
+            cms_support.ensure_supported(pkg)
+            cms_polygon_loader.write_statements(built_statements, into_path)
+            cms_polygon_loader.write_files(
+                pkg, self.get_built_testcase_entries(), files_path
+            )
 
         # Write problem.xml
         (into_path / 'problem.xml').write_text(descriptor)
@@ -410,8 +425,9 @@ class PolygonPackager(BasePackager):
 
 
 class PolygonContestPackager(BaseContestPackager):
-    def __init__(self, main_language: Optional[str] = None):
+    def __init__(self, main_language: Optional[str] = None, cms: bool = False):
         self.main_language = main_language
+        self.cms = cms
 
     @classmethod
     def name(cls) -> str:
@@ -463,6 +479,13 @@ class PolygonContestPackager(BaseContestPackager):
             polygon_schema.ContestProblem(
                 index=built_package.problem.short_name,
                 path=str(pathlib.Path('problems') / built_package.problem.short_name),
+                # CMS's importer takes the problem directory from the basename
+                # of `url` (in Polygon, a link to the problem) and ignores
+                # `path`. Only with `--cms`: the Codeforces taskbook rejects a
+                # `url` that is not an absolute URL.
+                url=str(pathlib.Path('problems') / built_package.problem.short_name)
+                if self.cms
+                else None,
             )
             for built_package in built_packages
         ]

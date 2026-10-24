@@ -63,10 +63,21 @@ Polygon (offline + upload) and BOCA are **flat** judges: they compile each sourc
 **`PolygonPackager`** -- Produces `problem.zip` containing:
 - `problem.xml` (serialized from `pydantic-xml` models in `xml_schema.py`)
 - `files/` -- `testlib.h`, `rbx.h`, `check.cpp`, `interactor.cpp`, plus any flattened dependency headers (see [Source Flattening](#source-flattening-flatteningpy))
-- `tests/` -- testcases named `001`, `001.a`, etc.; samples carry `sample="true"`
+- `tests/` -- testcases named `01`, `01.a`, etc.; samples carry `sample="true"`
 - `solutions/` -- every solution, flattened with the checker/interactor (`enforce_stem_unique`), tagged in `<assets><solutions>` (`_get_solution_tag`: first ACCEPTED is `main`, RE/INCORRECT become `rejected`, ANY is skipped -- Polygon has no tag for it)
 - POINTS problems: each test carries its rbx group, and `<groups>` mirrors rbx scoring -- `complete-group` with the group's `score` and its `deps` (only groups with built tests). The score is also put on the group's last test.
+- Tests are `tests/%02d` (Polygon's default; CMS's importer hardcodes it) and `<judging>` writes `input-file`/`output-file` as real Polygon packages do.
+- **`--cms` (both `rbx package polygon` and `rbx contest package polygon`) adds what only CMS's Polygon importer (`cmscontrib/loaders/polygon.py`) reads**, all written by the CMS helpers below: `files/cms_conf.py`, the statement PDF at the undeclared `statements/.pdf/<language>/problem.pdf`, the manager sources for interactive problems, and `url` on each `contest.xml` problem (CMS takes the task directory from its basename). `url` is the reason it is a flag: the Codeforces taskbook rejects a non-absolute `url` ("not a valid URL") and the whole upload fails.
 - **No problem-level statements, on purpose.** Verified on a live Codeforces gym (the consumer, via the taskbook): a PDF problem statement imports but the problem page fails with "Can't send statement"; without one it falls back to the contest PDF. Polygon's `statements/.pdf/` path is also lost, since the taskbook drops dot-directories when unpacking. Same live run confirmed solutions/sample flags import, and that an IOI gym honours the groups (partial scores and dependencies).
+
+### CMS helpers (`cms/`)
+
+Not a packager: what any route into CMS (cms-dev) needs, used by the Polygon packager's `--cms` and meant for a native CMS packager (#944). Verified on a live CMS v1.5.1.
+
+- `scoring.py` -- `group_min_parameters`: GroupMin subtasks mirroring rbx scoring, each group's regex covering its transitive `deps`; BINARY = one all-or-nothing subtask. CMS names tests by 0-based index, `%03d`.
+- `communication.py` -- interactive problems run as CMS `Communication` (`[1, 'alone', 'std_io']`) with rbx's manager, `rbx/resources/packagers/cms/cms_manager.cpp`. The manager sandbox allows **one process** (`multithreaded_sandbox` is off by default), so the interactor (`interactor.cpp`) is compiled *into* the manager and called as rbx calls it (`interactor <input> <output>`); its testlib verdict line is translated to CMS's stdout float / stderr message / exit 0 (`rbx_cms_report.h`; testlib FAIL becomes a non-zero exit, i.e. a judge error). For a **legacy** interactor, an accepted run then `fexecve`s the embedded checker runner (`cms_checker.cpp`, built first and `.incbin`'d via `-DRBX_CMS_CHECKER`) as `checker <input> <interactor output> <answer>`. CMS never gives the manager the answer, so those tests carry it: `pack_input` (`RBX-CMS-INPUT <n> <m>\n` + input + answer), which the manager splits. Files go through memfds at `/proc/self/fd/N`.
+- `support.py` -- `ensure_supported`: refuses a non-C++ interactor, or a legacy interactor's non-C++ checker. Called before the build by both CLI commands.
+- `polygon_loader.py` -- what the Polygon importer reads: `render_conf`/`write_files` (`cms_conf.py` from the `polygon_cms_conf.py` template, plus the manager sources) and `write_statements`. `cms_conf.py` runs *inside* the importer, so it compiles the manager with `g++ -static` and stores it, and the packed tests, with CMS's own `FileCacher`; its `_pack_input` must match `communication.pack_input` (a test pins it).
 
 **`PolygonContestPackager`** -- Produces `contest.zip` with `contest.xml`, `contest.dat`, and per-problem directories.
 
