@@ -1,0 +1,27 @@
+scenarios:
+  - name: ladder-scoring
+    description: |
+      Under `scoring.dependencies: ladder` a group scores only when every
+      group before it did. `sols/sample-wrong.cpp` fails one sample and so
+      scores nothing, though its `small` and `big` answers are right (#941);
+      `sols/small-wrong.cpp` fails `small`, which takes `big` with it. Every
+      solution meets its `score`, so `rbx run` exits 0.
+    steps:
+      - cmd: run
+        expect:
+          stdout_contains:
+            - "OK Expected score 100, got [100/100 pts]"
+            - "OK Expected score 0, got [0/100 pts]"
+          stdout_not_contains:
+            - "got [40/100 pts]"
+            - "got [60/100 pts]"
+          solutions:
+            sols/main.cpp: ac
+            sols/sample-wrong.cpp:
+              samples: wa
+              small: ac
+              big: ac
+            sols/small-wrong.cpp:
+              samples: ac
+              small: wa
+              big: ac

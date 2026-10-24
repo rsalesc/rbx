@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import collections
 import enum
 import pathlib
 import re
@@ -22,8 +21,11 @@ from pydantic import (
     AfterValidator,
     BaseModel,
     ConfigDict,
+    Discriminator,
     Field,
     PrivateAttr,
+    Tag,
+    field_validator,
     model_validator,
 )
 from pydantic_core import PydanticCustomError
@@ -40,6 +42,12 @@ from rbx.box.fields import (
     merge_recvars,
 )
 from rbx.box.formatting import href
+from rbx.box.scoring.dependencies import (
+    Aggregation,
+    DependencyPolicy,
+    GroupDependencies,
+)
+from rbx.box.scoring.dependencies import resolve as resolve_dependencies
 from rbx.box.statements.expander import expand_problem_statements
 from rbx.box.statements.schema import (
     LanguagesField,
@@ -380,6 +388,36 @@ class ScoreType(AutoEnum):
     """Subtasks scoring, where each passing testgroup is worth a number of points that are summed up."""
 
 
+class PointsScoring(BaseModel):
+    """Subtasks scoring, configured. Writing `scoring: points` means the defaults."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    dependencies: DependencyPolicy = Field(
+        default=DependencyPolicy.MANUAL,
+        description="""
+Which dependencies between groups are added on top of the `deps` each group
+declares. A group only scores when every group it depends on, directly or not,
+scored too.
+
+- `manual`: none; only the declared `deps`.
+- `samples`: every group depends on `samples`, so failing a sample scores 0.
+- `ladder`: every group depends on the one declared before it, the first one on
+  `samples`, so a group only scores when every earlier one did.
+""",
+    )
+
+    aggregation: Aggregation = Field(
+        default=Aggregation.MIN,
+        description="""
+How the results of a group's tests combine into the group's score.
+
+- `min`: the group scores its full `score` when all of its tests pass, and 0
+  otherwise.
+""",
+    )
+
+
 class CodeItem(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -692,7 +730,9 @@ problems that have points.
         description="""
 A list of other groups this group depends on to run and be considered accepted.
 
-The `samples` group is implicitly a dependency of every other group.
+Only these are dependencies unless `scoring.dependencies` adds more: set it to
+`samples` to make every group depend on `samples`, or to `ladder` to chain
+each group to the one before it.
 """,
     )
 
@@ -1383,9 +1423,35 @@ class Package(BaseModel):
         default=TaskType.BATCH, description='The type of the problem.'
     )
 
-    scoring: ScoreType = Field(
-        default=ScoreType.BINARY, description='The scoring type of the problem.'
+    scoring: Annotated[
+        Union[
+            Annotated[ScoreType, Tag('type')],
+            Annotated[PointsScoring, Tag('points')],
+        ],
+        Discriminator(
+            lambda v: 'type' if isinstance(v, (str, ScoreType)) else 'points'
+        ),
+    ] = Field(
+        default=ScoreType.BINARY,
+        description="""
+The scoring type of the problem: `binary`, `points`, or a mapping configuring
+points scoring (`points` is the mapping with every default).
+
+```yaml
+scoring:
+  dependencies: ladder
+```
+""",
     )
+
+    @field_validator('scoring', mode='before')
+    @classmethod
+    def expand_points_shorthand(cls, value: Any) -> Any:
+        if isinstance(value, str) and value.lower() == 'points':
+            return PointsScoring()
+        if value == ScoreType.POINTS:
+            return PointsScoring()
+        return value
 
     timeLimit: int = Field(description='Time limit of the problem, in milliseconds.')
 
@@ -1527,6 +1593,28 @@ that is correct and used as reference -- and should have the `accepted` outcome.
     def expanded_vars(self) -> Vars:
         return expand_vars(self.vars)
 
+    @property
+    def score_type(self) -> ScoreType:
+        if isinstance(self.scoring, PointsScoring):
+            return ScoreType.POINTS
+        return self.scoring
+
+    @property
+    def points_scoring(self) -> Optional[PointsScoring]:
+        """The points configuration, or `None` for a binary problem."""
+        if isinstance(self.scoring, PointsScoring):
+            return self.scoring
+        return None
+
+    @property
+    def group_dependencies(self) -> GroupDependencies:
+        """The groups each group depends on, `scoring.dependencies` included.
+
+        Read dependencies from here, never from `TestcaseGroup.deps`, which holds
+        only the declared ones.
+        """
+        return resolve_dependencies(self)
+
     def expanded_vars_for_group(self, group_name: Optional[str]) -> Vars:
         """Package vars with the named group's overrides applied.
 
@@ -1569,7 +1657,7 @@ that is correct and used as reference -- and should have the `accepted` outcome.
 
     @model_validator(mode='after')
     def check_scoring_fields(self):
-        if not self.scoring == ScoreType.POINTS:
+        if self.score_type != ScoreType.POINTS:
             for group in self.testcases:
                 if group.deps:
                     raise PydanticCustomError(
@@ -1603,23 +1691,32 @@ that is correct and used as reference -- and should have the `accepted` outcome.
 
     @model_validator(mode='after')
     def check_deps(self):
-        depends = collections.defaultdict(list)
         for group in self.testcases:
-            if group.name == 'samples':
-                if group.deps:
+            if group.name == 'samples' and group.deps:
+                raise PydanticCustomError(
+                    'DEPS_NOT_ALLOWED',
+                    'Dependencies are not allowed for the "samples" group.',
+                )
+        group_names = set(group.name for group in self.testcases)
+        for group in self.testcases:
+            for dep in group.deps:
+                if dep not in group_names:
                     raise PydanticCustomError(
-                        'DEPS_NOT_ALLOWED',
-                        'Dependencies are not allowed for the "samples" group.',
+                        'UNKNOWN_DEPENDENCY',
+                        'Test group "{group_name}" depends on "{dep}", which is not '
+                        'a declared test group.',
+                        {'group_name': group.name, 'dep': dep},
                     )
-                continue
-            depends[group.name].extend(group.deps)
+        # Over the resolved graph, so a policy edge closing a cycle with a
+        # declared one is caught too.
+        depends = self.group_dependencies
 
         visiting = set()
         visited = set()
 
         def dfs(u):
             visiting.add(u)
-            for v in depends[u]:
+            for v in depends.direct(u):
                 if v in visiting:
                     return True
                 if v not in visited:

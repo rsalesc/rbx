@@ -196,7 +196,7 @@ def _build_groups(group_names: Set[str]) -> List[TestsetGroup]:
         TestsetGroup(
             name=group.name,
             score=group.score,
-            deps=list(group.deps),
+            deps=pkg.group_dependencies.direct(group.name),
             subgroups=[subgroup.name for subgroup in group.subgroups],
             vars=dict(package.get_expanded_vars_for_group(group.name)),
         )

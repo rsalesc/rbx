@@ -36,6 +36,7 @@ from rbx.box.schema import (
     TaskType,
     TimingMultipliers,
 )
+from rbx.box.scoring import dependencies
 from rbx.box.statements import export
 from rbx.box.statements.markdown_export import MojGateError
 from rbx.box.statements.schema import (
@@ -1125,7 +1126,7 @@ class MojPackager(BasePackager):
                 '',
             ]
         pkg = package.find_problem_package_or_die()
-        if pkg.scoring != ScoreType.BINARY:
+        if pkg.score_type != ScoreType.BINARY:
             return [
                 '# STOPWHEN_* is deliberately unset: this problem scores by groups, and',
                 '# halting early leaves later groups unexecuted, which score-summary.sh',
@@ -1263,7 +1264,52 @@ class MojPackager(BasePackager):
             else:
                 (outputs_path / name).touch()
 
+        copies = self._dependency_copies()
+        for name, source in copies:
+            shutil.copyfile(inputs_path / source, inputs_path / name)
+            shutil.copyfile(outputs_path / source, outputs_path / name)
+        if copies:
+            console.console.print(
+                f'[info]Copied [item]{len(copies)}[/item] tests into the groups '
+                'that depend on them: MOJ scores each group on its own tests '
+                'only.[/info]'
+            )
+
         return seen_groups
+
+    def _dependency_copies(self) -> List[Tuple[str, str]]:
+        """`(copy, original)` test names that make `tests/score` honor dependencies.
+
+        `score-summary.sh` scores each group on the tests its glob matches and
+        knows nothing of dependencies, so every group also gets a copy of the
+        tests of each group it depends on (`dependencies.flatten`). A copy
+        continues its group's own counter, so both of `score-summary.sh`'s group
+        heuristics place it. Copies are left out of `testcase_names()`: they are
+        a scoring device, not testcases the MOJ runner pairs results with -- and a
+        probe, which is never scored, gets none.
+        """
+        pkg = package.find_problem_package_or_die()
+        points = pkg.points_scoring
+        if points is None or self.probe is not None:
+            return []
+
+        names_by_group: Dict[str, List[str]] = collections.defaultdict(list)
+        for entry, name in self.testcase_names():
+            names_by_group[entry.group_entry.group].append(name)
+        flattened = dependencies.flatten(
+            pkg.group_dependencies, names_by_group, points.aggregation
+        )
+
+        indices = self._group_indices()
+        copies: List[Tuple[str, str]] = []
+        for group, names in flattened.items():
+            own = len(names_by_group[group])
+            for index, source in enumerate(names[own:], start=own + 1):
+                name = naming.testcase_name(
+                    group, group_index=indices[group], index=index, is_sample=False
+                )
+                copies.append((name, source))
+        return copies
 
     def _has_samples(self) -> bool:
         """Whether any built testcase is a sample.
@@ -1310,7 +1356,7 @@ class MojPackager(BasePackager):
         still requires every one to pass, which is the correct ICPC semantics.
         """
         pkg = package.find_problem_package_or_die()
-        if pkg.scoring != ScoreType.POINTS:
+        if pkg.score_type != ScoreType.POINTS:
             return
 
         indices = self._group_indices()

@@ -11,7 +11,8 @@ from rbx import testing_utils
 from rbx.box.packaging.moj import mojtools
 from rbx.box.packaging.moj import statement as moj_statement
 from rbx.box.packaging.moj.packager import JudgeCalibrated, MojPackager
-from rbx.box.schema import ScoreType, TaskType
+from rbx.box.schema import PointsScoring, ScoreType, TaskType
+from rbx.box.scoring.dependencies import DependencyPolicy
 from rbx.box.statements.schema import ConversionType, StatementType
 from tests.rbx.box.packaging.moj.conftest import (
     CHECKER,
@@ -753,6 +754,52 @@ def test_points_problems_emit_a_score_file(testing_pkg, tmp_path):
     for path in (into_path / 'tests' / 'input').iterdir():
         matched = [g for g in globs if fnmatch.fnmatch(path.name, g)]
         assert len(matched) == 1, f'{path.name} matched {matched}'
+
+
+def test_points_problems_copy_dependency_tests_into_each_group(testing_pkg, tmp_path):
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.yml.scoring = PointsScoring(dependencies=DependencyPolicy.LADDER)
+    testing_pkg.add_testgroup_with_manual_testcases('samples', [])
+    testing_pkg.add_testgroup_with_manual_testcases('easy', [])
+    testing_pkg.yml.testcases[-1].score = 40
+    testing_pkg.add_testgroup_with_manual_testcases('full', [])
+    testing_pkg.yml.testcases[-1].score = 60
+    testing_pkg.save()
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples', 'easy', 'full'])
+    )
+
+    content = (into_path / 'tests' / 'score').read_text()
+    globs = [line.split(' - ')[0] for line in content.splitlines() if line.strip()]
+    inputs = into_path / 'tests' / 'input'
+    by_glob = {
+        glob: sorted(
+            (inputs / name).read_text()
+            for name in sorted(p.name for p in inputs.iterdir())
+            if fnmatch.fnmatch(name, glob)
+        )
+        for glob in globs
+    }
+    # Under the ladder, `full` is judged on its own tests, `easy`'s and the samples'.
+    assert list(by_glob.values()) == [
+        ['samples 0\n', 'samples 1\n'],
+        ['easy 0\n', 'easy 1\n', 'samples 0\n', 'samples 1\n'],
+        [
+            'easy 0\n',
+            'easy 1\n',
+            'full 0\n',
+            'full 1\n',
+            'samples 0\n',
+            'samples 1\n',
+        ],
+    ]
+    outputs = into_path / 'tests' / 'output'
+    assert sorted(p.name for p in inputs.iterdir()) == sorted(
+        p.name for p in outputs.iterdir()
+    )
 
 
 # -- statements -------------------------------------------------------------

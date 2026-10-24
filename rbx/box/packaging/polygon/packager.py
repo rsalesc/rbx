@@ -171,7 +171,7 @@ class PolygonPackager(BasePackager):
     ) -> Tuple[List[polygon_schema.Test], List[polygon_schema.Group]]:
         tests = [self._get_manual_test(entry.is_sample()) for entry in entries]
         pkg = package.find_problem_package_or_die()
-        if pkg.scoring != ScoreType.POINTS:
+        if pkg.score_type != ScoreType.POINTS:
             return tests, []
 
         # A group scores only when every one of its tests passes and every group
@@ -186,6 +186,7 @@ class PolygonPackager(BasePackager):
             test.points = float(scores[group]) if last_test_of[group] == i else 0.0
 
         # A group with no built tests has nothing to judge; leave it out.
+        group_deps = pkg.group_dependencies.over(list(last_test_of))
         groups = []
         for group in pkg.testcases:
             if group.name not in last_test_of:
@@ -197,8 +198,7 @@ class PolygonPackager(BasePackager):
                     feedback_policy='complete' if group.name == 'samples' else 'icpc',
                     dependencies=[
                         polygon_schema.Dependency(group=dep)
-                        for dep in group.deps
-                        if dep in last_test_of
+                        for dep in group_deps.direct(group.name)
                     ],
                 )
             )
