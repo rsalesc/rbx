@@ -18,4 +18,6 @@ def get_polygon_language_from_code_item(code_item: CodeItem) -> Optional[str]:
         return 'cpp.gcc13-64-winlibs-g++20'
     if ext in ['java']:
         return 'java21'
+    if ext in ['py']:
+        return 'python.3'
     return None

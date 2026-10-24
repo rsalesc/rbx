@@ -76,6 +76,22 @@ class Interactor(BaseXmlModel, search_mode='unordered'):
     source: File = element()
 
 
+class Solution(BaseXmlModel, search_mode='unordered'):
+    tag: Literal[
+        'main',
+        'accepted',
+        'rejected',
+        'time-limit-exceeded',
+        'time-limit-exceeded-or-accepted',
+        'time-limit-exceeded-or-memory-limit-exceeded',
+        'wrong-answer',
+        'presentation-error',
+        'memory-limit-exceeded',
+        'failed',
+    ] = attr()
+    source: File = element()
+
+
 class Problem(BaseXmlModel, tag='problem', search_mode='unordered'):
     short_name: str = attr('short-name')
 
@@ -101,6 +117,12 @@ class Problem(BaseXmlModel, tag='problem', search_mode='unordered'):
 
     interactor: Optional[Interactor] = wrapped(
         'assets', element(tag='interactor', default=None), default=None
+    )
+
+    solutions: List[Solution] = wrapped(
+        'assets/solutions',
+        element(tag='solution', default=[]),
+        default=[],
     )
 
 
