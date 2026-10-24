@@ -2308,6 +2308,18 @@ SPEC = {
                             'value': {'kind': 'none'},
                         },
                         {
+                            'help': 'If set, the package also carries what CMS '
+                            '(cms-dev) reads when importing it with its '
+                            'Polygon loader: group scoring, problem '
+                            'statements and, for contests, problem '
+                            'directories.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--cms'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
                             'multiple': False,
@@ -3314,6 +3326,19 @@ SPEC = {
                                         'completer': 'language',
                                         'kind': 'completer',
                                     },
+                                },
+                                {
+                                    'help': 'If set, the package also carries '
+                                    'what CMS (cms-dev) reads when '
+                                    'importing it with its Polygon '
+                                    'loader: group scoring, problem '
+                                    'statements and, for contests, '
+                                    'problem directories.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--cms'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
                                 },
                                 {
                                     'help': 'Show this message and exit.',
