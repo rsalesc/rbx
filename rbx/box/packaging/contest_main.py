@@ -108,14 +108,15 @@ async def polygon(
         help=(
             'If set, the package also carries what CMS (cms-dev) reads when '
             'importing it with its Polygon loader: group scoring, problem '
-            'statements and, for contests, problem directories.'
+            'statements, a manager for interactive problems and, for contests, '
+            'problem directories.'
         ),
     ),
 ):
+    from rbx.box.packaging.cms import support as cms_support
     from rbx.box.packaging.polygon.packager import (
         PolygonContestPackager,
         PolygonPackager,
-        ensure_cms_supports,
     )
 
     if cms:
@@ -123,7 +124,7 @@ async def polygon(
         for problem in contest_package.find_contest_package_or_die().problems:
             with cd.new_package_cd(problem.get_path()):
                 package_utils.clear_package_cache()
-                ensure_cms_supports(package.find_problem_package_or_die())
+                cms_support.ensure_supported(package.find_problem_package_or_die())
 
     await run_contest_packager(
         PolygonContestPackager,

@@ -2311,8 +2311,8 @@ SPEC = {
                             'help': 'If set, the package also carries what CMS '
                             '(cms-dev) reads when importing it with its '
                             'Polygon loader: group scoring, problem '
-                            'statements and, for contests, problem '
-                            'directories.',
+                            'statements, a manager for interactive problems '
+                            'and, for contests, problem directories.',
                             'kind': 'option',
                             'multiple': False,
                             'names': ['--cms'],
@@ -3332,8 +3332,9 @@ SPEC = {
                                     'what CMS (cms-dev) reads when '
                                     'importing it with its Polygon '
                                     'loader: group scoring, problem '
-                                    'statements and, for contests, '
-                                    'problem directories.',
+                                    'statements, a manager for '
+                                    'interactive problems and, for '
+                                    'contests, problem directories.',
                                     'kind': 'option',
                                     'multiple': False,
                                     'names': ['--cms'],
