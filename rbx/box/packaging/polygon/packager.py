@@ -6,6 +6,7 @@ import typer
 
 from rbx import console, utils
 from rbx.box import header, limits_info, naming, package
+from rbx.box.contest import contest_package
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.lang import code_to_lang, code_to_langs, is_valid_lang_code
 from rbx.box.packaging import flattening
@@ -432,6 +433,20 @@ class PolygonContestPackager(BaseContestPackager):
     @classmethod
     def name(cls) -> str:
         return 'polygon'
+
+    def check_contest(self) -> None:
+        # `contest.dat` carries the contest title, which is read from a
+        # statement.
+        if self.languages():
+            return
+        contest = contest_package.find_contest_package_or_die()
+        console.console.print(
+            f'[error]Contest [item]{contest.name}[/item] cannot be packaged for '
+            'Polygon: it declares no statements, and the package takes the '
+            'contest title from one. Add a [item]statements[/item] entry to '
+            '[item]contest.rbx.yml[/item].[/error]'
+        )
+        raise typer.Exit(1)
 
     def _get_names(self) -> List[polygon_schema.Name]:
         names = [

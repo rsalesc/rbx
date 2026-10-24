@@ -74,12 +74,9 @@ class BasePackager(ABC):
         return [TaskType.BATCH]
 
     def languages(self):
+        """The statement languages, in declaration order."""
         pkg = package.find_problem_package_or_die()
-
-        res = set()
-        for statement in pkg.expanded_statements:
-            res.add(statement.language)
-        return list(res)
+        return list(dict.fromkeys(st.language for st in pkg.expanded_statements))
 
     @classmethod
     def package_basename(cls):
@@ -178,13 +175,18 @@ class BaseContestPackager(ABC):
     ) -> pathlib.Path:
         pass
 
-    def languages(self):
-        pkg = contest_package.find_contest_package_or_die()
+    def check_contest(self) -> None:
+        """Refuse a contest this packager cannot package.
 
-        res = set()
-        for statement in pkg.expanded_statements:
-            res.add(statement.language)
-        return list(res)
+        Runs before any problem is built, so a refusal costs nothing. Raise
+        `typer.Exit` after saying why.
+        """
+        return
+
+    def languages(self):
+        """The contest statement languages, in declaration order."""
+        pkg = contest_package.find_contest_package_or_die()
+        return list(dict.fromkeys(st.language for st in pkg.expanded_statements))
 
     def statement_types(self) -> List[StatementType]:
         return [StatementType.PDF]
@@ -194,7 +196,7 @@ class BaseContestPackager(ABC):
         for statement in contest.expanded_statements:
             if statement.language == lang:
                 return statement
-        raise
+        raise ValueError(f'No contest statement for language {lang} found.')
 
 
 class ContestZipper(BaseContestPackager):

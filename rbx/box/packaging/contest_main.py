@@ -27,6 +27,8 @@ async def run_contest_packager(
     **kwargs,
 ):
     contest = contest_package.find_contest_package_or_die()
+    packager = contest_packager_cls(**kwargs)
+    packager.check_contest()
 
     if limits_info.get_saved_limits_profile(contest_packager_cls.name()) is not None:
         console.console.print(
@@ -55,7 +57,6 @@ async def run_contest_packager(
             )
 
     # Build statements.
-    packager = contest_packager_cls(**kwargs)
     statement_types = packager.statement_types()
     built_statements = []
 
