@@ -88,7 +88,10 @@ class AssetListing(BaseModel):
 def console_to_stderr() -> Iterator[None]:
     """Keep stdout clean for `--json`: rbx reports a broken package through the
     console, which otherwise writes to stdout."""
-    previous = console.console.file
+    # Restore what was set, not `file`: unset, `file` resolves to the sys.stdout
+    # of the moment (under pytest, one test's capture stream), and pinning that
+    # would outlive the stream.
+    previous = console.console._file  # noqa: SLF001
     console.console.file = sys.stderr
     try:
         yield
