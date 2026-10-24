@@ -63,7 +63,7 @@ Polygon (offline + upload) and BOCA are **flat** judges: they compile each sourc
 **`PolygonPackager`** -- Produces `problem.zip` containing:
 - `problem.xml` (serialized from `pydantic-xml` models in `xml_schema.py`)
 - `files/` -- `testlib.h`, `rbx.h`, `check.cpp`, `interactor.cpp`, plus any flattened dependency headers (see [Source Flattening](#source-flattening-flatteningpy))
-- `tests/` -- testcases named `001`, `001.a`, etc.; samples carry `sample="true"`
+- `tests/` -- testcases named `01`, `01.a`, etc.; samples carry `sample="true"`
 - `solutions/` -- every solution, flattened with the checker/interactor (`enforce_stem_unique`), tagged in `<assets><solutions>` (`_get_solution_tag`: first ACCEPTED is `main`, RE/INCORRECT become `rejected`, ANY is skipped -- Polygon has no tag for it)
 - POINTS problems: each test carries its rbx group, and `<groups>` mirrors rbx scoring -- `complete-group` with the group's `score` and its `deps` (only groups with built tests). The score is also put on the group's last test.
 - Tests are `tests/%02d` (Polygon's default; CMS's importer hardcodes it) and `<judging>` writes `input-file`/`output-file` as real Polygon packages do.
