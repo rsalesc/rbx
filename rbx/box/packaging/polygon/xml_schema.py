@@ -35,9 +35,31 @@ class Test(BaseXmlModel, search_mode='unordered'):
 
     sample: Optional[bool] = attr(default=None)
 
+    group: Optional[str] = attr(default=None)
+
+    points: Optional[float] = attr(default=None)
+
     description: Optional[str] = attr(default=None)
 
     verdict: Optional[str] = attr(default=None)
+
+
+class Dependency(BaseXmlModel, search_mode='unordered'):
+    group: str = attr()
+
+
+class Group(BaseXmlModel, search_mode='unordered'):
+    name: str = attr()
+    points: Optional[float] = attr(default=None)
+    points_policy: Literal['complete-group', 'each-test'] = attr(
+        'points-policy', default='complete-group'
+    )
+    feedback_policy: Literal['none', 'points', 'icpc', 'complete'] = attr(
+        'feedback-policy', default='icpc'
+    )
+    dependencies: List[Dependency] = wrapped(
+        'dependencies', element(tag='dependency', default=[]), default=[]
+    )
 
 
 class Testset(BaseXmlModel, search_mode='unordered'):
@@ -53,6 +75,10 @@ class Testset(BaseXmlModel, search_mode='unordered'):
     answerPattern: Optional[str] = element('answer-path-pattern', default=None)
 
     tests: List[Test] = wrapped('tests', element(tag='test'), default_factory=list)
+
+    groups: List[Group] = wrapped(
+        'groups', element(tag='group', default=[]), default=[]
+    )
 
 
 class Judging(BaseXmlModel, search_mode='unordered'):

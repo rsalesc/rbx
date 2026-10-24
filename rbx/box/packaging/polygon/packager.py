@@ -1,6 +1,6 @@
 import pathlib
 import shutil
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import typer
 
@@ -18,7 +18,7 @@ from rbx.box.packaging.packager import (
 )
 from rbx.box.packaging.polygon import xml_schema as polygon_schema
 from rbx.box.packaging.polygon.utils import get_polygon_language_from_code_item
-from rbx.box.schema import ExpectedOutcome, Solution, TaskType
+from rbx.box.schema import ExpectedOutcome, ScoreType, Solution, TaskType
 from rbx.box.statements.schema import (
     ConversionStep,
     ConversionType,
@@ -161,6 +161,44 @@ class PolygonPackager(BasePackager):
     def _get_manual_test(self, is_sample: bool) -> polygon_schema.Test:
         return polygon_schema.Test(method='manual', sample=is_sample or None)
 
+    def _get_tests_and_groups(
+        self, entries: List[GenerationTestcaseEntry]
+    ) -> Tuple[List[polygon_schema.Test], List[polygon_schema.Group]]:
+        tests = [self._get_manual_test(entry.is_sample()) for entry in entries]
+        pkg = package.find_problem_package_or_die()
+        if pkg.scoring != ScoreType.POINTS:
+            return tests, []
+
+        # A group scores only when every one of its tests passes and every group
+        # it depends on scored too, which is Polygon's `complete-group` policy.
+        # The score also goes on the group's last test, so a judge that sums
+        # test points instead of reading the group's agrees with one that does.
+        last_test_of = {entry.group_entry.group: i for i, entry in enumerate(entries)}
+        scores = {group.name: group.score for group in pkg.testcases}
+        for i, (test, entry) in enumerate(zip(tests, entries)):
+            group = entry.group_entry.group
+            test.group = group
+            test.points = float(scores[group]) if last_test_of[group] == i else 0.0
+
+        # A group with no built tests has nothing to judge; leave it out.
+        groups = []
+        for group in pkg.testcases:
+            if group.name not in last_test_of:
+                continue
+            groups.append(
+                polygon_schema.Group(
+                    name=group.name,
+                    points=float(group.score),
+                    feedback_policy='complete' if group.name == 'samples' else 'icpc',
+                    dependencies=[
+                        polygon_schema.Dependency(group=dep)
+                        for dep in group.deps
+                        if dep in last_test_of
+                    ],
+                )
+            )
+        return tests, groups
+
     def _get_single_testset(self) -> polygon_schema.Testset:
         pkg = package.find_problem_package_or_die()
 
@@ -182,6 +220,8 @@ class PolygonPackager(BasePackager):
         assert limits.time is not None
         assert limits.memory is not None
 
+        tests, groups = self._get_tests_and_groups(entries)
+
         return polygon_schema.Testset(
             name='tests',
             timelimit=limits.time,
@@ -189,7 +229,8 @@ class PolygonPackager(BasePackager):
             size=len(entries),
             inputPattern='tests/%03d',
             answerPattern='tests/%03d.a',
-            tests=[self._get_manual_test(entry.is_sample()) for entry in entries],
+            tests=tests,
+            groups=groups,
         )
 
     def _get_judging(self) -> polygon_schema.Judging:
