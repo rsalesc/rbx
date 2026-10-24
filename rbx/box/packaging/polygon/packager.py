@@ -190,6 +190,10 @@ class PolygonPackager(BasePackager):
             polygon_schema.File(path='files/rbx.h', type='h.g++'),
         ]
         for dep in ns.dep_files():
+            # A package shipping its own testlib.h/rbx.h overwrites the bundled
+            # copy on materialize; declare the path once.
+            if any(f.path == f'files/{dep.flat_name}' for f in files):
+                continue
             ftype = (
                 'h.g++'
                 if dep.flat_name.endswith(('.h', '.hpp', '.hh', '.hxx'))
@@ -310,7 +314,9 @@ class PolygonContestPackager(BaseContestPackager):
         names = [
             polygon_schema.Name(
                 language=code_to_langs([lang])[0],
-                value=self.get_statement_for_language(lang).title,
+                value=naming.get_contest_title(
+                    lang, self.get_statement_for_language(lang)
+                ),
             )
             for lang in self.languages()
             if is_valid_lang_code(lang)
@@ -356,7 +362,10 @@ class PolygonContestPackager(BaseContestPackager):
 
     def _get_dat(self, built_packages: List[BuiltProblemPackage]) -> str:
         dat = DAT_TEMPLATE.format(
-            name=self.get_statement_for_language(self.languages()[0]).title,
+            name=naming.get_contest_title(
+                self.languages()[0],
+                self.get_statement_for_language(self.languages()[0]),
+            ),
             problems=len(built_packages),
         )
         return (
