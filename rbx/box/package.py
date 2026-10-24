@@ -297,7 +297,7 @@ def get_statements_build_path(root: pathlib.Path = pathlib.Path()) -> pathlib.Pa
 @functools.cache
 def get_scoring(root: pathlib.Path = pathlib.Path()) -> ScoreType:
     package = find_problem_package_or_die(root)
-    return package.scoring
+    return package.score_type
 
 
 @functools.cache

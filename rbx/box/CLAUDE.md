@@ -40,6 +40,8 @@ Each has a `match(outcome: Outcome) -> bool` method. `INCORRECT` matches WA/RTE/
 ### `ScoreType` / `TaskType`
 
 - `ScoreType`: `BINARY` (ICPC all-or-nothing) or `POINTS` (IOI subtask scoring)
+- `Package.scoring` is `ScoreType | PointsScoring`: `points` is shorthand for `PointsScoring()`, and the mapping form (`dependencies: manual|samples|ladder`, `aggregation: min`) always means points. **Read `pkg.score_type` / `pkg.points_scoring`, never compare `pkg.scoring` to the enum** -- a configured problem holds a `PointsScoring`, which equals neither member.
+- **Group dependencies:** read `pkg.group_dependencies` (`rbx/box/scoring/dependencies.py`), never `TestcaseGroup.deps`, which holds only the declared edges; the policy (`samples`: every group -> `samples`; `ladder`: each group -> the previous, starting at `samples`) is unioned in there. `.over(present)` contracts the graph to groups that built tests without losing what an empty group chained together; `flatten()` is how a judge with independent groups (MOJ, CMS) reproduces the dependencies under `min`. Only `min` exists; `mul`/`threshold`/`sum` (CMS score types) are the planned extensions, and `flatten` refuses anything else.
 - `TaskType`: `BATCH` (standard) or `COMMUNICATION` (interactive)
 
 ## Package Discovery (`package.py`, `cd.py`)

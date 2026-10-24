@@ -17,7 +17,8 @@ from rbx.box.packaging.polygon.packager import (
     PolygonPackager,
     ensure_cms_supports,
 )
-from rbx.box.schema import ScoreType, TaskType, Testcase, TestcaseGroup
+from rbx.box.schema import PointsScoring, ScoreType, TaskType, Testcase, TestcaseGroup
+from rbx.box.scoring.dependencies import DependencyPolicy
 from rbx.box.testcase_schema import TestcaseEntry
 
 
@@ -66,10 +67,31 @@ def test_cms_conf_scores_points_groups_with_their_deps(testing_pkg, tmp_path):
                 [0, '^(000)$'],
                 [20, '^(001|002)$'],
                 [30, '^(003|001|002)$'],
-                [50, '^(004|005|003|001|002)$'],
+                [50, '^(004|005|001|002|003)$'],
             ],
         }
     }
+
+
+def test_cms_conf_follows_the_ladder_across_an_empty_group(testing_pkg, tmp_path):
+    testing_pkg.yml.scoring = PointsScoring(dependencies=DependencyPolicy.LADDER)
+    testing_pkg.yml.testcases = [
+        TestcaseGroup(name='samples'),
+        TestcaseGroup(name='small', score=20),
+        # Built no tests: `big` must still chain down to `small` and `samples`.
+        TestcaseGroup(name='medium', score=30),
+        TestcaseGroup(name='big', score=50),
+    ]
+    testing_pkg.save()
+    entries = _entries(tmp_path, ['samples', 'small', 'big'])
+
+    conf = PolygonPackager(testcase_entries=entries)._get_cms_conf()  # noqa: SLF001
+
+    assert _datasets(conf)['tests']['score_type_parameters'] == [
+        [0, '^(000)$'],
+        [20, '^(001|000)$'],
+        [50, '^(002|000|001)$'],
+    ]
 
 
 def test_cms_conf_makes_binary_problems_all_or_nothing(testing_pkg, tmp_path):

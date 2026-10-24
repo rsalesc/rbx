@@ -136,7 +136,7 @@ reads them. Those are contest settings on MOJ, not something a package can set.
 ## Test groups and scoring
 
 Test groups are supported, and translate into MOJ's own scoring file for problems that score by
-subtasks -- the ones whose `scoring` is set to `points` in `problem.rbx.yml`, with a `score` per
+subtasks -- the ones whose `scoring` is `points`, or a mapping configuring it, in `problem.rbx.yml`, with a `score` per
 group. ICPC-style problems (`scoring: binary`, the default) ship no scoring file at all: MOJ
 scores them by percentage of tests passed, and {{tags.accepted}} still requires all of them.
 
@@ -145,6 +145,16 @@ Two constraints come from MOJ's side, and {{rbx}} checks both before packaging:
 - Group **weights must be integers**. MOJ's parser strips everything that isn't a digit, so a
   `40.5` would be read as `405`.
 - Group **names must not contain `-`**, which MOJ uses as a field separator.
+
+A group can also depend on other groups, so that it only scores when every group it depends on
+passes too. You list them in the group's `deps`. To add them to every group at once, set
+`scoring.dependencies` in [`problem.rbx.yml`](/setters/reference/package). With `samples`, every
+group depends on `samples`. With `ladder`, each group depends on the one before it.
+
+MOJ has no such notion: it scores each group on its own tests alone. So {{rbx}} copies into each
+group the tests of every group it depends on, directly or through another group, and MOJ then
+scores it exactly as `rbx run` does. The copies make the package larger and the judging slower,
+and {{rbx}} prints how many it made.
 
 !!! danger "Per-test partial credit is unavailable"
     MOJ reports a {{testlib}} `quitp` (a partially correct verdict) as a judge error. If you

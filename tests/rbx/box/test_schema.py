@@ -1120,3 +1120,97 @@ class TestTleOrMle:
         # and must be left out of time-limit estimation.
         assert ExpectedOutcome.TLE_OR_MLE.is_slow()
         assert ExpectedOutcome.TLE_OR_MLE.matches_tle_and_is_incorrect()
+
+
+class TestPointsScoring:
+    def _package(self, scoring, testcases=None):
+        from rbx.box.schema import Package, TestcaseGroup
+
+        return Package(
+            name='okay',
+            timeLimit=1000,
+            memoryLimit=256,
+            scoring=scoring,
+            testcases=[
+                TestcaseGroup(name='samples'),
+                TestcaseGroup(name='small', score=40),
+                TestcaseGroup(name='big', score=60),
+            ]
+            if testcases is None
+            else testcases,
+        )
+
+    def test_points_is_shorthand_for_the_defaults(self):
+        from rbx.box.schema import PointsScoring, ScoreType
+        from rbx.box.scoring.dependencies import Aggregation, DependencyPolicy
+
+        package = self._package('points')
+
+        assert package.scoring == PointsScoring(
+            dependencies=DependencyPolicy.MANUAL, aggregation=Aggregation.MIN
+        )
+        assert package.score_type == ScoreType.POINTS
+
+    def test_binary_stays_the_enum(self):
+        from rbx.box.schema import ScoreType
+
+        package = self._package('binary', testcases=[])
+
+        assert package.scoring == ScoreType.BINARY
+        assert package.score_type == ScoreType.BINARY
+        assert package.points_scoring is None
+
+    def test_the_mapping_form_means_points(self):
+        from rbx.box.schema import ScoreType
+        from rbx.box.scoring.dependencies import DependencyPolicy
+
+        package = self._package({'dependencies': 'ladder'})
+
+        assert package.score_type == ScoreType.POINTS
+        assert package.points_scoring is not None
+        assert package.points_scoring.dependencies == DependencyPolicy.LADDER
+
+    def test_unknown_aggregations_are_rejected(self):
+        with pytest.raises(ValidationError, match='aggregation'):
+            self._package({'aggregation': 'sum'})
+
+    def test_group_dependencies_include_the_policy_edges(self):
+        package = self._package({'dependencies': 'samples'})
+
+        assert package.group_dependencies.direct('big') == ['samples']
+        # The declared field is left alone.
+        assert package.testcases[2].deps == []
+
+    def test_unknown_dependencies_are_rejected(self):
+        from rbx.box.schema import TestcaseGroup
+
+        with pytest.raises(ValidationError, match='not a declared test group'):
+            self._package(
+                'points',
+                testcases=[
+                    TestcaseGroup(name='samples'),
+                    TestcaseGroup(name='small', deps=['typo']),
+                ],
+            )
+
+    def test_a_cycle_through_a_policy_edge_is_rejected(self):
+        from rbx.box.schema import TestcaseGroup
+
+        # The ladder makes `big` depend on `small`; declaring the reverse closes it.
+        with pytest.raises(ValidationError, match='Cyclic dependency'):
+            self._package(
+                {'dependencies': 'ladder'},
+                testcases=[
+                    TestcaseGroup(name='samples'),
+                    TestcaseGroup(name='small', deps=['big']),
+                    TestcaseGroup(name='big'),
+                ],
+            )
+
+    def test_round_trips_through_yaml(self):
+        from rbx import utils
+        from rbx.box.schema import Package
+
+        package = self._package({'dependencies': 'ladder'})
+
+        assert utils.model_from_yaml(Package, utils.model_to_yaml(package)) == package

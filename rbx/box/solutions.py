@@ -87,6 +87,7 @@ from rbx.box.schema import (
     Testcase,
     TestcaseGroup,
 )
+from rbx.box.scoring.dependencies import GroupDependencies
 from rbx.box.tasks import (
     get_limits_for_language,
     get_testcase_output_path,
@@ -208,12 +209,11 @@ class _AbortGate:
         self.groups = groups
         self.scoring = scoring
         self.skipped_groups: Set[str] = set()
-        # The group graph is fixed for the gate's lifetime, so the reverse
-        # adjacency is built once here rather than on every trip.
-        self.dependents: Dict[str, List[str]] = collections.defaultdict(list)
-        for group in groups:
-            for dep in group.deps:
-                self.dependents[dep].append(group.name)
+        # The group graph is fixed for the gate's lifetime, so it is built once
+        # here rather than on every trip.
+        self.dependencies = GroupDependencies(
+            {group.name: group.deps for group in groups}
+        )
 
     def is_skipped(self, group_name: str) -> bool:
         return group_name in self.skipped_groups
@@ -225,23 +225,9 @@ class _AbortGate:
             self.skipped_groups.update(group.name for group in self.groups)
             return
         self.skipped_groups.add(group_name)
-        self.skipped_groups.update(self._dependents_of(group_name))
-
-    def _dependents_of(self, group_name: str) -> Set[str]:
-        """Groups that depend on `group_name`, directly or indirectly.
-
-        They would score 0 anyway -- `_check_deps` zeroes a group whenever any
-        of its dependencies failed.
-        """
-        res: Set[str] = set()
-        stack = list(self.dependents[group_name])
-        while stack:
-            name = stack.pop()
-            if name in res:
-                continue
-            res.add(name)
-            stack.extend(self.dependents[name])
-        return res
+        # They would score 0 anyway -- `_check_deps` zeroes a group whenever any
+        # of its dependencies failed.
+        self.skipped_groups.update(self.dependencies.dependents(group_name))
 
 
 def _resolve_solution_limits(
@@ -741,6 +727,9 @@ async def _get_report_skeleton(
     for entry in built_entries:
         testcases_per_group[entry.group_entry.group].append(entry.metadata.copied_to)
 
+    # Groups with no built tests are left out, so their dependents depend
+    # directly on whatever those chained them to.
+    group_dependencies = pkg.group_dependencies.over(list(testcases_per_group))
     groups = []
     for group in pkg.testcases:
         if group.name not in testcases_per_group:
@@ -749,7 +738,7 @@ async def _get_report_skeleton(
             GroupSkeleton(
                 name=group.name,
                 score=group.score,
-                deps=group.deps,
+                deps=group_dependencies.direct(group.name),
                 testcases=testcases_per_group[group.name],
             )
         )

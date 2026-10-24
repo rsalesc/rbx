@@ -347,6 +347,11 @@ reading `score-summary.sh`:
   be read as `405`. (`TestcaseGroup.score` is already an `int`; the check is defensive.)
 - Group names must not contain `-` — lines are split with `IFS='-'`. The sanitizer
   reduces names to `[A-Za-z0-9_]`.
+- **Dependencies are emulated by copying.** `score-summary.sh` scores each group on its own
+  glob, so `_dependency_copies` (via `dependencies.flatten`) copies every dependency's tests
+  into the dependent group, continuing that group's counter so both heuristics above place
+  them. The copies stay out of `testcase_names()` (the runner's pairing contract) and a probe
+  gets none.
 - A group with **no built tests is skipped**. An unmatched glob counts as "not
   executed" in `score-summary.sh`, which can never be Accepted.
 - **Per-test partial credit is unavailable.** testlib `quitp`/`_points` maps to a

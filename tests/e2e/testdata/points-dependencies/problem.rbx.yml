@@ -1,0 +1,52 @@
+name: points-dependencies
+timeLimit: 1000
+memoryLimit: 256
+
+# `ladder`: `small` depends on `samples`, `big` on `small` -- so a group only
+# scores when every group before it did, samples included (#941).
+scoring:
+  dependencies: ladder
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+    score: 100
+  # Wrong on the first sample only. Its `small` and `big` answers are right, but
+  # both groups sit on top of `samples` in the ladder.
+  - path: sols/sample-wrong.cpp
+    outcome: incorrect
+    score: 0
+  # Wrong on `small` only, which `big` depends on.
+  - path: sols/small-wrong.cpp
+    outcome: incorrect
+    score: 0
+
+testcases:
+  - name: samples
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 1 2
+          - name: gen
+            args: 3 4
+  - name: small
+    score: 40
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 5 6
+          - name: gen
+            args: 7 8
+  - name: big
+    score: 60
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 1000 2000
