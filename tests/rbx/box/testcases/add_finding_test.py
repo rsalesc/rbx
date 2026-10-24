@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import json
 import pathlib
@@ -14,7 +15,12 @@ from rbx.box.testing import testing_package
 
 @pytest.fixture
 def runner() -> CliRunner:
-    # add-finding is synchronous, so it needs no event loop.
+    # add-finding runs through `syncer`, which needs a current event loop: a
+    # test that ran `asyncio.run` before this one leaves none behind.
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
     return CliRunner()
 
 
