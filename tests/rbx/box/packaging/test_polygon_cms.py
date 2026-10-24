@@ -7,13 +7,17 @@ takes each contest problem's directory from the basename of its `url`.
 import pathlib
 import types
 
+import pytest
+import typer
+
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
 from rbx.box.packaging.polygon import xml_schema as polygon_schema
 from rbx.box.packaging.polygon.packager import (
     PolygonContestPackager,
     PolygonPackager,
+    ensure_cms_supports,
 )
-from rbx.box.schema import ScoreType, Testcase, TestcaseGroup
+from rbx.box.schema import ScoreType, TaskType, Testcase, TestcaseGroup
 from rbx.box.testcase_schema import TestcaseEntry
 
 
@@ -104,3 +108,12 @@ def test_judging_io_attributes_are_hyphenated():
 
     assert b'input-file=""' in xml
     assert b'output-file=""' in xml
+
+
+def test_cms_refuses_interactive_problems(testing_pkg):
+    interactive = testing_pkg.yml.model_copy(update={'type': TaskType.COMMUNICATION})
+
+    # CMS's Polygon loader always creates batch tasks (#943).
+    with pytest.raises(typer.Exit):
+        ensure_cms_supports(interactive)
+    ensure_cms_supports(testing_pkg.yml)

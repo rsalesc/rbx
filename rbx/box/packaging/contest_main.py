@@ -115,7 +115,15 @@ async def polygon(
     from rbx.box.packaging.polygon.packager import (
         PolygonContestPackager,
         PolygonPackager,
+        ensure_cms_supports,
     )
+
+    if cms:
+        # Before any problem is built: one interactive problem fails the lot.
+        for problem in contest_package.find_contest_package_or_die().problems:
+            with cd.new_package_cd(problem.get_path()):
+                package_utils.clear_package_cache()
+                ensure_cms_supports(package.find_problem_package_or_die())
 
     await run_contest_packager(
         PolygonContestPackager,

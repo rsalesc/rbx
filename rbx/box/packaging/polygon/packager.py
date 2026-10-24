@@ -19,7 +19,7 @@ from rbx.box.packaging.packager import (
 )
 from rbx.box.packaging.polygon import xml_schema as polygon_schema
 from rbx.box.packaging.polygon.utils import get_polygon_language_from_code_item
-from rbx.box.schema import ExpectedOutcome, ScoreType, Solution, TaskType
+from rbx.box.schema import ExpectedOutcome, Package, ScoreType, Solution, TaskType
 from rbx.box.statements.schema import (
     ConversionStep,
     ConversionType,
@@ -59,6 +59,24 @@ def _get_solution_tag(solution: Solution, is_main: bool) -> Optional[str]:
     if solution.outcome == ExpectedOutcome.ANY:
         return None
     return _SOLUTION_TAGS.get(solution.outcome, 'rejected')
+
+
+def ensure_cms_supports(pkg: Package):
+    """Refuse what CMS cannot judge from a Polygon package (`--cms`).
+
+    CMS's Polygon loader creates every task as Batch and never reads the
+    interactor, so an interactive problem would import and then fail every
+    submission. Called before the build too, so the refusal is not paid for
+    with a full verification run.
+    """
+    if pkg.type == TaskType.COMMUNICATION:
+        console.console.print(
+            f'[error]Problem [item]{pkg.name}[/item] is interactive, which CMS '
+            'cannot judge from a Polygon package: its Polygon importer creates every '
+            'task as a batch task. Package it without [item]--cms[/item]. See '
+            'https://github.com/rsalesc/rbx/issues/943.[/error]'
+        )
+        raise typer.Exit(1)
 
 
 def _select_main_language(
@@ -469,11 +487,7 @@ class PolygonPackager(BasePackager):
                 (into_path / f'tests/{i + 1:02d}.a').touch()
 
         if self.cms:
-            if pkg.interactor is not None:
-                console.console.print(
-                    '[warning]CMS imports Polygon packages as batch tasks, so this '
-                    'interactive problem will not be judged correctly there.[/warning]'
-                )
+            ensure_cms_supports(pkg)
             self._write_cms_statements(built_statements, into_path)
             (files_path / 'cms_conf.py').write_text(self._get_cms_conf())
 
