@@ -327,6 +327,10 @@ This file is complex, and its full reference documentation lives [here](../refer
 The environment of the `default` preset is a good starting point for most contests. You can read
 it [here](https://github.com/rsalesc/rbx/blob/main/rbx/resources/presets/default/env.rbx.yml).
 
+If you always run your contests on CMS the same way, the preset's `env.rbx.yml` is also
+where those CMS settings belong, and every contest that uses the preset gets them. See
+[Configuring CMS](../packaging/polygon.md#configuring-cms).
+
 ### Setting up the preset definition
 
 The preset definition file is a `preset.rbx.yml` file that will be used to define the preset

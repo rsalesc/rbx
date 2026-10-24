@@ -73,11 +73,13 @@ async def polygon(
         ),
     ),
 ):
+    from rbx.box.packaging.cms import settings as cms_settings
     from rbx.box.packaging.cms import support as cms_support
     from rbx.box.packaging.polygon.packager import PolygonPackager
 
     if cms:
         cms_support.ensure_supported(package.find_problem_package_or_die())
+        cms_settings.warn_for_polygon(cms_settings.resolve())
 
     if upload_tests_raw and not upload:
         raise typer.BadParameter(

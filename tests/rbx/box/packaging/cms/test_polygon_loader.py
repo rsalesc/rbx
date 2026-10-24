@@ -1,19 +1,72 @@
 """What CMS's Polygon importer reads from a `--cms` Polygon package.
 
-The rendered `cms_conf.py` runs inside CMS. A batch problem's needs nothing from
-CMS, so it is executed here; an interactive one's would import `cms`, so only
-its configuration is checked.
+The rendered `cms_conf.py` runs inside CMS. A batch problem's only stores tests
+with CMS, so it is executed here against stand-ins for the two `cms` classes it
+uses; an interactive one's also compiles the manager, so only its configuration
+is checked.
 """
 
 import ast
+import datetime
+import pathlib
+import sys
+import types
+from typing import Any, List, NamedTuple
+
+import pytest
 
 from rbx.box.packaging.cms import communication, polygon_loader
+from rbx.box.packaging.cms.extension import CmsExtension
 from rbx.box.schema import Interactor, TaskType
 from tests.rbx.box.packaging.cms._entries import build_entries
 
 
-def _run(conf: str) -> dict:
-    namespace = {'__file__': '/pkg/problems/A/files/cms_conf.py'}
+class StoredTestcase(NamedTuple):
+    codename: str
+    public: bool
+    input: str
+    output: str
+
+
+class FileCacher:
+    def put_file_from_path(self, path: str, description: str) -> str:
+        return pathlib.Path(path).read_text()
+
+
+@pytest.fixture
+def cms_modules(monkeypatch):
+    db = types.ModuleType('cms.db')
+    db.Testcase = StoredTestcase  # type: ignore[attr-defined]
+    filecacher = types.ModuleType('cms.db.filecacher')
+    filecacher.FileCacher = FileCacher  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, 'cms', types.ModuleType('cms'))
+    monkeypatch.setitem(sys.modules, 'cms.db', db)
+    monkeypatch.setitem(sys.modules, 'cms.db.filecacher', filecacher)
+
+
+def _polygon_package(root: pathlib.Path, inputs: List[str]) -> pathlib.Path:
+    """The parts of a Polygon package the conf reads: `problem.xml` and tests."""
+    (root / 'files').mkdir(parents=True)
+    (root / 'tests').mkdir()
+    for i, data in enumerate(inputs):
+        (root / 'tests' / f'{i + 1:02d}').write_text(data)
+        (root / 'tests' / f'{i + 1:02d}.a').write_text(f'answer {i}')
+    (root / 'problem.xml').write_text(
+        '<problem><judging><testset name="tests">'
+        f'<test-count>{len(inputs)}</test-count>'
+        '<input-path-pattern>tests/%02d</input-path-pattern>'
+        '<answer-path-pattern>tests/%02d.a</answer-path-pattern>'
+        '</testset></judging></problem>'
+    )
+    return root / 'files' / polygon_loader.CONF_FILE
+
+
+# Every test public: the conf then stores no test, so it needs no `cms`.
+ALL_PUBLIC = CmsExtension.model_validate({'task': {'publicTestcases': 'all'}})
+
+
+def _run(conf: str, path: str = '/pkg/problems/A/files/cms_conf.py') -> dict:
+    namespace: dict[str, Any] = {'__file__': path}
     exec(conf, namespace)
     return namespace
 
@@ -32,25 +85,72 @@ def _interactive(testing_pkg, legacy: bool):
     testing_pkg.save()
 
 
-def test_batch_conf_sets_group_scoring_and_score_mode(testing_pkg, tmp_path):
+def test_batch_conf_sets_group_scoring_and_score_mode(
+    testing_pkg, tmp_path, cms_modules
+):
     entries = build_entries(tmp_path, ['main', 'main'])
+    conf = _polygon_package(tmp_path / 'A', ['1', '2'])
 
-    namespace = _run(polygon_loader.render_conf(testing_pkg.yml, entries))
+    namespace = _run(polygon_loader.render_conf(testing_pkg.yml, entries), str(conf))
 
     # The task score is the best submission's, not the last one's.
     assert namespace['general'] == {'score_mode': 'max'}
-    assert namespace['datasets'] == {
-        'tests': {
-            'score_type': 'GroupMin',
-            'score_type_parameters': [[100, '.*']],
+    assert namespace['datasets']['tests']['score_type'] == 'GroupMin'
+    assert namespace['datasets']['tests']['score_type_parameters'] == [[100, '.*']]
+
+
+def test_batch_conf_makes_only_samples_public(testing_pkg, tmp_path, cms_modules):
+    entries = build_entries(tmp_path, ['samples', 'main', 'main'])
+    conf = _polygon_package(tmp_path / 'A', ['sample', 'one', 'two'])
+
+    namespace = _run(polygon_loader.render_conf(testing_pkg.yml, entries), str(conf))
+
+    assert namespace['datasets']['tests']['testcases'] == {
+        '000': StoredTestcase('000', True, 'sample', 'answer 0'),
+        '001': StoredTestcase('001', False, 'one', 'answer 1'),
+        '002': StoredTestcase('002', False, 'two', 'answer 2'),
+    }
+
+
+def test_batch_conf_leaves_the_tests_alone_when_all_are_public(testing_pkg, tmp_path):
+    entries = build_entries(tmp_path, ['samples', 'main'])
+    namespace = _run(polygon_loader.render_conf(testing_pkg.yml, entries, ALL_PUBLIC))
+
+    assert 'testcases' not in namespace['datasets']['tests']
+
+
+def test_conf_sets_the_task_settings(testing_pkg, tmp_path):
+    cms_settings = CmsExtension.model_validate(
+        {
+            'contest': {'allowUserTests': True},
+            'task': {
+                'scoreMode': 'maxSubtask',
+                'feedbackLevel': 'restricted',
+                'maxSubmissionNumber': 50,
+                'minSubmissionInterval': 60,
+                'publicTestcases': 'all',
+                'tokens': {'mode': 'finite', 'genInterval': 1800},
+            },
         }
+    )
+
+    namespace = _run(polygon_loader.render_conf(testing_pkg.yml, [], cms_settings))
+
+    # Only task settings: the importer takes nothing else from this file.
+    assert namespace['general'] == {
+        'score_mode': 'max_subtask',
+        'feedback_level': 'restricted',
+        'max_submission_number': 50,
+        'min_submission_interval': datetime.timedelta(seconds=60),
+        'token_mode': 'finite',
+        'token_gen_interval': datetime.timedelta(minutes=30),
     }
 
 
 def test_conf_packs_inputs_like_the_manager_reads_them(testing_pkg, tmp_path):
     # The conf packs answers into the tests inside CMS; a native packager would
     # do it with `communication.pack_input`. Both must agree with the manager.
-    namespace = _run(polygon_loader.render_conf(testing_pkg.yml, []))
+    namespace = _run(polygon_loader.render_conf(testing_pkg.yml, [], ALL_PUBLIC))
 
     for data, answer in [(b'', b''), (b'5 3\n', b'2\n'), (b'\x00\n\n', b'x')]:
         assert namespace['_pack_input'](data, answer) == communication.pack_input(

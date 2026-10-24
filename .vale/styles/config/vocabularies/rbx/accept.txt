@@ -23,6 +23,7 @@ Codeforces
 DOMjudge(?:'s)?
 BOCA(?:'s)?
 MOJ(?:'s)?
+CMS(?:'s)?
 Taskbook
 Maratona
 Mirzayanov
