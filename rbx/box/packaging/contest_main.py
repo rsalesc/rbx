@@ -114,6 +114,7 @@ async def polygon(
         ),
     ),
 ):
+    from rbx.box.packaging.cms import settings as cms_settings
     from rbx.box.packaging.cms import support as cms_support
     from rbx.box.packaging.polygon.packager import (
         PolygonContestPackager,
@@ -121,6 +122,7 @@ async def polygon(
     )
 
     if cms:
+        cms_settings.warn_for_polygon(cms_settings.resolve())
         # Before any problem is built: one interactive problem fails the lot.
         for problem in contest_package.find_contest_package_or_die().problems:
             with cd.new_package_cd(problem.get_path()):

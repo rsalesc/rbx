@@ -6,11 +6,12 @@ CMS: Polygon and Codeforces ignore all of them.
 """
 
 import pathlib
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.lang import code_to_langs
-from rbx.box.packaging.cms import communication, scoring
+from rbx.box.packaging.cms import communication, scoring, settings
+from rbx.box.packaging.cms.extension import CmsExtension
 from rbx.box.packaging.packager import BuiltStatement
 from rbx.box.schema import Package
 from rbx.config import get_resources_file
@@ -19,18 +20,27 @@ CONF_FILE = 'cms_conf.py'
 _CONFIG_LINE = 'CONFIG = {}  # rbx:config'
 
 
-def render_conf(pkg: Package, entries: Sequence[GenerationTestcaseEntry]) -> str:
+def render_conf(
+    pkg: Package,
+    entries: Sequence[GenerationTestcaseEntry],
+    cms_settings: Optional[CmsExtension] = None,
+) -> str:
     """`files/cms_conf.py`: what CMS cannot read from `problem.xml`.
 
-    The importer scores every test equally and imports every task as Batch,
-    but runs this file and merges its `general` into the task and its
-    `datasets` into the task's dataset. It sets rbx's group scoring and score
-    mode, and for an interactive problem compiles and
-    stores rbx's CMS manager (see `communication`), which needs the sources
-    `write_files` ships next to it.
+    The importer scores every test equally, marks every test public and imports
+    every task as Batch, but runs this file and merges its `general` into the
+    task and its `datasets` into the task's dataset. It sets rbx's group
+    scoring, the task settings of `cms_settings` (see `settings`) and which
+    tests are public, and for an interactive problem compiles and stores rbx's
+    CMS manager (see `communication`), which needs the sources `write_files`
+    ships next to it.
     """
+    task = cms_settings.task if cms_settings is not None else None
+    general = settings.task_keys(task)
     config = {
-        'score_mode': scoring.SCORE_MODE,
+        'general': general,
+        'durations': sorted(settings.DURATION_KEYS & general.keys()),
+        'public': settings.public_testcases(task, entries),
         'score_type': scoring.SCORE_TYPE,
         'score_type_parameters': scoring.group_min_parameters(pkg, entries),
     }
@@ -54,9 +64,10 @@ def write_files(
     pkg: Package,
     entries: Sequence[GenerationTestcaseEntry],
     files_path: pathlib.Path,
+    cms_settings: Optional[CmsExtension] = None,
 ):
     """Write `cms_conf.py`, and the manager sources it compiles, into `files/`."""
-    (files_path / CONF_FILE).write_text(render_conf(pkg, entries))
+    (files_path / CONF_FILE).write_text(render_conf(pkg, entries, cms_settings))
     if communication.is_communication(pkg):
         communication.write_sources(files_path)
 

@@ -3,6 +3,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguageExtension
+from rbx.box.packaging.cms.extension import CmsEnvironmentExtension
 from rbx.box.packaging.moj.extension import MojExtension, MojLanguageExtension
 from rbx.box.packaging.polygon.extension import PolygonLanguageExtension
 from rbx.box.tooling.domjudge.extension import (
@@ -24,6 +25,12 @@ class Extensions(BaseModel):
     domjudge: Optional[DomjudgeExtension] = Field(
         default=None,
         description='Environment-level extensions for DOMjudge tooling.',
+    )
+
+    cms: Optional[CmsEnvironmentExtension] = Field(
+        default=None,
+        description='Default CMS contest and task settings, which a contest '
+        'overrides field by field.',
     )
 
 

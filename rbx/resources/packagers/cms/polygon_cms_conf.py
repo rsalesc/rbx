@@ -5,6 +5,7 @@
 # which is how it learns what problem.xml cannot tell it. This file runs inside
 # the importer, so it can compile programs and store them with CMS's own
 # FileCacher, like the importer does for the checker.
+import datetime
 import os
 import subprocess
 import tempfile
@@ -36,11 +37,17 @@ def _read(path):
         return f.read()
 
 
-def _testcases_with_answers(cacher, build):
-    # The manager never sees the answer, so each stored input carries it. The
-    # same files the importer reads, codenames as it names them.
+def _testcases(pack):
+    # The importer marks every test public, so the tests are stored again with
+    # only the right ones public. An interactive problem's manager never sees the
+    # answer, so with `pack` each stored input carries it. The same files the
+    # importer reads, codenames as it names them.
     from cms.db import Testcase
+    from cms.db.filecacher import FileCacher
 
+    cacher = FileCacher()
+    build = tempfile.mkdtemp()
+    public = CONFIG['public']
     testset = ET.parse(os.path.join(_ROOT, 'problem.xml')).getroot()
     testset = testset.find('judging').find('testset')
     input_pattern = testset.find('input-path-pattern').text
@@ -49,14 +56,19 @@ def _testcases_with_answers(cacher, build):
     for i in range(int(testset.find('test-count').text)):
         input_file = os.path.join(_ROOT, input_pattern % (i + 1))
         answer_file = os.path.join(_ROOT, answer_pattern % (i + 1))
-        packed = os.path.join(build, 'input%d' % i)
-        with open(packed, 'wb') as f:
-            f.write(_pack_input(_read(input_file), _read(answer_file)))
+        if pack:
+            input_file_to_store = os.path.join(build, 'input%d' % i)
+            with open(input_file_to_store, 'wb') as f:
+                f.write(_pack_input(_read(input_file), _read(answer_file)))
+        else:
+            input_file_to_store = input_file
         codename = '%03d' % i
         testcases[codename] = Testcase(
             codename,
-            True,
-            cacher.put_file_from_path(packed, 'Input %d for task %s' % (i, _TASK)),
+            public == 'all' or i in public,
+            cacher.put_file_from_path(
+                input_file_to_store, 'Input %d for task %s' % (i, _TASK)
+            ),
             cacher.put_file_from_path(
                 answer_file, 'Output %d for task %s' % (i, _TASK)
             ),
@@ -87,17 +99,21 @@ def _communication(config):
             )
         },
     }
-    if config['checker_runner']:
-        dataset['testcases'] = _testcases_with_answers(cacher, build)
     return dataset
 
 
-general = {'score_mode': CONFIG['score_mode']}
+general = dict(CONFIG['general'])
+for _key in CONFIG['durations']:
+    general[_key] = datetime.timedelta(seconds=general[_key])
 datasets = {
     'tests': {
         'score_type': CONFIG['score_type'],
         'score_type_parameters': CONFIG['score_type_parameters'],
     }
 }
+_pack = False
 if CONFIG.get('communication'):
     datasets['tests'].update(_communication(CONFIG['communication']))
+    _pack = bool(CONFIG['communication']['checker_runner'])
+if _pack or CONFIG['public'] != 'all':
+    datasets['tests']['testcases'] = _testcases(_pack)

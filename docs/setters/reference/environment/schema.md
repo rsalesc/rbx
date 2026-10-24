@@ -26,3 +26,12 @@
       show_root_toc_entry: false
       heading_level: 4
       show_labels: false
+
+### CMS
+
+::: rbx.box.packaging.cms.extension
+    options:
+      show_root_heading: false
+      show_root_toc_entry: false
+      heading_level: 4
+      show_labels: false

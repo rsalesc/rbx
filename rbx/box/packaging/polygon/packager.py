@@ -11,6 +11,7 @@ from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.lang import code_to_lang, code_to_langs, is_valid_lang_code
 from rbx.box.packaging import flattening
 from rbx.box.packaging.cms import polygon_loader as cms_polygon_loader
+from rbx.box.packaging.cms import settings as cms_settings
 from rbx.box.packaging.cms import support as cms_support
 from rbx.box.packaging.packager import (
     BaseContestPackager,
@@ -413,7 +414,10 @@ class PolygonPackager(BasePackager):
             cms_support.ensure_supported(pkg)
             cms_polygon_loader.write_statements(built_statements, into_path)
             cms_polygon_loader.write_files(
-                pkg, self.get_built_testcase_entries(), files_path
+                pkg,
+                self.get_built_testcase_entries(),
+                files_path,
+                cms_settings.resolve(),
             )
 
         # Write problem.xml
