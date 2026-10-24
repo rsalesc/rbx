@@ -166,15 +166,41 @@ RBX_POLYGON_MIN_INTERVAL=1 RBX_POLYGON_MAX_RETRIES=10 rbx contest each package p
 
 ### Using the Taskbook FTP (flaky)
 
-You can upload a contest package to Codeforces Gym by first building it with the command above, and then
-using the Codeforces Taskbook FTP (taskbook.codeforces.com) to upload your zip file to your contest.
+You can also skip the {{polygon}} website entirely: build a [contest package](#contest-packages),
+which uses the Polygon format, and upload it to the {{codeforces}} Taskbook,
+a File Transfer Protocol (FTP) server that holds a folder for each Gym contest.
 
-You can read more about the Taskbook by enabling coach mode, creating a new contest in the Gym, and looking
-at the "Coach mode on" section on the right side of the contest page. It will look like the image below:
+To find your contest's folder, enable coach mode, create a new contest in the Gym, and look at the
+**Coach mode on** section in the contest page's sidebar:
 
-![Coach mode on](taskbook.png)
+![Gym contest sidebar with coach mode on, showing the Taskbook FTP address](taskbook.png)
 
-Follow the instructions to upload your contest ZIP.
+The folder is `ftp://taskbook.codeforces.com/<contest-id>`, where `<contest-id>` is the number in your
+Gym contest's URL, `codeforces.com/gym/<contest-id>`. The FTP link in the sidebar contains it too.
+
+!!! warning
+    The instructions in the sidebar put `contest.zip` in the *root* of that folder. The Taskbook
+    refuses uploads there with FTP error `550`, so use `sandbox` instead.
+
+To upload the contest:
+
+1. From your contest directory, run `rbx contest package polygon`. It writes the package to
+   `build/contest.zip`.
+2. Log in to `ftp://taskbook.codeforces.com/<contest-id>/sandbox` with your Codeforces handle and
+   password, and upload `build/contest.zip` there as `contest.zip`. The Taskbook unpacks it right away
+   and replaces everything already in `sandbox`.
+3. Click **Update contest** on the contest page and answer **Yes**. Codeforces rebuilds the contest
+   from the uploaded files, which takes about 30 seconds.
+
+Any FTP client works for step 2. With `curl`, run this from your contest directory:
+
+```bash
+curl --user <handle> -T build/contest.zip \
+  ftp://taskbook.codeforces.com/<contest-id>/sandbox/contest.zip
+```
+
+`curl` asks for your Codeforces password, then uploads the file with `-T`. A `550` error means the
+path is wrong: check that it ends in `/sandbox/contest.zip`.
 
 !!! note
     By uploading through the Taskbook, you'll only get PDF statements. That is not a limitation of {{rbx}},

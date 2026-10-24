@@ -48,3 +48,18 @@ def test_polygon_offline_flat_checker_ships_only_check(testing_pkg):
 
     declared = {f.path for f in packager._get_files(ns)}  # noqa: SLF001
     assert declared == {'files/testlib.h', 'files/rbx.h'}
+
+
+def test_polygon_offline_local_testlib_is_declared_once(testing_pkg):
+    # A checker that ships its own testlib.h flattens to the same name as the
+    # bundled one; problem.xml must not list files/testlib.h twice.
+    testing_pkg.add_file('testlib.h').write_text('#pragma once\n')
+    testing_pkg.add_file('check.cpp').write_text('#include "testlib.h"\nint main(){}\n')
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.save()
+
+    packager = PolygonPackager(testcase_entries=[])
+    ns = packager._flatten_sources()  # noqa: SLF001
+
+    declared = [f.path for f in packager._get_files(ns)]  # noqa: SLF001
+    assert declared == ['files/testlib.h', 'files/rbx.h']

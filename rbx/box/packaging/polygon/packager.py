@@ -1,6 +1,6 @@
 import pathlib
 import shutil
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import typer
 
@@ -18,7 +18,7 @@ from rbx.box.packaging.packager import (
 )
 from rbx.box.packaging.polygon import xml_schema as polygon_schema
 from rbx.box.packaging.polygon.utils import get_polygon_language_from_code_item
-from rbx.box.schema import TaskType
+from rbx.box.schema import ExpectedOutcome, ScoreType, Solution, TaskType
 from rbx.box.statements.schema import (
     ConversionStep,
     ConversionType,
@@ -34,6 +34,30 @@ DAT_TEMPLATE = """
 @teams 0
 @submissions 0
 """
+
+
+_SOLUTION_TAGS = {
+    ExpectedOutcome.ACCEPTED: 'accepted',
+    ExpectedOutcome.ACCEPTED_OR_TLE: 'time-limit-exceeded-or-accepted',
+    ExpectedOutcome.WRONG_ANSWER: 'wrong-answer',
+    ExpectedOutcome.TIME_LIMIT_EXCEEDED: 'time-limit-exceeded',
+    ExpectedOutcome.TLE_OR_MLE: 'time-limit-exceeded-or-memory-limit-exceeded',
+    ExpectedOutcome.MEMORY_LIMIT_EXCEEDED: 'memory-limit-exceeded',
+}
+
+
+def _get_solution_tag(solution: Solution, is_main: bool) -> Optional[str]:
+    """The `problem.xml` tag for a solution, or `None` when it has none.
+
+    Polygon has no tag for a runtime error, so it (like every other failure
+    without an exact tag) becomes `rejected`. `ANY` has no tag at all: any
+    failing tag would flag a passing run, and vice versa.
+    """
+    if is_main and solution.outcome == ExpectedOutcome.ACCEPTED:
+        return 'main'
+    if solution.outcome == ExpectedOutcome.ANY:
+        return None
+    return _SOLUTION_TAGS.get(solution.outcome, 'rejected')
 
 
 def _select_main_language(
@@ -134,9 +158,46 @@ class PolygonPackager(BasePackager):
             ),
         )
 
-    def _get_manual_test(self) -> polygon_schema.Test:
-        # TODO: return samples
-        return polygon_schema.Test(method='manual')
+    def _get_manual_test(self, is_sample: bool) -> polygon_schema.Test:
+        return polygon_schema.Test(method='manual', sample=is_sample or None)
+
+    def _get_tests_and_groups(
+        self, entries: List[GenerationTestcaseEntry]
+    ) -> Tuple[List[polygon_schema.Test], List[polygon_schema.Group]]:
+        tests = [self._get_manual_test(entry.is_sample()) for entry in entries]
+        pkg = package.find_problem_package_or_die()
+        if pkg.scoring != ScoreType.POINTS:
+            return tests, []
+
+        # A group scores only when every one of its tests passes and every group
+        # it depends on scored too, which is Polygon's `complete-group` policy.
+        # The score also goes on the group's last test, so a judge that sums
+        # test points instead of reading the group's agrees with one that does.
+        last_test_of = {entry.group_entry.group: i for i, entry in enumerate(entries)}
+        scores = {group.name: group.score for group in pkg.testcases}
+        for i, (test, entry) in enumerate(zip(tests, entries)):
+            group = entry.group_entry.group
+            test.group = group
+            test.points = float(scores[group]) if last_test_of[group] == i else 0.0
+
+        # A group with no built tests has nothing to judge; leave it out.
+        groups = []
+        for group in pkg.testcases:
+            if group.name not in last_test_of:
+                continue
+            groups.append(
+                polygon_schema.Group(
+                    name=group.name,
+                    points=float(group.score),
+                    feedback_policy='complete' if group.name == 'samples' else 'icpc',
+                    dependencies=[
+                        polygon_schema.Dependency(group=dep)
+                        for dep in group.deps
+                        if dep in last_test_of
+                    ],
+                )
+            )
+        return tests, groups
 
     def _get_single_testset(self) -> polygon_schema.Testset:
         pkg = package.find_problem_package_or_die()
@@ -153,20 +214,23 @@ class PolygonPackager(BasePackager):
             f'[warning]Polygon packages cannot honor the {pkg.outputLimit}kb output limit.'
         )
 
-        testcases = self.get_flattened_built_testcases()
+        entries = self.get_built_testcase_entries()
 
         limits = limits_info.get_limits(None, profile='polygon')
         assert limits.time is not None
         assert limits.memory is not None
 
+        tests, groups = self._get_tests_and_groups(entries)
+
         return polygon_schema.Testset(
             name='tests',
             timelimit=limits.time,
             memorylimit=limits.memory * 1024 * 1024,
-            size=len(testcases),
+            size=len(entries),
             inputPattern='tests/%03d',
             answerPattern='tests/%03d.a',
-            tests=[self._get_manual_test() for _ in range(len(testcases))],
+            tests=tests,
+            groups=groups,
         )
 
     def _get_judging(self) -> polygon_schema.Judging:
@@ -182,7 +246,35 @@ class PolygonPackager(BasePackager):
             reserved[package.get_relative_source_path(pkg.interactor)] = (
                 'interactor.cpp'
             )
-        return flattening.build_flat_namespace(sources, reserved=reserved)
+        sources.extend(package.get_solutions())
+        # Polygon compiles each source to a program named after its stem.
+        return flattening.build_flat_namespace(
+            sources, reserved=reserved, enforce_stem_unique=True
+        )
+
+    def _get_solutions(
+        self, ns: flattening.FlatNamespace
+    ) -> List[polygon_schema.Solution]:
+        res = []
+        for i, solution in enumerate(package.get_solutions()):
+            tag = _get_solution_tag(solution, is_main=i == 0)
+            if tag is None:
+                console.console.print(
+                    f'[warning]Solution {solution.href()} expects outcome '
+                    f'[item]{solution.outcome.name}[/item], which Polygon cannot '
+                    'express; it will not be packaged.[/warning]'
+                )
+                continue
+            res.append(
+                polygon_schema.Solution(
+                    tag=tag,  # type: ignore
+                    source=polygon_schema.File(
+                        path=f'solutions/{ns.flat_name_for(solution)}',
+                        type=get_polygon_language_from_code_item(solution),
+                    ),
+                )
+            )
+        return res
 
     def _get_files(self, ns: flattening.FlatNamespace) -> List[polygon_schema.File]:
         files = [
@@ -190,6 +282,10 @@ class PolygonPackager(BasePackager):
             polygon_schema.File(path='files/rbx.h', type='h.g++'),
         ]
         for dep in ns.dep_files():
+            # A package shipping its own testlib.h/rbx.h overwrites the bundled
+            # copy on materialize; declare the path once.
+            if any(f.path == f'files/{dep.flat_name}' for f in files):
+                continue
             ftype = (
                 'h.g++'
                 if dep.flat_name.endswith(('.h', '.hpp', '.hh', '.hxx'))
@@ -247,8 +343,13 @@ class PolygonPackager(BasePackager):
             judging=self._get_judging(),
             files=self._get_files(ns),
             interactor=self._get_interactor(),
-            # TODO: revisit polygon problem statements
-            # statements=self._process_statements(built_statements, into_path),
+            solutions=self._get_solutions(ns),
+            # No problem statements: the Codeforces Gym (the consumer of these
+            # zips, through its taskbook) accepts a PDF one but cannot serve it,
+            # so the problem page fails with "Can't send statement". Without one
+            # it falls back to the contest statement. Checked live, 2026-10.
+            # Polygon's own `statements/.pdf/` path fares no better: the
+            # taskbook drops dot-directories when it unpacks a contest.zip.
         )
 
         descriptor: str = problem.to_xml(
@@ -265,9 +366,19 @@ class PolygonPackager(BasePackager):
         files_path.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(get_testlib(), files_path / 'testlib.h')
         shutil.copyfile(header.get_header(), files_path / 'rbx.h')
-        ns.materialize(
-            files_path
-        )  # writes check.cpp, interactor.cpp + every dep, rewritten
+        # Solutions go to solutions/; check.cpp, interactor.cpp and every dep,
+        # rewritten, go to files/.
+        solutions_path = into_path / 'solutions'
+        solution_names = {
+            ns.flat_name_for(solution) for solution in package.get_solutions()
+        }
+        for flat_file in ns.files:
+            if flat_file.is_root and flat_file.flat_name in solution_names:
+                dest = solutions_path / flat_file.flat_name
+            else:
+                dest = files_path / flat_file.flat_name
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(flat_file.content)
         # Root copy for the Polygon UI ('cpy').
         (into_path / 'check.cpp').write_bytes(
             ns.content_for(package.get_checker_or_builtin())
@@ -310,7 +421,9 @@ class PolygonContestPackager(BaseContestPackager):
         names = [
             polygon_schema.Name(
                 language=code_to_langs([lang])[0],
-                value=self.get_statement_for_language(lang).title,
+                value=naming.get_contest_title(
+                    lang, self.get_statement_for_language(lang)
+                ),
             )
             for lang in self.languages()
             if is_valid_lang_code(lang)
@@ -356,7 +469,10 @@ class PolygonContestPackager(BaseContestPackager):
 
     def _get_dat(self, built_packages: List[BuiltProblemPackage]) -> str:
         dat = DAT_TEMPLATE.format(
-            name=self.get_statement_for_language(self.languages()[0]).title,
+            name=naming.get_contest_title(
+                self.languages()[0],
+                self.get_statement_for_language(self.languages()[0]),
+            ),
             problems=len(built_packages),
         )
         return (
