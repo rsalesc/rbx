@@ -32,11 +32,13 @@ def _interactive(testing_pkg, legacy: bool):
     testing_pkg.save()
 
 
-def test_batch_conf_sets_group_scoring(testing_pkg, tmp_path):
+def test_batch_conf_sets_group_scoring_and_score_mode(testing_pkg, tmp_path):
     entries = build_entries(tmp_path, ['main', 'main'])
 
     namespace = _run(polygon_loader.render_conf(testing_pkg.yml, entries))
 
+    # The task score is the best submission's, not the last one's.
+    assert namespace['general'] == {'score_mode': 'max'}
     assert namespace['datasets'] == {
         'tests': {
             'score_type': 'GroupMin',

@@ -23,12 +23,14 @@ def render_conf(pkg: Package, entries: Sequence[GenerationTestcaseEntry]) -> str
     """`files/cms_conf.py`: what CMS cannot read from `problem.xml`.
 
     The importer scores every test equally and imports every task as Batch,
-    but runs this file and merges its `datasets` into the task's dataset. It
-    sets rbx's group scoring, and for an interactive problem compiles and
+    but runs this file and merges its `general` into the task and its
+    `datasets` into the task's dataset. It sets rbx's group scoring and score
+    mode, and for an interactive problem compiles and
     stores rbx's CMS manager (see `communication`), which needs the sources
     `write_files` ships next to it.
     """
     config = {
+        'score_mode': scoring.SCORE_MODE,
         'score_type': scoring.SCORE_TYPE,
         'score_type_parameters': scoring.group_min_parameters(pkg, entries),
     }

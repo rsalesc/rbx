@@ -10,6 +10,11 @@ from rbx.box.schema import Package, ScoreType
 Subtask = List[Union[int, str]]
 
 SCORE_TYPE = 'GroupMin'
+# How CMS turns a contestant's submissions into the task score. Its default,
+# `max_tokened_last`, takes the *last* submission when tokens are off; `max`
+# takes the best one, which is what rbx's per-submission score means. To be
+# made configurable (#946).
+SCORE_MODE = 'max'
 
 
 def codename(index: int) -> str:

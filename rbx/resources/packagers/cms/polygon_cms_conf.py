@@ -92,6 +92,7 @@ def _communication(config):
     return dataset
 
 
+general = {'score_mode': CONFIG['score_mode']}
 datasets = {
     'tests': {
         'score_type': CONFIG['score_type'],
