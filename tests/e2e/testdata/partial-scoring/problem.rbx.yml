@@ -1,0 +1,62 @@
+name: partial-scoring
+timeLimit: 1000
+memoryLimit: 256
+
+# The checker awards `quitp(100 - 10 * |answer - expected|)`: a percentage of
+# the test's points.
+scoring: points
+
+checker:
+  path: checker.cpp
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+    score: 100
+  # 90% on every test: `small` pays 40 * 0.9, `big` 3 * 20 * 0.9.
+  - path: sols/off-by-one.cpp
+    outcome: partially correct
+    score: 90
+  # 50% on one `big` test only. `big` sums its tests, so it loses 10 of its 60
+  # points; a `min` group would have paid 60 * 0.5.
+  - path: sols/big-partial.cpp
+    outcome: partially correct
+    score: 90
+  # 0% on one `small` test, which `big` depends on: nothing scores.
+  - path: sols/small-wrong.cpp
+    outcome: incorrect
+    score: 0
+
+testcases:
+  - name: samples
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 1 2
+  - name: small
+    score: 40
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 5 6
+          - name: gen
+            args: 7 8
+  - name: big
+    score: 60
+    aggregation: sum
+    deps: [small]
+    subgroups:
+      - name: gen
+        generators:
+          - name: gen
+            args: 1000 2000
+          - name: gen
+            args: 1001 2
+          - name: gen
+            args: 1002 3

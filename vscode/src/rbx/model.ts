@@ -232,6 +232,12 @@ export interface Evaluation {
    */
   readonly noTleOutcome?: string;
   /**
+   * The fraction of the test's points the checker awarded, in [0, 1], when it
+   * said so: a testlib `quitp`, which rbx reads as a percentage. Absent when the
+   * verdict alone decides.
+   */
+  readonly score?: number;
+  /**
    * Whether this run tripped a sanitizer.
    *
    * Unlike `noTleOutcome`, this needs no answer from rbx to be worth showing:
@@ -451,6 +457,7 @@ export function parseEvaluation(raw: Wire): Evaluation | undefined {
     time: asNumber(field(raw, 'log', 'time')),
     memory: asNumber(field(raw, 'log', 'memory')),
     noTleOutcome: asString(field(raw, 'result', 'no_tle_outcome')),
+    score: asNumber(field(raw, 'result', 'score')),
     sanitizerWarnings: asBoolean(field(raw, 'result', 'sanitizer_warnings')),
     communication: asRecord(field(raw, 'result', 'interactor_timing')) !== undefined,
     interactorTime: asNumber(field(raw, 'result', 'interactor_timing', 'time')),

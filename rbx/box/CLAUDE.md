@@ -33,15 +33,16 @@ The central Pydantic model hierarchy defining `problem.rbx.yml`:
 
 ### `ExpectedOutcome` (AutoEnum)
 
-Maps expected solution behavior to verdict matching. Values: `ANY`, `ACCEPTED`, `ACCEPTED_OR_TLE`, `WRONG_ANSWER`, `INCORRECT`, `TIME_LIMIT_EXCEEDED`, `TLE_OR_RTE`, `TLE_OR_MLE`, `MLE_OR_RTE`, `RUNTIME_ERROR`, `MEMORY_LIMIT_EXCEEDED`, `OUTPUT_LIMIT_EXCEEDED`.
+Maps expected solution behavior to verdict matching. Values: `ANY`, `ACCEPTED`, `ACCEPTED_OR_TLE`, `WRONG_ANSWER`, `INCORRECT`, `PARTIALLY_CORRECT`, `TIME_LIMIT_EXCEEDED`, `TLE_OR_RTE`, `TLE_OR_MLE`, `MLE_OR_RTE`, `RUNTIME_ERROR`, `MEMORY_LIMIT_EXCEEDED`, `OUTPUT_LIMIT_EXCEEDED`.
 
-Each has a `match(outcome: Outcome) -> bool` method. `INCORRECT` matches WA/RTE/MLE/OLE/TLE. `ANY` matches everything.
+Each has a `match(outcome: Outcome) -> bool` method. `INCORRECT` matches PC/WA/RTE/MLE/OLE/TLE; `PARTIALLY_CORRECT` matches PC only. `ANY` matches everything.
 
 ### `ScoreType` / `TaskType`
 
 - `ScoreType`: `BINARY` (ICPC all-or-nothing) or `POINTS` (IOI subtask scoring)
 - `Package.scoring` is `ScoreType | PointsScoring`: `points` is shorthand for `PointsScoring()`, and the mapping form (`dependencies: manual|samples|ladder`, `aggregation: min`) always means points. **Read `pkg.score_type` / `pkg.points_scoring`, never compare `pkg.scoring` to the enum** -- a configured problem holds a `PointsScoring`, which equals neither member.
-- **Group dependencies:** read `pkg.group_dependencies` (`rbx/box/scoring/dependencies.py`), never `TestcaseGroup.deps`, which holds only the declared edges; the policy (`samples`: every group -> `samples`; `ladder`: each group -> the previous, starting at `samples`) is unioned in there. `.over(present)` contracts the graph to groups that built tests without losing what an empty group chained together; `flatten()` is how a judge with independent groups (MOJ, CMS) reproduces the dependencies under `min`. Only `min` exists; `mul`/`threshold`/`sum` (CMS score types) are the planned extensions, and `flatten` refuses anything else.
+- **Group dependencies:** read `pkg.group_dependencies` (`rbx/box/scoring/dependencies.py`), never `TestcaseGroup.deps`, which holds only the declared edges; the policy (`samples`: every group -> `samples`; `ladder`: each group -> the previous, starting at `samples`) is unioned in there. `.over(present)` contracts the graph to groups that built tests without losing what an empty group chained together; `flatten()` is how MOJ reproduces the dependencies under `min`, and refuses anything else.
+- **Partial scores and aggregation** (`rbx/box/scoring/partial.py`, design `docs/plans/2026-10-25-partial-scoring-design.md`): a test scores a fraction (`CheckerResult.fraction()`: AC 1, `quitp(x)` x/100 as `PARTIALLY_CORRECT`, else 0). A group's `aggregation` (`pkg.aggregation_for(name)`, default `scoring.aggregation`) is `min` (score x lowest test) or `sum` (score split evenly by `test_points`, each test paying its share); every test is capped by the lowest test of the group's dependency closure. That is the rule Polygon was measured to apply in percent mode, and `partial.subtasks` turns it into CMS `GroupMin` subtasks. `partial` is the single source: `solutions.py`, Polygon and CMS all read it.
 - `TaskType`: `BATCH` (standard) or `COMMUNICATION` (interactive)
 
 ## Package Discovery (`package.py`, `cd.py`)
@@ -513,7 +514,7 @@ must not harden into a contract. Consumed by `vscode/src/rbx/report.ts`; see
 
 ### Check Pipeline
 1. **`_check_pre_output()`** -- Evaluates sandbox run log BEFORE checking output. Maps exit statuses to outcomes (TLE, RTE, MLE). Handles "soft TLE" where wall time exceeds limit but exit was clean.
-2. **`check()`** -- Runs checker binary (testlib convention: `checker input output answer`), processes exit code: 0=AC, 1/2=WA, 3=JUDGE_FAILED.
+2. **`check()`** -- Runs checker binary (testlib convention: `checker input output answer`), processes exit code: 0=AC, 1/2=WA, 3=JUDGE_FAILED, 7=`quitp` (the last `points <x>` stderr line, read as a percentage: 100 AC, 0 WA, between PARTIALLY_CORRECT with `score=x/100`, outside [0, 100] JUDGE_FAILED). A `partially correct (` stderr line (`_pc`) is JUDGE_FAILED whatever the exit code, since `_pc(k)` exits with k.
 3. **`check_communication()`** -- Complex multi-step checking for interactive problems with 6+ priority levels.
 
 ### Soft TLE

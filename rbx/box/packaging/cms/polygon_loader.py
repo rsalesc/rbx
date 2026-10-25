@@ -10,13 +10,15 @@ from typing import List, Optional, Sequence
 
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.lang import code_to_langs
-from rbx.box.packaging.cms import communication, scoring, settings
+from rbx.box.packaging.cms import communication, scoring, settings, testlib_cms
 from rbx.box.packaging.cms.extension import CmsExtension
 from rbx.box.packaging.packager import BuiltStatement
 from rbx.box.schema import Package
-from rbx.config import get_resources_file
+from rbx.config import get_resources_file, get_testlib
 
 CONF_FILE = 'cms_conf.py'
+# Where the Polygon packager puts the checker, and the importer looks for it.
+CHECKER_SOURCE = 'check.cpp'
 _CONFIG_LINE = 'CONFIG = {}  # rbx:config'
 
 
@@ -44,6 +46,13 @@ def render_conf(
         'score_type': scoring.SCORE_TYPE,
         'score_type_parameters': scoring.group_min_parameters(pkg, entries),
     }
+    if not communication.is_communication(pkg):
+        # The importer would build the checker against its own testlib, which
+        # reads `quitp` as a fraction rather than rbx's percentage.
+        config['checker'] = {
+            'source': CHECKER_SOURCE,
+            'testlib': testlib_cms.CMS_TESTLIB_FILE,
+        }
     if communication.is_communication(pkg):
         config['communication'] = {
             'task_type': communication.TASK_TYPE,
@@ -66,10 +75,14 @@ def write_files(
     files_path: pathlib.Path,
     cms_settings: Optional[CmsExtension] = None,
 ):
-    """Write `cms_conf.py`, and the manager sources it compiles, into `files/`."""
+    """Write `cms_conf.py`, and the sources it compiles, into `files/`."""
     (files_path / CONF_FILE).write_text(render_conf(pkg, entries, cms_settings))
     if communication.is_communication(pkg):
         communication.write_sources(files_path)
+    else:
+        (files_path / testlib_cms.CMS_TESTLIB_FILE).write_text(
+            testlib_cms.patch(get_testlib().read_text())
+        )
 
 
 def write_statements(built_statements: List[BuiltStatement], into_path: pathlib.Path):

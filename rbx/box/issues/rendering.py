@@ -46,6 +46,7 @@ from rbx.box.issues.schema import (
     UnmetExpectationIssue,
     UntunedLimitsIssue,
 )
+from rbx.box.scoring import partial
 
 
 class IssuesFormat(str, Enum):
@@ -128,10 +129,9 @@ def summarize(issue: Issue) -> str:
             return f'failed group(s): {", ".join(issue.failedGroups)}'
         return 'did not meet its expectation'
     if isinstance(issue, UnexpectedScoreIssue):
-        low, high = issue.expectedScore
-        return (
-            f'scored {issue.score}/{issue.maxScore}, expected between {low} and {high}'
-        )
+        low, high = (partial.format_score(bound) for bound in issue.expectedScore)
+        score = partial.format_score(issue.score)
+        return f'scored {score}/{issue.maxScore}, expected between {low} and {high}'
     if isinstance(issue, CompilationFailedIssue):
         return (
             f'failed to compile: {issue.reason}'

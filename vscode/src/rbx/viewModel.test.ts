@@ -12,7 +12,7 @@ import type {
   SolutionRun,
   TestcaseRun,
 } from './store';
-import { Row, buildViewModel } from './viewModel';
+import { Row, buildViewModel, partialPercent } from './viewModel';
 
 // The fixtures below transcribe rbx's `outcome-per-group` e2e package: a main
 // solution that passes, one declared INCORRECT that fails as declared, and one
@@ -1635,4 +1635,39 @@ test('a valid testcase of a run past invalid ones carries nothing extra', () => 
 test('a run that skipped validation says so', () => {
   const model = buildViewModel(view([MAIN], [], { validation: { mode: 'off', invalid: [] } }));
   assert.deepStrictEqual(model.notices, [{ kind: 'unvalidated' }]);
+});
+
+test('a partially correct testcase shows the percentage its checker awarded', () => {
+  const PARTIAL_SCORE = solution(
+    0,
+    'sols/main.cpp',
+    'PARTIALLY_CORRECT',
+    [
+      group(
+        'big',
+        [
+          testcase('000', 'accepted'),
+          testcase('001', 'partially-correct', {
+            evaluation: { outcome: 'partially-correct', score: 0.7406 },
+          }),
+        ],
+        groupReport({ name: 'big' }),
+      ),
+    ],
+    solutionReport({ groups: [groupReport({ name: 'big' })] }),
+  );
+  const { rows } = buildViewModel(view([PARTIAL_SCORE]));
+  const row = rows.find((candidate) => candidate.kind === 'testcase' && candidate.label === '001');
+  assert.ok(row);
+  assert.strictEqual(row.verdict?.short, 'PC');
+  // Left of the time, as a group row shows its score.
+  assert.deepStrictEqual(row.meta[0], { text: '74.06%', hue: 'yellow', role: 'score' });
+});
+
+test('only a partially correct testcase with a score has a percentage', () => {
+  assert.strictEqual(partialPercent({ outcome: 'partially-correct', score: 0.5 }), '50%');
+  assert.strictEqual(partialPercent({ outcome: 'partially-correct', score: 0.825 }), '82.5%');
+  assert.strictEqual(partialPercent({ outcome: 'partially-correct' }), undefined);
+  assert.strictEqual(partialPercent({ outcome: 'accepted', score: 1 }), undefined);
+  assert.strictEqual(partialPercent(undefined), undefined);
 });

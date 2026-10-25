@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 
 namespace rbx_cms {
@@ -46,21 +47,37 @@ inline std::string read_verdict() {
   return text.substr(0, text.find('\n'));
 }
 
-enum class Verdict { kAccepted, kRejected, kJudgeError };
+enum class Verdict { kAccepted, kRejected, kPartial, kJudgeError };
+
+// The fraction a `kPartial` verdict awards.
+inline double partial_outcome = 0;
 
 inline bool starts_with(const std::string &s, const char *prefix) {
   return s.rfind(prefix, 0) == 0;
 }
 
 // testlib's verdict lines: "ok", "wrong answer", "wrong output format",
-// "unexpected eof", "FAIL" and "points". Partial points have no rbx meaning
-// for interactive problems, so they are a judge error like FAIL.
+// "unexpected eof", "FAIL" and "points <x>". As in rbx, `quitp(x)` awards x
+// percent of the test: 100 is accepted, 0 rejected; outside [0, 100] it is a
+// judge error, like FAIL.
 inline Verdict classify(const std::string &line) {
   if (line.empty()) {
     return returned && return_code == 0 ? Verdict::kAccepted
                                         : Verdict::kJudgeError;
   }
   if (starts_with(line, "ok")) return Verdict::kAccepted;
+  if (starts_with(line, "points ")) {
+    const char *value = line.c_str() + 7;
+    char *end = nullptr;
+    double percent = std::strtod(value, &end);
+    if (end == value || !(percent >= 0 && percent <= 100)) {
+      return Verdict::kJudgeError;
+    }
+    if (percent == 100) return Verdict::kAccepted;
+    if (percent == 0) return Verdict::kRejected;
+    partial_outcome = percent / 100;
+    return Verdict::kPartial;
+  }
   if (starts_with(line, "wrong answer") ||
       starts_with(line, "wrong output format") ||
       starts_with(line, "unexpected eof")) {
@@ -76,6 +93,11 @@ inline Verdict classify(const std::string &line) {
     dprintf(real_stderr, "%s\n",
             line.empty() ? "testlib program gave no verdict" : line.c_str());
     _exit(1);
+  }
+  if (verdict == Verdict::kPartial) {
+    dprintf(real_stdout, "%.10f\n", partial_outcome);
+    dprintf(real_stderr, "translate:partial\n");
+    _exit(0);
   }
   bool accepted = verdict == Verdict::kAccepted;
   dprintf(real_stdout, "%s\n", accepted ? "1.0" : "0.0");

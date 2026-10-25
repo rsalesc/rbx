@@ -127,9 +127,9 @@ class UnexpectedScoreIssue(_RunIssue):
 
     kind: Literal['unexpected_score'] = 'unexpected_score'
     solution: str
-    score: int
+    score: float
     maxScore: int
-    expectedScore: Tuple[int, int]
+    expectedScore: Tuple[float, float]
 
     @computed_field  # type: ignore[prop-decorator]
     @property

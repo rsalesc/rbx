@@ -130,7 +130,11 @@ def count_testcases(entries: List[GenerationTestcaseEntry]) -> TestcaseCounts:
 def get_outcome_bucket(outcome: ExpectedOutcome) -> Optional[ExpectedOutcome]:
     if outcome in (ExpectedOutcome.ACCEPTED, ExpectedOutcome.ACCEPTED_OR_TLE):
         return ExpectedOutcome.ACCEPTED
-    if outcome in (ExpectedOutcome.WRONG_ANSWER, ExpectedOutcome.INCORRECT):
+    if outcome in (
+        ExpectedOutcome.WRONG_ANSWER,
+        ExpectedOutcome.INCORRECT,
+        ExpectedOutcome.PARTIALLY_CORRECT,
+    ):
         return ExpectedOutcome.WRONG_ANSWER
     if outcome in (
         ExpectedOutcome.TIME_LIMIT_EXCEEDED,

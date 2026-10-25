@@ -52,3 +52,23 @@ def test_binary_problems_are_all_or_nothing(testing_pkg, tmp_path):
     entries = build_entries(tmp_path, ['main', 'main'])
 
     assert scoring.group_min_parameters(testing_pkg.yml, entries) == [[100, '.*']]
+
+
+def test_sum_groups_are_one_subtask_per_test(testing_pkg, tmp_path):
+    testing_pkg.yml.scoring = ScoreType.POINTS
+    testing_pkg.yml.testcases = [
+        TestcaseGroup(name='samples'),
+        TestcaseGroup(name='small', score=40),
+        # 10 points over 3 tests, each capped by `small`'s tests.
+        TestcaseGroup(name='big', score=10, deps=['small'], aggregation='sum'),
+    ]
+    testing_pkg.save()
+    entries = build_entries(tmp_path, ['samples', 'small', 'big', 'big', 'big'])
+
+    assert scoring.group_min_parameters(testing_pkg.yml, entries) == [
+        [0, '^(000)$'],
+        [40, '^(001)$'],
+        [3.33, '^(002|001)$'],
+        [3.33, '^(003|001)$'],
+        [3.34, '^(004|001)$'],
+    ]

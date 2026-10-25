@@ -198,6 +198,10 @@ class ExpectedOutcome(AutoEnum):
     INCORRECT = alias('fail', 'incorrect')  # type: ignore
     """Expected outcome for solutions that finish with any non-AC verdict."""
 
+    PARTIALLY_CORRECT = alias('partially correct', 'partial', 'pc')  # type: ignore
+    """Expected outcome for solutions the checker awards part of a test's points
+    (testlib `quitp`). Pin how many points with the solution's `score`."""
+
     RUNTIME_ERROR = alias('runtime error', 'rte', 're')  # type: ignore
     """Expected outcome solutions that finish with non-zero code (RTE)."""
 
@@ -249,6 +253,8 @@ class ExpectedOutcome(AutoEnum):
             return 'green'
         if self == ExpectedOutcome.WRONG_ANSWER:
             return 'red'
+        if self == ExpectedOutcome.PARTIALLY_CORRECT:
+            return 'yellow'
         if self == ExpectedOutcome.INCORRECT:
             return 'red'
         if self.match(Outcome.TIME_LIMIT_EXCEEDED):
@@ -266,6 +272,8 @@ class ExpectedOutcome(AutoEnum):
             return '?'
         if self.match(Outcome.ACCEPTED):
             return '✓'
+        if self == ExpectedOutcome.PARTIALLY_CORRECT:
+            return '~'
         if self.is_slow():
             return '⧖'
         return '✗'
@@ -318,10 +326,13 @@ class ExpectedOutcome(AutoEnum):
             return outcome in {Outcome.ACCEPTED} or outcome.is_slow()
         if self == ExpectedOutcome.WRONG_ANSWER:
             return outcome == Outcome.WRONG_ANSWER
+        if self == ExpectedOutcome.PARTIALLY_CORRECT:
+            return outcome == Outcome.PARTIALLY_CORRECT
         if self == ExpectedOutcome.INCORRECT:
             return (
                 outcome
                 in {
+                    Outcome.PARTIALLY_CORRECT,
                     Outcome.WRONG_ANSWER,
                     Outcome.RUNTIME_ERROR,
                     Outcome.MEMORY_LIMIT_EXCEEDED,
@@ -410,10 +421,14 @@ scored too.
     aggregation: Aggregation = Field(
         default=Aggregation.MIN,
         description="""
-How the results of a group's tests combine into the group's score.
+How the results of a group's tests combine into the group's score, unless the
+group sets its own `aggregation`. A test scores 1 when it passes, 0 when it
+fails, and the percentage a checker's `quitp` awards in between.
 
-- `min`: the group scores its full `score` when all of its tests pass, and 0
-  otherwise.
+- `min`: the group scores its `score` times the lowest score among its tests: all
+  of it when every test passes, nothing when any fails.
+- `sum`: each test is worth an even share of the group's `score` and pays it times
+  its own score.
 """,
     )
 
@@ -736,6 +751,14 @@ each group to the one before it.
 """,
     )
 
+    aggregation: Optional[Aggregation] = Field(
+        default=None,
+        description="""
+How the results of this group's tests combine into its score; defaults to
+`scoring.aggregation`. Only for problems with points.
+""",
+    )
+
     model_solution: Optional[Solution] = Field(
         default=None,
         description="""
@@ -870,13 +893,14 @@ solutions:
         description="""Tags to be associated with this solution.""",
     )
 
-    score: Optional[Union[int, Tuple[Optional[int], Optional[int]]]] = Field(
+    score: Optional[Union[float, Tuple[Optional[float], Optional[float]]]] = Field(
         default=None,
         description="""The score of this solution in the final score.
-Should either be an integer, which means the solution should have this exact score,
-or a tuple of two integers, which means the solution should have a score between the two integers (inclusive).
+Should either be a number, which means the solution should have this exact score,
+or a tuple of two numbers, which means the solution should have a score between the two numbers (inclusive).
+Scores are compared rounded to two decimals.
 
-If one of the integers is set to be null, it means that the solution should have a score between the other integer and negative/positive infinity.""",
+If one of the numbers is set to be null, it means that the solution should have a score between the other number and negative/positive infinity.""",
     )
 
     @model_validator(mode='after')
@@ -904,10 +928,10 @@ If one of the integers is set to be null, it means that the solution should have
         # to be slow?") must consider all of them, not just `outcome`.
         return {self.outcome} | set(self.outcomePerGroup.values())
 
-    def expected_score_range(self) -> Optional[Tuple[int, int]]:
+    def expected_score_range(self) -> Optional[Tuple[float, float]]:
         if self.score is None:
             return None
-        if isinstance(self.score, int):
+        if not isinstance(self.score, tuple):
             return (self.score, self.score)
         assert isinstance(self.score, tuple)
         assert len(self.score) == 2
@@ -1606,6 +1630,16 @@ that is correct and used as reference -- and should have the `accepted` outcome.
             return self.scoring
         return None
 
+    def aggregation_for(self, group_name: str) -> Aggregation:
+        """How a group's test scores combine: its own `aggregation`, else the
+        problem's. Binary problems are `min`."""
+        points = self.points_scoring
+        default = points.aggregation if points is not None else Aggregation.MIN
+        for group in self.testcases:
+            if group.name == group_name and group.aggregation is not None:
+                return group.aggregation
+        return default
+
     @property
     def group_dependencies(self) -> GroupDependencies:
         """The groups each group depends on, `scoring.dependencies` included.
@@ -1668,6 +1702,11 @@ that is correct and used as reference -- and should have the `accepted` outcome.
                     raise PydanticCustomError(
                         'SCORE_NOT_ALLOWED',
                         'Non-zero score is not allowed for groups of problems with scoring != POINTS.',
+                    )
+                if group.aggregation is not None:
+                    raise PydanticCustomError(
+                        'AGGREGATION_NOT_ALLOWED',
+                        'Aggregation is not allowed for groups of problems with scoring != POINTS.',
                     )
             for solution in self.solutions:
                 if solution.score is not None:

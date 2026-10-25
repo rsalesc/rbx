@@ -84,6 +84,11 @@ class Testset(BaseXmlModel, search_mode='unordered'):
 class Judging(BaseXmlModel, search_mode='unordered'):
     inputFile: str = attr('input-file', default='')
     outputFile: str = attr('output-file', default='')
+    # Reads a checker's `quitp(x)` as x percent of the test's points, the way rbx
+    # does, instead of as x points.
+    treatPointsAsPercent: Optional[Literal['true']] = attr(
+        'treat-points-from-checker-as-percent', default=None
+    )
 
     testsets: List[Testset] = element(tag='testset', default_factory=list)
 

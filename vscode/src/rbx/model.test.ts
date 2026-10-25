@@ -320,3 +320,13 @@ log:
     profile: undefined,
   });
 });
+
+test('an evaluation carries the score a quitp checker awarded', () => {
+  const evaluation = parseEvaluation({
+    result: { outcome: 'partially-correct', score: 0.825 },
+    log: {},
+  });
+  assert.strictEqual(evaluation?.outcome, 'partially-correct');
+  assert.strictEqual(evaluation?.score, 0.825);
+  assert.strictEqual(parseEvaluation({ result: { outcome: 'accepted' }, log: {} })?.score, undefined);
+});

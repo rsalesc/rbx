@@ -87,7 +87,8 @@ from rbx.box.schema import (
     Testcase,
     TestcaseGroup,
 )
-from rbx.box.scoring.dependencies import GroupDependencies
+from rbx.box.scoring import partial
+from rbx.box.scoring.dependencies import Aggregation, GroupDependencies
 from rbx.box.tasks import (
     get_limits_for_language,
     get_testcase_output_path,
@@ -161,6 +162,7 @@ class GroupSkeleton(BaseModel):
     score: int
     deps: List[str]
     testcases: List[Testcase]
+    aggregation: Aggregation = Aggregation.MIN
 
 
 @dataclasses.dataclass(frozen=True)
@@ -188,7 +190,10 @@ def fail_fast_abort_predicate(context: AbortContext) -> bool:
     though they were never measured. It exists to cut the wall clock of a quick
     experimental run, and its report must not be trusted to validate a problem.
     """
-    return context.evaluation.result.outcome != Outcome.ACCEPTED
+    return context.evaluation.result.outcome not in (
+        Outcome.ACCEPTED,
+        Outcome.PARTIALLY_CORRECT,
+    )
 
 
 class _AbortGate:
@@ -224,9 +229,13 @@ class _AbortGate:
             # all-or-nothing, so nothing later can change the outcome.
             self.skipped_groups.update(group.name for group in self.groups)
             return
-        self.skipped_groups.add(group_name)
-        # They would score 0 anyway -- `_check_deps` zeroes a group whenever any
-        # of its dependencies failed.
+        # A failed test zeroes a `min` group, but in a `sum` group the other
+        # tests still pay their share, so only a `min` group stops here.
+        group = next((g for g in self.groups if g.name == group_name), None)
+        if group is None or group.aggregation != Aggregation.SUM:
+            self.skipped_groups.add(group_name)
+        # They would score 0 anyway -- a failed test caps every test of every
+        # dependent group at 0.
         self.skipped_groups.update(self.dependencies.dependents(group_name))
 
 
@@ -324,6 +333,18 @@ class SolutionReportSkeleton(BaseModel):
 
     def get_solution_limits(self, solution: Solution) -> Limits:
         return _resolve_solution_limits(solution, self.limits, self.verification)
+
+    def dependency_closure(self, group_name: str) -> List[str]:
+        """Every group `group_name` depends on, directly or not."""
+        res: List[str] = []
+        stack = [group_name]
+        while stack:
+            group = self.find_group_skeleton(stack.pop())
+            for dep in group.deps if group is not None else []:
+                if dep not in res:
+                    res.append(dep)
+                    stack.append(dep)
+        return res
 
     def find_group_skeleton(self, group_name: str) -> Optional[GroupSkeleton]:
         groups = [group for group in self.groups if group.name == group_name]
@@ -740,6 +761,7 @@ async def _get_report_skeleton(
                 score=group.score,
                 deps=group_dependencies.direct(group.name),
                 testcases=testcases_per_group[group.name],
+                aggregation=pkg.aggregation_for(group.name),
             )
         )
 
@@ -1721,6 +1743,8 @@ async def pick_solutions(
 def get_outcome_style_verdict(outcome: Outcome) -> str:
     if outcome == Outcome.ACCEPTED:
         return 'green'
+    if outcome == Outcome.PARTIALLY_CORRECT:
+        return 'yellow'
     if outcome == Outcome.WRONG_ANSWER:
         return 'red'
     if outcome.is_slow():
@@ -1755,6 +1779,8 @@ def get_outcome_markup_verdict(outcome: Outcome) -> str:
         res = '✗'
     if outcome == Outcome.SKIPPED:
         res = '⊘'
+    if outcome == Outcome.PARTIALLY_CORRECT:
+        res = '~'
     style = get_outcome_style_verdict(outcome)
     res = f'[{style}]{res}[/{style}]'
     return res
@@ -1780,12 +1806,24 @@ def get_full_ui_friendly_outcome_markup_verdict(
     return f'{icon} {name}'
 
 
+def get_testcase_percent(eval: Evaluation) -> Optional[str]:
+    """The percentage a partially correct test scored, e.g. `74.06%`."""
+    if eval.result.outcome != Outcome.PARTIALLY_CORRECT:
+        return None
+    return f'{partial.format_score(eval.result.fraction() * 100)}%'
+
+
 def get_testcase_markup_verdict(eval: Evaluation) -> str:
     # if eval.log.stdout_absolute_path:
     #     output_path = eval.log.stdout_absolute_path.resolve()
     #     output_link = f'file://{output_path}'
     #     res = f'[link={output_link}]{res}[/link]'
-    return get_outcome_markup_verdict(eval.result.outcome)
+    res = get_outcome_markup_verdict(eval.result.outcome)
+    percent = get_testcase_percent(eval)
+    if percent is not None:
+        style = get_outcome_style_verdict(eval.result.outcome)
+        res += f'[{style}]{percent}[/{style}]'
+    return res
 
 
 def get_full_testcase_markup_verdict(eval: Evaluation) -> str:
@@ -1880,31 +1918,33 @@ def get_truncated_message(message: str, max_length: int = 100) -> str:
     return message
 
 
-def get_expected_score_repr(range: Tuple[int, int]) -> str:
+def get_expected_score_repr(range: Tuple[float, float]) -> str:
+    lo, hi = partial.format_score(range[0]), partial.format_score(range[1])
     if range[0] == range[1]:
-        return str(range[0])
+        return lo
     if range[1] == 10**9:
-        return f'{range[0]}..'
-    return f'{range[0]}..{range[1]}'
+        return f'{lo}..'
+    return f'{lo}..{hi}'
 
 
-def get_expected_score_markup(range: Tuple[int, int]) -> str:
+def get_expected_score_markup(range: Tuple[float, float]) -> str:
     score_repr = get_expected_score_repr(range)
     return f'[item]{score_repr}[/item]'
 
 
-def get_expected_score_in_phrase(range: Tuple[int, int]) -> str:
+def get_expected_score_in_phrase(range: Tuple[float, float]) -> str:
     score_markup = get_expected_score_markup(range)
     if range[0] == range[1]:
         return f'{score_markup}'
     return f'in {score_markup}'
 
 
-def fulfills_expected_score(range: Tuple[int, int], score: int) -> bool:
-    return score >= range[0] and score <= range[1]
+def fulfills_expected_score(range: Tuple[float, float], score: float) -> bool:
+    score = partial.round_score(score)
+    return partial.round_score(range[0]) <= score <= partial.round_score(range[1])
 
 
-def get_solution_score_style(score: int, max_score: Optional[int] = None) -> str:
+def get_solution_score_style(score: float, max_score: Optional[int] = None) -> str:
     if max_score is None:
         max_score = 1
     if score >= max_score:
@@ -1915,10 +1955,10 @@ def get_solution_score_style(score: int, max_score: Optional[int] = None) -> str
 
 
 def get_solution_score_markup(
-    score: int, max_score: Optional[int] = None, pts: bool = False
+    score: float, max_score: Optional[int] = None, pts: bool = False
 ) -> str:
 
-    res = f'{score}'
+    res = partial.format_score(score)
     if max_score is not None:
         res += f'/{max_score}'
     if pts:
@@ -2010,9 +2050,9 @@ class SolutionOutcomeReport(BaseModel):
     # order is the order their first evaluation arrived in, which today is
     # testset order because both come from ``skeleton.entries``.
     perGroup: Dict[str, GroupOutcomeReport] = {}
-    expectedScore: Optional[Tuple[int, int]]
-    gotScore: int
-    gotScorePerGroup: Dict[str, int]
+    expectedScore: Optional[Tuple[float, float]]
+    gotScore: float
+    gotScorePerGroup: Dict[str, float]
     maxScore: int
     runUnderDoubleTl: bool
     doubleTlVerdicts: Set[Outcome]
@@ -2442,16 +2482,12 @@ def get_solution_outcome_report(
         double_tl_verdicts |= report.double_tl_verdicts
 
     max_score = 0
-    got_score = 0
-    got_score_per_group = {}
+    got_score = 0.0
+    got_score_per_group: Dict[str, float] = {}
     if scoring == ScoreType.POINTS:
-        # ``passed()`` only inspects bad verdicts, never the expectation, so a
-        # report computed for the per-group layer is reusable here as-is.
-        verdict_report_per_group: Dict[str, VerdictReport] = {}
         for group in skeleton.groups:
             max_score += group.score
-            group_report = per_group_expectation_reports.get(group.name)
-            if group_report is None:
+            if group.name not in per_group_expectation_reports:
                 group_report = _get_verdict_report(
                     skeleton,
                     evals_per_group.get(group.name, []),
@@ -2464,21 +2500,19 @@ def get_solution_outcome_report(
                     has_unmatched_slow_verdict
                     or group_report.has_unmatched_slow_verdict()
                 )
-            verdict_report_per_group[group.name] = group_report
 
-        def _check_deps(group: GroupSkeleton):
-            for dep in group.deps:
-                dep_group = skeleton.find_group_skeleton(dep)
-                if dep_group is None:
-                    return False
-                if not _check_deps(dep_group):
-                    return False
-            return verdict_report_per_group[group.name].passed()
-
-        for group in skeleton.groups:
-            if _check_deps(group):
-                got_score += group.score
-                got_score_per_group[group.name] = group.score
+        got_score_per_group = partial.group_scores(
+            [
+                partial.GroupSpec(group.name, group.score, group.aggregation)
+                for group in skeleton.groups
+            ],
+            {
+                name: [eval.result.fraction() for eval in group_evals]
+                for name, group_evals in evals_per_group.items()
+            },
+            skeleton.dependency_closure,
+        )
+        got_score = partial.round_score(sum(got_score_per_group.values()))
 
         if expected_score is not None and not fulfills_expected_score(
             expected_score, got_score

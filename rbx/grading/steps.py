@@ -44,6 +44,9 @@ class Outcome(Enum):
     # testcase is worse than a passing one (it was not awarded), but never
     # masks the real verdict that caused the remaining tests to be skipped.
     ACCEPTED = 'accepted'
+    # The checker awarded part of the test's points (testlib `quitp`). Better than
+    # SKIPPED, which awards nothing.
+    PARTIALLY_CORRECT = 'partially-correct'
     SKIPPED = 'skipped'
     WRONG_ANSWER = 'wrong-answer'
     MEMORY_LIMIT_EXCEEDED = 'memory-limit-exceeded'
@@ -79,6 +82,8 @@ class Outcome(Enum):
     def short_name(self) -> str:
         if self == Outcome.ACCEPTED:
             return 'AC'
+        if self == Outcome.PARTIALLY_CORRECT:
+            return 'PC'
         if self == Outcome.SKIPPED:
             return 'SKIP'
         if self == Outcome.WRONG_ANSWER:
@@ -365,6 +370,9 @@ class CheckerResult(BaseModel):
     outcome: Outcome
     message: str = ''
     no_tle_outcome: Optional[Outcome] = None
+    # Fraction of the test's points the checker awarded, in [0, 1], when it said so
+    # (testlib `quitp`). `None` means the verdict alone decides.
+    score: Optional[float] = None
     sanitizer_warnings: bool = False
     # How long the checker took on this testcase, and -- for communication
     # problems -- the interactor. Captured on every run regardless of
@@ -372,6 +380,14 @@ class CheckerResult(BaseModel):
     # show it for any past run. See docs/plans/2026-08-28-run-benchmark-design.md.
     checker_timing: Optional[RunTiming] = None
     interactor_timing: Optional[RunTiming] = None
+
+    def fraction(self) -> float:
+        """The fraction of the test's points this result earns."""
+        if self.outcome == Outcome.ACCEPTED:
+            return 1.0 if self.score is None else self.score
+        if self.outcome == Outcome.PARTIALLY_CORRECT:
+            return self.score or 0.0
+        return 0.0
 
 
 class Evaluation(BaseModel):

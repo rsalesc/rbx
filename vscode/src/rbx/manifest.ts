@@ -103,6 +103,7 @@ const ALIASES: Record<string, readonly string[]> = {
   ],
   WRONG_ANSWER: ['wrong answer', 'wa'],
   INCORRECT: ['fail', 'incorrect'],
+  PARTIALLY_CORRECT: ['partially correct', 'partial', 'pc'],
   RUNTIME_ERROR: ['runtime error', 'rte', 're'],
   TIME_LIMIT_EXCEEDED: ['time limit exceeded', 'timeout', 'tle', 'tl'],
   MEMORY_LIMIT_EXCEEDED: ['memory limit exceeded', 'mle', 'ml'],

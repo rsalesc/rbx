@@ -32,6 +32,7 @@ from rbx.box.schema import (
     Solution,
     Testcase,
 )
+from rbx.box.scoring.dependencies import Aggregation
 from rbx.box.solutions import (
     AbortContext,
     EvaluationItem,
@@ -1670,6 +1671,21 @@ def test_points_scoring_aborts_the_group_and_its_dependents():
     assert not gate.is_skipped('d')
 
 
+def test_points_scoring_keeps_running_a_sum_group():
+    # A failing test of a `sum` group does not stop its other tests paying, but
+    # its dependents are capped at 0.
+    groups = [
+        GroupSkeleton(
+            name='a', score=100, deps=[], testcases=[], aggregation=Aggregation.SUM
+        ),
+        _group('b', ['a']),
+    ]
+    gate = _AbortGate(groups=groups, scoring=ScoreType.POINTS)
+    gate.trip('a')
+    assert not gate.is_skipped('a')
+    assert gate.is_skipped('b')
+
+
 def test_gate_is_not_skipped_before_tripping():
     groups = [_group('a', [])]
     gate = _AbortGate(groups=groups, scoring=ScoreType.POINTS)
@@ -1782,11 +1798,13 @@ def _fail_fast_context(
     )
 
 
-def test_fail_fast_trips_on_every_verdict_but_accepted():
+def test_fail_fast_trips_on_every_verdict_but_accepted_and_partial():
     assert not fail_fast_abort_predicate(_fail_fast_context(Outcome.ACCEPTED))
+    # A partial score is a pass that pays less, not a failure.
+    assert not fail_fast_abort_predicate(_fail_fast_context(Outcome.PARTIALLY_CORRECT))
 
     for outcome in Outcome:
-        if outcome == Outcome.ACCEPTED:
+        if outcome in (Outcome.ACCEPTED, Outcome.PARTIALLY_CORRECT):
             continue
         assert fail_fast_abort_predicate(_fail_fast_context(outcome)), outcome
 

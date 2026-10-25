@@ -32,8 +32,13 @@ class DependencyPolicy(AutoEnum):
 
 class Aggregation(AutoEnum):
     MIN = alias('min')  # type: ignore
-    """A group scores fully if every one of its tests passes, and nothing otherwise
-    (CMS's `GroupMin`)."""
+    """A group scores its points times the lowest score among its tests (CMS's
+    `GroupMin`, Polygon's `complete-group`): fully if every test passes, nothing if
+    any fails."""
+
+    SUM = alias('sum')  # type: ignore
+    """Each test is worth an even share of the group's points and pays its own
+    score (Polygon's `each-test`)."""
 
 
 class FlatteningError(ValueError):

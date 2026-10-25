@@ -248,9 +248,13 @@ def get_run_testcase_metadata_markup(
     checker_msg = _get_checker_msg_last_line(eval)
 
     lines = []
-    lines.append(
+    verdict_line = (
         f'[b]{solutions.get_full_outcome_markup_verdict(eval.result.outcome)}[/b]'
     )
+    percent = solutions.get_testcase_percent(eval)
+    if percent is not None:
+        verdict_line += f' ({percent} of the points)'
+    lines.append(verdict_line)
     lines.append(f'[b]Time:[/b] {time_str} / [b]Memory:[/b] {memory_str}')
     # The label is `Checker time:`, not `Checker:`, because the line below
     # already spells `Checker:` for the checker's *message* -- a line setters

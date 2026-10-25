@@ -77,3 +77,41 @@ def test_binary_problem_declares_no_groups(testing_pkg):
         polygon_schema.Test(),
     ]
     assert groups == []
+
+
+def test_sum_groups_are_each_test_with_split_points(testing_pkg):
+    testing_pkg.yml.scoring = ScoreType.POINTS
+    testing_pkg.yml.testcases = [
+        TestcaseGroup(name='samples'),
+        TestcaseGroup(name='small', score=10, aggregation='sum'),
+        TestcaseGroup(name='big', score=60),
+    ]
+    testing_pkg.save()
+
+    packager = PolygonPackager(testcase_entries=[])
+    entries = ENTRIES[:3] + [_entry('small', 2), ENTRIES[3]]
+    tests, groups = packager._get_tests_and_groups(entries)  # noqa: SLF001
+
+    assert [(test.group, test.points) for test in tests] == [
+        ('samples', 0.0),
+        ('small', 3.33),
+        ('small', 3.33),
+        ('small', 3.34),
+        ('big', 60.0),
+    ]
+    assert groups[1] == polygon_schema.Group(
+        name='small',
+        points=10.0,
+        points_policy='each-test',
+        feedback_policy='points',
+    )
+    assert groups[2].points_policy == 'complete-group'
+
+
+def test_points_problems_read_checker_points_as_percent():
+    # Serialized as the packager does, which drops unset attributes.
+    judging = polygon_schema.Judging(treatPointsAsPercent='true')
+    assert b'treat-points-from-checker-as-percent="true"' in judging.to_xml(
+        skip_empty=True
+    )
+    assert b'treat-points' not in polygon_schema.Judging().to_xml(skip_empty=True)

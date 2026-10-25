@@ -1,6 +1,7 @@
+import collections
 import pathlib
 import shutil
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import typer
 
@@ -23,6 +24,8 @@ from rbx.box.packaging.packager import (
 from rbx.box.packaging.polygon import xml_schema as polygon_schema
 from rbx.box.packaging.polygon.utils import get_polygon_language_from_code_item
 from rbx.box.schema import ExpectedOutcome, ScoreType, Solution, TaskType
+from rbx.box.scoring import partial
+from rbx.box.scoring.dependencies import Aggregation
 from rbx.box.statements.schema import (
     ConversionStep,
     ConversionType,
@@ -59,9 +62,28 @@ def _get_solution_tag(solution: Solution, is_main: bool) -> Optional[str]:
     """
     if is_main and solution.outcome == ExpectedOutcome.ACCEPTED:
         return 'main'
-    if solution.outcome == ExpectedOutcome.ANY:
+    # Polygon judges a partial result OK and has no tag for one, so any tag
+    # would misjudge the solution.
+    if solution.outcome in (ExpectedOutcome.ANY, ExpectedOutcome.PARTIALLY_CORRECT):
         return None
     return _SOLUTION_TAGS.get(solution.outcome, 'rejected')
+
+
+def _warn_about_pc(checker_path: pathlib.Path) -> None:
+    """Warn when a checker awards partial credit with `_pc`, which Polygon fails on.
+
+    Checked on the source: testlib itself declares `_pc`, but a checker that never
+    names it never uses it.
+    """
+    source = checker_path.read_text(encoding='utf-8', errors='replace')
+    if '_pc(' not in source:
+        return
+    console.console.print(
+        '[warning]The checker uses [item]_pc(...)[/item], which Polygon reports as '
+        'a checker failure.[/warning]\n'
+        '[warning]Award partial points with [item]quitp(percentage)[/item] '
+        'instead: Polygon (in percent mode), CMS and rbx all read it.[/warning]'
+    )
 
 
 def _select_main_language(
@@ -176,16 +198,24 @@ class PolygonPackager(BasePackager):
         if pkg.score_type != ScoreType.POINTS:
             return tests, []
 
-        # A group scores only when every one of its tests passes and every group
-        # it depends on scored too, which is Polygon's `complete-group` policy.
-        # The score also goes on the group's last test, so a judge that sums
-        # test points instead of reading the group's agrees with one that does.
-        last_test_of = {entry.group_entry.group: i for i, entry in enumerate(entries)}
-        scores = {group.name: group.score for group in pkg.testcases}
-        for i, (test, entry) in enumerate(zip(tests, entries)):
-            group = entry.group_entry.group
-            test.group = group
-            test.points = float(scores[group]) if last_test_of[group] == i else 0.0
+        # A `min` group pays its points times its lowest test, which is Polygon's
+        # `complete-group` policy (measured with the percent mode on). Its score
+        # goes on its last test, so a judge that sums test points instead of
+        # reading the group's agrees with one that does. A `sum` group is
+        # `each-test`: each test carries its own share and pays it.
+        tests_of: Dict[str, List[int]] = collections.defaultdict(list)
+        for i, entry in enumerate(entries):
+            tests_of[entry.group_entry.group].append(i)
+        for group_name, indices in tests_of.items():
+            score = next(g.score for g in pkg.testcases if g.name == group_name)
+            if pkg.aggregation_for(group_name) == Aggregation.SUM:
+                points = partial.test_points(score, len(indices))
+            else:
+                points = [0.0] * (len(indices) - 1) + [float(score)]
+            for i, test_points in zip(indices, points):
+                tests[i].group = group_name
+                tests[i].points = test_points
+        last_test_of = {name: indices[-1] for name, indices in tests_of.items()}
 
         # A group with no built tests has nothing to judge; leave it out.
         group_deps = pkg.group_dependencies.over(list(last_test_of))
@@ -193,11 +223,16 @@ class PolygonPackager(BasePackager):
         for group in pkg.testcases:
             if group.name not in last_test_of:
                 continue
+            each_test = pkg.aggregation_for(group.name) == Aggregation.SUM
+            feedback_policy = 'points' if each_test else 'icpc'
             groups.append(
                 polygon_schema.Group(
                     name=group.name,
                     points=float(group.score),
-                    feedback_policy='complete' if group.name == 'samples' else 'icpc',
+                    points_policy='each-test' if each_test else 'complete-group',
+                    feedback_policy='complete'
+                    if group.name == 'samples'
+                    else feedback_policy,
                     dependencies=[
                         polygon_schema.Dependency(group=dep)
                         for dep in group_deps.direct(group.name)
@@ -243,7 +278,11 @@ class PolygonPackager(BasePackager):
         )
 
     def _get_judging(self) -> polygon_schema.Judging:
-        return polygon_schema.Judging(testsets=[self._get_single_testset()])
+        pkg = package.find_problem_package_or_die()
+        return polygon_schema.Judging(
+            testsets=[self._get_single_testset()],
+            treatPointsAsPercent='true' if pkg.score_type == ScoreType.POINTS else None,
+        )
 
     def _flatten_sources(self) -> flattening.FlatNamespace:
         pkg = package.find_problem_package_or_die()
@@ -344,6 +383,7 @@ class PolygonPackager(BasePackager):
         pkg = package.find_problem_package_or_die()
 
         ns = self._flatten_sources()
+        _warn_about_pc(package.get_checker_or_builtin().path)
 
         problem = polygon_schema.Problem(
             short_name=pkg.name,

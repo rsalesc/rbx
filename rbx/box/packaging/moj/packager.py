@@ -31,12 +31,14 @@ from rbx.box.packaging.packager import BasePackager, BuiltStatement
 from rbx.box.schema import (
     CodeItem,
     ExpectedOutcome,
+    Package,
     ScoreType,
     Solution,
     TaskType,
     TimingMultipliers,
 )
 from rbx.box.scoring import dependencies
+from rbx.box.scoring.dependencies import Aggregation
 from rbx.box.statements import export
 from rbx.box.statements.markdown_export import MojGateError
 from rbx.box.statements.schema import (
@@ -331,6 +333,24 @@ def _ac_to_time_limit_or_die() -> float:
         )
         raise typer.Exit(1)
     return multipliers.acToTimeLimit
+
+
+def _refuse_sum_groups(pkg: Package) -> None:
+    """MOJ's `score-summary.sh` pays a group all or nothing, so it cannot score a
+    group whose tests each pay their own share (`aggregation: sum`)."""
+    sum_groups = [
+        group.name
+        for group in pkg.testcases
+        if pkg.aggregation_for(group.name) == Aggregation.SUM
+    ]
+    if not sum_groups:
+        return
+    console.console.print(
+        f'[error]Group(s) {", ".join(sum_groups)} use '
+        '[item]aggregation: sum[/item], which MOJ cannot score: it pays each '
+        'group all or nothing.[/error]'
+    )
+    raise typer.Exit(1)
 
 
 def _require_limits_profile() -> None:
@@ -1292,6 +1312,7 @@ class MojPackager(BasePackager):
         points = pkg.points_scoring
         if points is None or self.probe is not None:
             return []
+        _refuse_sum_groups(pkg)
 
         names_by_group: Dict[str, List[str]] = collections.defaultdict(list)
         for entry, name in self.testcase_names():

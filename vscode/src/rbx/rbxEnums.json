@@ -23,6 +23,11 @@
       "fail",
       "incorrect"
     ],
+    "PARTIALLY_CORRECT": [
+      "partially correct",
+      "partial",
+      "pc"
+    ],
     "RUNTIME_ERROR": [
       "runtime error",
       "rte",
@@ -76,6 +81,7 @@
   },
   "Outcome": [
     "accepted",
+    "partially-correct",
     "skipped",
     "wrong-answer",
     "memory-limit-exceeded",

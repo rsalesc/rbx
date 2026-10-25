@@ -589,6 +589,18 @@ function testcaseChip(testcase: TestcaseRun, ended: boolean, under?: WarningVerd
   return chip(testcase.evaluation?.outcome, under);
 }
 
+/**
+ * How much of its points a partially correct testcase scored, as rbx prints it:
+ * `74.06%`, to the cent and without trailing zeros.
+ */
+export function partialPercent(evaluation: Evaluation | undefined): string | undefined {
+  if (evaluation?.outcome !== 'partially-correct' || evaluation.score === undefined) {
+    return undefined;
+  }
+  const percent = (Math.round(evaluation.score * 10000) / 100).toFixed(2);
+  return `${percent.replace(/\.?0+$/, '')}%`;
+}
+
 function chip(outcome: string | undefined, under?: WarningVerdict): VerdictChip {
   const { icon, color } = outcomeIcon(outcome);
   // Note this reads the outcome, never `matchesExpectation`: a solution
@@ -1247,6 +1259,10 @@ function testcaseRow(
     // of a row that is only 22px tall. It belongs somewhere that can wrap --
     // which is `card`, below.
     meta: spans([
+      // Left of the time, where a group row shows its score.
+      evaluation?.score === undefined
+        ? undefined
+        : span(partialPercent(evaluation), hueOfScore(evaluation.score, 1), 'score'),
       measuredSpan(
         measuredTime(
           evaluation?.time,
