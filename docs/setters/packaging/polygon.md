@@ -33,6 +33,13 @@ rbx contest package polygon
 
 This command will build a single `.zip` file with all problems in the contest.
 
+## Importing into CMS
+
+{{cms}} can import Polygon packages too. Pass `--cms` to either command, and the
+package also contains what CMS needs. A contest package built with `--cms` no longer
+uploads to Codeforces Gym, so build one for each judge. See [CMS](cms.md#polygon) for how
+to import it, and for the CMS settings you can declare.
+
 ## Uploading to Codeforces Gym
 
 There are two totally different ways of uploading Polygon packages to Codeforces Gym.

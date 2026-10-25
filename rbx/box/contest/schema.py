@@ -20,6 +20,7 @@ from rbx.box.fields import (
     expand_vars,
     validate_statement_name,
 )
+from rbx.box.packaging.cms.extension import CmsExtension
 from rbx.box.statements.expander import expand_contest_statements
 from rbx.box.statements.schema import (
     DOCUMENT_TYPES,
@@ -220,6 +221,16 @@ If not provided, will try to infer a color name from the color provided.
 _CONTEST_NAME_VALIDATOR = TypeAdapter(Annotated[str, NameField()])
 
 
+class ContestExtensions(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    cms: Optional[CmsExtension] = Field(
+        default=None,
+        description='CMS contest and task settings. They override the ones in '
+        '`env.rbx.yml` field by field.',
+    )
+
+
 class Contest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -271,6 +282,7 @@ class Contest(BaseModel):
                 'tutorials',
                 'documents',
                 'vars',
+                'extensions',
             ):
                 value = getattr(self, field)
                 if value:
@@ -333,6 +345,11 @@ class Contest(BaseModel):
     #   - It will be available as \VAR{vars} variable in the contest-level box statement.
     vars: CheckedStatementRecVars = Field(
         default={}, description='Variables to be re-used across the package.'
+    )
+
+    extensions: Optional[ContestExtensions] = Field(
+        default=None,
+        description='Settings for the judges this contest is exported to.',
     )
 
     @property
