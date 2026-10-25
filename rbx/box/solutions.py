@@ -1721,6 +1721,8 @@ async def pick_solutions(
 def get_outcome_style_verdict(outcome: Outcome) -> str:
     if outcome == Outcome.ACCEPTED:
         return 'green'
+    if outcome == Outcome.PARTIALLY_CORRECT:
+        return 'yellow'
     if outcome == Outcome.WRONG_ANSWER:
         return 'red'
     if outcome.is_slow():
@@ -1755,6 +1757,8 @@ def get_outcome_markup_verdict(outcome: Outcome) -> str:
         res = '✗'
     if outcome == Outcome.SKIPPED:
         res = '⊘'
+    if outcome == Outcome.PARTIALLY_CORRECT:
+        res = '~'
     style = get_outcome_style_verdict(outcome)
     res = f'[{style}]{res}[/{style}]'
     return res
