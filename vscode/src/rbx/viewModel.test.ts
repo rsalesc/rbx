@@ -1659,7 +1659,9 @@ test('a partially correct testcase shows the percentage its checker awarded', ()
   const { rows } = buildViewModel(view([PARTIAL_SCORE]));
   const row = rows.find((candidate) => candidate.kind === 'testcase' && candidate.label === '001');
   assert.ok(row);
-  assert.strictEqual(row.verdict?.short, 'PC 74.06%');
+  assert.strictEqual(row.verdict?.short, 'PC');
+  // Left of the time, as a group row shows its score.
+  assert.deepStrictEqual(row.meta[0], { text: '74.06%', hue: 'yellow', role: 'score' });
 });
 
 test('only a partially correct testcase with a score has a percentage', () => {

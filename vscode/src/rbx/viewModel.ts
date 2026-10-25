@@ -586,9 +586,7 @@ function testcaseChip(testcase: TestcaseRun, ended: boolean, under?: WarningVerd
   if (testcase.evaluation === undefined && ended) {
     return displayChip(NOT_RUN);
   }
-  const base = chip(testcase.evaluation?.outcome, under);
-  const percent = partialPercent(testcase.evaluation);
-  return percent === undefined ? base : { ...base, short: `${base.short} ${percent}` };
+  return chip(testcase.evaluation?.outcome, under);
 }
 
 /**
@@ -1261,6 +1259,10 @@ function testcaseRow(
     // of a row that is only 22px tall. It belongs somewhere that can wrap --
     // which is `card`, below.
     meta: spans([
+      // Left of the time, where a group row shows its score.
+      evaluation?.score === undefined
+        ? undefined
+        : span(partialPercent(evaluation), hueOfScore(evaluation.score, 1), 'score'),
       measuredSpan(
         measuredTime(
           evaluation?.time,
