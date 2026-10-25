@@ -1172,7 +1172,23 @@ class TestPointsScoring:
 
     def test_unknown_aggregations_are_rejected(self):
         with pytest.raises(ValidationError, match='aggregation'):
-            self._package({'aggregation': 'sum'})
+            self._package({'aggregation': 'mul'})
+
+    def test_group_aggregation_overrides_the_default(self):
+        from rbx.box.scoring.dependencies import Aggregation
+
+        package = self._package({'aggregation': 'sum'})
+        package.testcases[2].aggregation = Aggregation.MIN
+        assert package.aggregation_for('big') == Aggregation.MIN
+        assert package.aggregation_for('samples') == Aggregation.SUM
+
+    def test_group_aggregation_is_rejected_for_binary_problems(self):
+        from rbx.box.schema import TestcaseGroup
+
+        with pytest.raises(ValidationError, match='Aggregation is not allowed'):
+            self._package(
+                'binary', testcases=[TestcaseGroup(name='big', aggregation='sum')]
+            )
 
     def test_group_dependencies_include_the_policy_edges(self):
         package = self._package({'dependencies': 'samples'})
@@ -1214,3 +1230,20 @@ class TestPointsScoring:
         package = self._package({'dependencies': 'ladder'})
 
         assert utils.model_from_yaml(Package, utils.model_to_yaml(package)) == package
+
+
+class TestPartiallyCorrect:
+    def test_parses_aliases(self):
+        for alias in ('pc', 'partial', 'partially correct', 'partially_correct'):
+            assert ExpectedOutcome(alias) == ExpectedOutcome.PARTIALLY_CORRECT
+
+    def test_matches_only_partial(self):
+        assert ExpectedOutcome.PARTIALLY_CORRECT.get_matches() == [
+            Outcome.PARTIALLY_CORRECT
+        ]
+
+    def test_partial_is_incorrect_but_not_accepted_nor_wa(self):
+        assert ExpectedOutcome.INCORRECT.match(Outcome.PARTIALLY_CORRECT)
+        assert not ExpectedOutcome.ACCEPTED.match(Outcome.PARTIALLY_CORRECT)
+        assert not ExpectedOutcome.ACCEPTED_OR_TLE.match(Outcome.PARTIALLY_CORRECT)
+        assert not ExpectedOutcome.WRONG_ANSWER.match(Outcome.PARTIALLY_CORRECT)
