@@ -50,6 +50,11 @@ export interface OutcomeDisplay {
  */
 const DISPLAY: Record<string, OutcomeDisplay> = {
   accepted: { short: 'AC', icon: 'pass', color: 'charts.green' },
+  'partially-correct': {
+    short: 'PC',
+    icon: 'circle-large-outline',
+    color: 'charts.yellow',
+  },
   skipped: {
     short: 'SKIP',
     icon: 'debug-step-over',

@@ -45,6 +45,14 @@ _EXPECTED_RESULTS: Dict[ExpectedOutcome, List[str]] = {
     ExpectedOutcome.ACCEPTED_OR_TLE: [_DJ_CORRECT, _DJ_TIMELIMIT],
     ExpectedOutcome.TLE_OR_RTE: [_DJ_TIMELIMIT, _DJ_RUN_ERROR],
     ExpectedOutcome.TLE_OR_MLE: [_DJ_TIMELIMIT, _DJ_RUN_ERROR],
+    # DOMjudge has no partial credit; a partial solution fails somewhere.
+    ExpectedOutcome.PARTIALLY_CORRECT: [
+        _DJ_WRONG_ANSWER,
+        _DJ_RUN_ERROR,
+        _DJ_TIMELIMIT,
+        _DJ_OUTPUT_LIMIT,
+        _DJ_NO_OUTPUT,
+    ],
     ExpectedOutcome.INCORRECT: [
         _DJ_WRONG_ANSWER,
         _DJ_RUN_ERROR,

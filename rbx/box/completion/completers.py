@@ -132,6 +132,7 @@ _OUTCOME_TABLE = (
     ('ac/tle', 'accepted or time limit exceeded'),
     ('wa', 'wrong answer'),
     ('incorrect', 'any incorrect (non-AC) verdict'),
+    ('pc', 'partially correct'),
     ('rte', 'runtime error'),
     ('tle', 'time limit exceeded'),
     ('mle', 'memory limit exceeded'),

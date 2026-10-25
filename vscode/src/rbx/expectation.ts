@@ -70,6 +70,13 @@ const DISPLAY: Record<string, ExpectationDisplay> = {
     glyph: CROSS,
     badge: CROSS,
   },
+  PARTIALLY_CORRECT: {
+    label: 'PC',
+    hue: 'yellow',
+    bold: false,
+    glyph: '~',
+    badge: '~',
+  },
   INCORRECT: {
     label: 'INCORRECT',
     hue: 'red',

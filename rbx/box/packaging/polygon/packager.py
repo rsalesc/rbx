@@ -59,7 +59,9 @@ def _get_solution_tag(solution: Solution, is_main: bool) -> Optional[str]:
     """
     if is_main and solution.outcome == ExpectedOutcome.ACCEPTED:
         return 'main'
-    if solution.outcome == ExpectedOutcome.ANY:
+    # Polygon judges a partial result OK and has no tag for one, so any tag
+    # would misjudge the solution.
+    if solution.outcome in (ExpectedOutcome.ANY, ExpectedOutcome.PARTIALLY_CORRECT):
         return None
     return _SOLUTION_TAGS.get(solution.outcome, 'rejected')
 
