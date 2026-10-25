@@ -22,6 +22,7 @@ from rbx import console
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.cms import scoring
 from rbx.box.packaging.cms.extension import (
+    CmsContestSettings,
     CmsExtension,
     CmsLimits,
     CmsPublicTestcases,
@@ -137,6 +138,44 @@ def task_keys(task: Optional[CmsTaskSettings]) -> Dict[str, Any]:
     return keys
 
 
+# Contest flags, keyed by the field rbx names them with.
+_CONTEST_FLAG_KEYS = {
+    'allowUserTests': 'allow_user_tests',
+    'allowQuestions': 'allow_questions',
+    'submissionsDownloadAllowed': 'submissions_download_allowed',
+    'allowPasswordAuthentication': 'allow_password_authentication',
+    'allowRegistration': 'allow_registration',
+    'ipRestriction': 'ip_restriction',
+    'ipAutologin': 'ip_autologin',
+    'blockHiddenParticipations': 'block_hidden_participations',
+}
+
+
+def contest_keys(contest: Optional[CmsContestSettings]) -> Dict[str, Any]:
+    """The contest columns to set in CMS.
+
+    Durations are in seconds, and `start`/`stop` are Unix timestamps.
+    """
+    contest = contest or CmsContestSettings()
+    keys: Dict[str, Any] = {}
+    for field, key in _CONTEST_FLAG_KEYS.items():
+        value = getattr(contest, field)
+        if value is not None:
+            keys[key] = value
+    if contest.start is not None:
+        keys['start'] = int(contest.start.timestamp())
+    if contest.stop is not None:
+        keys['stop'] = int(contest.stop.timestamp())
+    if contest.perUserTime is not None:
+        keys['per_user_time'] = contest.perUserTime
+    if contest.timezone is not None:
+        keys['timezone'] = contest.timezone
+    if contest.allowedLocalizations is not None:
+        keys['allowed_localizations'] = list(contest.allowedLocalizations)
+    keys.update(_limits(contest))
+    return keys
+
+
 def public_testcases(
     task: Optional[CmsTaskSettings], entries: Sequence[GenerationTestcaseEntry]
 ) -> Union[str, List[int]]:
@@ -161,15 +200,17 @@ def warn_for_polygon(settings: CmsExtension):
     """Warn about settings that cannot reach CMS through a Polygon package.
 
     The Polygon contest importer sets its own contest options, so nothing under
-    `contest` is carried.
+    `contest` is carried: `rbx contest package cms-contest` builds the contest
+    they belong to.
     """
     contest_fields = _set_fields(settings.contest)
     if contest_fields:
         console.console.print(
             '[warning]CMS contest settings are not carried by a Polygon package, '
             "since CMS's Polygon importer sets its own contest options. Ignoring "
-            f'[item]{", ".join(contest_fields)}[/item]: set them in CMS after '
-            'importing.[/warning]'
+            f'[item]{", ".join(contest_fields)}[/item]: import the contest from '
+            '[item]rbx contest package cms-contest[/item] instead, or set them in '
+            'CMS after importing.[/warning]'
         )
     _warn_tokened_last_without_tokens(settings)
 
