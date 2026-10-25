@@ -1,0 +1,73 @@
+scenarios:
+  - name: grader-batch-run
+    description: |
+      Every solution is linked with graders/grader.cpp and runs on the judge
+      view of each test (input secret, group, raw input). The checker reads
+      `TOL` through getVar, which the hidden header resolves per group, so the
+      off-by-5 solution passes only `approx` (TOL 10). A solution writing to
+      stdout, or exiting from inside the call, breaks the grader's framing.
+    steps:
+      - cmd: run
+        expect:
+          # Rich word-wraps the report, so words are joined by `\s+`.
+          stdout_matches: "group\\s+'samples',\\s+tolerance\\s+0[\\s\\S]*Protocol\\s+violation:\\s+the\\s+solution\\s+wrote\\s+to\\s+standard\\s+output"
+          solutions:
+            sols/main.cpp: ac
+            sols/approx.cpp:
+              samples: wa
+              approx: ac
+              exact: wa
+            sols/stdout.cpp: wa
+            sols/exit.cpp: wa
+          files_exist:
+            - "build/tests/approx/000.in.judge"
+            - "build/tests/samples/000.out.statement"
+          file_contains:
+            # The judge view: secret, then the declaring group, then the input.
+            build/tests/approx/000.in.judge: '/^[0-9a-f]{32}\napprox\n5\n/'
+            # The statement shows the public answer: no prologue.
+            build/tests/samples/000.out.statement: '/^6\n$/'
+
+  - name: grader-refused-by-pkg
+    description: A judge without graders refuses the problem before building it.
+    steps:
+      - cmd: package pkg
+        expect_exit: 1
+        expect:
+          stdout_contains: "does not support problems with a grader"
+
+  - name: grader-polygon-cms-package
+    description: |
+      Polygon declares the grader as a resource compiled with every solution;
+      CMS gets it (with its header and rbx.h) as managers of a Batch task with
+      grader compilation, and the attachments archive as a task attachment.
+      The archive's grader is the public one: no SECRET block, no rbx.h.
+    steps:
+      - cmd: package polygon --cms
+        expect:
+          zip_contains:
+            path: build/problem.zip
+            entries:
+              - files/grader.cpp
+              - files/grader.cpp.json
+              - files/sumgame.h
+              - files/grader-batch.zip
+          zip_file_contains:
+            path: build/problem.zip
+            entries:
+              problem.xml: '/(?s)path="files/grader.cpp"[^>]*for-types="cpp.\*".*<stage name="compile"/>.*<asset name="solution"/>/'
+              files/cms_conf.py: "'task_type_parameters': ['grader', ['', ''], 'comparator']"
+              tests/02: '/^[0-9a-f]{32}\napprox\n/'
+      - cmd: package polygon --cms
+        expect:
+          zip_file_contains:
+            path: build/attachments/grader-batch.zip
+            entries:
+              grader.cpp: "rbx: public grader helpers"
+              examples/01.out: '/^6\n$/'
+          zip_contains:
+            path: build/attachments/grader-batch.zip
+            entries:
+              - sumgame.h
+              - sumgame.cpp
+              - examples/01.in
