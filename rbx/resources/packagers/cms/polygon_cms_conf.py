@@ -7,6 +7,7 @@
 # FileCacher, like the importer does for the checker.
 import datetime
 import os
+import shutil
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
@@ -102,6 +103,29 @@ def _communication(config):
     return dataset
 
 
+def _checker(config):
+    # Built against rbx's testlib patched for CMS (`-DRBX_CMS`), in a copy of
+    # `files/` so `#include "testlib.h"` finds that variant first.
+    from cms.db import Manager
+    from cms.db.filecacher import FileCacher
+
+    build = tempfile.mkdtemp()
+    for name in os.listdir(_FILES):
+        if os.path.isfile(os.path.join(_FILES, name)):
+            shutil.copy(os.path.join(_FILES, name), os.path.join(build, name))
+    shutil.copy(
+        os.path.join(_FILES, config['testlib']), os.path.join(build, 'testlib.h')
+    )
+    checker = os.path.join(build, 'checker')
+    subprocess.run(
+        ['g++', '-x', 'c++', '-std=gnu++20', '-O2', '-static', '-DRBX_CMS']
+        + ['-I', build, '-o', checker, os.path.join(build, config['source'])],
+        check=True,
+    )
+    digest = FileCacher().put_file_from_path(checker, 'Checker for task %s' % _TASK)
+    return {'checker': Manager('checker', digest)}
+
+
 general = dict(CONFIG['general'])
 for _key in CONFIG['durations']:
     general[_key] = datetime.timedelta(seconds=general[_key])
@@ -111,6 +135,8 @@ datasets = {
         'score_type_parameters': CONFIG['score_type_parameters'],
     }
 }
+if CONFIG.get('checker'):
+    datasets['tests']['managers'] = _checker(CONFIG['checker'])
 _pack = False
 if CONFIG.get('communication'):
     datasets['tests'].update(_communication(CONFIG['communication']))

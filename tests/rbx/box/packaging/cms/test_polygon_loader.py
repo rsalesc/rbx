@@ -9,15 +9,18 @@ is checked.
 import ast
 import datetime
 import pathlib
+import subprocess
 import sys
+import tempfile
 import types
-from typing import Any, List, NamedTuple
+from typing import Any, List, NamedTuple, Optional
 
 import pytest
 
 from rbx.box.packaging.cms import communication, polygon_loader
 from rbx.box.packaging.cms.extension import CmsExtension
 from rbx.box.schema import Interactor, TaskType
+from rbx.config import get_app_file
 from tests.rbx.box.packaging.cms._entries import build_entries
 
 
@@ -28,15 +31,47 @@ class StoredTestcase(NamedTuple):
     output: str
 
 
+class StoredManager(NamedTuple):
+    filename: str
+    digest: str
+
+
 class FileCacher:
     def put_file_from_path(self, path: str, description: str) -> str:
         return pathlib.Path(path).read_text()
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
+def compilations(monkeypatch) -> List[List[str]]:
+    """Stands in for `g++` (whose `-static` macOS cannot link): the "binary" names
+    the source it was built from."""
+    commands: List[List[str]] = []
+
+    def fake_run(command, check=False, **kwargs):
+        commands.append(command)
+        output = command[command.index('-o') + 1]
+        pathlib.Path(output).write_text('built from ' + command[-1])
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(subprocess, 'run', fake_run)
+    return commands
+
+
+@pytest.fixture(autouse=True)
+def bundled_testlib(monkeypatch):
+    # `get_testlib` would download testlib.h, which a test must never do.
+    monkeypatch.setattr(
+        polygon_loader,
+        'get_testlib',
+        lambda: get_app_file(pathlib.Path('testlib.h'), predownloaded=True),
+    )
+
+
+@pytest.fixture(autouse=True)
 def cms_modules(monkeypatch):
     db = types.ModuleType('cms.db')
     db.Testcase = StoredTestcase  # type: ignore[attr-defined]
+    db.Manager = StoredManager  # type: ignore[attr-defined]
     filecacher = types.ModuleType('cms.db.filecacher')
     filecacher.FileCacher = FileCacher  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, 'cms', types.ModuleType('cms'))
@@ -47,6 +82,8 @@ def cms_modules(monkeypatch):
 def _polygon_package(root: pathlib.Path, inputs: List[str]) -> pathlib.Path:
     """The parts of a Polygon package the conf reads: `problem.xml` and tests."""
     (root / 'files').mkdir(parents=True)
+    (root / 'files' / 'check.cpp').write_text('// checker')
+    (root / 'files' / 'cms_testlib.h').write_text('// cms testlib')
     (root / 'tests').mkdir()
     for i, data in enumerate(inputs):
         (root / 'tests' / f'{i + 1:02d}').write_text(data)
@@ -65,7 +102,10 @@ def _polygon_package(root: pathlib.Path, inputs: List[str]) -> pathlib.Path:
 ALL_PUBLIC = CmsExtension.model_validate({'task': {'publicTestcases': 'all'}})
 
 
-def _run(conf: str, path: str = '/pkg/problems/A/files/cms_conf.py') -> dict:
+def _run(conf: str, path: Optional[str] = None) -> dict:
+    if path is None:
+        root = pathlib.Path(tempfile.mkdtemp()) / 'A'
+        path = str(_polygon_package(root, []))
     namespace: dict[str, Any] = {'__file__': path}
     exec(conf, namespace)
     return namespace
@@ -195,10 +235,30 @@ def test_interactive_files_ship_the_manager_sources(testing_pkg, tmp_path):
     ]
 
 
-def test_batch_files_ship_only_the_conf(testing_pkg, tmp_path):
+def test_batch_files_ship_the_conf_and_the_cms_testlib(testing_pkg, tmp_path):
     files = tmp_path / 'files'
     files.mkdir()
 
     polygon_loader.write_files(testing_pkg.yml, [], files)
 
-    assert [p.name for p in files.iterdir()] == ['cms_conf.py']
+    assert sorted(p.name for p in files.iterdir()) == ['cms_conf.py', 'cms_testlib.h']
+    assert '#ifdef RBX_CMS' in (files / 'cms_testlib.h').read_text()
+
+
+def test_batch_conf_builds_the_checker_against_the_cms_testlib(
+    testing_pkg, tmp_path, compilations
+):
+    conf = _polygon_package(tmp_path / 'A', ['1'])
+
+    namespace = _run(polygon_loader.render_conf(testing_pkg.yml, []), str(conf))
+
+    # The importer's own checker would read `quitp` as a fraction.
+    manager = namespace['datasets']['tests']['managers']['checker']
+    assert manager.filename == 'checker'
+    assert manager.digest.startswith('built from ')
+    assert manager.digest.endswith('check.cpp')
+    (command,) = compilations
+    assert '-DRBX_CMS' in command
+    # Compiled from a copy where `testlib.h` is the CMS variant.
+    build = pathlib.Path(command[-1]).parent
+    assert (build / 'testlib.h').read_text() == '// cms testlib'
