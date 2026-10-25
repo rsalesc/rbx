@@ -1,4 +1,6 @@
+import math
 import pathlib
+import re
 import signal
 from abc import abstractmethod
 from typing import List, Optional, Tuple
@@ -209,8 +211,44 @@ def _convert_tle(result: CheckerResult, run_log: Optional[RunLog]) -> CheckerRes
     return result
 
 
+# testlib's `quitp`. Its stderr reads `points <value> <message>`.
+POINTS_EXIT_CODE = 7
+
+_POINTS_LINE = re.compile(r'^points\s+(\S+)[ \t]*', re.MULTILINE)
+_PC_LINE = re.compile(r'^partially correct \(', re.MULTILINE)
+
+
 def _is_checker_exitcode(exitcode: int) -> bool:
-    return exitcode in [0, 1, 2, 3]
+    return exitcode in [0, 1, 2, 3, POINTS_EXIT_CODE]
+
+
+def _points_result(stderr: str) -> CheckerResult:
+    """The verdict of a testlib `quitp`, whose value rbx reads as a percentage."""
+    matches = list(_POINTS_LINE.finditer(stderr))
+    if not matches:
+        return CheckerResult(
+            outcome=Outcome.JUDGE_FAILED,
+            message=f'checker exited with code {POINTS_EXIT_CODE} but printed no points',
+        )
+    last = matches[-1]
+    message = stderr[last.end() :].strip()
+    try:
+        percent = float(last.group(1))
+    except ValueError:
+        percent = math.nan
+    if not 0 <= percent <= 100:
+        return CheckerResult(
+            outcome=Outcome.JUDGE_FAILED,
+            message=f'checker awarded {last.group(1)} points, outside the 0-100 '
+            f'percentage quitp must return: {message}',
+        )
+    score = percent / 100
+    outcome = Outcome.PARTIALLY_CORRECT
+    if score == 1:
+        outcome = Outcome.ACCEPTED
+    elif score == 0:
+        outcome = Outcome.WRONG_ANSWER
+    return CheckerResult(outcome=outcome, score=score, message=message)
 
 
 def _get_last_line(message: str) -> str:
@@ -222,6 +260,7 @@ def _get_last_line(message: str) -> str:
 def process_checker_run_log(
     checker_run_log: Optional[RunLog], message: str
 ) -> CheckerResult:
+    stderr = message
     message = _get_last_line(message)
     if (
         checker_run_log is not None
@@ -244,11 +283,21 @@ def process_checker_run_log(
             outcome=Outcome.JUDGE_FAILED,
             message=f'checker failed with exit status {checker_run_log.exitstatus}: {message}',
         )
+    # Checked before the exit code: `_pc(k)` exits with k itself, so `_pc(1)`
+    # would otherwise read as a wrong answer.
+    if _PC_LINE.search(stderr):
+        return CheckerResult(
+            outcome=Outcome.JUDGE_FAILED,
+            message='checker used _pc(...), which rbx does not support; award '
+            f'partial points with quitp(percentage) instead: {message}',
+        )
     if not _is_checker_exitcode(checker_run_log.exitcode):
         return CheckerResult(
             outcome=Outcome.JUDGE_FAILED,
             message=f'checker failed with unknown exit code {checker_run_log.exitcode}: {message}',
         )
+    if checker_run_log.exitcode == POINTS_EXIT_CODE:
+        return _points_result(stderr)
 
     result = CheckerResult(outcome=Outcome.ACCEPTED, message=message)
 
