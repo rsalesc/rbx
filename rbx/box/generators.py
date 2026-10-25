@@ -11,6 +11,7 @@ from rich.console import Console
 from rbx import console, utils
 from rbx.box import (
     checkers,
+    graders,
     package,
     setter_config,
     testcase_utils,
@@ -236,6 +237,11 @@ def _copy_testcase_companions_over(
 
 
 def _needs_output(generation_entries: List[GenerationTestcaseEntry]) -> bool:
+    if graders.has_grader():
+        # Judge answers carry the grader's prologue, so they are always generated.
+        return any(
+            entry.metadata.copied_to.inputPath.is_file() for entry in generation_entries
+        )
     for entry in generation_entries:
         tc = entry.metadata.copied_to
         if not tc.inputPath.is_file():
@@ -553,6 +559,10 @@ async def generate_testcases(
             else:
                 raise ValueError(f'Invalid generation metadata: {entry.metadata}')
             assert entry.metadata.copied_to.inputPath.is_file()
+            if graders.has_grader():
+                graders.write_judge_input(
+                    entry.metadata.copied_to.inputPath, entry.group_entry.group
+                )
             first_digest = digest_file(entry.metadata.copied_to.inputPath)
             if verify_digest is not None and verify_digest != first_digest:
                 call = entry.metadata.generator_call
@@ -725,7 +735,17 @@ async def generate_outputs_for_testcases(
         if entry.metadata.copied_from is not None:
             _copy_testcase_companions_over(entry.metadata.copied_from, tc)
 
-        if entry.metadata.copied_from is not None and _copy_testcase_outputs_over(
+        if has_grader:
+            # A hand-written output is the *public* answer of a grader problem:
+            # the statement shows it, while the judge answer always comes from
+            # the main solution run with the grader, prologue included.
+            copied_from = entry.metadata.copied_from
+            if copied_from is not None and _copy_testcase_outputs_over(
+                copied_from,
+                tc.model_copy(update={'outputPath': graders.statement_output_path(tc)}),
+            ):
+                pass
+        elif entry.metadata.copied_from is not None and _copy_testcase_outputs_over(
             entry.metadata.copied_from, tc
         ):
             return
@@ -753,6 +773,15 @@ async def generate_outputs_for_testcases(
             line_capture=entry.is_sample(),
         )
 
+        if (
+            has_grader
+            and entry.is_sample()
+            and pkg.type == TaskType.BATCH
+            and not graders.statement_output_path(tc).is_file()
+        ):
+            await graders.generate_public_output(model_solution, tc)
+
+    has_grader = graders.has_grader(pkg)
     executor = setter_config.get_async_executor(detach=True)
     futures: List[asyncio.Future] = []
     for entry in generation_entries:

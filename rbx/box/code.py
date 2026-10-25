@@ -639,6 +639,70 @@ async def _precompile_header(
 
 
 # Compile code item and return its digest in the storage.
+def _grader_for(code: CodeItem, kind: Optional['AssetKind']) -> Optional[CodeItem]:
+    """The grader to link `code` with: every solution of a grader problem."""
+    from rbx.box.linters.asset_kind import AssetKind, infer_asset_kind
+
+    if (kind or infer_asset_kind(code)) != AssetKind.SOLUTION:
+        return None
+    pkg = package.find_problem_package_or_die()
+    if pkg.grader is None:
+        return None
+    if LanguageKind.CPP not in language_kinds(find_language(code)):
+        console.console.print(
+            f'[error]Cannot compile {code.href()}: this problem has a C++ grader '
+            f'([item]{pkg.grader.path}[/item]), so its solutions must be C++.[/error]'
+        )
+        raise typer.Exit(1)
+    return pkg.grader
+
+
+def _add_grader(
+    grader: CodeItem,
+    commands: List[str],
+    artifacts: GradingArtifacts,
+    compilable: str,
+) -> List[str]:
+    """Link the grader in as a second translation unit, as judges do.
+
+    Not an `#include` of one into the other: a grader's and a contestant's
+    `static` names would then collide. The grader's directory goes on the
+    include path, so a solution finds the task header as it does on a judge,
+    where everything sits in one directory.
+    """
+    from rbx.box.dependencies import graph as deps_graph
+    from rbx.box.dependencies.scanner import DependencyKind
+
+    existing = {input.dest for input in artifacts.inputs}
+
+    def add(src: pathlib.Path, dest: pathlib.Path):
+        if dest not in existing:
+            artifacts.inputs.append(GradingFileInput(src=src, dest=dest))
+            existing.add(dest)
+
+    grader_path = PosixPath(grader.path)
+    add(grader_path, grader_path)
+    for src, dest in package.get_compilation_files(grader):
+        add(src, dest)
+    dep_graph = deps_graph.expand(grader, require_kind=DependencyKind.COMPILATION)
+    if dep_graph is not None:
+        for dep in dep_graph.files():
+            add(dep, dep)
+
+    grader_dir = grader_path.parent
+    include = f'-I{grader_dir}' if str(grader_dir) not in ('', '.') else '-I.'
+    token = re.compile(rf'(?<!\S){re.escape(compilable)}(?!\S)')
+    linked = []
+    for command in commands:
+        if LanguageKind.CXX in command_kinds(get_exe_from_command(command)) and (
+            token.search(command)
+        ):
+            command = token.sub(f'{grader_path} {compilable}', command, count=1)
+            command += f' {include} -I{steps.INTERNAL_DIR}'
+        linked.append(command)
+    return linked
+
+
 async def compile_item(
     code: CodeItem,
     sanitized: SanitizationLevel = SanitizationLevel.PREFER,
@@ -725,6 +789,12 @@ async def compile_item(
                     existing.add(dep)
 
         download.maybe_add_rbx_header(code, artifacts)
+
+        grader = _grader_for(code, kind)
+        if grader is not None:
+            commands = _add_grader(
+                grader, commands, artifacts, str(file_mapping.compilable)
+            )
 
         from rbx.box import libraries
 

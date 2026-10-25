@@ -8,7 +8,7 @@ from typing import List, Optional, Tuple
 import typer
 
 from rbx import console
-from rbx.box import code, package
+from rbx.box import code, graders, package
 from rbx.box.schema import Checker, Testcase
 from rbx.config import get_builtin_checker
 from rbx.grading.judge.sandbox import SandboxBase
@@ -341,7 +341,7 @@ async def _check(
     error = DigestHolder()
     inputs = [
         GradingFileInput(
-            src=testcase.inputPath,
+            src=graders.run_input(testcase.inputPath),
             dest=pathlib.PosixPath('input.txt'),
         ),
         GradingFileInput(

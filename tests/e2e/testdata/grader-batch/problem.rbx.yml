@@ -1,0 +1,66 @@
+name: grader-batch
+timeLimit: 1000
+memoryLimit: 256
+scoring: POINTS
+
+grader:
+  path: graders/grader.cpp
+
+checker:
+  path: checker.cpp
+
+validator:
+  path: validator.cpp
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+attachments:
+  - path: graders/grader.cpp
+    public: true
+  - path: graders/sumgame.h
+  - path: graders/template.cpp
+    name: sumgame.cpp
+  - samples: examples
+
+vars:
+  N:
+    max: 1000
+  # How far an answer may be from the exact sum. The checker reads it through
+  # getVar, so each group's override reaches it through the hidden test header.
+  TOL: 0
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+  - path: sols/approx.cpp
+    outcome: wa
+    outcomePerGroup:
+      samples: wa
+      approx: ac
+      exact: wa
+  - path: sols/stdout.cpp
+    outcome: wa
+  - path: sols/exit.cpp
+    outcome: wa
+
+testcases:
+  - name: samples
+    testcaseGlob: manual/*.in
+  - name: approx
+    score: 40
+    vars:
+      TOL: 10
+    generators:
+      - name: gen
+        args: 5 1
+      - name: gen
+        args: 50 2
+  - name: exact
+    score: 60
+    generators:
+      - name: gen
+        args: 7 3
+      - name: gen
+        args: 1000 4
