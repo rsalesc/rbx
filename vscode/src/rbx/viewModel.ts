@@ -586,7 +586,21 @@ function testcaseChip(testcase: TestcaseRun, ended: boolean, under?: WarningVerd
   if (testcase.evaluation === undefined && ended) {
     return displayChip(NOT_RUN);
   }
-  return chip(testcase.evaluation?.outcome, under);
+  const base = chip(testcase.evaluation?.outcome, under);
+  const percent = partialPercent(testcase.evaluation);
+  return percent === undefined ? base : { ...base, short: `${base.short} ${percent}` };
+}
+
+/**
+ * How much of its points a partially correct testcase scored, as rbx prints it:
+ * `74.06%`, to the cent and without trailing zeros.
+ */
+export function partialPercent(evaluation: Evaluation | undefined): string | undefined {
+  if (evaluation?.outcome !== 'partially-correct' || evaluation.score === undefined) {
+    return undefined;
+  }
+  const percent = (Math.round(evaluation.score * 10000) / 100).toFixed(2);
+  return `${percent.replace(/\.?0+$/, '')}%`;
 }
 
 function chip(outcome: string | undefined, under?: WarningVerdict): VerdictChip {

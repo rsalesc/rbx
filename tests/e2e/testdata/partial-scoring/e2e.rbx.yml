@@ -10,7 +10,9 @@ scenarios:
         expect:
           stdout_contains:
             - "OK Expected score 100, got [100/100 pts]"
-            - "small (2) 0/~ 1/~"
+            # Each partially correct test shows its percentage.
+            - "small (2) 0/~90% 1/~90%"
+            - "big (3) 1/~50%"
             - "[36/40 pts]"
             - "[54/60 pts]"
             # A sum group loses only the partial test's share.

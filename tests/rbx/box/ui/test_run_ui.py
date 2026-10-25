@@ -457,6 +457,31 @@ def test_run_testcase_metadata_does_not_time_a_skipped_testcase(tmp_path):
     assert '0 B' not in markup
 
 
+def test_partially_correct_testcase_shows_its_percentage(tmp_path):
+    """A `quitp` result shows how much of the test it scored, in the list and the
+    metadata pane alike."""
+    skeleton = _make_skeleton(
+        tmp_path / 'runs', tmp_path / 'tests', stems=['1-gen-000']
+    )
+    sol = skeleton.solutions[0]
+    prefix = sol.runs_dir / 'main' / '1-gen-000'
+    prefix.parent.mkdir(parents=True, exist_ok=True)
+    eval = Evaluation(
+        result=CheckerResult(outcome=Outcome.PARTIALLY_CORRECT, score=0.7406),
+        log=TestcaseLog(),
+        testcase=TestcaseIO(index=0),
+    )
+    prefix.with_suffix('.eval').write_text(utils.model_to_yaml(eval))
+
+    markup = get_run_testcase_markup(skeleton, sol, skeleton.entries[0])
+    assert '74.06%' in markup
+    metadata = get_run_testcase_metadata_markup(
+        skeleton, sol, skeleton.entries[0].group_entry
+    )
+    assert metadata is not None
+    assert '74.06% of the points' in metadata
+
+
 def _write_timed_eval(
     prefix: pathlib.Path,
     checker_timing: Optional[RunTiming],

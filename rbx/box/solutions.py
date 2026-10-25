@@ -1806,12 +1806,24 @@ def get_full_ui_friendly_outcome_markup_verdict(
     return f'{icon} {name}'
 
 
+def get_testcase_percent(eval: Evaluation) -> Optional[str]:
+    """The percentage a partially correct test scored, e.g. `74.06%`."""
+    if eval.result.outcome != Outcome.PARTIALLY_CORRECT:
+        return None
+    return f'{partial.format_score(eval.result.fraction() * 100)}%'
+
+
 def get_testcase_markup_verdict(eval: Evaluation) -> str:
     # if eval.log.stdout_absolute_path:
     #     output_path = eval.log.stdout_absolute_path.resolve()
     #     output_link = f'file://{output_path}'
     #     res = f'[link={output_link}]{res}[/link]'
-    return get_outcome_markup_verdict(eval.result.outcome)
+    res = get_outcome_markup_verdict(eval.result.outcome)
+    percent = get_testcase_percent(eval)
+    if percent is not None:
+        style = get_outcome_style_verdict(eval.result.outcome)
+        res += f'[{style}]{percent}[/{style}]'
+    return res
 
 
 def get_full_testcase_markup_verdict(eval: Evaluation) -> str:
@@ -3696,9 +3708,6 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
         assert self.current_group is not None
         self.console.print(get_testcase_markup_verdict(evaluation), end=' ')
         self.console.print(f'{entry}', end='')
-        if evaluation.result.outcome == Outcome.PARTIALLY_CORRECT:
-            percent = partial.format_score(evaluation.result.fraction() * 100)
-            self.console.print(f' [warning]{percent}%[/warning]', end='')
         if evaluation.result.sanitizer_warnings:
             self.console.print('[warning]*[/warning]', end='')
         time = get_capped_evals_formatted_time(
