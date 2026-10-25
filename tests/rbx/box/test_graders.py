@@ -49,7 +49,7 @@ def test_make_public_source_inlines_a_secret_free_shim():
     assert 'getVar' not in public
 
 
-def test_secrets_are_stable_per_slug_and_distinct_across_slugs():
+def test_secrets_are_stable_per_secret_and_distinct_across_secrets():
     assert graders.derive_secret('abc', 'input') == graders.derive_secret(
         'abc', 'input'
     )
@@ -66,7 +66,7 @@ def test_grader_with_legacy_interactor_is_rejected():
     with pytest.raises(ValidationError, match='GRADER_WITH_LEGACY_INTERACTOR|legacy'):
         _package(
             type='communication',
-            grader={'path': 'grader.cpp'},
+            grader={'path': 'grader.cpp', 'secret': 's3cr3t'},
             interactor={'path': 'interactor.cpp', 'legacy': True},
             checker={'path': 'checker.cpp'},
         )
@@ -75,7 +75,7 @@ def test_grader_with_legacy_interactor_is_rejected():
 def test_attachments_accept_files_and_samples():
     pkg = _package(
         attachments=[
-            {'path': 'graders/grader.cpp', 'public': True},
+            {'path': 'graders/grader.cpp', 'stripSecret': True},
             {'path': 'graders/template.cpp', 'name': 'task.cpp'},
             {'samples': 'examples'},
         ]
@@ -86,7 +86,7 @@ def test_attachments_accept_files_and_samples():
 
 
 def test_cms_batch_grader_config():
-    pkg = _package(grader={'path': 'graders/grader.cpp'})
+    pkg = _package(grader={'path': 'graders/grader.cpp', 'secret': 's3cr3t'})
     assert cms_graders.grader_config(pkg, ['grader.cpp', 'rbx.h', 'task.h']) == {
         'managers': {'grader.cpp': 'grader.cpp', 'rbx.h': 'rbx.h', 'task.h': 'task.h'},
         'task_type': 'Batch',
@@ -97,7 +97,7 @@ def test_cms_batch_grader_config():
 def test_cms_stub_is_stored_as_stub_cpp():
     pkg = _package(
         type='communication',
-        grader={'path': 'graders/grader.cpp'},
+        grader={'path': 'graders/grader.cpp', 'secret': 's3cr3t'},
         interactor={'path': 'interactor.cpp'},
     )
     assert cms_graders.grader_config(pkg, ['grader.cpp', 'rbx.h']) == {
@@ -106,7 +106,7 @@ def test_cms_stub_is_stored_as_stub_cpp():
 
 
 def test_cms_refuses_a_grader_dependency_it_cannot_compile_with():
-    pkg = _package(grader={'path': 'graders/grader.cpp'})
+    pkg = _package(grader={'path': 'graders/grader.cpp', 'secret': 's3cr3t'})
     with pytest.raises(typer.Exit):
         cms_graders.grader_config(pkg, ['grader.cpp', 'lib.hpp'])
 
@@ -145,3 +145,8 @@ def test_plain_polygon_file_has_no_grader_elements():
 def test_unmatched_secret_marker_is_refused(source):
     with pytest.raises(graders.SecretBlockError):
         graders.strip_secret_blocks(source)
+
+
+def test_grader_requires_a_secret():
+    with pytest.raises(ValidationError, match='secret'):
+        _package(grader={'path': 'graders/grader.cpp'})

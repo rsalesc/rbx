@@ -560,6 +560,15 @@ class Grader(CodeItem):
 
     model_config = ConfigDict(extra='forbid')
 
+    secret: str = Field(
+        min_length=1,
+        description="""
+The secret the grader's hidden test header and output framing are derived from.
+Use a long random string, and keep it out of anything participants receive:
+changing it changes every judge test and answer.
+""",
+    )
+
 
 class FileAttachment(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -574,7 +583,7 @@ class FileAttachment(BaseModel):
         'Defaults to the basename of `path`.',
     )
 
-    public: bool = Field(
+    stripSecret: bool = Field(
         default=False,
         description="""
 Derive the contestant version of a C/C++ source: every `// BEGIN SECRET` ...

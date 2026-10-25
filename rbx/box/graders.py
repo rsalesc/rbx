@@ -6,8 +6,7 @@ problem it is the stub that talks to the interactor on the contestant's behalf.
 
 Judges see each test behind a hidden header (see `judge_input`), and a batch
 grader frames its output with secrets (see `rbx_grader_judge.h`). Both are
-generated here, from the package's `.rbx-id` slug, so they are stable across
-builds without a file of their own. Design: docs/plans/2026-10-25-graders-design.md.
+generated here, from the required `grader.secret`. Design: docs/plans/2026-10-25-graders-design.md.
 """
 
 import functools
@@ -21,7 +20,6 @@ import typer
 
 from rbx import console
 from rbx.box import package
-from rbx.box.runners import problem_id
 from rbx.box.schema import CodeItem, Grader, Package, TaskType, Testcase
 
 JUDGE_INPUT_SUFFIX = '.in.judge'
@@ -55,18 +53,19 @@ def has_grader(pkg: Optional[Package] = None) -> bool:
     return pkg is not None and pkg.grader is not None
 
 
-def derive_secret(slug: str, label: str) -> str:
-    return hashlib.sha256(f'rbx-grader:{slug}:{label}'.encode()).hexdigest()[:32]
+def derive_secret(secret: str, label: str) -> str:
+    return hashlib.sha256(f'rbx-grader:{secret}:{label}'.encode()).hexdigest()[:32]
 
 
 @functools.cache
 def get_secrets() -> Secrets:
-    """The package's grader secrets, derived from its `.rbx-id` slug."""
-    slug = problem_id.ensure_slug(package.find_problem())
+    """The package's grader secrets, derived from `grader.secret`."""
+    grader = package.find_problem_package_or_die().grader
+    assert grader is not None
     return Secrets(
-        input=derive_secret(slug, 'input'),
-        output=derive_secret(slug, 'output'),
-        output_end=derive_secret(slug, 'output-end'),
+        input=derive_secret(grader.secret, 'input'),
+        output=derive_secret(grader.secret, 'output'),
+        output_end=derive_secret(grader.secret, 'output-end'),
     )
 
 

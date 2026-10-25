@@ -49,11 +49,12 @@ grader, and two output secrets around the contestant's call to catch stray stdou
 type: batch            # or communication (requires a modern interactor)
 grader:                # optional CodeItem; C++ only
   path: graders/grader.cpp
+  secret: <long random string>   # required
   compilationFiles: [graders/monuments.h]
 attachments:           # optional; what contestants download, one zip per problem
   - path: graders/grader.cpp
     name: grader.cpp        # name inside the kit; defaults to the basename
-    public: true            # opt-in: derive the public grader (below)
+    stripSecret: true       # opt-in: derive the public grader (below)
   - path: graders/monuments.h
   - path: graders/template.cpp
     name: monuments.cpp
@@ -66,8 +67,8 @@ attachments:           # optional; what contestants download, one zip per proble
   the CMS side free of the checker runner, `fexecve` and answer packing.
 - The grader must be C++. A solution in another language is refused at compile time,
   naming the grader.
-- `attachments` entries are either files (`path`, `name`, `public`) or one
-  `samples: <dir>` entry. `public` is valid on C/C++ sources only.
+- `attachments` entries are either files (`path`, `name`, `stripSecret`) or one
+  `samples: <dir>` entry. `stripSecret` is valid on C/C++ sources only.
 
 ### Hidden header and judge view
 
@@ -89,10 +90,11 @@ attachments:           # optional; what contestants download, one zip per proble
 
 ### Secrets
 
-`header.py` derives two secrets (input, output) from the package's `.rbx-id` slug, so
-they are stable across builds without a new file. It emits them into the judge rbx.h
-as `rbx::secrets::kInput` / `kOutput`. They never appear in anything contestants
-receive.
+`graders.py` derives the secrets (input, output, output end) from the required
+`grader.secret` in problem.rbx.yml (originally from `.rbx-id`, which the default
+preset git-ignores, so a second machine would rotate them), and `header.py` emits
+them into the judge rbx.h as `rbx::secrets::kInput` / `kOutput` / `kOutputEnd`.
+They never appear in anything contestants receive.
 
 ### rbx.h helpers
 
@@ -102,7 +104,7 @@ lambda (where contestant code runs, and where verdicts are given through
 `wrong_answer()` / `protocol_violation()`), then `after_call()`, returning the
 lambda's value. The free functions below stay available for finer control. The
 public flavour has the same API with no checks and no framing, and is what
-`public: true` pastes in place of `#include "rbx.h"`.
+`stripSecret: true` pastes in place of `#include "rbx.h"`.
 
 
 | Caller | API | Behaviour |
@@ -153,7 +155,7 @@ it is never checked against the answer.
 
 - `rbx package` (and the statements build) writes `build/attachments/<problem>.zip`
   from the `attachments` list.
-- `public: true` derives the contestant version of a source:
+- `stripSecret: true` derives the contestant version of a source:
   1. Remove every `// BEGIN SECRET … // END SECRET` block.
   2. Replace `#include "rbx.h"` with an inlined **public shim** (~20 lines): the
      `rbx::grader::*` helpers as no-ops and `getGroup()` returning `""`. It carries
@@ -183,7 +185,7 @@ it is never checked against the answer.
 
 **Unit tests:**
 
-- Secret derivation: stable for one `.rbx-id`, distinct across packages, absent from
+- Secret derivation: stable for one `grader.secret`, distinct across secrets, absent from
   the public output.
 - SECRET stripping, the public shim and its compile check (a `getVar` use is refused).
 - The `judge_input` format.

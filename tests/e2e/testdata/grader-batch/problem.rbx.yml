@@ -5,6 +5,8 @@ scoring: POINTS
 
 grader:
   path: graders/grader.cpp
+  # Any long random string; the hidden header and framing derive from it.
+  secret: sum-game-3f9c1a7e5b2d4086
 
 checker:
   path: checker.cpp
@@ -24,7 +26,7 @@ statements:
 
 attachments:
   - path: graders/grader.cpp
-    public: true
+    stripSecret: true
   - path: graders/sumgame.h
   - path: graders/template.cpp
     name: sumgame.cpp

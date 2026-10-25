@@ -6,6 +6,8 @@ scoring: POINTS
 
 grader:
   path: graders/grader.cpp
+  # Any long random string; the hidden header and framing derive from it.
+  secret: guess-game-8d2e6b1f0a4c9735
 
 interactor:
   path: interactor.cpp
@@ -25,7 +27,7 @@ statements:
 
 attachments:
   - path: graders/grader.cpp
-    public: true
+    stripSecret: true
   - path: graders/guess.h
 
 vars:

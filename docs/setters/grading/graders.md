@@ -46,12 +46,18 @@ Notice the solution has no `main()`: the grader provides it.
 
 ## Declaring a grader
 
-Point the `grader` field of your `problem.rbx.yml` at the grader's source:
+Point the `grader` field of your `problem.rbx.yml` at the grader's source, and give
+it a `secret`:
 
 ```yaml title="problem.rbx.yml"
 grader:
   path: graders/grader.cpp
+  secret: sum-game-3f9c1a7e5b2d4086
 ```
+
+Make the secret a long random string. {{rbx}} derives from it the tokens that
+protect each test and the grader's output (see
+[Reading the hidden header](#reading-the-hidden-header)).
 
 From now on, {{rbx}} compiles every solution together with `graders/grader.cpp`. Like
 judge systems, it keeps them in two separate translation units. The grader's directory is on
@@ -155,10 +161,10 @@ An input with no group of its own, such as a custom input for `rbx run` or a str
 test, gets an empty group name, so `getVar` returns the package-level values there.
 
 !!! info
-    {{rbx}} derives the secret from the package's `.rbx-id` file and generates it into
-    `rbx.h`. {{rbx}} keeps it out of every file the participants receive. Keep
-    `.rbx-id` with the package (commit it), or a package built elsewhere gets
-    different secrets than the tests already uploaded to a judge.
+    The tokens come from the grader's `secret`, and {{rbx}} generates them into
+    `rbx.h`. No file the participants receive contains them. Changing the
+    `secret` changes every test and answer the judges hold, so upload the problem
+    again afterwards.
 
 !!! warning "The secrets are a tripwire"
     The secrets live in the same program as the participant's code, and the judge
@@ -217,8 +223,7 @@ checker applies different rules in each subtask.
 In an interactive problem, the grader is the **stub**: it turns the participant's
 function calls into messages to your [interactor](interactors.md). The stub needs no
 helpers, and the interactor registers itself with `rbx::registerGraderInteraction`
-instead of `registerInteraction`. The problem's interactor can't set `legacy: true`: the
-interactor judges the interaction on its own, with no checker after it.
+instead of `registerInteraction`.
 
 ## Showing samples in the statement
 
@@ -241,7 +246,7 @@ packs them in `build/attachments/<name>.zip`, where `<name>` is the problem's `n
 ```yaml title="problem.rbx.yml"
 attachments:
   - path: graders/grader.cpp
-    public: true
+    stripSecret: true
   - path: graders/sumgame.h
   - path: graders/template.cpp
     name: sumgame.cpp
@@ -250,13 +255,13 @@ attachments:
 
 Here `graders/template.cpp` is a skeleton solution, shipped as `sumgame.cpp`.
 
-`public: true` derives the participants' version of a grader. {{rbx}} removes every
+`stripSecret: true` derives the participants' version of a grader. {{rbx}} removes every
 `// BEGIN SECRET` block, and pastes a grader-friendly `rbx.h` in place of
 `#include "rbx.h"`, so the grader is one self-contained file. It has the same `Grader` API, but
 nothing checks or frames anything: `run` only closes `stdin` and calls the lambda, and
 a verdict only prints its message to `stderr` and exits. The result leaks neither the secret nor your variables.
 
-If a C++ compiler is installed and some attachment is `public`, {{rbx}} compiles every
+If a C++ compiler is installed and some attachment sets `stripSecret`, {{rbx}} compiles every
 C++ source in the archive on
 its own while packaging. It fails if one still needs something only the judge has,
 such as `getVar`.

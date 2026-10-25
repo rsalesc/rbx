@@ -1,15 +1,13 @@
 """The files contestants download for a problem (`attachments` in problem.rbx.yml).
 
 Packed into one archive per problem, `build/attachments/<problem>.zip`. A file
-marked `public: true` is the contestant version of a grader-side source (see
+marked `stripSecret: true` is the contestant version of a grader-side source (see
 `graders.make_public_source`), compile-checked here so a public grader that
 still needs something only the judge has never ships.
 """
 
 import pathlib
 import shutil
-import subprocess
-import tempfile
 import zipfile
 from typing import Dict, List, Optional
 
@@ -20,8 +18,9 @@ from rbx.box import graders, package
 from rbx.box.schema import FileAttachment, Package, SamplesAttachment
 from rbx.grading import steps
 
-_C_FAMILY = {'.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx'}
 _SOURCES = {'.c', '.cc', '.cpp', '.cxx'}
+_HEADERS = {'.h', '.hh', '.hpp', '.hxx'}
+_C_FAMILY = _SOURCES | _HEADERS
 
 
 def _fail(message: str):
@@ -37,12 +36,12 @@ def get_attachments_path() -> pathlib.Path:
 def _file_content(attachment: FileAttachment) -> bytes:
     if not attachment.path.is_file():
         _fail(f'Attachment [item]{attachment.path}[/item] not found.')
-    if not attachment.public:
+    if not attachment.stripSecret:
         return attachment.path.read_bytes()
     if attachment.path.suffix.lower() not in _C_FAMILY:
         _fail(
-            f'Attachment [item]{attachment.path}[/item] is marked [item]public[/item], '
-            'which only applies to C/C++ sources.'
+            f'Attachment [item]{attachment.path}[/item] is marked '
+            '[item]stripSecret[/item], which only applies to C/C++ sources.'
         )
     try:
         return graders.make_public_source(attachment.path.read_text()).encode()
@@ -51,49 +50,40 @@ def _file_content(attachment: FileAttachment) -> bytes:
         raise
 
 
-def _compile_check(files: Dict[str, bytes], public: List[str]):
-    """Compile every public C/C++ source alone, with only the archive around it.
+async def _compile_check(files: Dict[str, bytes], stripped: List[str]):
+    """Compile every stripped C/C++ source with only the archive around it.
 
     That is exactly what a contestant has: no rbx.h, no vars, no secrets. A
-    public grader still reaching for one of them fails here, by name.
+    public grader still reaching for one of them fails here, by name. It goes
+    through `code.compile_item`, so the language and commands are the ones
+    `env.rbx.yml` declares; `-c`, since the contestant's functions are missing.
     """
-    compiler = shutil.which('g++') or shutil.which('clang++')
-    if compiler is None:
-        console.console.print(
-            '[warning]No C++ compiler found: the public attachments were not '
-            'compile-checked.[/warning]'
-        )
-        return
-    with tempfile.TemporaryDirectory() as tmp:
-        root = pathlib.Path(tmp) / 'archive'
-        root.mkdir()
-        for name, content in files.items():
-            (root / name).parent.mkdir(parents=True, exist_ok=True)
-            (root / name).write_bytes(content)
-        # Like a judge (and like rbx's own compilation), make <bits/stdc++.h>
-        # available, which Apple clang does not ship.
-        include_dir = pathlib.Path(tmp) / 'include'
-        bits = steps.maybe_get_bits_stdcpp_for_commands([f'{compiler} x.cpp'])
-        if bits is not None and bits.src is not None:
-            (include_dir / 'bits').mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(bits.src, include_dir / 'bits' / 'stdc++.h')
-        for name in public:
-            if pathlib.Path(name).suffix.lower() not in _SOURCES:
-                continue
-            result = subprocess.run(
-                [compiler, '-std=c++20', '-fsyntax-only', '-I', str(root)]
-                + ['-I', str(include_dir), name],
-                cwd=root,
-                capture_output=True,
-                text=True,
+    from rbx.box import code
+    from rbx.box.schema import CodeItem
+
+    check_dir = package.get_build_path() / 'attachments' / '.check'
+    shutil.rmtree(check_dir, ignore_errors=True)
+    for name, content in files.items():
+        (check_dir / name).parent.mkdir(parents=True, exist_ok=True)
+        (check_dir / name).write_bytes(content)
+    headers = [
+        str(check_dir / name)
+        for name in files
+        if pathlib.Path(name).suffix.lower() in _HEADERS
+    ]
+    for name in stripped:
+        if pathlib.Path(name).suffix.lower() not in _SOURCES:
+            continue
+        item = CodeItem(path=check_dir / name, compilationFiles=headers)
+        try:
+            await code.compile_item(item, extra_flags=['-c'])
+        except steps.CompilationError:
+            _fail(
+                f'The attachment [item]{name}[/item] does not compile on its own, '
+                'as contestants receive it. Move code that needs rbx.h (getVar, '
+                'secrets) into a `// BEGIN SECRET` ... `// END SECRET` block, or '
+                'use a literal.'
             )
-            if result.returncode != 0:
-                _fail(
-                    f'The public attachment [item]{name}[/item] does not compile on '
-                    'its own, as contestants receive it. Move code that needs rbx.h '
-                    '(getVar, secrets) into a `// BEGIN SECRET` ... `// END SECRET` '
-                    f'block, or use a literal.\n{result.stderr.strip()}'
-                )
 
 
 async def _sample_files(attachment: SamplesAttachment) -> Dict[str, bytes]:
@@ -114,22 +104,22 @@ async def collect(pkg: Optional[Package] = None) -> Dict[str, bytes]:
     if pkg is None:
         pkg = package.find_problem_package_or_die()
     files: Dict[str, bytes] = {}
-    public: List[str] = []
+    stripped: List[str] = []
     for attachment in pkg.attachments:
         if isinstance(attachment, SamplesAttachment):
             new_files = await _sample_files(attachment)
         else:
             new_files = {attachment.archive_name: _file_content(attachment)}
-            if attachment.public:
-                public.append(attachment.archive_name)
+            if attachment.stripSecret:
+                stripped.append(attachment.archive_name)
         for name, content in new_files.items():
             if name in files:
                 _fail(
                     f'Two attachments are both named [item]{name}[/item] in the archive.'
                 )
             files[name] = content
-    if public:
-        _compile_check(files, public)
+    if stripped:
+        await _compile_check(files, stripped)
     return files
 
 

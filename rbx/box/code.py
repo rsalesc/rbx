@@ -657,19 +657,8 @@ def _grader_for(code: CodeItem, kind: Optional['AssetKind']) -> Optional[CodeIte
     return pkg.grader
 
 
-def _add_grader(
-    grader: CodeItem,
-    commands: List[str],
-    artifacts: GradingArtifacts,
-    compilable: str,
-) -> List[str]:
-    """Link the grader in as a second translation unit, as judges do.
-
-    Not an `#include` of one into the other: a grader's and a contestant's
-    `static` names would then collide. The grader's directory goes on the
-    include path, so a solution finds the task header as it does on a judge,
-    where everything sits in one directory.
-    """
+def _stage_grader(grader: CodeItem, artifacts: GradingArtifacts):
+    """Put the grader and its include closure in the compilation sandbox."""
     from rbx.box.dependencies import graph as deps_graph
     from rbx.box.dependencies.scanner import DependencyKind
 
@@ -680,8 +669,7 @@ def _add_grader(
             artifacts.inputs.append(GradingFileInput(src=src, dest=dest))
             existing.add(dest)
 
-    grader_path = PosixPath(grader.path)
-    add(grader_path, grader_path)
+    add(PosixPath(grader.path), PosixPath(grader.path))
     for src, dest in package.get_compilation_files(grader):
         add(src, dest)
     dep_graph = deps_graph.expand(grader, require_kind=DependencyKind.COMPILATION)
@@ -689,18 +677,16 @@ def _add_grader(
         for dep in dep_graph.files():
             add(dep, dep)
 
-    grader_dir = grader_path.parent
-    include = f'-I{grader_dir}' if str(grader_dir) not in ('', '.') else '-I.'
-    token = re.compile(rf'(?<!\S){re.escape(compilable)}(?!\S)')
-    linked = []
-    for command in commands:
-        if LanguageKind.CXX in command_kinds(get_exe_from_command(command)) and (
-            token.search(command)
-        ):
-            command = token.sub(f'{grader_path} {compilable}', command, count=1)
-            command += f' {include} -I{steps.INTERNAL_DIR}'
-        linked.append(command)
-    return linked
+
+def _grader_flags(grader: CodeItem) -> List[str]:
+    """Include paths for a solution linked with `grader`.
+
+    The grader's directory, so a solution finds the task header as it does on a
+    judge, where everything sits in one directory; and the internal one, where
+    the grader finds rbx.h.
+    """
+    grader_dir = PosixPath(grader.path).parent
+    return [f'-I{grader_dir}', f'-I{steps.INTERNAL_DIR}']
 
 
 async def compile_item(
@@ -747,12 +733,25 @@ async def compile_item(
                 )
             return await sandbox.file_cacher.put_file_from_path(compilable_path)
 
+        # A solution of a grader problem is compiled together with the grader, as
+        # a second translation unit (as judges do: `g++ grader.cpp sol.cpp`), so
+        # the commands name both wherever they name the source.
+        grader = _grader_for(code, kind)
+        command_mapping = file_mapping
+        if grader is not None:
+            command_mapping = file_mapping.model_copy(
+                update={'compilable': f'{grader.path} {file_mapping.compilable}'}
+            )
         commands = get_mapped_commands(
             compilation_options.commands,
-            file_mapping,
+            command_mapping,
             code_variables,
             passthrough=PASSTHROUGH_VARIABLES,
         )
+        if grader is not None:
+            commands = add_extra_flags_to_commands(
+                commands, _grader_flags(grader), get_language(language)
+            )
         commands = add_cpp_flags(commands, force_warnings)
         commands = substitute_commands(commands, sanitized=sanitized.should_sanitize())
 
@@ -790,11 +789,8 @@ async def compile_item(
 
         download.maybe_add_rbx_header(code, artifacts)
 
-        grader = _grader_for(code, kind)
         if grader is not None:
-            commands = _add_grader(
-                grader, commands, artifacts, str(file_mapping.compilable)
-            )
+            _stage_grader(grader, artifacts)
 
         from rbx.box import libraries
 
