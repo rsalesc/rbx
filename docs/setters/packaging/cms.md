@@ -18,7 +18,7 @@ Polygon can't describe. Pass `--cms` to `rbx package polygon` or
 
 - subtask scoring that follows your test groups
 - the statement PDFs
-- a manager, for an interactive problem.
+- a manager, for an interactive problem
 
 ```bash
 rbx contest package polygon --cms
