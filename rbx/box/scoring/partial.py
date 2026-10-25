@@ -13,9 +13,11 @@ tests, whatever the dependency's aggregation.
 """
 
 import dataclasses
-from typing import Callable, Dict, Iterable, List, Mapping, Sequence
+from typing import Callable, Dict, Iterable, List, Mapping, Sequence, Tuple, TypeVar
 
-from rbx.box.scoring.dependencies import Aggregation
+from rbx.box.scoring.dependencies import Aggregation, GroupDependencies
+
+T = TypeVar('T')
 
 # Scores are kept to the cent, as Polygon shows them.
 PRECISION = 2
@@ -23,6 +25,11 @@ PRECISION = 2
 
 def round_score(score: float) -> float:
     return round(score, PRECISION)
+
+
+def format_score(score: float) -> str:
+    """A score as rbx prints it: to the cent, without trailing zeros."""
+    return f'{round_score(score):.{PRECISION}f}'.rstrip('0').rstrip('.')
 
 
 def test_points(score: int, n: int) -> List[float]:
@@ -72,4 +79,35 @@ def group_scores(
         else:
             score = group.score * min(min(own), cap)
         res[group.name] = round_score(score)
+    return res
+
+
+def subtasks(
+    deps: GroupDependencies,
+    tests_by_group: Mapping[str, Sequence[T]],
+    groups: Sequence[GroupSpec],
+) -> List[Tuple[str, float, List[T]]]:
+    """`(group, points, tests)` subtasks that score like `group_scores` under a
+    judge whose subtasks pay their points times their lowest test (CMS's
+    `GroupMin`).
+
+    A `min` group is one subtask over its own tests and those of every group it
+    depends on; a `sum` group is one subtask per test, over that test and the
+    same dependency tests. Groups without tests are left out.
+    """
+    res: List[Tuple[str, float, List[T]]] = []
+    for group in groups:
+        own = list(tests_by_group.get(group.name, []))
+        if not own:
+            continue
+        inherited = [
+            test
+            for dep in deps.closure(group.name)
+            for test in tests_by_group.get(dep, [])
+        ]
+        if group.aggregation == Aggregation.SUM:
+            for points, test in zip(test_points(group.score, len(own)), own):
+                res.append((group.name, points, [test] + inherited))
+        else:
+            res.append((group.name, group.score, own + inherited))
     return res

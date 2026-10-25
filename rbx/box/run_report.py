@@ -57,7 +57,8 @@ class RunGroupReport(BaseModel):
     # Only set when the solution declares an `outcomePerGroup` covering it.
     expectedOutcome: Optional[ExpectedOutcome] = None
     matchesExpectation: bool = True
-    score: int = 0
+    # Fractional when a checker awards partial points; rounded to the cent.
+    score: float = 0
     maxScore: int = 0
     # Max, not sum or mean: the slowest testcase is the one judged against the
     # time limit, and the only one worth a glance.
@@ -117,7 +118,7 @@ class RunSolutionReport(BaseModel):
     # that held. `get_verdict_markup` draws exactly this distinction for the
     # console, and had the only copy of it.
     pooledMatchesExpectation: bool = True
-    score: int = 0
+    score: float = 0
     maxScore: int = 0
     maxTime: Optional[float] = None
     maxMemory: Optional[int] = None
@@ -125,7 +126,7 @@ class RunSolutionReport(BaseModel):
     # The `[min, max]` score range declared for this solution, when one was.
     # Without it a client meeting `status == UNEXPECTED_SCORE` knows a solution
     # is wrong but has nothing to say about how.
-    expectedScore: Optional[Tuple[int, int]] = None
+    expectedScore: Optional[Tuple[float, float]] = None
     # Whether a solution declared slow only timed out *within* double TL.
     #
     # Published because it is a warning about a run that otherwise passed:
