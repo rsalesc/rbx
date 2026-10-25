@@ -39,6 +39,7 @@ nav:
           - "setters/grading/index.md"
           - "Checkers": "setters/grading/checkers.md"
           - "Interactors": "setters/grading/interactors.md"
+          - "Graders": "setters/grading/graders.md"
       - "Verification":
           - "setters/verification/index.md"
           - "Validators": "setters/verification/validators.md"

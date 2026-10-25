@@ -55,7 +55,7 @@ def has_grader(pkg: Optional[Package] = None) -> bool:
     return pkg is not None and pkg.grader is not None
 
 
-def _derive(slug: str, label: str) -> str:
+def derive_secret(slug: str, label: str) -> str:
     return hashlib.sha256(f'rbx-grader:{slug}:{label}'.encode()).hexdigest()[:32]
 
 
@@ -64,9 +64,9 @@ def get_secrets() -> Secrets:
     """The package's grader secrets, derived from its `.rbx-id` slug."""
     slug = problem_id.ensure_slug(package.find_problem())
     return Secrets(
-        input=_derive(slug, 'input'),
-        output=_derive(slug, 'output'),
-        output_end=_derive(slug, 'output-end'),
+        input=derive_secret(slug, 'input'),
+        output=derive_secret(slug, 'output'),
+        output_end=derive_secret(slug, 'output-end'),
     )
 
 

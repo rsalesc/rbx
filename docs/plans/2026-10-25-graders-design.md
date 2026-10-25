@@ -201,10 +201,25 @@ both `--cms` zips, and its scores must match the local run.
 **Docs:** a "Graders" page in the setters guide and `attachments` in the schema
 reference, written with the `docs-style` skill.
 
+## Spike and live-test outcomes (2026-10-25)
+
+- **Polygon** (live API, scratch problem 615129): a grader is
+  `<file for-types="cpp.*" path="files/grader.cpp" type="..."><stages><stage name="compile"/></stages><assets><asset name="solution"/></assets></file>`,
+  with a `files/grader.cpp.json` sidecar. `saveFile` refuses a `sourceType` on a
+  resource. Attachments ("materials") have no API and could not be observed in
+  `problem.xml`, so Polygon packages warn and leave them to the UI.
+- **Polygon validates tests as stored**, i.e. the judge view, so the API upload skips
+  the validator of a grader problem (rbx validated the raw inputs already).
+- **CMS 1.5.1**: Batch `["grader", ["",""], "comparator"]` + `grader.cpp`;
+  Communication `[1, "stub", "std_io"]` + `stub.cpp` (renamed `grader` only in later
+  CMS); headers must be `.h` managers; `general['attachments']` imports and shows in
+  CWS. Live scores matched rbx for both testdata problems. Interactive problems keep
+  showing CMS's stock messages (`rbx_cms_report.h`), as before graders.
+- **Polygon live**: both testdata problems built with `verify=true` (615132,
+  615134).
+
 ## Open questions
 
-- The exact `problem.xml` spelling of a Polygon grader resource and of attachments
-  (spike 1).
-- Whether CMS 1.5.1 spells the Communication compilation `stub` (spike 2).
 - Whether Polygon passes `--group`/`--testset` to checkers. The header group makes
   this moot for grader problems.
+- How a Polygon material appears in `problem.xml`, if rbx should ever emit one.
