@@ -407,8 +407,13 @@ class PolygonPackager(BasePackager):
         dep_graph = deps_graph.expand(pkg.grader)
         if dep_graph is not None:
             closure.update(pathlib.Path(dep) for dep in dep_graph.files())
-        names = [f.flat_name for f in ns.files if f.source_path in closure]
-        return sorted(set(names) | {'rbx.h'})
+        files = [f for f in ns.files if f.source_path in closure]
+        names = {f.flat_name for f in files}
+        # rbx.h sits next to every submission once it is a manager, secrets and
+        # vars included, so it ships only when the grader actually includes it.
+        if any(b'rbx.h' in f.content for f in files):
+            names.add('rbx.h')
+        return sorted(names)
 
     async def package(
         self,

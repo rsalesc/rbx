@@ -132,3 +132,16 @@ def test_plain_polygon_file_has_no_grader_elements():
     if isinstance(xml, bytes):
         xml = xml.decode()
     assert 'stages' not in xml and 'assets' not in xml and 'for-types' not in xml
+
+
+@pytest.mark.parametrize(
+    'source',
+    [
+        '// BEGIN SECRET\nint hidden;\n',
+        'int x;\n// END SECRET\n',
+        'int x; // BEGIN SECRET\nint y;\n// END SECRET\n',
+    ],
+)
+def test_unmatched_secret_marker_is_refused(source):
+    with pytest.raises(graders.SecretBlockError):
+        graders.strip_secret_blocks(source)

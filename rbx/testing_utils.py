@@ -32,6 +32,7 @@ def clear_all_functools_cache():
     """
     from rbx.box import (
         environment,
+        graders,
         header,
         lang,
         libraries,
@@ -48,6 +49,7 @@ def clear_all_functools_cache():
 
     pkgs = [
         environment,
+        graders,
         package,
         header,
         lang,

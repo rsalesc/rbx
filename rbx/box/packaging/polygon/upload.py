@@ -365,11 +365,26 @@ def _save_skip_coinciding_testcases(problem: api.Problem, *args, **kwargs) -> bo
 
 
 def _get_test_params_for_statement(
-    testcase: Optional[Testcase], is_sample: bool
+    testcase: Optional[Testcase],
+    is_sample: bool,
+    built: Optional[Testcase] = None,
 ) -> Dict[str, Any]:
+    if is_sample and built is not None and graders.has_grader():
+        # A grader problem's tests are uploaded as the judge view, hidden header
+        # included, and Polygon's own answer carries the grader's prologue:
+        # neither may reach the statement. Show the raw input and the public
+        # answer instead.
+        res: Dict[str, Any] = {
+            'test_use_in_statements': True,
+            'test_input_for_statements': built.inputPath.read_text(),
+        }
+        public = graders.statement_output_path(built)
+        if public.is_file():
+            res['test_output_for_statements'] = public.read_text()
+        return res
     if not is_sample or testcase is None:
         return {}
-    res: Dict[str, Any] = {'test_use_in_statements': True}
+    res = {'test_use_in_statements': True}
     if testcase.outputPath is not None:
         res['test_output_for_statements'] = testcase.outputPath.read_text()
     else:
@@ -553,6 +568,7 @@ def _upload_testcases(
                 **_get_test_params_for_statement(
                     entry.metadata.copied_from,
                     is_sample=entry.is_sample(),
+                    built=entry.metadata.copied_to,
                 ),
             )
             progress.update(task_id, advance=1)
@@ -613,6 +629,7 @@ def _upload_testcases_raw(
                 **_get_test_params_for_statement(
                     entry.metadata.copied_from,
                     is_sample=entry.is_sample(),
+                    built=entry.metadata.copied_to,
                 ),
             )
             progress.update(task_id, advance=1)
@@ -873,6 +890,9 @@ async def upload_problem(
                     'as stored, with the hidden grader header rbx validators do not '
                     'read. rbx already validated the raw inputs.[/warning]'
                 )
+                # And unset one a previous upload left, which would fail every
+                # header-carrying test. Verified live: an empty name clears it.
+                problem.set_validator('')
             else:
                 _upload_validator(problem, ns)
 

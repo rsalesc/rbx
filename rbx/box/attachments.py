@@ -18,6 +18,7 @@ import typer
 from rbx import console
 from rbx.box import graders, package
 from rbx.box.schema import FileAttachment, Package, SamplesAttachment
+from rbx.grading import steps
 
 _C_FAMILY = {'.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx'}
 _SOURCES = {'.c', '.cc', '.cpp', '.cxx'}
@@ -43,10 +44,14 @@ def _file_content(attachment: FileAttachment) -> bytes:
             f'Attachment [item]{attachment.path}[/item] is marked [item]public[/item], '
             'which only applies to C/C++ sources.'
         )
-    return graders.make_public_source(attachment.path.read_text()).encode()
+    try:
+        return graders.make_public_source(attachment.path.read_text()).encode()
+    except graders.SecretBlockError as e:
+        _fail(f'Cannot derive the public [item]{attachment.path}[/item]: {e}.')
+        raise
 
 
-def _compile_check(files: Dict[str, bytes]):
+def _compile_check(files: Dict[str, bytes], public: List[str]):
     """Compile every public C/C++ source alone, with only the archive around it.
 
     That is exactly what a contestant has: no rbx.h, no vars, no secrets. A
@@ -60,15 +65,24 @@ def _compile_check(files: Dict[str, bytes]):
         )
         return
     with tempfile.TemporaryDirectory() as tmp:
-        root = pathlib.Path(tmp)
+        root = pathlib.Path(tmp) / 'archive'
+        root.mkdir()
         for name, content in files.items():
             (root / name).parent.mkdir(parents=True, exist_ok=True)
             (root / name).write_bytes(content)
-        for name in files:
+        # Like a judge (and like rbx's own compilation), make <bits/stdc++.h>
+        # available, which Apple clang does not ship.
+        include_dir = pathlib.Path(tmp) / 'include'
+        bits = steps.maybe_get_bits_stdcpp_for_commands([f'{compiler} x.cpp'])
+        if bits is not None and bits.src is not None:
+            (include_dir / 'bits').mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(bits.src, include_dir / 'bits' / 'stdc++.h')
+        for name in public:
             if pathlib.Path(name).suffix.lower() not in _SOURCES:
                 continue
             result = subprocess.run(
-                [compiler, '-std=c++20', '-fsyntax-only', '-I', str(root), name],
+                [compiler, '-std=c++20', '-fsyntax-only', '-I', str(root)]
+                + ['-I', str(include_dir), name],
                 cwd=root,
                 capture_output=True,
                 text=True,
@@ -115,7 +129,7 @@ async def collect(pkg: Optional[Package] = None) -> Dict[str, bytes]:
                 )
             files[name] = content
     if public:
-        _compile_check(files)
+        _compile_check(files, public)
     return files
 
 

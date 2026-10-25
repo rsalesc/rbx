@@ -73,7 +73,13 @@ inline void start() {
   ::rbx::detail::headerGroup() = detail::readLine(stdin);
 }
 
-inline void close_input() { std::fclose(stdin); }
+// Reopened on /dev/null rather than closed: reading a closed stdin is undefined
+// behaviour, while this way contestant code that reads it just sees EOF.
+inline void close_input() {
+  if (std::freopen("/dev/null", "r", stdin) == nullptr) {
+    std::fclose(stdin);
+  }
+}
 
 // Call right before handing control to the contestant's code.
 inline void before_call() {

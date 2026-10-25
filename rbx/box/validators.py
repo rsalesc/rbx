@@ -418,11 +418,16 @@ async def validate_outputs_from_entries(
         output_path = entry.metadata.copied_to.outputPath
         if output_path is None or not output_path.is_file():
             return []
+        from rbx.box import graders
+
+        # An output validator checks the answer's format, which a batch grader
+        # frames with its prologue; it reads the answer as the grader printed it.
+        validated_path = graders.unframed_output(output_path)
         res = []
         for output_validator in entry.output_validators:
             compiled_digest = validator_to_compiled_digest[str(output_validator.path)]
             ok, message, _ = await validate_file(
-                output_path,
+                validated_path,
                 output_validator,
                 compiled_digest,
                 group=entry.group_entry.group,
@@ -467,7 +472,14 @@ async def check_output_from_entries(
 
     entries_to_check: List[GenerationTestcaseEntry] = []
 
+    from rbx.box import graders
+
     for entry in entries:
+        # A grader problem's hand-written output is the public answer, in a
+        # different format from what its checker reads; the judge answer is
+        # always generated, so there is nothing to check here.
+        if graders.has_grader():
+            break
         if entry.metadata.copied_from is None:
             continue
         if (

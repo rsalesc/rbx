@@ -92,9 +92,9 @@ int main() {
    it into a wrong answer.
 
 Why the helpers? Your grader runs inside the same program as the participant's code,
-so a careless or malicious solution could read the input before the grader does, or
-print an answer of its own and exit. The helpers catch both, with the same tricks
-IOI graders use.
+so a careless solution could read the input before the grader does, or print an
+answer of its own and exit. The helpers catch both, with the same tricks IOI graders
+use.
 
 !!! tip
     If the grader itself decides the answer is wrong (for example, the participant
@@ -140,7 +140,16 @@ test, gets an empty group name, so `getVar` returns the package-level values the
 
 !!! info
     {{rbx}} derives the secret from the package's `.rbx-id` file and generates it into
-    `rbx.h`. {{rbx}} keeps it out of every file the participants receive.
+    `rbx.h`. {{rbx}} keeps it out of every file the participants receive. Keep
+    `.rbx-id` with the package (commit it), or a package built elsewhere gets
+    different secrets than the tests already uploaded to a judge.
+
+!!! warning "The secrets are a tripwire"
+    The secrets live in the same program as the participant's code, and the judge
+    compiles that code next to the grader. A participant determined to cheat can
+    read them, as with any IOI-style grader. They stop mistakes and casual attempts,
+    and anything a participant must never see belongs in an
+    [interactor](interactors.md), which runs as a separate program.
 
 ## Writing checkers and interactors
 

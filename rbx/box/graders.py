@@ -22,7 +22,7 @@ import typer
 from rbx import console
 from rbx.box import package
 from rbx.box.runners import problem_id
-from rbx.box.schema import CodeItem, Grader, Package, Testcase
+from rbx.box.schema import CodeItem, Grader, Package, TaskType, Testcase
 
 JUDGE_INPUT_SUFFIX = '.in.judge'
 STATEMENT_OUTPUT_SUFFIX = '.out.statement'
@@ -123,9 +123,28 @@ def public_shim() -> str:
     )
 
 
+_SECRET_MARKER_RE = re.compile(r'//[ \t]*(BEGIN|END)[ \t]+SECRET\b')
+
+
+class SecretBlockError(ValueError):
+    pass
+
+
 def strip_secret_blocks(source: str) -> str:
-    """Remove every `// BEGIN SECRET` ... `// END SECRET` block, markers included."""
-    return _SECRET_BLOCK_RE.sub('', source)
+    """Remove every `// BEGIN SECRET` ... `// END SECRET` block, markers included.
+
+    A marker left behind (an unmatched BEGIN or END, or one not alone on its
+    line) would ship the code it was meant to hide, so it is an error.
+    """
+    stripped = _SECRET_BLOCK_RE.sub('', source)
+    leftover = _SECRET_MARKER_RE.search(stripped)
+    if leftover is not None:
+        line = stripped.count('\n', 0, leftover.start()) + 1
+        raise SecretBlockError(
+            f'unmatched `// {leftover.group(1)} SECRET` marker (line {line} after '
+            'stripping): every BEGIN needs an END, each alone on its own line'
+        )
+    return stripped
 
 
 def make_public_source(source: str) -> str:
@@ -188,6 +207,50 @@ async def generate_public_output(model_solution: CodeItem, testcase: Testcase):
         raise typer.Exit(1)
 
 
+def framed_output(output_path: pathlib.Path) -> pathlib.Path:
+    """A raw answer as a batch grader would have printed it, prologue included.
+
+    For checker inputs a setter writes by hand (checker unit tests): they can't
+    spell the prologue themselves, since the secrets are derived. Returns the
+    path unchanged for a problem without a batch grader.
+    """
+    pkg = package.find_problem_package()
+    if pkg is None or pkg.grader is None or pkg.type != TaskType.BATCH:
+        return output_path
+    secrets = get_secrets()
+    framed = f'{secrets.output}\n{secrets.output_end}\nOK\n'.encode()
+    framed += output_path.read_bytes()
+    cache_dir = package.get_problem_cache_dir() / 'framed-outputs'
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    dest = cache_dir / (hashlib.sha256(framed).hexdigest()[:32] + '.out')
+    if not dest.is_file():
+        dest.write_bytes(framed)
+    return dest
+
+
+def unframed_output(output_path: pathlib.Path) -> pathlib.Path:
+    """An answer without a batch grader's prologue, for tools that read its format.
+
+    Returns the path unchanged when there is no batch grader, or when the file
+    does not start with the prologue (a grader verdict, a hand-written answer).
+    """
+    pkg = package.find_problem_package()
+    if pkg is None or pkg.grader is None or pkg.type != TaskType.BATCH:
+        return output_path
+    secrets = get_secrets()
+    prologue = f'{secrets.output}\n{secrets.output_end}\nOK\n'.encode()
+    content = output_path.read_bytes()
+    if not content.startswith(prologue):
+        return output_path
+    cache_dir = package.get_problem_cache_dir() / 'unframed-outputs'
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    body = content[len(prologue) :]
+    dest = cache_dir / (hashlib.sha256(body).hexdigest()[:32] + '.out')
+    if not dest.is_file():
+        dest.write_bytes(body)
+    return dest
+
+
 def run_input(input_path: pathlib.Path) -> pathlib.Path:
     """The input a run hands to the solution, the checker or the interactor.
 
@@ -201,11 +264,13 @@ def run_input(input_path: pathlib.Path) -> pathlib.Path:
     built = judge_input_path(input_path)
     if built.is_file() and built.stat().st_mtime >= input_path.stat().st_mtime:
         return built
-    raw = input_path.read_bytes()
-    wrapped = judge_input(raw, None)
+    wrapped = judge_input(input_path.read_bytes(), None)
     cache_dir = package.get_problem_cache_dir() / 'judge-inputs'
     cache_dir.mkdir(parents=True, exist_ok=True)
-    dest = cache_dir / (hashlib.sha256(wrapped).hexdigest()[:32] + '.in')
-    if not dest.is_file():
+    # Keyed by the input's path, not its content, so a stress run rewriting
+    # one input file over and over reuses one wrapped file.
+    key = hashlib.sha256(str(input_path.resolve()).encode()).hexdigest()[:32]
+    dest = cache_dir / f'{key}.in'
+    if not dest.is_file() or dest.read_bytes() != wrapped:
         dest.write_bytes(wrapped)
     return dest

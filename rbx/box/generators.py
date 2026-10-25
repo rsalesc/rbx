@@ -752,9 +752,11 @@ async def generate_outputs_for_testcases(
 
         assert needs_output
         model_solution = entry.model_solution or main_solution
+        # A grader problem's judge answers always come from running a solution
+        # with the grader: a raw answer already in place is never one.
         if (
             model_solution is None or model_solution.path not in solution_digest_map
-        ) and not tc.outputPath.is_file():
+        ) and (has_grader or not tc.outputPath.is_file()):
             console.console.print(
                 '[error]No main/model solution found to generate outputs for testcases.[/error]',
             )
