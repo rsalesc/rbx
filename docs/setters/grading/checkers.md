@@ -295,3 +295,84 @@ Notice how we read from both outputs, validating each of them individually, and 
 an appropriate verdict for each of them, and avoiding assuming the jury's output is 100% correct.
 
 You can learn more about {{testlib}} streams and all the functions available in their [official documentation](https://codeforces.com/blog/entry/18431).
+
+## Awarding partial points
+
+So far, a checker either accepts an answer or rejects it. Some problems want something in
+between. Think of our path problem with a twist: a path *longer* than the jury's should still
+get some of the points, more of them the closer its length is to the jury's.
+
+A {{testlib}} checker awards part of a test's points with `quitp`. {{rbx}} reads its value as a
+**percentage** of the test's points, between 0 and 100:
+
+```cpp title="checker.cpp"
+// ... the same checker as before, but without rejecting a longer path ...
+ans.quitif(psize < jsize, _wa,
+           "participant's path is shorter than the jury's path (size %d < %d)",
+           psize, jsize);
+if (psize > jsize) {
+    quitp(100.0 * jsize / psize, "path with %d vertices, the jury's has %d", psize, jsize);
+}
+ouf.quitf(_ok, "path with %d vertices found", K);
+```
+
+The checker above pays a path twice as long as the jury's half of the test's points.
+`quitp(100)` is an {{tags.accepted}}, `quitp(0)` a {{tags.wrong_answer}}, and anything in between
+is a *partially correct* verdict.
+
+!!! warning "Use `quitp`, not `_pc`"
+    {{testlib}} also has `quitf(_pc(k), ...)`, but judges don't agree on what it means, and
+    {{polygon}} reports it as a checker failure. {{rbx}} judges it as a checker failure too. Use
+    `quitp`: {{rbx}} reads its value as a percentage, and so do the {{polygon}} and {{cms}}
+    packages it builds.
+
+### Scoring groups with partial points
+
+Partial points only mean something in a problem scored by points: one whose `scoring` is
+`points`, where each test group has a `score`. You can read more about these fields in the
+[`problem.rbx.yml` reference](/setters/reference/package). A group pays its `score` according to
+its `aggregation`:
+
+- `min`, the default, pays the group's `score` times its **lowest** test score. A group whose
+  tests all scored 90% pays 90% of its points, and one failed test makes it pay nothing. It's
+  the usual way to score a subtask.
+- `sum` splits the group's `score` evenly across its tests, and each test pays its share times
+  its own score.
+
+Below, every group uses the default `min`, except `big`, which sets its own `aggregation`:
+
+```yaml title="problem.rbx.yml"
+scoring:
+  aggregation: min # (1)!
+testcases:
+  - name: small
+    score: 40
+  - name: big
+    score: 60
+    aggregation: sum # (2)!
+```
+
+1.  `min` is the default, so `scoring: points` means the same thing.
+2.  `big` splits its 60 points evenly across its tests.
+
+A group can also depend on other groups, through its `deps` or `scoring.dependencies`. Then none
+of its tests scores more than the lowest test score among the groups it depends on, directly or
+through another group.
+
+### Expecting partial scores
+
+Last but not least, tell {{rbx}} which solutions you expect to score partially. Declare them
+`partially correct`, and pin how many points they should get with `score`:
+
+```yaml title="problem.rbx.yml"
+solutions:
+  - path: sols/longer-path.cpp
+    outcome: partially correct
+    score: 75
+```
+
+Every test such a solution doesn't pass must be partially correct. A solution that also gets a
+{{tags.wrong_answer}} is `incorrect`, and its `score` still pins its points.
+
+`rbx run` marks each partially correct test with `~`, and shows the points each group scored. Run
+the solution alone, with `rbx run sols/longer-path.cpp`, to see each test's percentage.
