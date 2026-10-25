@@ -1,0 +1,46 @@
+scenarios:
+  - name: partial-scores
+    description: |
+      The checker awards `quitp` percentages. `small` (min) pays 40 times its
+      lowest test, `big` (sum, depends on `small`) pays each of its three tests
+      20 times its score, capped by `small`'s lowest. Every solution meets its
+      `score`, so `rbx run` exits 0.
+    steps:
+      - cmd: run
+        expect:
+          stdout_contains:
+            - "OK Expected score 100, got [100/100 pts]"
+            - "small (2) 0/~ 1/~"
+            - "[36/40 pts]"
+            - "[54/60 pts]"
+            # A sum group loses only the partial test's share.
+            - "[50/60 pts]"
+            - "OK Expected score 90, got [90/100 pts]"
+            - "OK Expected score 0, got [0/100 pts]"
+          solutions:
+            sols/main.cpp: ac
+            sols/off-by-one.cpp: pc
+            sols/big-partial.cpp:
+              samples: ac
+              small: ac
+              big: pc
+            sols/small-wrong.cpp:
+              samples: ac
+              small: wa
+              big: ac
+
+  - name: polygon-cms-package
+    description: |
+      Polygon reads `quitp` as a percentage, `big` is an each-test group with
+      its 60 points split over its tests, and CMS gets one GroupMin subtask
+      per `big` test (each also matching `small`'s tests) and a checker built
+      against rbx's CMS testlib.
+    steps:
+      - cmd: package polygon --cms
+        expect:
+          zip_file_contains:
+            path: build/*.zip
+            entries:
+              problem.xml: '/(?s)treat-points-from-checker-as-percent="true".*name="big"[^>]*points-policy="each-test"/'
+              files/cms_conf.py: "[20.0, '^(003|001|002)$'], [20.0, '^(004|001|002)$'], [20.0, '^(005|001|002)$']"
+              files/cms_testlib.h: "#ifdef RBX_CMS"
