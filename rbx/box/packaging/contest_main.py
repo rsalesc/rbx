@@ -138,6 +138,60 @@ async def polygon(
     )
 
 
+@app.command(
+    'cms-contest',
+    help=(
+        'Build a CMS contest without its problems, for CMS to attach the tasks of '
+        '"rbx contest package polygon --cms" to.'
+    ),
+)
+@contest_package.within_contest
+def cms_contest():
+    """Build `build/cms-contest.zip`: the contest in CMS's Italian YAML format.
+
+    It carries the CMS contest settings and the CMS languages of `env.rbx.yml`,
+    which the Polygon contest importer cannot. No problem is built.
+    """
+    import shutil
+
+    from rbx.box.packaging.cms import italy_loader
+    from rbx.box.packaging.cms import settings as cms_settings
+
+    contest = contest_package.find_contest_package_or_die()
+    languages, unmapped = italy_loader.contest_languages()
+    if not languages:
+        console.console.print(
+            '[warning]No language in [item]env.rbx.yml[/item] declares the CMS '
+            'languages it maps to, under [item]extensions.cms.languages[/item], so '
+            'the contest gets the default languages of CMS.[/warning]'
+        )
+    elif unmapped:
+        console.console.print(
+            '[warning]These languages declare no CMS language, so the contest does '
+            f'not allow them: [item]{", ".join(unmapped)}[/item].[/warning]'
+        )
+
+    build_path = contest_package.get_contest_build_path()
+    root = build_path / 'cms-contest'
+    shutil.rmtree(root, ignore_errors=True)
+    italy_loader.write_contest(
+        root / contest.name, contest, cms_settings.resolve(), languages
+    )
+    result_path = pathlib.Path(
+        shutil.make_archive(str(build_path / 'cms-contest'), 'zip', root)
+    )
+
+    console.console.print(
+        f'[success]Created CMS contest package at [item]{result_path}[/item]![/success]'
+    )
+    console.console.print(
+        'Import every task first, from [item]rbx contest package polygon --cms[/item], '
+        'with [item]cmsImportTask -L polygon_task[/item]. Then import the contest, '
+        f'which attaches them: [item]cmsImportContest -L italy_yaml {contest.name}[/item]. '
+        'Never pass [item]--import-tasks[/item] or [item]--update-tasks[/item] to it.'
+    )
+
+
 class BocaContestPackager(ContestZipper):
     def __init__(self, **kwargs):
         super().__init__('boca-contest', zip_inner=True, **kwargs)

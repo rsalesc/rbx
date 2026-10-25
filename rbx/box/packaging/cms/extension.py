@@ -326,3 +326,17 @@ class CmsEnvironmentExtension(CmsExtension):
                 'preset is shared between contests, and a schedule belongs to one.'
             )
         return contest
+
+
+class CmsLanguageExtension(BaseModel):
+    """CMS settings of one language in `env.rbx.yml`."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    languages: Optional[List[str]] = Field(
+        default=None,
+        description='CMS languages this rbx language maps to, by the exact name CMS '
+        'gives them, such as `C++20 / g++`, `Java / JDK` or `Python 3 / PyPy`. A '
+        "contest package allows every language of every rbx language's list. Unset, "
+        'or empty, means the language has no CMS counterpart.',
+    )

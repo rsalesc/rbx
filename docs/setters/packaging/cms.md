@@ -2,8 +2,9 @@
 
 {{cms}} is the contest system of the International Olympiad in Informatics. It doesn't
 read one package format of its own: it imports problems and contests through *loaders*,
-one per format it understands. {{rbx}} builds packages that CMS imports with its Polygon
-loader.
+one per format it understands. {{rbx}} builds packages for two of them: its Polygon loader,
+which imports problems and contests, and its Italian YAML loader, which imports a contest
+with its settings and languages.
 
 ## Formats
 
@@ -48,6 +49,63 @@ cmsImportTask -L polygon_task my-problem
     interactor, and from your checker if the interactor needs one. Write both in C++:
     {{rbx}} refuses to build the package otherwise.
 
+### Italian YAML
+
+Italian YAML is CMS's own format, the one its `italy_yaml` loader reads. {{rbx}} builds
+only the contest in it, and leaves the problems to the Polygon package.
+
+Why a second package? CMS's Polygon loader sets the options of a contest itself, so a
+contest imported from `build/contest.zip` gets none of your
+[contest settings](#configuring-cms), and allows CMS's default languages rather than
+[yours](#languages). To keep both, import the contest separately from its problems:
+
+1. Build both packages:
+
+    ```bash
+    rbx contest package polygon --cms
+    rbx contest package cms-contest
+    ```
+
+    The second command builds no problem. It writes `build/cms-contest.zip`, which holds
+    one directory, named after the `name` in your `contest.rbx.yml`. Inside it,
+    `contest.yaml` holds the contest's settings and languages, along with the list of
+    its problems.
+
+2. Import each problem with `cmsImportTask`, from the Polygon package:
+
+    ```bash
+    unzip build/contest.zip -d tasks
+    cmsImportTask -L polygon_task tasks/problems/A
+    cmsImportTask -L polygon_task tasks/problems/B
+    ```
+
+    Here, `A` and `B` are your problems' letters in the contest. CMS imports each one on
+    its own, in no contest yet.
+
+3. Import the contest with `-L italy_yaml`:
+
+    ```bash
+    unzip build/cms-contest.zip
+    cmsImportContest -L italy_yaml my-contest
+    ```
+
+    Here, `my-contest` is the `name` of your contest. CMS finds each of its problems by
+    letter and attaches it, in the order of your `contest.rbx.yml`.
+
+Import the problems before the contest, since the contest attaches only problems that
+CMS already has. To change a problem later, import it again with `cmsImportTask -u`,
+and to change the contest, with `cmsImportContest -u`. Both keep the problems attached.
+
+!!! warning "Never pass `--import-tasks` or `--update-tasks` to `cmsImportContest`"
+    The contest package has a placeholder `task.yaml` for each problem, so that
+    `cmsImportContest` can attach it. With `--import-tasks` or `--update-tasks`, or their
+    short forms `-i` and `-U`, CMS would import that placeholder as the problem.
+
+!!! warning "Problem names are global in CMS"
+    CMS imports a problem under its letter, such as `A`, and refuses a second problem
+    with the same name, even in another contest. So two contests whose problems share a
+    letter can't both live on the same CMS instance: {{rbx}} has no way around this yet.
+
 ## Configuring CMS
 
 CMS has settings of its own that no package format describes, such as how a task's score
@@ -89,15 +147,51 @@ are exceptions:
   `samples` group only. Set it to `all` or `none` to change that.
 
 Every setting so far goes under `task`. Next to it, `contest` holds the settings of the CMS
-contest itself, such as `start`, `stop` and `allowUserTests`. No format {{rbx}} builds
-today carries them, so set them in CMS after importing (see
-[Settings in a Polygon package](#settings-in-a-polygon-package)). `start`, `stop` and
-`perUserTime` describe one event, so {{rbx}} accepts them only in `contest.rbx.yml`.
+contest itself, such as `start`, `stop` and `allowUserTests`:
+
+```yaml title="contest.rbx.yml"
+extensions:
+  cms:
+    contest:
+      start: 2026-11-01T09:00:00-03:00
+      stop: 2026-11-01T14:00:00-03:00
+      timezone: America/Sao_Paulo
+      allowUserTests: true
+```
+
+This contest runs from 9:00 to 14:00, Brasília time. The offsets on `start` and `stop`
+decide those instants; `timezone` only sets how CMS shows times to contestants. `start`,
+`stop` and `perUserTime` describe one event, so {{rbx}} accepts them only in
+`contest.rbx.yml`. To import the `contest` settings into CMS, use an
+[Italian YAML](#italian-yaml) package: no other package {{rbx}} builds contains them.
 
 The [environment schema](../reference/environment/schema.md#cms) lists every field.
 
+### Languages
+
+CMS calls its languages by names of its own, such as `C++20 / g++`. List the ones each
+language of your `env.rbx.yml` corresponds to under that language's own
+`extensions.cms.languages`, not under the top-level `extensions.cms`, spelled exactly as
+CMS spells them:
+
+```yaml title="env.rbx.yml"
+languages:
+  - name: "cpp"
+    # ...
+    extensions:
+      cms:
+        languages: ["C++20 / g++"]
+```
+
+A contest you import from an [Italian YAML](#italian-yaml) package allows every CMS
+language your languages list, and only those. The default preset lists one each for C++,
+C, Python, and Java. Kotlin has no CMS counterpart, so it lists none, and {{rbx}} warns
+you that the contest doesn't allow it. If none of your languages lists one, the contest
+keeps CMS's default languages, and {{rbx}} warns you about that too.
+
 ### Settings in a Polygon package
 
-A [Polygon package](#polygon) contains every `task` setting, but none of the `contest` ones:
-CMS's Polygon loader sets the contest options itself. {{rbx}} accepts them anyway, and
-warns you that it ignores them. Set them in CMS's administration interface after importing.
+A [Polygon package](#polygon) contains every `task` setting, but neither the `contest` ones
+nor the languages: CMS's Polygon loader sets the contest options itself. {{rbx}} warns you
+when you set `contest` settings, and ignores them. To keep them and your languages, import
+the contest from an [Italian YAML](#italian-yaml) package instead.

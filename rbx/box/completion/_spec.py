@@ -3352,6 +3352,22 @@ SPEC = {
                             ],
                         },
                         {
+                            'help': 'Build a CMS contest without its problems,...',
+                            'is_group': False,
+                            'name': 'cms-contest',
+                            'panel': None,
+                            'params': [
+                                {
+                                    'help': 'Show this message and exit.',
+                                    'kind': 'option',
+                                    'multiple': False,
+                                    'names': ['--help'],
+                                    'takes_value': False,
+                                    'value': {'kind': 'none'},
+                                }
+                            ],
+                        },
+                        {
                             'help': 'Build a contest package for BOCA.',
                             'is_group': False,
                             'name': 'boca',

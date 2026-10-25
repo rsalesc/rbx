@@ -3,7 +3,10 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from rbx.box.packaging.boca.extension import BocaExtension, BocaLanguageExtension
-from rbx.box.packaging.cms.extension import CmsEnvironmentExtension
+from rbx.box.packaging.cms.extension import (
+    CmsEnvironmentExtension,
+    CmsLanguageExtension,
+)
 from rbx.box.packaging.moj.extension import MojExtension, MojLanguageExtension
 from rbx.box.packaging.polygon.extension import PolygonLanguageExtension
 from rbx.box.tooling.domjudge.extension import (
@@ -49,4 +52,9 @@ class LanguageExtensions(BaseModel):
 
     domjudge: Optional[DomjudgeLanguageExtension] = Field(
         default=None, description='Language-level extensions for DOMjudge tooling.'
+    )
+
+    cms: Optional[CmsLanguageExtension] = Field(
+        default=None,
+        description='Language-level extensions for CMS: the CMS languages it maps to.',
     )
