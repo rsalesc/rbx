@@ -35,85 +35,10 @@ This command will build a single `.zip` file with all problems in the contest.
 
 ## Importing into CMS
 
-{{cms}}, the contest system of the International Olympiad in Informatics, can import
-Polygon packages. Pass `--cms` to `rbx package polygon` or `rbx contest package polygon`.
-With it, the package also contains what CMS reads but Polygon can't describe: subtask
-scoring that follows your test groups, the statement PDFs and, for an interactive problem,
-a manager.
-
-```bash
-rbx contest package polygon --cms
-```
-
-This writes `build/contest.zip`, the same Polygon contest package as before, with the CMS
-files added. Codeforces ignores those files, and the package still works there. To import
-it, unzip it and run CMS's contest importer with its Polygon loader:
-
-```bash
-unzip build/contest.zip -d my-contest
-cmsImportContest -L polygon_contest my-contest
-```
-
-A problem package, from `rbx package polygon --cms`, goes through CMS's task importer
-instead:
-
-```bash
-unzip build/problem.zip -d my-problem
-cmsImportTask -L polygon_task my-problem
-```
-
-!!! note "Interactive problems need C++"
-    CMS runs an interactive problem through a manager that {{rbx}} compiles from your
-    interactor, and from your checker if the interactor needs one. Both must be written in
-    C++, and {{rbx}} refuses to build the package otherwise.
-
-### Configuring CMS
-
-CMS has settings of its own that a Polygon package has no place for, such as how a task's
-score comes out of a contestant's submissions, or how long contestants must wait between two
-submissions. You can declare them under `extensions.cms`, either in `env.rbx.yml` or in
-`contest.rbx.yml`. Put the ones you always use in your
-[preset](../presets/index.md)'s `env.rbx.yml`, and the ones specific to an event in its
-`contest.rbx.yml`:
-
-```yaml title="env.rbx.yml"
-extensions:
-  cms:
-    task:                        # applied to every task
-      scoreMode: maxSubtask
-      feedbackLevel: restricted
-      maxSubmissionNumber: 50
-      minSubmissionInterval: 60  # seconds
-```
-
-```yaml title="contest.rbx.yml"
-extensions:
-  cms:
-    task:
-      minSubmissionInterval: 30
-```
-
-The `contest.rbx.yml` block wins, field by field: in the preceding example, tasks keep
-`maxSubtask` scoring and wait 30 seconds between submissions. The one exception is
-`tokens`, which a contest replaces as a whole. A problem you package outside a contest
-gets only the `env.rbx.yml` settings.
-
-{{rbx}} leaves out any field you don't set, so CMS uses its own default for it. Two fields
-are exceptions:
-
-- `scoreMode` defaults to `max`, the highest score among a contestant's submissions, which
-  is what a solution's score means in {{rbx}}. CMS's own default, `maxTokenedLast`, scores
-  the last submission unless contestants use tokens.
-- `publicTestcases` defaults to `samples`, so contestants see results for the tests in your
-  `samples` group only. Set it to `all` or `none` to change that.
-
-Every setting so far goes under `task`, and applies to every task. Next to it, `contest` holds
-the settings of the CMS contest itself, such as `start`, `stop` and `allowUserTests`, but a
-Polygon package can't use them: CMS's Polygon importer sets the contest options itself. So
-{{rbx}} accepts them, warns you that it ignores them, and you set them in CMS's
-administration interface after importing.
-
-The [environment schema](../reference/environment/schema.md#cms) lists every field.
+{{cms}} can import Polygon packages too. Pass `--cms` to either command, and the
+package also contains what CMS needs. A contest package built with `--cms` no longer
+uploads to Codeforces Gym, so build one for each judge. See [CMS](cms.md#polygon) for how
+to import it, and for the CMS settings you can declare.
 
 ## Uploading to Codeforces Gym
 
