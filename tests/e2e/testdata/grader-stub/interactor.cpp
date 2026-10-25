@@ -12,6 +12,9 @@ int main(int argc, char *argv[]) {
   std::cout << n << std::endl;
   int queries = 0;
   while (true) {
+    if (ouf.seekEof()) {
+      quitf(_wa, "the solution stopped before answering");
+    }
     std::string op = ouf.readToken("[?!]", "op");
     int y = ouf.readInt(1, n, "y");
     if (op == "!") {

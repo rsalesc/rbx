@@ -51,8 +51,8 @@ def get_grader() -> Optional[Grader]:
 
 def has_grader(pkg: Optional[Package] = None) -> bool:
     if pkg is None:
-        pkg = package.find_problem_package_or_die()
-    return pkg.grader is not None
+        pkg = package.find_problem_package()
+    return pkg is not None and pkg.grader is not None
 
 
 def _derive(slug: str, label: str) -> str:

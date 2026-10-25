@@ -294,7 +294,9 @@ def _update_grader(problem: api.Problem, ns: flattening.FlatNamespace):
         type=api.FileType.RESOURCE,
         name=ns.flat_name_for(grader),
         file=ns.content_for(grader),
-        source_type=get_polygon_language_from_code_item(grader),
+        # Polygon refuses a source type on a resource ("Only source files can
+        # have source type") and infers one itself.
+        source_type=None,
         resource_advanced_properties=api.ResourceAdvancedProperties(
             for_types='cpp.*',
             main=False,
@@ -862,7 +864,17 @@ async def upload_problem(
             _update_interactor(problem, ns)
 
         if pkg.validator is not None and 'files' in which_upload:
-            _upload_validator(problem, ns)
+            if pkg.grader is not None:
+                # Polygon would validate the judge view, hidden header included,
+                # which the validator does not read. rbx validated the raw
+                # inputs already.
+                console.console.print(
+                    '[warning]Not uploading the validator: Polygon validates tests '
+                    'as stored, with the hidden grader header rbx validators do not '
+                    'read. rbx already validated the raw inputs.[/warning]'
+                )
+            else:
+                _upload_validator(problem, ns)
 
         if 'solutions' in which_upload:
             _upload_solutions(problem, ns)
