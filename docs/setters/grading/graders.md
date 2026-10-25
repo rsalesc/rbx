@@ -102,7 +102,8 @@ IOI graders use.
 If the grader itself decides the answer is wrong (for example, the participant
 returned a value that breaks the rules), call `grader.wrong_answer("message")`, or
 `grader.protocol_violation("message")`, **inside** the lambda. Once `run` returns,
-the run counts as accepted by the grader.
+the run counts as accepted by the grader, and a verdict given after that aborts the
+grader, which shows up as a runtime error rather than a wrong answer.
 
 Some of what a grader does is for the judge only, like such a check. Wrap it in a
 `// BEGIN SECRET` and an `// END SECRET` line, so that the participants' copy of the
@@ -121,11 +122,15 @@ grader leaves it out (see
   });
 ```
 
+The participants' copy keeps the call and the `return`, and loses the check.
+
 !!! tip "Finer control"
     `Grader` is a thin wrapper. The steps it performs are also available on their own,
     for graders that need finer control over each step: `rbx::grader::start()` (what the
     constructor does), `close_input()`, `before_call()` and `after_call()` (what `run`
-    does around the lambda), and `rbx::grader::verdict(kind, message)`.
+    does around the lambda), and
+    `rbx::grader::verdict(rbx::grader::Verdict::WA, message)` (or `Verdict::PV`),
+    which must come before `after_call()`.
 
 ## Reading the hidden header
 

@@ -28,18 +28,10 @@ inline void before_call() {}
 
 inline void after_call() {}
 
-// The convenient way to write a grader:
-//
-//   rbx::grader::Grader grader;        // reads and checks the hidden header
-//   ... read the input ...
-//   auto r = grader.run([&] {          // closes stdin, frames the calls
-//     auto r = contestant_function(...);
-//     if (bad(r)) grader.wrong_answer("why");   // judge-only checks go here
-//     return r;
-//   });                                // prints the closing secret and OK
-//   ... print the answer ...
-//
-// The functions above remain available for graders that need finer control.
+// The same Grader API as the judge's, so one grader source serves both. Here
+// nothing is checked or framed: the constructor does nothing, `run` closes
+// stdin and calls the lambda, returning what it returns, and a verdict prints
+// its message to stderr and exits.
 class Grader {
 public:
   Grader() { start(); }
