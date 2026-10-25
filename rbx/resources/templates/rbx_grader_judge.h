@@ -94,6 +94,49 @@ inline void after_call() {
   detail::stage() = 2;
 }
 
+// The convenient way to write a grader:
+//
+//   rbx::grader::Grader grader;        // reads and checks the hidden header
+//   ... read the input ...
+//   auto r = grader.run([&] {          // closes stdin, frames the calls
+//     auto r = contestant_function(...);
+//     if (bad(r)) grader.wrong_answer("why");   // judge-only checks go here
+//     return r;
+//   });                                // prints the closing secret and OK
+//   ... print the answer ...
+//
+// The functions above remain available for graders that need finer control.
+class Grader {
+public:
+  Grader() { start(); }
+
+  Grader(const Grader &) = delete;
+  Grader &operator=(const Grader &) = delete;
+
+  // Runs `calls` -- the part where contestant code runs -- and returns what it
+  // returns. Verdicts must be given inside it: once it returns, the run is OK.
+  template <typename F> decltype(auto) run(F &&calls) {
+    close_input();
+    before_call();
+    if constexpr (std::is_void_v<std::invoke_result_t<F>>) {
+      std::forward<F>(calls)();
+      after_call();
+    } else {
+      auto result = std::forward<F>(calls)();
+      after_call();
+      return result;
+    }
+  }
+
+  [[noreturn]] void wrong_answer(const std::string &message) {
+    verdict(Verdict::WA, message);
+  }
+
+  [[noreturn]] void protocol_violation(const std::string &message) {
+    verdict(Verdict::PV, message);
+  }
+};
+
 } // namespace grader
 } // namespace rbx
 

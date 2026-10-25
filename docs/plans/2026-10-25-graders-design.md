@@ -96,6 +96,15 @@ receive.
 
 ### rbx.h helpers
 
+**`rbx::grader::Grader`** is the API a grader is written against: its constructor
+does `start()`, and `run(lambda)` does `close_input()` + `before_call()`, runs the
+lambda (where contestant code runs, and where verdicts are given through
+`wrong_answer()` / `protocol_violation()`), then `after_call()`, returning the
+lambda's value. The free functions below stay available for finer control. The
+public flavour has the same API with no checks and no framing, and is what
+`public: true` pastes in place of `#include "rbx.h"`.
+
+
 | Caller | API | Behaviour |
 |---|---|---|
 | batch grader | `rbx::grader::start()` | Reads line 1 and compares it with `kInput`; on a mismatch prints `kOutput`, `PV` and a message, then exits 0. Reads the group line and records it, leaving stdin at the raw input |

@@ -5,7 +5,8 @@
 #include "sumgame.h"
 
 int main() {
-  rbx::grader::start();
+  rbx::grader::Grader grader;
+
   int n;
   if (std::scanf("%d", &n) != 1) {
     return 1;
@@ -14,16 +15,16 @@ int main() {
   for (auto &x : a) {
     std::scanf("%lld", &x);
   }
-  rbx::grader::close_input();
 
-  rbx::grader::before_call();
-  long long result = sum_all(a);
-  // BEGIN SECRET
-  if (result == -1) {
-    rbx::grader::verdict(rbx::grader::Verdict::WA, "sum_all gave up");
-  }
-  // END SECRET
-  rbx::grader::after_call();
+  long long result = grader.run([&] {
+    long long r = sum_all(a);
+    // BEGIN SECRET
+    if (r == -1) {
+      grader.wrong_answer("sum_all gave up");
+    }
+    // END SECRET
+    return r;
+  });
 
   std::printf("%lld\n", result);
   return 0;

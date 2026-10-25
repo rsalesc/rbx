@@ -63,7 +63,7 @@ scenarios:
           zip_file_contains:
             path: build/attachments/grader-batch.zip
             entries:
-              grader.cpp: "rbx: public grader helpers"
+              grader.cpp: "public grader flavour"
               examples/01.out: '/^6\n$/'
           zip_contains:
             path: build/attachments/grader-batch.zip

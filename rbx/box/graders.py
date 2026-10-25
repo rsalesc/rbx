@@ -108,18 +108,27 @@ def header_block() -> str:
 
 
 def public_shim() -> str:
-    """Stands in for `#include "rbx.h"` in a public grader: no secrets, no vars."""
+    """The grader-friendly rbx.h, inlined into a public grader in place of rbx.h.
+
+    The public flavour of the grader helpers, the same API as the judge's, plus
+    `getGroup()`: no secrets, no vars. Guarded, so a source including rbx.h
+    twice still compiles.
+    """
     return (
-        '// rbx: public grader helpers (stands in for rbx.h).\n'
+        '// rbx.h, public grader flavour (inlined by rbx).\n'
+        '#ifndef RBX_PUBLIC_GRADER_H\n'
+        '#define RBX_PUBLIC_GRADER_H\n'
         '#include <cstdio>\n'
         '#include <cstdlib>\n'
         '#include <string>\n'
+        '#include <type_traits>\n'
+        '#include <utility>\n'
         'namespace rbx {\n'
         'inline const std::string &getGroup() {\n'
         '  static const std::string group;\n'
         '  return group;\n'
         '}\n'
-        '} // namespace rbx\n' + public_helpers()
+        '} // namespace rbx\n' + public_helpers() + '#endif // RBX_PUBLIC_GRADER_H\n'
     )
 
 
@@ -154,7 +163,7 @@ def make_public_source(source: str) -> str:
     so the result is a single file that leaks neither secrets nor vars.
     """
     stripped = strip_secret_blocks(source)
-    return _RBX_INCLUDE_RE.sub(lambda _: public_shim().rstrip('\n'), stripped, 1)
+    return _RBX_INCLUDE_RE.sub(lambda _: public_shim().rstrip('\n'), stripped)
 
 
 def judge_input(raw: bytes, group: Optional[str]) -> bytes:

@@ -59,7 +59,8 @@ the include path. A solution finds `sumgame.h` there, the same way it would on a
 
 ## Writing a grader
 
-A grader is an ordinary C++ program, but it calls a few helpers from `rbx.h`:
+A grader is an ordinary C++ program built around one object from `rbx.h`,
+`rbx::grader::Grader`:
 
 ```cpp title="graders/grader.cpp"
 #include <cstdio>
@@ -69,52 +70,62 @@ A grader is an ordinary C++ program, but it calls a few helpers from `rbx.h`:
 #include "sumgame.h"
 
 int main() {
-  rbx::grader::start(); // (1)!
+  rbx::grader::Grader grader; // (1)!
+
   int n;
   std::scanf("%d", &n);
   std::vector<long long> a(n);
   for (auto &x : a) std::scanf("%lld", &x);
-  rbx::grader::close_input(); // (2)!
 
-  rbx::grader::before_call(); // (3)!
-  long long result = sum_all(a);
-  rbx::grader::after_call();
+  long long result = grader.run([&] { // (2)!
+    return sum_all(a);
+  });
 
-  std::printf("%lld\n", result);
+  std::printf("%lld\n", result); // (3)!
 }
 ```
 
-1. Reads and checks the hidden header that {{rbx}} puts at the top of every test. More
-   on it in [Reading the hidden header](#reading-the-hidden-header).
-2. Closes `stdin`, so the participant's code can't read the rest of the input.
-3. `before_call()` and `after_call()` frame the participant's call. Anything the
-   participant prints to `stdout` lands between the two frames, and the checker turns
-   it into a wrong answer.
+1. The constructor reads and checks the hidden header that {{rbx}} puts at the top of
+   every test. More on it in [Reading the hidden header](#reading-the-hidden-header).
+2. `run` wraps the part where the participant's code runs. Before calling the lambda,
+   it closes `stdin`, so the participant's code can't read the rest of the input, and
+   frames the output. Anything the participant prints to `stdout` inside the lambda
+   is caught, and the checker turns it into a wrong answer. `run` returns what the
+   lambda returns.
+3. Once `run` returns, the grader prints its answer as usual.
 
-Why the helpers? Your grader runs inside the same program as the participant's code,
+Why all this? Your grader runs inside the same program as the participant's code,
 so a careless solution could read the input before the grader does, or print an
-answer of its own and exit. The helpers catch both, with the same tricks IOI graders
-use.
+answer of its own and exit. The `Grader` object catches both, with the same tricks
+IOI graders use.
 
-!!! tip
-    If the grader itself decides the answer is wrong (for example, the participant
-    returned a value that breaks the rules), call
-    `rbx::grader::verdict(rbx::grader::Verdict::WA, "message")` before `after_call()`.
+If the grader itself decides the answer is wrong (for example, the participant
+returned a value that breaks the rules), call `grader.wrong_answer("message")`, or
+`grader.protocol_violation("message")`, **inside** the lambda. Once `run` returns,
+the run counts as accepted by the grader.
 
-Some of what a grader does is for the judge only, like that `verdict` check. Wrap
-it in a `// BEGIN SECRET` and an `// END SECRET` line, so that the participants'
-copy of the grader leaves it out (see
+Some of what a grader does is for the judge only, like such a check. Wrap it in a
+`// BEGIN SECRET` and an `// END SECRET` line, so that the participants' copy of the
+grader leaves it out (see
 [Giving files to the participants](#giving-files-to-the-participants)):
 
-```cpp title="graders/grader.cpp" hl_lines="2 6"
-  long long result = sum_all(a);
-  // BEGIN SECRET
-  if (result == -1) {
-    rbx::grader::verdict(rbx::grader::Verdict::WA, "sum_all gave up");
-  }
-  // END SECRET
-  rbx::grader::after_call();
+```cpp title="graders/grader.cpp" hl_lines="3 7"
+  long long result = grader.run([&] {
+    long long r = sum_all(a);
+    // BEGIN SECRET
+    if (r == -1) {
+      grader.wrong_answer("sum_all gave up");
+    }
+    // END SECRET
+    return r;
+  });
 ```
+
+!!! tip "Finer control"
+    `Grader` is a thin wrapper. The steps it performs are also available on their own,
+    for graders that need finer control over each step: `rbx::grader::start()` (what the
+    constructor does), `close_input()`, `before_call()` and `after_call()` (what `run`
+    does around the lambda), and `rbx::grader::verdict(kind, message)`.
 
 ## Reading the hidden header
 
@@ -126,7 +137,7 @@ copy of the grader leaves it out (see
 <the input, unchanged>
 ```
 
-`rbx::grader::start()` consumes them. The secret catches participant code that read
+The `Grader` constructor consumes them. The secret catches participant code that read
 `stdin` first. The group name is what makes the header useful beyond security:
 `rbx::getGroup()` returns it, and with it every
 [per-group variable](../verification/validators.md#varying-constraints-per-test-group)
@@ -235,9 +246,10 @@ attachments:
 Here `graders/template.cpp` is a skeleton solution, shipped as `sumgame.cpp`.
 
 `public: true` derives the participants' version of a grader. {{rbx}} removes every
-`// BEGIN SECRET` block, and replaces `#include "rbx.h"` with a few lines where the
-helpers stop checking or framing anything: `verdict()` only prints its message to
-`stderr` and exits. The result leaks neither the secret nor your variables.
+`// BEGIN SECRET` block, and pastes a grader-friendly `rbx.h` in place of
+`#include "rbx.h"`, so the grader is one self-contained file. It has the same `Grader` API, but
+nothing checks or frames anything: `run` only closes `stdin` and calls the lambda, and
+a verdict only prints its message to `stderr` and exits. The result leaks neither the secret nor your variables.
 
 If a C++ compiler is installed and some attachment is `public`, {{rbx}} compiles every
 C++ source in the archive on

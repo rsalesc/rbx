@@ -43,7 +43,7 @@ def test_strip_secret_blocks_removes_every_block_and_its_markers():
 def test_make_public_source_inlines_a_secret_free_shim():
     public = graders.make_public_source(GRADER)
     assert '#include "rbx.h"' not in public
-    assert 'rbx: public grader helpers' in public
+    assert 'public grader flavour' in public
     assert '#include "task.h"' in public
     assert 'secrets::' not in public
     assert 'getVar' not in public
