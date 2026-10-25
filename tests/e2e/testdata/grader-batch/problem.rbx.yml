@@ -16,6 +16,12 @@ generators:
   - name: gen
     path: gens/gen.cpp
 
+statements:
+  - language: en
+    title: Sum Game
+    file: statement/statement.rbx.tex
+    type: rbx-tex
+
 attachments:
   - path: graders/grader.cpp
     public: true

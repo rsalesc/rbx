@@ -6,11 +6,13 @@ CMS: Polygon and Codeforces ignore all of them.
 """
 
 import pathlib
+import shutil
 from typing import List, Optional, Sequence
 
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.lang import code_to_langs
 from rbx.box.packaging.cms import communication, scoring, settings, testlib_cms
+from rbx.box.packaging.cms import graders as graders_cms
 from rbx.box.packaging.cms.extension import CmsExtension
 from rbx.box.packaging.packager import BuiltStatement
 from rbx.box.schema import Package
@@ -26,6 +28,8 @@ def render_conf(
     pkg: Package,
     entries: Sequence[GenerationTestcaseEntry],
     cms_settings: Optional[CmsExtension] = None,
+    grader_files: Sequence[str] = (),
+    attachments_path: Optional[pathlib.Path] = None,
 ) -> str:
     """`files/cms_conf.py`: what CMS cannot read from `problem.xml`.
 
@@ -53,10 +57,14 @@ def render_conf(
             'source': CHECKER_SOURCE,
             'testlib': testlib_cms.CMS_TESTLIB_FILE,
         }
+    if pkg.grader is not None:
+        config['grader'] = graders_cms.grader_config(pkg, grader_files)
+    if attachments_path is not None:
+        config['attachments'] = {attachments_path.name: attachments_path.name}
     if communication.is_communication(pkg):
         config['communication'] = {
             'task_type': communication.TASK_TYPE,
-            'task_type_parameters': communication.TASK_TYPE_PARAMETERS,
+            'task_type_parameters': communication.task_type_parameters(pkg),
             'manager': communication.MANAGER_SOURCE,
             'checker_runner': communication.CHECKER_RUNNER_SOURCE
             if communication.needs_checker(pkg)
@@ -74,9 +82,15 @@ def write_files(
     entries: Sequence[GenerationTestcaseEntry],
     files_path: pathlib.Path,
     cms_settings: Optional[CmsExtension] = None,
+    grader_files: Sequence[str] = (),
+    attachments_path: Optional[pathlib.Path] = None,
 ):
     """Write `cms_conf.py`, and the sources it compiles, into `files/`."""
-    (files_path / CONF_FILE).write_text(render_conf(pkg, entries, cms_settings))
+    (files_path / CONF_FILE).write_text(
+        render_conf(pkg, entries, cms_settings, grader_files, attachments_path)
+    )
+    if attachments_path is not None:
+        shutil.copyfile(attachments_path, files_path / attachments_path.name)
     if communication.is_communication(pkg):
         communication.write_sources(files_path)
     else:

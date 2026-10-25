@@ -10,7 +10,7 @@ import rich.progress
 import typer
 
 from rbx import console, utils
-from rbx.box import header, naming, package
+from rbx.box import graders, header, naming, package
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging import flattening
 from rbx.box.packaging.polygon import polygon_api as api
@@ -227,6 +227,10 @@ def _build_upload_namespace(
         sources.append(validator)
         reserved[package.get_relative_source_path(validator)] = _get_validator_name()
 
+    if pkg.grader is not None:
+        sources.append(pkg.grader)
+        reserved[package.get_relative_source_path(pkg.grader)] = 'grader.cpp'
+
     sources.extend(package.get_solutions())
     sources.extend(_collect_generators(entries))
 
@@ -280,6 +284,24 @@ def _upload_dep_files(problem: api.Problem, ns: flattening.FlatNamespace):
             file=dep.content,
             source_type=None,
         )
+
+
+def _update_grader(problem: api.Problem, ns: flattening.FlatNamespace):
+    grader = package.find_problem_package_or_die().grader
+    assert grader is not None
+    console.console.print('Uploading grader...')
+    problem.save_file(
+        type=api.FileType.RESOURCE,
+        name=ns.flat_name_for(grader),
+        file=ns.content_for(grader),
+        source_type=get_polygon_language_from_code_item(grader),
+        resource_advanced_properties=api.ResourceAdvancedProperties(
+            for_types='cpp.*',
+            main=False,
+            stages=[api.Stage.COMPILE],
+            assets=[api.Asset.SOLUTION],
+        ),
+    )
 
 
 def _update_checker(problem: api.Problem, ns: flattening.FlatNamespace):
@@ -419,7 +441,7 @@ def _resolve_raw_test_input_path(
     entry: 'GenerationTestcaseEntry',
 ) -> Optional[pathlib.Path]:
     if entry.metadata.copied_to.inputPath.is_file():
-        return entry.metadata.copied_to.inputPath
+        return graders.run_input(entry.metadata.copied_to.inputPath)
     if (
         entry.metadata.copied_from is not None
         and entry.metadata.copied_from.inputPath.is_file()
@@ -791,6 +813,15 @@ async def upload_problem(
 
     which_upload = upload_only - dont_upload
     pkg = package.find_problem_package_or_die()
+    if pkg.grader is not None and not raw_tests:
+        # Polygon's generators would produce the raw input, without the hidden
+        # header the grader, checker and interactor read.
+        console.console.print(
+            '[warning]This problem has a grader: uploading the built tests as raw '
+            'files, since they carry a hidden header generators cannot produce.'
+            '[/warning]'
+        )
+        raw_tests = True
     name = _normalize_problem_name(name)
     problem = _find_or_create_problem(name)
     _update_problem_info(problem)
@@ -819,6 +850,8 @@ async def upload_problem(
 
         if 'files' in which_upload:
             _update_rbx_header(problem)
+            if pkg.grader is not None:
+                _update_grader(problem, ns)
             _update_checker(problem, ns)
 
         if (

@@ -18,6 +18,15 @@ TASK_TYPE = 'Communication'
 # One contestant process, compiled alone, speaking through stdin/stdout.
 TASK_TYPE_PARAMETERS: List[Union[int, str]] = [1, 'alone', 'std_io']
 
+
+def task_type_parameters(pkg: Package) -> List[Union[int, str]]:
+    """With a grader, the contestant is compiled with it: CMS 1.5.1 calls that
+    `stub` (and the source `stub.cpp`); later versions renamed both `grader`."""
+    if pkg.grader is not None:
+        return [1, 'stub', 'std_io']
+    return TASK_TYPE_PARAMETERS
+
+
 MANAGER_SOURCE = 'cms_manager.cpp'
 CHECKER_RUNNER_SOURCE = 'cms_checker.cpp'
 _SOURCES = [MANAGER_SOURCE, CHECKER_RUNNER_SOURCE, 'rbx_cms_report.h']

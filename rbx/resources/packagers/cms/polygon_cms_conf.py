@@ -141,5 +141,53 @@ _pack = False
 if CONFIG.get('communication'):
     datasets['tests'].update(_communication(CONFIG['communication']))
     _pack = bool(CONFIG['communication']['checker_runner'])
+
+
+def _grader(config):
+    # The grader (or, in a Communication task, the stub) and the headers it and
+    # the submissions include, stored as managers: CMS compiles each submission
+    # together with them.
+    from cms.db import Manager
+    from cms.db.filecacher import FileCacher
+
+    cacher = FileCacher()
+    return {
+        stored: Manager(
+            stored,
+            cacher.put_file_from_path(
+                os.path.join(_FILES, source), '%s for task %s' % (stored, _TASK)
+            ),
+        )
+        for stored, source in config['managers'].items()
+    }
+
+
+if CONFIG.get('grader'):
+    datasets['tests'].setdefault('managers', {}).update(_grader(CONFIG['grader']))
+    if 'task_type' in CONFIG['grader']:
+        datasets['tests']['task_type'] = CONFIG['grader']['task_type']
+        datasets['tests']['task_type_parameters'] = CONFIG['grader'][
+            'task_type_parameters'
+        ]
+
+
+def _attachments(attachments):
+    from cms.db import Attachment
+    from cms.db.filecacher import FileCacher
+
+    cacher = FileCacher()
+    return {
+        name: Attachment(
+            name,
+            cacher.put_file_from_path(
+                os.path.join(_FILES, source), 'Attachment for task %s' % _TASK
+            ),
+        )
+        for name, source in attachments.items()
+    }
+
+
+if CONFIG.get('attachments'):
+    general['attachments'] = _attachments(CONFIG['attachments'])
 if _pack or CONFIG['public'] != 'all':
     datasets['tests']['testcases'] = _testcases(_pack)

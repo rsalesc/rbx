@@ -25,9 +25,24 @@ class Tutorial(BaseXmlModel, search_mode='unordered'):
     pass
 
 
+class NamedRef(BaseXmlModel, search_mode='unordered'):
+    name: str = attr()
+
+
 class File(BaseXmlModel, search_mode='unordered'):
     path: str = attr()
     type: Optional[str] = attr(default=None)
+
+    # A grader: a resource compiled together with every solution of these types,
+    # spelled as Polygon exports it (`for-types="cpp.*"`, stage `compile`, asset
+    # `solution`).
+    for_types: Optional[str] = attr('for-types', default=None)
+    stages: List[NamedRef] = wrapped(
+        'stages', element(tag='stage', default=[]), default=[]
+    )
+    assets: List[NamedRef] = wrapped(
+        'assets', element(tag='asset', default=[]), default=[]
+    )
 
 
 class Test(BaseXmlModel, search_mode='unordered'):
