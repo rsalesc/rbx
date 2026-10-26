@@ -38,6 +38,7 @@ from rbx.box.presets.fetch import (
 from rbx.box.presets.lock_schema import LockedAsset, PresetLock, SymlinkInfo
 from rbx.box.presets.schema import (
     Library,
+    PackageSymlink,
     PackageVariant,
     Preset,
     ReplacementMode,
@@ -83,6 +84,7 @@ class ResolvedTemplate:
     tracking: List[TrackedAsset]
     libraries: List[Library]
     expansion: List[VariableExpansion]
+    symlinks: List[PackageSymlink]
 
     @property
     def path(self) -> pathlib.Path:
@@ -833,6 +835,7 @@ def resolve_template(
         tracking=preset.merged_tracking(found, is_contest),
         libraries=preset.merged_libraries(found, is_contest),
         expansion=preset.merged_expansion(found, is_contest),
+        symlinks=preset.merged_symlinks(found, is_contest),
     )
 
 
@@ -1425,6 +1428,28 @@ def install_preset_at_package(fetch_info: PresetFetchInfo, dest_pkg: pathlib.Pat
     _install_preset_from_fetch_info(fetch_info, dest_pkg / '.local.rbx')
 
 
+def create_symlinks(symlinks: List[PackageSymlink], dest_pkg: pathlib.Path) -> None:
+    """Create the symlinks a preset declares for a new package.
+
+    Each link is written relative to its own directory, so the package keeps
+    working when moved. A declared link replaces whatever the template put at
+    its path. The target need not exist yet: a generated file such as rbx.h may
+    only appear on the first build.
+    """
+    for symlink in symlinks:
+        link = dest_pkg / symlink.path
+        link.parent.mkdir(parents=True, exist_ok=True)
+        if link.is_symlink() or link.is_file():
+            link.unlink()
+        elif link.exists():
+            console.console.print(
+                f'[error]Preset symlink [item]{symlink.path}[/item] would replace a '
+                'directory of the template.[/error]'
+            )
+            raise typer.Exit(1)
+        link.symlink_to(os.path.relpath(dest_pkg / symlink.target, link.parent))
+
+
 def _install_package_from_preset(
     template: ResolvedTemplate,
     dest_pkg: pathlib.Path,
@@ -1545,6 +1570,7 @@ def install_contest(
     )
     _pin_schema_header(dest_pkg / 'contest.rbx.yml', 'contest', dest_pkg)
     _prune_languages(dest_pkg, keep, is_contest=True, inherit=False)
+    create_symlinks(template.symlinks, dest_pkg)
     if materialize:
         materialize_libraries(template.libraries, dest_pkg)
     return template
@@ -1596,6 +1622,7 @@ def install_problem(
     )
     _pin_schema_header(dest_pkg / 'problem.rbx.yml', 'problem', dest_pkg)
     _prune_languages(dest_pkg, keep, is_contest=False, inherit=inherit_languages)
+    create_symlinks(template.symlinks, dest_pkg)
     if materialize:
         materialize_libraries(template.libraries, dest_pkg)
     return template

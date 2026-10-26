@@ -152,6 +152,24 @@ class Expansion(BaseModel):
     contest: List[VariableExpansion] = []
 
 
+class PackageSymlink(BaseModel):
+    # Where the link is created, relative to the root of the package.
+    path: RelativePath
+
+    # What the link points at, relative to the root of the package. The link
+    # itself is written relative to its own directory, so the package can be
+    # moved or cloned elsewhere without breaking it.
+    target: RelativePath
+
+
+class Symlinks(BaseModel):
+    # Symlinks created in every problem package made from the preset.
+    problem: List[PackageSymlink] = []
+
+    # Symlinks created in every contest package made from the preset.
+    contest: List[PackageSymlink] = []
+
+
 class PackageVariant(BaseModel):
     # Identifier of the variant. Used in `--variant` and recorded in the
     # package's `.preset-lock.yml`.
@@ -174,6 +192,10 @@ class PackageVariant(BaseModel):
     # Variable expansions for this variant, merged over the shared expansion
     # list for this package kind (variant entries win, per needle).
     expansion: List[VariableExpansion] = []
+
+    # Symlinks for this variant, merged over the shared symlink list for this
+    # package kind (variant entries win, per path).
+    symlinks: List[PackageSymlink] = []
 
     @field_validator('id')
     @classmethod
@@ -245,6 +267,10 @@ class Preset(BaseModel):
     # Configures third-party libraries (testlib, jngen, etc.) that should be
     # fetched, cached, and materialized into the package.
     libraries: Libraries = Field(default_factory=Libraries)
+
+    # Symlinks rbx creates in a package when it creates it from the preset, such
+    # as a header linked next to the sources that include it.
+    symlinks: Symlinks = Field(default_factory=Symlinks)
 
     # Additional problem templates ("variants") offered by this preset, beyond
     # the canonical `problem` template. Selected with `rbx create --variant`.
@@ -320,6 +346,16 @@ class Preset(BaseModel):
         shared = self.expansion.contest if is_contest else self.expansion.problem
         return _merge_by(
             variant.expansion if variant is not None else [], shared, lambda e: e.needle
+        )
+
+    def merged_symlinks(
+        self, variant: Optional[PackageVariant], is_contest: bool
+    ) -> List[PackageSymlink]:
+        """Shared symlinks for this package kind, with `variant`'s entries merged
+        over it. Pass None for the canonical template."""
+        shared = self.symlinks.contest if is_contest else self.symlinks.problem
+        return _merge_by(
+            variant.symlinks if variant is not None else [], shared, lambda s: s.path
         )
 
     @property

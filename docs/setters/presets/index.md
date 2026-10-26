@@ -419,6 +419,35 @@ In this case, you can track both `contest/statements/icpc.sty` and `problem/stat
 
 Use this to share a common file between the contest and the problem packages.
 
+### Creating symlinks in new packages
+
+Tracking links a package to files of the *preset*. Sometimes a link belongs inside the package
+instead, pointing from one of its files to another. Think of a header that {{rbx}} generates in
+the problem's root, `rbx.h`, which a grader in `graders/` includes: {{rbx}} finds it when it
+compiles the grader, but your editor only looks next to the grader.
+
+The `symlinks` section declares such links, and {{rbx}} creates them in every package it
+creates from the preset:
+
+```yaml title="preset.rbx.yml"
+symlinks:
+  problem:
+    - path: "graders/rbx.h" # (1)!
+      target: "rbx.h" # (2)!
+```
+
+1.  Where the link goes, relative to the package's root.
+2.  What it points at, also relative to the package's root. {{rbx}} writes the link relative
+    to its own folder, as `../rbx.h` here. Moving the package doesn't break it.
+
+The target doesn't have to exist yet: `rbx.h` only appears the first time {{rbx}} compiles the
+problem's code. A [variant](#per-variant-tracking-libraries-and-expansion) can declare its own
+`symlinks`, merged over the shared list by `path`, as with tracking.
+
+A link replaces any file or link the template has at its `path`. If the template has a folder
+there, {{rbx}} refuses to create the package. {{rbx}} creates the links once, when it creates the
+package, and `rbx presets sync` leaves them alone unless you also track the same path.
+
 ## Libraries
 
 Competitive programming packages usually rely on a handful of third-party header libraries:
