@@ -177,7 +177,7 @@ exactly as it always did.
 #### Per-variant tracking, libraries and expansion
 
 A variant can override the preset's shared [`tracking`](#setting-up-the-preset-definition),
-[`libraries`](#libraries) and `expansion` lists — useful when, say, an interactive template
+[`libraries`](#libraries) and [`expansion`](#filling-in-values-on-creation) lists — useful when, say, an interactive template
 needs an extra tracked file that the batch template has no use for:
 
 ```yaml title="preset.rbx.yml"
@@ -418,6 +418,37 @@ problem/
 In this case, you can track both `contest/statements/icpc.sty` and `problem/statements/icpc.sty` (no need for the `symlink: true` flag), and {{rbx}} creates the symlink to `common_icpc.sty` for you.
 
 Use this to share a common file between the contest and the problem packages.
+
+### Filling in values on creation
+
+Some values in a template should differ in every package created from it. The `expansion`
+section lists placeholders, called **needles**, that {{rbx}} replaces in the template's files
+when it creates a package:
+
+```yaml title="preset.rbx.yml"
+expansion:
+  problem:
+    - needle: "__AUTHOR__"
+      prompt: "Who is the author of this problem?" # (1)!
+    - needle: "__GRADER_SECRET__"
+      replacement: random-hex # (2)!
+      glob: ["problem.rbx.yml"] # (3)!
+  contest: []
+```
+
+1.  The default `replacement` is `prompt`: {{rbx}} asks for the value, showing the required
+    `prompt` text, when you create the package.
+2.  `random-hex` draws a fresh random hexadecimal string instead, 32 digits long unless you set
+    `length`. It suits a [grader](../grading/graders.md#declaring-a-grader) `secret`, which should
+    differ between problems.
+3.  `glob` limits the replacement to the files that match, with patterns matched against paths
+    relative to the template's root. Without it, {{rbx}} replaces the needle in every text file
+    of the template.
+
+{{rbx}} fills in the needles once, when it creates the package. Each new package draws its
+own random values. The bundled `olympiad` preset declares the `random-hex` entry from this
+example. Its grader templates set `secret: "__GRADER_SECRET__"`, and each new problem gets a
+secret of its own.
 
 ## Libraries
 
