@@ -1,0 +1,71 @@
+%% Shared problem body, included by the standalone and in-contest templates.
+\includeProblem
+%- if problem.short_name is defined
+	[\VAR{problem.short_name}]
+%- endif
+{\VAR{problem.title | escape}}{
+
+%- if params.show_limits is truthy
+	\includeLimits
+		{\VAR{problem.limits.timeLimit} ms}
+		{\VAR{problem.limits.memoryLimit} MiB}
+		{}
+%- else
+	\vspace{0.55cm}
+%- endif
+
+	%- if problem.blocks.macros is defined
+		\VAR{problem.blocks.macros}
+	%- endif
+
+	\VAR{problem.blocks.legend}
+
+	%- if problem.blocks.input is defined
+		\inputdesc{\VAR{problem.blocks.input}}
+	%- endif
+
+	%- if problem.blocks.output is defined
+		\outputdesc{\VAR{problem.blocks.output}}
+	%- endif
+
+	%- if problem.blocks.interaction is defined
+		\interactiondesc{\VAR{problem.blocks.interaction}}
+	%- endif
+
+	%- if problem.blocks.scoring is defined
+		\scoringdesc{\VAR{problem.blocks.scoring}}
+	%- endif
+
+	%# Examples: the statement's own `examples` block, if any, then the generated
+	%# samples, unless the statement sets `show_samples: false`. The section is
+	%# left out when neither has anything to show.
+	%- set list_samples = (params.show_samples is null or params.show_samples is truthy) and problem.samples
+	%- if problem.blocks.examples is defined or list_samples
+		\vspace{0.1cm}
+		\subsection*{\strExamples}
+		%- if problem.blocks.examples is defined
+			\VAR{problem.blocks.examples}
+		%- endif
+		%- if list_samples
+			%- for sample in problem.samples
+				%- if sample.interaction is not none
+					\exampleInteractive
+					%- for chunk in sample.interaction.chunks
+						\interactionchunk{\VAR{chunk.path}}{\VAR{chunk.pipe}}
+					%- endfor
+				%- else
+					\example{\VAR{sample.input}}
+						{\VAR{sample.output if sample.output is not none else ''}}
+				%- endif
+				%- if sample.explanation_file is not none
+					\explanation{\subimport{\VAR{sample.dir}}{\VAR{sample.explanation_file}}}
+				%- endif
+			%- endfor
+		%- endif
+	%- endif
+
+	%- if problem.blocks.notes is defined
+		\subsection*{\strNotes}
+		\VAR{problem.blocks.notes}
+	%- endif
+}

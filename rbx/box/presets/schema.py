@@ -122,6 +122,10 @@ class ReplacementMode(AutoEnum):
     PROMPT = alias('prompt')  # type: ignore
     """Replace the needle with an user provided string."""
 
+    RANDOM_HEX = alias('random-hex')  # type: ignore
+    """Replace the needle with a fresh random hexadecimal string, such as a
+    grader `secret` that must differ between packages created from the preset."""
+
 
 class VariableExpansion(BaseModel):
     # The needle to be replaced.
@@ -133,6 +137,10 @@ class VariableExpansion(BaseModel):
     # The prompt to use for the replacement.
     # Only used when the replacement mode is PROMPT.
     prompt: Optional[str] = Field(default=None)
+
+    # How many hex digits to generate.
+    # Only used when the replacement mode is RANDOM_HEX.
+    length: int = Field(default=32, ge=1, le=256)
 
     # A glob pattern for the files to be expanded. If left empty, expand all files.
     glob: List[str] = Field(default=[])

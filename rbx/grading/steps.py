@@ -1,6 +1,7 @@
 import asyncio
 import dataclasses
 import functools
+import os
 import pathlib
 import re
 import resource
@@ -469,6 +470,9 @@ async def _process_output_artifacts(
                 )
             )
             is not None
+            # An executable is linked only when the stored file already is one:
+            # its mode is never changed through the link.
+            and (not output_artifact.executable or os.access(path_to_symlink, os.X_OK))
         ):
             # File is in the persistent cache, store a symlink to it.
             dst.unlink(missing_ok=True)
@@ -487,8 +491,8 @@ async def _process_output_artifacts(
                         f,
                         maxlen=output_artifact.maxlen,
                     )
-        if output_artifact.executable:
-            dst.chmod(0o755)
+            if output_artifact.executable:
+                dst.chmod(0o755)
     return True
 
 

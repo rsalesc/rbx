@@ -18,6 +18,13 @@ from rbx.grading.judge.lock import make_async_file_lock
 
 logger = logging.getLogger(__name__)
 
+# Mode of every file the store creates, whatever it holds. Stored files are
+# content-addressed and shared, so their mode is fixed when they are created
+# and never changed by whoever uses them: a sandbox runs an executable through
+# a symlink to the stored file, so the file must already be executable, and a
+# later identical copy must not differ from it in anything, mode included.
+STORED_FILE_MODE = 0o755
+
 TOMBSTONE = 'x'
 
 BaseModelT = TypeVar('BaseModelT', bound=BaseModel)
@@ -297,6 +304,7 @@ class FilesystemStorage(Storage):
                 suffix=f'.{filename_basename}',
                 dir=self.path,
             )
+            os.fchmod(temp_file.fileno(), STORED_FILE_MODE)
             metadata: Dict[str, Optional[BaseModel]] = {'compression': None}
             if self.compress or grading_context.should_compress():
                 fd_name = temp_file.name

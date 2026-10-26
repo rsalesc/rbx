@@ -1,0 +1,43 @@
+%% Information sheet: a per-problem limits table (a contest document).
+\documentclass[a4paper,11pt]{article}
+
+\def\lang{\VAR{lang}}
+\usepackage{icpc}
+
+\markright{\VAR{contest.title}}
+
+\begin{document}
+
+\begin{titlepage}
+\vspace*{\fill}
+\begin{center}
+\includegraphics[width=4cm]{logo.png}
+
+\vspace{1cm}
+{\huge{\bf \VAR{vars.year}}} \\
+
+\vspace{0.5cm}
+{\huge \bf \strInfoSheet}\\[12pt]
+{\Large \bf \VAR{contest.title}}
+\end{center}
+
+\vspace{2cm}
+
+\begin{center}
+\begin{tabular}{c|ccc|c}
+& \multicolumn{3}{c|}{{\strTimeLimit} (ms)} & \multirow{2}{*}{{\strMemoryLimit} (MiB)} \\
+{\sf \strProblem} & {\sf C/C++} &{\sf Java/Kotlin} & {\sf Python3} & \\
+\hline
+%- for problem in problems
+\VAR{problem.short_name}
+& \VAR{problem.limits.timelimit_for_language('cpp')}
+& \VAR{problem.limits.timelimit_for_language('java')}
+& \VAR{problem.limits.timelimit_for_language('py')}
+& \VAR{problem.limits.memorylimit_for_language()}
+\\ \hline
+%- endfor
+\end{tabular}
+\end{center}
+\vspace*{\fill}
+\end{titlepage}
+\end{document}
