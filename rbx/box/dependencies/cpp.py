@@ -1,3 +1,4 @@
+import os
 import pathlib
 from typing import Callable, Iterator, List, Optional, Tuple
 
@@ -50,6 +51,13 @@ def _resolve(including_file: pathlib.Path, spelling: str) -> Optional[pathlib.Pa
     candidate = utils.abspath(including_file.parent / spelling)
     if not candidate.is_file() or not candidate.is_relative_to(package_root):
         return None
+    header = package_root / 'rbx.h'
+    if candidate.is_symlink() and os.path.realpath(candidate) == os.path.realpath(
+        header
+    ):
+        # A link to the generated rbx.h, such as the one rbx keeps beside a
+        # grader for editors, is that same header, not a second file to ship.
+        return pathlib.Path('rbx.h')
     return candidate.relative_to(package_root)
 
 
