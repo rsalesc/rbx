@@ -105,13 +105,6 @@ so a careless solution could read the input before the grader does, or print an
 answer of its own and exit. The `Grader` object catches both, with the same tricks
 IOI graders use.
 
-{{rbx}} generates `rbx.h` in the problem's root and puts it on the include path when it
-compiles the grader. Your editor, though, usually looks only next to the grader, so whenever
-{{rbx}} builds the problem it also keeps a symbolic link to `rbx.h` there: `graders/rbx.h` in
-this example. The link points at the same file {{rbx}} compiles with, so it changes nothing in
-the build or the package, and it's safe to commit. If you already have a file named `rbx.h`
-next to the grader, {{rbx}} leaves it alone.
-
 If the grader itself decides the answer is wrong (for example, the participant
 returned a value that breaks the rules), call `grader.wrong_answer("message")`, or
 `grader.protocol_violation("message")`, **inside** the lambda. Once `run` returns,
