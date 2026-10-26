@@ -28,6 +28,16 @@ def runner() -> CliRunner:
 
 
 @pytest.fixture(autouse=True)
+def _restore_event_loop():
+    # `asyncio.run` below unsets the current event loop when it finishes, and on
+    # Python >= 3.12 nothing makes a new one implicitly: a later test in the same
+    # process that goes through `syncer` then fails with "There is no current
+    # event loop" (seen in CI as add_finding_test failing after this module).
+    yield
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
+
+@pytest.fixture(autouse=True)
 def _skip_preset_check():
     with mock.patch('rbx.box.presets.check_active_preset_compatibility'):
         yield
