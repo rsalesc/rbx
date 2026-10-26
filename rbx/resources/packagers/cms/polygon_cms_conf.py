@@ -24,10 +24,13 @@ def _pack_input(data, answer):
     return b'RBX-CMS-INPUT %d %d\n' % (len(data), len(answer)) + data + answer
 
 
-def _compile(source, output, *flags):
+def _compile(source, output, flags, *extra):
+    # `flags` come from the language's `cms` extension in env.rbx.yml.
     subprocess.run(
-        ['g++', '-x', 'c++', '-std=gnu++20', '-O2', '-static', '-I', _FILES]
+        ['g++', '-x', 'c++']
         + list(flags)
+        + ['-static', '-I', _FILES]
+        + list(extra)
         + ['-o', output, os.path.join(_FILES, source)],
         check=True,
     )
@@ -83,13 +86,13 @@ def _communication(config):
 
     cacher = FileCacher()
     build = tempfile.mkdtemp()
-    flags = []
+    defines = []
     if config['checker_runner']:
         checker = os.path.join(build, 'checker')
-        _compile(config['checker_runner'], checker)
-        flags.append('-DRBX_CMS_CHECKER="%s"' % checker)
+        _compile(config['checker_runner'], checker, config['checker_runner_flags'])
+        defines.append('-DRBX_CMS_CHECKER="%s"' % checker)
     manager = os.path.join(build, 'manager')
-    _compile(config['manager'], manager, *flags)
+    _compile(config['manager'], manager, config['manager_flags'], *defines)
     dataset = {
         'task_type': config['task_type'],
         'task_type_parameters': config['task_type_parameters'],
@@ -118,7 +121,9 @@ def _checker(config):
     )
     checker = os.path.join(build, 'checker')
     subprocess.run(
-        ['g++', '-x', 'c++', '-std=gnu++20', '-O2', '-static', '-DRBX_CMS']
+        ['g++', '-x', 'c++']
+        + list(config['flags'])
+        + ['-static', '-DRBX_CMS']
         + ['-I', build, '-o', checker, os.path.join(build, config['source'])],
         check=True,
     )

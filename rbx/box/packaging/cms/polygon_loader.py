@@ -6,22 +6,42 @@ CMS: Polygon and Codeforces ignore all of them.
 """
 
 import pathlib
+import shlex
 import shutil
 from typing import List, Optional, Sequence
 
+from rbx.box.code import find_language
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.lang import code_to_langs
 from rbx.box.packaging.cms import communication, scoring, settings, testlib_cms
 from rbx.box.packaging.cms import graders as graders_cms
-from rbx.box.packaging.cms.extension import CmsExtension
+from rbx.box.packaging.cms.extension import CmsExtension, CmsLanguageExtension
 from rbx.box.packaging.packager import BuiltStatement
-from rbx.box.schema import Package
+from rbx.box.schema import CodeItem, Package
 from rbx.config import get_resources_file, get_testlib
 
 CONF_FILE = 'cms_conf.py'
 # Where the Polygon packager puts the checker, and the importer looks for it.
 CHECKER_SOURCE = 'check.cpp'
+# What the CMS host compiles a checker or interactor with when its language
+# sets no `flags` (see `CmsLanguageExtension.flags`).
+DEFAULT_FLAGS = '-std=gnu++20 -O2'
 _CONFIG_LINE = 'CONFIG = {}  # rbx:config'
+
+
+def compile_flags(code: Optional[CodeItem]) -> List[str]:
+    """The `g++` flags `cms_conf.py` builds `code` with on the CMS host.
+
+    No `code` is the builtin checker, which gets the defaults.
+    """
+    flags = None
+    if code is not None:
+        flags = (
+            find_language(code)
+            .get_extension_or_default('cms', CmsLanguageExtension)
+            .flags
+        )
+    return shlex.split(DEFAULT_FLAGS if flags is None else flags)
 
 
 def render_conf(
@@ -56,6 +76,7 @@ def render_conf(
         config['checker'] = {
             'source': CHECKER_SOURCE,
             'testlib': testlib_cms.CMS_TESTLIB_FILE,
+            'flags': compile_flags(pkg.checker),
         }
     if pkg.grader is not None:
         config['grader'] = graders_cms.grader_config(pkg, grader_files)
@@ -66,9 +87,12 @@ def render_conf(
             'task_type': communication.TASK_TYPE,
             'task_type_parameters': communication.task_type_parameters(pkg),
             'manager': communication.MANAGER_SOURCE,
+            # The manager compiles the interactor in, the runner the checker.
+            'manager_flags': compile_flags(pkg.interactor),
             'checker_runner': communication.CHECKER_RUNNER_SOURCE
             if communication.needs_checker(pkg)
             else None,
+            'checker_runner_flags': compile_flags(pkg.checker),
         }
     template = get_resources_file(
         pathlib.Path('packagers') / 'cms' / 'polygon_cms_conf.py'
