@@ -14,9 +14,11 @@ import sys
 import tempfile
 import types
 from typing import Any, List, NamedTuple, Optional
+from unittest import mock
 
 import pytest
 
+from rbx.box.environment import Environment
 from rbx.box.packaging.cms import communication, polygon_loader
 from rbx.box.packaging.cms.extension import CmsExtension
 from rbx.box.schema import Interactor, TaskType
@@ -208,7 +210,9 @@ def test_modern_interactor_conf_compiles_only_the_manager(testing_pkg, tmp_path)
         'task_type': 'Communication',
         'task_type_parameters': [1, 'alone', 'std_io'],
         'manager': 'cms_manager.cpp',
+        'manager_flags': ['-std=gnu++20', '-O2'],
         'checker_runner': None,
+        'checker_runner_flags': ['-std=gnu++20', '-O2'],
     }
 
 
@@ -262,3 +266,68 @@ def test_batch_conf_builds_the_checker_against_the_cms_testlib(
     # Compiled from a copy where `testlib.h` is the CMS variant.
     build = pathlib.Path(command[-1]).parent
     assert (build / 'testlib.h').read_text() == '// cms testlib'
+
+
+def _cpp_env(flags: Optional[str]) -> Environment:
+    language: dict[str, Any] = {
+        'name': 'cpp',
+        'extension': 'cpp',
+        'execution': {'command': 'run'},
+    }
+    if flags is not None:
+        language['extensions'] = {'cms': {'flags': flags}}
+    return Environment.model_validate({'languages': [language]})
+
+
+def test_batch_conf_builds_the_checker_with_the_default_flags(
+    testing_pkg, tmp_path, compilations
+):
+    conf = _polygon_package(tmp_path / 'A', ['1'])
+
+    _run(polygon_loader.render_conf(testing_pkg.yml, []), str(conf))
+
+    (command,) = compilations
+    assert command[:5] == ['g++', '-x', 'c++', '-std=gnu++20', '-O2']
+
+
+def test_batch_conf_builds_the_checker_with_its_language_flags(
+    testing_pkg, tmp_path, compilations
+):
+    testing_pkg.set_checker('checker.cpp')
+    conf = _polygon_package(tmp_path / 'A', ['1'])
+
+    with mock.patch(
+        'rbx.box.environment.get_environment',
+        return_value=_cpp_env('-std=gnu++17 -O2 -DLOCAL_CMS'),
+    ):
+        rendered = polygon_loader.render_conf(testing_pkg.yml, [])
+    _run(rendered, str(conf))
+
+    (command,) = compilations
+    assert command[:6] == ['g++', '-x', 'c++', '-std=gnu++17', '-O2', '-DLOCAL_CMS']
+    # What rbx needs is added whatever the flags say.
+    assert '-static' in command
+    assert '-DRBX_CMS' in command
+    assert '-std=gnu++20' not in command
+
+
+def test_interactive_conf_builds_the_manager_and_runner_with_their_flags(
+    testing_pkg, tmp_path, compilations
+):
+    _interactive(testing_pkg, legacy=True)
+    conf = _polygon_package(tmp_path / 'A', ['1'])
+
+    with mock.patch(
+        'rbx.box.environment.get_environment',
+        return_value=_cpp_env('-std=c++17 -O1'),
+    ):
+        rendered = polygon_loader.render_conf(testing_pkg.yml, [], ALL_PUBLIC)
+    _run(rendered, str(conf))
+
+    runner, manager = compilations
+    assert runner[-1].endswith('cms_checker.cpp')
+    assert manager[-1].endswith('cms_manager.cpp')
+    for command in (runner, manager):
+        assert command[:5] == ['g++', '-x', 'c++', '-std=c++17', '-O1']
+        assert '-static' in command
+    assert any(flag.startswith('-DRBX_CMS_CHECKER=') for flag in manager)

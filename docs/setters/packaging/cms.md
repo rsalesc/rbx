@@ -189,6 +189,30 @@ C, Python, and Java. Kotlin has no CMS counterpart, so it lists none, and {{rbx}
 you that the contest doesn't allow it. If none of your languages lists one, the contest
 keeps CMS's default languages, and {{rbx}} warns you about that too.
 
+### Compiler flags
+
+CMS compiles your checker when it imports a [Polygon package](#polygon), and for an
+interactive problem it compiles the manager built around your interactor. It compiles them
+on the CMS machine with `g++ -std=gnu++20 -O2`, not with the commands in your
+`env.rbx.yml`. To use other flags, set `flags` under the same `extensions.cms` as
+`languages`:
+
+```yaml title="env.rbx.yml"
+languages:
+  - name: "cpp"
+    # ...
+    extensions:
+      cms:
+        languages: ["C++20 / g++"]
+        flags: "-std=gnu++17 -O2"
+```
+
+Here CMS builds the checker and the interactor as C++17, while contestants still submit in
+C++20: `flags` never changes how CMS compiles submissions. Your flags replace
+`-std=gnu++20 -O2`, and the checker and the interactor each take the flags of their own
+language. {{rbx}} always adds `-static`, plus the include paths and definitions it needs,
+so leave those out.
+
 ### Settings in a Polygon package
 
 A [Polygon package](#polygon) contains every `task` setting, but neither the `contest` ones

@@ -340,3 +340,11 @@ class CmsLanguageExtension(BaseModel):
         "contest package allows every language of every rbx language's list. Unset, "
         'or empty, means the language has no CMS counterpart.',
     )
+    flags: Optional[str] = Field(
+        default=None,
+        description='Flags `g++` gets when the CMS host compiles a checker or '
+        'interactor written in this language, such as `-std=gnu++17 -O2`. rbx always '
+        'adds `-static` and the include and define flags it needs. Unset means '
+        '`-std=gnu++20 -O2`. Graders and stubs are compiled by CMS with its own '
+        'per-language commands, which this does not change.',
+    )
