@@ -563,8 +563,9 @@ rbx create my-problem --preset default
 
 The registry is the merge of two files:
 
-- a **built-in** registry shipped with {{rbx}} (currently the `default`
-  preset alone);
+- a **built-in** registry shipped with {{rbx}}: the `default` preset, for
+  ICPC-style problems, and the `olympiad` preset, for problems
+  [scored by points](../grading/scoring.md#scoring-by-points);
 - a **user** registry stored in your {{rbx}} app directory
   (`presets/registry.yml`), initially empty.
 

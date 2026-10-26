@@ -1,0 +1,29 @@
+%- block legend
+Given two integers $A$ and $B$, determine the value of $A + B$.
+%- endblock
+
+%- block input
+The input is a single line containing two integers $A$ and $B$ ($\VAR{vars.N.min} \leq A, B \leq \VAR{vars.N.max | sci}$).
+%- endblock
+
+%- block output
+The output must contain only one integer, the sum of $A$ and $B$.
+%- endblock
+
+%- block scoring
+\begin{tabular}{|c|c|l|}
+\hline
+\textbf{Subtask} & \textbf{Points} & \textbf{Constraints} \\
+\hline
+%- for g in problem.groups
+%- if g.score
+\VAR{g.name | escape} & \VAR{g.score} & No additional constraints. \\
+\hline
+%- endif
+%- endfor
+\end{tabular}
+%- endblock
+
+%- block notes
+No notes.
+%- endblock
