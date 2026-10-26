@@ -14,6 +14,19 @@
 //   OK | WA | PV
 //   <message>                only after WA / PV
 //   <answer>
+//
+// The prologue is written with C stdio, but a grader or contestant may write
+// through an unsynchronised std::cout, whose buffer is flushed apart from it.
+// So every frame flushes std::cout before it and stdout after it. Likewise the
+// hidden header is read off the file descriptor, unbuffered, so the raw input
+// is left for whichever of stdin and an unsynchronised std::cin the grader
+// reads it with.
+#include <iostream>
+#if !defined(_WIN32)
+#include <cerrno>
+#include <unistd.h>
+#endif
+
 namespace rbx {
 namespace secrets {
 inline constexpr const char *kInput = "{{INPUT_SECRET}}";
@@ -33,12 +46,37 @@ inline int &stage() {
   return value;
 }
 
-inline std::string readLine(std::FILE *file) {
+// Prints `text` with nothing written before it still buffered in std::cout,
+// and nothing of it left buffered in stdout.
+inline void printFrame(const std::string &text) {
+  std::cout.flush();
+  std::fputs(text.c_str(), stdout);
+  std::fflush(stdout);
+}
+
+// Reads one line of stdin without buffering past it: fgetc would pull the raw
+// input into stdin's buffer too, where an unsynchronised std::cin, which reads
+// the descriptor itself, never sees it.
+inline std::string readHeaderLine() {
   std::string line;
+#if defined(_WIN32)
   int ch;
-  while ((ch = std::fgetc(file)) != EOF && ch != '\n') {
+  while ((ch = std::fgetc(stdin)) != EOF && ch != '\n') {
     line.push_back(static_cast<char>(ch));
   }
+#else
+  char ch;
+  for (;;) {
+    ssize_t got = ::read(0, &ch, 1);
+    if (got < 0 && errno == EINTR) {
+      continue;
+    }
+    if (got != 1 || ch == '\n') {
+      break;
+    }
+    line.push_back(ch);
+  }
+#endif
   if (!line.empty() && line.back() == '\r') {
     line.pop_back();
   }
@@ -55,11 +93,11 @@ inline std::string readLine(std::FILE *file) {
     std::abort();
   }
   if (detail::stage() == 0) {
-    std::printf("%s\n", secrets::kOutput);
+    detail::printFrame(std::string(secrets::kOutput) + "\n");
   }
-  std::printf("%s\n%s\n%s\n", secrets::kOutputEnd,
-              kind == Verdict::WA ? "WA" : "PV", message.c_str());
-  std::fflush(stdout);
+  detail::printFrame(std::string(secrets::kOutputEnd) + "\n" +
+                     (kind == Verdict::WA ? "WA" : "PV") + "\n" + message +
+                     "\n");
   std::exit(0);
 }
 
@@ -67,10 +105,10 @@ inline std::string readLine(std::FILE *file) {
 // read stdin before the grader is caught, and records the test's group for
 // rbx::getGroup() and the per-group getVar arms. Leaves stdin at the raw input.
 inline void start() {
-  if (detail::readLine(stdin) != secrets::kInput) {
+  if (detail::readHeaderLine() != secrets::kInput) {
     verdict(Verdict::PV, "Possible tampering with the input");
   }
-  ::rbx::detail::headerGroup() = detail::readLine(stdin);
+  ::rbx::detail::headerGroup() = detail::readHeaderLine();
 }
 
 // Reopened on /dev/null rather than closed: reading a closed stdin is undefined
@@ -83,14 +121,13 @@ inline void close_input() {
 
 // Call right before handing control to the contestant's code.
 inline void before_call() {
-  std::printf("%s\n", secrets::kOutput);
-  std::fflush(stdout);
+  detail::printFrame(std::string(secrets::kOutput) + "\n");
   detail::stage() = 1;
 }
 
 // Call right after the contestant's code returns, before printing the answer.
 inline void after_call() {
-  std::printf("%s\nOK\n", secrets::kOutputEnd);
+  detail::printFrame(std::string(secrets::kOutputEnd) + "\nOK\n");
   detail::stage() = 2;
 }
 
