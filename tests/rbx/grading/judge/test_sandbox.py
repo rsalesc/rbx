@@ -294,6 +294,29 @@ class TestSandboxBase:
         content = sandbox.get_file_to_bytes(file_path)
         assert content == test_content
 
+    async def test_symlinked_executable_survives_storing_same_content(self, sandbox):
+        """An executable linked into a sandbox stays runnable when the same
+        content is stored again, as two concurrent compiles of one source do.
+
+        The link points at the cacher's entry for the digest; replacing that
+        entry with a fresh (0600) temp file used to strip the execute bit from
+        under the running sandbox ("Permission denied" on first builds).
+        """
+        exe_path = pathlib.Path('executable')
+        content = b'#!/bin/sh\necho hi\n'
+
+        digest = await sandbox.file_cacher.put_file_content(content)
+        await sandbox.create_file_from_storage(
+            exe_path, digest, executable=True, override=True, try_symlink=True
+        )
+        assert sandbox.relative_path(exe_path).is_symlink()
+
+        assert await sandbox.file_cacher.put_file_content(content) == digest
+
+        mode = sandbox.relative_path(exe_path).stat().st_mode
+        assert mode & stat.S_IXUSR
+        assert sandbox.get_file_to_bytes(exe_path) == content
+
     def test_get_file(self, sandbox, test_file_content):
         """Test getting a file handle."""
         file_path = pathlib.Path('test_get_file.txt')
