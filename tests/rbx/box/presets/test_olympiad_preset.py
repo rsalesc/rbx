@@ -9,6 +9,7 @@ import pathlib
 from typing import Any, Dict, List, Optional
 
 import pytest
+import yaml
 
 from rbx.box.presets import get_preset_yaml, registry
 from rbx.box.presets.schema import Preset, ReplacementMode
@@ -225,6 +226,18 @@ class TestGraderSecret:
         ]
         assert expansion.replacement == ReplacementMode.RANDOM_HEX
         assert expansion.glob == ['problem.rbx.yml']
+
+
+class TestGraderHeaderLink:
+    # Read from the YAML rather than the model: the `symlinks` field (#966) may
+    # not be in the schema this preset is loaded with.
+    @pytest.mark.parametrize('variant_id', ['grader', 'interactive-grader'])
+    def test_grader_variants_link_rbx_h_beside_the_grader(
+        self, variant_id: str, preset_path: pathlib.Path
+    ):
+        raw = yaml.safe_load((preset_path / 'preset.rbx.yml').read_text())
+        [variant] = [v for v in raw['problemVariants'] if v['id'] == variant_id]
+        assert variant['symlinks'] == [{'path': 'graders/rbx.h', 'target': 'rbx.h'}]
 
 
 class TestContestChrome:

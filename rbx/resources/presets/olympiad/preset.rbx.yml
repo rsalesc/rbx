@@ -11,12 +11,22 @@ problemVariants:
   - id: grader
     path: "problem-grader"
     description: "Function-call task: solutions implement a function a C++ grader calls"
+    # Lets editors resolve the grader's `#include "rbx.h"`: rbx only puts
+    # rbx.h on the include path when it compiles the grader.
+    symlinks:
+      - path: "graders/rbx.h"
+        target: "rbx.h"
   - id: interactive
     path: "problem-interactive"
     description: "Communication task: solutions talk to a testlib interactor over stdin/stdout"
   - id: interactive-grader
     path: "problem-interactive-grader"
     description: "Function-call communication task: a C++ grader stub talks to a testlib interactor"
+    # Lets editors resolve the grader's `#include "rbx.h"`: rbx only puts
+    # rbx.h on the include path when it compiles the grader.
+    symlinks:
+      - path: "graders/rbx.h"
+        target: "rbx.h"
 expansion:
   problem:
     # Each problem created from a grader template gets its own grader secret.
