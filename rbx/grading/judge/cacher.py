@@ -183,6 +183,7 @@ class FileCacher:
                 await self.backend.get_file(digest) as fobj,
             ):
                 storage.copyfileobj(fobj, ftmp, self.CHUNK_SIZE)
+                os.fchmod(ftmp.fileno(), storage.STORED_FILE_MODE)
 
             if not cache_only:
                 # We allow anyone to delete files from the cache directory
@@ -423,6 +424,10 @@ class FileCacher:
                     buf = src.read(self.CHUNK_SIZE)
                 digest = d.digest()
                 dst.flush()
+                # Stored files are executable from the start, so a sandbox can
+                # run one through a symlink without changing a shared file's
+                # mode, and an identical copy renamed over it changes nothing.
+                os.fchmod(dst.fileno(), storage.STORED_FILE_MODE)
 
                 logger.debug('File has digest %s.', digest)
 
@@ -444,34 +449,9 @@ class FileCacher:
                             storage.copyfileobj(src, pending_file.fd, self.CHUNK_SIZE)
                             await self.backend.commit_file(pending_file, metadata)
 
-                self._place_in_cache(pathlib.Path(dst.name), cache_file_path)
+                os.rename(dst.name, cache_file_path)
 
             return digest
-
-    @staticmethod
-    def _place_in_cache(temp_path: pathlib.Path, cache_file_path: pathlib.Path):
-        """Move a freshly written file into the cache, keeping an existing entry.
-
-        Entries are named by digest, so one already in place holds the same
-        bytes, and it may be in use: sandboxes symlink executables to it and
-        chmod it +x. Renaming the new (0600) temp file over it would strip the
-        execute bit from under them -- two concurrent compiles of one source
-        made the first one's run fail with "Permission denied". So the entry is
-        only created when missing (hard link: atomic, never replaces), and
-        replaced only when it is a dangling symlink.
-        """
-        try:
-            os.link(temp_path, cache_file_path)
-        except FileExistsError:
-            if not cache_file_path.exists():
-                # A dangling symlink to a backend file that is gone.
-                os.replace(temp_path, cache_file_path)
-                return
-        except OSError:
-            # Hard links unsupported here: fall back to the old behaviour.
-            os.replace(temp_path, cache_file_path)
-            return
-        temp_path.unlink()
 
     async def put_file_content(
         self, content: bytes, metadata: Optional[Dict[str, BaseModel]] = None

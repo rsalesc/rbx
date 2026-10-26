@@ -298,9 +298,10 @@ class TestSandboxBase:
         """An executable linked into a sandbox stays runnable when the same
         content is stored again, as two concurrent compiles of one source do.
 
-        The link points at the cacher's entry for the digest; replacing that
-        entry with a fresh (0600) temp file used to strip the execute bit from
-        under the running sandbox ("Permission denied" on first builds).
+        The link points at the cacher's entry for the digest. Stored files used
+        to be created 0600 and made executable through the link, so storing an
+        identical copy over the entry stripped the execute bit from under the
+        running sandbox ("Permission denied" on first builds).
         """
         exe_path = pathlib.Path('executable')
         content = b'#!/bin/sh\necho hi\n'
@@ -316,6 +317,35 @@ class TestSandboxBase:
         mode = sandbox.relative_path(exe_path).stat().st_mode
         assert mode & stat.S_IXUSR
         assert sandbox.get_file_to_bytes(exe_path) == content
+
+    async def test_stored_files_are_created_executable(self, sandbox):
+        digest = await sandbox.file_cacher.put_file_content(b'#!/bin/sh\n')
+
+        entry = await sandbox.file_cacher.transient_path_for_symlink(digest)
+        assert stat.S_IMODE(entry.stat().st_mode) == 0o755
+        backend = await sandbox.file_cacher.path_for_symlink(digest)
+        if backend is not None:
+            assert stat.S_IMODE(backend.stat().st_mode) == 0o755
+
+    async def test_non_executable_entry_is_copied_not_chmodded(self, sandbox):
+        """A cache entry written before stored files were created executable is
+        copied into the sandbox: making it executable through the link would
+        change a file other sandboxes share."""
+        exe_path = pathlib.Path('executable')
+        content = b'#!/bin/sh\necho hi\n'
+        digest = await sandbox.file_cacher.put_file_content(content)
+        entry = await sandbox.file_cacher.transient_path_for_symlink(digest)
+        entry.resolve().chmod(0o600)
+
+        await sandbox.create_file_from_storage(
+            exe_path, digest, executable=True, override=True, try_symlink=True
+        )
+
+        created = sandbox.relative_path(exe_path)
+        assert not created.is_symlink()
+        assert created.stat().st_mode & stat.S_IXUSR
+        assert sandbox.get_file_to_bytes(exe_path) == content
+        assert stat.S_IMODE(entry.resolve().stat().st_mode) == 0o600
 
     def test_get_file(self, sandbox, test_file_content):
         """Test getting a file handle."""

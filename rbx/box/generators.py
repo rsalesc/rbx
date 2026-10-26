@@ -722,6 +722,28 @@ async def generate_outputs_for_testcases(
                 )
                 raise
 
+    # A batch grader problem also builds each sample's model solution with the
+    # grader's helpers off, for the answers the statement shows. Build it once
+    # here, like the solutions above, rather than once per sample.
+    has_grader = graders.has_grader(pkg)
+    public_digest_map = {}
+    if has_grader and pkg.type == TaskType.BATCH and needs_output:
+        for entry in generation_entries:
+            model_solution = entry.model_solution or main_solution
+            if (
+                not entry.is_sample()
+                or model_solution is None
+                or model_solution.path in public_digest_map
+            ):
+                continue
+            if progress:
+                progress.update(
+                    f'Compiling {model_solution.href()} for the statement answers...'
+                )
+            public_digest_map[model_solution.path] = await graders.compile_public(
+                model_solution
+            )
+
     gen_runs_dir = package.get_problem_runs_dir() / '.gen'
     shutil.rmtree(str(gen_runs_dir), ignore_errors=True)
     gen_runs_dir.mkdir(parents=True, exist_ok=True)
@@ -781,9 +803,10 @@ async def generate_outputs_for_testcases(
             and pkg.type == TaskType.BATCH
             and not graders.statement_output_path(tc).is_file()
         ):
-            await graders.generate_public_output(model_solution, tc)
+            await graders.generate_public_output(
+                model_solution, public_digest_map[model_solution.path], tc
+            )
 
-    has_grader = graders.has_grader(pkg)
     executor = setter_config.get_async_executor(detach=True)
     futures: List[asyncio.Future] = []
     for entry in generation_entries:
