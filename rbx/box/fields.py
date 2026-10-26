@@ -98,6 +98,7 @@ RESERVED_STATEMENT_VAR_NAMES = frozenset(
         # contest metadata such as a date or a location is contest vars,
         # reachable as `\VAR{contest.date}` through the shorthand.
         # Group scope (TestcaseGroup model fields, proxied by GroupView).
+        'aggregation',
         'deps',
         'extraValidators',
         'generatorScript',
