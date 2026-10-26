@@ -160,9 +160,6 @@ and {{rbx}} prints how many it made.
     MOJ reports a {{testlib}} `quitp` (a partially correct verdict) as a judge error. If you
     want partial scoring, it has to go through test groups and their weights.
 
-    MOJ also pays each group all or nothing, so {{rbx}} refuses to package a problem with an
-    [`aggregation: sum`](/setters/grading/checkers#scoring-groups-with-partial-points) group.
-
 ## Submission languages
 
 MOJ keeps a whitelist of the languages a problem accepts, and {{rbx}} derives it from the
