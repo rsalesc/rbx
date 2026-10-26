@@ -38,6 +38,7 @@ nav:
       - "Grading":
           - "setters/grading/index.md"
           - "Checkers": "setters/grading/checkers.md"
+          - "Scoring": "setters/grading/scoring.md"
           - "Interactors": "setters/grading/interactors.md"
           - "Graders": "setters/grading/graders.md"
       - "Verification":

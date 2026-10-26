@@ -18,7 +18,7 @@ Polygon can't describe. Pass `--cms` to `rbx package polygon` or
 `rbx contest package polygon`, and the package also contains:
 
 - subtask scoring that follows your test groups
-- your checker, built so that CMS scores its [partial points](/setters/grading/checkers#awarding-partial-points) the way {{rbx}} does
+- your checker, built so that CMS scores its [partial points](/setters/grading/scoring#awarding-partial-points) the way {{rbx}} does
 - the statement PDFs
 - a manager, for an interactive problem
 

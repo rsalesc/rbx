@@ -33,24 +33,6 @@ rbx contest package polygon
 
 This command will build a single `.zip` file with all problems in the contest.
 
-## Problems scored by points
-
-For a problem scored by points, the `.zip` package declares each test's group, and each group's
-`score` and dependencies. Polygon then scores it the way `rbx run` does:
-
-- the package turns on Polygon's *Treat points from checker as a percent* option, so a checker's
-  [`quitp`](/setters/grading/checkers#awarding-partial-points) awards a percentage of the
-  test's points, as in {{rbx}}.
-- a `min` group becomes a *complete group*, whose points Polygon pays times its lowest test
-  score.
-- a `sum` group becomes an *each test* group, with its points split evenly across its tests.
-
-{{rbx}} warns you when your checker uses `_pc`, which Polygon reports as a checker failure.
-
-!!! warning
-    Uploading through the Polygon API doesn't set groups or points yet. Set them up in Polygon
-    yourself, or build the `.zip` package instead.
-
 ## Importing into CMS
 
 {{cms}} can import Polygon packages too. Pass `--cms` to either command, and the
