@@ -22,3 +22,6 @@ a.out
 *.log
 
 *.un~
+
+# Link rbx keeps beside a grader for editors; regenerated on every build.
+graders/rbx.h
