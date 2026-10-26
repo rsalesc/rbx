@@ -6,13 +6,20 @@ accepts.
 """
 
 import pathlib
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 import pytest
 
 from rbx.box.presets import get_preset_yaml, registry
 from rbx.box.presets.schema import Preset, ReplacementMode
 from rbx.box.schema import ExpectedOutcome, Package, TaskType
+from rbx.box.statements.context import (
+    ContestRenderContext,
+    ProblemRenderContext,
+    SampleHandle,
+    problem_jinja_kwargs,
+)
+from rbx.box.statements.latex_jinja import render_latex_template
 from rbx.box.yaml_validation import load_yaml_model
 from rbx.config import get_default_app_path
 
@@ -127,9 +134,9 @@ class TestEveryTemplate:
         statement = template_path / 'statement' / 'statement-en.rbx.tex'
         assert '%- block scoring' in statement.read_text()
 
-    def test_statement_shows_examples_by_default(self, package: Package):
+    def test_statement_shows_samples_by_default(self, package: Package):
         [statement] = package.statements
-        assert statement.params['show_examples'] is True
+        assert statement.params['show_samples'] is True
 
     def test_testplan_has_live_generator_calls(self, template_path: pathlib.Path):
         testplan = (template_path / 'tests' / 'testplan.txt').read_text()
@@ -227,18 +234,74 @@ class TestContestChrome:
         assert 'problem.blocks.scoring is defined' in text
         assert r'\scoringdesc{\VAR{problem.blocks.scoring}}' in text
 
-    def test_problem_body_lets_an_examples_block_replace_the_samples(
-        self, preset_path: pathlib.Path
-    ):
-        body = preset_path / 'contest' / 'statements' / '_problem-body.rbx.tex'
-        lines = [line.strip() for line in body.read_text().splitlines()]
-        switch = lines.index(
-            '%- if params.show_examples is null or params.show_examples is truthy'
+    @staticmethod
+    def _render_body(
+        preset_path: pathlib.Path,
+        params: Dict[str, Any],
+        blocks: Dict[str, str],
+        with_samples: bool = True,
+    ) -> str:
+        samples = (
+            [SampleHandle(index=0, input='s/0.in', output='s/0.out')]
+            if with_samples
+            else []
         )
-        override = lines.index('%- if problem.blocks.examples is defined')
-        generated = lines.index('%- elif problem.samples')
-        assert switch < override < generated
-        assert r'\VAR{problem.blocks.examples}' in lines[override:generated]
+        kwargs = problem_jinja_kwargs(
+            lang='en',
+            languages=[],
+            problem=ProblemRenderContext(
+                title='T',
+                params=params,
+                blocks={'legend': 'L', **blocks},
+                samples=samples,
+            ),
+            contest=ContestRenderContext(title='C'),
+        )
+        return render_latex_template(
+            preset_path / 'contest' / 'statements', '_problem-body.rbx.tex', kwargs
+        )
+
+    @pytest.mark.parametrize(
+        'params, blocks, with_samples, expected',
+        [
+            # Samples show by default, also when the param is not declared.
+            ({}, {}, True, ['heading', 'sample']),
+            ({'show_samples': True}, {}, True, ['heading', 'sample']),
+            # The examples block adds to the samples, ahead of them.
+            ({}, {'examples': 'HANDWRITTEN'}, True, ['heading', 'block', 'sample']),
+            # show_samples only hides the generated samples.
+            (
+                {'show_samples': False},
+                {'examples': 'HANDWRITTEN'},
+                True,
+                ['heading', 'block'],
+            ),
+            # Nothing to show: no section at all.
+            ({'show_samples': False}, {}, True, []),
+            ({}, {}, False, []),
+            ({}, {'examples': 'HANDWRITTEN'}, False, ['heading', 'block']),
+        ],
+    )
+    def test_examples_section(
+        self,
+        preset_path: pathlib.Path,
+        params: Dict[str, Any],
+        blocks: Dict[str, str],
+        with_samples: bool,
+        expected: List[str],
+    ):
+        text = self._render_body(preset_path, params, blocks, with_samples)
+        markers = {
+            'heading': r'\subsection*{\strExamples}',
+            'block': 'HANDWRITTEN',
+            'sample': r'\example{s/0.in}',
+        }
+        found = sorted(
+            (text.index(marker), name)
+            for name, marker in markers.items()
+            if marker in text
+        )
+        assert [name for _, name in found] == expected
 
     def test_style_defines_the_scoring_section(self, preset_path: pathlib.Path):
         style = (preset_path / 'contest' / 'statements' / 'icpc.sty').read_text()

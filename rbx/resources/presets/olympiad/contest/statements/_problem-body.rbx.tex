@@ -36,16 +36,17 @@
 		\scoringdesc{\VAR{problem.blocks.scoring}}
 	%- endif
 
-	%# Examples: hidden when the statement sets `show_examples: false`, and
-	%# replaced entirely by an `examples` block when the statement defines one.
-	%- if params.show_examples is null or params.show_examples is truthy
+	%# Examples: the statement's own `examples` block, if any, then the generated
+	%# samples, unless the statement sets `show_samples: false`. The section is
+	%# left out when neither has anything to show.
+	%- set list_samples = (params.show_samples is null or params.show_samples is truthy) and problem.samples
+	%- if problem.blocks.examples is defined or list_samples
+		\vspace{0.1cm}
+		\subsection*{\strExamples}
 		%- if problem.blocks.examples is defined
-			\vspace{0.1cm}
-			\subsection*{\strExamples}
 			\VAR{problem.blocks.examples}
-		%- elif problem.samples
-			\vspace{0.1cm}
-			\subsection*{\strExamples}
+		%- endif
+		%- if list_samples
 			%- for sample in problem.samples
 				%- if sample.interaction is not none
 					\exampleInteractive
