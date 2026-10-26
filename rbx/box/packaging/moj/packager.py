@@ -335,20 +335,23 @@ def _ac_to_time_limit_or_die() -> float:
     return multipliers.acToTimeLimit
 
 
-def _refuse_sum_groups(pkg: Package) -> None:
-    """MOJ's `score-summary.sh` pays a group all or nothing, so it cannot score a
-    group whose tests each pay their own share (`aggregation: sum`)."""
-    sum_groups = [
-        group.name
+def _refuse_non_min_groups(pkg: Package) -> None:
+    """MOJ's `score-summary.sh` pays a group all or nothing, which is only what
+    `aggregation: min` means, so refuse every other aggregation."""
+    groups = {
+        group.name: pkg.aggregation_for(group.name)
         for group in pkg.testcases
-        if pkg.aggregation_for(group.name) == Aggregation.SUM
-    ]
-    if not sum_groups:
+        if pkg.aggregation_for(group.name) != Aggregation.MIN
+    }
+    if not groups:
         return
+    listed = ', '.join(
+        f'{name} ([item]aggregation: {aggregation.aliases[0]}[/item])'
+        for name, aggregation in groups.items()
+    )
     console.console.print(
-        f'[error]Group(s) {", ".join(sum_groups)} use '
-        '[item]aggregation: sum[/item], which MOJ cannot score: it pays each '
-        'group all or nothing.[/error]'
+        f'[error]Group(s) {listed} cannot be scored by MOJ: it pays each group all '
+        'or nothing, so only [item]aggregation: min[/item] is supported.[/error]'
     )
     raise typer.Exit(1)
 
@@ -1312,7 +1315,7 @@ class MojPackager(BasePackager):
         points = pkg.points_scoring
         if points is None or self.probe is not None:
             return []
-        _refuse_sum_groups(pkg)
+        _refuse_non_min_groups(pkg)
 
         names_by_group: Dict[str, List[str]] = collections.defaultdict(list)
         for entry, name in self.testcase_names():
