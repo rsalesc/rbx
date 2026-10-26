@@ -1,3 +1,7 @@
-# Each line calls a generator to produce tests.
-tests/gen 100
-tests/gen 1000000000
+# Problem-level testplan: each line calls a generator to produce a test.
+# Lines inside a `@testgroup <name> { ... }` block only go to that group;
+# lines outside any block go to every group that uses this testplan.
+@testgroup subtask1 {
+  tests/gen 100
+  tests/gen 1000000000
+}

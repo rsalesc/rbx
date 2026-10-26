@@ -11,28 +11,31 @@ titles:
   en: "New problem"
 checker: {path: "wcmp.cpp"} # Download others from testlib with `rbx download checker`
 validator: {path: "validator.cpp"}
+# Problem-level testplan, shared by every test group that declares no tests of
+# its own. Each group takes the lines inside its `@testgroup <name> { ... }`
+# block. Docs: https://rsalesc.github.io/rbx/setters/testset/
+generatorScript:
+  path: "tests/testplan.txt"
 testcases:
   - name: "samples" # A group without a `score` is worth 0 points.
     testcaseGlob: "statement/samples/*.in" # Pattern for the sample inputs.
-  - name: "subtask1"
+  - name: "subtask1" # Takes its tests from `@testgroup subtask1` in the testplan.
     score: 100
-    generatorScript:
-      path: "tests/testplan.txt" # Static generator script (testplan).
+# Every solution states the verdict and the score it is expected to get, and
+# `rbx run` fails the ones that miss. The first `accepted` one is the main
+# solution, which also generates the answers. Add an entry per extra solution,
+# e.g. one solving only part of the problem:
+#   - path: "sols/partial.cpp"
+#     outcome: "INCORRECT"
+#     score: 40
+# Tags are free-form labels; `rbx run --tag <tag>` runs only the matching ones.
+# Docs: https://rsalesc.github.io/rbx/setters/reference/package/#solutions and
+# https://rsalesc.github.io/rbx/setters/grading/scoring/#expecting-a-score
 solutions:
-  - path: "sols/main*.*"
+  - path: "sols/main.cpp"
     outcome: "ACCEPTED"
-  - path: "sols/ac-*.*"
-    outcome: "ACCEPTED"
-  - path: "sols/wa-*.*"
-    outcome: "WRONG_ANSWER"
-  - path: "sols/tle-*.*"
-    outcome: "TIME_LIMIT_EXCEEDED"
-  - path: "sols/mle-*.*"
-    outcome: "MEMORY_LIMIT_EXCEEDED"
-  - path: "sols/re-*.*"
-    outcome: "RUNTIME_ERROR"
-  - path: "sols/fail-*.*"
-    outcome: "INCORRECT"
+    score: 100
+    tags: ["model"]
 statements:
   - language: "*" # One statement per language listed in `languages`.
     file: "statement/statement-{lang}.rbx.tex" # Open statement-en.rbx.tex to edit your statement.

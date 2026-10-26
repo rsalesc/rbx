@@ -1,7 +1,7 @@
 ---
 # yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Preset.json
 name: "olympiad"
-description: "IOI-style preset: points-scored problems with optional grader or interactor, and a contest with a Scoring section."
+description: "IOI-style preset: points-scored problems, plain or interactive, with or without a grader, and a contest with a Scoring section."
 min_version: "2.3.3"
 uri: "rsalesc/rbx/rbx/resources/presets/olympiad"
 problem: "problem"
@@ -13,7 +13,16 @@ problemVariants:
     description: "Function-call task: solutions implement a function a C++ grader calls"
   - id: interactive
     path: "problem-interactive"
+    description: "Communication task: solutions talk to a testlib interactor over stdin/stdout"
+  - id: interactive-grader
+    path: "problem-interactive-grader"
     description: "Function-call communication task: a C++ grader stub talks to a testlib interactor"
+expansion:
+  problem:
+    # Each problem created from a grader template gets its own grader secret.
+    - needle: "__GRADER_SECRET__"
+      replacement: random-hex
+      glob: ["problem.rbx.yml"]
 tracking:
   problem:
     - path: ".gitignore"
