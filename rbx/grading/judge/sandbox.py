@@ -359,6 +359,23 @@ class SandboxBase(abc.ABC):
             return None
         return real_path
 
+    def _link_executable(
+        self, path: pathlib.Path, target: pathlib.Path, override: bool = False
+    ) -> bool:
+        """Symlink `path` to `target` when `target` is already executable.
+
+        The target is shared -- a cache entry other sandboxes link to, or a
+        file outside the sandbox -- so its mode is never changed from here:
+        making it executable through the link would be undone by the next
+        identical copy stored over it, under every sandbox using it. Returns
+        False, for the caller to copy the file instead, when the target is not
+        executable (such as a cache entry written before stored files were
+        created executable) or symlinks are unsupported.
+        """
+        if not os.access(target, os.X_OK):
+            return False
+        return self.create_symlink(path, target, override=override) is not None
+
     def create_fifo(self, path: pathlib.Path, override: bool = False):
         real_path = self.relative_path(path)
         if override:
@@ -383,15 +400,10 @@ class SandboxBase(abc.ABC):
         """
         if try_symlink and executable:
             symlink_path = await self.file_cacher.transient_path_for_symlink(digest)
-            if symlink_path is not None:
-                created = self.create_symlink(
-                    path,
-                    from_path=symlink_path,
-                    override=override,
-                )
-                if created is not None:
-                    created.chmod(0o755)
-                    return
+            if symlink_path is not None and self._link_executable(
+                path, symlink_path, override=override
+            ):
+                return
         with self.create_file(path, executable, override=override) as dest_fobj:
             await self.file_cacher.get_file_to_fobj(digest, dest_fobj)
 
@@ -428,13 +440,7 @@ class SandboxBase(abc.ABC):
 
         """
         if try_symlink and executable:
-            created = self.create_symlink(
-                path,
-                from_path,
-                override=override,
-            )
-            if created is not None:
-                created.chmod(0o755)
+            if self._link_executable(path, from_path, override=override):
                 return
         with self.create_file(path, executable, override=override) as dest_fobj:
             with from_path.open('rb') as src_fobj:

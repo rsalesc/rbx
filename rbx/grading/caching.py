@@ -289,6 +289,9 @@ async def _copy_hashed_files(artifact_list: List[GradingArtifacts], cacher: File
                     )
                 )
                 is not None
+                # An executable is linked only when the stored file already is
+                # one: its mode is never changed through the link.
+                and (not output.executable or os.access(path_to_symlink, os.X_OK))
             ):
                 # Use a symlink to the file in the persistent cache, if available.
                 output.dest.unlink(missing_ok=True)
@@ -303,8 +306,8 @@ async def _copy_hashed_files(artifact_list: List[GradingArtifacts], cacher: File
                 with await cacher.get_file(output.digest.value) as fobj:
                     with output.dest.open('wb') as f:
                         copyfileobj(fobj, f, maxlen=output.maxlen)
-            if output.executable:
-                output.dest.chmod(0o755)
+                if output.executable:
+                    output.dest.chmod(0o755)
 
 
 async def is_artifact_ok(artifact: GradingArtifacts, cacher: FileCacher) -> bool:

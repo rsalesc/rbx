@@ -187,18 +187,31 @@ def statement_output_path(testcase: Testcase) -> pathlib.Path:
     return testcase.inputPath.with_suffix(STATEMENT_OUTPUT_SUFFIX)
 
 
-async def generate_public_output(model_solution: CodeItem, testcase: Testcase):
+async def compile_public(model_solution: CodeItem) -> str:
+    """Build `model_solution` with the grader under `RBX_PUBLIC`, where every
+    helper is a no-op, for `generate_public_output`.
+
+    Compile it once per solution, before generating outputs in parallel: one
+    compile per sample would build and store the same binary concurrently.
+    """
+    from rbx.box import code
+
+    return await code.compile_item(model_solution, extra_flags=[PUBLIC_DEFINE])
+
+
+async def generate_public_output(
+    model_solution: CodeItem, public_digest: str, testcase: Testcase
+):
     """Write the answer contestants see for a sample of a batch grader problem.
 
-    The main solution is built with the grader under `RBX_PUBLIC`, where every
-    helper is a no-op, and run on the raw input: the result is the plain answer
-    the public grader prints, with no secrets in it. The package's `.ans` keeps
-    the judge's version untouched.
+    `public_digest` is the solution built by `compile_public`. It runs on the
+    raw input: the result is the plain answer the public grader prints, with
+    no secrets in it. The package's `.ans` keeps the judge's version untouched.
     """
     from rbx.box import code
     from rbx.grading.steps import DigestOrDest, DigestOrSource
 
-    digest = await code.compile_item(model_solution, extra_flags=[PUBLIC_DEFINE])
+    digest = public_digest
     dest = statement_output_path(testcase)
     run_log = await code.run_item(
         model_solution,

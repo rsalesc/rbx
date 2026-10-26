@@ -183,6 +183,7 @@ class FileCacher:
                 await self.backend.get_file(digest) as fobj,
             ):
                 storage.copyfileobj(fobj, ftmp, self.CHUNK_SIZE)
+                os.fchmod(ftmp.fileno(), storage.STORED_FILE_MODE)
 
             if not cache_only:
                 # We allow anyone to delete files from the cache directory
@@ -423,6 +424,10 @@ class FileCacher:
                     buf = src.read(self.CHUNK_SIZE)
                 digest = d.digest()
                 dst.flush()
+                # Stored files are executable from the start, so a sandbox can
+                # run one through a symlink without changing a shared file's
+                # mode, and an identical copy renamed over it changes nothing.
+                os.fchmod(dst.fileno(), storage.STORED_FILE_MODE)
 
                 logger.debug('File has digest %s.', digest)
 
