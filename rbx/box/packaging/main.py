@@ -87,6 +87,11 @@ async def polygon(
             param_hint='--upload-tests-raw',
         )
 
+    # A grader problem's tests carry a hidden header Polygon's generators cannot
+    # produce, so they are always uploaded as built -- which needs the full build.
+    if upload and package.find_problem_package_or_die().grader is not None:
+        upload_tests_raw = True
+
     should_build = (not upload and not validate_statement) or upload_tests_raw
 
     await run_packager(

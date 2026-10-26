@@ -1,4 +1,5 @@
 import collections
+import json
 import pathlib
 import shutil
 from typing import Dict, List, Optional, Tuple
@@ -6,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 import typer
 
 from rbx import console, utils
-from rbx.box import header, limits_info, naming, package
+from rbx.box import graders, header, limits_info, naming, package
 from rbx.box.contest import contest_package
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.lang import code_to_lang, code_to_langs, is_valid_lang_code
@@ -33,6 +34,9 @@ from rbx.box.statements.schema import (
     rbxToTeX,
 )
 from rbx.config import get_testlib
+
+# Where the grader lands under `files/`; CMS reads it under this name too.
+GRADER_SOURCE = 'grader.cpp'
 
 DAT_TEMPLATE = """
 @contest "{name}"
@@ -294,6 +298,9 @@ class PolygonPackager(BasePackager):
             reserved[package.get_relative_source_path(pkg.interactor)] = (
                 'interactor.cpp'
             )
+        if pkg.grader is not None:
+            sources.append(pkg.grader)
+            reserved[package.get_relative_source_path(pkg.grader)] = GRADER_SOURCE
         sources.extend(package.get_solutions())
         # Polygon compiles each source to a program named after its stem.
         return flattening.build_flat_namespace(
@@ -340,6 +347,17 @@ class PolygonPackager(BasePackager):
                 else 'cpp.g++'
             )
             files.append(polygon_schema.File(path=f'files/{dep.flat_name}', type=ftype))
+        grader = package.find_problem_package_or_die().grader
+        if grader is not None:
+            files.append(
+                polygon_schema.File(
+                    path=f'files/{GRADER_SOURCE}',
+                    type=get_polygon_language_from_code_item(grader),
+                    for_types='cpp.*',
+                    stages=[polygon_schema.NamedRef(name='compile')],
+                    assets=[polygon_schema.NamedRef(name='solution')],
+                )
+            )
         return files
 
     def _statement_application_type(self, statement: BuiltStatement) -> str:
@@ -373,6 +391,29 @@ class PolygonPackager(BasePackager):
     @classmethod
     def name(cls) -> str:
         return 'polygon'
+
+    @classmethod
+    def supports_graders(cls) -> bool:
+        return True
+
+    def _grader_files(self, ns: flattening.FlatNamespace) -> List[str]:
+        """The grader and every file of its closure, by name under `files/`."""
+        pkg = package.find_problem_package_or_die()
+        if pkg.grader is None:
+            return []
+        from rbx.box.dependencies import graph as deps_graph
+
+        closure = {package.get_relative_source_path(pkg.grader)}
+        dep_graph = deps_graph.expand(pkg.grader)
+        if dep_graph is not None:
+            closure.update(pathlib.Path(dep) for dep in dep_graph.files())
+        files = [f for f in ns.files if f.source_path in closure]
+        names = {f.flat_name for f in files}
+        # rbx.h sits next to every submission once it is a manager, secrets and
+        # vars included, so it ships only when the grader actually includes it.
+        if any(b'rbx.h' in f.content for f in files):
+            names.add('rbx.h')
+        return sorted(names)
 
     async def package(
         self,
@@ -429,6 +470,25 @@ class PolygonPackager(BasePackager):
                 dest = files_path / flat_file.flat_name
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(flat_file.content)
+        if pkg.grader is not None:
+            # The sidecar Polygon itself writes next to a grader resource.
+            (files_path / f'{GRADER_SOURCE}.json').write_text(
+                json.dumps(
+                    {
+                        'forTypes': 'cpp.*',
+                        'main': False,
+                        'stages': ['COMPILE'],
+                        'assets': ['SOLUTION'],
+                    },
+                    separators=(',', ':'),
+                )
+            )
+        if self.attachments_path is not None and not self.cms:
+            console.console.print(
+                '[warning]Polygon packages cannot carry attachments: add '
+                f'[item]{self.attachments_path.name}[/item] to the problem as a '
+                'material by hand, in the Polygon UI.[/warning]'
+            )
         # Root copy for the Polygon UI ('cpy').
         (into_path / 'check.cpp').write_bytes(
             ns.content_for(package.get_checker_or_builtin())
@@ -439,7 +499,7 @@ class PolygonPackager(BasePackager):
         testcases = self.get_flattened_built_testcases()
         for i, testcase in enumerate(testcases):
             shutil.copyfile(
-                testcase.inputPath,
+                graders.run_input(testcase.inputPath),
                 into_path / f'tests/{i + 1:02d}',
             )
             if testcase.outputPath is not None:
@@ -458,6 +518,8 @@ class PolygonPackager(BasePackager):
                 self.get_built_testcase_entries(),
                 files_path,
                 cms_settings.resolve(),
+                grader_files=self._grader_files(ns),
+                attachments_path=self.attachments_path,
             )
 
         # Write problem.xml

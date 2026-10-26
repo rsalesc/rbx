@@ -37,6 +37,7 @@ from rbx.box import (
     checkers,
     code,
     compilation_findings,
+    graders,
     limits_info,
     package,
     remote,
@@ -1152,6 +1153,8 @@ async def _generate_testcase_interactively(
 
     is_manual = False
     is_output_manual = False
+    # The group the test belongs to, for a grader problem's judge view.
+    judge_group: Optional[str] = None
     if generator is not None:
         interactive_entry.metadata.generator_call = expand_generator_call(generator)
     elif testcase_entry is not None:
@@ -1164,6 +1167,7 @@ async def _generate_testcase_interactively(
             )
             raise typer.Exit(1)
         extracted_entry = extracted[0]
+        judge_group = extracted_entry.group_entry.group
         interactive_entry = extracted_entry.model_copy(deep=True)
         # Replace destination with the irun testcase we're using.
         interactive_entry.metadata.copied_to = testcase
@@ -1206,6 +1210,10 @@ async def _generate_testcase_interactively(
             validate=validate,
             on_invalid=on_invalid,
         )
+    if graders.has_grader() and testcase.inputPath.is_file():
+        # Picked up by every run below, so a test named by its group is judged
+        # as that group -- per-group vars included -- like `rbx run` does.
+        graders.write_judge_input(testcase.inputPath, judge_group)
         if print and not is_manual:
             should_print_testcase = True
         else:

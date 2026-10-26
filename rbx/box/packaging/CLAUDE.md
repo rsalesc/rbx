@@ -21,6 +21,22 @@ A packager that ships a **PDF** statement needs none of this. A packager that co
 - **The remap is derived, never configured.** `derive_remap(assets, layout, slot)` computes `relpath(place_asset(asset), document_dir(slot))` per `DocumentSlot` (`body()` / `sample(idx)`, since a reference's meaning depends on where the citing text sits) and drops entries equal to the authored reference. So an identity-preserving layout yields an **empty** remap and no block is touched -- that is what makes rewriting optional without a flag. Identity is a property of the *binding* (`asset_roots[scope] == document_dirs[slot.kind]`), which `keep_extension=False` merely permits. The bundle deliberately writes **assets only, never documents**, so `layout.document_dir(slot)` is the other half of that contract: a consumer rendering text of its own reads `remaps[slot]` for the rewrites and `document_dir(slot)` for the directory that text must be written into, since the remap is only correct relative to it.
 - **Two complementary guards**, both `StatementExportError` (a `ValueError` subclass, so a CLI boundary can turn exactly these setter mistakes into a clean message without swallowing pydantic/YAML `ValueError`s): *reference ambiguity* (several assets reduce to one extensionless key -- resolved by sample-shadowing then graphicx extension precedence, so `fig.pdf` beats `fig.png` exactly as the local build did, raising only when genuinely undecidable) and *destination collision* (two different sources placed on one path). Neither subsumes the other: `d.png`/`d.pdf` share a key but not a destination; two same-named files from different scopes share a destination while precedence has nothing to disagree about.
 
+### Graders (`rbx/box/graders.py`, `rbx/box/attachments.py`)
+
+A problem with a `grader` (C++ function-call problem) is refused **before the build**
+by every packager whose `supports_graders()` is False (only Polygon says True; CMS
+goes through Polygon `--cms`). Tests reach judges as the **judge view**
+(`graders.run_input`: input secret, declaring group, raw input -- built as
+`NNN.in.judge`), so Polygon `tests/NN` and uploaded raw tests use it, and the API
+upload skips the validator (Polygon would validate the judge view). Polygon declares
+the grader as a resource with `for-types="cpp.*"`, compile stage, solution asset, and
+uploads it with no `sourceType` (Polygon refuses one on a resource). CMS
+(`cms/graders.py`) stores `grader.cpp` (Batch, `compilation="grader"`) or `stub.cpp`
+(Communication, CMS 1.5.1's `"stub"`) plus `.h` headers and rbx.h as managers.
+`run_packager` builds `build/attachments/<name>.zip` (`attachments.build`) and sets
+`packager.attachments_path`; CMS ships it as a task attachment, Polygon only warns.
+Design: `docs/plans/2026-10-25-graders-design.md`.
+
 ### Orchestration: `run_packager()`
 
 The main entry point in `packager.py`. Pipeline:

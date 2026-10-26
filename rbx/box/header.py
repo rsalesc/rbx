@@ -113,6 +113,9 @@ def preprocess_header(header: str) -> str:
         header = _replace_sentinel(
             header, f'{var_type.name}_var', _get_package_block(var_type)
         )
+    from rbx.box import graders
+
+    header = _replace_sentinel(header, 'grader', graders.header_block())
     return header
 
 

@@ -639,6 +639,56 @@ async def _precompile_header(
 
 
 # Compile code item and return its digest in the storage.
+def _grader_for(code: CodeItem, kind: Optional['AssetKind']) -> Optional[CodeItem]:
+    """The grader to link `code` with: every solution of a grader problem."""
+    from rbx.box.linters.asset_kind import AssetKind, infer_asset_kind
+
+    if (kind or infer_asset_kind(code)) != AssetKind.SOLUTION:
+        return None
+    pkg = package.find_problem_package_or_die()
+    if pkg.grader is None:
+        return None
+    if LanguageKind.CPP not in language_kinds(find_language(code)):
+        console.console.print(
+            f'[error]Cannot compile {code.href()}: this problem has a C++ grader '
+            f'([item]{pkg.grader.path}[/item]), so its solutions must be C++.[/error]'
+        )
+        raise typer.Exit(1)
+    return pkg.grader
+
+
+def _stage_grader(grader: CodeItem, artifacts: GradingArtifacts):
+    """Put the grader and its include closure in the compilation sandbox."""
+    from rbx.box.dependencies import graph as deps_graph
+    from rbx.box.dependencies.scanner import DependencyKind
+
+    existing = {input.dest for input in artifacts.inputs}
+
+    def add(src: pathlib.Path, dest: pathlib.Path):
+        if dest not in existing:
+            artifacts.inputs.append(GradingFileInput(src=src, dest=dest))
+            existing.add(dest)
+
+    add(PosixPath(grader.path), PosixPath(grader.path))
+    for src, dest in package.get_compilation_files(grader):
+        add(src, dest)
+    dep_graph = deps_graph.expand(grader, require_kind=DependencyKind.COMPILATION)
+    if dep_graph is not None:
+        for dep in dep_graph.files():
+            add(dep, dep)
+
+
+def _grader_flags(grader: CodeItem) -> List[str]:
+    """Include paths for a solution linked with `grader`.
+
+    The grader's directory, so a solution finds the task header as it does on a
+    judge, where everything sits in one directory; and the internal one, where
+    the grader finds rbx.h.
+    """
+    grader_dir = PosixPath(grader.path).parent
+    return [f'-I{grader_dir}', f'-I{steps.INTERNAL_DIR}']
+
+
 async def compile_item(
     code: CodeItem,
     sanitized: SanitizationLevel = SanitizationLevel.PREFER,
@@ -683,12 +733,25 @@ async def compile_item(
                 )
             return await sandbox.file_cacher.put_file_from_path(compilable_path)
 
+        # A solution of a grader problem is compiled together with the grader, as
+        # a second translation unit (as judges do: `g++ grader.cpp sol.cpp`), so
+        # the commands name both wherever they name the source.
+        grader = _grader_for(code, kind)
+        command_mapping = file_mapping
+        if grader is not None:
+            command_mapping = file_mapping.model_copy(
+                update={'compilable': f'{grader.path} {file_mapping.compilable}'}
+            )
         commands = get_mapped_commands(
             compilation_options.commands,
-            file_mapping,
+            command_mapping,
             code_variables,
             passthrough=PASSTHROUGH_VARIABLES,
         )
+        if grader is not None:
+            commands = add_extra_flags_to_commands(
+                commands, _grader_flags(grader), get_language(language)
+            )
         commands = add_cpp_flags(commands, force_warnings)
         commands = substitute_commands(commands, sanitized=sanitized.should_sanitize())
 
@@ -725,6 +788,9 @@ async def compile_item(
                     existing.add(dep)
 
         download.maybe_add_rbx_header(code, artifacts)
+
+        if grader is not None:
+            _stage_grader(grader, artifacts)
 
         from rbx.box import libraries
 

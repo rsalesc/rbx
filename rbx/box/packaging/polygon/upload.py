@@ -10,7 +10,7 @@ import rich.progress
 import typer
 
 from rbx import console, utils
-from rbx.box import header, naming, package
+from rbx.box import graders, header, naming, package
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging import flattening
 from rbx.box.packaging.polygon import polygon_api as api
@@ -227,6 +227,10 @@ def _build_upload_namespace(
         sources.append(validator)
         reserved[package.get_relative_source_path(validator)] = _get_validator_name()
 
+    if pkg.grader is not None:
+        sources.append(pkg.grader)
+        reserved[package.get_relative_source_path(pkg.grader)] = 'grader.cpp'
+
     sources.extend(package.get_solutions())
     sources.extend(_collect_generators(entries))
 
@@ -280,6 +284,26 @@ def _upload_dep_files(problem: api.Problem, ns: flattening.FlatNamespace):
             file=dep.content,
             source_type=None,
         )
+
+
+def _update_grader(problem: api.Problem, ns: flattening.FlatNamespace):
+    grader = package.find_problem_package_or_die().grader
+    assert grader is not None
+    console.console.print('Uploading grader...')
+    problem.save_file(
+        type=api.FileType.RESOURCE,
+        name=ns.flat_name_for(grader),
+        file=ns.content_for(grader),
+        # Polygon refuses a source type on a resource ("Only source files can
+        # have source type") and infers one itself.
+        source_type=None,
+        resource_advanced_properties=api.ResourceAdvancedProperties(
+            for_types='cpp.*',
+            main=False,
+            stages=[api.Stage.COMPILE],
+            assets=[api.Asset.SOLUTION],
+        ),
+    )
 
 
 def _update_checker(problem: api.Problem, ns: flattening.FlatNamespace):
@@ -341,11 +365,26 @@ def _save_skip_coinciding_testcases(problem: api.Problem, *args, **kwargs) -> bo
 
 
 def _get_test_params_for_statement(
-    testcase: Optional[Testcase], is_sample: bool
+    testcase: Optional[Testcase],
+    is_sample: bool,
+    built: Optional[Testcase] = None,
 ) -> Dict[str, Any]:
+    if is_sample and built is not None and graders.has_grader():
+        # A grader problem's tests are uploaded as the judge view, hidden header
+        # included, and Polygon's own answer carries the grader's prologue:
+        # neither may reach the statement. Show the raw input and the public
+        # answer instead.
+        res: Dict[str, Any] = {
+            'test_use_in_statements': True,
+            'test_input_for_statements': built.inputPath.read_text(),
+        }
+        public = graders.statement_output_path(built)
+        if public.is_file():
+            res['test_output_for_statements'] = public.read_text()
+        return res
     if not is_sample or testcase is None:
         return {}
-    res: Dict[str, Any] = {'test_use_in_statements': True}
+    res = {'test_use_in_statements': True}
     if testcase.outputPath is not None:
         res['test_output_for_statements'] = testcase.outputPath.read_text()
     else:
@@ -419,7 +458,7 @@ def _resolve_raw_test_input_path(
     entry: 'GenerationTestcaseEntry',
 ) -> Optional[pathlib.Path]:
     if entry.metadata.copied_to.inputPath.is_file():
-        return entry.metadata.copied_to.inputPath
+        return graders.run_input(entry.metadata.copied_to.inputPath)
     if (
         entry.metadata.copied_from is not None
         and entry.metadata.copied_from.inputPath.is_file()
@@ -529,6 +568,7 @@ def _upload_testcases(
                 **_get_test_params_for_statement(
                     entry.metadata.copied_from,
                     is_sample=entry.is_sample(),
+                    built=entry.metadata.copied_to,
                 ),
             )
             progress.update(task_id, advance=1)
@@ -589,6 +629,7 @@ def _upload_testcases_raw(
                 **_get_test_params_for_statement(
                     entry.metadata.copied_from,
                     is_sample=entry.is_sample(),
+                    built=entry.metadata.copied_to,
                 ),
             )
             progress.update(task_id, advance=1)
@@ -791,6 +832,15 @@ async def upload_problem(
 
     which_upload = upload_only - dont_upload
     pkg = package.find_problem_package_or_die()
+    if pkg.grader is not None and not raw_tests:
+        # Polygon's generators would produce the raw input, without the hidden
+        # header the grader, checker and interactor read.
+        console.console.print(
+            '[warning]This problem has a grader: uploading the built tests as raw '
+            'files, since they carry a hidden header generators cannot produce.'
+            '[/warning]'
+        )
+        raw_tests = True
     name = _normalize_problem_name(name)
     problem = _find_or_create_problem(name)
     _update_problem_info(problem)
@@ -819,6 +869,8 @@ async def upload_problem(
 
         if 'files' in which_upload:
             _update_rbx_header(problem)
+            if pkg.grader is not None:
+                _update_grader(problem, ns)
             _update_checker(problem, ns)
 
         if (
@@ -829,7 +881,20 @@ async def upload_problem(
             _update_interactor(problem, ns)
 
         if pkg.validator is not None and 'files' in which_upload:
-            _upload_validator(problem, ns)
+            if pkg.grader is not None:
+                # Polygon would validate the judge view, hidden header included,
+                # which the validator does not read. rbx validated the raw
+                # inputs already.
+                console.console.print(
+                    '[warning]Not uploading the validator: Polygon validates tests '
+                    'as stored, with the hidden grader header rbx validators do not '
+                    'read. rbx already validated the raw inputs.[/warning]'
+                )
+                # And unset one a previous upload left, which would fail every
+                # header-carrying test. Verified live: an empty name clears it.
+                problem.set_validator('')
+            else:
+                _upload_validator(problem, ns)
 
         if 'solutions' in which_upload:
             _upload_solutions(problem, ns)

@@ -1,7 +1,7 @@
 import pathlib
 from typing import Optional, Type
 
-from rbx.box import checkers, environment, limits_info, package, state
+from rbx.box import checkers, environment, graders, limits_info, package, state
 from rbx.box.code import (
     CommunicationItem,
     find_language_name,
@@ -201,7 +201,7 @@ async def run_solution_on_testcase(
             run_log = await run_item(
                 solution,
                 DigestOrSource.create(compiled_digest),
-                stdin=DigestOrSource.create(testcase.inputPath),
+                stdin=DigestOrSource.create(graders.run_input(testcase.inputPath)),
                 stdout=DigestOrDest.create(output_path),
                 stderr=DigestOrDest.create(error_path),
                 extra_config=extra_config,
@@ -376,7 +376,7 @@ async def _run_communication_solution_on_testcase(
             extra_args='interactor.in interactor.out',
             inputs=[
                 GradingFileInput(
-                    src=testcase.inputPath,
+                    src=graders.run_input(testcase.inputPath),
                     dest=pathlib.PosixPath('interactor.in'),
                 )
             ],

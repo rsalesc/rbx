@@ -2,12 +2,14 @@
 #define _RBX_H
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #if defined(__APPLE__)
@@ -130,14 +132,26 @@ inline std::string parseGroupFromArgs(const std::vector<std::string> &args) {
   return group;
 }
 
+// The group read from a grader problem's hidden test header, once a grader,
+// checker or interactor helper has consumed it. It outranks `--group`: the
+// header is what every judge hands over, the command line only what rbx does.
+inline std::optional<std::string> &headerGroup() {
+  static std::optional<std::string> group;
+  return group;
+}
+
 } // namespace detail
 
-// The test group currently being validated, as passed by rbx via `--group`.
-// Empty when the program was not run for a specific group, in which case
-// getVar returns the package-level values.
+// The test group currently being judged or validated: the group from a grader
+// problem's hidden test header when a helper has read it, else the one rbx
+// passes via `--group`. Empty when the program was not run for a specific
+// group, in which case getVar returns the package-level values.
 //
-// Parsed once, on first use.
+// The command line is parsed once, on first use.
 inline const std::string &getGroup() {
+  if (detail::headerGroup().has_value()) {
+    return *detail::headerGroup();
+  }
   static const std::string group =
       detail::parseGroupFromArgs(detail::collectArgs());
   return group;
@@ -390,4 +404,6 @@ T getVar(const std::string &first, const Args &...rest) {
   rbx::vars::joinVarPath(name, first, rest...);
   return rbx::vars::getVar<T>(name);
 }
+
+//<rbx::grader>
 #endif

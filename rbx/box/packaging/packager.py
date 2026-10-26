@@ -73,6 +73,15 @@ class BasePackager(ABC):
     def task_types(cls) -> List[TaskType]:
         return [TaskType.BATCH]
 
+    @classmethod
+    def supports_graders(cls) -> bool:
+        """Whether the judge can compile solutions together with a grader."""
+        return False
+
+    # The contestant archive (`attachments` in problem.rbx.yml), set by
+    # `run_packager` before `package()` runs; None when the problem has none.
+    attachments_path: Optional[pathlib.Path] = None
+
     def languages(self):
         """The statement languages, in declaration order."""
         pkg = package.find_problem_package_or_die()
@@ -247,6 +256,18 @@ async def run_packager(
     header.generate_header()
     built_groups = set(['samples']) if samples_only else None
 
+    # Before the build: a judge without graders cannot run this problem at all.
+    if (
+        package.find_problem_package_or_die().grader is not None
+        and not packager_cls.supports_graders()
+    ):
+        console.console.print(
+            f'[error]Packager [item]{packager_cls.name()}[/item] does not support '
+            'problems with a grader. Graders can be packaged for Polygon and CMS '
+            '([item]rbx package polygon --cms[/item]).[/error]'
+        )
+        raise typer.Exit(1)
+
     if limits_info.get_saved_limits_profile(packager_cls.name()) is not None:
         console.console.print(
             f'[warning]Using saved limits profile for [item]{packager_cls.name()}[/item].[/warning]'
@@ -313,6 +334,11 @@ async def run_packager(
 
     if skip_packaging:
         return None
+
+    from rbx.box import attachments
+
+    packager.attachments_path = await attachments.build()
+
     console.console.print(f'Packaging problem for [item]{packager.name()}[/item]...')
     with contextlib.ExitStack() as stack:
         # `into_dir` lets a caller keep the built *tree*, not just the archive:

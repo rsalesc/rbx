@@ -1,0 +1,32 @@
+scenarios:
+  - name: grader-stub-run
+    description: |
+      Every solution is linked with the stub (graders/grader.cpp), which talks
+      to a plain testlib interactor. The interactor strips the hidden header
+      with rbx::registerGraderInteraction and reads its query limit `Q`
+      through getVar, so the `tight` group's override (25) stops the linear
+      search there while `loose` lets it through.
+    steps:
+      - cmd: run
+        expect:
+          stdout_matches: "more\\s+than\\s+25\\s+queries\\s+\\(group\\s+'tight'\\)"
+          solutions:
+            sols/main.cpp: ac
+            sols/linear.cpp:
+              samples: ac
+              loose: ac
+              tight: wa
+            sols/exit.cpp: wa
+
+  - name: grader-stub-cms-package
+    description: |
+      CMS runs it as Communication with the stub compiled in (CMS 1.5.1 spells
+      it `stub`), and rbx's manager around the interactor.
+    steps:
+      - cmd: package polygon --cms
+        expect:
+          zip_file_contains:
+            path: build/problem.zip
+            entries:
+              files/cms_conf.py: "'task_type_parameters': [1, 'stub', 'std_io']"
+              tests/02: '/^[0-9a-f]{32}\nloose\n/'

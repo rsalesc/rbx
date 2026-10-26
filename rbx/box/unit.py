@@ -5,7 +5,7 @@ from typing import List, Optional, Set, Tuple, Union
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box import checkers, package, validators
+from rbx.box import checkers, graders, package, validators
 from rbx.box.schema import (
     CheckerTest,
     CodeItem,
@@ -334,14 +334,24 @@ async def run_checker_unit_tests(progress: StatusProgress, tmpd: pathlib.Path):
                 return input.text
             return bkp
 
+        def _get_output_file(
+            input: Optional[UnitTestInput], bkp: pathlib.Path
+        ) -> pathlib.Path:
+            # A batch grader problem's checker reads outputs framed by the
+            # grader; a unit test's are written raw.
+            path = _get_file(input, bkp)
+            if input is None:
+                return path
+            return graders.framed_output(path)
+
         result = await checkers.check(
             compiled_digest,
             run_log=None,
             testcase=Testcase(
                 inputPath=_get_file(test.input, tmpi),
-                outputPath=(_get_file(test.answer, tmpa)),
+                outputPath=(_get_output_file(test.answer, tmpa)),
             ),
-            program_output=_get_file(test.output, tmpo),
+            program_output=_get_output_file(test.output, tmpo),
             skip_run_log=True,
         )
 
@@ -351,9 +361,9 @@ async def run_checker_unit_tests(progress: StatusProgress, tmpd: pathlib.Path):
                 run_log=None,
                 testcase=Testcase(
                     inputPath=_get_file(test.input, tmpi),
-                    outputPath=_get_file(test.answer, tmpa),
+                    outputPath=_get_output_file(test.answer, tmpa),
                 ),
-                program_output=_get_file(test.answer, tmpa),
+                program_output=_get_output_file(test.answer, tmpa),
                 skip_run_log=True,
             )
 

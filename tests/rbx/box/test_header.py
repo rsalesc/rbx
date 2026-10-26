@@ -25,6 +25,7 @@ _ALL_SENTINELS = [
     'float_var',
     'bool_var_groups',
     'bool_var',
+    'grader',
 ]
 
 

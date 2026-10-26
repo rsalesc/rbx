@@ -34,6 +34,7 @@ __all__ = [
     'DEFAULT_RUNNER',
     'RUNNERS',
     'UnknownRunnerError',
+    'UnsupportedRunnerError',
     'get_runner',
     'runner_names',
 ]
@@ -46,6 +47,15 @@ class UnknownRunnerError(RbxException):
     prints an `RbxException` with a bare builtin `print`, so `[item]` tags would
     reach the setter literally.
     """
+
+    def __init__(self, message: str):
+        super().__init__()
+        self.message = message
+        self.msg.append(message)
+
+
+class UnsupportedRunnerError(RbxException):
+    """`--runner` named a backend that cannot run this problem."""
 
     def __init__(self, message: str):
         super().__init__()
@@ -92,4 +102,14 @@ def get_runner(name: str) -> 'SolutionRunner':
         raise UnknownRunnerError(
             f'There is no runner called `{name}`. The runners rbx knows are: {listed}.'
         )
+    if name != 'local':
+        from rbx.box import graders
+
+        if graders.has_grader():
+            # Its judge would get the solutions without the grader they link
+            # against, and report compilation errors as timings.
+            raise UnsupportedRunnerError(
+                f'The `{name}` runner cannot run a problem with a grader: its judge '
+                'does not support graders. Use the `local` runner.'
+            )
     return factory()

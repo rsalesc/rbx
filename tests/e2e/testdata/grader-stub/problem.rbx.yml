@@ -1,0 +1,70 @@
+name: grader-stub
+type: communication
+timeLimit: 1000
+memoryLimit: 256
+scoring: POINTS
+
+grader:
+  path: graders/grader.cpp
+  # Any long random string; the hidden header and framing derive from it.
+  secret: guess-game-8d2e6b1f0a4c9735
+
+interactor:
+  path: interactor.cpp
+
+validator:
+  path: validator.cpp
+
+generators:
+  - name: gen
+    path: gens/gen.cpp
+
+statements:
+  - language: en
+    title: Guess Game
+    file: statement/statement.rbx.tex
+    type: rbx-tex
+
+attachments:
+  - path: graders/grader.cpp
+    stripSecret: true
+  - path: graders/guess.h
+
+vars:
+  N:
+    max: 1000000
+  # Queries allowed before the interactor gives up. It reads the limit through
+  # getVar, so each group's override reaches it through the hidden test header.
+  Q: 1000
+
+solutions:
+  - path: sols/main.cpp
+    outcome: ac
+  - path: sols/linear.cpp
+    outcome: wa
+    outcomePerGroup:
+      samples: ac
+      loose: ac
+      tight: wa
+  - path: sols/exit.cpp
+    outcome: wa
+
+testcases:
+  - name: samples
+    testcaseGlob: manual/*.in
+  - name: loose
+    score: 40
+    generators:
+      - name: gen
+        args: 100 1
+      - name: gen
+        args: 100 2
+  - name: tight
+    score: 60
+    vars:
+      Q: 25
+    generators:
+      - name: gen
+        args: 1000000 3
+      - name: gen
+        args: 1000000 4

@@ -550,6 +550,65 @@ Whether this interactor is a legacy interactor and needs a checker to be specifi
     )
 
 
+class Grader(CodeItem):
+    """A grader compiled together with every solution (IOI function-call tasks).
+
+    In a batch problem it owns `main()`, reads the test and prints what the
+    checker reads. In a communication problem it is the stub that talks to the
+    interactor on the contestant's behalf.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    secret: str = Field(
+        min_length=1,
+        description="""
+The secret the grader's hidden test header and output framing are derived from.
+Use a long random string, and keep it out of anything participants receive:
+changing it changes every judge test and answer.
+""",
+    )
+
+
+class FileAttachment(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    path: pathlib.Path = Field(
+        description='The file to attach, relative to the package directory.'
+    )
+
+    name: Optional[str] = Field(
+        default=None,
+        description='Name of the file inside the attachments archive. '
+        'Defaults to the basename of `path`.',
+    )
+
+    stripSecret: bool = Field(
+        default=False,
+        description="""
+Derive the contestant version of a C/C++ source: every `// BEGIN SECRET` ...
+`// END SECRET` block is removed, and `#include "rbx.h"` is replaced by a public
+shim with no secrets and no vars. The result must compile on its own.
+""",
+    )
+
+    @property
+    def archive_name(self) -> str:
+        return self.name or self.path.name
+
+
+class SamplesAttachment(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    samples: str = Field(
+        description='Directory inside the attachments archive that receives every '
+        'sample as `NN.in` / `NN.out`.',
+    )
+
+
+Attachment = Union[FileAttachment, SamplesAttachment]
+
+
 class OutputFromItem(CodeItem):
     model_config = ConfigDict(extra='forbid')
 
@@ -1505,6 +1564,23 @@ scoring:
         default=None, description='The interactor for this problem.'
     )
 
+    grader: Optional[Grader] = Field(
+        default=None,
+        description="""
+The grader of a function-call problem (C++ only). It is compiled together with
+every solution: in a batch problem it owns `main()` and its output goes to the
+checker; in a communication problem it is the stub that talks to the interactor.
+""",
+    )
+
+    attachments: List[Attachment] = Field(
+        default=[],
+        description="""
+Files given to contestants, packed into one archive per problem (e.g. a public
+grader, the task header and a solution template).
+""",
+    )
+
     validator: Optional[CodeItem] = Field(
         default=None, description='The validator for this problem.'
     )
@@ -1902,4 +1978,16 @@ that is correct and used as reference -- and should have the `accepted` outcome.
                     'CHECKER_NOT_ALLOWED',
                     'Checkers should not be specified for communication problems.',
                 )
+        return self
+
+    @model_validator(mode='after')
+    def check_grader(self):
+        if self.grader is None:
+            return self
+        if self.interactor is not None and self.interactor.legacy:
+            raise PydanticCustomError(
+                'GRADER_WITH_LEGACY_INTERACTOR',
+                'A grader cannot be combined with a legacy interactor: the '
+                'interactor must judge the interaction on its own.',
+            )
         return self

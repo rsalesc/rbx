@@ -5,7 +5,14 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console, utils
-from rbx.box import builder, checkers, package, testcase_extractors, validators
+from rbx.box import (
+    builder,
+    checkers,
+    graders,
+    package,
+    testcase_extractors,
+    validators,
+)
 from rbx.box.environment import VerificationLevel, VerificationParam
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.schema import CodeItem
@@ -131,6 +138,13 @@ def _get_statement_sample_from_entry(
         output_path = testcase.outputPath
         answer_path = testcase.outputPath
 
+    # A grader problem's answer carries the grader's prologue, so the statement
+    # shows the public answer generated next to it instead. A hand-written
+    # `.out.statement` below still wins.
+    built_statement = testcase.inputPath.with_suffix('.out.statement')
+    if built_statement.is_file():
+        output_path = built_statement
+
     def process_additional_files(testcase: Testcase):
         nonlocal input_path, output_path, explanation_path
         nonlocal explanation_from_blocks, interaction
@@ -194,8 +208,11 @@ def _get_statement_sample_from_entry(
 
     # Whether the custom specified output should be checked.
     should_check_output = False
+    # A grader problem's custom output is the public answer, in a different
+    # format from the judge answer the checker reads, so it is never checked.
     if (
-        answer_path is not None
+        not graders.has_grader()
+        and answer_path is not None
         and output_path.suffix == '.out'
         and answer_path != output_path
         and output_path.is_file()
