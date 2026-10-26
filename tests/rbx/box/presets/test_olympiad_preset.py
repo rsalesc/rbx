@@ -127,6 +127,10 @@ class TestEveryTemplate:
         statement = template_path / 'statement' / 'statement-en.rbx.tex'
         assert '%- block scoring' in statement.read_text()
 
+    def test_statement_shows_examples_by_default(self, package: Package):
+        [statement] = package.statements
+        assert statement.params['show_examples'] is True
+
     def test_testplan_has_live_generator_calls(self, template_path: pathlib.Path):
         testplan = (template_path / 'tests' / 'testplan.txt').read_text()
         calls = [
@@ -222,6 +226,19 @@ class TestContestChrome:
         text = body.read_text()
         assert 'problem.blocks.scoring is defined' in text
         assert r'\scoringdesc{\VAR{problem.blocks.scoring}}' in text
+
+    def test_problem_body_lets_an_examples_block_replace_the_samples(
+        self, preset_path: pathlib.Path
+    ):
+        body = preset_path / 'contest' / 'statements' / '_problem-body.rbx.tex'
+        lines = [line.strip() for line in body.read_text().splitlines()]
+        switch = lines.index(
+            '%- if params.show_examples is null or params.show_examples is truthy'
+        )
+        override = lines.index('%- if problem.blocks.examples is defined')
+        generated = lines.index('%- elif problem.samples')
+        assert switch < override < generated
+        assert r'\VAR{problem.blocks.examples}' in lines[override:generated]
 
     def test_style_defines_the_scoring_section(self, preset_path: pathlib.Path):
         style = (preset_path / 'contest' / 'statements' / 'icpc.sty').read_text()

@@ -42,6 +42,9 @@ statements:
     type: "rbxTeX"
     params:
       show_limits: true # Set to false to hide the time/memory limits.
+      # Set to false to hide the Examples section. To write it by hand instead,
+      # define an `examples` block in the statement: it replaces the samples.
+      show_examples: true
 tutorials:
   - language: "*" # One statement per language listed in `languages`.
     file: "statement/editorial-{lang}.rbx.tex" # Open editorial-en.rbx.tex to edit your editorial.

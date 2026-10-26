@@ -36,23 +36,31 @@
 		\scoringdesc{\VAR{problem.blocks.scoring}}
 	%- endif
 
-	%- if problem.samples
-		\vspace{0.1cm}
-		\subsection*{\strExamples}
-		%- for sample in problem.samples
-			%- if sample.interaction is not none
-				\exampleInteractive
-				%- for chunk in sample.interaction.chunks
-					\interactionchunk{\VAR{chunk.path}}{\VAR{chunk.pipe}}
-				%- endfor
-			%- else
-				\example{\VAR{sample.input}}
-					{\VAR{sample.output if sample.output is not none else ''}}
-			%- endif
-			%- if sample.explanation_file is not none
-				\explanation{\subimport{\VAR{sample.dir}}{\VAR{sample.explanation_file}}}
-			%- endif
-		%- endfor
+	%# Examples: hidden when the statement sets `show_examples: false`, and
+	%# replaced entirely by an `examples` block when the statement defines one.
+	%- if params.show_examples is null or params.show_examples is truthy
+		%- if problem.blocks.examples is defined
+			\vspace{0.1cm}
+			\subsection*{\strExamples}
+			\VAR{problem.blocks.examples}
+		%- elif problem.samples
+			\vspace{0.1cm}
+			\subsection*{\strExamples}
+			%- for sample in problem.samples
+				%- if sample.interaction is not none
+					\exampleInteractive
+					%- for chunk in sample.interaction.chunks
+						\interactionchunk{\VAR{chunk.path}}{\VAR{chunk.pipe}}
+					%- endfor
+				%- else
+					\example{\VAR{sample.input}}
+						{\VAR{sample.output if sample.output is not none else ''}}
+				%- endif
+				%- if sample.explanation_file is not none
+					\explanation{\subimport{\VAR{sample.dir}}{\VAR{sample.explanation_file}}}
+				%- endif
+			%- endfor
+		%- endif
 	%- endif
 
 	%- if problem.blocks.notes is defined
