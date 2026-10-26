@@ -2,6 +2,7 @@ import functools
 import importlib
 import importlib.resources
 import json
+import os
 import pathlib
 from typing import Callable, Dict, List, NamedTuple, Type
 
@@ -38,6 +39,7 @@ def generate_header():
     override_header = pathlib.Path('rbx.override.h')
     if override_header.is_file():
         pathlib.Path('rbx.h').write_bytes(override_header.read_bytes())
+        link_header_next_to_grader()
         return
 
     with importlib.resources.as_file(
@@ -48,6 +50,34 @@ def generate_header():
 
     with pathlib.Path('rbx.h').open('w') as f:
         f.write(preprocess_header(header))
+    link_header_next_to_grader()
+
+
+def link_header_next_to_grader():
+    """Point `rbx.h` in the grader's directory at the package's `rbx.h`.
+
+    A grader includes `rbx.h`, which rbx puts on the include path when it
+    compiles it. An editor's language server only looks next to the grader, so
+    without this link every `rbx::grader` reference shows as an error there. The
+    link is relative and leads to the very file the build uses, so it changes
+    nothing a compile sees. A regular file already in its place is the setter's
+    and is left alone.
+    """
+    pkg = package.find_problem_package()
+    if pkg is None or pkg.grader is None:
+        return
+    grader_dir = pkg.grader.path.parent
+    if grader_dir == pathlib.Path('.'):
+        return
+    link = grader_dir / 'rbx.h'
+    target = pathlib.Path(os.path.relpath('rbx.h', grader_dir))
+    if link.is_symlink():
+        if pathlib.Path(os.readlink(link)) == target:
+            return
+        link.unlink()
+    elif link.exists():
+        return
+    link.symlink_to(target)
 
 
 def _string_repr(s):
