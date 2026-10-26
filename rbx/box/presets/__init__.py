@@ -3,6 +3,7 @@ import fnmatch
 import functools
 import os
 import pathlib
+import secrets
 import shutil
 import sys
 import tempfile
@@ -117,7 +118,11 @@ def _expand_content(
 def _collect_expansions(
     expansions: List[VariableExpansion],
 ) -> List[Tuple[str, str, List[str]]]:
-    """Prompt the user for expansion values and return (needle, value, globs) tuples."""
+    """Resolve expansion values and return (needle, value, globs) tuples.
+
+    Prompted values are asked for; random ones are drawn fresh on every call,
+    so each package created from the preset gets its own.
+    """
     import questionary
 
     result: List[Tuple[str, str, List[str]]] = []
@@ -127,6 +132,9 @@ def _collect_expansions(
             value = questionary.text(exp.prompt).ask()
             if value is None:
                 raise typer.Exit(1)
+            result.append((exp.needle, value, exp.glob))
+        elif exp.replacement == ReplacementMode.RANDOM_HEX:
+            value = secrets.token_hex((exp.length + 1) // 2)[: exp.length]
             result.append((exp.needle, value, exp.glob))
     return result
 

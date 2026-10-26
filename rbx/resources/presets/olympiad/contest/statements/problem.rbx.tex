@@ -1,0 +1,16 @@
+%% Standalone problem template (full document) used by `rbx st b`.
+\documentclass[a4paper,11pt]{article}
+
+\def\lang{\VAR{lang}}
+\usepackage{icpc}
+\usepackage{import}
+
+%- if problem.blocks.preamble is defined
+	\VAR{problem.blocks.preamble}
+%- endif
+
+\begin{document}
+
+%- include "_problem-body.rbx.tex"
+
+\end{document}

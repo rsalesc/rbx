@@ -133,6 +133,48 @@ class TestCollectExpansions:
             ('__B__', 'val_b', []),
         ]
 
+    def test_random_hex_mode_draws_a_hex_string_without_prompting(self):
+        expansions = [
+            VariableExpansion(
+                needle='__SECRET__',
+                replacement=ReplacementMode.RANDOM_HEX,
+                glob=['problem.rbx.yml'],
+            ),
+        ]
+        with mock.patch('questionary.text') as mock_text:
+            result = _collect_expansions(expansions)
+
+        mock_text.assert_not_called()
+        [(needle, value, globs)] = result
+        assert (needle, globs) == ('__SECRET__', ['problem.rbx.yml'])
+        assert len(value) == 32
+        int(value, 16)  # all hex digits
+
+    def test_random_hex_mode_honours_odd_length(self):
+        expansions = [
+            VariableExpansion(
+                needle='__S__', replacement=ReplacementMode.RANDOM_HEX, length=7
+            ),
+        ]
+        [(_, value, _)] = _collect_expansions(expansions)
+        assert len(value) == 7
+        int(value, 16)
+
+    def test_random_hex_mode_differs_between_packages(self):
+        expansions = [
+            VariableExpansion(needle='__S__', replacement=ReplacementMode.RANDOM_HEX),
+        ]
+        first = _collect_expansions(expansions)[0][1]
+        second = _collect_expansions(expansions)[0][1]
+        assert first != second
+
+    def test_random_hex_mode_needs_no_prompt(self):
+        exp = VariableExpansion.model_validate(
+            {'needle': '__S__', 'replacement': 'random-hex'}
+        )
+        assert exp.replacement == ReplacementMode.RANDOM_HEX
+        assert exp.prompt is None
+
     def test_empty_expansions(self):
         result = _collect_expansions([])
         assert result == []

@@ -1,0 +1,64 @@
+---
+# yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Preset.json
+name: "olympiad"
+description: "IOI-style preset: points-scored problems, plain or interactive, with or without a grader, and a contest with a Scoring section."
+min_version: "2.3.3"
+uri: "rsalesc/rbx/rbx/resources/presets/olympiad"
+problem: "problem"
+contest: "contest"
+env: "env.rbx.yml"
+problemVariants:
+  - id: grader
+    path: "problem-grader"
+    description: "Function-call task: solutions implement a function a C++ grader calls"
+    # Lets editors resolve the grader's `#include "rbx.h"`: rbx only puts
+    # rbx.h on the include path when it compiles the grader.
+    symlinks:
+      - path: "graders/rbx.h"
+        target: "rbx.h"
+  - id: interactive
+    path: "problem-interactive"
+    description: "Communication task: solutions talk to a testlib interactor over stdin/stdout"
+  - id: interactive-grader
+    path: "problem-interactive-grader"
+    description: "Function-call communication task: a C++ grader stub talks to a testlib interactor"
+    # Lets editors resolve the grader's `#include "rbx.h"`: rbx only puts
+    # rbx.h on the include path when it compiles the grader.
+    symlinks:
+      - path: "graders/rbx.h"
+        target: "rbx.h"
+expansion:
+  problem:
+    # Each problem created from a grader template gets its own grader secret.
+    - needle: "__GRADER_SECRET__"
+      replacement: random-hex
+      glob: ["problem.rbx.yml"]
+tracking:
+  problem:
+    - path: ".gitignore"
+  contest:
+    # The contest owns the statement chrome/templates (statements v2). Track the
+    # shared LaTeX style so preset updates can refresh it; the templates
+    # themselves are left untracked so user edits survive.
+    - path: ".gitignore"
+    - path: "statements/icpc.sty"
+libraries:
+  problem:
+    - name: "testlib"
+      source: "MikeMirzayanov/testlib"
+      path: "testlib.h"
+      version: "latest"
+      dest: "testlib.h"
+      always_include: true
+    - name: "jngen"
+      source: "ifsmirnov/jngen"
+      path: "jngen.h"
+      version: "latest"
+      dest: "jngen.h"
+      always_include: true
+    - name: "tgen"
+      source: "brunomaletta/tgen"
+      path: "single_include/tgen.h"
+      version: "latest"
+      dest: "tgen.h"
+      always_include: true

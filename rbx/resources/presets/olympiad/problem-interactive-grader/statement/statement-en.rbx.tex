@@ -1,0 +1,67 @@
+%- block legend
+The jury has secretly chosen an integer $S$ such that $1 \leq S \leq N$. Your
+task is to find $S$ using at most $\VAR{vars.Q.max}$ guesses.
+
+This is a function-call problem. Implement the following function:
+
+\begin{center}
+\texttt{int find\_secret(int n);}
+\end{center}
+
+It receives $N$ ($\VAR{vars.N.min} \leq N \leq \VAR{vars.N.max}$) and must
+return $S$. It is called exactly once. To make a guess, call:
+
+\begin{center}
+\texttt{int guess(int x);}
+\end{center}
+
+with $1 \leq x \leq N$. It returns $0$ if $x = S$, $1$ if $S > x$, and $-1$ if
+$S < x$. You may call \texttt{guess} at most $\VAR{vars.Q.max}$ times.
+
+Your submission must include \texttt{guessing.h} and must not define
+\texttt{main} nor read from or write to the standard streams.
+%- endblock
+
+%- block interaction
+The grader calls \texttt{find\_secret} and reports the value it returned. For
+reference, the sample below shows the messages exchanged with the jury: the
+grader sends $N$, then one line \texttt{? x} per call to \texttt{guess(x)},
+followed by the result of that call, and finally \texttt{! s} once
+\texttt{find\_secret} returns $s$.
+%- endblock
+
+%- block scoring
+\begin{tabular}{|c|c|l|}
+\hline
+\textbf{Subtask} & \textbf{Points} & \textbf{Constraints} \\
+\hline
+%- for g in problem.groups
+%- if g.score
+\VAR{g.name | escape} & \VAR{g.score} & No additional constraints. \\
+\hline
+%- endif
+%- endfor
+\end{tabular}
+%- endblock
+
+%# The Examples section shows the messages the grader exchanges with the jury.
+%# To also show the sample as function calls, uncomment this block, which
+%# comes first in the section. Set `show_samples: false` in problem.rbx.yml to
+%# drop the generated samples and keep only this block.
+%#- block examples
+%#\begin{tabular}{|l|l|}
+%#\hline
+%#\textbf{Call} & \textbf{Returns} \\
+%#\hline
+%#\texttt{find\_secret(10)} & \\
+%#\texttt{guess(5)} & $1$ \\
+%#\texttt{guess(8)} & $-1$ \\
+%#\texttt{guess(6)} & $1$ \\
+%#\texttt{guess(7)} & $0$ \\
+%#\hline
+%#\end{tabular}
+%#- endblock
+
+%- block notes
+No notes.
+%- endblock

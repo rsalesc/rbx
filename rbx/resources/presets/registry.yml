@@ -3,3 +3,6 @@ presets:
   - name: "default"
     uri: "default"
     description: "rbx's default preset: ICPC-style problem/contest with testlib, jngen and tgen."
+  - name: "olympiad"
+    uri: "olympiad"
+    description: "IOI-style preset: points-scored problems, plain or interactive, with or without a grader, and a contest with a Scoring section."
