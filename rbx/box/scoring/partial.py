@@ -35,13 +35,16 @@ def format_score(score: float) -> str:
 def test_points(score: int, n: int) -> List[float]:
     """A `sum` group's points split evenly across its `n` tests.
 
-    Each share is rounded to the cent and the last one absorbs the remainder, so
-    the shares add up to exactly `score`.
+    The shares are whole cents that add up to exactly `score`: each test gets
+    the same floor share, and the last tests get one cent more each to cover the
+    remainder. So no share is negative and no two differ by more than a cent.
     """
     if n <= 0:
         return []
-    share = round_score(score / n)
-    return [share] * (n - 1) + [round_score(score - share * (n - 1))]
+    cents = round(score * 10**PRECISION)
+    base, extra = divmod(cents, n)
+    shares = [base] * (n - extra) + [base + 1] * extra
+    return [share / 10**PRECISION for share in shares]
 
 
 @dataclasses.dataclass(frozen=True)

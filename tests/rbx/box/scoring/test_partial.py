@@ -24,6 +24,37 @@ def test_test_points_splits_evenly_and_sums_exactly(score, n, expected):
         assert round(sum(points), 2) == score
 
 
+@pytest.mark.parametrize(
+    'score,n,expected',
+    [
+        # Rounding each share to the cent would leave -0.45 for the last test.
+        (7, 150, [0.04] * 50 + [0.05] * 100),
+        # ... and -0.03 here.
+        (10, 60, [0.16] * 20 + [0.17] * 40),
+        (1, 300, [0.0] * 200 + [0.01] * 100),
+    ],
+)
+def test_test_points_never_goes_negative(score, n, expected):
+    assert partial.test_points(score, n) == expected
+
+
+@pytest.mark.parametrize('score', [0, 1, 7, 10, 30, 100])
+def test_test_points_shares_are_even_non_negative_and_exact(score):
+    for n in range(1, 401):
+        points = partial.test_points(score, n)
+        assert len(points) == n
+        assert all(p >= 0 for p in points)
+        assert all(round(p, 2) == p for p in points)
+        assert round(sum(points), 2) == score
+        assert round(max(points) - min(points), 2) <= 0.01
+        assert points == sorted(points)
+
+
+def test_a_sum_group_never_pays_more_than_its_score():
+    # WA only on the last test of a 150-test, 7-point group.
+    assert _scores([('g', 7, SUM)], {'g': [1.0] * 149 + [0.0]}) == {'g': 6.95}
+
+
 def _scores(groups, fractions, deps=None):
     deps = deps or {}
 
