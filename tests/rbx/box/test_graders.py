@@ -1,3 +1,6 @@
+import shutil
+import subprocess
+
 import pytest
 import typer
 from pydantic import ValidationError
@@ -150,3 +153,82 @@ def test_unmatched_secret_marker_is_refused(source):
 def test_grader_requires_a_secret():
     with pytest.raises(ValidationError, match='secret'):
         _package(grader={'path': 'graders/grader.cpp'})
+
+
+# What rbx.h provides ahead of the judge helpers, reduced to what they use.
+_JUDGE_PREAMBLE = """#include <cstdio>
+#include <cstdlib>
+#include <optional>
+#include <string>
+#include <type_traits>
+#include <utility>
+namespace rbx {
+namespace detail {
+inline std::optional<std::string> &headerGroup() {
+  static std::optional<std::string> group;
+  return group;
+}
+} // namespace detail
+} // namespace rbx
+"""
+
+# A grader that turns off stdio synchronisation and does its I/O through cin and
+# cout, the common competitive-programming idiom (#965). The C++ streams then
+# buffer apart from the C stdio the hidden header and the framing go through.
+_UNSYNCED_GRADER = """
+#include <iostream>
+int main(int argc, char **argv) {
+  std::cin.tie(0)->sync_with_stdio(0);
+  rbx::grader::Grader grader;
+  int n = -1;
+  std::cin >> n;
+  int r = grader.run([&] {
+    if (argc > 1) {
+      std::cout << "leak\\n";
+      if (argv[1][0] == 'w') {
+        grader.wrong_answer("bad");
+      }
+    }
+    return 2 * n;
+  });
+  std::cout << r << "\\n";
+}
+"""
+
+
+@pytest.mark.parametrize(
+    ('args', 'expected'),
+    [
+        ([], 'OUT\nEND\nOK\n42\n'),
+        # The contestant's unsynchronised output stays inside the frame, where
+        # the checker reports it as the solution writing to stdout.
+        (['leak'], 'OUT\nleak\nEND\nOK\n42\n'),
+        (['wa'], 'OUT\nleak\nEND\nWA\nbad\n'),
+    ],
+)
+def test_judge_framing_survives_unsynced_cout(tmp_path, args, expected):
+    # libc++ (Apple's g++) writes cout through C stdio even unsynchronised, so
+    # it never shows the bug: prefer a real GCC, whose libstdc++ is what judges
+    # run.
+    candidates = [f'g++-{version}' for version in range(16, 10, -1)] + ['g++']
+    gpp = next(filter(None, map(shutil.which, candidates)), None)
+    if gpp is None:
+        pytest.skip('g++ is not available')
+    helpers = graders.judge_helpers(
+        graders.Secrets(input='IN', output='OUT', output_end='END')
+    )
+    source = tmp_path / 'grader.cpp'
+    source.write_text(_JUDGE_PREAMBLE + helpers + _UNSYNCED_GRADER)
+    binary = tmp_path / 'grader'
+    subprocess.run(
+        [gpp, '-std=c++20', '-Wall', '-Werror', '-o', str(binary), str(source)],
+        check=True,
+    )
+    result = subprocess.run(
+        [str(binary), *args],
+        input='IN\ngroup\n21\n',
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout == expected
