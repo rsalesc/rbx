@@ -57,7 +57,7 @@ _SOLUTION_TAGS = {
 }
 
 
-def _get_solution_tag(solution: Solution, is_main: bool) -> Optional[str]:
+def get_solution_tag(solution: Solution, is_main: bool) -> Optional[str]:
     """The `problem.xml` tag for a solution, or `None` when it has none.
 
     Polygon has no tag for a runtime error, so it (like every other failure
@@ -73,7 +73,15 @@ def _get_solution_tag(solution: Solution, is_main: bool) -> Optional[str]:
     return _SOLUTION_TAGS.get(solution.outcome, 'rejected')
 
 
-def _warn_about_pc(checker_path: pathlib.Path) -> None:
+def warn_about_untagged_solution(solution: Solution) -> None:
+    console.console.print(
+        f'[warning]Solution {solution.href()} expects outcome '
+        f'[item]{solution.outcome.name}[/item], which Polygon cannot '
+        'express; it will not be packaged.[/warning]'
+    )
+
+
+def warn_about_pc(checker_path: pathlib.Path) -> None:
     """Warn when a checker awards partial credit with `_pc`, which Polygon fails on.
 
     Checked on the source: testlib itself declares `_pc`, but a checker that never
@@ -88,6 +96,68 @@ def _warn_about_pc(checker_path: pathlib.Path) -> None:
         '[warning]Award partial points with [item]quitp(percentage)[/item] '
         'instead: Polygon (in percent mode), CMS and rbx all read it.[/warning]'
     )
+
+
+def _manual_test(is_sample: bool) -> polygon_schema.Test:
+    return polygon_schema.Test(method='manual', sample=is_sample or None)
+
+
+def get_tests_and_groups(
+    entries: List[GenerationTestcaseEntry],
+) -> Tuple[List[polygon_schema.Test], List[polygon_schema.Group]]:
+    """Each test's group and points, and the groups, as Polygon scores them.
+
+    Shared by the offline `problem.xml` and the API upload, which pass the
+    entries in the order Polygon numbers their tests. A binary problem has no
+    groups, and its tests carry none.
+    """
+    tests = [_manual_test(entry.is_sample()) for entry in entries]
+    pkg = package.find_problem_package_or_die()
+    if pkg.score_type != ScoreType.POINTS:
+        return tests, []
+
+    # A `min` group pays its points times its lowest test, which is Polygon's
+    # `complete-group` policy (measured with the percent mode on). Its score
+    # goes on its last test, so a judge that sums test points instead of
+    # reading the group's agrees with one that does. A `sum` group is
+    # `each-test`: each test carries its own share and pays it.
+    tests_of: Dict[str, List[int]] = collections.defaultdict(list)
+    for i, entry in enumerate(entries):
+        tests_of[entry.group_entry.group].append(i)
+    for group_name, indices in tests_of.items():
+        score = next(g.score for g in pkg.testcases if g.name == group_name)
+        if pkg.aggregation_for(group_name) == Aggregation.SUM:
+            points = partial.test_points(score, len(indices))
+        else:
+            points = [0.0] * (len(indices) - 1) + [float(score)]
+        for i, test_points in zip(indices, points):
+            tests[i].group = group_name
+            tests[i].points = test_points
+    last_test_of = {name: indices[-1] for name, indices in tests_of.items()}
+
+    # A group with no built tests has nothing to judge; leave it out.
+    group_deps = pkg.group_dependencies.over(list(last_test_of))
+    groups = []
+    for group in pkg.testcases:
+        if group.name not in last_test_of:
+            continue
+        each_test = pkg.aggregation_for(group.name) == Aggregation.SUM
+        feedback_policy = 'points' if each_test else 'icpc'
+        groups.append(
+            polygon_schema.Group(
+                name=group.name,
+                points=float(group.score),
+                points_policy='each-test' if each_test else 'complete-group',
+                feedback_policy='complete'
+                if group.name == 'samples'
+                else feedback_policy,
+                dependencies=[
+                    polygon_schema.Dependency(group=dep)
+                    for dep in group_deps.direct(group.name)
+                ],
+            )
+        )
+    return tests, groups
 
 
 def _select_main_language(
@@ -192,58 +262,12 @@ class PolygonPackager(BasePackager):
         )
 
     def _get_manual_test(self, is_sample: bool) -> polygon_schema.Test:
-        return polygon_schema.Test(method='manual', sample=is_sample or None)
+        return _manual_test(is_sample)
 
     def _get_tests_and_groups(
         self, entries: List[GenerationTestcaseEntry]
     ) -> Tuple[List[polygon_schema.Test], List[polygon_schema.Group]]:
-        tests = [self._get_manual_test(entry.is_sample()) for entry in entries]
-        pkg = package.find_problem_package_or_die()
-        if pkg.score_type != ScoreType.POINTS:
-            return tests, []
-
-        # A `min` group pays its points times its lowest test, which is Polygon's
-        # `complete-group` policy (measured with the percent mode on). Its score
-        # goes on its last test, so a judge that sums test points instead of
-        # reading the group's agrees with one that does. A `sum` group is
-        # `each-test`: each test carries its own share and pays it.
-        tests_of: Dict[str, List[int]] = collections.defaultdict(list)
-        for i, entry in enumerate(entries):
-            tests_of[entry.group_entry.group].append(i)
-        for group_name, indices in tests_of.items():
-            score = next(g.score for g in pkg.testcases if g.name == group_name)
-            if pkg.aggregation_for(group_name) == Aggregation.SUM:
-                points = partial.test_points(score, len(indices))
-            else:
-                points = [0.0] * (len(indices) - 1) + [float(score)]
-            for i, test_points in zip(indices, points):
-                tests[i].group = group_name
-                tests[i].points = test_points
-        last_test_of = {name: indices[-1] for name, indices in tests_of.items()}
-
-        # A group with no built tests has nothing to judge; leave it out.
-        group_deps = pkg.group_dependencies.over(list(last_test_of))
-        groups = []
-        for group in pkg.testcases:
-            if group.name not in last_test_of:
-                continue
-            each_test = pkg.aggregation_for(group.name) == Aggregation.SUM
-            feedback_policy = 'points' if each_test else 'icpc'
-            groups.append(
-                polygon_schema.Group(
-                    name=group.name,
-                    points=float(group.score),
-                    points_policy='each-test' if each_test else 'complete-group',
-                    feedback_policy='complete'
-                    if group.name == 'samples'
-                    else feedback_policy,
-                    dependencies=[
-                        polygon_schema.Dependency(group=dep)
-                        for dep in group_deps.direct(group.name)
-                    ],
-                )
-            )
-        return tests, groups
+        return get_tests_and_groups(entries)
 
     def _get_single_testset(self) -> polygon_schema.Testset:
         pkg = package.find_problem_package_or_die()
@@ -312,13 +336,9 @@ class PolygonPackager(BasePackager):
     ) -> List[polygon_schema.Solution]:
         res = []
         for i, solution in enumerate(package.get_solutions()):
-            tag = _get_solution_tag(solution, is_main=i == 0)
+            tag = get_solution_tag(solution, is_main=i == 0)
             if tag is None:
-                console.console.print(
-                    f'[warning]Solution {solution.href()} expects outcome '
-                    f'[item]{solution.outcome.name}[/item], which Polygon cannot '
-                    'express; it will not be packaged.[/warning]'
-                )
+                warn_about_untagged_solution(solution)
                 continue
             res.append(
                 polygon_schema.Solution(
@@ -396,6 +416,10 @@ class PolygonPackager(BasePackager):
     def supports_graders(cls) -> bool:
         return True
 
+    @classmethod
+    def supports_points(cls) -> bool:
+        return True
+
     def _grader_files(self, ns: flattening.FlatNamespace) -> List[str]:
         """The grader and every file of its closure, by name under `files/`."""
         pkg = package.find_problem_package_or_die()
@@ -424,7 +448,7 @@ class PolygonPackager(BasePackager):
         pkg = package.find_problem_package_or_die()
 
         ns = self._flatten_sources()
-        _warn_about_pc(package.get_checker_or_builtin().path)
+        warn_about_pc(package.get_checker_or_builtin().path)
 
         problem = polygon_schema.Problem(
             short_name=pkg.name,

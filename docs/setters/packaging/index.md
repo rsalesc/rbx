@@ -51,10 +51,14 @@ and limitations:
 |                         |                     | :white_check_mark: Interactive problems (with checker)    |
 |                         |                     | :white_check_mark: Batch problems                         |
 |                         |                     | :white_check_mark: Limits per language                    |
+|                         |                     | :white_check_mark: Test grouping                          |
 |                         |                     | :warning: Package upload (with limitations)               |
 |                         |                     | :x: Solution verification                                 |
-|                         |                     | :x: Test grouping                                         |
 +-------------------------+---------------------+-----------------------------------------------------------+
+
+A format without test grouping judges a problem all or nothing, so {{rbx}} won't package a
+problem that [scores by points](/setters/grading/scoring#scoring-by-points) for it. It stops
+before building that problem.
 
 ## `rbx package`
 

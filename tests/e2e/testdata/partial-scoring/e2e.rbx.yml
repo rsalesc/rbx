@@ -46,3 +46,14 @@ scenarios:
               problem.xml: '/(?s)treat-points-from-checker-as-percent="true".*name="big"[^>]*points-policy="each-test"/'
               files/cms_conf.py: "[20.0, '^(003|001|002)$'], [20.0, '^(004|001|002)$'], [20.0, '^(005|001|002)$']"
               files/cms_testlib.h: "#ifdef RBX_CMS"
+
+  - name: points-refused-by-domjudge
+    description: |
+      A judge that scores all or nothing refuses a points problem before
+      building it, rather than shipping it without groups and with a `quitp`
+      checker it reads as a judging error.
+    steps:
+      - cmd: package domjudge
+        expect_exit: 1
+        expect:
+          stdout_contains: "does not support problems scored by points"

@@ -27,7 +27,7 @@ from rbx.box.packaging.moj.moj_language_utils import (
     normalize_moj_language,
 )
 from rbx.box.packaging.moj.statement_assets import rasterize_pdf_assets
-from rbx.box.packaging.packager import BasePackager, BuiltStatement
+from rbx.box.packaging.packager import BasePackager, BuiltStatement, mentions_points
 from rbx.box.schema import (
     CodeItem,
     ExpectedOutcome,
@@ -475,6 +475,18 @@ class MojPackager(BasePackager):
     @classmethod
     def name(cls) -> str:
         return 'moj'
+
+    @classmethod
+    def supports_points(cls) -> bool:
+        # Groups through `tests/score`; a checker's `quitp` is warned about in
+        # `_amalgamate_checker`, since MOJ reads it as a judge error.
+        return True
+
+    @classmethod
+    def check_before_build(cls, pkg: Package) -> None:
+        # Settled by the configuration alone, so refuse it before the build.
+        if pkg.points_scoring is not None:
+            _refuse_non_min_groups(pkg)
 
     @classmethod
     def task_types(cls) -> List[TaskType]:
@@ -1320,8 +1332,9 @@ class MojPackager(BasePackager):
         names_by_group: Dict[str, List[str]] = collections.defaultdict(list)
         for entry, name in self.testcase_names():
             names_by_group[entry.group_entry.group].append(name)
+        # Every group is `min` by now, whatever the problem's default says.
         flattened = dependencies.flatten(
-            pkg.group_dependencies, names_by_group, points.aggregation
+            pkg.group_dependencies, names_by_group, Aggregation.MIN
         )
 
         indices = self._group_indices()
@@ -1441,8 +1454,7 @@ class MojPackager(BasePackager):
         # Checked against the ORIGINAL source, never the amalgamated output: testlib
         # itself declares `quitp` and `_points`, so the inlined header would make this
         # fire for every checker, the builtin one included.
-        source = checker.path.read_text(encoding='utf-8', errors='replace')
-        if 'quitp' in source or '_points' in source:
+        if mentions_points(checker):
             console.console.print(
                 '[warning]The checker references [item]quitp[/item]/'
                 '[item]_points[/item], but MOJ maps a testlib partial result to a '

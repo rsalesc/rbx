@@ -22,7 +22,7 @@ from rbx.box.contest import contest_package
 from rbx.box.contest.schema import ContestProblem, ContestStatement
 from rbx.box.formatting import href
 from rbx.box.generation_schema import GenerationTestcaseEntry
-from rbx.box.schema import Package, TaskType, Testcase
+from rbx.box.schema import CodeItem, Package, ScoreType, TaskType, Testcase
 from rbx.box.statements.build_statements import (
     execute_build_on_statements,
 )
@@ -77,6 +77,22 @@ class BasePackager(ABC):
     def supports_graders(cls) -> bool:
         """Whether the judge can compile solutions together with a grader."""
         return False
+
+    @classmethod
+    def supports_points(cls) -> bool:
+        """Whether the judge scores a problem by points (`scoring: points`).
+
+        A judge that does not is also assumed not to read a checker's `quitp`.
+        """
+        return False
+
+    @classmethod
+    def check_before_build(cls, pkg: Package) -> None:
+        """Refuse what this judge cannot run, before anything is built.
+
+        Raise `typer.Exit` to refuse. The default refuses nothing.
+        """
+        return None
 
     # The contestant archive (`attachments` in problem.rbx.yml), set by
     # `run_packager` before `package()` runs; None when the problem has none.
@@ -243,6 +259,48 @@ class ContestZipper(BaseContestPackager):
         return build_path / pathlib.Path(self.filename).with_suffix('.zip')
 
 
+def mentions_points(code: CodeItem) -> bool:
+    """Whether a checker or interactor source awards partial points.
+
+    Checked on the source as written: testlib itself declares `quitp` and
+    `_points`, so any amalgamated or flattened copy would always match.
+    """
+    if not code.path.is_file():
+        return False
+    source = code.path.read_text(encoding='utf-8', errors='replace')
+    return 'quitp' in source or '_points' in source
+
+
+def _sources_awarding_points(pkg: Package) -> List[CodeItem]:
+    sources: List[CodeItem] = [package.get_checker_or_builtin()]
+    if pkg.type == TaskType.COMMUNICATION and pkg.interactor is not None:
+        sources.append(pkg.interactor)
+    return [code for code in sources if mentions_points(code)]
+
+
+def check_points_support(packager_cls: Type[BasePackager], pkg: Package) -> None:
+    """Refuse a points problem on a judge without points, and warn about a
+    `quitp` checker or interactor there."""
+    if packager_cls.supports_points():
+        return
+    if pkg.score_type == ScoreType.POINTS:
+        console.console.print(
+            f'[error]Packager [item]{packager_cls.name()}[/item] does not support '
+            'problems scored by points ([item]scoring: points[/item]): it judges '
+            'a problem all or nothing, so the groups and their scores would be '
+            'lost. Points problems can be packaged for Polygon, MOJ and CMS '
+            '([item]rbx package polygon --cms[/item]).[/error]'
+        )
+        raise typer.Exit(1)
+    for code in _sources_awarding_points(pkg):
+        console.console.print(
+            f'[warning]{code.href()} awards partial points with '
+            f'[item]quitp[/item], which [item]{packager_cls.name()}[/item] does '
+            'not read: a test it scores that way becomes a judging error there, '
+            'not a wrong answer.[/warning]'
+        )
+
+
 async def run_packager(
     packager_cls: Type[BasePackager],
     verification: environment.VerificationParam,
@@ -267,6 +325,10 @@ async def run_packager(
             '([item]rbx package polygon --cms[/item]).[/error]'
         )
         raise typer.Exit(1)
+
+    # Also before the build: a judge without points would drop the scoring.
+    check_points_support(packager_cls, package.find_problem_package_or_die())
+    packager_cls.check_before_build(package.find_problem_package_or_die())
 
     if limits_info.get_saved_limits_profile(packager_cls.name()) is not None:
         console.console.print(

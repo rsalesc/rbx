@@ -3,7 +3,7 @@ import pathlib
 import pytest
 
 from rbx.box.packaging.polygon import xml_schema as polygon_schema
-from rbx.box.packaging.polygon.packager import PolygonPackager, _get_solution_tag
+from rbx.box.packaging.polygon.packager import PolygonPackager, get_solution_tag
 from rbx.box.schema import ExpectedOutcome, Solution
 
 
@@ -32,7 +32,7 @@ def _solution(outcome: ExpectedOutcome) -> Solution:
     ],
 )
 def test_solution_tag(outcome, is_main, tag):
-    assert _get_solution_tag(_solution(outcome), is_main=is_main) == tag
+    assert get_solution_tag(_solution(outcome), is_main=is_main) == tag
 
 
 def test_polygon_offline_declares_solutions(testing_pkg):
