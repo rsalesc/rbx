@@ -7,6 +7,8 @@ import yaml
 from rbx import utils
 from rbx.box import builder, package, testset_manifest
 from rbx.box.environment import VerificationLevel
+from rbx.box.schema import PointsScoring
+from rbx.box.scoring.dependencies import DependencyPolicy
 from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 from rbx.box.testing import testing_package
 
@@ -135,6 +137,28 @@ async def test_subset_build_describes_only_the_groups_that_survived(
     ] == [('main', 0), ('main', 1)]
     assert manifest.validation is not None
     assert {v.group for v in manifest.validation} == {'main'}
+
+
+async def test_group_deps_skip_groups_with_no_built_tests(
+    testing_pkg: testing_package.TestingPackage,
+):
+    """A ladder through a group that built nothing still chains its neighbours,
+    exactly as the run skeleton sees it."""
+    testing_pkg.yml.scoring = PointsScoring(dependencies=DependencyPolicy.LADDER)
+    testing_pkg.save()
+    testing_pkg.add_testgroup_from_glob('samples', 'manual_tests/samples/*.in')
+    testing_pkg.add_file('manual_tests/samples/000.in').write_text('1\n')
+    testing_pkg.add_testgroup_from_glob('empty', 'manual_tests/empty/*.in')
+    testing_pkg.add_testgroup_from_glob('main', 'manual_tests/main/*.in')
+    testing_pkg.add_file('manual_tests/main/000.in').write_text('2\n')
+
+    await builder.build(verification=0, output=False)
+
+    manifest = _manifest()
+    assert [(group.name, group.deps) for group in manifest.groups] == [
+        ('samples', []),
+        ('main', ['samples']),
+    ]
 
 
 async def test_build_without_validation_omits_the_validation_key(
