@@ -1671,3 +1671,10 @@ test('only a partially correct testcase with a score has a percentage', () => {
   assert.strictEqual(partialPercent({ outcome: 'accepted', score: 1 }), undefined);
   assert.strictEqual(partialPercent(undefined), undefined);
 });
+
+test('a percentage rounds the way rbx run prints it', () => {
+  // `rbx run` prints `round(0.00045 * 100, 2)`, which is 0.04: the double
+  // nearest 0.045 sits just below it. Rounding `score * 10000` gave 0.05%.
+  assert.strictEqual(partialPercent({ outcome: 'partially-correct', score: 0.00045 }), '0.04%');
+  assert.strictEqual(partialPercent({ outcome: 'partially-correct', score: 0.00125 }), '0.12%');
+});

@@ -47,7 +47,7 @@ import {
 } from './nodes';
 import { NOT_RUN, OutcomeDisplay, UNREADABLE, outcomeIcon, shortName } from './outcome';
 import { GroupReport, SolutionReport } from './report';
-import { scoreRange } from './score';
+import { scoreRange, scoreText } from './score';
 import {
   DEFAULT_SOLUTION_LABEL_STYLE,
   SolutionLabelStyle,
@@ -597,8 +597,8 @@ export function partialPercent(evaluation: Evaluation | undefined): string | und
   if (evaluation?.outcome !== 'partially-correct' || evaluation.score === undefined) {
     return undefined;
   }
-  const percent = (Math.round(evaluation.score * 10000) / 100).toFixed(2);
-  return `${percent.replace(/\.?0+$/, '')}%`;
+  // `fraction() * 100` through `format_score`, exactly as `rbx run` prints it.
+  return `${scoreText(evaluation.score * 100)}%`;
 }
 
 function chip(outcome: string | undefined, under?: WarningVerdict): VerdictChip {
