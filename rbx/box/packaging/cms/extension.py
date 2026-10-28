@@ -8,8 +8,9 @@ both.
 
 Every key maps to one the CMS v1.5.1 loaders read, and every enum lists only
 values that version accepts. An unset field is not emitted, leaving CMS's own
-default -- except `task.scoreMode` and `task.publicTestcases`, whose CMS
-defaults do not match what rbx means (see `settings`).
+default -- except `task.scoreMode`, `task.publicTestcases` and `scorePrecision`
+(at both levels), whose CMS defaults do not match what rbx means (see
+`settings`).
 """
 
 import datetime

@@ -72,9 +72,19 @@ def test_a_contest_lists_its_tasks_in_order_and_leaves_tokens_to_them():
         'name': 'obi-2026',
         'description': 'OBI 2026',
         'languages': ['C++20 / g++', 'Java / JDK'],
+        # CMS's own 0 would round the scores rbx shows with two decimals.
+        'score_precision': 2,
         'token_mode': 'infinite',
         'tasks': ['B', 'A'],
     }
+
+
+def test_a_contest_score_precision_overrides_rbx_default():
+    cms = CmsExtension.model_validate({'contest': {'scorePrecision': 0}})
+
+    conf = italy_loader.contest_conf(_contest(), cms, [])
+
+    assert conf['score_precision'] == 0
 
 
 def test_no_mapped_language_leaves_the_cms_default():
@@ -130,6 +140,30 @@ def test_the_description_follows_the_first_statement():
     contest = _contest(
         titles={'en': 'OBI 2026 (en)', 'pt': 'OBI 2026'},
         statements=[{'name': 'statement-pt', 'language': 'pt'}],
+    )
+
+    conf = italy_loader.contest_conf(contest, CmsExtension(), [])
+
+    assert conf['description'] == 'OBI 2026'
+
+
+def test_the_description_resolves_a_wildcard_statement():
+    # The bundled presets declare their statement with `language: '*'`.
+    contest = _contest(
+        languages=['en', 'pt'],
+        titles={'en': 'OBI 2026 (en)', 'pt': 'OBI 2026'},
+        statements=[{'name': 'statement-{lang}', 'language': '*'}],
+    )
+
+    conf = italy_loader.contest_conf(contest, CmsExtension(), [])
+
+    assert conf['description'] == 'OBI 2026 (en)'
+
+
+def test_the_description_falls_back_to_the_first_title():
+    contest = _contest(
+        titles={'pt': 'OBI 2026'},
+        statements=[{'name': 'statement-en', 'language': 'en'}],
     )
 
     conf = italy_loader.contest_conf(contest, CmsExtension(), [])

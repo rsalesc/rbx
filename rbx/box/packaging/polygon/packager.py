@@ -161,10 +161,20 @@ class PolygonPackager(BasePackager):
 
     def _get_names(self) -> List[polygon_schema.Name]:
         names = [self._get_name(lang) for lang in self.languages()]
+        if not names and self.cms:
+            # CMS's importer reads the task title off the first `<name>`, and
+            # crashes on a problem.xml without `<names>`.
+            names = [self._get_fallback_name()]
 
         _select_main_language(names, self.main_language)
 
         return names
+
+    def _get_fallback_name(self) -> polygon_schema.Name:
+        """A name for a problem with no statement: its first title, else its name."""
+        pkg = package.find_problem_package_or_die()
+        lang, title = next(iter(pkg.titles.items()), ('en', pkg.name))
+        return polygon_schema.Name(language=code_to_langs([lang])[0], value=title)
 
     def _get_checker(self) -> polygon_schema.Checker:
         # TODO: support other checker languages

@@ -52,12 +52,18 @@ def contest_languages() -> Tuple[List[str], List[str]]:
 
 
 def _description(contest: Contest) -> str:
-    language = None
-    if contest.statements:
-        language = contest.statements[0].language
-    elif contest.titles:
-        language = next(iter(contest.titles))
-    return naming.get_contest_title(language, contest=contest)
+    """The title of the first statement, else the first title, else the name.
+
+    Statements are read expanded: a wildcard `language: '*'` names no title.
+    """
+    for statement in contest.expanded_statements:
+        if statement.title or statement.language in contest.titles:
+            return naming.get_contest_title(
+                statement.language, statement, contest=contest
+            )
+    if contest.titles:
+        return next(iter(contest.titles.values()))
+    return contest.name
 
 
 def contest_conf(
