@@ -3597,3 +3597,27 @@ async def test_interactive_run_reports_an_unmeasured_interactor_as_unmeasured(
         )
 
     assert judging_time_lines(console) == ['Checker time: 20 ms / Interactor time: -']
+
+
+@pytest.mark.parametrize(
+    'range,expected',
+    [
+        ((100, 100), '100'),
+        ((50, 80), '50..80'),
+        ((50, 10**9), '50..'),
+        ((33.333, 66.667), '33.33..66.67'),
+        # Bounds that print the same are one score, not `33.33..33.33`.
+        ((33.333, 33.334), '33.33'),
+    ],
+)
+def test_expected_score_repr_prints_bounds_to_the_cent(range, expected):
+    assert solutions_module.get_expected_score_repr(range) == expected
+
+
+def test_expected_score_in_phrase_reads_a_rounded_range_as_one_score():
+    assert solutions_module.get_expected_score_in_phrase((33.333, 33.334)) == (
+        '[item]33.33[/item]'
+    )
+    assert solutions_module.get_expected_score_in_phrase((50, 80)) == (
+        'in [item]50..80[/item]'
+    )
