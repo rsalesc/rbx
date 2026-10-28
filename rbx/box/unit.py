@@ -338,11 +338,9 @@ async def run_checker_unit_tests(progress: StatusProgress, tmpd: pathlib.Path):
             input: Optional[UnitTestInput], bkp: pathlib.Path
         ) -> pathlib.Path:
             # A batch grader problem's checker reads outputs framed by the
-            # grader; a unit test's are written raw.
-            path = _get_file(input, bkp)
-            if input is None:
-                return path
-            return graders.framed_output(path)
+            # grader; a unit test's are written raw. A missing one is framed
+            # too: the checker reads a prologue off the answer either way.
+            return graders.framed_output(_get_file(input, bkp))
 
         result = await checkers.check(
             compiled_digest,
