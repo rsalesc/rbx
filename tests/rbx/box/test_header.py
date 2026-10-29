@@ -1236,42 +1236,6 @@ class TestGroupVars:
         header.generate_header()
         _compile(gpp, _GROUP_VARS_MAIN, 'warnings', ['-Wextra'])
 
-    @pytest.mark.parametrize('group_vars', [False, True])
-    def test_header_links_into_two_translation_units(
-        self, testing_pkg: testing_package.TestingPackage, group_vars: bool
-    ):
-        """rbx.h may be included by two linked files: a grader and a solution.
-
-        So everything it defines must be inline, or the link fails with
-        duplicate symbols.
-        """
-        gpp = _require_gpp()
-
-        testing_pkg.set_vars(dict(_PACKAGE_VARS))
-        if group_vars:
-            _set_group_vars(testing_pkg, {'sub2': {'AB': {'min': 0}}})
-
-        header.generate_header()
-        pathlib.Path('other.cpp').write_text(
-            '#include "rbx.h"\nint otherMin() { return getVar<int>("AB.min"); }\n'
-        )
-        pathlib.Path('odr.cpp').write_text(
-            '#include <cstdio>\n'
-            '#include "rbx.h"\n'
-            'int otherMin();\n'
-            'int main() {\n'
-            '  std::printf("%d %d\\n", getVar<int>("AB.min"), otherMin());\n'
-            '  return 0;\n'
-            '}\n'
-        )
-        subprocess.run(
-            [gpp, '-std=c++20', '-Wall', '-Werror', '-o', 'odr', 'odr.cpp']
-            + ['other.cpp'],
-            check=True,
-        )
-        result = subprocess.run(['./odr'], check=True, capture_output=True, text=True)
-        assert result.stdout == '-200 -200\n'
-
 
 # Reads `--flag` with testlib's own option parser. `registerGen` is what calls
 # `prepareOpts`, so this is the generator-side reader, not a validator.

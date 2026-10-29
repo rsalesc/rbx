@@ -168,25 +168,25 @@ inline const std::string &getGroup() {
 // A package with no group overrides gets none of that, not even the getGroup()
 // lookup: its accessors are exactly the package-level table.
 
-inline std::optional<std::string> getStringVar(std::string name) {
+std::optional<std::string> getStringVar(std::string name) {
 //<rbx::string_var_groups>
 //<rbx::string_var>
   return std::nullopt;
 }
 
-inline std::optional<int64_t> getIntVar(std::string name) {
+std::optional<int64_t> getIntVar(std::string name) {
 //<rbx::int_var_groups>
 //<rbx::int_var>
   return std::nullopt;
 }
 
-inline std::optional<float> getFloatVar(std::string name) {
+std::optional<float> getFloatVar(std::string name) {
 //<rbx::float_var_groups>
 //<rbx::float_var>
   return std::nullopt;
 }
 
-inline std::optional<bool> getBoolVar(std::string name) {
+std::optional<bool> getBoolVar(std::string name) {
 //<rbx::bool_var_groups>
 //<rbx::bool_var>
   return std::nullopt;

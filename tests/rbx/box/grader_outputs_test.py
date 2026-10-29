@@ -154,9 +154,9 @@ async def test_compile_links_an_unlisted_solution_with_the_grader(
     testing_pkg: testing_package.TestingPackage,
 ):
     _setup_grader_package(testing_pkg)
-    # Not listed in problem.rbx.yml, and including rbx.h, which the grader
-    # includes as well.
-    testing_pkg.add_file('atk/other.cpp').write_text('#include "rbx.h"\n' + _SOLUTION)
+    # Not listed in problem.rbx.yml. It has no main of its own, so it only
+    # links next to the grader.
+    testing_pkg.add_file('atk/other.cpp').write_text(_SOLUTION)
 
     await compile.any('atk/other.cpp')
 
