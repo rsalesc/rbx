@@ -24,15 +24,15 @@ def _refuse(pkg: Package, reason: str):
 def ensure_supported(pkg: Package):
     """Refuse a problem CMS could not judge the way rbx does.
 
-    An interactive problem runs through rbx's CMS manager, which compiles the
-    interactor -- and a legacy interactor's checker -- into itself, so both
-    must be C++.
+    `cms_conf.py` compiles the checker with `g++`, so it must be C++ whenever it
+    judges: on a batch problem, and behind a legacy interactor. An interactive
+    problem runs through rbx's CMS manager, which compiles the interactor into
+    itself, so that must be C++ too.
     """
-    if not communication.is_communication(pkg):
-        return
-    if pkg.interactor is None or not _is_cpp(pkg.interactor):
-        _refuse(pkg, 'its interactor must be written in C++.')
-    if communication.needs_checker(pkg) and not _is_cpp(
-        package.get_checker_or_builtin()
-    ):
+    if communication.is_communication(pkg):
+        if pkg.interactor is None or not _is_cpp(pkg.interactor):
+            _refuse(pkg, 'its interactor must be written in C++.')
+        if not communication.needs_checker(pkg):
+            return
+    if not _is_cpp(package.get_checker_or_builtin()):
         _refuse(pkg, 'its checker must be written in C++.')

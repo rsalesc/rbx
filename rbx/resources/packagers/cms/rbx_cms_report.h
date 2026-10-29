@@ -3,11 +3,12 @@
 // CMS reads the outcome (a float in [0, 1]) from the first line of the
 // manager's stdout and the message shown to the contestant from the first line
 // of its stderr, and treats any non-zero exit as a judge error. testlib reports
-// its verdict as a line on stderr, so that line is captured here and translated
-// when the testlib program exits.
+// its verdict as the last line it writes to stderr, so stderr is captured here
+// and that line translated when the testlib program exits.
 #pragma once
 
 #include <fcntl.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 #include <cstdio>
@@ -18,43 +19,64 @@ namespace rbx_cms {
 
 inline int real_stdout = -1;
 inline int real_stderr = -1;
-inline int verdict_pipe[2] = {-1, -1};
+inline int verdict_fd = -1;
 // Set when the testlib program's main returns instead of calling quit().
 inline bool returned = false;
 inline int return_code = 0;
 
-// Points stderr at a pipe, keeping the real stdout and stderr for the result.
-// Must run before anything else takes over fds 1 and 2.
+// Points stderr at an in-memory file, keeping the real stdout and stderr for
+// the result. Must run before anything else takes over fds 1 and 2. A file,
+// not a pipe: nothing reads stderr before the exit, so a pipe fills up (64 KB)
+// under debug output, and then either blocks the program or, non-blocking,
+// drops the verdict, which testlib writes last.
 inline void capture_verdict() {
   real_stdout = dup(1);
   real_stderr = dup(2);
-  if (pipe(verdict_pipe) == 0) {
-    // Non-blocking: a verdict longer than the pipe must not hang the exit.
-    fcntl(verdict_pipe[1], F_SETFL, O_NONBLOCK);
-    dup2(verdict_pipe[1], 2);
-  }
+  verdict_fd = memfd_create("verdict", MFD_CLOEXEC);
+  if (verdict_fd >= 0) dup2(verdict_fd, 2);
 }
 
-// The first line the testlib program wrote to stderr, e.g. "ok 3 queries".
+inline bool starts_with(const std::string &s, const char *prefix) {
+  return s.rfind(prefix, 0) == 0;
+}
+
+// testlib's verdict lines: "ok", "wrong answer", "wrong output format",
+// "unexpected eof", "FAIL" and "points <x>".
+inline bool is_verdict_line(const std::string &line) {
+  return starts_with(line, "ok") || starts_with(line, "points ") ||
+         starts_with(line, "wrong answer") ||
+         starts_with(line, "wrong output format") ||
+         starts_with(line, "unexpected eof") || starts_with(line, "FAIL");
+}
+
+// The last verdict line the testlib program wrote to stderr, e.g. "ok 3
+// queries", or "" if it wrote none. The last, as rbx reads it: whatever the
+// program printed before quitting is debug output.
 inline std::string read_verdict() {
   fflush(stderr);
   close(2);
-  close(verdict_pipe[1]);
   std::string text;
-  char buf[4096];
-  ssize_t k;
-  while ((k = read(verdict_pipe[0], buf, sizeof buf)) > 0) text.append(buf, k);
-  return text.substr(0, text.find('\n'));
+  if (verdict_fd >= 0 && lseek(verdict_fd, 0, SEEK_SET) == 0) {
+    char buf[4096];
+    ssize_t k;
+    while ((k = read(verdict_fd, buf, sizeof buf)) > 0) text.append(buf, k);
+  }
+  std::string verdict;
+  size_t start = 0;
+  while (start < text.size()) {
+    size_t end = text.find('\n', start);
+    if (end == std::string::npos) end = text.size();
+    std::string line = text.substr(start, end - start);
+    if (is_verdict_line(line)) verdict = line;
+    start = end + 1;
+  }
+  return verdict;
 }
 
 enum class Verdict { kAccepted, kRejected, kPartial, kJudgeError };
 
 // The fraction a `kPartial` verdict awards.
 inline double partial_outcome = 0;
-
-inline bool starts_with(const std::string &s, const char *prefix) {
-  return s.rfind(prefix, 0) == 0;
-}
 
 // testlib's verdict lines: "ok", "wrong answer", "wrong output format",
 // "unexpected eof", "FAIL" and "points <x>". As in rbx, `quitp(x)` awards x

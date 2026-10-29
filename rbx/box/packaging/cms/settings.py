@@ -5,13 +5,15 @@ one of `contest.rbx.yml`, field by field, the contest winning. `tokens` is the
 exception: it is replaced whole, because changing `mode` makes the inherited
 finite-mode fields meaningless.
 
-An unset field is not emitted, so CMS keeps its own default. Two fields have
+An unset field is not emitted, so CMS keeps its own default. Three fields have
 rbx defaults instead, because CMS's do not mean what rbx means:
 
 - `scoreMode` is `max`: CMS's `max_tokened_last` scores the *last* submission
   when tokens are off, and rbx's per-submission score means the best one.
 - `publicTestcases` is `samples`: CMS's Polygon importer marks every test
   public, which would show contestants per-test results on the hidden set.
+- `scorePrecision` is 2, at both levels: CMS's 0 shows a 45.84 rbx computes
+  as 46.
 """
 
 from typing import Any, Dict, List, Optional, Sequence, TypeVar, Union
@@ -31,8 +33,13 @@ from rbx.box.packaging.cms.extension import (
     CmsTokenMode,
     CmsTokens,
 )
+from rbx.box.scoring import partial
 
 M = TypeVar('M', bound=BaseModel)
+
+# The decimal places CMS shows scores with, unless the settings say otherwise.
+# CMS's own default is 0, which rounds a 45.84 to 46; rbx shows two.
+SCORE_PRECISION = partial.PRECISION
 
 _SCORE_MODES = {
     CmsScoreMode.MAX: 'max',
@@ -135,6 +142,7 @@ def task_keys(task: Optional[CmsTaskSettings]) -> Dict[str, Any]:
     if task.feedbackLevel is not None:
         keys['feedback_level'] = task.feedbackLevel.value
     keys.update(_limits(task))
+    keys.setdefault('score_precision', SCORE_PRECISION)
     return keys
 
 
@@ -173,6 +181,7 @@ def contest_keys(contest: Optional[CmsContestSettings]) -> Dict[str, Any]:
     if contest.allowedLocalizations is not None:
         keys['allowed_localizations'] = list(contest.allowedLocalizations)
     keys.update(_limits(contest))
+    keys.setdefault('score_precision', SCORE_PRECISION)
     return keys
 
 

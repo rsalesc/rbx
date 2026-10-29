@@ -43,7 +43,8 @@ scenarios:
           zip_file_contains:
             path: build/*.zip
             entries:
-              problem.xml: '/(?s)treat-points-from-checker-as-percent="true".*name="big"[^>]*points-policy="each-test"/'
+              # No statement: CMS's importer still needs a `<name>` for the title.
+              problem.xml: '/(?s)<names>\s*<name language="english" value="partial-scoring" main="true"/>.*treat-points-from-checker-as-percent="true".*name="big"[^>]*points-policy="each-test"/'
               files/cms_conf.py: "[20.0, '^(003|001|002)$'], [20.0, '^(004|001|002)$'], [20.0, '^(005|001|002)$']"
               files/cms_testlib.h: "#ifdef RBX_CMS"
 

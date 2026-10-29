@@ -136,7 +136,7 @@ def test_batch_conf_sets_group_scoring_and_score_mode(
     namespace = _run(polygon_loader.render_conf(testing_pkg.yml, entries), str(conf))
 
     # The task score is the best submission's, not the last one's.
-    assert namespace['general'] == {'score_mode': 'max'}
+    assert namespace['general'] == {'score_mode': 'max', 'score_precision': 2}
     assert namespace['datasets']['tests']['score_type'] == 'GroupMin'
     assert namespace['datasets']['tests']['score_type_parameters'] == [[100, '.*']]
 
@@ -185,6 +185,7 @@ def test_conf_sets_the_task_settings(testing_pkg, tmp_path):
         'max_submission_number': 50,
         'min_submission_interval': datetime.timedelta(seconds=60),
         'token_mode': 'finite',
+        'score_precision': 2,
         'token_gen_interval': datetime.timedelta(minutes=30),
     }
 

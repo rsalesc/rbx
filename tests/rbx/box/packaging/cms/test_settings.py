@@ -47,8 +47,15 @@ def test_either_level_alone_is_kept():
     assert settings.merge(None, None) == CmsExtension()
 
 
-def test_unset_settings_emit_only_rbx_score_mode():
-    assert settings.task_keys(None) == {'score_mode': 'max'}
+def test_unset_settings_emit_only_rbx_defaults():
+    # CMS's own score precision, 0, would round a 45.84 rbx shows to 46.
+    assert settings.task_keys(None) == {'score_mode': 'max', 'score_precision': 2}
+
+
+def test_a_task_score_precision_overrides_rbx_default():
+    task = _cms(task={'scorePrecision': 0}).task
+
+    assert settings.task_keys(task)['score_precision'] == 0
 
 
 def test_task_settings_use_cms_names():

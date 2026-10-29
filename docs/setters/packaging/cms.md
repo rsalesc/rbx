@@ -44,10 +44,11 @@ unzip build/problem.zip -d my-problem
 cmsImportTask -L polygon_task my-problem
 ```
 
-!!! note "Interactive problems need C++"
-    CMS runs an interactive problem through a manager that {{rbx}} compiles from your
-    interactor, and from your checker if the interactor needs one. Write both in C++:
-    {{rbx}} refuses to build the package otherwise.
+!!! note "Checkers and interactors need C++"
+    CMS compiles your checker as C++ when it imports the problem. It runs an interactive
+    problem through a manager that {{rbx}} compiles from your interactor, and from your
+    checker if the interactor needs one. Write both in C++: {{rbx}} refuses to build the
+    package otherwise.
 
 ### Italian YAML
 
@@ -137,7 +138,7 @@ The `contest.rbx.yml` block wins, field by field: in the preceding example, task
 `tokens`, which a contest replaces as a whole. A problem you package outside a contest
 gets only the `env.rbx.yml` settings.
 
-{{rbx}} leaves out any field you don't set, so CMS uses its own default for it. Two fields
+{{rbx}} leaves out any field you don't set, so CMS uses its own default for it. Three fields
 are exceptions:
 
 - `scoreMode` defaults to `max`, the highest score among a contestant's submissions, which
@@ -145,6 +146,8 @@ are exceptions:
   the last submission unless contestants use tokens.
 - `publicTestcases` defaults to `samples`, so contestants see results for the tests in your
   `samples` group only. Set it to `all` or `none` to change that.
+- `scorePrecision` defaults to `2`, so CMS shows scores with two decimal places, as
+  {{rbx}} does. CMS's own default, `0`, rounds a score of 45.84 to 46.
 
 Every setting so far goes under `task`. Next to it, `contest` holds the settings of the CMS
 contest itself, such as `start`, `stop` and `allowUserTests`:
@@ -162,7 +165,8 @@ extensions:
 This contest runs from 9:00 to 14:00, Brasília time. The offsets on `start` and `stop`
 decide those instants; `timezone` only sets how CMS shows times to contestants. `start`,
 `stop` and `perUserTime` describe one event, so {{rbx}} accepts them only in
-`contest.rbx.yml`. To import the `contest` settings into CMS, use an
+`contest.rbx.yml`. `scorePrecision` also goes here, for the contest's total scores, and
+defaults to `2` as it does on tasks. To import the `contest` settings into CMS, use an
 [Italian YAML](#italian-yaml) package: no other package {{rbx}} builds contains them.
 
 The [environment schema](../reference/environment/schema.md#cms) lists every field.

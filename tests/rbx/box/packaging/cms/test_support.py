@@ -16,6 +16,20 @@ def test_batch_problems_are_supported(testing_pkg):
     support.ensure_supported(testing_pkg.yml)
 
 
+def test_batch_problems_with_a_cpp_checker_are_supported(testing_pkg):
+    testing_pkg.set_checker('checker.cpp')
+
+    support.ensure_supported(testing_pkg.yml)
+
+
+def test_batch_problems_with_a_non_cpp_checker_are_refused(testing_pkg):
+    # `cms_conf.py` compiles the checker with g++.
+    testing_pkg.set_checker('checker.py')
+
+    with pytest.raises(typer.Exit):
+        support.ensure_supported(testing_pkg.yml)
+
+
 def test_cpp_interactors_are_supported(testing_pkg):
     _interactive(testing_pkg, 'interactor.cpp')
 
