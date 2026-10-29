@@ -100,8 +100,17 @@ async def any(
         )
         return
 
+    # Anything else the package lists (an interactor, a visualizer, an extra
+    # validator, the grader) is compiled as is. A path it does not list is a
+    # solution, as `rbx run` treats it: linked with the grader in a grader
+    # problem, so `rbx compile` shows the error `rbx run` points at.
+    item: CodeItem
+    if pathlib.Path(path) in package.get_listed_non_solution_paths():
+        item = CodeItem(path=pathlib.Path(path))
+    else:
+        item = package.get_solution_or_adhoc(pathlib.Path(path))
     await _compile(
-        CodeItem(path=pathlib.Path(path)),
+        item,
         sanitized=SanitizationLevel.FORCE if sanitized else SanitizationLevel.NONE,
         warnings=warnings,
         extra_flags=extra_flags,

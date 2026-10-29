@@ -7,6 +7,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Set,
     Tuple,
     TypeVar,
 )
@@ -495,6 +496,49 @@ def get_solution_or_nil(
         if str(solution.path) == name:
             return solution
     return None
+
+
+def get_solution_or_adhoc(
+    path: pathlib.Path, root: pathlib.Path = pathlib.Path()
+) -> Solution:
+    """The solution at `path`: the listed one, or an ad-hoc one expecting ANY.
+
+    How `rbx run` and `rbx compile` treat a path the package does not list, so
+    both build it the same way -- linked with the grader, in a grader problem.
+    """
+    solution = get_solution_or_nil(str(path), root)
+    if solution is not None:
+        return solution
+    return Solution(path=path, outcome=ExpectedOutcome.ANY)
+
+
+def get_listed_non_solution_paths(
+    root: pathlib.Path = pathlib.Path(),
+) -> Set[pathlib.Path]:
+    """Every code path the package lists in a role other than a solution."""
+    pkg = find_problem_package_or_die(root)
+    items: List[CodeItem] = list(pkg.generators) + list(pkg.extraValidators)
+    items += list(pkg.outputValidators)
+    for item in (
+        pkg.checker,
+        pkg.checker.fallback_to if pkg.checker is not None else None,
+        pkg.interactor,
+        pkg.grader,
+        pkg.validator,
+        pkg.visualizer,
+        pkg.solutionVisualizer,
+    ):
+        if item is not None:
+            items.append(item)
+    for group in pkg.testcases:
+        if group.validator is not None:
+            items.append(group.validator)
+        for subgroup in [group, *group.subgroups]:
+            items += list(subgroup.extraValidators) + list(subgroup.outputValidators)
+            for item in (subgroup.visualizer, subgroup.solutionVisualizer):
+                if item is not None:
+                    items.append(item)
+    return {item.path for item in get_globbed_code_items(items, root)}
 
 
 @functools.cache

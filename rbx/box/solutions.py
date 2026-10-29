@@ -1228,6 +1228,17 @@ async def _generate_testcase_interactively(
         shutil.copyfile(answer_file, testcase.outputPath)
         is_output_manual = True
 
+    if (
+        is_output_manual
+        and testcase.outputPath is not None
+        and testcase.outputPath.is_file()
+    ):
+        # A batch grader problem's checker reads answers framed by the grader;
+        # one the setter typed or handed over is raw.
+        framed = graders.framed_output(testcase.outputPath)
+        if framed != testcase.outputPath:
+            shutil.copyfile(framed, testcase.outputPath)
+
     # 2. Generate test output from reference
     main_solution_digest = None
     if check and not (
@@ -1696,12 +1707,8 @@ def expand_solutions_with_source(sols: List[str]) -> List[Tuple[Solution, bool]]
         if str(sol) in seen_sols:
             # This solution was already added.
             continue
-        if str(sol) in pkg_sols:
-            # This solution is in the package.
-            res.append((pkg_sols[str(sol)], False))
-        else:
-            # This solution is fetched from some source.
-            res.append((Solution(path=sol, outcome=ExpectedOutcome.ANY), True))
+        # A listed solution, or one fetched from some source.
+        res.append((package.get_solution_or_adhoc(sol), str(sol) not in pkg_sols))
         seen_sols.add(str(sol))
     return res
 
