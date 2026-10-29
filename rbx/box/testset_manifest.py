@@ -192,11 +192,16 @@ def _validator_per_group(
 
 def _build_groups(group_names: Set[str]) -> List[TestsetGroup]:
     pkg = package.find_problem_package_or_die()
+    # Groups with no built tests are left out, so their dependents depend
+    # directly on whatever those chained them to -- as in the run skeleton.
+    group_dependencies = pkg.group_dependencies.over(
+        [group.name for group in pkg.testcases if group.name in group_names]
+    )
     return [
         TestsetGroup(
             name=group.name,
             score=group.score,
-            deps=pkg.group_dependencies.direct(group.name),
+            deps=group_dependencies.direct(group.name),
             subgroups=[subgroup.name for subgroup in group.subgroups],
             vars=dict(package.get_expanded_vars_for_group(group.name)),
         )

@@ -1151,6 +1151,12 @@ class TestPointsScoring:
         )
         assert package.score_type == ScoreType.POINTS
 
+    def test_a_negative_group_score_is_rejected(self):
+        from rbx.box.schema import TestcaseGroup
+
+        with pytest.raises(ValidationError, match='greater than or equal to 0'):
+            TestcaseGroup(name='small', score=-10)
+
     def test_binary_stays_the_enum(self):
         from rbx.box.schema import ScoreType
 

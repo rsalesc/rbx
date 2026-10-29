@@ -1928,7 +1928,8 @@ def get_truncated_message(message: str, max_length: int = 100) -> str:
 
 def get_expected_score_repr(range: Tuple[float, float]) -> str:
     lo, hi = partial.format_score(range[0]), partial.format_score(range[1])
-    if range[0] == range[1]:
+    # Compared as printed: a range whose bounds round to the same cent is one score.
+    if lo == hi:
         return lo
     if range[1] == 10**9:
         return f'{lo}..'
@@ -1942,7 +1943,7 @@ def get_expected_score_markup(range: Tuple[float, float]) -> str:
 
 def get_expected_score_in_phrase(range: Tuple[float, float]) -> str:
     score_markup = get_expected_score_markup(range)
-    if range[0] == range[1]:
+    if partial.round_score(range[0]) == partial.round_score(range[1]):
         return f'{score_markup}'
     return f'in {score_markup}'
 

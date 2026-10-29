@@ -793,6 +793,7 @@ a statement. Keys need not exist at package level.
 
     score: int = Field(
         default=0,
+        ge=0,
         description="""
 The score of this group in the final score. Useful for
 problems that have points.
