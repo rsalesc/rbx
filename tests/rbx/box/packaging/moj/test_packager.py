@@ -1,18 +1,21 @@
+import asyncio
 import fnmatch
 import json
 import shutil
 import stat
 import subprocess
+from unittest import mock
 
 import pytest
 import typer
 
 from rbx import testing_utils
+from rbx.box.packaging import packager as packager_module
 from rbx.box.packaging.moj import mojtools
 from rbx.box.packaging.moj import statement as moj_statement
 from rbx.box.packaging.moj.packager import JudgeCalibrated, MojPackager
 from rbx.box.schema import PointsScoring, ScoreType, TaskType
-from rbx.box.scoring.dependencies import DependencyPolicy
+from rbx.box.scoring.dependencies import Aggregation, DependencyPolicy
 from rbx.box.statements.schema import ConversionType, StatementType
 from tests.rbx.box.packaging.moj.conftest import (
     CHECKER,
@@ -800,6 +803,48 @@ def test_points_problems_copy_dependency_tests_into_each_group(testing_pkg, tmp_
     assert sorted(p.name for p in inputs.iterdir()) == sorted(
         p.name for p in outputs.iterdir()
     )
+
+
+def test_a_sum_default_overridden_to_min_by_every_group_packages(testing_pkg, tmp_path):
+    # `_refuse_non_min_groups` reads each group's own aggregation, so the problem
+    # default must not reach the dependency flattening either.
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.yml.scoring = PointsScoring(
+        dependencies=DependencyPolicy.LADDER, aggregation=Aggregation.SUM
+    )
+    for name, score in [('samples', 0), ('easy', 40), ('full', 60)]:
+        testing_pkg.add_testgroup_with_manual_testcases(name, [])
+        testing_pkg.yml.testcases[-1].score = score
+        testing_pkg.yml.testcases[-1].aggregation = Aggregation.MIN
+    testing_pkg.save()
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples', 'easy', 'full'])
+    )
+
+    # `full` is judged on its own two tests plus the four it depends on.
+    full = [p for p in (into_path / 'tests' / 'input').iterdir() if '_full_' in p.name]
+    assert len(full) == 6
+
+
+def test_refuses_a_sum_group_before_the_build(testing_pkg):
+    testing_pkg.yml.scoring = PointsScoring()
+    testing_pkg.add_testgroup_with_manual_testcases('samples', [])
+    testing_pkg.add_testgroup_with_manual_testcases('full', [])
+    testing_pkg.yml.testcases[-1].score = 100
+    testing_pkg.yml.testcases[-1].aggregation = Aggregation.SUM
+    testing_pkg.save()
+
+    with mock.patch('rbx.box.builder.verify') as verify:
+        with pytest.raises(typer.Exit):
+            asyncio.run(
+                packager_module.run_packager(
+                    MojPackager, verification=0, timing_mode=JudgeCalibrated()
+                )
+            )
+    verify.assert_not_called()
 
 
 # -- statements -------------------------------------------------------------

@@ -17,6 +17,8 @@ You can also specify the main language of the problem (in case you have multiple
 rbx package polygon -l en
 ```
 
+For a problem that [scores by points](/setters/grading/scoring#scoring-by-points), the package puts each test in its group with its points, and keeps each group's dependencies. A solution that expects `partially correct` or `any` is left out, with a warning, since Polygon has no tag for either.
+
 Or, if you want to build a problem package for each problem in your contest:
 
 ```bash
@@ -138,9 +140,13 @@ This will create a Polygon problem for each problem in your contest following th
 
 This problem will contain the validator, checker, interactor, and any other files you added to the problem. The time and memory limits will also be synced with Polygon, but often it's a good idea to tune them manually in the Polygon interface.
 
-The statement blocks will also be uploaded to Polygon, along with all model solutions. Solutions that are no longer present in the package will be removed from Polygon (marked as deleted).
+The statement blocks will also be uploaded to Polygon, along with all model solutions. Solutions that are no longer present in the package will be removed from Polygon (marked as deleted). As in a problem package, a solution that expects `partially correct` or `any` is left out, and a copy an earlier upload left behind is marked as deleted too.
 
 Testcases are also uploaded. If your package uses generators, the generators are uploaded and the script is updated in Polygon to generate the tests. Manual tests (without generators) are uploaded as files.
+
+For a problem that scores by points, the upload also gives each test its group and points, and sets each group's dependencies, as in a problem package.
+
+If your checker [awards partial points](/setters/grading/scoring#awarding-partial-points), Polygon must read those points as a percentage, and the API can't set that. To set it, open the problem's **Tests** page in Polygon and select **Treat points from checker as a percent** under **Enable points**. You only need to do this once per problem, and {{rbx}} reminds you when it uploads the tests.
 
 
 ##### When Polygon throttles you

@@ -45,6 +45,10 @@ def process_statements(
         lang_list.append(statement.language)
     uploaded_languages = set()
 
+    if not lang_list:
+        # A problem without statements has nothing to upload.
+        return
+
     if main_language is None:
         main_language = lang_list[0]
 

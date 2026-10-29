@@ -1,8 +1,9 @@
 import asyncio
+import collections
 import pathlib
 import re
-from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Literal, Optional, Set
+from concurrent.futures import Future, ThreadPoolExecutor
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 
 import rich
 import rich.markup
@@ -13,6 +14,8 @@ from rbx import console, utils
 from rbx.box import graders, header, naming, package
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging import flattening
+from rbx.box.packaging import packager as base_packager
+from rbx.box.packaging.polygon import packager as polygon_packager
 from rbx.box.packaging.polygon import polygon_api as api
 from rbx.box.packaging.polygon.statement_block_utils import process_statements
 from rbx.box.packaging.polygon.utils import get_polygon_language_from_code_item
@@ -21,6 +24,7 @@ from rbx.box.schema import (
     ExpectedOutcome,
     Generator,
     GeneratorCall,
+    ScoreType,
     Solution,
     TaskType,
     Testcase,
@@ -100,20 +104,34 @@ def _get_polygon_api() -> api.Polygon:
     )
 
 
-def _get_solution_tag(solution: Solution, is_first: bool = False) -> api.SolutionTag:
-    if solution.outcome == ExpectedOutcome.ACCEPTED:
-        return api.SolutionTag.OK if not is_first else api.SolutionTag.MA
-    if solution.outcome == ExpectedOutcome.ACCEPTED_OR_TLE:
-        return api.SolutionTag.TO
-    if solution.outcome == ExpectedOutcome.WRONG_ANSWER:
-        return api.SolutionTag.WA
-    if solution.outcome == ExpectedOutcome.TIME_LIMIT_EXCEEDED:
-        return api.SolutionTag.TL
-    if solution.outcome == ExpectedOutcome.MEMORY_LIMIT_EXCEEDED:
-        return api.SolutionTag.ML
+# The `problem.xml` tags of the offline package, in the API's vocabulary.
+_API_SOLUTION_TAGS = {
+    'main': api.SolutionTag.MA,
+    'accepted': api.SolutionTag.OK,
+    'time-limit-exceeded-or-accepted': api.SolutionTag.TO,
+    'wrong-answer': api.SolutionTag.WA,
+    'time-limit-exceeded': api.SolutionTag.TL,
+    'time-limit-exceeded-or-memory-limit-exceeded': api.SolutionTag.TM,
+    'memory-limit-exceeded': api.SolutionTag.ML,
+    'rejected': api.SolutionTag.RJ,
+}
+
+
+def _get_solution_tag(
+    solution: Solution, is_first: bool = False
+) -> Optional[api.SolutionTag]:
+    """The tag the offline package gives a solution, or `None` when it has none.
+
+    Read off `polygon.packager.get_solution_tag`, so an upload and a
+    `problem.zip` tag (and drop) the same solutions. The API also has a
+    runtime-error tag, which `problem.xml` lacks.
+    """
+    tag = polygon_packager.get_solution_tag(solution, is_main=is_first)
+    if tag is None:
+        return None
     if solution.outcome == ExpectedOutcome.RUNTIME_ERROR:
         return api.SolutionTag.RE
-    return api.SolutionTag.RJ
+    return _API_SOLUTION_TAGS[tag]
 
 
 def _find_or_create_problem(problem_name: str) -> api.Problem:
@@ -507,11 +525,20 @@ def _upload_generator(
         raise typer.Exit(1) from None
 
 
+# Each uploaded test's Polygon index, with the entry it was uploaded from.
+LandedTests = List[Tuple[int, 'GenerationTestcaseEntry']]
+
+
 def _upload_testcases(
     problem: api.Problem,
     ns: flattening.FlatNamespace,
     entries: Optional[List['GenerationTestcaseEntry']] = None,
-):
+) -> LandedTests:
+    """Upload the tests, and say where each one landed.
+
+    Manual tests come first, in order, minus any Polygon finds a duplicate of;
+    generated ones follow, in script order.
+    """
     entries = _extracted_entries(entries)
     generators = _collect_generators(entries)
 
@@ -532,6 +559,8 @@ def _upload_testcases(
         next_index = 1
         task_id = progress.add_task('Uploading testcases...', total=len(entries))
         calls = []
+        generated: List[GenerationTestcaseEntry] = []
+        landed: LandedTests = []
         substituted: List[str] = []
         for entry in entries:
             if entry.metadata.generator_call is not None:
@@ -547,6 +576,7 @@ def _upload_testcases(
                         args=entry.metadata.generator_call.args,
                     )
                 )
+                generated.append(entry)
                 continue
 
             content = entry.metadata.content
@@ -573,6 +603,7 @@ def _upload_testcases(
             )
             progress.update(task_id, advance=1)
             if saved:
+                landed.append((next_index, entry))
                 next_index += 1
 
         if calls:
@@ -590,15 +621,17 @@ def _upload_testcases(
                     )
                     raise typer.Exit(1) from None
                 raise
+            landed.extend((next_index + i, entry) for i, entry in enumerate(generated))
         progress.update(task_id, completed=len(entries))
 
     _warn_about_substituted_empty_tests(substituted)
+    return landed
 
 
 def _upload_testcases_raw(
     problem: api.Problem,
     entries: Optional[List['GenerationTestcaseEntry']] = None,
-):
+) -> LandedTests:
     entries = _extracted_entries(entries)
 
     errors = _validate_raw_tests(entries)
@@ -614,6 +647,7 @@ def _upload_testcases_raw(
     with rich.progress.Progress(speed_estimate_period=5) as progress:
         next_index = 1
         task_id = progress.add_task('Uploading raw testcases...', total=len(entries))
+        landed: LandedTests = []
         substituted: List[str] = []
         for entry in entries:
             path = _resolve_raw_test_input_path(entry)
@@ -634,34 +668,111 @@ def _upload_testcases_raw(
             )
             progress.update(task_id, advance=1)
             if saved:
+                landed.append((next_index, entry))
                 next_index += 1
         progress.update(task_id, completed=len(entries))
 
     _warn_about_substituted_empty_tests(substituted)
+    return landed
+
+
+_POINTS_POLICIES = {
+    'complete-group': api.PointsPolicy.COMPLETE_GROUP,
+    'each-test': api.PointsPolicy.EACH_TEST,
+}
+_FEEDBACK_POLICIES = {
+    'none': api.FeedbackPolicy.NONE,
+    'points': api.FeedbackPolicy.POINTS,
+    'icpc': api.FeedbackPolicy.ICPC,
+    'complete': api.FeedbackPolicy.COMPLETE,
+}
+
+
+def _warn_about_percent_mode() -> None:
+    """The API cannot turn on the percent mode, which a `quitp` checker needs."""
+    checker = package.get_checker_or_builtin()
+    if not base_packager.mentions_points(checker):
+        return
+    console.console.print(
+        f'[warning]{checker.href()} awards partial points with '
+        '[item]quitp[/item], which rbx reads as a percentage. The Polygon API '
+        "cannot set that mode: on the problem's [item]Tests[/item] page, pick "
+        '[item]Treat points from checker as a percent[/item] under '
+        '[item]Enable points[/item] by hand, once.[/warning]'
+    )
+
+
+def _upload_scoring(problem: api.Problem, landed: LandedTests) -> None:
+    """Give the uploaded tests the groups, points and dependencies the offline
+    `problem.xml` declares (`polygon.packager.get_tests_and_groups`)."""
+    pkg = package.find_problem_package_or_die()
+    if pkg.score_type != ScoreType.POINTS or not landed:
+        return
+    landed = sorted(landed, key=lambda item: item[0])
+    indices = [index for index, _ in landed]
+    tests, groups = polygon_packager.get_tests_and_groups(
+        [entry for _, entry in landed]
+    )
+
+    console.console.print('Uploading test groups and points...')
+    problem.enable_points(True)
+    problem.enable_groups('tests', True)
+
+    members: Dict[str, List[int]] = collections.defaultdict(list)
+    for index, test in zip(indices, tests):
+        assert test.group is not None
+        members[test.group].append(index)
+    # Every group exists once it holds a test, so dependencies can name it.
+    for group_name, group_indices in members.items():
+        problem.set_test_group('tests', group_name, group_indices)
+    for group in groups:
+        problem.save_test_group(
+            'tests',
+            group.name,
+            points_policy=_POINTS_POLICIES[group.points_policy],
+            feedback_policy=_FEEDBACK_POLICIES[group.feedback_policy],
+            # Always sent, so a dependency dropped locally is dropped there too.
+            dependencies=[dep.group for dep in group.dependencies],
+        )
+
+    # One call per test whose points differ: a generated test keeps its script
+    # line when saved without an input.
+    remote = {test.index: test.points for test in problem.tests('tests', True)}
+    for index, test in zip(indices, tests):
+        if remote.get(index) != test.points:
+            problem.save_test('tests', index, None, test_points=test.points)
+
+    _warn_about_percent_mode()
 
 
 def _upload_solutions(problem: api.Problem, ns: flattening.FlatNamespace):
     saved_solutions = set()
 
-    def process_solution(solution: Solution, i: int):
+    def process_solution(solution: Solution, tag: api.SolutionTag):
         source_type = get_polygon_language_from_code_item(solution)
         name = ns.flat_name_for(solution)
         console.console.print(
-            f'Uploading solution {solution.href()} (lang: {source_type}, tag: [item]{_get_solution_tag(solution, is_first=i == 0)}[/item])...'
+            f'Uploading solution {solution.href()} (lang: {source_type}, tag: [item]{tag}[/item])...'
         )
         problem.save_solution(
             name,
             ns.content_for(solution),
             source_type=source_type,
-            tag=_get_solution_tag(solution, is_first=i == 0),
+            tag=tag,
         )
         saved_solutions.add(name)
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = []
+        futures: List[Tuple[Solution, Future]] = []
         for i, solution in enumerate(package.get_solutions()):
-            futures.append(executor.submit(process_solution, solution, i))
-        for solution, future in zip(package.get_solutions(), futures):
+            tag = _get_solution_tag(solution, is_first=i == 0)
+            if tag is None:
+                # Left out, as from `problem.zip`; a copy an earlier upload left
+                # is stubbed out below with the other stale ones.
+                polygon_packager.warn_about_untagged_solution(solution)
+                continue
+            futures.append((solution, executor.submit(process_solution, solution, tag)))
+        for solution, future in futures:
             try:
                 future.result()
             except api.PolygonRequestFailedException as e:
@@ -872,6 +983,7 @@ async def upload_problem(
             if pkg.grader is not None:
                 _update_grader(problem, ns)
             _update_checker(problem, ns)
+            polygon_packager.warn_about_pc(package.get_checker_or_builtin().path)
 
         if (
             pkg.type == TaskType.COMMUNICATION
@@ -901,9 +1013,10 @@ async def upload_problem(
 
         if 'tests' in which_upload:
             if raw_tests:
-                _upload_testcases_raw(problem, entries)
+                landed = _upload_testcases_raw(problem, entries)
             else:
-                _upload_testcases(problem, ns, entries)
+                landed = _upload_testcases(problem, ns, entries)
+            _upload_scoring(problem, landed)
 
     if 'statements' in which_upload:
         await _upload_statement(
