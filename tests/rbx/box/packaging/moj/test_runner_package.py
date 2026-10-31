@@ -451,6 +451,51 @@ def test_a_package_that_is_not_a_probe_keeps_mojs_parallel_default(
     assert not [line for line in directives if line.startswith('TLERERUN')]
 
 
+def _judging_probe_conf(testing_pkg, tmp_path) -> str:
+    _package_with_every_solution_kind(testing_pkg)
+    return (
+        run_packager(
+            testing_pkg,
+            tmp_path,
+            build_entries(tmp_path, ['samples']),
+            timing_mode=ProbePinned(default_ms=2000),
+            probe=ProbePackage(submission_languages=('cpp',), judge_in_parallel=True),
+        )
+        / 'conf'
+    ).read_text()
+
+
+def test_a_judging_probe_runs_its_tests_in_parallel(testing_pkg, tmp_path):
+    """`rbx run` wants verdicts, so it is judged as a student's submission is.
+
+    Measured on the park (2026-10-31, 168 tests): the serial probe took 74 s of
+    judge time, the parallel one 29 s, with each test pinned to its own CPU.
+    Said explicitly, so a changed MOJ default never changes what rbx asked for.
+    """
+    directives = _directives(_judging_probe_conf(testing_pkg, tmp_path))
+
+    assert 'ALLOWPARALLELTEST=y' in directives
+    assert 'ALLOWPARALLELTEST=n' not in directives
+    assert not [line for line in directives if line.startswith('MAXPARALLELTESTS')]
+
+
+def test_a_judging_probe_reruns_a_test_that_hit_the_limit(testing_pkg, tmp_path):
+    """Real judging gives a contended TLE a serial second chance; so does `rbx run`.
+
+    The rerun is appended to the verdicts, which `TestrunStatus.by_name` reads
+    last-entry-wins; `test_run_solution.py` pins that shape.
+    """
+    directives = _directives(_judging_probe_conf(testing_pkg, tmp_path))
+
+    assert 'TLERERUN=y' in directives
+    assert 'TLERERUN=n' not in directives
+
+
+def test_a_probe_measures_unless_asked_to_judge(testing_pkg, tmp_path):
+    # The default is the measuring probe: every `rbx time` phase relies on it.
+    assert not ProbePackage(submission_languages=('cpp',)).judge_in_parallel
+
+
 def test_a_binary_package_that_is_not_a_probe_still_halts_early(testing_pkg, tmp_path):
     # The suppression is the probe's alone; the judge-time saving still applies to a
     # package students actually submit to.

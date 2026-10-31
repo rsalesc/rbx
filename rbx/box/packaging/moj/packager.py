@@ -267,6 +267,15 @@ class ProbePackage:
     # `rbx run` had a `--runner` flag.
     halt_on: FrozenSet[str] = frozenset({'TLE'})
 
+    # Whether the judge may run this package's tests in parallel, as it judges a
+    # student's submission. Off for the two `rbx time` phases, which *measure*;
+    # on for `rbx run`, which only wants the verdicts a real submission would get.
+    # See `MojPackager._parallelism_lines` for what each side emits and why.
+    #
+    # Defaulted to measuring, which is what every probe did before `rbx run` was
+    # allowed to go parallel.
+    judge_in_parallel: bool = False
+
     def __post_init__(self) -> None:
         # Empty would *work*, in the permissive direction: `_write_moj_meta` omits an
         # empty `languages` and the server then preserves whatever the problem already
@@ -1180,32 +1189,53 @@ class MojPackager(BasePackager):
         ]
 
     def _parallelism_lines(self) -> List[str]:
-        """What a probe changes so the judge *measures* rather than judges.
+        """Whether a probe is *measured* or *judged*, said to the judge.
 
         Two knobs, one argument: `ALLOWPARALLELTEST` and `TLERERUN`. Both are
         MOJ defaults tuned for judging throughput, and both corrupt a measurement.
 
-        `build-and-test.sh` runs the testset **in parallel by default** -- it sets
-        `NPROC=$(nproc)` and only drops to one job when `ALLOWPARALLELTEST` is exactly
-        `n` (lines 434-436). The MOJ park reports 56 CPUs, so a package that says
-        nothing is measured with dozens of tests competing for the machine, and every
-        time it reports is inflated by however much contention it happened to meet.
-        (It is also why the `tests` array comes back unordered.)
+        `build-and-test.sh` runs the testset **in parallel by default**, in a pool
+        of workers the judge agent sizes and pins to CPU groups of their own
+        (mojtools 2026-09-24); it drops to one worker when `ALLOWPARALLELTEST` is
+        exactly `n` and the agent did not say otherwise. (Parallelism is also why
+        the `tests` array comes back unordered.)
 
-        A probe package exists *only* to measure, so it must not be judged that way --
-        and mojtools already agrees: `calibreitor.sh:125` exports `ALLOWPARALLELTEST=n`
-        before running the accepted solutions, for exactly this reason. Calibration
-        measures, so it serialises; the probe measures, so it serialises too.
+        **A measuring probe** -- either `rbx time` phase -- serialises, as
+        `calibreitor.sh` does before it measures (it exports `MOJ_PARALLEL=1`).
+        Pinning took most of the contention out of a parallel run (2.3 ms per test
+        on average, measured 2026-10-31), but a timing that feeds a time limit is
+        not the place to accept "most".
+
+        **A judging probe** -- `rbx run`, `ProbePackage.judge_in_parallel` -- runs
+        the way a student's submission is judged. It wants verdicts, not
+        timings, and serialising it cost the measured run 74 s of judge time
+        where 29 s did. Both knobs are said **explicitly** rather than left to
+        MOJ's defaults, so a changed upstream default never changes what rbx
+        asked for.
 
         Left at MOJ's default for a package a setter builds: there, parallelism is a
         judging-speed feature and the limits are pinned through `TLOVERRIDE`, so what
         the judge measures decides nothing.
 
-        Note `MAXPARALLELTESTS` is applied *after* this knob (line 437) and would
-        override it. The packager emits it nowhere, and a probe must never grow one.
+        Note `MAXPARALLELTESTS` is applied *after* this knob and would override
+        it. The packager emits it nowhere, and a probe must never grow one.
         """
         if self.probe is None:
             return []
+        if self.probe.judge_in_parallel:
+            return [
+                '# Judge the testset in parallel, as a student submission is judged:',
+                '# this probe serves `rbx run`, which wants verdicts, not timings. The',
+                '# judge agent pins each parallel test to a CPU group of its own.',
+                'ALLOWPARALLELTEST=y',
+                '',
+                '# And re-run a test that hit the limit, as real judging does: a TLE',
+                '# caused by contention gets the same serial second chance a student',
+                '# gets. build-and-test.sh appends the rerun to the verdicts, so the',
+                '# test is reported twice and the last entry is the one it kept.',
+                'TLERERUN=y',
+                '',
+            ]
         return [
             '# Run the testset one test at a time. build-and-test.sh otherwise uses',
             '# NPROC=$(nproc) -- 56 on the MOJ park -- and a timing measured against',

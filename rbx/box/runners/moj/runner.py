@@ -1342,6 +1342,11 @@ class MojRunner:
             probe=ProbePackage(
                 submission_languages=_testrun_languages(ctx),
                 halt_on=_halt_on(ctx),
+                # Only a plain run judges in parallel: it wants the verdicts a
+                # student would get. Both `rbx time` phases measure, and keep the
+                # serial judge. The `-run` problem is separate from theirs, so
+                # this moves no timing probe's fingerprint.
+                judge_in_parallel=ctx.purpose == RunPurpose.RUN,
             ),
         )
         # Kept for `run_solution`, which needs two things from this exact object:

@@ -1083,6 +1083,33 @@ async def test_a_plain_run_halts_on_nothing(testing_pkg, tmp_path, monkeypatch):
     assert 'STOPWHEN_RE' not in conf
 
 
+@pytest.mark.parametrize(
+    'purpose, parallel',
+    [
+        (RunPurpose.RUN, 'y'),
+        (RunPurpose.ESTIMATION, 'n'),
+        (RunPurpose.VALIDATION, 'n'),
+    ],
+)
+async def test_only_a_plain_run_is_judged_in_parallel(
+    testing_pkg, tmp_path, monkeypatch, purpose, parallel
+):
+    """`rbx run` wants verdicts; both `rbx time` phases measure.
+
+    So a plain run is judged as a student's submission is -- tests in parallel,
+    a contended TLE rerun -- while a timing run keeps the serial judge it
+    measures on.
+    """
+    minimal_package(testing_pkg)
+    fake = FakeMoj(tmp_path / 'snapshots').install(monkeypatch)
+
+    await MojRunner().prepare(_context(tmp_path, purpose=purpose))
+
+    conf = _conf(fake.uploaded)
+    assert conf['ALLOWPARALLELTEST'] == parallel
+    assert conf['TLERERUN'] == parallel
+
+
 async def test_fail_fast_halts_on_every_bad_verdict(testing_pkg, tmp_path, monkeypatch):
     """`rbx run --fail-fast` aborts on any non-accepted verdict, so all three go on.
 

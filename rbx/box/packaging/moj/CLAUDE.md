@@ -236,6 +236,17 @@ A package a setter builds is left at MOJ's default: there, parallelism is a
 judging-speed feature and the limits are pinned through `TLOVERRIDE`, so what the judge
 measures decides nothing.
 
+**A judging probe is the exception: `rbx run` goes parallel.** `ProbePackage.judge_in_parallel`
+(set by the runner for `RunPurpose.RUN` only) emits `ALLOWPARALLELTEST=y` and `TLERERUN=y`
+explicitly. A plain run wants the verdicts a student would get, not timings, and the
+park now pins each parallel test to a CPU group of its own (mojtools 2026-09-24), so the
+"dozens of competing tests" above no longer describes it. Measured 2026-10-31 on 168
+tests: 74 s of judge time serial, 29 s parallel, per-test times within 2.3 ms on average.
+With `TLERERUN=y` the judge reruns only the **first** TLE in name order, then latches; the
+rerun's entry is appended **after every other test** in `tests[]`, and
+`TestrunStatus.by_name` keeps it (last entry wins). Design:
+`docs/plans/2026-11-01-moj-parallel-run-and-kattis-calibration-design.md`.
+
 Note `MAXPARALLELTESTS` is applied *after* this knob and would override it. The packager
 emits it nowhere, and a probe must never grow one.
 
