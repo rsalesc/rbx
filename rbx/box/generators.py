@@ -619,6 +619,7 @@ async def generate_testcases(
                             of=str(ref_entry),
                             reason='call',
                             call=str(entry.metadata.generator_call),
+                            name=str(entry.subgroup_entry),
                         )
                     )
             tests_with_same_call.append(entry)
@@ -637,6 +638,7 @@ async def generate_testcases(
                         test=entry.full_repr(),
                         of=ref_entry.full_repr(),
                         reason='input',
+                        name=str(entry.subgroup_entry),
                     )
                 )
             tests_with_same_digest.append(entry)

@@ -26,7 +26,7 @@ from rich.text import Text
 
 from rbx import console
 from rbx.box.formatting import get_formatted_memory, href
-from rbx.box.issue_codes import DOCS_URL
+from rbx.box.issue_codes import DOCS_URL, IgnoreRule
 from rbx.box.issues.schema import (
     AssetCompilationWarningsIssue,
     BorderlineTleIssue,
@@ -51,6 +51,7 @@ from rbx.box.issues.schema import (
     NoValidatorIssue,
     SanitizerFindingIssue,
     SlowAcceptedSolutionIssue,
+    StaleIgnoreRuleIssue,
     UnexpectedScoreIssue,
     UnmetExpectationIssue,
     UntunedLimitsIssue,
@@ -187,6 +188,11 @@ def summarize(issue: Issue) -> str:
         return _summarize_lints(issue)
     if isinstance(issue, DuplicateTestIssue):
         return warning_stack.describe_duplicate_test(issue.duplicate)
+    if isinstance(issue, StaleIgnoreRuleIssue):
+        return (
+            f'the [item]issues.ignore[/item] rule for [item]{issue.rule.code.value}[/item] '
+            f'on [item]{escape(issue.rule.on or "")}[/item] matches nothing in the package'
+        )
     if isinstance(issue, BoundsNotHitIssue):
         where = f'in group [item]{issue.group}[/item], ' if issue.group else ''
         bounds = ', '.join(
@@ -259,6 +265,13 @@ def explain(issue: Issue, runs_dir: Optional[str] = None) -> List[str]:
                 'the solution-wide expectation held; only per-group ones failed'
             )
         return lines
+    if isinstance(issue, StaleIgnoreRuleIssue):
+        return [
+            'usually a solution, file or group that was renamed: the rule now '
+            'silences nothing, and the finding it was written for is back under '
+            'its new name.',
+            'point `on` at the new name, or delete the rule.',
+        ]
     if isinstance(issue, BoundsNotHitIssue):
         scope = 'of this group ' if issue.group else ''
         return [
@@ -273,11 +286,17 @@ def explain(issue: Issue, runs_dir: Optional[str] = None) -> List[str]:
             if issue.duplicate.reason == 'call'
             else 'their inputs are byte-identical'
         )
-        return [
+        lines = [
             f'{how}, so the second costs judging time without testing anything new.',
             'if you meant it, end its testplan line with `@allow-duplicate`, or '
             'set `allowDuplicate` on its group.',
         ]
+        if issue.duplicate.name:
+            lines.append(
+                f'to ignore just this one: `on: {escape(issue.duplicate.name)}` '
+                'under `issues.ignore`.'
+            )
+        return lines
     if isinstance(issue, LinterWarningsIssue):
         lines = []
         if issue.assetKind is not None:
@@ -446,7 +465,11 @@ def _headline(report: IssueReport) -> str:
 
 
 def _print_issue(
-    issue: Issue, runs_dir: Optional[str], detailed: bool, ignored: bool = False
+    issue: Issue,
+    runs_dir: Optional[str],
+    detailed: bool,
+    ignored: bool = False,
+    rule: Optional[IgnoreRule] = None,
 ) -> None:
     marker = '[info]-[/info]' if ignored else _SEVERITY_MARKER[issue.severity]
     solution = _solution_of(issue)
@@ -460,6 +483,15 @@ def _print_issue(
     console.console.print(
         f'{marker} {where}{summarize(issue)} [info]({tag}{issue.code.value})[/info]'
     )
+    # Not held back for `-d`: a reason is short, and the reason a finding is
+    # silenced is the whole point of listing a silenced one.
+    if rule is not None and rule.reason:
+        console.console.print(
+            Padding(
+                Text.from_markup(f'[info]reason: {escape(rule.reason)}[/info]'),
+                (0, 0, 0, 4),
+            )
+        )
     if not detailed:
         return
     for line in explain(issue, runs_dir):
@@ -506,8 +538,11 @@ def print_report(
 
     for issue in report.issues:
         _print_issue(issue, report.runsDir, detailed)
-    for issue in shown_ignored:
-        _print_issue(issue, report.runsDir, detailed, ignored=True)
+    # Index for index; a report from before `ignoredBy` existed has none.
+    rules: List[Optional[IgnoreRule]] = list(report.ignoredBy)
+    rules += [None] * (len(shown_ignored) - len(rules))
+    for issue, rule in zip(shown_ignored, rules):
+        _print_issue(issue, report.runsDir, detailed, ignored=True, rule=rule)
 
     if not detailed:
         console.console.print()

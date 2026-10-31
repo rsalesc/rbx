@@ -18,7 +18,13 @@ from pydantic import BaseModel
 
 from rbx.box import package, testcase_extractors, testcase_sample_utils
 from rbx.box.generation_schema import GenerationTestcaseEntry
-from rbx.box.issue_codes import IssueThresholds
+from rbx.box.issue_codes import (
+    CODE_SUBJECTS,
+    IgnoreRule,
+    IssueSubject,
+    IssueThresholds,
+    glob_matches,
+)
 from rbx.box.schema import Package, Solution
 from rbx.box.statements.render import parse_jinja_block_names
 from rbx.box.statements.schema import Statement, StatementType
@@ -69,6 +75,10 @@ class ConfigState(BaseModel):
     testcase_sizes: List[TestcaseSize] = []
     # The environment's limits, handed in for the reason `RunState` takes them.
     thresholds: IssueThresholds = IssueThresholds()
+    # The problem's own scoped `issues.ignore` rules whose `on` matches no
+    # solution, file or group of the package. Collected here, against the
+    # filesystem, so the detector stays pure.
+    stale_ignore_rules: List[IgnoreRule] = []
 
 
 def _explanation_suffix_of(statement: Statement) -> str:
@@ -163,6 +173,30 @@ def _measure_testset(
     )
 
 
+def _is_stale(
+    rule: IgnoreRule, solution_paths: List[str], group_names: List[str]
+) -> bool:
+    """Whether a scoped rule's `on` matches nothing the package has.
+
+    A solution rule is held against the *declared* solutions, not the files on
+    disk: a solution dropped from `solutions:` leaves its file behind, and a
+    rule for it silences nothing all the same. Other files are looked for on
+    disk, since no single list declares them all. Tests are never judged stale:
+    which ones exist depends on the last build, and a rule written ahead of one
+    is not a mistake.
+    """
+    if rule.on is None:
+        return False
+    subject = CODE_SUBJECTS.get(rule.code)
+    if subject is IssueSubject.SOLUTION:
+        return not any(glob_matches(rule.on, path) for path in solution_paths)
+    if subject is IssueSubject.FILE:
+        return not any(path.is_file() for path in pathlib.Path().glob(rule.on))
+    if subject is IssueSubject.GROUP:
+        return not any(glob_matches(rule.on, name) for name in group_names)
+    return False
+
+
 async def collect_config_state(
     pkg: Package,
     contest_languages: Optional[List[str]] = None,
@@ -184,8 +218,11 @@ async def collect_config_state(
     testcase_sizes = _measure_testcases(entries)
     input_bytes, answer_bytes = _measure_testset(testcase_sizes)
 
+    solutions = package.get_solutions()
+    solution_paths = [solution.path.as_posix() for solution in solutions]
+
     return ConfigState(
-        solutions=package.get_solutions(),
+        solutions=solutions,
         has_validator=pkg.validator is not None,
         group_test_counts=group_test_counts,
         sample_count=sum(1 for entry in entries if entry.is_sample()),
@@ -197,4 +234,11 @@ async def collect_config_state(
         testset_answer_bytes=answer_bytes,
         testcase_sizes=testcase_sizes,
         thresholds=thresholds or IssueThresholds(),
+        # The problem's rules only: a contest rule is written for every problem
+        # at once, and missing from most of them is what it is for.
+        stale_ignore_rules=[
+            rule
+            for rule in pkg.issues.rules()
+            if _is_stale(rule, solution_paths, list(group_test_counts))
+        ],
     )

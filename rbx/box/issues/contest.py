@@ -10,11 +10,11 @@ usually the most important row in the table.
 """
 
 import pathlib
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Union
 
 from rbx.box import cd, package, package_utils
 from rbx.box.contest.schema import Contest
-from rbx.box.issue_codes import IssueCode, IssueThresholds
+from rbx.box.issue_codes import IgnoreRule, IssueCode, IssueThresholds
 from rbx.box.issues import settings
 from rbx.box.issues.config_detectors import detect_all_config
 from rbx.box.issues.config_state import ConfigState, collect_config_state
@@ -126,7 +126,7 @@ def build_report(
     runs_dir: pathlib.Path,
     config_state: Optional[ConfigState] = None,
     thresholds: Optional[IssueThresholds] = None,
-    ignore: Iterable[IssueCode] = (),
+    ignore: Iterable[Union[IssueCode, IgnoreRule]] = (),
 ) -> IssueReport:
     """Everything known about a problem: what its config says, and what its last
     run revealed.
@@ -150,12 +150,22 @@ def build_report(
     # Filtered here, after every detector ran, so the detectors stay ignorant of
     # what a setter chose not to see -- and so the ignored ones are still there
     # for `--all` to show.
-    ignored_codes = set(ignore)
-    found = _ordered(config_issues + run_issues)
+    rules = list(ignore)
+    shown: List[Issue] = []
+    ignored: List[Issue] = []
+    ignored_by: List[IgnoreRule] = []
+    for issue in _ordered(config_issues + run_issues):
+        rule = settings.silencing_rule(issue, rules)
+        if rule is None:
+            shown.append(issue)
+        else:
+            ignored.append(issue)
+            ignored_by.append(rule)
     return IssueReport(
         neverRun=state is None,
         ranAt=state.ran_at if state is not None else None,
         runsDir=str(state.runs_dir) if state is not None else None,
-        issues=[issue for issue in found if issue.code not in ignored_codes],
-        ignored=[issue for issue in found if issue.code in ignored_codes],
+        issues=shown,
+        ignored=ignored,
+        ignoredBy=ignored_by,
     )

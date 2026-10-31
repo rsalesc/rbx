@@ -24,6 +24,7 @@ from rbx.box.compilation_findings import (
     LintFinding,
     SolutionCompilation,
 )
+from rbx.box.issue_codes import IgnoreRule, IssueCode
 from rbx.box.issues import config_detectors, detectors, rendering, run_state, schema
 from rbx.box.issues import config_state as config_state_module
 from rbx.box.issues.contest import build_report
@@ -337,6 +338,42 @@ class TestAssetFindings:
         assert 'gens/gen.cpp testlib linter: m (linter-warnings)' in capture.get()
 
 
+class TestIgnoredRendering:
+    def test_all_shows_the_reason_a_rule_gives(self):
+        from rbx import console as rconsole
+
+        rule = IgnoreRule(
+            code=IssueCode.BORDERLINE_TLE,
+            on='sols/slow-*.cpp',
+            reason='TLE only on the slow judge',
+        )
+        report = schema.IssueReport(
+            ranAt=1.0,
+            ignored=[schema.BorderlineTleIssue(solution='sols/slow-a.cpp')],
+            ignoredBy=[rule],
+        )
+
+        with rconsole.console.capture() as capture:
+            rendering.print_report(report, show_ignored=True)
+
+        out = capture.get()
+        assert 'sols/slow-a.cpp' in out
+        assert '(ignored borderline-tle)' in out
+        assert 'reason: TLE only on the slow judge' in out
+
+    def test_all_reads_a_report_without_rules(self):
+        from rbx import console as rconsole
+
+        report = schema.IssueReport(
+            ranAt=1.0, ignored=[schema.BorderlineTleIssue(solution='sols/a.cpp')]
+        )
+
+        with rconsole.console.capture() as capture:
+            rendering.print_report(report, show_ignored=True)
+
+        assert '(ignored borderline-tle)' in capture.get()
+
+
 class TestBoundsNotHit:
     def test_one_issue_per_group(self):
         state = make_state()
@@ -397,6 +434,20 @@ class TestDuplicateTests:
             '[item]main/2 (gen 3)[/item]'
         )
         assert '@allow-duplicate' in rendering.explain(issues[1])[-1]
+
+    def test_explain_gives_the_on_value_to_copy(self):
+        issue = schema.DuplicateTestIssue(
+            duplicate=DuplicateTest(
+                test='main/1 (gen 3)',
+                of='main/0 (gen 2)',
+                reason='input',
+                name='main/strict/1',
+            )
+        )
+
+        assert rendering.explain(issue)[-1] == (
+            'to ignore just this one: `on: main/strict/1` under `issues.ignore`.'
+        )
 
     def test_skeleton_round_trips_the_record(self):
         view = run_state.SkeletonView.model_validate(
@@ -973,6 +1024,9 @@ class TestRendering:
                 duplicate=DuplicateTest(test='main/1', of='main/0', reason='input')
             ),
             schema.BoundsNotHitIssue(bounds=[UnhitBound(name='N', missing=['max'])]),
+            schema.StaleIgnoreRuleIssue(
+                rule=IgnoreRule(code=IssueCode.BORDERLINE_TLE, on='sols/x.cpp')
+            ),
             schema.SlowAcceptedSolutionIssue(solution='s', totalTime=90, threshold=60),
             schema.UntunedLimitsIssue(),
             schema.NoAcceptedSolutionIssue(),
