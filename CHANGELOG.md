@@ -1,3 +1,33 @@
+## 2.3.4 (2026-10-31)
+
+### Feat
+
+- **issues**: scope ignore rules to one solution, file, group or test (#981)
+- **issues**: report duplicate tests and unhit validator bounds as issues (#979)
+- **issues**: report every compile warning and linter message once (#978)
+- **issues**: add issue codes, ignore lists and tunable thresholds (#977)
+- **testset**: let tests be marked as intentionally duplicate (#976)
+- **presets**: declare symlinks a preset creates in new packages (#966)
+- **presets**: add a bundled olympiad preset with random grader secrets (#964)
+- **packaging**: set CMS checker and manager compile flags per language (#962)
+- **graders**: C++ graders for function-call problems (Polygon + CMS) (#959)
+- **scoring**: partial points with quitp, min and sum groups (rbx, Polygon, CMS) (#954)
+- **packaging**: build a problem-less CMS contest in Italian YAML format (#957)
+- **packaging**: configure CMS contest and task settings in env and contest (#951)
+- **scoring**: configure group dependencies under points scoring (#947)
+- **packaging**: --cms flag to import polygon packages into CMS, interactive included (#945)
+- **packaging**: solutions, sample flags and points in the polygon zip (#942)
+
+### Fix
+
+- **cms**: close five gaps between rbx and CMS judging (#975)
+- **packaging**: carry points scoring to every judge or refuse it (#974)
+- **graders**: frame hand-written answers and link ad-hoc solutions (#973)
+- **scoring**: fix negative sum shares and score rounding drift (#972)
+- **graders**: keep grader framing intact under sync_with_stdio(false) (#967)
+- **grading**: never change a stored file's mode, and build public once (#963)
+- **packaging**: refuse a statement-less contest before building for polygon (#950)
+
 ## 2.3.3 (2026-10-23)
 
 ### Fix
