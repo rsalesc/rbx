@@ -34,9 +34,15 @@ your solution wrote, so some of what a local run shows you has no counterpart at
 
 - **No memory usage**, no `.out`/`.err` artifacts, and a verdict code rather than the checker's
   own message.
-- `--runs` greater than one, a sanitizer, and interactive (`communication`) problems are
-  **refused by name** before anything is uploaded — each would produce a report answering a
-  different question than the one you asked.
+- `--runs` greater than one and a sanitizer are **refused by name** before anything is
+  uploaded — each would produce a report answering a different question than the one you asked.
 
 {{rbx}} refuses whatever it cannot answer honestly on a given backend, rather than quietly
 reporting less than you asked for.
+
+Interactive (`communication`) problems run as they would in a real submission: the throwaway
+problem ships your interactor exactly as [`rbx package moj`](/setters/packaging/moj#interactive-problems)
+does, and refuses the same interactors it does. For an interactive problem, MOJ reports the wall
+time of the whole interaction, your interactor and the language runtime's startup included, so
+it's usually higher than the same run's local time. That's the time MOJ judges against, so a
+limit measured this way already has the interaction's overhead built in.

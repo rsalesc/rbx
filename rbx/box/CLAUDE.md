@@ -213,6 +213,13 @@ package it just built fingerprints equal to the one this machine last uploaded a
 calibrated; the fingerprint is a local record in the problem cache, so it cannot see an
 upload from another machine.
 
+**Interactive problems are supported** (`supports_interactive=True`): the probe is an
+ordinary `MojPackager` build, so it ships the same arbiter + `pipe_driver.sh` layout as
+`rbx package moj` (see `packaging/moj/CLAUDE.md`), and verdicts arrive in the batch
+vocabulary. The `time` MOJ reports is the jail's wall clock -- contestant, interactor and
+startup together -- i.e. exactly what MOJ judges against, which is why a remote estimate
+is the fix for the headroom warning the packager prints for locally pinned limits.
+
 **What `prepare` says while it works.** It is the slow half of a remote run -- an upload
 of the whole testset, then a calibration that can take minutes -- and all of it happens
 behind one `StatusProgress`. `_with_ticker` exists for the steps that are a *single*

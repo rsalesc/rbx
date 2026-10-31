@@ -720,7 +720,8 @@ explanations inside it still are.
 time -p moj` estimated the solution alone. Measured on the judge: a Python solution that
 crashed after 0.05s of CPU took 0.11s of wall and came back TLE under a pinned 100ms
 limit. The packager warns about it whenever it pins interactive limits; it does not add
-the headroom itself.
+the headroom itself. The fix it points at is `rbx time -p moj --runner moj`: the MOJ
+runner's probe ships this same interactive layout, so its timings *are* that wall clock.
 
 **Validated** on a 78-solution interactive stress set, test by test against rbx: 38/78
 agreed under mojtools' driver, 53/78 under this one with unmodified mojtools, 56/78 on
