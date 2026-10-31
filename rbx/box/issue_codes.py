@@ -34,6 +34,8 @@ class IssueCode(str, Enum):
     COMPILATION_WARNINGS = 'compilation-warnings'
     ASSET_COMPILATION_WARNINGS = 'asset-compilation-warnings'
     LINTER_WARNINGS = 'linter-warnings'
+    DUPLICATE_TEST = 'duplicate-test'
+    BOUNDS_NOT_HIT = 'bounds-not-hit'
     SANITIZER_FINDING = 'sanitizer-finding'
     BORDERLINE_TLE = 'borderline-tle'
     HIDDEN_VERDICT = 'hidden-verdict'

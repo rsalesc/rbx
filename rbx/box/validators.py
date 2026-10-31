@@ -11,6 +11,7 @@ from rbx.box import checkers, package, setter_config
 from rbx.box.code import SanitizationLevel, compile_item, run_item
 from rbx.box.fields import Primitive, render_var_on_command_line
 from rbx.box.linters.asset_kind import AssetKind
+from rbx.box.run_validation import UnhitBound
 from rbx.box.schema import CodeItem
 from rbx.box.testcase_extractors import (
     GenerationMetadata,
@@ -549,13 +550,60 @@ def _is_partial_build(groups: Optional[Set[str]]) -> bool:
     return not set(group.name for group in pkg.testcases).issubset(groups)
 
 
+def unhit_bounds(
+    infos: Iterable[TestcaseValidationInfo],
+    groups: Optional[Set[str]] = None,
+) -> List[UnhitBound]:
+    """The bounds no accepted testcase reached, one row per group and name.
+
+    `groups` is the group filter of the build that produced `infos`, if any: a
+    build restricted to a subset of the groups gets no package-wide rows, only
+    the per-group ones. The single source for both the validation report and the
+    run's record of it, so the two cannot disagree on what counts as unhit.
+    """
+    hit_bounds_per_group: Dict[Optional[str], HitBounds] = dict(
+        merge_hit_bounds_per_group(infos)
+    )
+    if not hit_bounds_per_group:
+        return []
+
+    if _is_partial_build(groups):
+        # Only the per-group rows survive a subset build. When the bounds are
+        # shared package-wide there are no per-group rows to keep: a single
+        # group is not expected to hit the whole package's bounds on its own.
+        if not _has_group_specific_bounds():
+            return []
+    elif not _has_group_specific_bounds():
+        hit_bounds_per_group = {None: _merge_hit_bounds(hit_bounds_per_group.values())}
+
+    rows: List[UnhitBound] = []
+    for group, hit_bounds in hit_bounds_per_group.items():
+        # Samples never get their own row; when bounds are not group-specific
+        # they were already merged into the package-wide one above.
+        if group == 'samples':
+            continue
+        for name, (min_hit, max_hit) in hit_bounds.items():
+            missing = []
+            if not min_hit:
+                missing.append('min')
+            if not max_hit:
+                missing.append('max')
+            if missing:
+                rows.append(UnhitBound(group=group, name=name, missing=missing))
+    return rows
+
+
 def print_validation_report(
     infos: List[TestcaseValidationInfo],
     output_validation: bool = False,
     groups: Optional[Set[str]] = None,
     report_hit_bounds: bool = True,
+    hit_bounds_elsewhere: bool = False,
 ):
     """Print the validation report for `infos`.
+
+    `hit_bounds_elsewhere` is for a caller that reports the unhit bounds itself
+    (`rbx run`, as issues): they are counted here, not listed.
 
     `groups` is the group filter of the build that produced `infos`, if any: a
     build restricted to a subset of the groups gets no package-wide hit-bounds
@@ -586,57 +634,37 @@ def print_validation_report(
             console.console.print(metadata_markup)
         console.console.print(info.message)
 
-    hit_bounds_per_group: Dict[Optional[str], HitBounds] = dict(
-        merge_hit_bounds_per_group(infos)
-    )
-
-    if not hit_bounds_per_group or output_validation:
+    if output_validation or not merge_hit_bounds_per_group(infos):
         console.console.print()
         return
 
-    if not report_hit_bounds:
-        hit_bounds_per_group = {}
-    elif _is_partial_build(groups):
-        # Only the per-group rows survive a subset build. When the bounds are
-        # shared package-wide there are no per-group rows to keep: a single
-        # group is not expected to hit the whole package's bounds on its own.
-        if not _has_group_specific_bounds():
-            hit_bounds_per_group = {}
-    elif not _has_group_specific_bounds():
-        hit_bounds_per_group = {None: _merge_hit_bounds(hit_bounds_per_group.values())}
+    rows = unhit_bounds(infos, groups) if report_hit_bounds else []
 
-    def _is_hit_bound_good(hit_bounds: HitBounds) -> bool:
-        return any(not v[0] or not v[1] for v in hit_bounds.values())
-
-    # Cleanup entries in hit bounds per group that are totally empty.
-    # Samples never get their own group entry; when bounds are not group-specific
-    # they were already merged into the package-wide entry above.
-    hit_bounds_per_group = {
-        k: v
-        for k, v in hit_bounds_per_group.items()
-        if _is_hit_bound_good(v) and k != 'samples'
-    }
-
-    if not hit_bounds_per_group and not any_failure:
-        console.console.print('No validation issues found.')
+    if not rows:
+        if not any_failure:
+            console.console.print('No validation issues found.')
         return
 
-    for group, hit_bounds in hit_bounds_per_group.items():
+    if hit_bounds_elsewhere:
+        console.console.print(
+            f'[warning]{len(rows)} bound(s) no test hits[/warning], '
+            'listed with the issues at the end.'
+        )
+        console.console.print()
+        return
+
+    rows_per_group: Dict[Optional[str], List[UnhitBound]] = {}
+    for row in rows:
+        rows_per_group.setdefault(row.group, []).append(row)
+
+    for group, group_rows in rows_per_group.items():
         if group is None:
             console.console.print('Hit bounds:')
         else:
             console.console.print(f'Group [item]{group}[/item] hit bounds:')
-
-        for k, v in hit_bounds.items():
-            if all(v):
-                continue
-
-            if not v[0]:
+        for row in group_rows:
+            for side in row.missing:
                 console.console.print(
-                    f'  - {k}: [warning]min-value not hit[/warning]',
-                )
-            if not v[1]:
-                console.console.print(
-                    f'  - {k}: [warning]max-value not hit[/warning]',
+                    f'  - {row.name}: [warning]{side}-value not hit[/warning]',
                 )
         console.console.print()

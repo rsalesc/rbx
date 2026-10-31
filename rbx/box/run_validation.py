@@ -9,7 +9,7 @@ validation rides the run skeleton for the client to flag.
 """
 
 import enum
-from typing import TYPE_CHECKING, Iterable, List, Optional
+from typing import TYPE_CHECKING, Iterable, List, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -44,12 +44,30 @@ class InvalidTestcase(BaseModel):
     message: Optional[str] = None
 
 
+class UnhitBound(BaseModel):
+    """A bound a validator enforces that no testcase reaches.
+
+    The classic slip it catches is a testset without a max test: every input is
+    valid, so validation passes, and the solution that is too slow at the limit
+    is never asked to run there.
+    """
+
+    # The group whose tests were checked, or None when every group shares the
+    # same bounds and the testset was checked as a whole.
+    group: Optional[str] = None
+    # The name the validator read the value under, e.g. `N`.
+    name: str
+    missing: List[Literal['min', 'max']]
+
+
 class RunValidation(BaseModel):
     mode: RunValidationMode
     # Every (testcase, validator) rejection, in validation order. Carried whole
     # rather than as a count so a client can flag each testcase without reading
     # `build/testset.yml`, which a later build may already have replaced.
     invalid: List[InvalidTestcase] = []
+    # Bounds no testcase reached, on a run that validated the whole testset.
+    unhitBounds: List[UnhitBound] = []
 
 
 def invalid_testcases(
@@ -88,7 +106,16 @@ def run_validation(
     """
     if infos is None:
         return RunValidation(mode=RunValidationMode.OFF)
+    infos = list(infos)
+    # A run on one testcase (`rbx irun`) says nothing about the testset's
+    # coverage: of course a single test misses most bounds.
+    unhit: List[UnhitBound] = []
+    if testcase is None:
+        from rbx.box import validators
+
+        unhit = validators.unhit_bounds(infos)
     return RunValidation(
         mode=RunValidationMode(on_invalid.value),
         invalid=invalid_testcases(infos, testcase),
+        unhitBounds=unhit,
     )

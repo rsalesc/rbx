@@ -30,7 +30,9 @@ from rbx.box.compilation_findings import (
     SolutionCompilation,
 )
 from rbx.box.issue_codes import IssueThresholds
+from rbx.box.run_validation import RunValidation
 from rbx.box.sanitizers import warning_stack
+from rbx.box.testset_findings import DuplicateTest
 
 SKELETON_FILENAME = 'skeleton.yml'
 
@@ -75,6 +77,9 @@ class SkeletonView(BaseModel):
     compilation: List[SolutionCompilation] = []
     asset_compilation: List[AssetCompilation] = []
     lints: List[AssetLint] = []
+    duplicate_tests: List[DuplicateTest] = []
+    # Absent on a skeleton written before runs recorded their validation.
+    validation: Optional[RunValidation] = None
     # A sanitized run is slow by construction, so its times say nothing about
     # what a judge would spend.
     sanitized: bool = False

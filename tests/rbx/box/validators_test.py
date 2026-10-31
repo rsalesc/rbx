@@ -1,9 +1,11 @@
 import pytest
 
+from rbx.box import run_validation
 from rbx.box.generators import (
     generate_outputs_for_testcases,
     generate_testcases,
 )
+from rbx.box.run_validation import UnhitBound
 from rbx.box.testcase_extractors import extract_generation_testcases
 from rbx.box.testcase_schema import TestcaseEntry
 from rbx.box.testing import testing_package
@@ -12,6 +14,7 @@ from rbx.box.validators import (
     check_output_from_entries,
     has_validation_errors,
     print_validation_report,
+    unhit_bounds,
     validate_outputs_from_entries,
     validate_testcases,
 )
@@ -894,3 +897,51 @@ int main(int argc, char* argv[]) {
 
     # Should be empty as there are no outputs to check
     assert len(validation_infos) == 0
+
+
+async def _bounded_package_infos(testing_pkg: testing_package.TestingPackage):
+    testing_pkg.add_testgroup_from_glob('main', 'manual_tests/*.in')
+    testing_pkg.add_file('manual_tests/000.in').write_text('59\n')
+    testing_pkg.set_validator(
+        'validator.cpp', src='validators/int-validator-bounded.cpp'
+    )
+    await generate_testcases()
+    return await validate_testcases()
+
+
+async def test_run_records_the_unhit_bounds_the_report_lists(
+    testing_pkg: testing_package.TestingPackage,
+):
+    infos = await _bounded_package_infos(testing_pkg)
+
+    expected = [UnhitBound(group=None, name='"x"', missing=['min', 'max'])]
+    assert unhit_bounds(infos) == expected
+    record = run_validation.run_validation(run_validation.OnInvalid.FAIL, infos)
+    assert record.unhitBounds == expected
+
+
+async def test_single_testcase_run_records_no_unhit_bounds(
+    testing_pkg: testing_package.TestingPackage,
+):
+    infos = await _bounded_package_infos(testing_pkg)
+
+    record = run_validation.run_validation(
+        run_validation.OnInvalid.FAIL, infos, testcase=infos[0].testcase
+    )
+
+    assert record.unhitBounds == []
+
+
+async def test_hit_bounds_elsewhere_counts_them_instead_of_listing(
+    testing_pkg: testing_package.TestingPackage,
+    capsys: pytest.CaptureFixture[str],
+):
+    infos = await _bounded_package_infos(testing_pkg)
+    capsys.readouterr()
+
+    print_validation_report(infos, hit_bounds_elsewhere=True)
+
+    out = capsys.readouterr().out
+    assert 'not hit' not in out
+    assert 'No validation issues found.' not in out
+    assert '1 bound(s) no test hits' in out

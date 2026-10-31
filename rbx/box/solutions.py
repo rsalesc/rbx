@@ -45,6 +45,7 @@ from rbx.box import (
     run_report,
     run_validation,
     setter_config,
+    testset_findings,
     visualizers,
 )
 from rbx.box.code import (
@@ -77,7 +78,7 @@ from rbx.box.rendering import CellSlot, Throttling
 # to break -- and the board has to be a real class here, not a string, because a
 # dataclass default_factory is evaluated at runtime.
 from rbx.box.runners.base import RunProgress
-from rbx.box.sanitizers import compilation_warnings
+from rbx.box.sanitizers import compilation_warnings, warning_stack
 from rbx.box.schema import (
     ExpectedOutcome,
     GeneratorCall,
@@ -301,6 +302,9 @@ class SolutionReportSkeleton(BaseModel):
     # solution's declaration on it.
     asset_compilation: List[compilation_findings.AssetCompilation] = []
     lints: List[compilation_findings.AssetLint] = []
+    # Tests the build found repeating an earlier one. See
+    # `rbx.box.testset_findings`.
+    duplicate_tests: List[testset_findings.DuplicateTest] = []
     verification: VerificationLevel
     capture_pipes: bool = False
     # When set (irun -e), the solution's stderr is interleaved with its output in
@@ -789,6 +793,7 @@ async def _get_report_skeleton(
         runs_dir, package_root
     )
     lints = compilation_findings.build_asset_lints(package_root)
+    duplicate_tests = list(warning_stack.get_warning_stack().duplicate_tests)
 
     skeleton = SolutionReportSkeleton(
         solutions=[
@@ -806,6 +811,7 @@ async def _get_report_skeleton(
         compilation=compilation,
         asset_compilation=asset_compilation,
         lints=lints,
+        duplicate_tests=duplicate_tests,
         verification=verification,
         capture_pipes=should_capture_pipes(package.get_interactor_or_nil()),
         keep_checker_stderr=keep_checker_stderr,

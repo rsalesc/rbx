@@ -71,11 +71,17 @@ async def build_with_result(
     is_run: bool = False,
     is_statement: bool = False,
     on_invalid: OnInvalid = OnInvalid.FAIL,
+    hit_bounds_as_issues: bool = False,
 ) -> BuildResult:
     """`build`, also handing back what input validation found.
 
     With `on_invalid=WARN`, testcases that fail validation are reported and the
     build goes on, rather than stopping before any output is built.
+
+    `hit_bounds_as_issues` leaves the unhit bounds out of the validation report,
+    for a caller that reports them as `bounds-not-hit` issues afterwards -- a
+    `rbx run` that goes on to run solutions. Printing them in both places is the
+    duplicate #968 is about.
     """
     no_main_solution_report = False
     # None, not [], when the build did not validate: the manifest omits its
@@ -107,7 +113,10 @@ async def build_with_result(
             )
             input_validation_infos = infos
             print_validation_report(
-                infos, groups=groups, report_hit_bounds=not is_statement
+                infos,
+                groups=groups,
+                report_hit_bounds=not is_statement,
+                hit_bounds_elsewhere=hit_bounds_as_issues,
             )
 
         if has_validation_errors(infos) and on_invalid == OnInvalid.WARN:

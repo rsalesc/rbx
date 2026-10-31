@@ -30,9 +30,11 @@ from rbx.box.issue_codes import DOCS_URL
 from rbx.box.issues.schema import (
     AssetCompilationWarningsIssue,
     BorderlineTleIssue,
+    BoundsNotHitIssue,
     CompilationFailedIssue,
     CompilationWarningsIssue,
     ContestIssueRow,
+    DuplicateTestIssue,
     EmptyTestGroupIssue,
     ExplanationMissingLanguageIssue,
     HiddenVerdictIssue,
@@ -183,6 +185,15 @@ def summarize(issue: Issue) -> str:
         return _compiled_with(issue.warnings)
     if isinstance(issue, LinterWarningsIssue):
         return _summarize_lints(issue)
+    if isinstance(issue, DuplicateTestIssue):
+        return warning_stack.describe_duplicate_test(issue.duplicate)
+    if isinstance(issue, BoundsNotHitIssue):
+        where = f'in group [item]{issue.group}[/item], ' if issue.group else ''
+        bounds = ', '.join(
+            f'[item]{escape(b.name)}[/item] ({" and ".join(b.missing)})'
+            for b in issue.bounds
+        )
+        return f'{where}no test hits {bounds}'
     if isinstance(issue, BorderlineTleIssue):
         return 'slow only within 2x the time limit'
     if isinstance(issue, HiddenVerdictIssue):
@@ -248,6 +259,25 @@ def explain(issue: Issue, runs_dir: Optional[str] = None) -> List[str]:
                 'the solution-wide expectation held; only per-group ones failed'
             )
         return lines
+    if isinstance(issue, BoundsNotHitIssue):
+        scope = 'of this group ' if issue.group else ''
+        return [
+            f'every test {scope}is valid, but none reaches these extremes, so a '
+            'solution too slow or wrong at the limits is never asked to run there.',
+            'each name is the one the validator reads the value under, like `N` '
+            'in `inf.readInt(1, MAX_N, "N")`.',
+        ]
+    if isinstance(issue, DuplicateTestIssue):
+        how = (
+            'the same generator call makes both tests'
+            if issue.duplicate.reason == 'call'
+            else 'their inputs are byte-identical'
+        )
+        return [
+            f'{how}, so the second costs judging time without testing anything new.',
+            'if you meant it, end its testplan line with `@allow-duplicate`, or '
+            'set `allowDuplicate` on its group.',
+        ]
     if isinstance(issue, LinterWarningsIssue):
         lines = []
         if issue.assetKind is not None:
