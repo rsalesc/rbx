@@ -13,7 +13,7 @@ need `ExpectedOutcome.match` or the per-layer verdict sets belongs upstream, as
 a field on the report -- see `untunedLimitsSuspected`.
 """
 
-from typing import Callable, List
+from typing import Callable, Dict, List, Optional
 
 from rbx.box.compilation_findings import SolutionCompilation
 from rbx.box.issue_codes import IssueThresholds
@@ -21,6 +21,7 @@ from rbx.box.issues.run_state import RunState
 from rbx.box.issues.schema import (
     AssetCompilationWarningsIssue,
     BorderlineTleIssue,
+    BoundsNotHitIssue,
     CompilationFailedIssue,
     CompilationWarningsIssue,
     DuplicateTestIssue,
@@ -35,6 +36,7 @@ from rbx.box.issues.schema import (
     UnmetExpectationIssue,
     UntunedLimitsIssue,
 )
+from rbx.box.run_validation import UnhitBound
 from rbx.box.schema import ExpectedOutcome
 
 # How much a solution may print to stderr on a single testcase before it is
@@ -152,6 +154,20 @@ def detect_duplicate_tests(state: RunState) -> List[Issue]:
     return [
         DuplicateTestIssue(duplicate=duplicate)
         for duplicate in state.skeleton.duplicate_tests
+    ]
+
+
+def detect_bounds_not_hit(state: RunState) -> List[Issue]:
+    """Validator bounds no test reaches, one issue per group."""
+    validation = state.skeleton.validation
+    if validation is None:
+        return []
+    per_group: Dict[Optional[str], List[UnhitBound]] = {}
+    for bound in validation.unhitBounds:
+        per_group.setdefault(bound.group, []).append(bound)
+    return [
+        BoundsNotHitIssue(group=group, bounds=bounds)
+        for group, bounds in per_group.items()
     ]
 
 
@@ -311,6 +327,7 @@ DETECTORS: List[Callable[[RunState], List[Issue]]] = [
     detect_asset_compilation,
     detect_linter_warnings,
     detect_duplicate_tests,
+    detect_bounds_not_hit,
     detect_sanitizer_findings,
     detect_borderline_tle,
     detect_hidden_verdicts,

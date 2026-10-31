@@ -248,6 +248,9 @@ async def run(
         validate=validate,
         is_run=True,
         on_invalid=on_invalid,
+        # Only when solutions will run: `-v1` stops after the build, so its
+        # validation report is the only place the bounds would ever show.
+        hit_bounds_as_issues=verification > VerificationLevel.VALIDATE.value,
     )
     if not build_result.ok:
         raise typer.Exit(1)

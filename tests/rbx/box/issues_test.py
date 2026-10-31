@@ -29,6 +29,11 @@ from rbx.box.issues import config_state as config_state_module
 from rbx.box.issues.contest import build_report
 from rbx.box.linters.asset_kind import AssetKind
 from rbx.box.run_report import RunGroupReport, RunReport, RunSolutionReport
+from rbx.box.run_validation import (
+    RunValidation,
+    RunValidationMode,
+    UnhitBound,
+)
 from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import CodeItem, ExpectedOutcome, Solution
 from rbx.box.testset_findings import DuplicateTest
@@ -330,6 +335,41 @@ class TestAssetFindings:
             rendering.print_report(schema.IssueReport(ranAt=1.0, issues=[issue]))
 
         assert 'gens/gen.cpp testlib linter: m (linter-warnings)' in capture.get()
+
+
+class TestBoundsNotHit:
+    def test_one_issue_per_group(self):
+        state = make_state()
+        state.skeleton.validation = RunValidation(
+            mode=RunValidationMode.FAIL,
+            unhitBounds=[
+                UnhitBound(group='small', name='N', missing=['max']),
+                UnhitBound(group='small', name='M', missing=['min', 'max']),
+                UnhitBound(group='big', name='N', missing=['min']),
+            ],
+        )
+
+        issues = detectors.detect_bounds_not_hit(state)
+
+        assert [(issue.group, [b.name for b in issue.bounds]) for issue in issues] == [
+            ('small', ['N', 'M']),
+            ('big', ['N']),
+        ]
+        assert issues[0].code.value == 'bounds-not-hit'
+        assert issues[0].severity == schema.IssueSeverity.WARNING
+        assert rendering.summarize(issues[0]) == (
+            'in group [item]small[/item], no test hits [item]N[/item] (max), '
+            '[item]M[/item] (min and max)'
+        )
+
+    def test_package_wide_bounds_name_no_group(self):
+        issue = schema.BoundsNotHitIssue(bounds=[UnhitBound(name='N', missing=['max'])])
+
+        assert rendering.summarize(issue) == 'no test hits [item]N[/item] (max)'
+        assert 'readInt' in rendering.explain(issue)[-1]
+
+    def test_nothing_without_a_validation_record(self):
+        assert detectors.detect_bounds_not_hit(make_state()) == []
 
 
 class TestDuplicateTests:
@@ -932,6 +972,7 @@ class TestRendering:
             schema.DuplicateTestIssue(
                 duplicate=DuplicateTest(test='main/1', of='main/0', reason='input')
             ),
+            schema.BoundsNotHitIssue(bounds=[UnhitBound(name='N', missing=['max'])]),
             schema.SlowAcceptedSolutionIssue(solution='s', totalTime=90, threshold=60),
             schema.UntunedLimitsIssue(),
             schema.NoAcceptedSolutionIssue(),

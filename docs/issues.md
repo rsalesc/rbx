@@ -216,6 +216,21 @@ To silence one linter in one file instead of ignoring this code for the whole pr
 [Suppressing a linter in a file](setters/reference/environment/index.md#suppressing-a-linter-in-a-file)
 describes.
 
+### `bounds-not-hit` {: #bounds-not-hit }
+
+**Warning.** Your {{testlib}} validator reads a value with bounds, such as
+`inf.readInt(1, MAX_N, "N")`, and no test reaches at least one end of them. The tests are valid, so
+validation passes, but the testset never checks a solution at that extreme. The usual cause is a
+missing max test.
+
+{{rbx}} reports one issue per group, or one for the whole testset. Each issue lists every value no
+test reaches, and whether the minimum, the maximum, or both are missing.
+
+When any group sets its own validator or `vars` (see
+[Varying constraints per test group](setters/verification/validators.md#varying-constraints-per-test-group)),
+{{rbx}} checks each group on its own, and samples don't count. Otherwise it checks the whole testset
+at once, samples included.
+
 ### `duplicate-test` {: #duplicate-test }
 
 **Warning.** A test repeats an earlier one: the same generator call makes both, or their inputs
