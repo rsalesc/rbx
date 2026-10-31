@@ -205,6 +205,44 @@ async def test_moving_between_scopes_of_a_shared_plan(
     )
 
 
+async def test_a_moved_recipe_keeps_its_allow_duplicate(
+    testing_pkg: testing_package.TestingPackage,
+):
+    _write(
+        testing_pkg,
+        'tests/plan.txt',
+        '@testgroup main {\n  gen 1\n  gen 2 @allow-duplicate\n}\n'
+        '@testgroup large {\n  gen 9\n}\n',
+    )
+    testing_pkg.yml.generatorScript = GeneratorScript(
+        path=pathlib.Path('tests/plan.txt')
+    )
+    testing_pkg.yml.testcases = [
+        testing_package.TestcaseGroup(name='main'),
+        testing_package.TestcaseGroup(name='large'),
+    ]
+    testing_pkg.save()
+
+    await _promote(['tests/plan.txt:3'], 'large')
+
+    assert _read(testing_pkg, 'tests/plan.txt') == (
+        '@testgroup main {\n  gen 1\n}\n'
+        '@testgroup large {\n  gen 9\n  gen 2 @allow-duplicate\n}\n'
+    )
+
+
+async def test_a_frozen_input_keeps_its_allow_duplicate(
+    testing_pkg: testing_package.TestingPackage,
+):
+    testing_pkg.add_testgroup_from_plan('main', '@input "1 2" @allow-duplicate\n')
+
+    await _promote(['testplan/main.txt:1'], 'main', form='copy')
+
+    assert _read(testing_pkg, 'testplan/main.txt') == (
+        '@copy tests/main/000.in @allow-duplicate\n'
+    )
+
+
 async def test_a_glob_test_moves_with_its_answer_into_a_plan(
     testing_pkg: testing_package.TestingPackage,
 ):

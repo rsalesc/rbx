@@ -179,7 +179,10 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
         model_solution: Optional[Solution] = None,
         visualizer: Optional[Visualizer] = None,
         solution_visualizer: Optional[Visualizer] = None,
+        allow_duplicate: bool = False,
     ):
+        if subgroup.allowDuplicate is not None:
+            allow_duplicate = subgroup.allowDuplicate
         extra_validators = package.get_globbed_code_items(
             extra_validators or [],
             preexisting_items=[validator] if validator is not None else None,
@@ -233,6 +236,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                     model_solution=model_solution,
                     visualizer=visualizer,
                     solution_visualizer=solution_visualizer,
+                    group_allows_duplicate=allow_duplicate,
                 )
             )
             i += 1
@@ -261,6 +265,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                         model_solution=model_solution,
                         visualizer=visualizer,
                         solution_visualizer=solution_visualizer,
+                        group_allows_duplicate=allow_duplicate,
                     )
                 )
                 i += 1
@@ -282,6 +287,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                     model_solution=model_solution,
                     visualizer=visualizer,
                     solution_visualizer=solution_visualizer,
+                    group_allows_duplicate=allow_duplicate,
                 )
             )
             i += 1
@@ -319,6 +325,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                         ),
                         copied_to=_copied_to(i),
                         generator_script=generation_input.generator_script,
+                        allow_duplicate=generation_input.allow_duplicate,
                     )
                 elif generation_input.generator_call is not None:
                     call = GeneratorCall(
@@ -332,12 +339,14 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                         generator_call=call,
                         generator_script=generation_input.generator_script,
                         copied_to=_copied_to(i),
+                        allow_duplicate=generation_input.allow_duplicate,
                     )
                 elif generation_input.content is not None:
                     metadata = GenerationMetadata(
                         content=generation_input.content,
                         generator_script=generation_input.generator_script,
                         copied_to=_copied_to(i),
+                        allow_duplicate=generation_input.allow_duplicate,
                     )
                 else:
                     raise ValueError(f'Invalid generation input: {generation_input}')
@@ -353,6 +362,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                         model_solution=model_solution,
                         visualizer=visualizer,
                         solution_visualizer=solution_visualizer,
+                        group_allows_duplicate=allow_duplicate,
                     )
                 )
                 i += 1
@@ -388,6 +398,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
             solution_visualizer=group_solution_visualizer,
         )
 
+        group_allow_duplicate = bool(group.allowDuplicate)
         for i, subgroup in enumerate(group.subgroups):
             await _explore_subgroup(
                 subgroup,
@@ -400,6 +411,7 @@ async def run_testcase_visitor(visitor: TestcaseVisitor):
                 model_solution=group.model_solution,
                 visualizer=group_visualizer,
                 solution_visualizer=group_solution_visualizer,
+                allow_duplicate=group_allow_duplicate,
             )
 
 

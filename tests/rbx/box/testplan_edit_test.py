@@ -39,6 +39,12 @@ def test_statements_carry_their_full_testgroup_path():
     assert copy.copy_path == pathlib.Path('tests/main/edge-001.in')
 
 
+def test_copy_path_leaves_out_allow_duplicate():
+    copy = testplan_edit.statement_at('@copy tests/a.in @allow-duplicate\n', 1)
+    assert copy is not None
+    assert copy.copy_path == pathlib.Path('tests/a.in')
+
+
 def test_blocks_name_nested_and_flat_paths_alike():
     assert [(b.path, b.start_line) for b in testplan_edit.blocks(PLAN)] == [
         ('main', 3),

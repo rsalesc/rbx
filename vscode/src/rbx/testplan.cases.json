@@ -114,5 +114,31 @@
         "kind": "copy"
       }
     ]
+  },
+  {
+    "name": "allow-duplicate annotations",
+    "script": "gen 1 @allow-duplicate\n@copy tests/a.in @allow-duplicate\n@input {\n1 2\n} @allow-duplicate\n@input \"x\" @allow-duplicate\n",
+    "statements": [
+      {
+        "line": 1,
+        "endLine": 1,
+        "kind": "call"
+      },
+      {
+        "line": 2,
+        "endLine": 2,
+        "kind": "copy"
+      },
+      {
+        "line": 3,
+        "endLine": 5,
+        "kind": "input"
+      },
+      {
+        "line": 6,
+        "endLine": 6,
+        "kind": "input"
+      }
+    ]
   }
 ]

@@ -118,10 +118,15 @@ function normalize(solutionPath: string): string {
  *
  * A testplan or generator script line, as rbx's own grammar reads it: the
  * comment (`//` or `#`) and surrounding blanks go, and a line that is a
- * directive (`@copy`, `@input`, `@testgroup`, `}`) is not a call at all.
+ * directive (`@copy`, `@input`, `@testgroup`, `}`) is not a call at all. A
+ * trailing `@allow-duplicate` annotates the test, not the call, so it goes too.
  */
 export function generatorCallFrom(line: string): string | undefined {
-  const call = line.replace(/\/\/.*$/, '').replace(/#.*$/, '').trim();
+  const call = line
+    .replace(/\/\/.*$/, '')
+    .replace(/#.*$/, '')
+    .trim()
+    .replace(/\s+@allow-duplicate$/, '');
   if (call === '' || call.startsWith('@') || call.startsWith('}') || call.startsWith('{')) {
     return undefined;
   }

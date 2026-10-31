@@ -1091,3 +1091,67 @@ gens/generator --MAX_N=100 --MIN_N=30 abcdef
         assert gen_call_1 is not None
         assert gen_call_1.name == 'gen1'
         assert gen_call_1.args == '456'
+
+
+class TestAllowDuplicate:
+    def _parse(self, script: str):
+        return parse_and_transform(script, pathlib.Path('plan.txt'))
+
+    def test_generator_call(self):
+        (inp,) = self._parse('gens/gen 1 2 @allow-duplicate\n')
+        assert inp.generator_call is not None
+        assert inp.generator_call.name == 'gens/gen'
+        assert inp.generator_call.args == '1 2'
+        assert inp.allow_duplicate
+
+    def test_generator_call_without_args(self):
+        (inp,) = self._parse('gens/gen @allow-duplicate\n')
+        assert inp.generator_call is not None
+        assert inp.generator_call.args is None
+        assert inp.allow_duplicate
+
+    def test_only_the_last_token_counts(self):
+        (inp,) = self._parse('gens/gen 1 @allow-duplicate 2\n')
+        assert inp.generator_call is not None
+        assert inp.generator_call.args == '1 @allow-duplicate 2'
+        assert not inp.allow_duplicate
+
+    def test_unannotated_lines_do_not_allow_duplicates(self):
+        inputs = self._parse('gens/gen 1\n@copy a.in\n@input "x"\n')
+        assert [inp.allow_duplicate for inp in inputs] == [False, False, False]
+
+    def test_copy(self):
+        (inp,) = self._parse('@copy tests/a.in @allow-duplicate\n')
+        assert inp.copied_from is not None
+        assert inp.copied_from.inputPath == pathlib.Path('tests/a.in')
+        assert inp.allow_duplicate
+
+    @pytest.mark.parametrize(
+        'script, content',
+        [
+            ('@input "1 2" @allow-duplicate\n', '1 2'),
+            ('@input """\n1 2\n""" @allow-duplicate\n', '1 2\n'),
+            ('@input {\n1 2\n} @allow-duplicate\n', '1 2\n'),
+        ],
+    )
+    def test_input(self, script: str, content: str):
+        (inp,) = self._parse(script)
+        assert inp.content == content
+        assert inp.allow_duplicate
+
+    @pytest.mark.parametrize(
+        'script',
+        ['@input "1 2"\n@allow-duplicate\n', '@input {\n1 2\n}\n@allow-duplicate\n'],
+    )
+    def test_input_annotation_on_a_later_line_is_rejected(self, script: str):
+        with pytest.raises(ValueError, match='same line'):
+            self._parse(script)
+
+    def test_standalone_annotation_is_rejected(self):
+        with pytest.raises(lark.exceptions.UnexpectedInput):
+            self._parse('@allow-duplicate\n')
+
+    def test_inside_testgroup(self):
+        (inp,) = self._parse('@testgroup g {\n  gens/gen 1 @allow-duplicate\n}\n')
+        assert inp.group == 'g'
+        assert inp.allow_duplicate
