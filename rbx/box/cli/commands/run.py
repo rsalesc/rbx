@@ -391,11 +391,8 @@ async def _print_issues() -> None:
     reading this view must not turn a passing run into a failing one.
     """
     try:
-        config_state = await issues.collect_config_state(
+        report = await issues.build_problem_report(
             package.find_problem_package_or_die()
-        )
-        report = issues.build_report(
-            package.get_problem_runs_dir(), config_state=config_state
         )
     except issues.UnsupportedReportVersion:
         return
@@ -438,7 +435,16 @@ async def summary_cmd(
     # The same detectors `rbx issues` runs, through the same entry point: a
     # finding worded one way there and another way here would be the exact drift
     # `run_report` exists to prevent.
-    config_issues = issues.detect_all_config(await issues.collect_config_state(pkg))
+    ignored = set(issues.resolve_ignored(pkg))
+    config_issues = [
+        issue
+        for issue in issues.detect_all_config(
+            await issues.collect_config_state(
+                pkg, thresholds=issues.resolve_thresholds()
+            )
+        )
+        if issue.code not in ignored
+    ]
 
     if format is summary.SummaryFormat.JSON:
         entries = await testcase_extractors.extract_generation_testcases_from_groups()

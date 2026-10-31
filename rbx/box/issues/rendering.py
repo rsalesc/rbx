@@ -25,6 +25,7 @@ from rich.text import Text
 
 from rbx import console
 from rbx.box.formatting import get_formatted_memory, href
+from rbx.box.issue_codes import DOCS_URL
 from rbx.box.issues.schema import (
     BorderlineTleIssue,
     CompilationFailedIssue,
@@ -36,12 +37,15 @@ from rbx.box.issues.schema import (
     Issue,
     IssueReport,
     IssueSeverity,
+    LargeTestcaseIssue,
+    LargeTestsetIssue,
     MissingStatementLanguageIssue,
     NoAcceptedSolutionIssue,
     NoisyStderrIssue,
     NoSamplesIssue,
     NoValidatorIssue,
     SanitizerFindingIssue,
+    SlowAcceptedSolutionIssue,
     UnexpectedScoreIssue,
     UnmetExpectationIssue,
     UntunedLimitsIssue,
@@ -148,6 +152,23 @@ def summarize(issue: Issue) -> str:
         return f'wrote {get_formatted_memory(issue.size)} to stderr on one test'
     if isinstance(issue, SanitizerFindingIssue):
         return 'a sanitizer fired while running this solution'
+    if isinstance(issue, SlowAcceptedSolutionIssue):
+        return (
+            f'took {issue.totalTime:.1f}s over the whole testset '
+            f'(budget {issue.threshold:g}s)'
+        )
+    if isinstance(issue, LargeTestsetIssue):
+        return (
+            f'the built testset is {get_formatted_memory(issue.totalBytes)} '
+            f'(budget {get_formatted_memory(issue.thresholdBytes)})'
+        )
+    if isinstance(issue, LargeTestcaseIssue):
+        others = f' and {issue.count - 1} more' if issue.count > 1 else ''
+        return (
+            f'{issue.file} [item]{issue.path}[/item] is '
+            f'{get_formatted_memory(issue.size)}{others} '
+            f'(budget {get_formatted_memory(issue.thresholdBytes)} per {issue.file})'
+        )
     if isinstance(issue, UntunedLimitsIssue):
         return 'the time limit may not be tuned to this machine'
     if isinstance(issue, NoAcceptedSolutionIssue):
@@ -237,6 +258,34 @@ def explain(issue: Issue, runs_dir: Optional[str] = None) -> List[str]:
         if issue.log is not None:
             lines.append(f'log: {href(_resolve(issue.log, runs_dir))}')
         return lines
+    if isinstance(issue, SlowAcceptedSolutionIssue):
+        return [
+            'Every testcase may fit the time limit and the sum still cost the '
+            'judge this much on every submission of a correct solution.',
+            'drop redundant large tests, or raise '
+            '[item]issues.thresholds.acceptedTotalTimeSeconds[/item] in '
+            '[item]env.rbx.yml[/item].',
+        ]
+    if isinstance(issue, LargeTestsetIssue):
+        return [
+            f'inputs:  {get_formatted_memory(issue.inputBytes)}',
+            f'answers: {get_formatted_memory(issue.answerBytes)}',
+            'Judges cap package sizes, and every test is copied for every '
+            'submission. Drop redundant large tests, or raise '
+            '[item]issues.thresholds.testsetSizeMb[/item] in '
+            '[item]env.rbx.yml[/item].',
+        ]
+    if isinstance(issue, LargeTestcaseIssue):
+        setting = (
+            'testcaseInputSizeMb' if issue.file == 'input' else 'testcaseAnswerSizeMb'
+        )
+        return [
+            f'{issue.count} {issue.file}(s) over the budget; the largest is '
+            f'{href(issue.path)}.',
+            'Some judges cap the size of one test file, and a file this large is '
+            'slow to copy and read on every submission. Shrink the test, or raise '
+            f'[item]issues.thresholds.{setting}[/item] in [item]env.rbx.yml[/item].',
+        ]
     if isinstance(issue, UntunedLimitsIssue):
         return [
             'Solutions failed their expectations by being too fast or too slow, '
@@ -303,8 +352,51 @@ def _headline(report: IssueReport) -> str:
     return f'{_counts(errors, warnings)} {when}'
 
 
-def print_report(report: IssueReport, detailed: bool = False) -> None:
-    """The problem-level view, compact or detailed."""
+def _print_issue(
+    issue: Issue, runs_dir: Optional[str], detailed: bool, ignored: bool = False
+) -> None:
+    marker = '[info]-[/info]' if ignored else _SEVERITY_MARKER[issue.severity]
+    solution = _solution_of(issue)
+    # A `Path`, not the string: `href` takes its display text before it
+    # absolutizes, so this shows the declared relative path but links
+    # somewhere a terminal can actually open.
+    where = f'{href(pathlib.Path(solution))} ' if solution else ''
+    # The code trails the line rather than leading it: the reader scans for
+    # what is wrong first, and needs the code only to look it up or silence it.
+    tag = 'ignored ' if ignored else ''
+    console.console.print(
+        f'{marker} {where}{summarize(issue)} [info]({tag}{issue.code.value})[/info]'
+    )
+    if not detailed:
+        return
+    for line in explain(issue, runs_dir):
+        # Padded rather than prefixed with spaces: Rich wraps a long line at
+        # the console width and a prefix only indents the first row of it,
+        # which puts the continuation hard against the left margin.
+        console.console.print(
+            Padding(Text.from_markup(f'[info]{line}[/info]'), (0, 0, 0, 4))
+        )
+    console.console.print()
+
+
+def print_docs_hint() -> None:
+    """The one line pointing at the page that documents every code."""
+    console.console.print(
+        f'[info]About these codes, and ignoring them: [item]{DOCS_URL}[/item][/info]'
+    )
+
+
+def print_report(
+    report: IssueReport,
+    detailed: bool = False,
+    show_ignored: bool = False,
+    docs_hint: bool = True,
+) -> None:
+    """The problem-level view, compact or detailed.
+
+    `docs_hint` is off only where a caller prints many reports in a row and
+    the hint once after all of them.
+    """
     console.console.print(_headline(report))
     if report.neverRun:
         console.console.print('[info]Run [item]rbx run[/item] to populate it.[/info]')
@@ -312,28 +404,32 @@ def print_report(report: IssueReport, detailed: bool = False) -> None:
         # package whether or not it was ever run, and suppressing them behind
         # "not run yet" would hide them from exactly the reader who has not run
         # anything and most needs to be told the package is not ready.
-    if not report.issues:
+    shown_ignored = report.ignored if show_ignored else []
+    if not report.issues and not shown_ignored:
+        if report.ignored:
+            _print_ignored_note(report)
         return
     console.console.print()
 
     for issue in report.issues:
-        marker = _SEVERITY_MARKER[issue.severity]
-        solution = _solution_of(issue)
-        # A `Path`, not the string: `href` takes its display text before it
-        # absolutizes, so this shows the declared relative path but links
-        # somewhere a terminal can actually open.
-        where = f'{href(pathlib.Path(solution))} ' if solution else ''
-        console.console.print(f'{marker} {where}{summarize(issue)}')
-        if not detailed:
-            continue
-        for line in explain(issue, report.runsDir):
-            # Padded rather than prefixed with spaces: Rich wraps a long line at
-            # the console width and a prefix only indents the first row of it,
-            # which puts the continuation hard against the left margin.
-            console.console.print(
-                Padding(Text.from_markup(f'[info]{line}[/info]'), (0, 0, 0, 4))
-            )
+        _print_issue(issue, report.runsDir, detailed)
+    for issue in shown_ignored:
+        _print_issue(issue, report.runsDir, detailed, ignored=True)
+
+    if not detailed:
         console.console.print()
+    if report.ignored and not show_ignored:
+        _print_ignored_note(report)
+    if docs_hint:
+        print_docs_hint()
+
+
+def _print_ignored_note(report: IssueReport) -> None:
+    codes = sorted({issue.code.value for issue in report.ignored})
+    console.console.print(
+        f'[info]{len(report.ignored)} more silenced by [item]issues.ignore[/item] '
+        f'({", ".join(codes)}); [item]rbx issues --all[/item] shows them.[/info]'
+    )
 
 
 def print_contest_report(rows: List[ContestIssueRow], detailed: bool = False) -> None:
@@ -412,14 +508,19 @@ def print_contest_report(rows: List[ContestIssueRow], detailed: bool = False) ->
             console.console.print(
                 '[info]Run [item]rbx contest issues -d[/item] to expand these.[/info]'
             )
+            print_docs_hint()
         return
 
+    printed = False
     for row in rows:
         if row.failed_to_load or not row.report.issues:
             continue
         console.console.print()
         console.console.rule(f'[item]{row.short_name}. {row.name}[/item]')
-        print_report(row.report, detailed=True)
+        print_report(row.report, detailed=True, docs_hint=False)
+        printed = True
+    if printed:
+        print_docs_hint()
 
 
 def to_json(report: IssueReport) -> str:

@@ -17,9 +17,23 @@ from typing import Dict, List, Optional, Tuple
 from pydantic import BaseModel
 
 from rbx.box import package, testcase_extractors, testcase_sample_utils
+from rbx.box.generation_schema import GenerationTestcaseEntry
+from rbx.box.issue_codes import IssueThresholds
 from rbx.box.schema import Package, Solution
 from rbx.box.statements.render import parse_jinja_block_names
 from rbx.box.statements.schema import Statement, StatementType
+
+
+class TestcaseSize(BaseModel):
+    """One built testcase's input and answer, and how large each is."""
+
+    # Not a test class, whatever its name says.
+    __test__ = False
+
+    input_path: pathlib.Path
+    input_bytes: int
+    answer_path: Optional[pathlib.Path] = None
+    answer_bytes: int = 0
 
 
 class ConfigState(BaseModel):
@@ -46,6 +60,15 @@ class ConfigState(BaseModel):
     # when it is empty rather than accusing a standalone problem of missing
     # every language in the world.
     contest_languages: List[str] = []
+    # The built testset's size in bytes, inputs and expected answers apart.
+    # None when nothing is built: a testset nobody generated has no size, and
+    # reporting it as zero would read as a finding about the real one.
+    testset_input_bytes: Optional[int] = None
+    testset_answer_bytes: Optional[int] = None
+    # Every built testcase's own sizes, in build order. Empty when unbuilt.
+    testcase_sizes: List[TestcaseSize] = []
+    # The environment's limits, handed in for the reason `RunState` takes them.
+    thresholds: IssueThresholds = IssueThresholds()
 
 
 def _explanation_suffix_of(statement: Statement) -> str:
@@ -97,9 +120,53 @@ async def _collect_explanations(
     return languages, paths
 
 
+def _file_size(path: Optional[pathlib.Path]) -> int:
+    if path is None:
+        return 0
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
+
+
+def _measure_testcases(
+    entries: List[GenerationTestcaseEntry],
+) -> List[TestcaseSize]:
+    """Each built testcase's sizes; empty when nothing is built.
+
+    Only the entries whose input is actually on disk are measured, which is the
+    same notion of "built" `rbx run` uses to decide what to run.
+    """
+    sizes: List[TestcaseSize] = []
+    for entry in testcase_extractors.find_built_testcases(entries):
+        copied_to = entry.metadata.copied_to
+        sizes.append(
+            TestcaseSize(
+                input_path=copied_to.inputPath,
+                input_bytes=_file_size(copied_to.inputPath),
+                answer_path=copied_to.outputPath,
+                answer_bytes=_file_size(copied_to.outputPath),
+            )
+        )
+    return sizes
+
+
+def _measure_testset(
+    sizes: List[TestcaseSize],
+) -> Tuple[Optional[int], Optional[int]]:
+    """The built testset's input and answer bytes, or `(None, None)` unbuilt."""
+    if not sizes:
+        return None, None
+    return (
+        sum(size.input_bytes for size in sizes),
+        sum(size.answer_bytes for size in sizes),
+    )
+
+
 async def collect_config_state(
     pkg: Package,
     contest_languages: Optional[List[str]] = None,
+    thresholds: Optional[IssueThresholds] = None,
 ) -> ConfigState:
     """Build a `ConfigState` from the package in the current directory."""
     entries = await testcase_extractors.extract_generation_testcases_from_groups()
@@ -114,6 +181,8 @@ async def collect_config_state(
 
     statements = pkg.expanded_statements
     explanation_languages, explanation_paths = await _collect_explanations(statements)
+    testcase_sizes = _measure_testcases(entries)
+    input_bytes, answer_bytes = _measure_testset(testcase_sizes)
 
     return ConfigState(
         solutions=package.get_solutions(),
@@ -124,4 +193,8 @@ async def collect_config_state(
         explanation_languages=explanation_languages,
         explanation_paths=explanation_paths,
         contest_languages=list(contest_languages or []),
+        testset_input_bytes=input_bytes,
+        testset_answer_bytes=answer_bytes,
+        testcase_sizes=testcase_sizes,
+        thresholds=thresholds or IssueThresholds(),
     )

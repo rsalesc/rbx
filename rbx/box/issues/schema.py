@@ -20,6 +20,7 @@ from typing import Annotated, List, Literal, Optional, Tuple, Union
 from pydantic import BaseModel, Field, computed_field
 
 from rbx.box.compilation_findings import CompilationWarning
+from rbx.box.issue_codes import IssueCode
 from rbx.box.schema import ExpectedOutcome
 from rbx.grading.steps import Outcome
 
@@ -62,6 +63,16 @@ class _BaseIssue(BaseModel):
     # The solution this issue is about, as its declared path. Every kind has one
     # today; it stays on the subclasses rather than here so a future issue that
     # is about the package as a whole does not have to invent a fake one.
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def code(self) -> IssueCode:
+        """The public name of this kind: printed, documented and ignorable.
+
+        Looked up rather than declared on each subclass so the whole mapping is
+        one table a test can hold against `IssueCode`, in both directions.
+        """
+        return KIND_TO_CODE[self.kind]
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -236,6 +247,26 @@ class NoisyStderrIssue(_RunIssue):
         return IssueSeverity.WARNING
 
 
+class SlowAcceptedSolutionIssue(_RunIssue):
+    """An accepted solution spent too long, in total, over the whole testset.
+
+    Each testcase may sit comfortably inside the time limit and the sum still
+    be minutes of judge time per submission. That is the cost a judge pays for
+    every contestant's every submission, so it is worth knowing before the
+    contest rather than during it.
+    """
+
+    kind: Literal['slow_accepted_solution'] = 'slow_accepted_solution'
+    solution: str
+    totalTime: float  # seconds
+    threshold: float  # seconds
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        return IssueSeverity.WARNING
+
+
 class SanitizerFindingIssue(_RunIssue):
     """A sanitizer fired on one of this solution's runs.
 
@@ -351,6 +382,54 @@ class EmptyTestGroupIssue(_ConfigIssue):
         return IssueSeverity.WARNING
 
 
+class LargeTestsetIssue(_ConfigIssue):
+    """The built testset is larger than the environment allows.
+
+    Inputs and answers together, because both ship: every judge package carries
+    the expected answers beside the inputs, and on an output-heavy problem they
+    are most of the size.
+    """
+
+    kind: Literal['config_large_testset'] = 'config_large_testset'
+    inputBytes: int
+    answerBytes: int
+    thresholdBytes: int
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def totalBytes(self) -> int:
+        return self.inputBytes + self.answerBytes
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        return IssueSeverity.WARNING
+
+
+class LargeTestcaseIssue(_ConfigIssue):
+    """Some built inputs (or answers) are each larger than the environment allows.
+
+    One issue per file kind rather than one per test: a generator that makes
+    one test too large usually makes the whole group too large, and fifty copies
+    of the same finding would bury everything else. The largest one is named,
+    since it is the one to look at first.
+    """
+
+    kind: Literal['config_large_testcase'] = 'config_large_testcase'
+    file: Literal['input', 'answer']
+    # The largest offender, as it sits in the build dir.
+    path: pathlib.Path
+    size: int  # bytes
+    # How many tests went over, the largest included.
+    count: int
+    thresholdBytes: int
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        return IssueSeverity.WARNING
+
+
 class MissingStatementLanguageIssue(_ConfigIssue):
     """The problem has no statement, or none for a language the contest wants.
 
@@ -407,17 +486,43 @@ Issue = Annotated[
         BorderlineTleIssue,
         HiddenVerdictIssue,
         NoisyStderrIssue,
+        SlowAcceptedSolutionIssue,
         SanitizerFindingIssue,
         UntunedLimitsIssue,
         NoAcceptedSolutionIssue,
         NoValidatorIssue,
         NoSamplesIssue,
         EmptyTestGroupIssue,
+        LargeTestsetIssue,
+        LargeTestcaseIssue,
         MissingStatementLanguageIssue,
         ExplanationMissingLanguageIssue,
     ],
     Field(discriminator='kind'),
 ]
+
+# `kind` -> public code. `kind` is what the JSON format published first, so it
+# cannot be renamed; the code is what a setter reads and types.
+KIND_TO_CODE = {
+    'unmet_expectation': IssueCode.UNMET_EXPECTATION,
+    'unexpected_score': IssueCode.UNEXPECTED_SCORE,
+    'compilation_failed': IssueCode.COMPILATION_FAILED,
+    'compilation_warnings': IssueCode.COMPILATION_WARNINGS,
+    'borderline_tle': IssueCode.BORDERLINE_TLE,
+    'hidden_verdict': IssueCode.HIDDEN_VERDICT,
+    'noisy_stderr': IssueCode.NOISY_STDERR,
+    'slow_accepted_solution': IssueCode.SLOW_ACCEPTED_SOLUTION,
+    'sanitizer_finding': IssueCode.SANITIZER_FINDING,
+    'untuned_limits': IssueCode.UNTUNED_LIMITS,
+    'config_no_accepted_solution': IssueCode.NO_ACCEPTED_SOLUTION,
+    'config_no_validator': IssueCode.NO_VALIDATOR,
+    'config_no_samples': IssueCode.NO_SAMPLES,
+    'config_empty_test_group': IssueCode.EMPTY_TEST_GROUP,
+    'config_large_testset': IssueCode.LARGE_TESTSET,
+    'config_large_testcase': IssueCode.LARGE_TESTCASE,
+    'config_missing_statement_language': IssueCode.MISSING_STATEMENT_LANGUAGE,
+    'config_explanation_missing_language': IssueCode.EXPLANATION_MISSING_LANGUAGE,
+}
 
 
 class IssueReport(BaseModel):
@@ -439,6 +544,10 @@ class IssueReport(BaseModel):
     # the package root, and the contest view is never running from any of them.
     runsDir: Optional[str] = None
     issues: List[Issue] = []
+    # What was found but silenced by an `issues.ignore` list, in the same order.
+    # Kept rather than dropped so `--all` can still show it, and so a client can
+    # say how much it is not seeing. Never counted by `errors()`/`warnings()`.
+    ignored: List[Issue] = []
 
     def errors(self) -> List[Issue]:
         return [issue for issue in self.issues if issue.severity == IssueSeverity.ERROR]

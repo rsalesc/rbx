@@ -372,6 +372,15 @@ SPEC = {
                     'value': {'choices': ['rich', 'json'], 'kind': 'choice'},
                 },
                 {
+                    'help': 'Also show the issues `issues.ignore` silences for this '
+                    'problem.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--all', '-a'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,

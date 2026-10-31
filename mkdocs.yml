@@ -81,6 +81,7 @@ nav:
       - "Environment":
           - "setters/reference/environment/index.md"
           - "Schema": "setters/reference/environment/schema.md"
+      - "Issues": "issues.md"
   # Internal reference -- notes about rbx's own machinery rather than about
   # authoring problems. Built and linkable, but deliberately kept out of the
   # nav until there is more here. Uncomment to show it.

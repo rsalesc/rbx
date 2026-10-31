@@ -42,6 +42,7 @@ from rbx.box.fields import (
     merge_recvars,
 )
 from rbx.box.formatting import href
+from rbx.box.issue_codes import IssuesConfig
 from rbx.box.scoring.dependencies import (
     Aggregation,
     DependencyPolicy,
@@ -1673,6 +1674,11 @@ that is correct and used as reference -- and should have the `accepted` outcome.
     unitTests: UnitTests = Field(
         default_factory=UnitTests,
         description='Unit tests for components of this problem.',
+    )
+
+    issues: IssuesConfig = Field(
+        default_factory=IssuesConfig,
+        description='Which issues `rbx issues` and `rbx run` report for this problem.',
     )
 
     def set_inherited_languages(self, languages: Optional[List[str]]) -> None:

@@ -10,10 +10,12 @@ usually the most important row in the table.
 """
 
 import pathlib
-from typing import List, Optional
+from typing import Iterable, List, Optional
 
 from rbx.box import cd, package, package_utils
 from rbx.box.contest.schema import Contest
+from rbx.box.issue_codes import IssueCode, IssueThresholds
+from rbx.box.issues import settings
 from rbx.box.issues.config_detectors import detect_all_config
 from rbx.box.issues.config_state import ConfigState, collect_config_state
 from rbx.box.issues.detectors import detect_all
@@ -56,8 +58,11 @@ async def collect_contest_rows(
         try:
             with cd.new_package_cd(problem_path):
                 package_utils.clear_package_cache()
+                thresholds = settings.resolve_thresholds()
                 config_state = await collect_config_state(
-                    problem, contest_languages=contest_languages
+                    problem,
+                    contest_languages=contest_languages,
+                    thresholds=thresholds,
                 )
                 rows.append(
                     ContestIssueRow(
@@ -66,6 +71,8 @@ async def collect_contest_rows(
                         report=build_report(
                             package.get_problem_runs_dir(),
                             config_state=config_state,
+                            thresholds=thresholds,
+                            ignore=settings.merge_ignored(contest, problem),
                         ),
                     )
                 )
@@ -78,6 +85,22 @@ async def collect_contest_rows(
                 )
             )
     return rows
+
+
+async def build_problem_report(problem: Package) -> IssueReport:
+    """The report for the problem in the current directory, fully configured.
+
+    One call for `rbx issues` and `rbx run` both, so neither can forget the
+    environment's thresholds or the contest's ignore list.
+    """
+    thresholds = settings.resolve_thresholds()
+    config_state = await collect_config_state(problem, thresholds=thresholds)
+    return build_report(
+        package.get_problem_runs_dir(),
+        config_state=config_state,
+        thresholds=thresholds,
+        ignore=settings.resolve_ignored(problem),
+    )
 
 
 def _ordered(issues: List[Issue]) -> List[Issue]:
@@ -102,6 +125,8 @@ def _ordered(issues: List[Issue]) -> List[Issue]:
 def build_report(
     runs_dir: pathlib.Path,
     config_state: Optional[ConfigState] = None,
+    thresholds: Optional[IssueThresholds] = None,
+    ignore: Iterable[IssueCode] = (),
 ) -> IssueReport:
     """Everything known about a problem: what its config says, and what its last
     run revealed.
@@ -119,12 +144,18 @@ def build_report(
     `ISSUES_FORMAT_VERSION` 2 records.
     """
     config_issues = detect_all_config(config_state) if config_state is not None else []
-    state = load_run_state(runs_dir)
+    state = load_run_state(runs_dir, thresholds=thresholds)
     run_issues = detect_all(state) if state is not None else []
 
+    # Filtered here, after every detector ran, so the detectors stay ignorant of
+    # what a setter chose not to see -- and so the ignored ones are still there
+    # for `--all` to show.
+    ignored_codes = set(ignore)
+    found = _ordered(config_issues + run_issues)
     return IssueReport(
         neverRun=state is None,
         ranAt=state.ran_at if state is not None else None,
         runsDir=str(state.runs_dir) if state is not None else None,
-        issues=_ordered(config_issues + run_issues),
+        issues=[issue for issue in found if issue.code not in ignored_codes],
+        ignored=[issue for issue in found if issue.code in ignored_codes],
     )

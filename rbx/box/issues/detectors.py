@@ -16,6 +16,7 @@ a field on the report -- see `untunedLimitsSuspected`.
 from typing import Callable, List
 
 from rbx.box.compilation_findings import SolutionCompilation
+from rbx.box.issue_codes import IssueThresholds
 from rbx.box.issues.run_state import RunState
 from rbx.box.issues.schema import (
     BorderlineTleIssue,
@@ -26,15 +27,18 @@ from rbx.box.issues.schema import (
     IssueSeverity,
     NoisyStderrIssue,
     SanitizerFindingIssue,
+    SlowAcceptedSolutionIssue,
     UnexpectedScoreIssue,
     UnmetExpectationIssue,
     UntunedLimitsIssue,
 )
+from rbx.box.schema import ExpectedOutcome
 
 # How much a solution may print to stderr on a single testcase before it is
-# worth a mention. 1MB is far past any plausible deliberate use: a solution that
-# writes this much is printing debug output it forgot to remove.
-STDERR_THRESHOLD_IN_BYTES = 1024 * 1024
+# worth a mention, by default. 1MB is far past any plausible deliberate use: a
+# solution that writes this much is printing debug output it forgot to remove.
+# Tunable as `issues.thresholds.stderrSizeMb` in `env.rbx.yml`.
+STDERR_THRESHOLD_IN_BYTES = IssueThresholds().stderr_size_bytes
 
 
 def detect_unmet_expectations(state: RunState) -> List[Issue]:
@@ -168,13 +172,44 @@ def detect_noisy_stderr(state: RunState) -> List[Issue]:
     issues: List[Issue] = []
     for solution in state.report.solutions:
         artifact = state.stderr.get(solution.index)
-        if artifact is None or artifact.size <= STDERR_THRESHOLD_IN_BYTES:
+        if artifact is None or artifact.size <= state.thresholds.stderr_size_bytes:
             continue
         issues.append(
             NoisyStderrIssue(
                 solution=solution.path,
                 path=artifact.path,
                 size=artifact.size,
+            )
+        )
+    return issues
+
+
+def detect_slow_accepted_solutions(state: RunState) -> List[Issue]:
+    """Accepted solutions whose total CPU time over the testset is too high.
+
+    Only a solution declared `accepted` counts: one declared slow is *meant* to
+    burn its time limit on every test, and summing that says nothing new.
+
+    Only on a run that evaluated everything, since a sum over part of the
+    testset understates the total, and never on a sanitized run, which is slow
+    by construction.
+    """
+    if state.skeleton.sanitized:
+        return []
+    threshold = state.thresholds.acceptedTotalTimeSeconds
+    issues: List[Issue] = []
+    for solution in state.report.solutions:
+        if solution.expectedOutcome != ExpectedOutcome.ACCEPTED:
+            continue
+        if not solution.complete or solution.totalTime is None:
+            continue
+        if solution.totalTime <= threshold:
+            continue
+        issues.append(
+            SlowAcceptedSolutionIssue(
+                solution=solution.path,
+                totalTime=solution.totalTime,
+                threshold=threshold,
             )
         )
     return issues
@@ -235,6 +270,7 @@ DETECTORS: List[Callable[[RunState], List[Issue]]] = [
     detect_borderline_tle,
     detect_hidden_verdicts,
     detect_noisy_stderr,
+    detect_slow_accepted_solutions,
     detect_untuned_limits,
 ]
 

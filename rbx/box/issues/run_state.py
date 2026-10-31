@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from rbx.box import run_report
 from rbx.box.compilation_findings import SolutionCompilation
+from rbx.box.issue_codes import IssueThresholds
 from rbx.box.sanitizers import warning_stack
 
 SKELETON_FILENAME = 'skeleton.yml'
@@ -68,6 +69,9 @@ class SkeletonView(BaseModel):
     """
 
     compilation: List[SolutionCompilation] = []
+    # A sanitized run is slow by construction, so its times say nothing about
+    # what a judge would spend.
+    sanitized: bool = False
 
 
 class StderrArtifact(BaseModel):
@@ -96,6 +100,10 @@ class RunState(BaseModel):
     # enough: the report is rewritten as each solution lands, so it is stamped
     # at the end of the run rather than the start.
     ran_at: float
+    # The environment's limits for the issues that measure something. Handed
+    # in rather than read from `env.rbx.yml` by a detector, which would make
+    # every detector depend on the active environment to be tested.
+    thresholds: IssueThresholds = IssueThresholds()
 
 
 def _load_yaml(path: pathlib.Path) -> Optional[dict]:
@@ -187,7 +195,9 @@ def locate_sanitizer_logs(
     return logs
 
 
-def load_run_state(runs_dir: pathlib.Path) -> Optional[RunState]:
+def load_run_state(
+    runs_dir: pathlib.Path, thresholds: Optional[IssueThresholds] = None
+) -> Optional[RunState]:
     """The last run in `runs_dir`, or None when there was not one.
 
     None means "never run", which is a state worth reporting rather than an
@@ -226,4 +236,5 @@ def load_run_state(runs_dir: pathlib.Path) -> Optional[RunState]:
             ],
         ),
         ran_at=run_report.report_path(runs_dir).stat().st_mtime,
+        thresholds=thresholds or IssueThresholds(),
     )

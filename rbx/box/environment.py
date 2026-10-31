@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from rbx import config, console
 from rbx.box import presets, safeeval
 from rbx.box.extensions import Extensions, LanguageExtensions
+from rbx.box.issue_codes import EnvironmentIssuesConfig
 from rbx.box.linters.asset_kind import AssetKind
 from rbx.box.schema import TimingMultipliers
 from rbx.box.yaml_validation import load_yaml_model
@@ -517,6 +518,11 @@ execution config can be individually overridden in the language configuration.""
     buildDir: pathlib.Path = Field(
         default=pathlib.Path('build'),
         description="""Directory to store the build files.""",
+    )
+
+    issues: EnvironmentIssuesConfig = Field(
+        default_factory=EnvironmentIssuesConfig,
+        description="""How large or slow things may get before `rbx issues` reports them.""",
     )
 
 
