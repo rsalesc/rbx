@@ -1071,7 +1071,9 @@ class MojPackager(BasePackager):
                     'while the pinned limits above were estimated from the solution '
                     'alone.[/warning]\n'
                     '[warning]Leave them headroom, or a crash or a wrong answer can '
-                    'come back as a time limit.[/warning]'
+                    'come back as a time limit -- or estimate them on MOJ itself '
+                    'with [item]rbx time -p moj --runner moj[/item], which times '
+                    'the whole interaction.[/warning]'
                 )
             return
         typing.assert_never(self.timing_mode)

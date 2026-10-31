@@ -212,8 +212,10 @@ its own, and {{rbx}} will **refuse to package**:
 !!! warning "Leave headroom in the time limits"
     MOJ measures an interactive solution by the **wall time** of the whole interaction: your
     interactor and the language runtime's startup count against the limit too. The limits
-    `rbx time -p moj` estimated don't include them, so a tight limit can turn a crash or a wrong
-    answer into a time limit. Give interactive problems a comfortable margin.
+    `rbx time -p moj` estimated locally don't include them, so a tight limit can turn a crash or
+    a wrong answer into a time limit. Give interactive problems a comfortable margin, or
+    [measure on MOJ itself](../profiling/remote.md#timing-on-moj) with `rbx time -p moj --runner moj`, whose
+    timings already include the whole interaction.
 
 MOJ doesn't show examples for an interactive problem, since a test's input is the interactor's
 secret. So {{rbx}} writes your samples into the statement itself, under an **Example** section:

@@ -499,9 +499,18 @@ class MojRunner:
         # is also wrong is reported here and passes locally. The fix is the same
         # one the message names: fix the solution, or `inference: false` it.
         supports_abort=False,
-        # `MojPackager.task_types()` is `[BATCH]`: MOJ's interactive support uses
-        # its own arbiter protocol, not a testlib interactor.
-        supports_interactive=False,
+        # The probe is an ordinary `MojPackager` build, so an interactive problem
+        # ships exactly what `rbx package moj` ships for one: the testlib
+        # interactor as the arbiter, driven by rbx's own `pipe_driver.sh` (see
+        # `packaging/moj/CLAUDE.md`, "Interactive problems"). The verdicts come
+        # back in the same per-test vocabulary as a batch run.
+        #
+        # The timings differ in what they cover, and in the useful direction:
+        # MOJ times the whole jail -- contestant, interactor and process startup
+        # -- by wall clock, which is what it will later *judge* against. A local
+        # estimate times the solution alone and needs headroom the packager can
+        # only warn about; this one has it measured in.
+        supports_interactive=True,
         # Sanitizers are a local-compilation concept; the judge compiles the
         # submission itself, with the package's own `scripts/<lang>/compile.sh`.
         supports_sanitizers=False,
