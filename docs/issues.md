@@ -216,6 +216,12 @@ To silence one linter in one file instead of ignoring this code for the whole pr
 [Suppressing a linter in a file](setters/reference/environment/index.md#suppressing-a-linter-in-a-file)
 describes.
 
+### `duplicate-test` {: #duplicate-test }
+
+**Warning.** A test repeats an earlier one: the same generator call makes both, or their inputs
+are byte-identical. If you meant it, mark the test or its group as described in
+[Allowing duplicate tests](setters/testset/index.md#allowing-duplicate-tests).
+
 ### `sanitizer-finding` {: #sanitizer-finding }
 
 **Warning.** On a run with sanitizers, such as `rbx run -s`, a sanitizer reported something, like an

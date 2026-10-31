@@ -33,6 +33,7 @@ from rbx.box.issues.schema import (
     CompilationFailedIssue,
     CompilationWarningsIssue,
     ContestIssueRow,
+    DuplicateTestIssue,
     EmptyTestGroupIssue,
     ExplanationMissingLanguageIssue,
     HiddenVerdictIssue,
@@ -183,6 +184,8 @@ def summarize(issue: Issue) -> str:
         return _compiled_with(issue.warnings)
     if isinstance(issue, LinterWarningsIssue):
         return _summarize_lints(issue)
+    if isinstance(issue, DuplicateTestIssue):
+        return warning_stack.describe_duplicate_test(issue.duplicate)
     if isinstance(issue, BorderlineTleIssue):
         return 'slow only within 2x the time limit'
     if isinstance(issue, HiddenVerdictIssue):
@@ -248,6 +251,17 @@ def explain(issue: Issue, runs_dir: Optional[str] = None) -> List[str]:
                 'the solution-wide expectation held; only per-group ones failed'
             )
         return lines
+    if isinstance(issue, DuplicateTestIssue):
+        how = (
+            'the same generator call makes both tests'
+            if issue.duplicate.reason == 'call'
+            else 'their inputs are byte-identical'
+        )
+        return [
+            f'{how}, so the second costs judging time without testing anything new.',
+            'if you meant it, end its testplan line with `@allow-duplicate`, or '
+            'set `allowDuplicate` on its group.',
+        ]
     if isinstance(issue, LinterWarningsIssue):
         lines = []
         if issue.assetKind is not None:
