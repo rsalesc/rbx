@@ -212,10 +212,62 @@ class ProbePinned:
             )
 
 
+@dataclasses.dataclass(frozen=True)
+class ProbeCalibrated:
+    """Let MOJ estimate the limit itself, by the Kattis rule. What `rbx time`
+    uploads when the problem estimates with `timing.multipliers`.
+
+    rbx's multipliers *are* the Kattis method MOJ implements next to its own
+    (mojtools `tl-methods.sh`, spec 2025-09): `TLKATTIS[lang]` is the smallest
+    multiple of `r` that is at least `a x W[lang]`, `W` the worst accepted test.
+    So instead of testrunning each solution and estimating locally, the package
+    ships the solutions the estimate is about -- the lower-bound ones in
+    `sols/good`, the upper-bound ones in `sols/slow` -- and says `TLMETHOD=kattis`.
+    One calibration then measures the accepted solutions, computes the limit,
+    and judges the slow ones against it.
+
+    Ranges are MOJ's own (`conf_tlmethod_sane`): `a` and `b` in [1, 100], `r` in
+    (0, 10] seconds. Outside them the server refuses the package, so the
+    constructor refuses first.
+    """
+
+    ac_to_time_limit: float
+    # None when the problem sets no `timeLimitToTle`: the slow solutions are then
+    # not shipped, and MOJ's own default (1.5) is emitted only so `conf` is total.
+    time_limit_to_tle: Optional[float]
+    time_resolution_ms: int
+    # The cap every accepted solution runs under, as `CALIBRATIONTL`: what the
+    # local estimation phase caps them at too.
+    inference_timeout_ms: int
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.ac_to_time_limit <= 100:
+            raise ValueError(
+                f'MOJ estimates by the Kattis rule only with `acToTimeLimit` between '
+                f'1 and 100, got `{self.ac_to_time_limit}`.'
+            )
+        if self.time_limit_to_tle is not None and not (
+            1 <= self.time_limit_to_tle <= 100
+        ):
+            raise ValueError(
+                f'MOJ estimates by the Kattis rule only with `timeLimitToTle` between '
+                f'1 and 100, got `{self.time_limit_to_tle}`.'
+            )
+        if not 0 < self.time_resolution_ms <= 10_000:
+            raise ValueError(
+                f'MOJ estimates by the Kattis rule only with `timeResolution` above 0 '
+                f'and at most 10000 ms, got `{self.time_resolution_ms}`.'
+            )
+
+
 # How a package settles its time limits. The packager refuses to guess between these,
 # which is why it is a mode object rather than a defaulted number: each one carries a
 # different precondition (an estimated profile / `timing.multipliers` / nothing at all).
-TimingMode = Union[ProfilePinned, JudgeCalibrated, ProbePinned]
+TimingMode = Union[ProfilePinned, JudgeCalibrated, ProbePinned, ProbeCalibrated]
+
+# The modes a probe package may take: each pins, or estimates, exactly what the
+# timing run asked for. See `MojPackager.__init__`.
+PROBE_TIMING_MODES = (ProbePinned, ProbeCalibrated)
 
 # The mode `rbx package moj` uses. A frozen dataclass with no fields carries no state,
 # so one shared instance is as good as many -- and a default argument may not be a
@@ -399,7 +451,7 @@ def check_timing_setup(timing_mode: TimingMode) -> None:
     fourth mode silently inheriting a different default in each would be exactly the
     guessing the union exists to prevent.
     """
-    if isinstance(timing_mode, ProbePinned):
+    if isinstance(timing_mode, (ProbePinned, ProbeCalibrated)):
         return
     if isinstance(timing_mode, ProfilePinned):
         _require_limits_profile()
@@ -473,12 +525,21 @@ class MojPackager(BasePackager):
         # thing this run exists to replace -- and a calibrated one under whatever the
         # judge decided, which rbx never sees. Neither is a package worth uploading,
         # so neither is constructible.
-        if probe is not None and not isinstance(timing_mode, ProbePinned):
+        #
+        # `ProbeCalibrated` is the second legal cell: the run asks MOJ to estimate
+        # by the Kattis rule with *its* ratios, which is still a limit rbx chose
+        # the rule for -- and it only makes sense on a throwaway problem.
+        if probe is not None and not isinstance(timing_mode, PROBE_TIMING_MODES):
             raise ValueError(
                 'A probe package must pin the limits the timing run asked for: it '
                 'exists to measure solutions under limits rbx chose, and both '
                 '`ProfilePinned` and `JudgeCalibrated` would measure them under '
                 f'some other ones. Got `{type(timing_mode).__name__}`.'
+            )
+        if probe is None and isinstance(timing_mode, ProbeCalibrated):
+            raise ValueError(
+                '`ProbeCalibrated` is for the throwaway problem `rbx time` estimates '
+                'on; a package a setter builds says `--calibrate` instead.'
             )
 
     @classmethod
@@ -961,6 +1022,14 @@ class MojPackager(BasePackager):
             return moj_timing.fixed_limit_lines(
                 self._fixed_time_limits(), inference_timeout_ms=_inference_timeout_ms()
             )
+        if isinstance(self.timing_mode, ProbeCalibrated):
+            mode = self.timing_mode
+            return moj_timing.kattis_limit_lines(
+                mode.ac_to_time_limit,
+                mode.time_limit_to_tle,
+                mode.time_resolution_ms,
+                mode.inference_timeout_ms,
+            )
         typing.assert_never(self.timing_mode)
 
     def _fixed_time_limits(self) -> moj_timing.FixedTimeLimits:
@@ -1051,6 +1120,16 @@ class MojPackager(BasePackager):
         this run submits can reach it.
         """
         if isinstance(self.timing_mode, JudgeCalibrated):
+            return
+        if isinstance(self.timing_mode, ProbeCalibrated):
+            mode = self.timing_mode
+            console.console.print(
+                f'MOJ will estimate the time limit by the Kattis rule '
+                f'([item]acToTimeLimit {mode.ac_to_time_limit:g}[/item], '
+                f'resolution [item]{mode.time_resolution_ms} ms[/item]), measuring '
+                f'the accepted solutions under [item]{mode.inference_timeout_ms} '
+                f'ms[/item].'
+            )
             return
         if isinstance(self.timing_mode, ProbePinned):
             measuring = self.timing_mode.measuring
@@ -1628,6 +1707,42 @@ class MojPackager(BasePackager):
             return 'upcoming'
         return 'wrong'
 
+    def shipped_solutions(self) -> List[Tuple[str, Solution]]:
+        """Every solution this package ships, with the `sols/` directory it goes in.
+
+        Public for the same reason `testcase_names` is: a calibration names each
+        solution by `(category, basename)`, and the MOJ runner pairs that back to
+        rbx's solutions through this list rather than by re-deriving the layout.
+        """
+        calibrated = isinstance(self.timing_mode, ProbeCalibrated)
+        return [
+            (
+                self._calibration_tag(solution)
+                if calibrated
+                else self._tag_for(solution),
+                solution,
+            )
+            for solution in self._solutions_to_ship()
+        ]
+
+    def _calibration_tag(self, solution: Solution) -> str:
+        """The `sols/` directory of a solution a calibrated probe ships.
+
+        By its **inference role**, not its expected outcome: `inference: lower` /
+        `upper` in `problem.rbx.yml` can put a solution on either side whatever it
+        is expected to do, and the local estimate honours that. `sols/good` is what
+        MOJ measures the limit from; `sols/slow` is what it then judges against it.
+        """
+        # Imported here: `solutions` reaches the runners, which import this module.
+        from rbx.box.schema import InferenceRole
+        from rbx.box.solutions import inference_role_of
+
+        role = inference_role_of(solution)
+        if role == InferenceRole.LOWER:
+            return 'good'
+        assert role == InferenceRole.UPPER, solution.path
+        return 'slow'
+
     def solution_content(self, solution: Solution) -> bytes:
         """The bytes to ship for a solution.
 
@@ -1672,7 +1787,22 @@ class MojPackager(BasePackager):
           verified, so the package is no longer one to hand to students.
 
         Both keep the single `sols/good` `calibreitor.sh` cannot do without.
+
+        A **calibrated** probe (`ProbeCalibrated`) is the exception to the first: it
+        ships exactly what the estimate is about -- every lower-bound solution, and
+        the upper-bound ones when the problem bounds the limit from above -- and
+        nothing else, since calibration runs everything a package ships. See
+        `_calibration_tag` for where each one goes.
         """
+        if isinstance(self.timing_mode, ProbeCalibrated):
+            # Imported here: `solutions` reaches the runners, which import this.
+            from rbx.box.schema import InferenceRole
+            from rbx.box.solutions import get_inference_solutions
+
+            lower = get_inference_solutions(InferenceRole.LOWER)
+            if self.timing_mode.time_limit_to_tle is None:
+                return lower
+            return [*lower, *get_inference_solutions(InferenceRole.UPPER)]
         if self.probe is None and not self.reference_only:
             return package.get_solutions()
         main_solution = package.get_main_solution()
@@ -1697,8 +1827,7 @@ class MojPackager(BasePackager):
         sols_path = into_path / 'sols'
         written: Dict[str, Dict[str, pathlib.Path]] = collections.defaultdict(dict)
 
-        for solution in self._solutions_to_ship():
-            tag = self._tag_for(solution)
+        for tag, solution in self.shipped_solutions():
             basename = solution.path.name
             if basename in written[tag]:
                 console.console.print(

@@ -45,6 +45,11 @@ The problem `rbx run` uploads to is named `<your-login>#rbxt-<problem-id>-run`.
 stops a solution at its first non-accepted verdict, and the testcases it never reached come
 back as skipped, exactly as they do locally.
 
+MOJ judges each solution the way it judges a real submission. It runs several tests at once,
+each pinned to processor cores of its own. Then it reruns the first timed-out test, in test-name order,
+once more on its own, in case the timeout came from sharing the machine, and the report shows
+that second verdict. Later timeouts aren't rerun.
+
 ### What it costs
 
 The first run uploads the package and waits for the judge to calibrate it. After that, the
@@ -55,7 +60,8 @@ Two things invalidate that: changing anything that goes into the package, and to
 upload and a calibration on the next run.
 
 `rbx run` and each phase of `rbx time` upload to a problem of their own (`…-run` for `rbx run`,
-`…` and `…-slow` for `rbx time`), so alternating between the commands never costs a re-upload.
+`…` and `…-slow` for `rbx time`, `…-kattis` for a calibration), so alternating between the
+commands never costs a re-upload.
 
 ## Running on DOMjudge
 

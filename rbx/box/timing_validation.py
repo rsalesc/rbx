@@ -64,6 +64,22 @@ class SlowKnowledge:
         entry = self._per_solution.get(solution)
         return entry is not None and entry.time is None and entry.survived is not None
 
+    def without(self, solutions) -> 'SlowKnowledge':
+        """A copy that knows nothing about ``solutions``.
+
+        For a check that could not be run: a solution whose evidence does not
+        reach the limit it now has to clear is reported as unasked, while the
+        evidence itself stays here for a later, lower limit it does answer.
+        """
+        dropped = set(solutions)
+        return SlowKnowledge(
+            {
+                path: dataclasses.replace(entry)
+                for path, entry in self._per_solution.items()
+                if path not in dropped
+            }
+        )
+
     def needs_run(self, solution: str, limit: int) -> bool:
         """Whether answering the question at ``limit`` requires running it."""
         entry = self._per_solution.get(solution)

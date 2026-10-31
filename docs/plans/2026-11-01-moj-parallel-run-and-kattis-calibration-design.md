@@ -130,8 +130,10 @@ the testrun probes' fingerprints.
 ### Reading it back
 
 `moj --json calib <id>` per host, per solution, per test `{name, code, time, tl}`.
-Only hosts whose `version` equals the top-level `checksum` count (a host that
-calibrated an older package is still listed).
+A judge that calibrated an older package stays listed, and `version` cannot tell
+them apart (observed: it differs from the top-level `checksum` on a calibration
+`moj check` calls current). Only judges whose `at` is newer than what `moj check`
+reported *before* rbx queued count (`MojCalibration.hosts_after`).
 
 - **Accepted solutions** feed `_EstimationContext.lower_timings` directly:
   `lower[rbx_lang][path] = max over fresh hosts of max over tests of round(time *
@@ -146,7 +148,13 @@ calibrated an older package is still listed).
   profile, `upperValidation`. With each language its own group the limit rbx writes
   is MOJ's `TLKATTIS[lang]`; pooling languages takes the max, which is what the
   formula yields too. rbx compares its number to MOJ's for every language it
-  estimated and **warns** on a mismatch, keeping MOJ's.
+  estimated and **warns** when its own is tighter (it can only be looser, by
+  pooling, unless the two disagree about the data).
+- A slow solution that *finished* every test under `b x TL` is a measurement the
+  first build already sees, so the range can be empty before any picker round:
+  `--auto` then writes nothing, exactly as a second-round violation does on the
+  testrun path. Live (`contando-mex`, 2026-11-01): 600 ms for C++, four slow
+  solutions confirmed, nothing testrun, 148 s for the calibration.
 
 ### What feels different
 
@@ -165,7 +173,15 @@ calibrated an older package is still listed).
 
 ### Freshness
 
-`moj check` right after `moj calibrate` can still describe the *previous* calibration.
-`is_ready` is therefore not enough: rbx also requires every fresh host's `at` to be
-newer than what it recorded before queueing, and refuses a calibration whose
-`checksum` is not the uploaded package's.
+Two traps, both seen live:
+
+- `moj check` right after `moj calibrate` can still describe the *previous*
+  calibration, so `is_ready` alone is not enough.
+- `moj check` called a judge done ~13 s before its results reached `moj calib`. The
+  first live run read in that window and saw two judges of three; MOJ publishes the
+  max across all of them.
+
+So the wait polls `moj calib` itself until **every judge `moj calibrate` said it
+queued** (`calibração de <id>: h1, h2, h3`, parsed by `cli.queued_hosts`) has an
+entry newer than the pre-queue `at`. When the CLI names none, every judge `moj
+check` calls fresh stands in.
