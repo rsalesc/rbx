@@ -26,6 +26,7 @@ from rbx.box.issues.schema import (
     NoAcceptedSolutionIssue,
     NoSamplesIssue,
     NoValidatorIssue,
+    StaleIgnoreRuleIssue,
 )
 from rbx.box.schema import ExpectedOutcome
 
@@ -177,6 +178,11 @@ def detect_large_testcases(state: ConfigState) -> List[Issue]:
     return issues
 
 
+def detect_stale_ignore_rules(state: ConfigState) -> List[Issue]:
+    """Scoped `issues.ignore` rules that match nothing in the package."""
+    return [StaleIgnoreRuleIssue(rule=rule) for rule in state.stale_ignore_rules]
+
+
 CONFIG_DETECTORS: List[Callable[[ConfigState], List[Issue]]] = [
     detect_no_accepted_solution,
     detect_no_validator,
@@ -186,6 +192,7 @@ CONFIG_DETECTORS: List[Callable[[ConfigState], List[Issue]]] = [
     detect_large_testcases,
     detect_missing_statement_languages,
     detect_explanation_languages,
+    detect_stale_ignore_rules,
 ]
 
 

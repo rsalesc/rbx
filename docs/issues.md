@@ -63,6 +63,49 @@ Ignored issues don't disappear completely. Under the list, `rbx issues` prints h
 hid and their codes. `rbx issues --all` (`-a`) lists them with the rest, marked `-` and tagged
 `(ignored <code>)`. In `--format json`, they move from `issues` to a separate `ignored` list.
 
+### Ignoring an issue for one solution, file, group, or test
+
+A code alone stops reporting the issue anywhere in the problem. Most issues are about one thing
+in particular, and you may want to ignore the issue for that thing only. For example, a brute
+force solution may include a header that makes the compiler warn, while a warning in any other
+solution should still show up.
+
+To narrow an entry, write it as a rule with the code and an `on` glob:
+
+```yaml title="problem.rbx.yml"
+issues:
+  ignore:
+    - no-samples
+    - code: compilation-warnings
+      on: sols/brute-*.cpp
+      reason: The brute force solutions use a deprecated header on purpose.
+```
+
+Here {{rbx}} ignores `no-samples` everywhere, and `compilation-warnings` only for the solutions
+whose path matches `sols/brute-*.cpp`. Rules work the same way in `contest.rbx.yml`.
+
+What `on` matches depends on what the issue is about:
+
+| `on` matches | Codes |
+| --- | --- |
+| A solution's path, relative to the problem, such as `sols/slow.cpp` | `unmet-expectation`, `unexpected-score`, `compilation-failed`, `compilation-warnings`, `sanitizer-finding`, `borderline-tle`, `hidden-verdict`, `noisy-stderr`, `slow-accepted-solution` |
+| Another file's path, relative to the problem, such as `gens/gen.cpp` | `asset-compilation-warnings`, `linter-warnings` |
+| A test group's name, such as `small` | `bounds-not-hit`, `empty-test-group` |
+| A test, such as `main/3`, or `main/small/0` in the subgroup `small` (`rbx issues -d` prints it) | `duplicate-test` |
+
+In `on`, `*` and `?` match within one folder, and `**` matches any number of folders, so
+`sols/*.cpp` doesn't match `sols/wrong/wa.cpp`, but `sols/**/*.cpp` does.
+
+The other codes are about the problem as a whole, and {{rbx}} rejects a rule that gives them an
+`on`. A [`bounds-not-hit`](#bounds-not-hit) issue for the whole testset, which you get when no group
+sets its own validator or `vars`, only goes away with the plain code.
+
+`reason` is optional. `rbx issues --all` prints it under each issue the rule hides.
+
+A rule stops matching when you rename or delete what it points at. For a problem's solution, file
+and group rules, {{rbx}} reports this as [`stale-ignore-rule`](#stale-ignore-rule), so the issue the
+rule was hiding doesn't come back unnoticed.
+
 ## Tuning thresholds
 
 A few issues fire when something gets too big or too slow. Your preset's
@@ -168,6 +211,18 @@ language the problem has a statement in.
 
 The statement in the missing language goes without that explanation, and the statement build
 doesn't warn you about it. The issue says which sample and which file it is.
+
+### `stale-ignore-rule` {: #stale-ignore-rule }
+
+**Warning.** A rule in the problem's `issues.ignore` has an `on` glob that doesn't match anything in
+the package.
+
+Usually you renamed or deleted something: point `on` at the new name, or delete the rule.
+
+{{rbx}} checks `on` against what the code is about, as the table in
+[Ignoring an issue for one solution, file, group, or test](#ignoring-an-issue-for-one-solution-file-group-or-test)
+lists. For a solution code, that's the solutions `solutions:` declares, not the files on disk. Rules
+for tests, and the contest's rules, aren't checked.
 
 ## Run issues
 

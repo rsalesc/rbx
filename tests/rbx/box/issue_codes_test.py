@@ -15,10 +15,12 @@ from rbx.box.contest.schema import Contest
 from rbx.box.environment import Environment
 from rbx.box.issue_codes import (
     DOCS_URL,
+    IgnoreRule,
     IssueCode,
     IssuesConfig,
     IssueThresholds,
     docs_url,
+    glob_matches,
 )
 from rbx.box.issues import config_detectors, detectors, rendering, run_state, schema
 from rbx.box.issues import config_state as config_state_module
@@ -124,15 +126,15 @@ class TestIgnoreConfig:
         pkg = package(issues={'ignore': ['no-validator', 'noisy-stderr']})
 
         assert merge_ignored(contest, pkg) == [
-            IssueCode.NO_SAMPLES,
-            IssueCode.NO_VALIDATOR,
-            IssueCode.NOISY_STDERR,
+            IgnoreRule(code=IssueCode.NO_SAMPLES),
+            IgnoreRule(code=IssueCode.NO_VALIDATOR),
+            IgnoreRule(code=IssueCode.NOISY_STDERR),
         ]
 
     def test_outside_a_contest_only_the_problem_counts(self):
         pkg = package(issues={'ignore': ['no-samples']})
 
-        assert merge_ignored(None, pkg) == [IssueCode.NO_SAMPLES]
+        assert merge_ignored(None, pkg) == [IgnoreRule(code=IssueCode.NO_SAMPLES)]
 
     def test_defaults_to_nothing_ignored(self):
         assert package().issues == IssuesConfig()
@@ -447,6 +449,207 @@ class TestBuildReportIgnores:
 
         assert data['issues'] == []
         assert [i['code'] for i in data['ignored']] == ['no-validator']
+
+
+class TestScopedIgnoreRules:
+    def test_accepts_codes_and_rules_side_by_side(self):
+        config = IssuesConfig.model_validate(
+            {
+                'ignore': [
+                    'no-samples',
+                    {'code': 'borderline-tle', 'on': 'sols/slow-*.cpp', 'reason': 'r'},
+                ]
+            }
+        )
+
+        assert config.rules() == [
+            IgnoreRule(code=IssueCode.NO_SAMPLES),
+            IgnoreRule(code=IssueCode.BORDERLINE_TLE, on='sols/slow-*.cpp', reason='r'),
+        ]
+
+    def test_rejects_on_for_a_whole_problem_code(self):
+        with pytest.raises(pydantic.ValidationError, match='problem as a whole'):
+            IgnoreRule(code=IssueCode.NO_SAMPLES, on='x')
+
+    @pytest.mark.parametrize('on', ['', '  ', '/abs/sols/a.cpp'])
+    def test_rejects_an_empty_or_absolute_on(self, on):
+        with pytest.raises(pydantic.ValidationError, match='relative to the problem'):
+            IgnoreRule(code=IssueCode.BORDERLINE_TLE, on=on)
+
+    def test_rejects_an_unknown_key(self):
+        with pytest.raises(pydantic.ValidationError):
+            IssuesConfig.model_validate(
+                {'ignore': [{'code': 'borderline-tle', 'solution': 'x'}]}
+            )
+
+    @pytest.mark.parametrize(
+        'pattern, subject, expected',
+        [
+            ('sols/slow-*.cpp', 'sols/slow-a.cpp', True),
+            ('sols/*.cpp', 'sols/deep/a.cpp', False),
+            ('sols/**/*.cpp', 'sols/deep/a.cpp', True),
+            ('sols/**/*.cpp', 'sols/a.cpp', True),
+            ('./sols/a.cpp', 'sols/a.cpp', True),
+            ('sols/a?.cpp', 'sols/ab.cpp', True),
+            ('sols/[ab].cpp', 'sols/c.cpp', False),
+            ('main/*', 'main/3', True),
+            ('small', 'smaller', False),
+        ],
+    )
+    def test_globs_like_solution_entries(self, pattern, subject, expected):
+        assert glob_matches(pattern, subject) is expected
+
+    def test_matches_the_solution_path_glob(self, tmp_path):
+        """The same pattern means the same files to `Path.glob` and to a rule."""
+        for name in ('sols/a.cpp', 'sols/deep/b.cpp'):
+            (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / name).write_text('')
+        for pattern in ('sols/*.cpp', 'sols/**/*.cpp', 'sols/*/*.cpp'):
+            globbed = {
+                p.relative_to(tmp_path).as_posix()
+                for p in tmp_path.glob(pattern)
+                if p.is_file()
+            }
+            assert {
+                s for s in ('sols/a.cpp', 'sols/deep/b.cpp') if glob_matches(pattern, s)
+            } == globbed
+
+    def test_silences_only_the_matching_solution(self, tmp_path: pathlib.Path):
+        run_report.write_report(
+            run_report.report_path(tmp_path),
+            RunReport(
+                solutions=[
+                    solution(path='sols/slow-ok.cpp', index=0, totalTime=500),
+                    solution(path='sols/main.cpp', index=1, totalTime=500),
+                ]
+            ),
+        )
+        rule = IgnoreRule(
+            code=IssueCode.SLOW_ACCEPTED_SOLUTION, on='sols/slow-*.cpp', reason='r'
+        )
+
+        report = build_report(tmp_path, ignore=[rule])
+
+        assert [schema.subject_of(i) for i in report.issues] == ['sols/main.cpp']
+        assert [schema.subject_of(i) for i in report.ignored] == ['sols/slow-ok.cpp']
+        assert report.ignoredBy == [rule]
+
+    def test_a_plain_code_still_silences_everything(self, tmp_path: pathlib.Path):
+        run_report.write_report(
+            run_report.report_path(tmp_path),
+            RunReport(
+                solutions=[
+                    solution(path='sols/a.cpp', index=0, totalTime=500),
+                    solution(path='sols/b.cpp', index=1, totalTime=500),
+                ]
+            ),
+        )
+
+        report = build_report(tmp_path, ignore=[IssueCode.SLOW_ACCEPTED_SOLUTION])
+
+        assert report.issues == []
+        assert (
+            report.ignoredBy == [IgnoreRule(code=IssueCode.SLOW_ACCEPTED_SOLUTION)] * 2
+        )
+
+    def test_subjects_by_kind(self):
+        from rbx.box.linters.asset_kind import AssetKind
+        from rbx.box.run_validation import UnhitBound
+        from rbx.box.testset_findings import DuplicateTest
+
+        assert schema.subject_of(schema.BorderlineTleIssue(solution='s.cpp')) == 's.cpp'
+        assert (
+            schema.subject_of(
+                schema.AssetCompilationWarningsIssue(
+                    path='gens/g.cpp',
+                    assetKind=AssetKind.GENERATOR,
+                    log=pathlib.Path('x'),
+                )
+            )
+            == 'gens/g.cpp'
+        )
+        assert schema.subject_of(schema.EmptyTestGroupIssue(group='big')) == 'big'
+        assert (
+            schema.subject_of(
+                schema.BoundsNotHitIssue(
+                    group=None, bounds=[UnhitBound(name='N', missing=['max'])]
+                )
+            )
+            is None
+        )
+        assert (
+            schema.subject_of(
+                schema.DuplicateTestIssue(
+                    duplicate=DuplicateTest(
+                        test='main/3 (gen 5)',
+                        of='main/1',
+                        reason='input',
+                        name='main/3',
+                    )
+                )
+            )
+            == 'main/3'
+        )
+        # A record from before `name` existed falls back to the display form.
+        assert (
+            schema.subject_of(
+                schema.DuplicateTestIssue(
+                    duplicate=DuplicateTest(
+                        test='main/4 (gen 7)', of='main/2', reason='input'
+                    )
+                )
+            )
+            == 'main/4'
+        )
+        assert schema.subject_of(schema.NoValidatorIssue()) is None
+
+    def test_flags_a_rule_that_matches_nothing(self):
+        rule = IgnoreRule(code=IssueCode.BORDERLINE_TLE, on='sols/gone.cpp')
+        state = config_state(stale_ignore_rules=[rule])
+
+        (issue,) = config_detectors.detect_stale_ignore_rules(state)
+
+        assert issue.code == IssueCode.STALE_IGNORE_RULE
+        assert issue.severity == schema.IssueSeverity.WARNING
+        assert issue.rule == rule
+        assert 'sols/gone.cpp' in rendering.summarize(issue)
+
+
+class TestStaleRuleCollection:
+    async def test_collects_rules_matching_nothing_declared(self, testing_pkg):
+        testing_pkg.add_solution('sols/slow.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+        testing_pkg.add_file('sols/slow.cpp').write_text('')
+        # On disk, but no longer declared: a rule for it silences nothing.
+        testing_pkg.add_file('sols/dropped.cpp').write_text('')
+        testing_pkg.add_file('gens/gen.cpp').write_text('')
+        testing_pkg.add_testgroup_from_glob('small', 'tests/*.in')
+        stale_solution = {'code': 'borderline-tle', 'on': 'sols/renamed-*.cpp'}
+        dropped_solution = {'code': 'borderline-tle', 'on': 'sols/dropped.cpp'}
+        stale_file = {'code': 'linter-warnings', 'on': 'gens/old.cpp'}
+        stale_group = {'code': 'empty-test-group', 'on': 'big*'}
+        testing_pkg.yml.issues = IssuesConfig.model_validate(
+            {
+                'ignore': [
+                    'no-samples',
+                    {'code': 'borderline-tle', 'on': 'sols/slow.cpp'},
+                    {'code': 'linter-warnings', 'on': 'gens/*.cpp'},
+                    {'code': 'empty-test-group', 'on': 'small'},
+                    {'code': 'duplicate-test', 'on': 'small/9'},
+                    stale_solution,
+                    dropped_solution,
+                    stale_file,
+                    stale_group,
+                ]
+            }
+        )
+        testing_pkg.save()
+
+        state = await config_state_module.collect_config_state(testing_pkg.yml)
+
+        assert state.stale_ignore_rules == [
+            IgnoreRule.model_validate(rule)
+            for rule in (stale_solution, dropped_solution, stale_file, stale_group)
+        ]
 
 
 class TestRunReportTotals:
