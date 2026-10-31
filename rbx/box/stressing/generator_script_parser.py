@@ -3,7 +3,7 @@ import dataclasses
 import functools
 import pathlib
 import re
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import lark
 
@@ -21,6 +21,21 @@ class ScriptGeneratedInput(GenerationInput):
     """
 
     group: Optional[str] = None
+
+
+ALLOW_DUPLICATE_KEYWORD = '@allow-duplicate'
+
+
+def split_allow_duplicate(rest_of_line: str) -> Tuple[str, bool]:
+    """Split a trailing ``@allow-duplicate`` off a line's text.
+
+    Only the last whitespace-separated token counts, so the keyword anywhere
+    else in a line is left to the generator as an argument.
+    """
+    parts = rest_of_line.rsplit(None, 1)
+    if parts and parts[-1] == ALLOW_DUPLICATE_KEYWORD:
+        return (parts[0].strip() if len(parts) > 1 else ''), True
+    return rest_of_line.strip(), False
 
 
 LARK_GRAMMAR = r'''
@@ -42,8 +57,8 @@ generator_call: REST_OF_LINE
 copy_test: COPY_KEYWORD REST_OF_LINE
 
 // Inline input
-inline_input: INPUT_KEYWORD string
-            | INPUT_KEYWORD _LBRACE input_lines _RBRACE
+inline_input: INPUT_KEYWORD string ALLOW_DUPLICATE_KEYWORD?
+            | INPUT_KEYWORD _LBRACE input_lines _RBRACE ALLOW_DUPLICATE_KEYWORD?
 
 string: TRIPLE_QUOTED_STRING | ESCAPED_STRING
 
@@ -58,8 +73,9 @@ COMMENT.3: /(\/\/|#)[^\n\r]*/
 COPY_KEYWORD.3: "@copy"
 INPUT_KEYWORD.3: "@input"
 TESTGROUP_KEYWORD.3: "@testgroup"
+ALLOW_DUPLICATE_KEYWORD.3: "@allow-duplicate"
 # no ambiguity
-REST_OF_LINE.2: /(?!(?:@copy|@input|@testgroup)\b)[^\s\/#][^\n\r]*/
+REST_OF_LINE.2: /(?!(?:@copy|@input|@testgroup|@allow-duplicate)\b)[^\s\/#][^\n\r]*/
 FILEPATH: /[A-Za-z0-9\.][\/A-Za-z0-9\-_\.]*/
 GROUP_NAME: /[a-zA-Z0-9][a-zA-Z0-9\-_\/]*/
 
@@ -136,7 +152,7 @@ class TestPlanTransformer(lark.Transformer):
         self, meta: lark.tree.Meta, rest_of_line: str
     ) -> ScriptGeneratedInput:
         """Create ScriptGeneratedInput from a generator call."""
-        rest_of_line = rest_of_line.strip()
+        rest_of_line, allow_duplicate = split_allow_duplicate(rest_of_line)
         name, *arglist = rest_of_line.split(None, 1)
         args = ' '.join(arglist)
         if not args:
@@ -147,6 +163,7 @@ class TestPlanTransformer(lark.Transformer):
                 path=self.script_path,
                 line=meta.line,
             ),
+            allow_duplicate=allow_duplicate,
         )
 
     def generator_name(self, meta: lark.tree.Meta, token: lark.Token) -> str:
@@ -161,14 +178,16 @@ class TestPlanTransformer(lark.Transformer):
         self, meta: lark.tree.Meta, keyword: lark.Token, rest_of_line: str
     ) -> ScriptGeneratedInput:
         """Create ScriptGeneratedInput from a @copy directive."""
-        if not rest_of_line.strip():
+        filepath, allow_duplicate = split_allow_duplicate(rest_of_line)
+        if not filepath:
             raise ValueError('@copy directive requires a filepath')
         return ScriptGeneratedInput(
-            copied_from=Testcase(inputPath=pathlib.Path(rest_of_line.strip())),
+            copied_from=Testcase(inputPath=pathlib.Path(filepath)),
             generator_script=GeneratorScriptEntry(
                 path=self.script_path,
                 line=meta.line,
             ),
+            allow_duplicate=allow_duplicate,
         )
 
     @lark.v_args(inline=False, meta=True)
@@ -178,7 +197,9 @@ class TestPlanTransformer(lark.Transformer):
         """Create ScriptGeneratedInput from an @input directive."""
         # children[0] is the INPUT_KEYWORD token
         # children[1] is either a string or input_lines content
+        # children[2], when present, is a trailing @allow-duplicate
         content = children[1] if len(children) > 1 else ''
+        allow_duplicate = len(children) > 2
 
         # For brace block syntax (input_lines), strip and ensure trailing newline
         # For string syntax, keep as-is
@@ -192,6 +213,7 @@ class TestPlanTransformer(lark.Transformer):
                 path=self.script_path,
                 line=meta.line,
             ),
+            allow_duplicate=allow_duplicate,
         )
 
     def string(self, meta: lark.tree.Meta, token: lark.Token) -> str:
@@ -300,9 +322,30 @@ def statement_spans(script: str) -> List[StatementSpan]:
     return spans
 
 
+def _check_allow_duplicate_placement(script: str, tree: lark.ParseTree) -> None:
+    """An @input's ``@allow-duplicate`` must close the line its content ends on.
+
+    The grammar ignores newlines, so it alone would let the keyword sit on any
+    later line.
+    """
+    for node in tree.find_data('inline_input'):
+        if len(node.children) < 3:
+            continue
+        content, keyword = node.children[1], node.children[2]
+        if not isinstance(content, lark.Tree) or content.meta.empty:
+            continue
+        if '\n' in script[content.meta.end_pos : keyword.start_pos]:
+            raise ValueError(
+                f'{ALLOW_DUPLICATE_KEYWORD} must be on the same line as the end '
+                f'of the @input it annotates (line {keyword.line}).'
+            )
+
+
 def parse(script: str) -> lark.ParseTree:
     """Parse a test plan script and return the parse tree."""
-    return _lark_parser().parse(script)
+    tree = _lark_parser().parse(script)
+    _check_allow_duplicate_placement(script, tree)
+    return tree
 
 
 def parse_and_transform(

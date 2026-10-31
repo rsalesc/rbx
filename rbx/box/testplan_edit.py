@@ -72,7 +72,10 @@ def _walk(tree: lark.Tree, statements: List[Statement], blocks: List[Block]) -> 
             elif rule in ('generator_call', 'copy_test', 'inline_input'):
                 copy_path = None
                 if rule == 'copy_test':
-                    copy_path = pathlib.Path(str(child.children[1]).strip())
+                    filepath, _ = generator_script_parser.split_allow_duplicate(
+                        str(child.children[1])
+                    )
+                    copy_path = pathlib.Path(filepath)
                 statements.append(
                     Statement(
                         start_line=child.meta.line,

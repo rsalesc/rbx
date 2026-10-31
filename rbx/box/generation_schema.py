@@ -45,6 +45,8 @@ class GenerationInput(BaseModel):
     generator_call: Optional[GeneratorCall] = None
     generator_script: Optional[GeneratorScriptEntry] = None
     content: Optional[str] = None
+    # Set by a trailing ``@allow-duplicate`` on a generator script line.
+    allow_duplicate: bool = False
 
     def repr(self) -> str:
         if self.copied_from is not None:
@@ -79,6 +81,12 @@ class GenerationTestcaseEntry(BaseModel):
 
     visualizer: Optional[Visualizer] = None
     solution_visualizer: Optional[Visualizer] = None
+
+    # Whether the group this test belongs to allows duplicates (`allowDuplicate`).
+    group_allows_duplicate: bool = False
+
+    def allows_duplicate(self) -> bool:
+        return self.group_allows_duplicate or self.metadata.allow_duplicate
 
     def is_sample(self) -> bool:
         return self.group_entry.group == 'samples'

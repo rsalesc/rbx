@@ -743,6 +743,17 @@ A list of output validators to use to validate the output of the testcases of th
         'Has priority over the solution visualizer specified in the package.',
     )
 
+    allowDuplicate: Optional[bool] = Field(
+        default=None,
+        description="""
+Whether the tests of this group may duplicate other tests, either by being generated
+by the same call or by having the same input. A duplicate pair is only warned about
+when neither of its tests allows it.
+
+A subgroup inherits the value of its group unless it sets its own.
+""",
+    )
+
     @model_validator(mode='after')
     def check_oneof(self) -> 'TestcaseSubgroup':
         _check_oneof(

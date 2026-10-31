@@ -30,6 +30,7 @@ from rbx.box import promotion_sinks as sinks
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.promotion_sinks import COPY, GLOB, PLAN, RECIPE, Sink
 from rbx.box.schema import GeneratorCall, GeneratorScript
+from rbx.box.stressing import generator_script_parser
 
 CREATE = 'create'
 MODIFY = 'modify'
@@ -362,6 +363,13 @@ def _recipe_line(call: GeneratorCall, script: GeneratorScript) -> str:
         )
         name = handler.normalize_call_name(name)
     return f'{name} {call.args or ""}'.rstrip()
+
+
+def _annotated(line: str, src: Source) -> str:
+    """``line``, keeping the ``@allow-duplicate`` its source statement carried."""
+    if src.entry is None or not src.entry.metadata.allow_duplicate:
+        return line
+    return f'{line} {generator_script_parser.ALLOW_DUPLICATE_KEYWORD}'
 
 
 def _call_key(name: str, args: Optional[str]) -> Tuple[str, str]:
@@ -749,6 +757,7 @@ async def plan_promotion(
             line = _recipe_line(src.recipe, sink.script)
             name_, _, args = line.partition(' ')
             key = _call_key(name_, args)
+            line = _annotated(line, src)
             if src.dedup and key in calls_seen:
                 skipped.append(Skipped(src.selector, f'{sink.name} already has it'))
                 continue
@@ -802,7 +811,7 @@ async def plan_promotion(
                         )
                     )
             if sink.kind == PLAN:
-                line = testplan_edit.copy_line(package.relpath(dest))
+                line = _annotated(testplan_edit.copy_line(package.relpath(dest)), src)
                 if decision.in_place:
                     assert src.statement is not None and sink_key is not None
                     scripts.replace.setdefault(sink_key, {})[

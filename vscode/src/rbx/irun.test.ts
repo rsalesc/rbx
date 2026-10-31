@@ -85,6 +85,8 @@ test('the picker ticks the solutions asked for, or the accepted ones', () => {
 test('a generator call is read off a testplan line', () => {
   assert.strictEqual(generatorCallFrom('  gen 10 20 // big'), 'gen 10 20');
   assert.strictEqual(generatorCallFrom('gen 1 2 # note'), 'gen 1 2');
+  assert.strictEqual(generatorCallFrom('gen 1 2 @allow-duplicate'), 'gen 1 2');
+  assert.strictEqual(generatorCallFrom('gen @allow-duplicate 2'), 'gen @allow-duplicate 2');
   assert.strictEqual(generatorCallFrom('@copy tests/a.in'), undefined);
   assert.strictEqual(generatorCallFrom('@testgroup big {'), undefined);
   assert.strictEqual(generatorCallFrom('}'), undefined);
