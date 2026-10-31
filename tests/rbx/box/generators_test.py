@@ -592,7 +592,10 @@ gens/gen.cpp 2
 
     assert _duplicates() == [
         DuplicateTest(
-            test='main/1 (gens/gen.cpp 2)', of='main/0 (gens/gen.cpp 1)', reason='input'
+            test='main/1 (gens/gen.cpp 2)',
+            of='main/0 (gens/gen.cpp 1)',
+            reason='input',
+            name='main/1',
         )
     ]
     # Recorded for the end of the command, not printed mid-build.
@@ -695,7 +698,10 @@ gens/gen.cpp 3
 
     assert _duplicates() == [
         DuplicateTest(
-            test='main/2 (gens/gen.cpp 3)', of='main/1 (gens/gen.cpp 2)', reason='input'
+            test='main/2 (gens/gen.cpp 3)',
+            of='main/1 (gens/gen.cpp 2)',
+            reason='input',
+            name='main/2',
         )
     ]
 
@@ -747,7 +753,12 @@ async def test_allow_duplicate_subgroup_overrides_group(
     # subgroup.
     assert _duplicates() == [
         DuplicateTest(
-            test='main/1 (gens/gen.cpp 3)', of='main/0 (gens/gen.cpp 2)', reason='input'
+            test='main/1 (gens/gen.cpp 3)',
+            of='main/0 (gens/gen.cpp 2)',
+            reason='input',
+            # The subgroup's own name: `main/1` would also name the second test
+            # of `inherits`, since the index restarts in every subgroup.
+            name='main/strict/1',
         )
     ]
 

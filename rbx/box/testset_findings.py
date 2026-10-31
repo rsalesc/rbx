@@ -27,3 +27,8 @@ class DuplicateTest(BaseModel):
     reason: Literal['call', 'input']
     # The generator call, when `reason` is `call`.
     call: Optional[str] = None
+    # The test's unambiguous name, what a scoped `issues.ignore` rule matches:
+    # `main/3`, or `main/small/0` inside a subgroup. Not the group-and-index
+    # `test` starts with, which restarts its index in every subgroup and so can
+    # name two tests at once. Absent on a record from an older rbx.
+    name: Optional[str] = None

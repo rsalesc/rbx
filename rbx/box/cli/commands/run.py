@@ -479,7 +479,7 @@ async def summary_cmd(
     # The same detectors `rbx issues` runs, through the same entry point: a
     # finding worded one way there and another way here would be the exact drift
     # `run_report` exists to prevent.
-    ignored = set(issues.resolve_ignored(pkg))
+    ignored = issues.resolve_ignored(pkg)
     config_issues = [
         issue
         for issue in issues.detect_all_config(
@@ -487,7 +487,7 @@ async def summary_cmd(
                 pkg, thresholds=issues.resolve_thresholds()
             )
         )
-        if issue.code not in ignored
+        if issues.silencing_rule(issue, ignored) is None
     ]
 
     if format is summary.SummaryFormat.JSON:

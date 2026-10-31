@@ -53,7 +53,11 @@ from rbx.box.issues.schema import (
     LinterWarningsIssue,
     SanitizerFindingIssue,
 )
-from rbx.box.issues.settings import resolve_ignored, resolve_thresholds
+from rbx.box.issues.settings import (
+    resolve_ignored,
+    resolve_thresholds,
+    silencing_rule,
+)
 
 __all__ = [
     'CONFIG_DETECTORS',
@@ -87,6 +91,7 @@ __all__ = [
     'print_report',
     'resolve_ignored',
     'resolve_thresholds',
+    'silencing_rule',
     'severity_marker',
     'summarize',
     'to_json',

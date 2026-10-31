@@ -20,7 +20,12 @@ from typing import Annotated, List, Literal, Optional, Tuple, Union
 from pydantic import BaseModel, Field, computed_field
 
 from rbx.box.compilation_findings import CompilationWarning, LintFinding
-from rbx.box.issue_codes import IssueCode
+from rbx.box.issue_codes import (
+    CODE_SUBJECTS,
+    IgnoreRule,
+    IssueCode,
+    IssueSubject,
+)
 from rbx.box.linters.asset_kind import AssetKind
 from rbx.box.run_validation import UnhitBound
 from rbx.box.schema import ExpectedOutcome
@@ -234,6 +239,22 @@ class DuplicateTestIssue(_RunIssue):
 
     kind: Literal['duplicate_test'] = 'duplicate_test'
     duplicate: DuplicateTest
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        return IssueSeverity.WARNING
+
+
+class StaleIgnoreRuleIssue(_ConfigIssue):
+    """An `issues.ignore` rule whose `on` glob matches nothing in the package.
+
+    Usually a solution or group that was renamed: the rule goes on silencing
+    nothing, and the finding it was written for comes back under its new name.
+    """
+
+    kind: Literal['config_stale_ignore_rule'] = 'config_stale_ignore_rule'
+    rule: IgnoreRule
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -561,6 +582,7 @@ Issue = Annotated[
         LinterWarningsIssue,
         DuplicateTestIssue,
         BoundsNotHitIssue,
+        StaleIgnoreRuleIssue,
         BorderlineTleIssue,
         HiddenVerdictIssue,
         NoisyStderrIssue,
@@ -590,6 +612,7 @@ KIND_TO_CODE = {
     'linter_warnings': IssueCode.LINTER_WARNINGS,
     'duplicate_test': IssueCode.DUPLICATE_TEST,
     'bounds_not_hit': IssueCode.BOUNDS_NOT_HIT,
+    'config_stale_ignore_rule': IssueCode.STALE_IGNORE_RULE,
     'borderline_tle': IssueCode.BORDERLINE_TLE,
     'hidden_verdict': IssueCode.HIDDEN_VERDICT,
     'noisy_stderr': IssueCode.NOISY_STDERR,
@@ -630,6 +653,9 @@ class IssueReport(BaseModel):
     # Kept rather than dropped so `--all` can still show it, and so a client can
     # say how much it is not seeing. Never counted by `errors()`/`warnings()`.
     ignored: List[Issue] = []
+    # The rule that silenced each of `ignored`, index for index -- so `--all`
+    # can say why, and a scoped rule's `reason` reaches the reader.
+    ignoredBy: List[IgnoreRule] = []
 
     def errors(self) -> List[Issue]:
         return [issue for issue in self.issues if issue.severity == IssueSeverity.ERROR]
@@ -653,3 +679,26 @@ class ContestIssueRow(BaseModel):
     name: str
     report: IssueReport = IssueReport()
     failed_to_load: bool = False
+
+
+def subject_of(issue: Issue) -> Optional[str]:
+    """What `issue` is about, as a scoped `issues.ignore` rule matches it.
+
+    None for a code about the problem as a whole, and for an issue that happens
+    to have no single subject -- `bounds-not-hit` on a testset whose groups share
+    their bounds.
+    """
+    subject = CODE_SUBJECTS.get(issue.code)
+    if subject is IssueSubject.SOLUTION:
+        return getattr(issue, 'solution', None)
+    if subject is IssueSubject.FILE:
+        return getattr(issue, 'path', None)
+    if subject is IssueSubject.GROUP:
+        return getattr(issue, 'group', None)
+    if subject is IssueSubject.TEST:
+        duplicate = getattr(issue, 'duplicate', None)
+        if duplicate is None:
+            return None
+        # An older record has only the display form, `main/3 (gen 5)`.
+        return duplicate.name or duplicate.test.split(' ', 1)[0]
+    return None

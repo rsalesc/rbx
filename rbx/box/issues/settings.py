@@ -10,12 +10,13 @@ The impure half of tuning, kept apart from the detectors for the reason
   to what its contest silences, never take something back.
 """
 
-from typing import List, Optional
+from typing import Iterable, List, Optional, Union
 
 from rbx.box import environment
 from rbx.box.contest import contest_package
 from rbx.box.contest.schema import Contest
-from rbx.box.issue_codes import IssueCode, IssueThresholds
+from rbx.box.issue_codes import IgnoreRule, IssueCode, IssueThresholds, as_rule
+from rbx.box.issues.schema import Issue, subject_of
 from rbx.box.schema import Package
 
 
@@ -23,19 +24,39 @@ def resolve_thresholds() -> IssueThresholds:
     return environment.get_environment().issues.thresholds
 
 
-def merge_ignored(contest: Optional[Contest], problem: Package) -> List[IssueCode]:
-    """The contest's codes, then the problem's, each once."""
-    codes: List[IssueCode] = []
-    sources = (contest.issues.ignore if contest is not None else []) + list(
-        problem.issues.ignore
+def merge_ignored(contest: Optional[Contest], problem: Package) -> List[IgnoreRule]:
+    """The contest's rules, then the problem's, each once.
+
+    A plain code comes back as a rule with no `on`, so every caller deals in
+    one shape.
+    """
+    rules: List[IgnoreRule] = []
+    sources = (contest.issues.rules() if contest is not None else []) + list(
+        problem.issues.rules()
     )
-    for code in sources:
-        if code not in codes:
-            codes.append(code)
-    return codes
+    for rule in sources:
+        if rule not in rules:
+            rules.append(rule)
+    return rules
 
 
-def resolve_ignored(problem: Package) -> List[IssueCode]:
+def silencing_rule(
+    issue: Issue, rules: Iterable[Union[IssueCode, IgnoreRule]]
+) -> Optional[IgnoreRule]:
+    """The first rule that silences `issue`, if any.
+
+    The first, so `rbx issues --all` credits the rule a reader meets first when
+    reading the list top to bottom -- the contest's before the problem's.
+    """
+    subject = subject_of(issue)
+    for entry in rules:
+        rule = as_rule(entry)
+        if rule.matches(issue.code, subject):
+            return rule
+    return None
+
+
+def resolve_ignored(problem: Package) -> List[IgnoreRule]:
     """The ignore list for the problem in the current directory.
 
     The enclosing contest is read through `find_contest_without_validation`, which skips the
