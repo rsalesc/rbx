@@ -20,6 +20,7 @@ from rbx.box.issues.schema import (
     ExplanationMissingLanguageIssue,
     Issue,
     IssueSeverity,
+    LargeTestsetIssue,
     MissingStatementLanguageIssue,
     NoAcceptedSolutionIssue,
     NoSamplesIssue,
@@ -114,11 +115,32 @@ def detect_explanation_languages(state: ConfigState) -> List[Issue]:
     return issues
 
 
+def detect_large_testset(state: ConfigState) -> List[Issue]:
+    """The built testset, inputs and answers together, is over budget.
+
+    Silent when nothing is built: an unbuilt testset has no size to report, and
+    `rbx build` is what would give it one.
+    """
+    if state.testset_input_bytes is None or state.testset_answer_bytes is None:
+        return []
+    threshold = state.thresholds.testset_size_bytes
+    if state.testset_input_bytes + state.testset_answer_bytes <= threshold:
+        return []
+    return [
+        LargeTestsetIssue(
+            inputBytes=state.testset_input_bytes,
+            answerBytes=state.testset_answer_bytes,
+            thresholdBytes=threshold,
+        )
+    ]
+
+
 CONFIG_DETECTORS: List[Callable[[ConfigState], List[Issue]]] = [
     detect_no_accepted_solution,
     detect_no_validator,
     detect_no_samples,
     detect_empty_test_groups,
+    detect_large_testset,
     detect_missing_statement_languages,
     detect_explanation_languages,
 ]

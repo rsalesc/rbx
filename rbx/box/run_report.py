@@ -122,6 +122,16 @@ class RunSolutionReport(BaseModel):
     maxScore: int = 0
     maxTime: Optional[float] = None
     maxMemory: Optional[int] = None
+    # The CPU time this solution spent over every testcase it ran, in seconds.
+    # Absent when no testcase reported a time at all.
+    totalTime: Optional[float] = None
+    # Whether every testcase of the run was evaluated and none was skipped.
+    #
+    # What makes `totalTime` mean "the whole testset": a `--fail-fast` abort, a
+    # Ctrl-C or a solution still running all leave a sum over fewer testcases,
+    # and a client comparing that against a budget would call a slow solution
+    # fast.
+    complete: bool = False
     failedGroups: List[str] = []
     # The `[min, max]` score range declared for this solution, when one was.
     # Without it a client meeting `status == UNEXPECTED_SCORE` knows a solution
@@ -220,6 +230,11 @@ class RunReport(BaseModel):
 def _max_of(values: Iterable[Optional[_T]]) -> Optional[_T]:
     present = [value for value in values if value is not None]
     return max(present) if present else None
+
+
+def _sum_of(values: Iterable[Optional[float]]) -> Optional[float]:
+    present = [value for value in values if value is not None]
+    return sum(present) if present else None
 
 
 def _sorted_outcomes(outcomes: Iterable[Outcome]) -> List[Outcome]:
@@ -346,6 +361,9 @@ def build_solution_report(
         maxScore=report.maxScore,
         maxTime=_max_of(eval.log.time for eval in report.evals),
         maxMemory=_max_of(eval.log.memory for eval in report.evals),
+        totalTime=_sum_of(eval.log.time for eval in report.evals),
+        complete=len(report.evals) == len(skeleton.entries)
+        and all(eval.result.outcome != Outcome.SKIPPED for eval in report.evals),
         failedGroups=report.failedGroups,
         expectedScore=report.expectedScore,
         runUnderDoubleTl=report.runUnderDoubleTl,

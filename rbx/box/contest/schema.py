@@ -20,6 +20,7 @@ from rbx.box.fields import (
     expand_vars,
     validate_statement_name,
 )
+from rbx.box.issue_codes import IssuesConfig
 from rbx.box.packaging.cms.extension import CmsExtension
 from rbx.box.statements.expander import expand_contest_statements
 from rbx.box.statements.schema import (
@@ -339,6 +340,12 @@ class Contest(BaseModel):
         default=[],
         description='Configure standalone documents (infosheets, etc.) for this '
         'contest. Documents never join on problems.',
+    )
+
+    issues: IssuesConfig = Field(
+        default_factory=IssuesConfig,
+        description='Which issues to report for every problem of this contest. '
+        "A problem's own `issues.ignore` adds to this one.",
     )
 
     # Vars to be re-used in the statements.

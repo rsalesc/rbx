@@ -18,7 +18,11 @@ See docs/plans/2026-08-31-issues-view-design.md.
 
 from rbx.box.issues.config_detectors import CONFIG_DETECTORS, detect_all_config
 from rbx.box.issues.config_state import ConfigState, collect_config_state
-from rbx.box.issues.contest import build_report, collect_contest_rows
+from rbx.box.issues.contest import (
+    build_problem_report,
+    build_report,
+    collect_contest_rows,
+)
 from rbx.box.issues.detectors import DETECTORS, detect_all
 from rbx.box.issues.rendering import (
     IssuesFormat,
@@ -43,6 +47,7 @@ from rbx.box.issues.schema import (
     IssueReport,
     IssueSeverity,
 )
+from rbx.box.issues.settings import resolve_ignored, resolve_thresholds
 
 __all__ = [
     'CONFIG_DETECTORS',
@@ -57,6 +62,7 @@ __all__ = [
     'IssuesFormat',
     'RunState',
     'UnsupportedReportVersion',
+    'build_problem_report',
     'build_report',
     'collect_config_state',
     'collect_contest_rows',
@@ -67,6 +73,8 @@ __all__ = [
     'load_run_state',
     'print_contest_report',
     'print_report',
+    'resolve_ignored',
+    'resolve_thresholds',
     'severity_marker',
     'summarize',
     'to_json',

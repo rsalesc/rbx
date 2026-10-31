@@ -17,6 +17,8 @@ from typing import Dict, List, Optional, Tuple
 from pydantic import BaseModel
 
 from rbx.box import package, testcase_extractors, testcase_sample_utils
+from rbx.box.generation_schema import GenerationTestcaseEntry
+from rbx.box.issue_codes import IssueThresholds
 from rbx.box.schema import Package, Solution
 from rbx.box.statements.render import parse_jinja_block_names
 from rbx.box.statements.schema import Statement, StatementType
@@ -46,6 +48,13 @@ class ConfigState(BaseModel):
     # when it is empty rather than accusing a standalone problem of missing
     # every language in the world.
     contest_languages: List[str] = []
+    # The built testset's size in bytes, inputs and expected answers apart.
+    # None when nothing is built: a testset nobody generated has no size, and
+    # reporting it as zero would read as a finding about the real one.
+    testset_input_bytes: Optional[int] = None
+    testset_answer_bytes: Optional[int] = None
+    # The environment's limits, handed in for the reason `RunState` takes them.
+    thresholds: IssueThresholds = IssueThresholds()
 
 
 def _explanation_suffix_of(statement: Statement) -> str:
@@ -97,9 +106,38 @@ async def _collect_explanations(
     return languages, paths
 
 
+def _file_size(path: Optional[pathlib.Path]) -> int:
+    if path is None:
+        return 0
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
+
+
+def _measure_testset(
+    entries: List[GenerationTestcaseEntry],
+) -> Tuple[Optional[int], Optional[int]]:
+    """The built testset's input and answer bytes, or `(None, None)` unbuilt.
+
+    Only the entries whose input is actually on disk are measured, which is the
+    same notion of "built" `rbx run` uses to decide what to run.
+    """
+    built = testcase_extractors.find_built_testcases(entries)
+    if not built:
+        return None, None
+    inputs = answers = 0
+    for entry in built:
+        copied_to = entry.metadata.copied_to
+        inputs += _file_size(copied_to.inputPath)
+        answers += _file_size(copied_to.outputPath)
+    return inputs, answers
+
+
 async def collect_config_state(
     pkg: Package,
     contest_languages: Optional[List[str]] = None,
+    thresholds: Optional[IssueThresholds] = None,
 ) -> ConfigState:
     """Build a `ConfigState` from the package in the current directory."""
     entries = await testcase_extractors.extract_generation_testcases_from_groups()
@@ -114,6 +152,7 @@ async def collect_config_state(
 
     statements = pkg.expanded_statements
     explanation_languages, explanation_paths = await _collect_explanations(statements)
+    input_bytes, answer_bytes = _measure_testset(entries)
 
     return ConfigState(
         solutions=package.get_solutions(),
@@ -124,4 +163,7 @@ async def collect_config_state(
         explanation_languages=explanation_languages,
         explanation_paths=explanation_paths,
         contest_languages=list(contest_languages or []),
+        testset_input_bytes=input_bytes,
+        testset_answer_bytes=answer_bytes,
+        thresholds=thresholds or IssueThresholds(),
     )

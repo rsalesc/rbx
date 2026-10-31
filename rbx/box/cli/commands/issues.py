@@ -49,13 +49,18 @@ async def issues_cmd(
             help='How to print the issues. Use `json` to consume them from a tool.',
         ),
     ] = IssuesFormat.RICH,
+    show_all: Annotated[
+        bool,
+        typer.Option(
+            '--all',
+            '-a',
+            help='Also show the issues `issues.ignore` silences for this problem.',
+        ),
+    ] = False,
 ):
-    config_state = await issues.collect_config_state(
-        package.find_problem_package_or_die()
-    )
     try:
-        report = issues.build_report(
-            package.get_problem_runs_dir(), config_state=config_state
+        report = await issues.build_problem_report(
+            package.find_problem_package_or_die()
         )
     except issues.UnsupportedReportVersion as exception:
         console.console.print(f'[error]{exception}[/error]')
@@ -67,4 +72,4 @@ async def issues_cmd(
         print(issues.to_json(report))
         return
 
-    issues.print_report(report, detailed=detailed)
+    issues.print_report(report, detailed=detailed, show_ignored=show_all)
