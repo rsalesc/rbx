@@ -18,6 +18,10 @@ class LinterMessage(BaseModel):
     message: str
     line: Optional[int] = None  # 1-based
     col: Optional[int] = None  # 1-based
+    # The `name` of the linter that said it, stamped by the runner. Lets the
+    # issues view tell a setter which linter to disable, or which directive to
+    # write, without them having to recognise the message.
+    linter: Optional[str] = None
 
 
 class Linter(abc.ABC):

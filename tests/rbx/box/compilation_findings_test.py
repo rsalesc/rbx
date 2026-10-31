@@ -6,8 +6,10 @@ import yaml
 from rbx import utils
 from rbx.box import compilation_findings, solutions
 from rbx.box.environment import VerificationLevel
+from rbx.box.linters.asset_kind import AssetKind
+from rbx.box.linters.linter import LinterMessage, LinterSeverity
 from rbx.box.sanitizers import warning_stack
-from rbx.box.schema import ExpectedOutcome, Solution
+from rbx.box.schema import CodeItem, ExpectedOutcome, Solution
 from rbx.grading.steps import CompilationError, PreprocessLog
 
 WARNING_LOG = (
@@ -219,3 +221,80 @@ def test_log_names_index_the_record_list_not_the_solution_list(
     ]
     for record in records:
         assert (cleandir / record.log).is_file()
+
+
+def _asset_warned(path, kind, log: str = WARNING_LOG) -> None:
+    warning_stack.get_warning_stack().add_warning(
+        CodeItem(path=pathlib.Path(path)),
+        logs=[PreprocessLog(cmd=['g++', str(path)], log=log, warnings=True)],
+        kind=kind,
+    )
+
+
+class TestAssetCompilations:
+    def test_records_every_non_solution_role_that_warned(self, cleandir):
+        _asset_warned('gens/gen.cpp', AssetKind.GENERATOR)
+        _asset_warned('validator.cpp', AssetKind.VALIDATOR)
+
+        records = compilation_findings.build_asset_compilations(cleandir, cleandir)
+
+        assert [(r.path, r.kind) for r in records] == [
+            (pathlib.Path('gens/gen.cpp'), AssetKind.GENERATOR),
+            (pathlib.Path('validator.cpp'), AssetKind.VALIDATOR),
+        ]
+        assert [w.flag for w in records[0].warnings] == [
+            '-Wsign-compare',
+            '-Wunused-variable',
+        ]
+        assert (cleandir / records[1].log).read_text().strip() == WARNING_LOG.strip()
+
+    def test_leaves_solutions_and_unknown_roles_out(self, cleandir):
+        _asset_warned('sols/main.cpp', AssetKind.SOLUTION)
+        _asset_warned('finder.cpp', None)
+
+        assert compilation_findings.build_asset_compilations(cleandir, cleandir) == []
+
+    def test_leaves_files_outside_the_package_out(self, cleandir, tmp_path_factory):
+        # rbx's built-in checkers compile from its own resources, by absolute path.
+        builtin = tmp_path_factory.mktemp('resources') / 'wcmp.cpp'
+        _asset_warned(builtin, AssetKind.CHECKER)
+
+        assert compilation_findings.build_asset_compilations(cleandir, cleandir) == []
+
+
+class TestAssetLints:
+    def test_records_linter_messages_with_role_and_linter(self, cleandir):
+        warning_stack.get_warning_stack().add_linter_warning(
+            CodeItem(path=pathlib.Path('gens/gen.cpp')),
+            [
+                LinterMessage(
+                    severity=LinterSeverity.WARNING,
+                    message='two rnd calls',
+                    line=3,
+                    col=5,
+                    linter='testlib',
+                )
+            ],
+            kind=AssetKind.GENERATOR,
+        )
+
+        (record,) = compilation_findings.build_asset_lints(cleandir)
+
+        assert record == compilation_findings.AssetLint(
+            path=pathlib.Path('gens/gen.cpp'),
+            kind=AssetKind.GENERATOR,
+            findings=[
+                compilation_findings.LintFinding(
+                    linter='testlib', line=3, col=5, message='two rnd calls'
+                )
+            ],
+        )
+
+    def test_leaves_files_outside_the_package_out(self, cleandir, tmp_path_factory):
+        outside = tmp_path_factory.mktemp('elsewhere') / 'gen.cpp'
+        warning_stack.get_warning_stack().add_linter_warning(
+            CodeItem(path=outside),
+            [LinterMessage(severity=LinterSeverity.WARNING, message='m')],
+        )
+
+        assert compilation_findings.build_asset_lints(cleandir) == []

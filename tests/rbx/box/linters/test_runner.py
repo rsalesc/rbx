@@ -111,3 +111,14 @@ def test_is_linter_suppressed_accepts_hash_comments_and_spacing():
     assert runner.is_linter_suppressed('w_test', '   // w_test-linter:   disable')
     assert not runner.is_linter_suppressed('w_test', '// other-linter: disable')
     assert not runner.is_linter_suppressed('w_test', 'no directive here')
+
+
+def test_messages_are_stamped_with_the_linter_that_wrote_them():
+    msgs = runner.run_linters_for_messages(
+        configs=[LinterConfig(name='w_test', applies_to=None)],
+        linters=[_WarnLinter()],
+        kind=AssetKind.SOLUTION,
+        code=None,
+        source='x',
+    )
+    assert [m.linter for m in msgs] == ['w_test']

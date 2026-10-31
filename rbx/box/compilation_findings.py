@@ -21,10 +21,14 @@ from typing import Dict, List, Literal, Optional, Sequence
 from pydantic import BaseModel
 
 from rbx import utils
+from rbx.box.linters.asset_kind import AssetKind
 from rbx.box.schema import ExpectedOutcome, Solution
 from rbx.grading.steps import CompilationError, PreprocessLog
 
 COMPILATION_DIR = 'compilation'
+# Beside the solutions' logs rather than among them: those are named by their
+# index in `compilation`, and a second numbering in the same folder would clash.
+ASSET_COMPILATION_DIR = pathlib.Path(COMPILATION_DIR) / 'assets'
 
 
 class CompilationWarning(BaseModel):
@@ -147,6 +151,113 @@ def build_solution_compilations(
                 log=log_path,
                 warnings=warnings,
                 reason=reason,
+            )
+        )
+    return records
+
+
+class AssetCompilation(BaseModel):
+    """A file other than a solution -- generator, validator, checker, interactor,
+    visualizer -- that compiled with warnings in this run.
+
+    Only warnings: a failure to compile one of these aborts the build, so it
+    never reaches a run to be recorded.
+    """
+
+    path: pathlib.Path
+    kind: AssetKind
+    # Relative to the runs dir, like `SolutionCompilation.log`.
+    log: pathlib.Path
+    warnings: List[CompilationWarning] = []
+
+
+class LintFinding(BaseModel):
+    """One linter message, as the linter worded it."""
+
+    # Absent only on a message recorded by an rbx that did not stamp it.
+    linter: Optional[str] = None
+    line: Optional[int] = None
+    col: Optional[int] = None
+    message: str
+
+
+class AssetLint(BaseModel):
+    """Everything the configured linters flagged in one file of the package."""
+
+    path: pathlib.Path
+    # Absent for a file compiled in no role rbx could name.
+    kind: Optional[AssetKind] = None
+    findings: List[LintFinding] = []
+
+
+def _is_in_package(path: pathlib.Path, root: pathlib.Path) -> bool:
+    """Whether the setter can do anything about a file at `path`.
+
+    rbx's own built-in checkers are compiled from its installed resources, by
+    absolute path: a warning in one is nothing the setter can fix, and an issue
+    nobody can fix only teaches people to ignore the code.
+    """
+    return utils.abspath(path).is_relative_to(utils.abspath(root))
+
+
+def build_asset_compilations(
+    runs_dir: pathlib.Path, root: pathlib.Path
+) -> List[AssetCompilation]:
+    """Records for every non-solution file in the package that warned.
+
+    Read off the warning stack, which by the time the run's skeleton is written
+    holds everything the build that preceded it compiled. Solutions are left to
+    `build_solution_compilations`, and so is any file compiled in no role the
+    stack was told about.
+    """
+    from rbx.box.sanitizers import warning_stack
+
+    stack = warning_stack.get_warning_stack()
+
+    records: List[AssetCompilation] = []
+    for path in sorted(stack.compiler_warnings):
+        kind = stack.kinds.get(path)
+        if kind is None or kind == AssetKind.SOLUTION:
+            continue
+        if not _is_in_package(path, root):
+            continue
+        logs = [log for log in stack.warning_logs.get(path, []) if log.warnings]
+        warnings = _parsed_warnings_for(logs)
+        if not warnings:
+            continue
+
+        log_path = ASSET_COMPILATION_DIR / f'{len(records)}.log'
+        destination = runs_dir / log_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(_log_text(logs))
+
+        records.append(
+            AssetCompilation(path=path, kind=kind, log=log_path, warnings=warnings)
+        )
+    return records
+
+
+def build_asset_lints(root: pathlib.Path) -> List[AssetLint]:
+    """Records for every file in the package a linter flagged, solutions included."""
+    from rbx.box.sanitizers import warning_stack
+
+    stack = warning_stack.get_warning_stack()
+
+    records: List[AssetLint] = []
+    for path in sorted(stack.linter_warnings):
+        messages = stack.linter_warnings[path]
+        if not messages or not _is_in_package(path, root):
+            continue
+        records.append(
+            AssetLint(
+                path=path,
+                kind=stack.kinds.get(path),
+                findings=[
+                    LintFinding(
+                        linter=m.linter, line=m.line, col=m.col, message=m.message
+                    )
+                    for m in messages
+                ],
             )
         )
     return records

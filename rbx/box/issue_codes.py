@@ -32,6 +32,8 @@ class IssueCode(str, Enum):
     UNEXPECTED_SCORE = 'unexpected-score'
     COMPILATION_FAILED = 'compilation-failed'
     COMPILATION_WARNINGS = 'compilation-warnings'
+    ASSET_COMPILATION_WARNINGS = 'asset-compilation-warnings'
+    LINTER_WARNINGS = 'linter-warnings'
     SANITIZER_FINDING = 'sanitizer-finding'
     BORDERLINE_TLE = 'borderline-tle'
     HIDDEN_VERDICT = 'hidden-verdict'

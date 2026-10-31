@@ -712,7 +712,10 @@ async def compile_item(
         from rbx.box.linters.asset_kind import infer_asset_kind
         from rbx.box.linters.runner import run_linters
 
-        await run_linters(code, kind if kind is not None else infer_asset_kind(code))
+        # Resolved once: the linters and the warning stack both need the role,
+        # and the stack hands it on to the issues view.
+        kind = kind if kind is not None else infer_asset_kind(code)
+        await run_linters(code, kind)
 
         language = find_language_name(code)
         compilation_options = get_compilation_config(
@@ -905,7 +908,9 @@ async def compile_item(
         ):
             warning_logs = [log for log in artifacts.logs.preprocess if log.warnings]
             if warning_logs:
-                warning_stack.get_warning_stack().add_warning(code, logs=warning_logs)
+                warning_stack.get_warning_stack().add_warning(
+                    code, logs=warning_logs, kind=kind
+                )
 
         # Create sentinel to indicate this executable is sanitized.
         cacher = package.get_file_cacher()

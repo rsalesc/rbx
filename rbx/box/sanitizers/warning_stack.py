@@ -11,6 +11,7 @@ from rbx.grading.judge.cacher import FileCacher
 from rbx.grading.steps import GradingFileOutput, PreprocessLog
 
 if TYPE_CHECKING:
+    from rbx.box.linters.asset_kind import AssetKind
     from rbx.box.linters.linter import LinterMessage
 
 
@@ -32,38 +33,51 @@ def sanitizer_log_name(path: pathlib.Path) -> pathlib.Path:
 class WarningStack:
     def __init__(self, root: pathlib.Path):
         self.root = root
+        # Every file with something to say: compiler warnings, linter messages
+        # or both.
         self.warnings = set()
+        # The files the *compiler* warned about -- a subset of `warnings`, which
+        # also holds the files only a linter flagged.
+        self.compiler_warnings: Set[pathlib.Path] = set()
         self.warning_logs: Dict[pathlib.Path, List[PreprocessLog]] = {}
         self.sanitizer_warnings = {}
         self.linter_warnings: Dict[pathlib.Path, List['LinterMessage']] = {}
-        # Paths whose compiler warnings / sanitizer findings another report has
-        # already shown in this process -- the issues section at the end of
-        # `rbx run` (#968). The stack still records them, so the live view and
-        # the run report's compilation records read the same facts; it just
-        # does not print them a second time.
+        # What role each file played, when the caller knew: the run turns these
+        # facts into issues, and a validator's warning is worded and coded
+        # differently from a solution's.
+        self.kinds: Dict[pathlib.Path, 'AssetKind'] = {}
+        # Paths whose compiler warnings / linter messages / sanitizer findings
+        # another report already showed in this process -- the issues section
+        # at the end of `rbx run` (#968). The stack still records them, so the
+        # live view and the run's compilation records read the same facts; it
+        # just does not print them a second time.
         self.reported_compilation: Set[pathlib.Path] = set()
+        self.reported_linter: Set[pathlib.Path] = set()
         self.reported_sanitizer: Set[pathlib.Path] = set()
 
     def mark_reported(
         self,
         compilation: Iterable[pathlib.Path] = (),
+        linter: Iterable[pathlib.Path] = (),
         sanitizer: Iterable[pathlib.Path] = (),
     ) -> None:
         """Leave these paths out of the report: something else already said it."""
         self.reported_compilation.update(compilation)
+        self.reported_linter.update(linter)
         self.reported_sanitizer.update(sanitizer)
 
-    def unreported_warnings(self) -> List[pathlib.Path]:
-        """The files whose warnings the report still has to show.
+    def shows_compiler_warnings(self, path: pathlib.Path) -> bool:
+        return path in self.compiler_warnings and path not in self.reported_compilation
 
-        A file the issues section covered stays in when it also carries linter
-        messages: those are the stack's alone, and the issues view never sees
-        them.
-        """
+    def shows_linter_warnings(self, path: pathlib.Path) -> bool:
+        return bool(self.linter_warnings.get(path)) and path not in self.reported_linter
+
+    def unreported_warnings(self) -> List[pathlib.Path]:
+        """The files with something left to show once other reports had their say."""
         return sorted(
             path
             for path in self.warnings
-            if path not in self.reported_compilation or self.linter_warnings.get(path)
+            if self.shows_compiler_warnings(path) or self.shows_linter_warnings(path)
         )
 
     def unreported_sanitizer_warnings(self) -> List[pathlib.Path]:
@@ -73,8 +87,19 @@ class WarningStack:
             if path not in self.reported_sanitizer
         )
 
-    def add_warning(self, code: CodeItem, logs: Optional[List[PreprocessLog]] = None):
+    def _remember_kind(self, code: CodeItem, kind: Optional['AssetKind']) -> None:
+        if kind is not None:
+            self.kinds[code.path] = kind
+
+    def add_warning(
+        self,
+        code: CodeItem,
+        logs: Optional[List[PreprocessLog]] = None,
+        kind: Optional['AssetKind'] = None,
+    ):
         self.warnings.add(code.path)
+        self.compiler_warnings.add(code.path)
+        self._remember_kind(code, kind)
         if logs:
             self.warning_logs[code.path] = logs
 
@@ -96,19 +121,26 @@ class WarningStack:
         self.sanitizer_warnings[code.path] = dest_path
 
     def add_linter_warning(
-        self, code: CodeItem, messages: List['LinterMessage']
+        self,
+        code: CodeItem,
+        messages: List['LinterMessage'],
+        kind: Optional['AssetKind'] = None,
     ) -> None:
         if not messages:
             return
         self.warnings.add(code.path)
+        self._remember_kind(code, kind)
         self.linter_warnings.setdefault(code.path, []).extend(messages)
 
     def clear(self):
         self.warnings.clear()
+        self.compiler_warnings.clear()
         self.warning_logs.clear()
+        self.kinds.clear()
         self.sanitizer_warnings.clear()
         self.linter_warnings.clear()
         self.reported_compilation.clear()
+        self.reported_linter.clear()
         self.reported_sanitizer.clear()
 
 
@@ -137,7 +169,7 @@ def get_warning_stack() -> WarningStack:
     return _get_warning_stack(current_root)
 
 
-def _format_linter_location(message: 'LinterMessage') -> str:
+def format_linter_location(message: 'LinterMessage') -> str:
     if message.line is None:
         return ''
     if message.col:
@@ -157,7 +189,7 @@ def group_linter_messages(
     grouped: Dict[str, List[str]] = {}
     for message in messages:
         locations = grouped.setdefault(message.message, [])
-        loc = _format_linter_location(message)
+        loc = format_linter_location(message)
         if loc and loc not in locations:
             locations.append(loc)
     return list(grouped.items())
@@ -194,17 +226,19 @@ def print_warning_stack_report():
             'You can use [item]rbx compile[/item] to reproduce the issues with the files below.'
         )
         for path in warnings:
-            reported = path in stack.reported_compilation
             summary = (
-                None
-                if reported
-                else _summarize_warnings_for(path, stack, compilation_warnings)
+                _summarize_warnings_for(path, stack, compilation_warnings)
+                if stack.shows_compiler_warnings(path)
+                else None
             )
             suffix = f' [warning]({summary})[/warning]' if summary else ''
             console.console.print(f'- {href(path)}{suffix}')
-            for message, locations in group_linter_messages(
+            linter_messages = (
                 stack.linter_warnings.get(path, [])
-            ):
+                if stack.shows_linter_warnings(path)
+                else []
+            )
+            for message, locations in group_linter_messages(linter_messages):
                 if not locations:
                     prefix = ''
                 elif len(locations) == 1:

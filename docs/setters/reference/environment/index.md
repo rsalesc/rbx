@@ -79,7 +79,9 @@ languages:
 Each language can configure built-in linters that {{rbx}} runs during the
 compilation phase. Linters analyze the raw source of your code items
 (generators, validators, solutions, checkers, etc.) and surface warnings or
-errors. Warnings are routed to the warning stack; errors abort the build.
+errors. Errors stop the build. After `rbx run`, warnings show up as
+[`linter-warnings`](../../../issues.md#linter-warnings) issues. Other commands, such as `rbx build`,
+list them when they finish.
 
 Add linters to a language with the `linters` field. There are two forms:
 

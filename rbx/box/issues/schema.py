@@ -19,8 +19,9 @@ from typing import Annotated, List, Literal, Optional, Tuple, Union
 
 from pydantic import BaseModel, Field, computed_field
 
-from rbx.box.compilation_findings import CompilationWarning
+from rbx.box.compilation_findings import CompilationWarning, LintFinding
 from rbx.box.issue_codes import IssueCode
+from rbx.box.linters.asset_kind import AssetKind
 from rbx.box.schema import ExpectedOutcome
 from rbx.grading.steps import Outcome
 
@@ -177,6 +178,44 @@ class CompilationWarningsIssue(_RunIssue):
     solution: str
     warnings: List[CompilationWarning] = []
     log: pathlib.Path
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        return IssueSeverity.WARNING
+
+
+class AssetCompilationWarningsIssue(_RunIssue):
+    """A generator, validator, checker, interactor or visualizer compiled, but
+    the compiler had something to say.
+
+    Its own kind rather than `compilation_warnings` with a role on it: that one
+    has always meant a *solution*, every reader keys a solution off its
+    `solution` field, and a setter may well want to silence one and not the
+    other -- a warning in a validator says nothing about what a contestant's
+    code will meet.
+    """
+
+    kind: Literal['asset_compilation_warnings'] = 'asset_compilation_warnings'
+    path: str
+    assetKind: AssetKind
+    warnings: List[CompilationWarning] = []
+    log: pathlib.Path
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        return IssueSeverity.WARNING
+
+
+class LinterWarningsIssue(_RunIssue):
+    """A configured linter flagged something in one file of the package."""
+
+    kind: Literal['linter_warnings'] = 'linter_warnings'
+    path: str
+    # Absent for a file compiled in no role rbx could name.
+    assetKind: Optional[AssetKind] = None
+    findings: List[LintFinding] = []
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -483,6 +522,8 @@ Issue = Annotated[
         UnexpectedScoreIssue,
         CompilationFailedIssue,
         CompilationWarningsIssue,
+        AssetCompilationWarningsIssue,
+        LinterWarningsIssue,
         BorderlineTleIssue,
         HiddenVerdictIssue,
         NoisyStderrIssue,
@@ -508,6 +549,8 @@ KIND_TO_CODE = {
     'unexpected_score': IssueCode.UNEXPECTED_SCORE,
     'compilation_failed': IssueCode.COMPILATION_FAILED,
     'compilation_warnings': IssueCode.COMPILATION_WARNINGS,
+    'asset_compilation_warnings': IssueCode.ASSET_COMPILATION_WARNINGS,
+    'linter_warnings': IssueCode.LINTER_WARNINGS,
     'borderline_tle': IssueCode.BORDERLINE_TLE,
     'hidden_verdict': IssueCode.HIDDEN_VERDICT,
     'noisy_stderr': IssueCode.NOISY_STDERR,

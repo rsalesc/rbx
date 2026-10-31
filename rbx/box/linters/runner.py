@@ -59,7 +59,11 @@ def run_linters_for_messages(
             continue
         if is_linter_suppressed(linter.name, source):
             continue
-        out.extend(linter.lint(code, source))
+        # Stamped here rather than by each linter, so no linter can forget it.
+        out.extend(
+            message.model_copy(update={'linter': linter.name})
+            for message in linter.lint(code, source)
+        )
     return out
 
 
@@ -86,7 +90,7 @@ async def run_linters(code: CodeItem, kind: Optional[AssetKind]) -> None:
     warnings = [m for m in messages if m.severity is LinterSeverity.WARNING]
     errors = [m for m in messages if m.severity is LinterSeverity.ERROR]
     if warnings:
-        warning_stack.get_warning_stack().add_linter_warning(code, warnings)
+        warning_stack.get_warning_stack().add_linter_warning(code, warnings, kind=kind)
     if errors:
         with RbxException() as e:
             e.print(f'[error]Linter errors in {code.href()}[/error]')
