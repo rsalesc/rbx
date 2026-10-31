@@ -32,6 +32,7 @@ from rbx.box.generation_schema import get_parsed_entry
 from rbx.box.run_validation import OnInvalid
 from rbx.box.runners import registry as runners_registry
 from rbx.box.runners.base import RunPurpose
+from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import ExpectedOutcome
 from rbx.box.solutions import (
     fail_fast_abort_predicate,
@@ -398,6 +399,7 @@ async def _print_issues() -> None:
         return
     except Exception:
         return
+    hand_over_to_issues(report)
     if report.neverRun or not report.issues:
         return
 
@@ -406,6 +408,37 @@ async def _print_issues() -> None:
     issues.print_report(report)
     console.console.print(
         '[info]Run [item]rbx issues -d[/item] to expand these.[/info]'
+    )
+
+
+def hand_over_to_issues(report: 'issues.IssueReport') -> None:
+    """Keep the warning stack from repeating what the issues section owns (#968).
+
+    The stack prints from `new_package_cd` on the way out, so after this
+    section; left alone it lists every solution's compiler warnings and
+    sanitizer findings a second time -- and, since the run records them too,
+    every generator's, validator's, checker's, interactor's and visualizer's
+    compiler warnings and every linter message. What is left for it is what
+    no issue covers: sanitizer findings outside solutions, files outside the
+    package, and files compiled in a role the run does not record.
+
+    Ignored findings count as covered: a setter who silenced a code with
+    `issues.ignore` should not find it again one section further down.
+    """
+    compilation: List[pathlib.Path] = []
+    linter: List[pathlib.Path] = []
+    sanitizer: List[pathlib.Path] = []
+    for issue in [*report.issues, *report.ignored]:
+        if isinstance(issue, issues.CompilationWarningsIssue):
+            compilation.append(pathlib.Path(issue.solution))
+        elif isinstance(issue, issues.AssetCompilationWarningsIssue):
+            compilation.append(pathlib.Path(issue.path))
+        elif isinstance(issue, issues.LinterWarningsIssue):
+            linter.append(pathlib.Path(issue.path))
+        elif isinstance(issue, issues.SanitizerFindingIssue):
+            sanitizer.append(pathlib.Path(issue.solution))
+    warning_stack.get_warning_stack().mark_reported(
+        compilation=compilation, linter=linter, sanitizer=sanitizer
     )
 
 

@@ -19,6 +19,7 @@ import time
 from enum import Enum
 from typing import List, Optional
 
+from rich.markup import escape
 from rich.padding import Padding
 from rich.table import Table
 from rich.text import Text
@@ -27,6 +28,7 @@ from rbx import console
 from rbx.box.formatting import get_formatted_memory, href
 from rbx.box.issue_codes import DOCS_URL
 from rbx.box.issues.schema import (
+    AssetCompilationWarningsIssue,
     BorderlineTleIssue,
     CompilationFailedIssue,
     CompilationWarningsIssue,
@@ -39,6 +41,7 @@ from rbx.box.issues.schema import (
     IssueSeverity,
     LargeTestcaseIssue,
     LargeTestsetIssue,
+    LinterWarningsIssue,
     MissingStatementLanguageIssue,
     NoAcceptedSolutionIssue,
     NoisyStderrIssue,
@@ -50,6 +53,7 @@ from rbx.box.issues.schema import (
     UnmetExpectationIssue,
     UntunedLimitsIssue,
 )
+from rbx.box.sanitizers import compilation_warnings, warning_stack
 from rbx.box.scoring import partial
 
 
@@ -113,7 +117,40 @@ def _resolve(path: pathlib.Path, runs_dir: Optional[str]) -> pathlib.Path:
 
 
 def _solution_of(issue: Issue) -> Optional[str]:
-    return getattr(issue, 'solution', None)
+    """The file an issue is about: a solution, or any other file of the package."""
+    return getattr(issue, 'solution', None) or getattr(issue, 'path', None)
+
+
+def _compiled_with(warnings) -> str:
+    flags = compilation_warnings.summarize_flags(w.flag for w in warnings)
+    breakdown = f' [warning]({flags})[/warning]' if flags else ''
+    return f'compiled with {len(warnings)} warning(s){breakdown}'
+
+
+def _lint_locations(locations: List[str]) -> str:
+    if not locations:
+        return ''
+    if len(locations) == 1:
+        return f' at {locations[0]}'
+    return f' at lines {", ".join(locations)}'
+
+
+def _linters(issue: LinterWarningsIssue) -> List[str]:
+    return sorted({f.linter for f in issue.findings if f.linter})
+
+
+def _summarize_lints(issue: LinterWarningsIssue) -> str:
+    grouped = warning_stack.group_linter_messages(issue.findings)  # type: ignore[arg-type]
+    if len(grouped) == 1:
+        message, locations = grouped[0]
+        linters = _linters(issue)
+        # Who and where lead, because a linter's message is a sentence or two
+        # long and a location trailing it gets lost at the end of the line.
+        who = f'{linters[0]} linter' if len(linters) == 1 else 'linter'
+        return f'{who}{_lint_locations(locations)}: {escape(message)}'
+    linters = ', '.join(_linters(issue))
+    which = f' [warning]({linters})[/warning]' if linters else ''
+    return f'{len(issue.findings)} linter warning(s){which}'
 
 
 def _verdicts(outcomes) -> str:
@@ -142,8 +179,10 @@ def summarize(issue: Issue) -> str:
             if issue.reason
             else 'failed to compile'
         )
-    if isinstance(issue, CompilationWarningsIssue):
-        return f'compiled with {len(issue.warnings)} warning(s)'
+    if isinstance(issue, (CompilationWarningsIssue, AssetCompilationWarningsIssue)):
+        return _compiled_with(issue.warnings)
+    if isinstance(issue, LinterWarningsIssue):
+        return _summarize_lints(issue)
     if isinstance(issue, BorderlineTleIssue):
         return 'slow only within 2x the time limit'
     if isinstance(issue, HiddenVerdictIssue):
@@ -209,8 +248,32 @@ def explain(issue: Issue, runs_dir: Optional[str] = None) -> List[str]:
                 'the solution-wide expectation held; only per-group ones failed'
             )
         return lines
-    if isinstance(issue, (CompilationFailedIssue, CompilationWarningsIssue)):
+    if isinstance(issue, LinterWarningsIssue):
         lines = []
+        if issue.assetKind is not None:
+            lines.append(f"this is the package's {issue.assetKind.value}")
+        for finding in issue.findings:
+            location = warning_stack.format_linter_location(finding)  # type: ignore[arg-type]
+            where = f'{location} ' if location else ''
+            who = f' ({finding.linter})' if finding.linter else ''
+            lines.append(f'{where}{escape(finding.message)}{who}')
+        for linter in _linters(issue):
+            lines.append(
+                f'a `{linter}-linter: disable` comment in the file silences '
+                f'the {linter} linter there'
+            )
+        return lines
+    if isinstance(
+        issue,
+        (
+            CompilationFailedIssue,
+            CompilationWarningsIssue,
+            AssetCompilationWarningsIssue,
+        ),
+    ):
+        lines = []
+        if isinstance(issue, AssetCompilationWarningsIssue):
+            lines.append(f"this is the package's {issue.assetKind.value}")
         for warning in getattr(issue, 'warnings', [])[:5]:
             flag = f' [{warning.flag}]' if warning.flag else ''
             lines.append(f'{warning.file}:{warning.line}{flag} {warning.msg}')

@@ -295,6 +295,12 @@ class SolutionReportSkeleton(BaseModel):
     # and from `compiled_solutions` -- this is the only record that it exists.
     # See `rbx.box.compilation_findings`.
     compilation: List[compilation_findings.SolutionCompilation] = []
+    # The same, for every other file of the package the build and the run
+    # compiled -- and what the linters said about any file at all. Separate
+    # lists so a reader of `compilation` never meets a record without a
+    # solution's declaration on it.
+    asset_compilation: List[compilation_findings.AssetCompilation] = []
+    lints: List[compilation_findings.AssetLint] = []
     verification: VerificationLevel
     capture_pipes: bool = False
     # When set (irun -e), the solution's stderr is interleaved with its output in
@@ -778,6 +784,11 @@ async def _get_report_skeleton(
         compilation_failures,
         runs_dir,
     )
+    package_root = package.find_problem()
+    asset_compilation = compilation_findings.build_asset_compilations(
+        runs_dir, package_root
+    )
+    lints = compilation_findings.build_asset_lints(package_root)
 
     skeleton = SolutionReportSkeleton(
         solutions=[
@@ -793,6 +804,8 @@ async def _get_report_skeleton(
         entries=built_entries,
         compiled_solutions=compiled_solutions,
         compilation=compilation,
+        asset_compilation=asset_compilation,
+        lints=lints,
         verification=verification,
         capture_pipes=should_capture_pipes(package.get_interactor_or_nil()),
         keep_checker_stderr=keep_checker_stderr,

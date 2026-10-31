@@ -17,10 +17,17 @@ import rich.console
 import yaml
 
 from rbx.box import run_report
-from rbx.box.compilation_findings import CompilationWarning, SolutionCompilation
+from rbx.box.compilation_findings import (
+    AssetCompilation,
+    AssetLint,
+    CompilationWarning,
+    LintFinding,
+    SolutionCompilation,
+)
 from rbx.box.issues import config_detectors, detectors, rendering, run_state, schema
 from rbx.box.issues import config_state as config_state_module
 from rbx.box.issues.contest import build_report
+from rbx.box.linters.asset_kind import AssetKind
 from rbx.box.run_report import RunGroupReport, RunReport, RunSolutionReport
 from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import CodeItem, ExpectedOutcome, Solution
@@ -32,10 +39,16 @@ def make_state(
     compilation=None,
     stderr=None,
     sanitizer_logs=None,
+    asset_compilation=None,
+    lints=None,
 ) -> run_state.RunState:
     return run_state.RunState(
         report=RunReport(solutions=solutions or []),
-        skeleton=run_state.SkeletonView(compilation=compilation or []),
+        skeleton=run_state.SkeletonView(
+            compilation=compilation or [],
+            asset_compilation=asset_compilation or [],
+            lints=lints or [],
+        ),
         runs_dir=pathlib.Path('.rbx/runs'),
         stderr=stderr or {},
         sanitizer_logs=sanitizer_logs or {},
@@ -224,6 +237,98 @@ class TestCompilation:
         )
 
         assert kinds(detectors.detect_all(state)) == ['compilation_failed']
+
+
+class TestAssetFindings:
+    def test_reports_a_warned_validator(self):
+        state = make_state(
+            asset_compilation=[
+                AssetCompilation(
+                    path=pathlib.Path('validator.cpp'),
+                    kind=AssetKind.VALIDATOR,
+                    log=pathlib.Path('compilation/assets/0.log'),
+                    warnings=[
+                        CompilationWarning(
+                            file='validator.cpp', line=3, flag='-Wshadow', msg='m'
+                        )
+                    ],
+                )
+            ]
+        )
+
+        (issue,) = detectors.detect_asset_compilation(state)
+
+        assert issue.code.value == 'asset-compilation-warnings'
+        assert issue.severity == schema.IssueSeverity.WARNING
+        assert issue.path == 'validator.cpp'
+        assert rendering.summarize(issue) == (
+            'compiled with 1 warning(s) [warning](1× -Wshadow)[/warning]'
+        )
+        lines = rendering.explain(issue, runs_dir='/pkg/.rbx/runs')
+        assert lines[0] == "this is the package's validator"
+        assert '/pkg/.rbx/runs/compilation/assets/0.log' in lines[-1]
+
+    def test_reports_linter_messages_one_issue_per_file(self):
+        state = make_state(
+            lints=[
+                AssetLint(
+                    path=pathlib.Path('gens/gen.cpp'),
+                    kind=AssetKind.GENERATOR,
+                    findings=[
+                        LintFinding(linter='testlib', line=2, col=3, message='m'),
+                        LintFinding(linter='testlib', line=5, col=7, message='m'),
+                    ],
+                ),
+                AssetLint(path=pathlib.Path('empty.cpp'), findings=[]),
+            ]
+        )
+
+        (issue,) = detectors.detect_linter_warnings(state)
+
+        assert issue.code.value == 'linter-warnings'
+        assert issue.path == 'gens/gen.cpp'
+        assert rendering.summarize(issue) == 'testlib linter at lines 2:3, 5:7: m'
+        assert rendering.explain(issue) == [
+            "this is the package's generator",
+            '2:3 m (testlib)',
+            '5:7 m (testlib)',
+            'a `testlib-linter: disable` comment in the file silences the '
+            'testlib linter there',
+        ]
+
+    def test_counts_linter_messages_when_they_differ(self):
+        issue = schema.LinterWarningsIssue(
+            path='gens/gen.cpp',
+            findings=[
+                LintFinding(linter='testlib', line=1, message='a'),
+                LintFinding(linter='other', line=2, message='b'),
+            ],
+        )
+
+        assert rendering.summarize(issue) == (
+            '2 linter warning(s) [warning](other, testlib)[/warning]'
+        )
+
+    def test_escapes_markup_in_a_linter_message(self):
+        issue = schema.LinterWarningsIssue(
+            path='gens/gen.cpp',
+            findings=[LintFinding(linter='testlib', message='f([bold]x)')],
+        )
+
+        assert rendering.summarize(issue) == 'testlib linter: f(\\[bold]x)'
+
+    def test_print_report_names_the_file(self):
+        from rbx import console as rconsole
+
+        issue = schema.LinterWarningsIssue(
+            path='gens/gen.cpp',
+            findings=[LintFinding(linter='testlib', message='m')],
+        )
+
+        with rconsole.console.capture() as capture:
+            rendering.print_report(schema.IssueReport(ranAt=1.0, issues=[issue]))
+
+        assert 'gens/gen.cpp testlib linter: m (linter-warnings)' in capture.get()
 
 
 class TestTimingRisk:
@@ -672,6 +777,33 @@ class TestRendering:
 
         assert 'python3' in rendering.summarize(issue)
 
+    def test_compile_warnings_name_their_flags(self):
+        # The warning stack used to be the only place that said which flags
+        # fired; it no longer repeats solutions the issues section covers (#968).
+        issue = schema.CompilationWarningsIssue(
+            solution='sols/a.cpp',
+            log=pathlib.Path('compilation/0.log'),
+            warnings=[
+                CompilationWarning(file='a.cpp', line=1, flag='-Wshadow', msg='m'),
+                CompilationWarning(file='a.cpp', line=2, flag='-Wshadow', msg='m'),
+                CompilationWarning(
+                    file='a.cpp', line=3, flag='-Wunused-variable', msg='m'
+                ),
+            ],
+        )
+
+        assert rendering.summarize(issue) == (
+            'compiled with 3 warning(s) '
+            '[warning](2× -Wshadow, 1× -Wunused-variable)[/warning]'
+        )
+
+    def test_compile_warnings_without_parsed_warnings_have_no_breakdown(self):
+        issue = schema.CompilationWarningsIssue(
+            solution='sols/a.cpp', log=pathlib.Path('compilation/0.log')
+        )
+
+        assert rendering.summarize(issue) == 'compiled with 0 warning(s)'
+
     def test_a_compile_failure_without_a_reason_still_reads(self):
         issue = schema.CompilationFailedIssue(
             solution='sols/wa.py', log=pathlib.Path('compilation/0.log')
@@ -754,6 +886,12 @@ class TestRendering:
                 solution='s', path=pathlib.Path('0/main/1.err'), size=1
             ),
             schema.SanitizerFindingIssue(solution='s'),
+            schema.AssetCompilationWarningsIssue(
+                path='v.cpp', assetKind=AssetKind.VALIDATOR, log=pathlib.Path('a.log')
+            ),
+            schema.LinterWarningsIssue(
+                path='g.cpp', findings=[LintFinding(message='m', linter='testlib')]
+            ),
             schema.SlowAcceptedSolutionIssue(solution='s', totalTime=90, threshold=60),
             schema.UntunedLimitsIssue(),
             schema.NoAcceptedSolutionIssue(),

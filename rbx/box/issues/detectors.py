@@ -19,12 +19,14 @@ from rbx.box.compilation_findings import SolutionCompilation
 from rbx.box.issue_codes import IssueThresholds
 from rbx.box.issues.run_state import RunState
 from rbx.box.issues.schema import (
+    AssetCompilationWarningsIssue,
     BorderlineTleIssue,
     CompilationFailedIssue,
     CompilationWarningsIssue,
     HiddenVerdictIssue,
     Issue,
     IssueSeverity,
+    LinterWarningsIssue,
     NoisyStderrIssue,
     SanitizerFindingIssue,
     SlowAcceptedSolutionIssue,
@@ -111,6 +113,37 @@ def _compilation_issue(compilation: SolutionCompilation) -> Issue:
         warnings=list(compilation.warnings),
         log=compilation.log,
     )
+
+
+def detect_asset_compilation(state: RunState) -> List[Issue]:
+    """Generators, validators, checkers, interactors and visualizers that warned.
+
+    Recorded on the skeleton from what the build ahead of the run compiled, so
+    they are as old as the run -- a later `rbx build` alone does not refresh
+    them.
+    """
+    return [
+        AssetCompilationWarningsIssue(
+            path=str(compilation.path),
+            assetKind=compilation.kind,
+            warnings=list(compilation.warnings),
+            log=compilation.log,
+        )
+        for compilation in state.skeleton.asset_compilation
+    ]
+
+
+def detect_linter_warnings(state: RunState) -> List[Issue]:
+    """Files a configured linter flagged, one issue per file."""
+    return [
+        LinterWarningsIssue(
+            path=str(lint.path),
+            assetKind=lint.kind,
+            findings=list(lint.findings),
+        )
+        for lint in state.skeleton.lints
+        if lint.findings
+    ]
 
 
 def detect_borderline_tle(state: RunState) -> List[Issue]:
@@ -266,6 +299,8 @@ DETECTORS: List[Callable[[RunState], List[Issue]]] = [
     detect_unmet_expectations,
     detect_unexpected_scores,
     detect_compilation,
+    detect_asset_compilation,
+    detect_linter_warnings,
     detect_sanitizer_findings,
     detect_borderline_tle,
     detect_hidden_verdicts,

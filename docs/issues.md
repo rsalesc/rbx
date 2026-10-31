@@ -197,6 +197,25 @@ table entirely. `rbx issues -d` links the compilation log.
 **Warning.** A solution compiled, but the compiler printed warnings. `rbx issues -d` lists the first
 few, and links the full log.
 
+### `asset-compilation-warnings` {: #asset-compilation-warnings }
+
+**Warning.** A generator, validator, checker, interactor or visualizer of the package compiled, but
+the compiler printed warnings. `rbx issues -d` names the file's role, lists the first few warnings,
+and links the full log.
+
+It has its own code so you can ignore it without ignoring `compilation-warnings` for your solutions.
+
+### `linter-warnings` {: #linter-warnings }
+
+**Warning.** A [linter](setters/reference/environment/index.md#linters) configured for the file's
+language flagged something in it. `rbx issues -d` lists every message, with its line when the
+linter gives one, and the linter that reported it.
+
+To silence one linter in one file instead of ignoring this code for the whole problem, add a
+`<linter>-linter: disable` comment to the file, as
+[Suppressing a linter in a file](setters/reference/environment/index.md#suppressing-a-linter-in-a-file)
+describes.
+
 ### `sanitizer-finding` {: #sanitizer-finding }
 
 **Warning.** On a run with sanitizers, such as `rbx run -s`, a sanitizer reported something, like an
