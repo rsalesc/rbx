@@ -23,6 +23,7 @@ from rbx.box.issues.schema import (
     BorderlineTleIssue,
     CompilationFailedIssue,
     CompilationWarningsIssue,
+    DuplicateTestIssue,
     HiddenVerdictIssue,
     Issue,
     IssueSeverity,
@@ -143,6 +144,14 @@ def detect_linter_warnings(state: RunState) -> List[Issue]:
         )
         for lint in state.skeleton.lints
         if lint.findings
+    ]
+
+
+def detect_duplicate_tests(state: RunState) -> List[Issue]:
+    """Tests the build found repeating an earlier one, in build order."""
+    return [
+        DuplicateTestIssue(duplicate=duplicate)
+        for duplicate in state.skeleton.duplicate_tests
     ]
 
 
@@ -301,6 +310,7 @@ DETECTORS: List[Callable[[RunState], List[Issue]]] = [
     detect_compilation,
     detect_asset_compilation,
     detect_linter_warnings,
+    detect_duplicate_tests,
     detect_sanitizer_findings,
     detect_borderline_tle,
     detect_hidden_verdicts,

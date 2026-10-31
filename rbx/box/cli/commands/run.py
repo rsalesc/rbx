@@ -418,7 +418,7 @@ def hand_over_to_issues(report: 'issues.IssueReport') -> None:
     section; left alone it lists every solution's compiler warnings and
     sanitizer findings a second time -- and, since the run records them too,
     every generator's, validator's, checker's, interactor's and visualizer's
-    compiler warnings and every linter message. What is left for it is what
+    compiler warnings, every linter message and every duplicate test. What is left for it is what
     no issue covers: sanitizer findings outside solutions, files outside the
     package, and files compiled in a role the run does not record.
 
@@ -428,6 +428,7 @@ def hand_over_to_issues(report: 'issues.IssueReport') -> None:
     compilation: List[pathlib.Path] = []
     linter: List[pathlib.Path] = []
     sanitizer: List[pathlib.Path] = []
+    duplicates = False
     for issue in [*report.issues, *report.ignored]:
         if isinstance(issue, issues.CompilationWarningsIssue):
             compilation.append(pathlib.Path(issue.solution))
@@ -437,8 +438,15 @@ def hand_over_to_issues(report: 'issues.IssueReport') -> None:
             linter.append(pathlib.Path(issue.path))
         elif isinstance(issue, issues.SanitizerFindingIssue):
             sanitizer.append(pathlib.Path(issue.solution))
+        elif isinstance(issue, issues.DuplicateTestIssue):
+            # The skeleton records every duplicate the build found, so one
+            # covered means all of them are.
+            duplicates = True
     warning_stack.get_warning_stack().mark_reported(
-        compilation=compilation, linter=linter, sanitizer=sanitizer
+        compilation=compilation,
+        linter=linter,
+        sanitizer=sanitizer,
+        duplicates=duplicates,
     )
 
 

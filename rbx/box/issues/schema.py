@@ -23,6 +23,7 @@ from rbx.box.compilation_findings import CompilationWarning, LintFinding
 from rbx.box.issue_codes import IssueCode
 from rbx.box.linters.asset_kind import AssetKind
 from rbx.box.schema import ExpectedOutcome
+from rbx.box.testset_findings import DuplicateTest
 from rbx.grading.steps import Outcome
 
 # Bump when a change would make an older reader misread the output.
@@ -216,6 +217,22 @@ class LinterWarningsIssue(_RunIssue):
     # Absent for a file compiled in no role rbx could name.
     assetKind: Optional[AssetKind] = None
     findings: List[LintFinding] = []
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        return IssueSeverity.WARNING
+
+
+class DuplicateTestIssue(_RunIssue):
+    """A test repeats an earlier one, and neither of the two allows it.
+
+    A run issue rather than a package one: it is found by building the
+    testset, and a run is what records the build it judged.
+    """
+
+    kind: Literal['duplicate_test'] = 'duplicate_test'
+    duplicate: DuplicateTest
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -524,6 +541,7 @@ Issue = Annotated[
         CompilationWarningsIssue,
         AssetCompilationWarningsIssue,
         LinterWarningsIssue,
+        DuplicateTestIssue,
         BorderlineTleIssue,
         HiddenVerdictIssue,
         NoisyStderrIssue,
@@ -551,6 +569,7 @@ KIND_TO_CODE = {
     'compilation_warnings': IssueCode.COMPILATION_WARNINGS,
     'asset_compilation_warnings': IssueCode.ASSET_COMPILATION_WARNINGS,
     'linter_warnings': IssueCode.LINTER_WARNINGS,
+    'duplicate_test': IssueCode.DUPLICATE_TEST,
     'borderline_tle': IssueCode.BORDERLINE_TLE,
     'hidden_verdict': IssueCode.HIDDEN_VERDICT,
     'noisy_stderr': IssueCode.NOISY_STDERR,
