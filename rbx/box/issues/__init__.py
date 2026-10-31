@@ -42,6 +42,7 @@ from rbx.box.issues.run_state import (
 from rbx.box.issues.schema import (
     ISSUES_FORMAT_VERSION,
     AssetCompilationWarningsIssue,
+    BoundsNotHitIssue,
     CompilationWarningsIssue,
     ContestIssueRow,
     DuplicateTestIssue,
@@ -59,6 +60,7 @@ __all__ = [
     'DETECTORS',
     'ISSUES_FORMAT_VERSION',
     'AssetCompilationWarningsIssue',
+    'BoundsNotHitIssue',
     'CompilationWarningsIssue',
     'ConfigState',
     'ContestIssueRow',
