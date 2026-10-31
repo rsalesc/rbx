@@ -142,7 +142,9 @@ class TestThresholdConfig:
     def test_environment_defaults(self):
         thresholds = Environment().issues.thresholds
 
-        assert thresholds.testsetSizeMb == 20
+        assert thresholds.testsetSizeMb == 200
+        assert thresholds.testcaseInputSizeMb == 20
+        assert thresholds.testcaseAnswerSizeMb == 20
         assert thresholds.acceptedTotalTimeSeconds == 60
         assert thresholds.stderrSizeMb == 1
 
@@ -237,19 +239,19 @@ class TestLargeTestset:
 
     def test_flags_inputs_and_answers_together(self):
         state = config_state(
-            testset_input_bytes=15 * self.MB, testset_answer_bytes=6 * self.MB
+            testset_input_bytes=150 * self.MB, testset_answer_bytes=60 * self.MB
         )
 
         assert config_detectors.detect_large_testset(state) == [
             schema.LargeTestsetIssue(
-                inputBytes=15 * self.MB,
-                answerBytes=6 * self.MB,
-                thresholdBytes=20 * self.MB,
+                inputBytes=150 * self.MB,
+                answerBytes=60 * self.MB,
+                thresholdBytes=200 * self.MB,
             )
         ]
 
     def test_the_budget_itself_is_fine(self):
-        state = config_state(testset_input_bytes=20 * self.MB, testset_answer_bytes=0)
+        state = config_state(testset_input_bytes=200 * self.MB, testset_answer_bytes=0)
 
         assert config_detectors.detect_large_testset(state) == []
 
@@ -294,14 +296,106 @@ class TestLargeTestset:
             ),
         )
 
-        measured = config_state_module._measure_testset(  # noqa: SLF001
+        sizes = config_state_module._measure_testcases(  # noqa: SLF001
             [entry(0, 10, 3), entry(1, 5, 0), unbuilt]
         )
 
-        assert measured == (15, 3)
+        assert sizes == [
+            config_state_module.TestcaseSize(
+                input_path=tmp_path / '0.in',
+                input_bytes=10,
+                answer_path=tmp_path / '0.ans',
+                answer_bytes=3,
+            ),
+            config_state_module.TestcaseSize(
+                input_path=tmp_path / '1.in',
+                input_bytes=5,
+                answer_path=tmp_path / '1.ans',
+                answer_bytes=0,
+            ),
+        ]
+        assert config_state_module._measure_testset(sizes) == (15, 3)  # noqa: SLF001
 
     def test_measures_nothing_when_nothing_is_built(self):
+        assert config_state_module._measure_testcases([]) == []  # noqa: SLF001
         assert config_state_module._measure_testset([]) == (None, None)  # noqa: SLF001
+
+
+def built_case(i: int, input_mb: float, answer_mb: float):
+    mb = 1024 * 1024
+    return config_state_module.TestcaseSize(
+        input_path=pathlib.Path(f'build/tests/main/{i:03}.in'),
+        input_bytes=int(input_mb * mb),
+        answer_path=pathlib.Path(f'build/tests/main/{i:03}.ans'),
+        answer_bytes=int(answer_mb * mb),
+    )
+
+
+class TestLargeTestcase:
+    MB = 1024 * 1024
+
+    def test_names_the_largest_input_and_counts_the_rest(self):
+        state = config_state(
+            testcase_sizes=[
+                built_case(0, 21, 1),
+                built_case(1, 30, 1),
+                built_case(2, 5, 1),
+            ]
+        )
+
+        assert config_detectors.detect_large_testcases(state) == [
+            schema.LargeTestcaseIssue(
+                file='input',
+                path=pathlib.Path('build/tests/main/001.in'),
+                size=30 * self.MB,
+                count=2,
+                thresholdBytes=20 * self.MB,
+            )
+        ]
+
+    def test_reports_inputs_and_answers_apart(self):
+        state = config_state(
+            testcase_sizes=[built_case(0, 25, 1), built_case(1, 1, 25)]
+        )
+
+        issues = config_detectors.detect_large_testcases(state)
+
+        assert [(i.file, i.path.name) for i in issues] == [
+            ('input', '000.in'),
+            ('answer', '001.ans'),
+        ]
+
+    def test_the_budget_itself_is_fine(self):
+        state = config_state(testcase_sizes=[built_case(0, 20, 20)])
+
+        assert config_detectors.detect_large_testcases(state) == []
+
+    def test_silent_when_nothing_is_built(self):
+        assert config_detectors.detect_large_testcases(config_state()) == []
+
+    def test_honours_each_threshold(self):
+        state = config_state(
+            testcase_sizes=[built_case(0, 3, 3)],
+            thresholds=IssueThresholds(testcaseInputSizeMb=2, testcaseAnswerSizeMb=5),
+        )
+
+        assert [i.file for i in config_detectors.detect_large_testcases(state)] == [
+            'input'
+        ]
+
+    def test_is_worded(self):
+        issue = schema.LargeTestcaseIssue(
+            file='answer',
+            path=pathlib.Path('build/tests/main/001.ans'),
+            size=30 * self.MB,
+            count=3,
+            thresholdBytes=20 * self.MB,
+        )
+
+        summary = rendering.summarize(issue)
+        assert summary.startswith('answer [item]build/tests/main/001.ans[/item] is ')
+        assert 'and 2 more' in summary
+        assert 'per answer' in summary
 
 
 class TestBuildReportIgnores:

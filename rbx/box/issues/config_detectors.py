@@ -20,6 +20,7 @@ from rbx.box.issues.schema import (
     ExplanationMissingLanguageIssue,
     Issue,
     IssueSeverity,
+    LargeTestcaseIssue,
     LargeTestsetIssue,
     MissingStatementLanguageIssue,
     NoAcceptedSolutionIssue,
@@ -135,12 +136,54 @@ def detect_large_testset(state: ConfigState) -> List[Issue]:
     ]
 
 
+def detect_large_testcases(state: ConfigState) -> List[Issue]:
+    """Built inputs, or answers, that are each over the per-file budget.
+
+    At most one issue for inputs and one for answers, naming the largest and
+    counting the rest: an oversized generator makes a whole group oversized,
+    and one issue per test would bury every other finding.
+    """
+    thresholds = state.thresholds
+    issues: List[Issue] = []
+    for file, threshold, pick in (
+        (
+            'input',
+            thresholds.testcase_input_size_bytes,
+            lambda size: (size.input_path, size.input_bytes),
+        ),
+        (
+            'answer',
+            thresholds.testcase_answer_size_bytes,
+            lambda size: (size.answer_path, size.answer_bytes),
+        ),
+    ):
+        over = [
+            (path, nbytes)
+            for path, nbytes in map(pick, state.testcase_sizes)
+            if path is not None and nbytes > threshold
+        ]
+        if not over:
+            continue
+        path, nbytes = max(over, key=lambda item: item[1])
+        issues.append(
+            LargeTestcaseIssue(
+                file=file,
+                path=path,
+                size=nbytes,
+                count=len(over),
+                thresholdBytes=threshold,
+            )
+        )
+    return issues
+
+
 CONFIG_DETECTORS: List[Callable[[ConfigState], List[Issue]]] = [
     detect_no_accepted_solution,
     detect_no_validator,
     detect_no_samples,
     detect_empty_test_groups,
     detect_large_testset,
+    detect_large_testcases,
     detect_missing_statement_languages,
     detect_explanation_languages,
 ]

@@ -37,6 +37,7 @@ from rbx.box.issues.schema import (
     Issue,
     IssueReport,
     IssueSeverity,
+    LargeTestcaseIssue,
     LargeTestsetIssue,
     MissingStatementLanguageIssue,
     NoAcceptedSolutionIssue,
@@ -161,6 +162,13 @@ def summarize(issue: Issue) -> str:
             f'the built testset is {get_formatted_memory(issue.totalBytes)} '
             f'(budget {get_formatted_memory(issue.thresholdBytes)})'
         )
+    if isinstance(issue, LargeTestcaseIssue):
+        others = f' and {issue.count - 1} more' if issue.count > 1 else ''
+        return (
+            f'{issue.file} [item]{issue.path}[/item] is '
+            f'{get_formatted_memory(issue.size)}{others} '
+            f'(budget {get_formatted_memory(issue.thresholdBytes)} per {issue.file})'
+        )
     if isinstance(issue, UntunedLimitsIssue):
         return 'the time limit may not be tuned to this machine'
     if isinstance(issue, NoAcceptedSolutionIssue):
@@ -266,6 +274,17 @@ def explain(issue: Issue, runs_dir: Optional[str] = None) -> List[str]:
             'submission. Drop redundant large tests, or raise '
             '[item]issues.thresholds.testsetSizeMb[/item] in '
             '[item]env.rbx.yml[/item].',
+        ]
+    if isinstance(issue, LargeTestcaseIssue):
+        setting = (
+            'testcaseInputSizeMb' if issue.file == 'input' else 'testcaseAnswerSizeMb'
+        )
+        return [
+            f'{issue.count} {issue.file}(s) over the budget; the largest is '
+            f'{href(issue.path)}.',
+            'Some judges cap the size of one test file, and a file this large is '
+            'slow to copy and read on every submission. Shrink the test, or raise '
+            f'[item]issues.thresholds.{setting}[/item] in [item]env.rbx.yml[/item].',
         ]
     if isinstance(issue, UntunedLimitsIssue):
         return [

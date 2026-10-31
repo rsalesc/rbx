@@ -7,7 +7,8 @@ Extends `rbx issues` (see `2026-08-31-issues-view-design.md` and
 
 1. Every issue kind has a stable, user-facing **code**.
 2. A problem (or a whole contest) can stop reporting chosen codes.
-3. Two new warnings: the built testset is too large (default 20 MiB), and an
+3. Three new warnings: the built testset is too large (default 200 MiB), a
+   single built input or answer is too large (default 20 MiB each), and an
    accepted solution spends too much total CPU time over the testset (default
    60 s).
 4. Thresholds are configurable.
@@ -43,7 +44,8 @@ counted in a footer, and are listed by `rbx issues --all`. `rbx summary`
 filters its config findings the same way.
 
 **Thresholds live only in `env.rbx.yml`** under `issues.thresholds`
-(`testsetSizeMb`, `acceptedTotalTimeSeconds`, `stderrSizeMb`, the last
+(`testsetSizeMb`, `testcaseInputSizeMb`, `testcaseAnswerSizeMb`,
+`acceptedTotalTimeSeconds`, `stderrSizeMb`, the last
 replacing the hard-coded 1 MiB). They describe the judge, and the environment
 comes from the preset, which every problem of a contest shares. A problem that
 legitimately exceeds one ignores the code instead. Plain numbers with the unit
@@ -52,6 +54,12 @@ in the name, matching `timeLimit`/`memoryLimit`. Detectors receive them on
 
 **`large-testset`** (package family) sums every built `.in` plus its `.ans`,
 since both ship to the judge. It is silent when nothing is built.
+
+**`large-testcase`** (package family) checks each built file on its own, with
+separate input and answer budgets. It emits at most one issue per file kind,
+naming the largest offender and counting the rest: an oversized generator
+makes a whole group oversized, and one issue per test would bury everything
+else.
 
 **`slow-accepted-solution`** (run family) needs totals the run report did not
 have, so `RunSolutionReport` gains `totalTime` (sum of per-test CPU time) and

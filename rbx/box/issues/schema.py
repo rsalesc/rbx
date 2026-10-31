@@ -406,6 +406,30 @@ class LargeTestsetIssue(_ConfigIssue):
         return IssueSeverity.WARNING
 
 
+class LargeTestcaseIssue(_ConfigIssue):
+    """Some built inputs (or answers) are each larger than the environment allows.
+
+    One issue per file kind rather than one per test: a generator that makes
+    one test too large usually makes the whole group too large, and fifty copies
+    of the same finding would bury everything else. The largest one is named,
+    since it is the one to look at first.
+    """
+
+    kind: Literal['config_large_testcase'] = 'config_large_testcase'
+    file: Literal['input', 'answer']
+    # The largest offender, as it sits in the build dir.
+    path: pathlib.Path
+    size: int  # bytes
+    # How many tests went over, the largest included.
+    count: int
+    thresholdBytes: int
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def severity(self) -> IssueSeverity:
+        return IssueSeverity.WARNING
+
+
 class MissingStatementLanguageIssue(_ConfigIssue):
     """The problem has no statement, or none for a language the contest wants.
 
@@ -470,6 +494,7 @@ Issue = Annotated[
         NoSamplesIssue,
         EmptyTestGroupIssue,
         LargeTestsetIssue,
+        LargeTestcaseIssue,
         MissingStatementLanguageIssue,
         ExplanationMissingLanguageIssue,
     ],
@@ -494,6 +519,7 @@ KIND_TO_CODE = {
     'config_no_samples': IssueCode.NO_SAMPLES,
     'config_empty_test_group': IssueCode.EMPTY_TEST_GROUP,
     'config_large_testset': IssueCode.LARGE_TESTSET,
+    'config_large_testcase': IssueCode.LARGE_TESTCASE,
     'config_missing_statement_language': IssueCode.MISSING_STATEMENT_LANGUAGE,
     'config_explanation_missing_language': IssueCode.EXPLANATION_MISSING_LANGUAGE,
 }

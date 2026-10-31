@@ -72,15 +72,19 @@ under `issues.thresholds`:
 ```yaml title="env.rbx.yml"
 issues:
   thresholds:
-    testsetSizeMb: 20 # (1)!
-    acceptedTotalTimeSeconds: 60 # (2)!
-    stderrSizeMb: 1 # (3)!
+    testsetSizeMb: 200 # (1)!
+    testcaseInputSizeMb: 20 # (2)!
+    testcaseAnswerSizeMb: 20 # (3)!
+    acceptedTotalTimeSeconds: 60 # (4)!
+    stderrSizeMb: 1 # (5)!
 ```
 
 1. The largest the built testset may get, in MiB. Used by [`large-testset`](#large-testset).
-2. The most CPU time an accepted solution may spend summed over every test, in seconds. Used by
+2. The largest one built input may get, in MiB. Used by [`large-testcase`](#large-testcase).
+3. The largest one expected answer may get, in MiB. Used by [`large-testcase`](#large-testcase).
+4. The most CPU time an accepted solution may spend summed over every test, in seconds. Used by
    [`slow-accepted-solution`](#slow-accepted-solution).
-3. The most a solution may print to stderr on one test, in MiB. Used by
+5. The most a solution may print to stderr on one test, in MiB. Used by
    [`noisy-stderr`](#noisy-stderr).
 
 The snippet shows the current defaults, which the
@@ -134,6 +138,20 @@ the problem, or raise the threshold for the whole environment.
 `rbx build` or `rbx run`.
 
 **Tunable** with [`testsetSizeMb`](#tuning-thresholds).
+
+### `large-testcase` {: #large-testcase }
+
+**Warning.** One or more built inputs are larger than `testcaseInputSizeMb`, or one or more
+expected answers are larger than `testcaseAnswerSizeMb`.
+
+{{rbx}} reports inputs and answers apart, at most one issue each. The issue points at the largest file
+and says how many others are over the limit too, so a generator that makes a whole group too big
+reads as one finding. Some judges cap the size of one test file, and every submission has to read
+the whole file. Shrink the test, or ignore this issue for the problem if it needs files that big.
+
+Like [`large-testset`](#large-testset), this issue appears only once the tests are built.
+
+**Tunable** with [`testcaseInputSizeMb` and `testcaseAnswerSizeMb`](#tuning-thresholds).
 
 ### `missing-statement-language` {: #missing-statement-language }
 

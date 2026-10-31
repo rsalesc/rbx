@@ -44,6 +44,7 @@ class IssueCode(str, Enum):
     NO_SAMPLES = 'no-samples'
     EMPTY_TEST_GROUP = 'empty-test-group'
     LARGE_TESTSET = 'large-testset'
+    LARGE_TESTCASE = 'large-testcase'
     MISSING_STATEMENT_LANGUAGE = 'missing-statement-language'
     EXPLANATION_MISSING_LANGUAGE = 'explanation-missing-language'
 
@@ -73,10 +74,24 @@ class IssueThresholds(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     testsetSizeMb: float = Field(
-        default=20,
+        default=200,
         gt=0,
         description="""Largest total size, in MiB, of the built testset (every input plus
 every expected answer) before `large-testset` is reported.""",
+    )
+
+    testcaseInputSizeMb: float = Field(
+        default=20,
+        gt=0,
+        description="""Largest size, in MiB, of a single built input before `large-testcase`
+is reported.""",
+    )
+
+    testcaseAnswerSizeMb: float = Field(
+        default=20,
+        gt=0,
+        description="""Largest size, in MiB, of a single expected answer before
+`large-testcase` is reported.""",
     )
 
     acceptedTotalTimeSeconds: float = Field(
@@ -96,6 +111,14 @@ before `noisy-stderr` is reported.""",
     @property
     def testset_size_bytes(self) -> int:
         return int(self.testsetSizeMb * 1024 * 1024)
+
+    @property
+    def testcase_input_size_bytes(self) -> int:
+        return int(self.testcaseInputSizeMb * 1024 * 1024)
+
+    @property
+    def testcase_answer_size_bytes(self) -> int:
+        return int(self.testcaseAnswerSizeMb * 1024 * 1024)
 
     @property
     def stderr_size_bytes(self) -> int:

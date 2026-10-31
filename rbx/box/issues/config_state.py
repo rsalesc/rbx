@@ -24,6 +24,18 @@ from rbx.box.statements.render import parse_jinja_block_names
 from rbx.box.statements.schema import Statement, StatementType
 
 
+class TestcaseSize(BaseModel):
+    """One built testcase's input and answer, and how large each is."""
+
+    # Not a test class, whatever its name says.
+    __test__ = False
+
+    input_path: pathlib.Path
+    input_bytes: int
+    answer_path: Optional[pathlib.Path] = None
+    answer_bytes: int = 0
+
+
 class ConfigState(BaseModel):
     """Everything the config detectors read. No package, no paths to open."""
 
@@ -53,6 +65,8 @@ class ConfigState(BaseModel):
     # reporting it as zero would read as a finding about the real one.
     testset_input_bytes: Optional[int] = None
     testset_answer_bytes: Optional[int] = None
+    # Every built testcase's own sizes, in build order. Empty when unbuilt.
+    testcase_sizes: List[TestcaseSize] = []
     # The environment's limits, handed in for the reason `RunState` takes them.
     thresholds: IssueThresholds = IssueThresholds()
 
@@ -115,23 +129,38 @@ def _file_size(path: Optional[pathlib.Path]) -> int:
         return 0
 
 
-def _measure_testset(
+def _measure_testcases(
     entries: List[GenerationTestcaseEntry],
-) -> Tuple[Optional[int], Optional[int]]:
-    """The built testset's input and answer bytes, or `(None, None)` unbuilt.
+) -> List[TestcaseSize]:
+    """Each built testcase's sizes; empty when nothing is built.
 
     Only the entries whose input is actually on disk are measured, which is the
     same notion of "built" `rbx run` uses to decide what to run.
     """
-    built = testcase_extractors.find_built_testcases(entries)
-    if not built:
-        return None, None
-    inputs = answers = 0
-    for entry in built:
+    sizes: List[TestcaseSize] = []
+    for entry in testcase_extractors.find_built_testcases(entries):
         copied_to = entry.metadata.copied_to
-        inputs += _file_size(copied_to.inputPath)
-        answers += _file_size(copied_to.outputPath)
-    return inputs, answers
+        sizes.append(
+            TestcaseSize(
+                input_path=copied_to.inputPath,
+                input_bytes=_file_size(copied_to.inputPath),
+                answer_path=copied_to.outputPath,
+                answer_bytes=_file_size(copied_to.outputPath),
+            )
+        )
+    return sizes
+
+
+def _measure_testset(
+    sizes: List[TestcaseSize],
+) -> Tuple[Optional[int], Optional[int]]:
+    """The built testset's input and answer bytes, or `(None, None)` unbuilt."""
+    if not sizes:
+        return None, None
+    return (
+        sum(size.input_bytes for size in sizes),
+        sum(size.answer_bytes for size in sizes),
+    )
 
 
 async def collect_config_state(
@@ -152,7 +181,8 @@ async def collect_config_state(
 
     statements = pkg.expanded_statements
     explanation_languages, explanation_paths = await _collect_explanations(statements)
-    input_bytes, answer_bytes = _measure_testset(entries)
+    testcase_sizes = _measure_testcases(entries)
+    input_bytes, answer_bytes = _measure_testset(testcase_sizes)
 
     return ConfigState(
         solutions=package.get_solutions(),
@@ -165,5 +195,6 @@ async def collect_config_state(
         contest_languages=list(contest_languages or []),
         testset_input_bytes=input_bytes,
         testset_answer_bytes=answer_bytes,
+        testcase_sizes=testcase_sizes,
         thresholds=thresholds or IssueThresholds(),
     )

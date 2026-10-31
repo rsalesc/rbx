@@ -761,6 +761,13 @@ class TestRendering:
             schema.NoSamplesIssue(),
             schema.EmptyTestGroupIssue(group='big'),
             schema.LargeTestsetIssue(inputBytes=2, answerBytes=1, thresholdBytes=1),
+            schema.LargeTestcaseIssue(
+                file='input',
+                path=pathlib.Path('a.in'),
+                size=2,
+                count=1,
+                thresholdBytes=1,
+            ),
             schema.MissingStatementLanguageIssue(),
             schema.ExplanationMissingLanguageIssue(
                 sample=0, path=pathlib.Path('a.rbx.tex')
