@@ -1,0 +1,1041 @@
+{
+    "$defs": {
+        "CmsContestSettings": {
+            "description": "Settings of the CMS contest itself.\n\nThe limits here count across all tasks.",
+            "properties": {
+                "maxSubmissionNumber": {
+                    "anyOf": [
+                        {
+                            "exclusiveMinimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Most submissions a contestant may make (`max_submission_number`).",
+                    "title": "Maxsubmissionnumber"
+                },
+                "maxUserTestNumber": {
+                    "anyOf": [
+                        {
+                            "exclusiveMinimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Most user tests a contestant may run (`max_user_test_number`).",
+                    "title": "Maxusertestnumber"
+                },
+                "minSubmissionInterval": {
+                    "anyOf": [
+                        {
+                            "exclusiveMinimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Seconds a contestant must wait between two submissions (`min_submission_interval`).",
+                    "title": "Minsubmissioninterval"
+                },
+                "minUserTestInterval": {
+                    "anyOf": [
+                        {
+                            "exclusiveMinimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Seconds a contestant must wait between two user tests (`min_user_test_interval`).",
+                    "title": "Minusertestinterval"
+                },
+                "scorePrecision": {
+                    "anyOf": [
+                        {
+                            "minimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Decimal places scores are shown with (`score_precision`).",
+                    "title": "Scoreprecision"
+                },
+                "tokens": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/CmsTokens"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Tokens. A contestant may use one on a task only when both the contest and the task allow it."
+                },
+                "start": {
+                    "anyOf": [
+                        {
+                            "format": "date-time",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "When the contest starts (`start`), with a UTC offset, such as `2026-09-28T08:00:00-03:00`. `contest.rbx.yml` only.",
+                    "title": "Start"
+                },
+                "stop": {
+                    "anyOf": [
+                        {
+                            "format": "date-time",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "When the contest ends (`stop`), with a UTC offset. `contest.rbx.yml` only.",
+                    "title": "Stop"
+                },
+                "perUserTime": {
+                    "anyOf": [
+                        {
+                            "exclusiveMinimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Seconds each contestant gets, starting when they choose to, within the contest window (`per_user_time`). `contest.rbx.yml` only.",
+                    "title": "Perusertime"
+                },
+                "timezone": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "IANA name of the timezone CMS shows times in (`timezone`), such as `America/Sao_Paulo`. Separate from the UTC offsets on `start` and `stop`.",
+                    "title": "Timezone"
+                },
+                "allowUserTests": {
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Whether contestants may run their code on their own inputs (`allow_user_tests`).",
+                    "title": "Allowusertests"
+                },
+                "allowQuestions": {
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Whether contestants may ask questions (`allow_questions`).",
+                    "title": "Allowquestions"
+                },
+                "submissionsDownloadAllowed": {
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Whether contestants may download their submissions (`submissions_download_allowed`).",
+                    "title": "Submissionsdownloadallowed"
+                },
+                "allowPasswordAuthentication": {
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Whether contestants may log in with a password (`allow_password_authentication`).",
+                    "title": "Allowpasswordauthentication"
+                },
+                "allowRegistration": {
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Whether people may register themselves (`allow_registration`).",
+                    "title": "Allowregistration"
+                },
+                "ipRestriction": {
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Whether a contestant may log in only from their own IP addresses (`ip_restriction`).",
+                    "title": "Iprestriction"
+                },
+                "ipAutologin": {
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Whether a contestant is logged in from their IP address, without a password (`ip_autologin`).",
+                    "title": "Ipautologin"
+                },
+                "blockHiddenParticipations": {
+                    "anyOf": [
+                        {
+                            "type": "boolean"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Whether hidden participations are kept from logging in (`block_hidden_participations`).",
+                    "title": "Blockhiddenparticipations"
+                },
+                "allowedLocalizations": {
+                    "anyOf": [
+                        {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Interface languages contestants may pick, such as `en` and `pt_BR` (`allowed_localizations`). Unset or empty allows them all.",
+                    "title": "Allowedlocalizations"
+                }
+            },
+            "title": "CmsContestSettings",
+            "type": "object"
+        },
+        "CmsExtension": {
+            "description": "CMS settings: the contest's own, and those applied to every task.",
+            "properties": {
+                "contest": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/CmsContestSettings"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Settings of the CMS contest itself."
+                },
+                "task": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/CmsTaskSettings"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Settings applied to every task of the contest."
+                }
+            },
+            "title": "CmsExtension",
+            "type": "object"
+        },
+        "CmsFeedbackLevel": {
+            "enum": [
+                "full",
+                "restricted"
+            ],
+            "title": "CmsFeedbackLevel",
+            "type": "string"
+        },
+        "CmsPublicTestcases": {
+            "enum": [
+                "samples",
+                "all",
+                "none"
+            ],
+            "title": "CmsPublicTestcases",
+            "type": "string"
+        },
+        "CmsScoreMode": {
+            "enum": [
+                "max",
+                "maxSubtask",
+                "maxTokenedLast"
+            ],
+            "title": "CmsScoreMode",
+            "type": "string"
+        },
+        "CmsTaskSettings": {
+            "description": "Settings applied to every task of the contest.\n\nThe limits here apply to each task separately.",
+            "properties": {
+                "maxSubmissionNumber": {
+                    "anyOf": [
+                        {
+                            "exclusiveMinimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Most submissions a contestant may make (`max_submission_number`).",
+                    "title": "Maxsubmissionnumber"
+                },
+                "maxUserTestNumber": {
+                    "anyOf": [
+                        {
+                            "exclusiveMinimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Most user tests a contestant may run (`max_user_test_number`).",
+                    "title": "Maxusertestnumber"
+                },
+                "minSubmissionInterval": {
+                    "anyOf": [
+                        {
+                            "exclusiveMinimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Seconds a contestant must wait between two submissions (`min_submission_interval`).",
+                    "title": "Minsubmissioninterval"
+                },
+                "minUserTestInterval": {
+                    "anyOf": [
+                        {
+                            "exclusiveMinimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Seconds a contestant must wait between two user tests (`min_user_test_interval`).",
+                    "title": "Minusertestinterval"
+                },
+                "scorePrecision": {
+                    "anyOf": [
+                        {
+                            "minimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Decimal places scores are shown with (`score_precision`).",
+                    "title": "Scoreprecision"
+                },
+                "tokens": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/CmsTokens"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Tokens. A contestant may use one on a task only when both the contest and the task allow it."
+                },
+                "scoreMode": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/CmsScoreMode"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "How the task score comes out of a contestant's submissions (`score_mode`). `max`: the best submission. `maxSubtask`: the best score on each subtask, summed across submissions. `maxTokenedLast`: the best of the tokened submissions and the last one. Defaults to `max`, which is what rbx means by a solution's score; CMS's own default is `maxTokenedLast`."
+                },
+                "feedbackLevel": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/CmsFeedbackLevel"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "How much contestants see about a submission on its public testcases (`feedback_level`). `full`: every testcase's outcome, time and memory. `restricted`: less."
+                },
+                "publicTestcases": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/CmsPublicTestcases"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Which testcases contestants see results for. `samples`: the tests of the `samples` group. `all`: every test. `none`: no test. Defaults to `samples`."
+                }
+            },
+            "title": "CmsTaskSettings",
+            "type": "object"
+        },
+        "CmsTokenMode": {
+            "enum": [
+                "disabled",
+                "finite",
+                "infinite"
+            ],
+            "title": "CmsTokenMode",
+            "type": "string"
+        },
+        "CmsTokens": {
+            "description": "CMS tokens. Replaced as a whole when a contest overrides a preset.",
+            "properties": {
+                "mode": {
+                    "$ref": "#/$defs/CmsTokenMode",
+                    "description": "`disabled`: no tokens. `infinite`: a contestant may token every submission. `finite`: tokens are generated over time, as the fields below say. Written to CMS's `token_mode`."
+                },
+                "maxNumber": {
+                    "anyOf": [
+                        {
+                            "exclusiveMinimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Most tokens a contestant may use in total (`token_max_number`). Unset means no cap. `finite` mode only.",
+                    "title": "Maxnumber"
+                },
+                "minInterval": {
+                    "anyOf": [
+                        {
+                            "minimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Seconds a contestant must wait between two tokens (`token_min_interval`). `finite` mode only.",
+                    "title": "Mininterval"
+                },
+                "genInitial": {
+                    "anyOf": [
+                        {
+                            "minimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Tokens a contestant starts with (`token_gen_initial`). `finite` mode only.",
+                    "title": "Geninitial"
+                },
+                "genNumber": {
+                    "anyOf": [
+                        {
+                            "minimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Tokens generated every `genInterval` (`token_gen_number`). `finite` mode only.",
+                    "title": "Gennumber"
+                },
+                "genInterval": {
+                    "anyOf": [
+                        {
+                            "exclusiveMinimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Seconds between two generations (`token_gen_interval`). `finite` mode only.",
+                    "title": "Geninterval"
+                },
+                "genMax": {
+                    "anyOf": [
+                        {
+                            "exclusiveMinimum": 0,
+                            "type": "integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Most tokens a contestant may hold at once (`token_gen_max`). Unset means no cap. `finite` mode only.",
+                    "title": "Genmax"
+                }
+            },
+            "required": [
+                "mode"
+            ],
+            "title": "CmsTokens",
+            "type": "object"
+        },
+        "ContestExtensions": {
+            "properties": {
+                "cms": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/$defs/CmsExtension"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "CMS contest and task settings. They override the ones in `env.rbx.yml` field by field."
+                }
+            },
+            "title": "ContestExtensions",
+            "type": "object"
+        },
+        "ContestProblem": {
+            "properties": {
+                "short_name": {
+                    "description": "\nShort name of the problem. Usually, just an uppercase letter,\nbut can be a sequence of uppercase letters followed by a number.",
+                    "maxLength": 4,
+                    "minLength": 1,
+                    "pattern": "^[A-Z]+[0-9]*$",
+                    "title": "Short Name",
+                    "type": "string"
+                },
+                "aliases": {
+                    "description": "\nOptional list of aliases for this problem. You can refer to the problem by its\nshort_name or by any of these aliases in commands such as [item]rbx on <name> run[/item].\nAliases must be unique across all problems (case-insensitive).",
+                    "items": {
+                        "maxLength": 32,
+                        "minLength": 3,
+                        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-_]*$",
+                        "type": "string"
+                    },
+                    "title": "Aliases",
+                    "type": "array"
+                },
+                "path": {
+                    "anyOf": [
+                        {
+                            "format": "path",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "\nPath to the problem relative to the contest package directory.\nIf not specified, will expect the problem to be in ./{short_name}/ folder.",
+                    "title": "Path"
+                },
+                "color": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "\nColor that represents this problem in the contest.\n\nCan be a hex color (#abcdef or #abc format), or a color name among available X11 colors.\n\nSee https://en.wikipedia.org/wiki/X11_color_names for the list of supported color names.\n",
+                    "title": "Color"
+                },
+                "colorName": {
+                    "anyOf": [
+                        {
+                            "pattern": "^[a-zA-Z]+$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "\nA custom color name for the color provided by this problem.\n\nIf not provided, will try to infer a color name from the color provided.\n",
+                    "title": "Colorname"
+                }
+            },
+            "required": [
+                "short_name"
+            ],
+            "title": "ContestProblem",
+            "type": "object"
+        },
+        "ContestStatement": {
+            "description": "A contest-level statement. Owns the templates used to render problems both\nstandalone and inside the contest join (design \u00a73.2).",
+            "properties": {
+                "language": {
+                    "default": "en",
+                    "description": "Language code of this statement (ISO 639-1).",
+                    "title": "Language",
+                    "type": "string"
+                },
+                "variant": {
+                    "default": "default",
+                    "description": "Optional discriminator between formats of the same language. Together with `language` it forms the join key with contest statements.",
+                    "title": "Variant",
+                    "type": "string"
+                },
+                "title": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Title as it appears in the statement. Can be left unset to fall back to the package/contest title.",
+                    "title": "Title"
+                },
+                "file": {
+                    "anyOf": [
+                        {
+                            "format": "path",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Path to the input statement file. Required unless this statement `extends` another one to inherit its file.",
+                    "title": "File"
+                },
+                "type": {
+                    "$ref": "#/$defs/StatementType",
+                    "default": "rbxTeX",
+                    "description": "Type of the input statement file."
+                },
+                "params": {
+                    "$ref": "#/$defs/RecVars",
+                    "default": {},
+                    "description": "This statement's own parameters, exposed to the template as the `params` namespace (kept separate from problem/contest `vars`)."
+                },
+                "samples": {
+                    "default": true,
+                    "description": "Whether to build the statement with samples.",
+                    "title": "Samples",
+                    "type": "boolean"
+                },
+                "assets": {
+                    "description": "Globs (relative to the package root) selecting files to ship as statement resources (e.g. images/PDFs). Inherited via `extends`. At build time the default image/PDF globs over the statement subtree and each sample subtree are concatenated to this list.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "title": "Assets",
+                    "type": "array"
+                },
+                "name": {
+                    "description": "Name of this statement. Unique within the contest. May carry `{lang}` on a wildcard (`language: \"*\"`) statement.",
+                    "maxLength": 128,
+                    "minLength": 3,
+                    "title": "Name",
+                    "type": "string"
+                },
+                "extends": {
+                    "anyOf": [
+                        {
+                            "maxLength": 128,
+                            "minLength": 3,
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-_]*$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Name of the contest statement to inherit the build recipe from.",
+                    "title": "Extends"
+                },
+                "standaloneProblemTemplate": {
+                    "anyOf": [
+                        {
+                            "format": "path",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Template applied to build a problem-level statement as a standalone document (`rbx st b`). rbx* types only.",
+                    "title": "Standaloneproblemtemplate"
+                },
+                "contestProblemTemplate": {
+                    "anyOf": [
+                        {
+                            "format": "path",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Template applied to build the problem fragment that gets imported into the contest statement (`rbx contest st b`). rbx* types only.",
+                    "title": "Contestproblemtemplate"
+                }
+            },
+            "required": [
+                "name"
+            ],
+            "title": "ContestStatement",
+            "type": "object"
+        },
+        "Document": {
+            "description": "A contest-level document (infosheet, etc.). Shares the statement model but\nNEVER joins on problems, so it is restricted to non-rbx types (design \u00a73.2).",
+            "properties": {
+                "language": {
+                    "default": "en",
+                    "description": "Language code of this statement (ISO 639-1).",
+                    "title": "Language",
+                    "type": "string"
+                },
+                "variant": {
+                    "default": "default",
+                    "description": "Optional discriminator between formats of the same language. Together with `language` it forms the join key with contest statements.",
+                    "title": "Variant",
+                    "type": "string"
+                },
+                "title": {
+                    "anyOf": [
+                        {
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Title as it appears in the statement. Can be left unset to fall back to the package/contest title.",
+                    "title": "Title"
+                },
+                "file": {
+                    "anyOf": [
+                        {
+                            "format": "path",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Path to the input statement file. Required unless this statement `extends` another one to inherit its file.",
+                    "title": "File"
+                },
+                "type": {
+                    "$ref": "#/$defs/StatementType",
+                    "default": "rbxTeX",
+                    "description": "Type of the input statement file."
+                },
+                "params": {
+                    "$ref": "#/$defs/RecVars",
+                    "default": {},
+                    "description": "This statement's own parameters, exposed to the template as the `params` namespace (kept separate from problem/contest `vars`)."
+                },
+                "samples": {
+                    "default": true,
+                    "description": "Whether to build the statement with samples.",
+                    "title": "Samples",
+                    "type": "boolean"
+                },
+                "assets": {
+                    "description": "Globs (relative to the package root) selecting files to ship as statement resources (e.g. images/PDFs). Inherited via `extends`. At build time the default image/PDF globs over the statement subtree and each sample subtree are concatenated to this list.",
+                    "items": {
+                        "type": "string"
+                    },
+                    "title": "Assets",
+                    "type": "array"
+                },
+                "name": {
+                    "description": "Name of this document. Unique within the contest. May carry `{lang}` on a wildcard (`language: \"*\"`) document.",
+                    "maxLength": 128,
+                    "minLength": 3,
+                    "title": "Name",
+                    "type": "string"
+                },
+                "extends": {
+                    "anyOf": [
+                        {
+                            "maxLength": 128,
+                            "minLength": 3,
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-_]*$",
+                            "type": "string"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "default": null,
+                    "description": "Name of the document to inherit the build recipe from.",
+                    "title": "Extends"
+                }
+            },
+            "required": [
+                "name"
+            ],
+            "title": "Document",
+            "type": "object"
+        },
+        "IssueCode": {
+            "enum": [
+                "unmet-expectation",
+                "unexpected-score",
+                "compilation-failed",
+                "compilation-warnings",
+                "asset-compilation-warnings",
+                "linter-warnings",
+                "duplicate-test",
+                "bounds-not-hit",
+                "sanitizer-finding",
+                "borderline-tle",
+                "hidden-verdict",
+                "noisy-stderr",
+                "slow-accepted-solution",
+                "untuned-limits",
+                "no-accepted-solution",
+                "no-validator",
+                "no-samples",
+                "empty-test-group",
+                "large-testset",
+                "large-testcase",
+                "missing-statement-language",
+                "explanation-missing-language"
+            ],
+            "title": "IssueCode",
+            "type": "string"
+        },
+        "IssuesConfig": {
+            "description": "The `issues:` block of `problem.rbx.yml` and `contest.rbx.yml`.",
+            "properties": {
+                "ignore": {
+                    "default": [],
+                    "description": "Issue codes not to report for this problem (or, in `contest.rbx.yml`,\nfor every problem of the contest). A problem's list adds to its contest's. Ignored\nissues are still listed by `rbx issues --all`.\nSee https://rbx.rsalesc.dev/issues/ for every code.",
+                    "items": {
+                        "$ref": "#/$defs/IssueCode"
+                    },
+                    "title": "Ignore",
+                    "type": "array"
+                }
+            },
+            "title": "IssuesConfig",
+            "type": "object"
+        },
+        "RecVars": {
+            "additionalProperties": {
+                "anyOf": [
+                    {
+                        "type": "integer"
+                    },
+                    {
+                        "type": "number"
+                    },
+                    {
+                        "type": "boolean"
+                    },
+                    {
+                        "type": "string"
+                    },
+                    {
+                        "$ref": "#/$defs/RecVars"
+                    }
+                ]
+            },
+            "type": "object"
+        },
+        "StatementType": {
+            "enum": [
+                "rbxTeX",
+                "rbxMarkdown",
+                "TeX",
+                "Markdown",
+                "JinjaTeX",
+                "JinjaMarkdown",
+                "PDF"
+            ],
+            "title": "StatementType",
+            "type": "string"
+        }
+    },
+    "properties": {
+        "use_variants": {
+            "default": false,
+            "description": "When true, this file is a sentinel marking the directory as a multi-contest dispatcher. The actual contests live in sibling files matching contest.<id>.rbx.yml. When set, no other Contest fields may be specified.",
+            "title": "Use Variants",
+            "type": "boolean"
+        },
+        "name": {
+            "default": "",
+            "description": "Name of this contest.",
+            "title": "Name",
+            "type": "string"
+        },
+        "titles": {
+            "additionalProperties": {
+                "type": "string"
+            },
+            "default": {},
+            "description": "Titles for the contest in each language. Languages should be specified as lowercase ISO 639-1 codes.",
+            "title": "Titles",
+            "type": "object"
+        },
+        "languages": {
+            "anyOf": [
+                {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Languages this package ships statements in, as lowercase ISO 639-1 codes. Statements declared with `language: \"*\"` expand to one entry per language listed here. A problem inside a contest inherits the contest list when unset.",
+            "title": "Languages"
+        },
+        "problems": {
+            "default": [],
+            "description": "List of problems in this contest.",
+            "items": {
+                "$ref": "#/$defs/ContestProblem"
+            },
+            "title": "Problems",
+            "type": "array"
+        },
+        "statements": {
+            "default": [],
+            "description": "Configure statements in this contest, per language.",
+            "items": {
+                "$ref": "#/$defs/ContestStatement"
+            },
+            "title": "Statements",
+            "type": "array"
+        },
+        "tutorials": {
+            "default": [],
+            "description": "Configure tutorials (editorials) in this contest, per language.",
+            "items": {
+                "$ref": "#/$defs/ContestStatement"
+            },
+            "title": "Tutorials",
+            "type": "array"
+        },
+        "documents": {
+            "default": [],
+            "description": "Configure standalone documents (infosheets, etc.) for this contest. Documents never join on problems.",
+            "items": {
+                "$ref": "#/$defs/Document"
+            },
+            "title": "Documents",
+            "type": "array"
+        },
+        "issues": {
+            "$ref": "#/$defs/IssuesConfig",
+            "description": "Which issues to report for every problem of this contest. A problem's own `issues.ignore` adds to this one."
+        },
+        "vars": {
+            "$ref": "#/$defs/RecVars",
+            "default": {},
+            "description": "Variables to be re-used across the package."
+        },
+        "extensions": {
+            "anyOf": [
+                {
+                    "$ref": "#/$defs/ContestExtensions"
+                },
+                {
+                    "type": "null"
+                }
+            ],
+            "default": null,
+            "description": "Settings for the judges this contest is exported to."
+        }
+    },
+    "title": "Contest",
+    "type": "object"
+}
