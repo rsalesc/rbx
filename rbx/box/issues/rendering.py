@@ -50,6 +50,7 @@ from rbx.box.issues.schema import (
     UnmetExpectationIssue,
     UntunedLimitsIssue,
 )
+from rbx.box.sanitizers import compilation_warnings
 from rbx.box.scoring import partial
 
 
@@ -143,7 +144,9 @@ def summarize(issue: Issue) -> str:
             else 'failed to compile'
         )
     if isinstance(issue, CompilationWarningsIssue):
-        return f'compiled with {len(issue.warnings)} warning(s)'
+        flags = compilation_warnings.summarize_flags(w.flag for w in issue.warnings)
+        breakdown = f' [warning]({flags})[/warning]' if flags else ''
+        return f'compiled with {len(issue.warnings)} warning(s){breakdown}'
     if isinstance(issue, BorderlineTleIssue):
         return 'slow only within 2x the time limit'
     if isinstance(issue, HiddenVerdictIssue):

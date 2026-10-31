@@ -1,6 +1,7 @@
 from rbx.box.sanitizers.compilation_warnings import (
     CppCompilationWarningSummarizer,
     get_compilation_warning_summarizer_for,
+    summarize_flags,
 )
 from rbx.grading.steps import PreprocessLog
 
@@ -88,3 +89,13 @@ def test_dedup_keeps_distinct_messages_at_same_location():
         "sol.cpp:1:1: warning: unused variable 'y' [-Wunused-variable]\n"
     )
     assert s.summarize([_log(stderr)]) == '2× -Wunused-variable'
+
+
+def test_summarize_flags_without_warnings_returns_none():
+    assert summarize_flags([]) is None
+
+
+def test_summarize_flags_counts_unflagged_warnings_last():
+    assert summarize_flags(['-Wshadow', None, None, '-Wshadow']) == (
+        '2× -Wshadow, 2 warnings'
+    )

@@ -41,11 +41,13 @@ from rbx.box.issues.run_state import (
 )
 from rbx.box.issues.schema import (
     ISSUES_FORMAT_VERSION,
+    CompilationWarningsIssue,
     ContestIssueRow,
     Issue,
     IssueFamily,
     IssueReport,
     IssueSeverity,
+    SanitizerFindingIssue,
 )
 from rbx.box.issues.settings import resolve_ignored, resolve_thresholds
 
@@ -53,6 +55,7 @@ __all__ = [
     'CONFIG_DETECTORS',
     'DETECTORS',
     'ISSUES_FORMAT_VERSION',
+    'CompilationWarningsIssue',
     'ConfigState',
     'ContestIssueRow',
     'Issue',
@@ -61,6 +64,7 @@ __all__ = [
     'IssueSeverity',
     'IssuesFormat',
     'RunState',
+    'SanitizerFindingIssue',
     'UnsupportedReportVersion',
     'build_problem_report',
     'build_report',

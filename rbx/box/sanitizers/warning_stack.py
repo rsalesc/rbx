@@ -1,7 +1,7 @@
 import functools
 import pathlib
 import shutil
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Tuple
 
 from rbx import console, utils
 from rbx.box.formatting import href
@@ -36,6 +36,42 @@ class WarningStack:
         self.warning_logs: Dict[pathlib.Path, List[PreprocessLog]] = {}
         self.sanitizer_warnings = {}
         self.linter_warnings: Dict[pathlib.Path, List['LinterMessage']] = {}
+        # Paths whose compiler warnings / sanitizer findings another report has
+        # already shown in this process -- the issues section at the end of
+        # `rbx run` (#968). The stack still records them, so the live view and
+        # the run report's compilation records read the same facts; it just
+        # does not print them a second time.
+        self.reported_compilation: Set[pathlib.Path] = set()
+        self.reported_sanitizer: Set[pathlib.Path] = set()
+
+    def mark_reported(
+        self,
+        compilation: Iterable[pathlib.Path] = (),
+        sanitizer: Iterable[pathlib.Path] = (),
+    ) -> None:
+        """Leave these paths out of the report: something else already said it."""
+        self.reported_compilation.update(compilation)
+        self.reported_sanitizer.update(sanitizer)
+
+    def unreported_warnings(self) -> List[pathlib.Path]:
+        """The files whose warnings the report still has to show.
+
+        A file the issues section covered stays in when it also carries linter
+        messages: those are the stack's alone, and the issues view never sees
+        them.
+        """
+        return sorted(
+            path
+            for path in self.warnings
+            if path not in self.reported_compilation or self.linter_warnings.get(path)
+        )
+
+    def unreported_sanitizer_warnings(self) -> List[pathlib.Path]:
+        return sorted(
+            path
+            for path in self.sanitizer_warnings
+            if path not in self.reported_sanitizer
+        )
 
     def add_warning(self, code: CodeItem, logs: Optional[List[PreprocessLog]] = None):
         self.warnings.add(code.path)
@@ -72,6 +108,8 @@ class WarningStack:
         self.warning_logs.clear()
         self.sanitizer_warnings.clear()
         self.linter_warnings.clear()
+        self.reported_compilation.clear()
+        self.reported_sanitizer.clear()
 
 
 @functools.cache
@@ -142,19 +180,26 @@ def print_warning_stack_report():
     from rbx.box.sanitizers import compilation_warnings
 
     stack = get_warning_stack()
-    if not stack.warnings and not stack.sanitizer_warnings:
+    warnings = stack.unreported_warnings()
+    sanitizer_warnings = stack.unreported_sanitizer_warnings()
+    if not warnings and not sanitizer_warnings:
         return
     console.console.rule('[status]Warning stack[/status]')
     console.console.print(
         f'[warning]There were some warnings within the code that run at {href(stack.root.absolute())}[/warning]'
     )
-    if stack.warnings:
-        console.console.print(f'{len(stack.warnings)} compilation warnings')
+    if warnings:
+        console.console.print(f'{len(warnings)} compilation warnings')
         console.console.print(
             'You can use [item]rbx compile[/item] to reproduce the issues with the files below.'
         )
-        for path in sorted(stack.warnings):
-            summary = _summarize_warnings_for(path, stack, compilation_warnings)
+        for path in warnings:
+            reported = path in stack.reported_compilation
+            summary = (
+                None
+                if reported
+                else _summarize_warnings_for(path, stack, compilation_warnings)
+            )
             suffix = f' [warning]({summary})[/warning]' if summary else ''
             console.console.print(f'- {href(path)}{suffix}')
             for message, locations in group_linter_messages(
@@ -169,9 +214,9 @@ def print_warning_stack_report():
                 console.console.print(f'    [warning]{prefix}{message}[/warning]')
         console.console.print()
 
-    if stack.sanitizer_warnings:
-        console.console.print(f'{len(stack.sanitizer_warnings)} sanitizer warnings')
-        for path in sorted(stack.sanitizer_warnings):
+    if sanitizer_warnings:
+        console.console.print(f'{len(sanitizer_warnings)} sanitizer warnings')
+        for path in sanitizer_warnings:
             console.console.print(
                 f'- {href(path)}, example log at {href(stack.sanitizer_warnings[path])}'
             )

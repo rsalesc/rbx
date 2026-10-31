@@ -672,6 +672,33 @@ class TestRendering:
 
         assert 'python3' in rendering.summarize(issue)
 
+    def test_compile_warnings_name_their_flags(self):
+        # The warning stack used to be the only place that said which flags
+        # fired; it no longer repeats solutions the issues section covers (#968).
+        issue = schema.CompilationWarningsIssue(
+            solution='sols/a.cpp',
+            log=pathlib.Path('compilation/0.log'),
+            warnings=[
+                CompilationWarning(file='a.cpp', line=1, flag='-Wshadow', msg='m'),
+                CompilationWarning(file='a.cpp', line=2, flag='-Wshadow', msg='m'),
+                CompilationWarning(
+                    file='a.cpp', line=3, flag='-Wunused-variable', msg='m'
+                ),
+            ],
+        )
+
+        assert rendering.summarize(issue) == (
+            'compiled with 3 warning(s) '
+            '[warning](2× -Wshadow, 1× -Wunused-variable)[/warning]'
+        )
+
+    def test_compile_warnings_without_parsed_warnings_have_no_breakdown(self):
+        issue = schema.CompilationWarningsIssue(
+            solution='sols/a.cpp', log=pathlib.Path('compilation/0.log')
+        )
+
+        assert rendering.summarize(issue) == 'compiled with 0 warning(s)'
+
     def test_a_compile_failure_without_a_reason_still_reads(self):
         issue = schema.CompilationFailedIssue(
             solution='sols/wa.py', log=pathlib.Path('compilation/0.log')

@@ -1,7 +1,7 @@
 import dataclasses
 import re
 from collections import Counter
-from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Tuple
 
 from rbx import utils
 from rbx.grading.language_kind import LanguageKind, command_kinds
@@ -101,9 +101,39 @@ def get_compilation_warning_summarizer_for(
     return _DEFAULT_SUMMARIZER
 
 
-class CppCompilationWarningSummarizer(CompilationWarningSummarizer):
-    _UNFLAGGED = '<unflagged>'
+_UNFLAGGED = '<unflagged>'
 
+
+def summarize_flags(flags: Iterable[Optional[str]]) -> Optional[str]:
+    """``4× -Wshadow, 2× -Wunused-variable (+1 more)``, out of one flag per warning.
+
+    Public so the issues view words a solution's warnings exactly the way the
+    warning stack and the compilation live view do: the two used to sit side by
+    side at the end of ``rbx run``, and only one of them named the flags.
+    ``None`` stands for a warning the compiler did not attribute to a flag.
+    """
+    counts = Counter(flag or _UNFLAGGED for flag in flags)
+    if not counts:
+        return None
+    ordered = sorted(
+        counts.items(),
+        key=lambda kv: (-kv[1], kv[0] == _UNFLAGGED, kv[0]),
+    )
+
+    def _render(flag: str, count: int) -> str:
+        if flag == _UNFLAGGED:
+            return f'{count} warnings' if count != 1 else '1 warning'
+        return f'{count}× {flag}'
+
+    head = ordered[:2]
+    rendered = ', '.join(_render(f, c) for f, c in head)
+    remaining = len(ordered) - len(head)
+    if remaining > 0:
+        rendered += f' (+{remaining} more)'
+    return rendered
+
+
+class CppCompilationWarningSummarizer(CompilationWarningSummarizer):
     def parse(self, logs: List[PreprocessLog]) -> List[_ParsedWarning]:
         seen = set()
         parsed: List[_ParsedWarning] = []
@@ -117,28 +147,7 @@ class CppCompilationWarningSummarizer(CompilationWarningSummarizer):
         return parsed
 
     def summarize(self, logs: List[PreprocessLog]) -> Optional[str]:
-        parsed = self.parse(logs)
-
-        if not parsed:
-            return None
-
-        counts = Counter(w.flag or self._UNFLAGGED for w in parsed)
-        ordered = sorted(
-            counts.items(),
-            key=lambda kv: (-kv[1], kv[0] == self._UNFLAGGED, kv[0]),
-        )
-
-        def _render(flag: str, count: int) -> str:
-            if flag == self._UNFLAGGED:
-                return f'{count} warnings' if count != 1 else '1 warning'
-            return f'{count}× {flag}'
-
-        head = ordered[:2]
-        rendered = ', '.join(_render(f, c) for f, c in head)
-        remaining = len(ordered) - len(head)
-        if remaining > 0:
-            rendered += f' (+{remaining} more)'
-        return rendered
+        return summarize_flags(w.flag for w in self.parse(logs))
 
 
 def apply_warning_status(task: 'CompilationTask') -> None:
