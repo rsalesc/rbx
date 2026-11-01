@@ -98,10 +98,17 @@ execution logic there -- change `StupidSandbox` and both paths get it. Rules:
   `UNSET_PRIORITY`) rides on every `run`/`run_communication` request
   (`AgentClient.priority`, read once in `docker_runtime`). `rbx each`/`rbx on`
   set it to the problem's position, via `CommandEntry.env` -- folded into the
-  shell command as `export ...` so a resumed history run keeps it. Waiters drop
+  shell command as `export ...` so a resumed history run keeps it. Waiters make
   `waiting/<priority>-<monotonic_ns>-<pid>-<tid>` tickets; only the smallest may
-  lock a slot, and a ticket whose pid is dead is pruned on sight (#993).
-  Design: `docs/plans/2026-11-01-docker-sandbox-design.md`.
+  lock a slot. **Waiting must not burn CPU** -- waiters share the machine with
+  the program being timed, and the old 5 ms poll cost ~5 cores at 130 waiters.
+  So the queue is guarded by a short `flock` on `queue.lock`, each ticket is a
+  named FIFO its waiter sleeps on (`select`), and whoever frees a slot pokes
+  the first live ticket. A ticket nobody holds open (`ENXIO` on a non-blocking
+  open for writing) is a dead waiter and is pruned on sight (#993). Waiters also
+  re-check every `SLOT_RECHECK_SECONDS` (0.5 s), the only backstop for a holder
+  that died without handing its slot on (the kernel drops its `flock`). Never
+  shorten that into a poll. Design: `docs/plans/2026-11-01-docker-sandbox-design.md`.
 
 ## File Caching (`judge/cacher.py`, `judge/storage.py`)
 

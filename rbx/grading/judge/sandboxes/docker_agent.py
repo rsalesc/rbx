@@ -32,6 +32,8 @@ import itertools
 import json
 import os
 import pathlib
+import selectors
+import stat
 import subprocess
 import sys
 import tempfile
@@ -53,7 +55,9 @@ SYNC_TIMEOUT_SECONDS = 5.0
 SYNC_POLL_SECONDS = 0.01
 # Execution slots shared by every agent in the container (see `execution_slot`).
 SLOTS_DIR = pathlib.Path('/tmp/rbx-slots')
-SLOT_POLL_SECONDS = 0.005
+# Waiters sleep until whoever frees a slot wakes them (see `execution_slot`);
+# this is only how often they look anyway, in case a holder died holding one.
+SLOT_RECHECK_SECONDS = 0.5
 # Which rbx process gets a slot first when several are waiting: lower first.
 # `rbx each` / `rbx on` set it to the problem's position in the run, so one
 # problem's local work runs back to back instead of interleaving with every
@@ -156,29 +160,55 @@ def priority_from_env(environ: Optional[Dict[str, str]] = None) -> Optional[int]
         return None
 
 
-def _ticket_pid(name: str) -> Optional[int]:
+def _ticket_listening(path: pathlib.Path, wake: bool = False) -> bool:
+    """Whether the waiter behind a ticket is still there; poke it if `wake`.
+
+    A ticket is a named FIFO its waiter holds open for reading, so opening it
+    for writing without blocking fails (`ENXIO`) exactly when that waiter is
+    gone -- killed while queued, say, without running its cleanup. No pid
+    lookup, and no false positive from a recycled pid.
+    """
     try:
-        return int(name.split('-')[2])
-    except (IndexError, ValueError):
-        return None
+        if not stat.S_ISFIFO(path.lstat().st_mode):
+            return False
+        fd = os.open(path, os.O_WRONLY | os.O_NONBLOCK)
+    except OSError:
+        return False
+    try:
+        if wake:
+            os.write(fd, b'.')
+    except OSError:
+        # A full pipe already holds a wake-up the waiter has yet to read.
+        pass
+    finally:
+        os.close(fd)
+    return True
 
 
-def _first_live_ticket(waiting_dir: pathlib.Path) -> Optional[str]:
+def _front_ticket(waiting_dir: pathlib.Path, wake: bool = False) -> Optional[str]:
     """The ticket to be served next, or None when nobody is waiting.
 
-    A ticket whose process is gone is removed when it reaches the front: a
-    waiter killed while queued never runs its cleanup, and its ticket must not
-    hold up the queue. Only the front is checked, since every waiter polls this
-    and only the front decides anything.
+    Dead tickets ahead of it are removed on the way, so a waiter that died
+    while queued never holds up the queue. With `wake`, its waiter is told to
+    look again. Callers hold the queue lock.
     """
     for name in sorted(os.listdir(waiting_dir)):
-        pid = _ticket_pid(name)
-        if pid is None:
-            continue
-        if pid == os.getpid() or _pid_alive(pid):
+        path = waiting_dir / name
+        if _ticket_listening(path, wake=wake):
             return name
-        (waiting_dir / name).unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
     return None
+
+
+@contextlib.contextmanager
+def _queue_lock(slots_dir: pathlib.Path) -> Iterator[None]:
+    """Exclude every other agent, and thread, from the queue for a moment."""
+    fd = os.open(slots_dir / 'queue.lock', os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
 
 
 def _try_lock_a_slot(paths: List[pathlib.Path]) -> Optional[int]:
@@ -191,6 +221,38 @@ def _try_lock_a_slot(paths: List[pathlib.Path]) -> Optional[int]:
             continue
         return fd
     return None
+
+
+def _a_slot_is_free(paths: List[pathlib.Path]) -> bool:
+    # Only meaningful under the queue lock, where nobody else takes a slot.
+    fd = _try_lock_a_slot(paths)
+    if fd is None:
+        return False
+    os.close(fd)
+    return True
+
+
+def _enqueue(ticket: pathlib.Path) -> int:
+    ticket.unlink(missing_ok=True)
+    os.mkfifo(ticket, 0o600)
+    # Read *and* write: with a writer of its own the FIFO never reads as EOF,
+    # so it is readable only once somebody pokes it.
+    return os.open(ticket, os.O_RDWR | os.O_NONBLOCK)
+
+
+def _drain(fd: int) -> None:
+    try:
+        while os.read(fd, 512):
+            pass
+    except BlockingIOError:
+        pass
+
+
+def _lstat_mode(path: pathlib.Path) -> int:
+    try:
+        return path.lstat().st_mode
+    except OSError:
+        return 0
 
 
 @contextlib.contextmanager
@@ -215,14 +277,21 @@ def execution_slot(
     two agents do. The kernel releases a slot whose holder died.
 
     A slot that frees goes to the lowest `priority` waiting, ties first come,
-    first served. Leaving it to whoever polls first interleaves the problems of
-    an `rbx each` -- a test of A, one of F, one of A again -- so they all finish
-    their local work together near the end, and a remote stage that could have
-    started on A sits idle until then. Each waiter drops a ticket in `waiting/`
-    named so that names sort in serving order (priority, then the monotonic
-    clock every process in the container shares, then pid and thread), and only
-    the first ticket may take a slot. That directory is on the container's
-    private /tmp, never the shared mount, so listing it is cheap and reliable.
+    first served. Leaving it to whoever grabs it first interleaves the problems
+    of an `rbx each` -- a test of A, one of F, one of A again -- so they all
+    finish their local work together near the end, and a remote stage that
+    could have started on A sits idle until then. Each waiter makes a ticket in
+    `waiting/` named so that names sort in serving order (priority, then the
+    monotonic clock every process in the container shares, then pid and
+    thread), and only the first ticket may take a slot.
+
+    Waiting costs no CPU, which matters: waiters share the machine with the
+    program being timed. The queue is guarded by a short-lived lock
+    (`queue.lock`), every ticket is a named FIFO its waiter sleeps on, and
+    whoever frees a slot pokes the first live ticket. A waiter also looks again
+    every `SLOT_RECHECK_SECONDS` on its own, the backstop for a holder that
+    died without handing its slot on. All of this lives on the container's
+    private /tmp, never the shared mount, so it is cheap and reliable.
     """
     slots_dir = slots_dir or SLOTS_DIR
     waiting_dir = slots_dir / 'waiting'
@@ -232,27 +301,57 @@ def execution_slot(
         f'{normalize_priority(priority):010d}-{time.monotonic_ns():020d}-'
         f'{os.getpid()}-{threading.get_ident()}'
     )
-    ticket.touch()
     fd: Optional[int] = None
+    reader: Optional[int] = None
+    selector = selectors.DefaultSelector()
     try:
-        while True:
-            first = _first_live_ticket(waiting_dir)
-            if first is None or first == ticket.name:
+        with _queue_lock(slots_dir):
+            front = _front_ticket(waiting_dir)
+            if front is None or ticket.name < front:
                 fd = _try_lock_a_slot(paths)
-                if fd is not None:
-                    break
-            elif not ticket.exists():
-                # Someone emptied the queue under us; without a ticket this
-                # waiter could never reach the front.
-                ticket.touch()
-            time.sleep(SLOT_POLL_SECONDS)
+            if fd is None:
+                reader = _enqueue(ticket)
+                selector.register(reader, selectors.EVENT_READ)
+        while fd is None:
+            assert reader is not None
+            selector.select(SLOT_RECHECK_SECONDS)
+            _drain(reader)
+            with _queue_lock(slots_dir):
+                if not stat.S_ISFIFO(_lstat_mode(ticket)):
+                    # Someone emptied the queue under us; without a ticket
+                    # this waiter could never be woken.
+                    selector.unregister(reader)
+                    os.close(reader)
+                    reader = None
+                    reader = _enqueue(ticket)
+                    selector.register(reader, selectors.EVENT_READ)
+                if _front_ticket(waiting_dir) != ticket.name:
+                    continue
+                fd = _try_lock_a_slot(paths)
+                if fd is None:
+                    continue
+                ticket.unlink(missing_ok=True)
+                # With more than one slot, the next waiter may fit too.
+                if _a_slot_is_free(paths):
+                    _front_ticket(waiting_dir, wake=True)
     finally:
-        ticket.unlink(missing_ok=True)
+        selector.close()
+        if reader is not None:
+            os.close(reader)
+        if fd is None:
+            # Leaving without a slot (an exception): drop out of the queue,
+            # and pass on a wake-up this waiter may have swallowed.
+            with _queue_lock(slots_dir):
+                ticket.unlink(missing_ok=True)
+                if _a_slot_is_free(paths):
+                    _front_ticket(waiting_dir, wake=True)
     try:
         yield
     finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
+        with _queue_lock(slots_dir):
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+            _front_ticket(waiting_dir, wake=True)
 
 
 def handle_request(
