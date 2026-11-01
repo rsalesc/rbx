@@ -63,7 +63,7 @@ _Profile = Annotated[
     ),
 ]
 _Runner = Annotated[
-    str,
+    Optional[str],
     typer.Option(
         '--runner',
         # Built from the table, never spelled out: this string is baked into
@@ -71,7 +71,8 @@ _Runner = Annotated[
         # copy of the runner names with nothing pinning it to the first.
         help=(
             f'Where to run the solutions being timed '
-            f'({", ".join(runners_registry.runner_names())}).'
+            f'({", ".join(runners_registry.runner_names())}). '
+            'Defaults to moj for the moj profile, local otherwise.'
         ),
         autocompletion=annotations._adapt('runner'),  # noqa: SLF001
     ),
@@ -132,7 +133,7 @@ async def _estimate(
     runs: int,
     profile: str,
     integrate: bool,
-    runner: str,
+    runner: Optional[str],
     share: Optional[str],
     skip_slow: bool,
     dry: bool,
@@ -165,11 +166,12 @@ async def _estimate(
     # which `main.py` prints on its own -- naming the valid runners, so the fix
     # is in the message.
     #
-    # The name selects the backend, and the limits profile deliberately does
-    # not: a profile is the `limits/<name>.yml` file this command *writes*, so
-    # binding a transport to it would leave no way to estimate MOJ limits from a
-    # machine with no judge access. See `runners/registry.py`.
-    solution_runner = runners_registry.get_runner(runner)
+    # An explicit `--runner` selects the backend. Without one, the profile may
+    # imply it (`-p moj` times on MOJ); `-p moj --runner local` still estimates
+    # MOJ limits from a machine with no judge access. See `runners/registry.py`.
+    solution_runner = runners_registry.get_runner(
+        runners_registry.resolve_runner_name(runner, profile)
+    )
 
     current_profile = limits_info.get_display_limits_profile(profile)
     if current_profile is None:
@@ -337,7 +339,7 @@ async def time(
             help='Integrate the given limits profile into the package.',
         ),
     ] = False,
-    runner: _Runner = runners_registry.DEFAULT_RUNNER,
+    runner: _Runner = None,
     share: _Share = None,
     skip_slow: _SkipSlow = False,
     dry: _Dry = False,
@@ -390,7 +392,7 @@ async def preship(
     detailed: _Detailed = False,
     runs: _Runs = 0,
     profile: _Profile = 'local',
-    runner: _Runner = runners_registry.DEFAULT_RUNNER,
+    runner: _Runner = None,
     share: _Share = None,
     skip_slow: _SkipSlow = False,
     dry: _Dry = False,

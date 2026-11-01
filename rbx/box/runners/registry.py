@@ -1,10 +1,9 @@
 """Which backend a command runs its solutions on, by name.
 
-The name comes from `rbx time --runner <name>`. A *flag*, and deliberately not
-the limits profile: a profile is just the `limits/<name>.yml` file `rbx time`
-writes, so letting its name pick a backend would couple an output to a transport
--- and would leave no way to estimate MOJ limits from a local machine, which is
-exactly what a setter without judge access has to be able to do.
+The name comes from `rbx time --runner <name>`. When the flag is omitted, a few
+limits profiles imply a default (`-p moj` runs on MOJ; see
+`names.PROFILE_DEFAULT_RUNNERS`), but the flag always wins: `-p moj --runner
+local` still estimates MOJ limits from a machine with no judge access.
 
 The design also sketches an `env.rbx.yml` `runners:`/`profiles:` block that would
 configure backends and give a profile a default one. It is **not** built here: no
@@ -22,7 +21,13 @@ packager, the MOJ CLI wrapper and the environment, and a run on the local sandbo
 from typing import TYPE_CHECKING, Callable, Dict
 
 from rbx.box.exception import RbxException
-from rbx.box.runners.names import DEFAULT_RUNNER, RUNNERS, runner_names
+from rbx.box.runners.names import (
+    DEFAULT_RUNNER,
+    PROFILE_DEFAULT_RUNNERS,
+    RUNNERS,
+    resolve_runner_name,
+    runner_names,
+)
 
 if TYPE_CHECKING:
     from rbx.box.runners.base import SolutionRunner
@@ -32,10 +37,12 @@ if TYPE_CHECKING:
 # module's imports. See that module.
 __all__ = [
     'DEFAULT_RUNNER',
+    'PROFILE_DEFAULT_RUNNERS',
     'RUNNERS',
     'UnknownRunnerError',
     'UnsupportedRunnerError',
     'get_runner',
+    'resolve_runner_name',
     'runner_names',
 ]
 

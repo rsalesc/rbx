@@ -229,3 +229,75 @@ def test_irun_refuses_an_unknown_profile(
     assert result.exit_code != 0
     assert 'bcoa' in result.output
     assert calls == {}
+
+
+def _invoke_run_args(runner: CliRunner, *argv: str) -> Tuple[Any, Dict[str, Any]]:
+    """Like `_invoke_run`, but with the whole argv, so root flags can be passed."""
+    calls: Dict[str, Any] = {}
+
+    async def run_solutions(*positional, **kwargs):
+        calls['runner'] = kwargs.get('runner')
+        result = mock.MagicMock()
+        result.close = mock.AsyncMock()
+        return result
+
+    async def print_run_report(*positional, **kwargs):
+        return True
+
+    with (
+        mock.patch('rbx.box.builder.build', _build_ok),
+        mock.patch('rbx.box.cli.commands.run.run_solutions', run_solutions),
+        mock.patch('rbx.box.cli.commands.run.print_run_report', print_run_report),
+    ):
+        result = runner.invoke(cli.app, list(argv))
+    return result, calls
+
+
+@pytest.mark.parametrize(
+    'argv',
+    [
+        ('run', '-p', 'moj'),
+        ('-p', 'moj', 'run'),
+    ],
+)
+def test_the_moj_profile_defaults_to_the_moj_runner(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+    argv: Tuple[str, ...],
+):
+    from rbx.box.runners.moj.runner import MojRunner
+
+    _write_profile('moj')
+
+    result, calls = _invoke_run_args(runner, *argv)
+
+    assert result.exit_code == 0, result.output
+    assert isinstance(calls['runner'], MojRunner)
+
+
+def test_an_explicit_runner_overrides_the_moj_profile_default(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    from rbx.box.runners.local import LocalRunner
+
+    _write_profile('moj')
+
+    result, calls = _invoke_run_args(runner, 'run', '-p', 'moj', '--runner', 'local')
+
+    assert result.exit_code == 0, result.output
+    assert isinstance(calls['runner'], LocalRunner)
+
+
+def test_other_profiles_keep_the_local_runner(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    from rbx.box.runners.local import LocalRunner
+
+    _write_profile('boca')
+
+    result, calls = _invoke_run_args(runner, 'run', '-p', 'boca')
+
+    assert result.exit_code == 0, result.output
+    assert isinstance(calls['runner'], LocalRunner)

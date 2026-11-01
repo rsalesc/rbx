@@ -167,8 +167,8 @@ async def run(
         help='Whether to stop running a solution as soon as it gets a non-accepted verdict. '
         'Only meant for quick experimentation, as the remaining tests are reported as failed.',
     ),
-    runner: str = typer.Option(
-        runners_registry.DEFAULT_RUNNER,
+    runner: Optional[str] = typer.Option(
+        None,
         '--runner',
         # Built from the table, never spelled out, for the same reason as in
         # `rbx time`: this string is baked into the committed completion spec, so
@@ -176,7 +176,8 @@ async def run(
         # nothing pinning it to the first.
         help=(
             f'Where to run the solutions '
-            f'({", ".join(runners_registry.runner_names())}).'
+            f'({", ".join(runners_registry.runner_names())}). '
+            'Defaults to moj for the moj profile, local otherwise.'
         ),
         autocompletion=annotations._adapt('runner'),  # noqa: SLF001
     ),
@@ -206,7 +207,12 @@ async def run(
     # backend that does not exist is a typo in the command line, and a typo
     # should cost the setter an error rather than a build. `UnknownRunnerError`
     # names the valid runners, so the fix is in the message.
-    solution_runner = runners_registry.get_runner(runner)
+    #
+    # Without `--runner`, the active profile -- this command's `-p` or the root
+    # one, so `rbx -p moj run` and `rbx run -p moj` agree -- may imply one.
+    solution_runner = runners_registry.get_runner(
+        runners_registry.resolve_runner_name(runner, limits_info.get_active_profile())
+    )
 
     main_solution = package.get_main_solution()
     if check and main_solution is None:

@@ -131,11 +131,12 @@ Two things stay with the orchestrator rather than the backend:
   `nruns=0` is every caller's default and means "whatever `repeats.reps` says", which is
   the likelier way a run ends up repeated.
 
-**Choosing one.** `rbx time --runner <name>` (`runners/registry.py`), defaulting to
-`local`; an unknown name is refused naming the known ones. A *flag*, deliberately not the
-limits profile: a profile is the `limits/<name>.yml` file `rbx time` writes, so binding a
-transport to its name would couple an output to a transport and leave no way to estimate
-MOJ limits from a machine with no judge access. The registry imports each backend lazily
+**Choosing one.** `rbx time --runner <name>` (`runners/registry.py`); an unknown name is
+refused naming the known ones. Without the flag, `names.resolve_runner_name` lets the
+limits profile imply one (`PROFILE_DEFAULT_RUNNERS`: `-p moj` runs on `moj`, any other
+profile on `local`); `rbx run` resolves against the *active* profile, so the root `-p` and
+the command's agree. The flag always wins, so `-p moj --runner local` still estimates MOJ
+limits from a machine with no judge access. The registry imports each backend lazily
 (naming one must not cost the imports it talks to) and builds a fresh instance per call
 (a runner holds a whole run's state). The names themselves live in `runners/names.py`, a
 leaf module with no imports, so shell completion can read the same table without pulling
