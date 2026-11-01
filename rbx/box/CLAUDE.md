@@ -433,8 +433,11 @@ ship_rest, kattis)` package (LOWER solutions in `sols/good`, UPPER in `sols/slow
 only when the multipliers set `timeLimitToTle`, filed by inference role, all chosen
 by `packager.calibrated_solutions`) on `<id>-kattis`, `moj calibrate --all-judges`,
 then `moj calib` read back through
-`runners/moj/kattis.py` (accepted: worst test on the slowest judge; slow: the weakest
-judge's evidence). The result seeds `_EstimationContext` and `SlowKnowledge`
+`runners/moj/kattis.py` (accepted: worst test on the slowest judge, and timed out if
+*any* judge timed it out; slow: the weakest judge's evidence -- the fastest finish
+over the judges that ran every test without a timeout, else, when every judge timed
+it out, the shortest timeout; one judge that stopped early without a timeout leaves
+it unmeasured). The result seeds `_EstimationContext` and `SlowKnowledge`
 directly, so picker, groups and profile are reused, and `_validate_upper_bound(
 calibrated=...)` runs nothing.
 

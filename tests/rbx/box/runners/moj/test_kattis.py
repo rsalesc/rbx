@@ -104,6 +104,111 @@ def test_a_slow_solution_keeps_the_weakest_judges_evidence():
     assert not measured['sols/slow.cpp'].complete
 
 
+def _split_judges(category: str, file: str) -> List[cli.CalibHost]:
+    """Judge `a` times the solution out on t2 and `STOPWHEN_TLE` halts it there;
+    judge `b` runs every test, the slowest in 2.8 s -- a noisy judge near the cap."""
+    return [
+        _host(
+            'a',
+            [
+                _sol(
+                    file,
+                    category,
+                    [_test('t1', 'AC', 0.1), _test('t2', 'TLE', 10.45)],
+                )
+            ],
+        ),
+        _host(
+            'b',
+            [
+                _sol(
+                    file,
+                    category,
+                    [
+                        _test('t1', 'AC', 0.1),
+                        _test('t2', 'AC', 2.8),
+                        _test('t3', 'AC', 1.2),
+                    ],
+                )
+            ],
+        ),
+    ]
+
+
+def test_a_slow_solution_one_judge_finished_is_measured_at_that_finish():
+    """The weakest judge finished it in 2.8 s, which is what the solution is known
+    to take -- not unmeasured because the other judge stopped at a timeout."""
+    slow = _solution('sols/slow.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+
+    measured = kattis.measure_solutions(
+        _split_judges('slow', 'slow.cpp'), {('slow', 'slow.cpp'): slow}, 3
+    )
+
+    assert measured['sols/slow.cpp'].time_ms == 2800
+    assert measured['sols/slow.cpp'].complete
+    assert not measured['sols/slow.cpp'].timed_out
+
+
+def test_a_slow_solution_takes_the_fastest_finish_never_a_timeout():
+    """Two judges finished it: the faster one is the weakest evidence. The judge
+    that timed it out ran past the cap, so its time never counts as a finish."""
+    slow = _solution('sols/slow.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+    hosts = _split_judges('slow', 'slow.cpp') + [
+        _host(
+            'c',
+            [
+                _sol(
+                    'slow.cpp',
+                    'slow',
+                    [
+                        _test('t1', 'AC', 0.1),
+                        _test('t2', 'AC', 2.1),
+                        _test('t3', 'AC', 0.9),
+                    ],
+                )
+            ],
+        )
+    ]
+
+    measured = kattis.measure_solutions(hosts, {('slow', 'slow.cpp'): slow}, 3)
+
+    assert measured['sols/slow.cpp'].time_ms == 2100
+    assert measured['sols/slow.cpp'].complete
+    assert not measured['sols/slow.cpp'].timed_out
+
+
+def test_a_slow_solution_a_judge_stopped_without_a_timeout_settles_nothing():
+    """Judge `b` reported only t1 and no timeout: it might be the fastest judge,
+    so neither the other judge's finish nor its timeout is the weakest evidence."""
+    slow = _solution('sols/slow.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+    for other in (
+        [_test('t1', 'AC', 0.1), _test('t2', 'TLE', 10.45)],
+        [_test('t1', 'AC', 0.1), _test('t2', 'AC', 2.8), _test('t3', 'AC', 1.2)],
+    ):
+        hosts = [
+            _host('a', [_sol('slow.cpp', 'slow', other)]),
+            _host('b', [_sol('slow.cpp', 'slow', [_test('t1', 'AC', 0.1)])]),
+        ]
+
+        measured = kattis.measure_solutions(hosts, {('slow', 'slow.cpp'): slow}, 3)
+
+        assert not measured['sols/slow.cpp'].complete
+        assert not measured['sols/slow.cpp'].timed_out
+
+
+def test_an_accepted_solution_that_timed_out_on_one_judge_timed_out():
+    """The limit is the max across judges, so one judge's timeout is the
+    solution's: it is reported as timed out, not as missing tests."""
+    ac = _solution('sols/ac.cpp')
+
+    measured = kattis.measure_solutions(
+        _split_judges('good', 'ac.cpp'), {('good', 'ac.cpp'): ac}, 3
+    )
+
+    assert measured['sols/ac.cpp'].timed_out
+    assert measured['sols/ac.cpp'].time_ms == 10450
+
+
 def test_a_repeated_test_reads_last_and_an_unexecuted_one_not_at_all():
     """Same `{name, code, time, tl}` vector as a testrun, so the same two rules."""
     ac = _solution('sols/ac.cpp')

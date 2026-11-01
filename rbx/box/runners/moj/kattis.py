@@ -18,11 +18,15 @@ same `{name, code, time, tl}` vector a testrun reports. Two facts shape how it i
 pooled across judges:
 
 - **The limit is the max across the judges that calibrated**, so an accepted
-  solution's time is its worst test on its slowest judge.
-- **A slow solution's evidence is the *weakest* judge's**: the shortest time it was
-  seen to take on a test that exceeded the cap, or the fastest it finished in.
-  A `TLE` time is how long that test ran -- its real time, or the `etl` kill
-  (`cap + 2.2 s`) -- so either way the solution is known to take at least that.
+  solution's time is its worst test on its slowest judge, and a timeout on any
+  one judge is a timeout.
+- **A slow solution's evidence is the *weakest* judge's**: the fastest it finished
+  in on a judge that ran every test, or -- only when no judge finished it -- the
+  shortest time it was seen to take on a test that exceeded the cap. A `TLE` time
+  is how long that test ran -- its real time, or the `etl` kill (`cap + 2.2 s`)
+  -- so either way the solution is known to take at least that. A judge split
+  between the two (one times it out, another finishes it) is the noisy-judge case
+  this rule exists for: the finish wins.
 
 Design: `docs/plans/2026-11-01-moj-parallel-run-and-kattis-calibration-design.md`.
 """
@@ -51,12 +55,16 @@ class KattisMeasurement:
     # The judges whose calibration carries this solution.
     hosts: Tuple[str, ...]
     # Accepted solutions: the worst test on the slowest judge, in ms. Slow ones:
-    # the weakest judge's evidence -- the shortest time it survived when it timed
-    # out (`timed_out`), else the fastest worst-test it finished in.
+    # the weakest judge's evidence -- the fastest worst-test some judge finished
+    # it in, else (`timed_out`) the shortest time it survived on a judge that
+    # timed it out. See `_pool_accepted` and `_pool_weakest`.
     time_ms: Optional[int]
-    # Whether some test hit the limit on every judge that ran it.
+    # Accepted: some test hit the limit on *some* judge. Slow: no judge finished
+    # it, and every judge timed it out.
     timed_out: bool
-    # Whether every judge reported a verdict for every test.
+    # Accepted: every judge reported a verdict for every test. Slow: some judge
+    # finished it -- every test reported, none timed out -- and every other judge
+    # either finished it or timed it out.
     complete: bool
     # The bad codes that are not a timeout (`WA`, `RE`, `CE`, ...), in the order
     # first met. A solution with any is broken for a reason other than its speed.
@@ -105,6 +113,58 @@ def _per_host(
     return worst, timed_out, len(tests) >= expected_tests, bad
 
 
+_HostStats = Tuple[Optional[int], bool, bool, List[str]]
+
+
+def _pool_accepted(
+    per_host: List[_HostStats],
+) -> Tuple[Optional[int], bool, bool]:
+    """(time, timed out, complete) of an accepted solution: the strongest judge.
+
+    Its time is the worst test on the slowest judge, and a timeout on *any* judge
+    is a timeout -- the limit is the max across judges, so that judge alone sets
+    it, and it ran past the cap there.
+    """
+    times = [worst for worst, _, _, _ in per_host if worst is not None]
+    return (
+        max(times, default=None),
+        any(timed_out for _, timed_out, _, _ in per_host),
+        bool(per_host) and all(complete for _, _, complete, _ in per_host),
+    )
+
+
+def _pool_weakest(
+    per_host: List[_HostStats],
+) -> Tuple[Optional[int], bool, bool]:
+    """(time, timed out, complete) of a slow solution: the weakest judge's evidence.
+
+    A judge either *finished* it (every test reported, none timed out: its worst
+    test is its time) or *timed it out* (its timed-out test is a time it is known
+    to survive). A finish is always the stronger evidence -- it is within the cap,
+    a timeout is past it -- so any finish makes the solution complete, at the
+    fastest finish; only when no judge finished is it timed out, at the shortest
+    timeout. A judge that did neither (stopped early, or reported no time) knows
+    nothing, and its speed could undercut every other judge's, so the solution is
+    then neither complete nor timed out.
+    """
+    finished: List[int] = []
+    survived: List[int] = []
+    for worst, timed_out, complete, _ in per_host:
+        if worst is None:
+            return None, False, False
+        if timed_out:
+            survived.append(worst)
+        elif complete:
+            finished.append(worst)
+        else:
+            return None, False, False
+    if finished:
+        return min(finished), False, True
+    if survived:
+        return min(survived), True, False
+    return None, False, False
+
+
 def measure_solutions(
     hosts: List[cli.CalibHost],
     solutions_by_file: Dict[Tuple[str, str], Solution],
@@ -133,20 +193,21 @@ def measure_solutions(
             for code in codes:
                 if code not in bad:
                     bad.append(code)
-        times = [worst for _, (worst, _, _, _) in per_host if worst is not None]
-        if not times:
-            time_ms = None
-        elif category == 'good':
-            time_ms = max(times)
+        if category == 'good':
+            time_ms, timed_out, complete = _pool_accepted(
+                [stats for _, stats in per_host]
+            )
         else:
-            time_ms = min(times)
+            time_ms, timed_out, complete = _pool_weakest(
+                [stats for _, stats in per_host]
+            )
         measurements[str(solution.path)] = KattisMeasurement(
             solution=solution,
             category=category,
             hosts=tuple(name for name, _ in per_host),
             time_ms=time_ms,
-            timed_out=bool(per_host) and all(t for _, (_, t, _, _) in per_host),
-            complete=bool(per_host) and all(c for _, (_, _, c, _) in per_host),
+            timed_out=timed_out,
+            complete=complete,
             bad_codes=tuple(bad),
         )
     return measurements
