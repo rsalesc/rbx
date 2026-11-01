@@ -157,6 +157,56 @@ Re-run `rbx time -p boca` to refresh it.
 
 It is a warning, not an error: whether the change mattered to the timing is your call.
 
+## Tuning an estimate by hand
+
+An estimate is the *smallest* limit the measurements allow. Sometimes you want a different one:
+a rounder number, or more headroom for a slow language. Setting it with `rbx time -s custom`
+throws away everything the estimate measured. Edit the profile instead:
+
+```bash
+rbx time -e -p boca
+```
+
+The editor needs a profile that `rbx time` estimated. It refuses a custom or
+[inherited](#inheriting-from-the-package) one, which doesn't record the measurements a check
+needs.
+
+It lists the base limit and each [language group](language-groups.md) of the profile. Move
+between them with ++up++ and ++down++, and step a limit with ++left++ and ++right++. ++r++ puts
+a row back to its estimate. Typing digits and pressing ++enter++ sets an exact
+value. With nothing typed, ++enter++ saves the profile and ++q++ leaves without writing.
+
+Below the list is the limits table `rbx time` prints, with a **Check** column that judges each
+limit against what the estimate measured: the range the group's solutions allow, and whether
+the limit you picked falls inside it. The [time limit ratios](computing.md#time-limit-ratios)
+set that range.
+
+| Check | Meaning |
+| --- | --- |
+| `✓` | The limit fits every bound the estimate found. |
+| `⚠ thin margin` | The accepted solutions pass, but with less headroom than `acToTimeLimit` asks for. |
+| `✗ AC fails` | An accepted solution needs more time than the limit gives it. |
+| `✗ slow passes` | A solution expected to be too slow finishes within the limit times `timeLimitToTle`. |
+| `? 2 unverified` | You raised the limit past the estimate, and this many slow solutions were only seen still running at the estimated limit. |
+
+Each check is arithmetic over what the estimate recorded, and the editor runs nothing. A `✗` or a `⚠` is already measured,
+so the fix is a different limit. A `?` isn't measured: nothing says whether those slow solutions
+still time out. Run the solutions against the profile to settle it:
+
+```bash
+rbx run -p boca
+```
+
+The profile keeps the estimate next to your limit. Every later limits table marks that row as
+set by hand next to the estimate it replaced, and keeps the Check column.
+
+To try an edit without saving it, add `--dry`, as in
+[Rehearsing without writing](estimating.md#rehearsing-without-writing):
+
+```bash
+rbx time -e -p boca --dry
+```
+
 ## Inheriting from the package
 
 Some targets do not need limits of their own — they should use whatever `problem.rbx.yml` says.

@@ -29,6 +29,7 @@ Where a command has a page of its own, the :material-open-in-new: next to it tak
 | Use dynamic timing to estimate time limits [:material-open-in-new:](/setters/profiling) | `rbx time` |
 | Estimate time limits skipping the language picker [:material-open-in-new:](/setters/profiling#language-groups) | `rbx time -a` |
 | Estimate limits and write them into a profile [:material-open-in-new:](/setters/profiling#limits-profiles) | `rbx time -p icpc -i` |
+| Tune the limits of an estimated profile by hand [:material-open-in-new:](/setters/profiling/profiles#tuning-an-estimate-by-hand) | `rbx time -e -p icpc` |
 | Run all solutions and check their tags [:material-open-in-new:](/setters/running) | `rbx run` |
 | Run all solutions with sanitizer | `rbx run -s` |
 | Run all solutions with dynamic timing | `rbx run -t` |
