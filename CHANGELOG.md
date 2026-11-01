@@ -1,3 +1,11 @@
+## 2.5.0 (2026-11-02)
+
+### Fix
+
+- **moj**: pool split-judge calibration evidence per category (#997)
+- **sandbox**: stop docker agent work once the host is gone (#999)
+- **sandbox**: wake docker slot waiters instead of polling (#998)
+
 ## 2.4.0 (2026-11-02)
 
 ### Feat
