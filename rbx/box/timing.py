@@ -1204,14 +1204,15 @@ def uses_moj_calibration(
 ) -> bool:
     """Whether `rbx time` estimates by asking MOJ to calibrate, not by testruns.
 
-    Only a backend that can (`estimate_by_calibration`, the MOJ runner) and only
-    for the multipliers strategy, which *is* the Kattis rule MOJ implements. A
-    formula -- configured or typed into the custom-formula escape hatch -- has no
-    MOJ counterpart and keeps the two-phase testrun path.
+    Whenever the backend can (`estimate_by_calibration`, the MOJ runner), for
+    every strategy. The calibration only *measures*, every solution under the
+    `inferenceTimeout` cap; the limit is computed by rbx from those times, by the
+    formula or the multipliers alike. It used to be the multipliers alone, when
+    the probe asked MOJ to compute the limit by its Kattis rule -- which a formula
+    has no counterpart for.
     """
-    return strategy.uses_multipliers and callable(
-        getattr(runner, 'estimate_by_calibration', None)
-    )
+    del strategy  # Every strategy calibrates; kept for the callers' symmetry.
+    return callable(getattr(runner, 'estimate_by_calibration', None))
 
 
 def _render_calibration_report(
@@ -1243,7 +1244,11 @@ def _render_calibration_report(
             time = f'>{measurement.time_ms} ms'
         table.add_row(
             measurement.solution.href(),
-            'accepted' if measurement.category == 'good' else 'too slow',
+            # `wrong` and `pass` are only shipped under `--run-all`: they bound
+            # nothing, and are judged at the estimated limit afterwards.
+            {'good': 'accepted', 'slow': 'too slow'}.get(
+                measurement.category, 'run-all'
+            ),
             time,
             verdict,
         )
@@ -1259,6 +1264,7 @@ def _render_calibration_report(
 async def _estimate_with_moj_calibration(
     runner: 'SolutionRunner',
     strategy: timing_config.TimingStrategy,
+    run_all: bool = False,
 ) -> Optional[
     Tuple[
         _EstimationContext,
@@ -1295,17 +1301,19 @@ async def _estimate_with_moj_calibration(
     lower_solutions = get_inference_solutions(InferenceRole.LOWER)
     if not lower_solutions:
         raise MissingLowerBoundError(_NO_LOWER_BOUND_MESSAGE)
-    multipliers = strategy.multipliers_or_die()
+    # A formula has no upper bound to check, so it reads no slow solution; the
+    # multipliers do only when they set `timeLimitToTle`.
+    multipliers = strategy.multipliers
     upper_solutions = (
         get_inference_solutions(InferenceRole.UPPER)
-        if multipliers.timeLimitToTle is not None
+        if multipliers is not None and multipliers.timeLimitToTle is not None
         else []
     )
 
     entries = await extract_generation_testcases_from_groups()
     with utils.StatusProgress('Calibrating on MOJ...') as s:
         result = await runner.estimate_by_calibration(  # type: ignore[attr-defined]
-            entries, strategy, progress=s
+            entries, strategy, progress=s, run_all=run_all
         )
 
     console.console.print()
@@ -1952,8 +1960,14 @@ async def _run_remaining(
     runner: Optional['SolutionRunner'] = None,
     benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
     keep_checker_stderr: bool = False,
+    calibration: Optional['KattisCalibrationResult'] = None,
 ) -> bool:
     """Run whatever the estimate did not, at the limit the estimate produced.
+
+    ``calibration``, from `rbx time --run-all --runner moj`, has already judged
+    every solution under the `inferenceTimeout` cap: the ones it can answer for
+    at their estimated limit are replayed from it rather than run again (see
+    `CalibrationReplayRunner`), and only the rest are.
 
     The two phases before this one run only what bounds the limit: the accepted
     solutions, and the slow ones the check actually had to ask about. Everything
@@ -1987,21 +2001,94 @@ async def _run_remaining(
         )
         return True
 
+    replayed: List[Solution] = []
+    replay_runner: Optional['SolutionRunner'] = None
+    if calibration is not None:
+        from rbx.box.runners.moj.runner import CalibrationReplayRunner
+
+        replay_runner = CalibrationReplayRunner(calibration)
+        for solution in remaining:
+            lang = find_language_name(solution)
+            if calibration.can_replay(
+                str(solution.path),
+                profile.timeLimitPerLanguage.get(lang, profile.timeLimit),
+            ):
+                replayed.append(solution)
+    testrun = [solution for solution in remaining if solution not in replayed]
+
+    ok = True
+    if replayed:
+        # Already judged, by the calibration the estimate came from: shown at the
+        # estimated limit, without running anything again.
+        ok = await _run_batch(
+            profile,
+            replayed,
+            replay_runner,
+            'remaining solutions, from the MOJ calibration',
+            check=check,
+            detailed=detailed,
+            runs=runs,
+            fail_fast=fail_fast,
+            benchmark_level=benchmark_level,
+            keep_checker_stderr=keep_checker_stderr,
+        )
+    if testrun:
+        if replayed:
+            # Said, because it is the slow path the setter did not expect: these
+            # were shipped in the calibration too, but their limit is above the
+            # cap every test ran under, so it cannot say what they do there.
+            console.console.print(
+                f'[warning]The estimated limit of '
+                f'{", ".join(solution.href() for solution in testrun)} is above '
+                f'the inferenceTimeout every solution was calibrated under, so '
+                f'they are judged again at it.[/warning]'
+            )
+        ok = (
+            await _run_batch(
+                profile,
+                testrun,
+                runner,
+                'remaining solutions',
+                check=check,
+                detailed=detailed,
+                runs=runs,
+                fail_fast=fail_fast,
+                benchmark_level=benchmark_level,
+                keep_checker_stderr=keep_checker_stderr,
+            )
+            and ok
+        )
+    return ok
+
+
+async def _run_batch(
+    profile: TimingProfile,
+    batch: List[Solution],
+    batch_runner: Optional['SolutionRunner'],
+    title: str,
+    check: bool,
+    detailed: bool,
+    runs: int,
+    fail_fast: bool,
+    benchmark_level: benchmark.BenchmarkLevel,
+    keep_checker_stderr: bool,
+) -> bool:
+    """Judge `batch` at the estimated limits on `batch_runner`, and report it."""
     # Every language present is named, never only the ones with an entry of
     # their own: `resolve_timelimit_override` reads an unmentioned language off
     # the limits profile *on disk*, which is the limit this estimate replaces.
     limits: Dict[str, int] = {}
-    for solution in remaining:
+    for solution in batch:
         lang = find_language_name(solution)
         limits[lang] = profile.timeLimitPerLanguage.get(lang, profile.timeLimit)
 
-    tracked_solutions = OrderedSet(str(solution.path) for solution in remaining)
+    tracked_solutions = OrderedSet(str(solution.path) for solution in batch)
     with utils.StatusProgress('Running remaining solutions...') as s:
         result = await run_solutions(
             progress=s,
             # The backend the limit was estimated on. A solution judged against
             # this limit somewhere else is judged against a different machine.
-            runner=runner,
+            runner=batch_runner,
             tracked_solutions=tracked_solutions,
             check=check,
             # FULL, which is what `rbx run` defaults to -- and unlike both
@@ -2041,9 +2128,7 @@ async def _run_remaining(
 
     try:
         console.console.print()
-        console.console.rule(
-            '[status]Run report (remaining solutions)[/status]', style='status'
-        )
+        console.console.rule(f'[status]Run report ({title})[/status]', style='status')
         ok = await print_run_report(
             result,
             console.console,
@@ -2121,7 +2206,9 @@ async def compute_time_limits(
         # One MOJ calibration instead of two phases of testruns; see
         # `_estimate_with_moj_calibration`.
         assert runner is not None
-        prepared = await _estimate_with_moj_calibration(runner, strategy)
+        prepared = await _estimate_with_moj_calibration(
+            runner, strategy, run_all=run_all
+        )
         if prepared is None:
             return None
         ctx, knowledge, evidence, calibration = prepared
@@ -2141,7 +2228,10 @@ async def compute_time_limits(
         )
         if estimated_tl is None:
             return None
-        _compare_with_moj_limits(estimated_tl, ctx.lower_timings, calibration)
+        if strategy.multipliers is not None:
+            # MOJ's Kattis limit is the multipliers' rule on the judge's own
+            # numbers; next to a formula it would compare two unrelated things.
+            _compare_with_moj_limits(estimated_tl, ctx.lower_timings, calibration)
     else:
         run = await _run_for_inference(
             check=check,
@@ -2239,6 +2329,8 @@ async def compute_time_limits(
         runner=runner,
         benchmark_level=benchmark_level,
         keep_checker_stderr=keep_checker_stderr,
+        # Shipped every solution, so it already judged them all.
+        calibration=calibration,
     ):
         # Raised rather than folded into the `None` the estimation returns: that
         # `None` means no limit was produced and nothing was written, and this is

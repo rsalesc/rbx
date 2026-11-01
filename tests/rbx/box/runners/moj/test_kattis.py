@@ -479,3 +479,141 @@ async def test_a_calibration_off_the_cap_is_refused(
         await MojRunner().estimate_by_calibration(
             build_entries(tmp_path, ['samples']), _strategy()
         )
+
+
+# -- `--run-all` and a formula ---------------------------------------------------
+
+
+async def test_run_all_ships_every_solution_to_a_problem_of_its_own(
+    calibrating_pkg, tmp_path, monkeypatch
+):
+    """The wrong-answer one too, where calibreitor.sh runs it -- and an `any` one
+    in `pass`, never in `upcoming`, which calibreitor.sh never runs."""
+    calibrating_pkg.add_solution('any.cpp', outcome='any').write_text('int main(){}\n')
+    fake = FakeKattisMoj(tmp_path / 'snapshots', [_check(False), _check(True, j=5)])
+    fake.install(monkeypatch)
+    fake.calib_answer = cli.MojCalibration(
+        hosts=[_host('j', [_sol('sol.cpp', 'good', [_test('a', 'AC', 0.1)])], at=5)]
+    )
+
+    result = await MojRunner().estimate_by_calibration(
+        build_entries(tmp_path, ['samples']), _strategy(), run_all=True
+    )
+
+    problem, uploaded = fake.uploads[-1]
+    assert problem.endswith('-kattis-all')
+    shipped = sorted(
+        str(path.relative_to(uploaded / 'sols'))
+        for path in (uploaded / 'sols').rglob('*')
+        if path.is_file()
+    )
+    assert shipped == ['good/sol.cpp', 'pass/any.cpp', 'slow/slow.cpp', 'wrong/wa.cpp']
+    assert result.files['wa.cpp'] == ('wrong', 'wa.cpp')
+    assert result.cap_ms == 10000
+
+
+async def test_a_formula_calibrates_without_slow_solutions_or_kattis_ratios(
+    calibrating_pkg, tmp_path, monkeypatch
+):
+    """A formula has no upper bound, and MOJ's Kattis limit means nothing to it."""
+    fake = FakeKattisMoj(tmp_path / 'snapshots', [_check(False), _check(True, j=5)])
+    fake.install(monkeypatch)
+    fake.calib_answer = cli.MojCalibration(
+        time_limits_by_method={
+            'kattis': cli.CalibMethodLimits(calibrated={'cpp': '1'})
+        },
+        hosts=[_host('j', [_sol('sol.cpp', 'good', [_test('a', 'AC', 0.1)])], at=5)],
+    )
+
+    result = await MojRunner().estimate_by_calibration(
+        build_entries(tmp_path, ['samples']),
+        TimingStrategy(formula='2 * slowest', inferenceTimeout=10000),
+    )
+
+    _, uploaded = fake.uploads[-1]
+    conf = _conf(uploaded)
+    assert conf['TLMOD[cpp.sum]'] == '9.98'
+    assert 'KATTIS_AC_TO_TIME_LIMIT' not in conf
+    assert not (uploaded / 'sols' / 'slow').exists()
+    assert result.moj_limits_ms == {}
+
+
+def _replayable(hosts: List[cli.CalibHost]) -> kattis.KattisCalibrationResult:
+    return kattis.KattisCalibrationResult(
+        moj_id='alice#rbxt-x-kattis-all',
+        hosts=tuple(host.host for host in hosts),
+        measurements={},
+        moj_limits_ms={},
+        reused=False,
+        cap_ms=10_000,
+        calib_hosts=tuple(hosts),
+        files={'sols/wa.cpp': ('wrong', 'wa.cpp')},
+    )
+
+
+def test_a_test_is_replayed_at_the_estimated_limit_on_its_worst_judge():
+    """mojtools' own rule: over the limit is TLE, otherwise the run's own code."""
+    calibration = _replayable(
+        [
+            _host(
+                'a',
+                [
+                    _sol(
+                        'wa.cpp',
+                        'wrong',
+                        [
+                            _test('t1', 'AC', 0.4),
+                            _test('t2', 'WA', 0.1),
+                            _test('t3', 'AC', 2.5),
+                        ],
+                    )
+                ],
+            ),
+            _host(
+                'b',
+                [
+                    _sol(
+                        'wa.cpp',
+                        'wrong',
+                        [
+                            _test('t1', 'AC', 0.6),
+                            _test('t2', 'WA', 0.2),
+                            _test('t3', 'TLE', 12.2),
+                        ],
+                    )
+                ],
+            ),
+        ]
+    )
+
+    def at(name: str, limit: int):
+        test = kattis.replay_test(calibration, 'sols/wa.cpp', name, limit)
+        assert test is not None
+        return test.code, test.time, test.tl
+
+    # Within the limit on both judges: the slower one's time.
+    assert at('t1', 1000) == ('AC', 0.6, 1.0)
+    # Over the limit on one judge only: still TLE, since MOJ judges on any.
+    assert at('t1', 500) == ('TLE', 0.6, 0.5)
+    # Its own verdict, not a pass, wins over a faster run.
+    assert at('t2', 1000) == ('WA', 0.2, 1.0)
+    # Past the cap on one judge: TLE at every limit within the cap.
+    assert at('t3', 3000) == ('TLE', 12.2, 3.0)
+
+
+def test_a_test_no_judge_ran_is_not_replayed():
+    calibration = _replayable(
+        [_host('a', [_sol('wa.cpp', 'wrong', [_test('t1', 'NT', None, tl=None)])])]
+    )
+
+    assert kattis.replay_test(calibration, 'sols/wa.cpp', 't1', 1000) is None
+    assert kattis.replay_test(calibration, 'sols/wa.cpp', 'gone', 1000) is None
+    assert kattis.replay_test(calibration, 'sols/other.cpp', 't1', 1000) is None
+
+
+def test_only_a_shipped_solution_within_the_cap_can_be_replayed():
+    calibration = _replayable([])
+
+    assert calibration.can_replay('sols/wa.cpp', 10_000)
+    assert not calibration.can_replay('sols/wa.cpp', 10_001)
+    assert not calibration.can_replay('sols/other.cpp', 1000)

@@ -23,7 +23,7 @@ only the emitted strings are in seconds, the unit mojtools uses.
 """
 
 import math
-from typing import Dict, List, NamedTuple, Optional
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 # `calibreitor.sh` enforces this dummy limit (`CALIBRATIONTL`, 5s by default) on the
 # accepted solutions while it measures them. A problem whose own limit is larger
@@ -226,8 +226,7 @@ def _seconds(ms: int) -> str:
 def capped_calibration_lines(
     cap_ms: int,
     languages: List[str],
-    ac_to_time_limit: float,
-    time_resolution_ms: int,
+    kattis: Optional[Tuple[float, int]] = None,
 ) -> List[str]:
     """The `conf` block making a calibration judge everything at `cap_ms`.
 
@@ -236,10 +235,16 @@ def capped_calibration_lines(
     `TLMOD[$LANGUAGE.sum]`; `languages` must name every MOJ id a shipped solution
     can be judged under -- both spellings of one that MOJ normalizes.
 
-    `KATTIS_TIME_LIMIT_TO_TLE` is pinned to 1 rather than the problem's own: it
-    only decides MOJ's own verdict on the slow solutions, which rbx does not read,
-    and how long a timed-out test keeps running past the cap (the calibration
-    floor is `b x` the Kattis limit *plus the sum*), which rbx does not need.
+    `kattis` is the problem's `(acToTimeLimit, timeResolution)`, when it has
+    `timing.multipliers`: MOJ computes its Kattis limit from these same
+    measurements whatever the method, and rbx shows it beside its own. A formula
+    has no such ratio, and mojtools then falls back to its own defaults.
+
+    `KATTIS_TIME_LIMIT_TO_TLE` is pinned to 1 either way, rather than the
+    problem's own: it only decides MOJ's own verdict on the slow solutions, which
+    rbx does not read, and how long a timed-out test keeps running past the cap
+    (the calibration floor is `b x` the Kattis limit *plus the sum*), which rbx
+    does not need.
     """
     if cap_ms <= MOJ_TL_OFFSET_MS:
         raise ValueError(
@@ -256,10 +261,20 @@ def capped_calibration_lines(
         f'CALIBRATIONTL={_seconds(MOJ_TL_OFFSET_MS)}',
         *(f'TLMOD[{language}.sum]={increment}' for language in sorted(set(languages))),
         '',
-        '# Only for TLKATTIS, which MOJ computes from the same measurements: the',
-        "# problem's own acToTimeLimit and timeResolution.",
-        f'KATTIS_AC_TO_TIME_LIMIT={ac_to_time_limit:g}',
-        'KATTIS_TIME_LIMIT_TO_TLE=1',
-        f'KATTIS_TIME_RESOLUTION={time_resolution_ms / 1000:g}',
+        *(
+            [
+                '# Only for TLKATTIS, which MOJ computes from the same measurements:',
+                "# the problem's own acToTimeLimit and timeResolution.",
+                f'KATTIS_AC_TO_TIME_LIMIT={kattis[0]:g}',
+                'KATTIS_TIME_LIMIT_TO_TLE=1',
+                f'KATTIS_TIME_RESOLUTION={kattis[1] / 1000:g}',
+            ]
+            if kattis is not None
+            else [
+                '# How long MOJ lets a test run past the cap, through its Kattis',
+                '# floor: as short as it goes.',
+                'KATTIS_TIME_LIMIT_TO_TLE=1',
+            ]
+        ),
         '',
     ]

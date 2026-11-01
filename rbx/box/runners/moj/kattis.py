@@ -177,6 +177,69 @@ class KattisCalibrationResult:
     moj_limits_ms: Dict[str, int]
     # Whether the package was already calibrated, so nothing was queued.
     reused: bool
+    # What `replay_test` reads. The cap every limit of the calibration was pinned
+    # at; each judge's whole calibration; where each shipped solution was filed,
+    # as `(category, file)`, keyed by its rbx path; and the MOJ name of each
+    # built testcase, keyed by `runner._entry_key`.
+    cap_ms: int = 0
+    calib_hosts: Tuple[cli.CalibHost, ...] = ()
+    files: Dict[str, Tuple[str, str]] = dataclasses.field(default_factory=dict)
+    names_by_entry: Dict[Tuple[str, int], str] = dataclasses.field(default_factory=dict)
+
+    def can_replay(self, solution_path: str, time_limit_ms: int) -> bool:
+        """Whether this calibration judged `solution_path` long enough to say what
+        it does at `time_limit_ms`: it was shipped, and the limit is within the
+        cap every test ran under."""
+        return solution_path in self.files and time_limit_ms <= self.cap_ms
+
+
+def _at_limit(test: cli.TestrunTest, time_limit_ms: int) -> cli.TestrunTest:
+    """`test`, judged at `time_limit_ms` instead of the cap it ran under.
+
+    mojtools' own rule (`_verdict_for`: TLE when the time exceeds the limit, the
+    run's own verdict otherwise), so it is exact for any limit within the cap: a
+    test that finished within it has its real time and its real code, and one
+    that ran past the cap ran past every lower limit too.
+    """
+    code = test.code
+    if test.time is not None and test.time * 1000 > time_limit_ms:
+        code = _TIMEOUT_CODE
+    return cli.TestrunTest(
+        name=test.name, code=code, time=test.time, tl=time_limit_ms / 1000
+    )
+
+
+def replay_test(
+    result: KattisCalibrationResult,
+    solution_path: str,
+    name: str,
+    time_limit_ms: int,
+) -> Optional[cli.TestrunTest]:
+    """One test of one shipped solution, as a judge at `time_limit_ms` reports it.
+
+    On its **worst** judge, since MOJ judges a submission on whichever is free:
+    a failure on any judge beats a pass, and among equals the slower one wins.
+    `None` when no judge ran it -- it was never shipped, or the run halted at an
+    earlier timeout (`STOPWHEN_TLE`) -- which the caller reports as skipped,
+    exactly as it does for a testrun.
+    """
+    key = result.files.get(solution_path)
+    if key is None:
+        return None
+    candidates: List[cli.TestrunTest] = []
+    for host in result.calib_hosts:
+        for sol in host.sols:
+            if (sol.category, sol.file) != key:
+                continue
+            test = sol.by_name.get(name)
+            if test is not None and test.code not in _NOT_EXECUTED_CODES:
+                candidates.append(_at_limit(test, time_limit_ms))
+    if not candidates:
+        return None
+    return max(
+        candidates,
+        key=lambda test: (test.code not in _PASS_CODES, test.time or 0.0),
+    )
 
 
 @dataclasses.dataclass(frozen=True)

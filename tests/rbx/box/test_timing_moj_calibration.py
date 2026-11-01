@@ -57,9 +57,13 @@ class _CalibratingRunner:
         self.measurements = measurements
         self.limits = limits
         self.calls: List[timing_config.TimingStrategy] = []
+        self.run_all: List[bool] = []
 
-    async def estimate_by_calibration(self, entries, strategy, progress=None):
+    async def estimate_by_calibration(
+        self, entries, strategy, progress=None, run_all=False
+    ):
         self.calls.append(strategy)
+        self.run_all.append(run_all)
         return KattisCalibrationResult(
             moj_id='alice#rbxt-x-kattis',
             hosts=('judge',),
@@ -246,11 +250,89 @@ def test_a_slow_solution_that_crashed_is_reported_broken():
     assert _upper(profile).confirmed == []
 
 
-def test_only_multipliers_with_a_calibrating_backend_take_this_path():
+def test_run_all_replays_what_the_calibration_judged_and_runs_the_rest(
+    testing_pkg: testing_package.TestingPackage,
+):
+    """`--run-all` with every solution shipped: the wrong-answer one is shown from
+    the calibration; one whose limit is above the cap is judged again for real.
+
+    The accepted solution already ran for the estimate, so it is in neither.
+    """
+    testing_pkg.add_solution('sols/ac.cpp', ExpectedOutcome.ACCEPTED)
+    testing_pkg.add_solution('sols/wa.cpp', ExpectedOutcome.WRONG_ANSWER)
+    testing_pkg.add_solution('sols/slow.py', ExpectedOutcome.ACCEPTED_OR_TLE)
+    calibration = KattisCalibrationResult(
+        moj_id='alice#rbxt-x-kattis-all',
+        hosts=('judge',),
+        measurements={},
+        moj_limits_ms={},
+        reused=False,
+        cap_ms=10_000,
+        files={
+            'sols/ac.cpp': ('good', 'ac.cpp'),
+            'sols/wa.cpp': ('wrong', 'wa.cpp'),
+            'sols/slow.py': ('pass', 'slow.py'),
+        },
+    )
+    profile = timing.TimingProfile(timeLimit=1000, timeLimitPerLanguage={'py': 12_000})
+    batches = []
+
+    async def record(profile, batch, batch_runner, title, **kwargs):
+        batches.append(
+            (sorted(str(s.path) for s in batch), type(batch_runner).__name__)
+        )
+        return True
+
+    real = object()
+    with mock.patch('rbx.box.timing._run_batch', record):
+        ok = asyncio.run(
+            timing._run_remaining(  # noqa: SLF001
+                profile,
+                {'sols/ac.cpp'},
+                check=False,
+                detailed=False,
+                runs=0,
+                runner=real,  # type: ignore[arg-type]
+                calibration=calibration,
+            )
+        )
+
+    assert ok
+    assert batches == [
+        (['sols/wa.cpp'], 'CalibrationReplayRunner'),
+        (['sols/slow.py'], 'object'),
+    ]
+
+
+def test_every_strategy_with_a_calibrating_backend_takes_this_path():
+    """The calibration only measures; rbx computes the limit by either rule."""
     runner = _CalibratingRunner([], limits={})
     formula = timing_config.TimingStrategy(formula='2 * slowest', inferenceTimeout=1)
 
     assert timing.uses_moj_calibration(runner, _strategy())
-    assert not timing.uses_moj_calibration(runner, formula)
+    assert timing.uses_moj_calibration(runner, formula)
     assert not timing.uses_moj_calibration(None, _strategy())
     assert not timing.uses_moj_calibration(object(), _strategy())
+
+
+@pytest.mark.usefixtures('pkg')
+def test_a_formula_estimates_from_the_calibration_and_reads_no_slow_solution():
+    """`2 * slowest` over a 260 ms accepted solution: 520 ms, nothing testrun.
+
+    A formula has no upper bound, so the slow solution is not even read: its
+    measurement here would be wrong to use, and it bounds nothing.
+    """
+    runner = _CalibratingRunner(
+        [_measure('sols/ac.cpp', 'good', 260)],
+        limits={},
+    )
+    formula = timing_config.TimingStrategy(
+        formula='2 * slowest', inferenceTimeout=10000
+    )
+
+    profile = _estimate(runner, strategy=formula)
+
+    assert profile is not None
+    assert profile.timeLimit == 520
+    assert not [g for g in profile.groups or [] if g.upperValidation]
+    assert runner.run_all == [False]

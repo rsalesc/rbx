@@ -23,6 +23,7 @@ import pytest
 
 from rbx.box.packaging.moj.packager import (
     JudgeCalibrated,
+    KattisParameters,
     MojPackager,
     ProbeCalibrated,
     ProbePackage,
@@ -878,7 +879,7 @@ def test_judge_calibration_is_unchanged(testing_pkg, tmp_path):
     assert not _overrides(conf)
 
 
-def _calibrated(**overrides) -> ProbeCalibrated:
+def _kattis(**overrides) -> KattisParameters:
     fields = dict(
         ac_to_time_limit=2.0,
         time_limit_to_tle=1.5,
@@ -886,7 +887,11 @@ def _calibrated(**overrides) -> ProbeCalibrated:
         inference_timeout_ms=10000,
     )
     fields.update(overrides)
-    return ProbeCalibrated(**fields)
+    return KattisParameters(**fields)
+
+
+def _calibrated(**overrides) -> ProbeCalibrated:
+    return ProbeCalibrated(cap_ms=10000, ship_slow=True, kattis=_kattis(**overrides))
 
 
 @pytest.mark.parametrize(
@@ -902,12 +907,12 @@ def _calibrated(**overrides) -> ProbeCalibrated:
 def test_kattis_ratios_moj_would_refuse_are_refused_first(overrides):
     """MOJ's own ranges (`conf_tlmethod_sane`): a in [1, 100], b too, r in (0, 10] s."""
     with pytest.raises(ValueError):
-        _calibrated(**overrides)
+        _kattis(**overrides)
 
 
 def test_kattis_ratios_on_moj_boundaries_are_accepted():
-    _calibrated(ac_to_time_limit=1, time_limit_to_tle=100, time_resolution_ms=10_000)
-    _calibrated(time_limit_to_tle=None)
+    _kattis(ac_to_time_limit=1, time_limit_to_tle=100, time_resolution_ms=10_000)
+    _kattis(time_limit_to_tle=None)
 
 
 def test_a_calibrated_mode_is_only_for_a_probe(testing_pkg, tmp_path):

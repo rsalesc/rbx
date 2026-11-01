@@ -30,9 +30,14 @@ With the `moj` limits profile, `rbx time` measures on MOJ by default, so this is
 rbx time -p moj
 ```
 
-{{rbx}} has MOJ run the solutions the estimate needs: the accepted ones, and the ones you expect
-to be too slow. MOJ reports how long each one took on its machines, and {{rbx}} estimates the
-limit from those times, exactly as it would from a local run.
+{{rbx}} has MOJ run the solutions the estimate needs. MOJ reports how long each one took on its
+machines, and {{rbx}} estimates the limit from those times, exactly as it would from a local
+run.
+
+To also check every other solution's verdict, add
+[`--run-all`](estimating.md#checking-the-rest-of-the-package): MOJ runs those solutions
+alongside the ones the estimate needs, and the report shows each of them at the limit {{rbx}}
+estimated.
 
 {{rbx}} remembers what it already asked MOJ to run, so running `rbx time` again on an unchanged
 problem costs no judge time at all.

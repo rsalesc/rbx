@@ -259,18 +259,57 @@ class KattisParameters:
 
 
 @dataclasses.dataclass(frozen=True)
-class ProbeCalibrated(KattisParameters):
-    """Let MOJ estimate the limit itself, by the Kattis rule. What `rbx time`
-    uploads when the problem estimates with `timing.multipliers`.
+class ProbeCalibrated:
+    """Have one MOJ calibration run every solution `rbx time` needs, under a cap.
 
-    Instead of testrunning each solution and estimating locally, the package
-    ships the solutions the estimate is about -- the lower-bound ones in
-    `sols/good`, the upper-bound ones in `sols/slow` (only with a
-    `timeLimitToTle`), filed by inference role -- and says `TLMETHOD=kattis`. One
-    calibration then measures the accepted solutions, computes the limit, and
-    judges the slow ones against it. A setter's package asks MOJ for the same
-    method with `--calibrate` (`JudgeCalibrated`).
+    Instead of testrunning each solution, the package ships them all and every
+    limit of the calibration is pinned at `cap_ms` (`inferenceTimeout`; see
+    `timing.capped_calibration_lines`). MOJ only *measures*: the limit is
+    estimated by rbx, from the times it reads back, whatever the strategy.
+
+    What is shipped, filed by inference role and then by expected outcome (see
+    `MojPackager._calibration_tag`):
+
+    - the lower-bound solutions, in `sols/good`, always;
+    - the upper-bound ones, in `sols/slow`, when `ship_slow` -- there is a bound
+      to check (`timeLimitToTle`), or `ship_rest` asked for everything;
+    - every other solution, in `sols/wrong` or `sols/pass`, when `ship_rest`
+      (`rbx time --run-all`): they decide nothing, and are only judged so the
+      run report can show every solution from the same calibration.
+
+    `kattis` carries the problem's `timing.multipliers`, only so MOJ's own
+    Kattis limit -- which it computes from the same measurements regardless --
+    can be shown next to rbx's. A formula has none.
     """
+
+    cap_ms: int
+    ship_slow: bool = False
+    ship_rest: bool = False
+    kattis: Optional[KattisParameters] = None
+
+
+def calibrated_solutions(mode: ProbeCalibrated) -> List[Solution]:
+    """The solutions a calibrated probe ships, lower-bound ones first.
+
+    One function, called by the packager that writes them and by the runner that
+    whitelists their languages, so the two cannot disagree about what is in the
+    package.
+    """
+    # Imported here: `solutions` reaches the runners, which import this module.
+    from rbx.box.schema import InferenceRole
+    from rbx.box.solutions import get_inference_solutions
+
+    shipped = list(get_inference_solutions(InferenceRole.LOWER))
+    if mode.ship_slow or mode.ship_rest:
+        shipped.extend(get_inference_solutions(InferenceRole.UPPER))
+    if mode.ship_rest:
+        taken = {str(solution.path) for solution in shipped}
+        shipped.extend(
+            solution
+            for solution in package.get_solutions()
+            if str(solution.path) not in taken
+        )
+    return shipped
 
 
 # How a package settles its time limits. The packager refuses to guess between these,
@@ -1071,10 +1110,13 @@ class MojPackager(BasePackager):
                 languages.add(language)
                 languages.add(normalize_moj_language(language))
             return moj_timing.capped_calibration_lines(
-                mode.inference_timeout_ms,
+                mode.cap_ms,
                 sorted(languages),
-                mode.ac_to_time_limit,
-                mode.time_resolution_ms,
+                kattis=(
+                    (mode.kattis.ac_to_time_limit, mode.kattis.time_resolution_ms)
+                    if mode.kattis is not None
+                    else None
+                ),
             )
         typing.assert_never(self.timing_mode)
 
@@ -1178,7 +1220,7 @@ class MojPackager(BasePackager):
             mode = self.timing_mode
             console.console.print(
                 f'MOJ will calibrate every solution this package ships under '
-                f'[item]{mode.inference_timeout_ms} ms[/item] (inferenceTimeout); '
+                f'[item]{mode.cap_ms} ms[/item] (inferenceTimeout); '
                 f'rbx estimates the time limit from what it measures.'
             )
             return
@@ -1791,8 +1833,16 @@ class MojPackager(BasePackager):
         role = inference_role_of(solution)
         if role == InferenceRole.LOWER:
             return 'good'
-        assert role == InferenceRole.UPPER, solution.path
-        return 'slow'
+        if role == InferenceRole.UPPER:
+            return 'slow'
+        # Only under `ship_rest`. Never `upcoming`, the directory `_tag_for` gives
+        # an `ANY` solution: calibreitor.sh never runs it, and this solution is
+        # shipped precisely to be run. `wrong` and `pass` both run, under the same
+        # cap; which one only decides the label MOJ shows.
+        # Imported here, for the same reason as above.
+        from rbx.grading.steps import Outcome
+
+        return 'pass' if solution.outcome.match(Outcome.ACCEPTED) else 'wrong'
 
     def solution_content(self, solution: Solution) -> bytes:
         """The bytes to ship for a solution.
@@ -1840,20 +1890,14 @@ class MojPackager(BasePackager):
         Both keep the single `sols/good` `calibreitor.sh` cannot do without.
 
         A **calibrated** probe (`ProbeCalibrated`) is the exception to the first: it
-        ships exactly what the estimate is about -- every lower-bound solution, and
-        the upper-bound ones when the problem bounds the limit from above -- and
-        nothing else, since calibration runs everything a package ships. See
-        `_calibration_tag` for where each one goes.
+        ships what the estimate is about -- every lower-bound solution, and the
+        upper-bound ones when asked to (`ship_slow`) -- plus, under `ship_rest`
+        (`rbx time --run-all`), every other solution of the package, since
+        calibration runs everything a package ships. See `_calibration_tag` for
+        where each one goes.
         """
         if isinstance(self.timing_mode, ProbeCalibrated):
-            # Imported here: `solutions` reaches the runners, which import this.
-            from rbx.box.schema import InferenceRole
-            from rbx.box.solutions import get_inference_solutions
-
-            lower = get_inference_solutions(InferenceRole.LOWER)
-            if self.timing_mode.time_limit_to_tle is None:
-                return lower
-            return [*lower, *get_inference_solutions(InferenceRole.UPPER)]
+            return calibrated_solutions(self.timing_mode)
         if self.probe is None and not self.reference_only:
             return package.get_solutions()
         main_solution = package.get_main_solution()
