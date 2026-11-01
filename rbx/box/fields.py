@@ -99,6 +99,7 @@ RESERVED_STATEMENT_VAR_NAMES = frozenset(
         # reachable as `\VAR{contest.date}` through the shorthand.
         # Group scope (TestcaseGroup model fields, proxied by GroupView).
         'aggregation',
+        'allowDuplicate',
         'deps',
         'extraValidators',
         'generatorScript',
