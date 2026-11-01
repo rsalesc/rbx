@@ -51,6 +51,11 @@ AGENT_MODULE = 'rbx.grading.judge.sandboxes.docker_agent'
 UV_IMAGE = 'ghcr.io/astral-sh/uv:0.8.14'
 AGENT_PYTHON_VERSION = '3.12'
 IMAGE_REPO = 'rbx-box'
+KOTLIN_URL = (
+    'https://github.com/JetBrains/kotlin/releases/download/'
+    'v{version}/kotlin-compiler-{version}.zip'
+)
+KOTLIN_DOWNLOAD_PACKAGES = {'ca-certificates', 'curl', 'unzip'}
 LABEL = 'dev.rbx.box'
 
 CONFIG_HINT = (
@@ -181,12 +186,24 @@ class DockerRuntime:
     def dockerfile(self) -> str:
         base = self._user_base_tag() or self.cfg.base_image
         lines = [f'FROM {base}']
-        if self.cfg.packages:
-            packages = ' '.join(sorted(set(self.cfg.packages)))
+        apt = set(self.cfg.packages)
+        kotlin = self.cfg.kotlin_version
+        if kotlin:
+            apt |= KOTLIN_DOWNLOAD_PACKAGES
+        if apt:
             lines.append(
                 'RUN apt-get update && DEBIAN_FRONTEND=noninteractive '
-                f'apt-get install -y --no-install-recommends {packages} '
+                f'apt-get install -y --no-install-recommends {" ".join(sorted(apt))} '
                 '&& rm -rf /var/lib/apt/lists/*'
+            )
+        if kotlin:
+            # apt has no usable kotlinc, so it comes from JetBrains' release.
+            url = KOTLIN_URL.format(version=kotlin)
+            lines.append(
+                f'RUN curl -fsSL -o /tmp/kotlin.zip {url} '
+                '&& unzip -q /tmp/kotlin.zip -d /opt && rm /tmp/kotlin.zip '
+                '&& ln -s /opt/kotlinc/bin/kotlinc /usr/local/bin/kotlinc '
+                '&& ln -s /opt/kotlinc/bin/kotlin /usr/local/bin/kotlin'
             )
         lines += [
             f'COPY --from={UV_IMAGE} /uv /usr/local/bin/uv',

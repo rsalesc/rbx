@@ -28,7 +28,9 @@ def _runtime(released: bool = True, **cfg) -> DockerRuntime:
 
 
 def test_dockerfile_installs_packages_and_a_released_rbx():
-    dockerfile = _runtime(packages=['python3', 'g++', 'g++']).dockerfile()
+    dockerfile = _runtime(
+        packages=['python3', 'g++', 'g++'], kotlin_version=None
+    ).dockerfile()
     assert dockerfile.splitlines()[0] == 'FROM ubuntu:24.04'
     assert 'apt-get install -y --no-install-recommends g++ python3 ' in dockerfile
     assert f"'rbx-cp=={docker_runtime.utils.get_version()}'" in dockerfile
@@ -44,8 +46,24 @@ def test_dockerfile_installs_a_source_checkout_from_its_wheel():
     assert 'rbx-cp==' not in dockerfile
 
 
-def test_no_packages_means_no_apt():
-    assert 'apt-get' not in _runtime(base_image='gcc:14', packages=[]).dockerfile()
+def test_no_packages_and_no_kotlin_means_no_apt():
+    dockerfile = _runtime(
+        base_image='gcc:14', packages=[], kotlin_version=None
+    ).dockerfile()
+    assert 'apt-get' not in dockerfile
+    assert 'kotlin' not in dockerfile
+
+
+def test_kotlin_and_pypy_are_in_the_default_image():
+    dockerfile = _runtime().dockerfile()
+    assert ' pypy3 ' in dockerfile
+    version = setter_config.DEFAULT_DOCKER_KOTLIN_VERSION
+    assert f'v{version}/kotlin-compiler-{version}.zip' in dockerfile
+    assert '/usr/local/bin/kotlinc' in dockerfile
+    # The download tools come along even when `packages` is emptied.
+    no_packages = _runtime(packages=[]).dockerfile()
+    assert 'ca-certificates curl unzip' in no_packages
+    assert _runtime(kotlin_version='2.0.0').image_tag != _runtime().image_tag
 
 
 def test_image_tag_follows_everything_that_goes_into_the_image():

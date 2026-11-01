@@ -28,7 +28,9 @@ statement builds, packaging or the TUI.
   no silent fallback to native execution.
 - **Toolchains from a locally built image**: `base_image` (default
   `ubuntu:24.04`) or a user `dockerfile`, plus apt `packages` (default `g++ gcc
-  python3 default-jdk-headless`). rbx appends its own layer: a uv-managed Python
+  python3 pypy3 default-jdk-headless`) and Kotlin (`kotlin_version`, default
+  2.1.21, from JetBrains' release since apt has no usable `kotlinc`; null skips
+  it). rbx appends its own layer: a uv-managed Python
   and `rbx-cp==<version>` under `/opt/rbx`, off `PATH`. From a source checkout
   (editable install) it builds and installs a wheel instead, and the source hash
   joins the image tag, so local changes rebuild automatically. No registry, no

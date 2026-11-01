@@ -83,7 +83,8 @@ class JudgingConfig(BaseModel):
     )
 
 
-DEFAULT_DOCKER_PACKAGES = ['g++', 'gcc', 'python3', 'default-jdk-headless']
+DEFAULT_DOCKER_PACKAGES = ['g++', 'gcc', 'python3', 'pypy3', 'default-jdk-headless']
+DEFAULT_DOCKER_KOTLIN_VERSION = '2.1.21'
 
 
 class DockerConfig(BaseModel):
@@ -104,6 +105,12 @@ class DockerConfig(BaseModel):
         default_factory=DEFAULT_DOCKER_PACKAGES.copy,
         description='apt packages installed on top of `base_image` (compilers and '
         'interpreters your problems use).',
+    )
+    kotlin_version: Optional[str] = Field(
+        default=DEFAULT_DOCKER_KOTLIN_VERSION,
+        description='Kotlin compiler release installed in the image (as '
+        '`kotlinc`, from JetBrains: apt does not package a usable one). Set to '
+        'null to leave Kotlin out.',
     )
     dockerfile: Optional[str] = Field(
         default=None,
