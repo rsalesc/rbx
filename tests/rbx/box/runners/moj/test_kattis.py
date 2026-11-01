@@ -1,7 +1,8 @@
-"""`rbx time` through a MOJ Kattis calibration: the package, the wait, the read-back.
+"""`rbx time` through a MOJ calibration: the package, the wait, the read-back.
 
 The shapes the fakes answer with are the ones the park returned on 2026-10-31
-(`contando-mex`, 5 accepted + 4 slow solutions, three judges); see
+(`contando-mex`, 5 accepted + 4 slow solutions, three judges) and on 2026-11-01
+(`rollercoaster`, the probe capped at its `inferenceTimeout`); see
 `docs/plans/2026-11-01-moj-parallel-run-and-kattis-calibration-design.md`.
 """
 
@@ -21,12 +22,19 @@ from tests.rbx.box.packaging.moj.conftest import build_entries, minimal_package
 pytestmark = pytest.mark.shared_cache
 
 
-def _test(name: str, code: str, time: Optional[float]) -> cli.TestrunTest:
-    return cli.TestrunTest(name=name, code=code, time=time, tl=0.6)
+# The probe pins every limit of the calibration at `inferenceTimeout` (10 s in
+# `_strategy`), and MOJ kills a test at `etl` = that + 2.2 s.
+CAP = 10.0
+
+
+def _test(
+    name: str, code: str, time: Optional[float], tl: Optional[float] = CAP
+) -> cli.TestrunTest:
+    return cli.TestrunTest(name=name, code=code, time=time, tl=tl)
 
 
 def _sol(file: str, category: str, tests: List[cli.TestrunTest]) -> cli.CalibSolution:
-    return cli.CalibSolution(file=file, category=category, tests=tests, etl=2.8)
+    return cli.CalibSolution(file=file, category=category, tests=tests, etl=CAP + 2.2)
 
 
 def _host(name: str, sols: List[cli.CalibSolution], at: int = 200) -> cli.CalibHost:
@@ -63,7 +71,7 @@ def test_an_accepted_solution_takes_its_worst_test_on_its_slowest_judge():
 
 
 def test_a_slow_solution_keeps_the_weakest_judges_evidence():
-    """Killed at `etl` on every judge: it survived the *shortest* of those."""
+    """Over the cap on every judge: it is known to take the *shortest* of those."""
     slow = _solution('sols/slow.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
     hosts = [
         _host(
@@ -72,7 +80,7 @@ def test_a_slow_solution_keeps_the_weakest_judges_evidence():
                 _sol(
                     'slow.cpp',
                     'slow',
-                    [_test('t1', 'AC', 0.1), _test('t2', 'TLE', 2.81)],
+                    [_test('t1', 'AC', 0.1), _test('t2', 'TLE', 12.21)],
                 )
             ],
         ),
@@ -82,7 +90,7 @@ def test_a_slow_solution_keeps_the_weakest_judges_evidence():
                 _sol(
                     'slow.cpp',
                     'slow',
-                    [_test('t1', 'AC', 0.1), _test('t2', 'TLE', 2.8)],
+                    [_test('t1', 'AC', 0.1), _test('t2', 'TLE', 11.4)],
                 )
             ],
         ),
@@ -91,7 +99,7 @@ def test_a_slow_solution_keeps_the_weakest_judges_evidence():
     measured = kattis.measure_solutions(hosts, {('slow', 'slow.cpp'): slow}, 5)
 
     assert measured['sols/slow.cpp'].timed_out
-    assert measured['sols/slow.cpp'].time_ms == 2800
+    assert measured['sols/slow.cpp'].time_ms == 11400
     # Stopped at its first timeout (`STOPWHEN_TLE`): not every test has a verdict.
     assert not measured['sols/slow.cpp'].complete
 
@@ -107,7 +115,7 @@ def test_a_repeated_test_reads_last_and_an_unexecuted_one_not_at_all():
                     'ac.cpp',
                     'good',
                     [
-                        _test('t1', 'TLE', 2.8),
+                        _test('t1', 'TLE', 12.2),
                         _test('t2', 'NT', None),
                         _test('t1', 'AC', 0.3),
                     ],
@@ -248,9 +256,16 @@ def calibrating_pkg(testing_pkg):
     return testing_pkg
 
 
-async def test_the_package_asks_for_the_kattis_rule_with_the_problems_ratios(
+async def test_the_package_pins_every_limit_of_the_calibration_at_the_cap(
     calibrating_pkg, tmp_path, monkeypatch
 ):
+    """MOJ's own formula, zeroed and shifted: `0 x W + 0.02 + (cap - 0.02)`.
+
+    `TLOVERRIDE` is ignored while calibrating (`MOJ_CALIBRATING=1`), so the cap is
+    reached through what calibration does apply: the factor, the dummy table the
+    accepted solutions run under, and a per-language sum. Verified on the park
+    (`rollercoaster`, 2026-11-01): every test of every solution ran at the cap.
+    """
     fake = FakeKattisMoj(tmp_path / 'snapshots', [_check(False), _check(True, j=5)])
     fake.install(monkeypatch)
     fake.calib_answer = cli.MojCalibration(
@@ -265,11 +280,15 @@ async def test_the_package_asks_for_the_kattis_rule_with_the_problems_ratios(
     assert problem == 'alice#rbxt-' + problem.split('#rbxt-')[1]
     assert problem.endswith('-kattis')
     conf = _conf(uploaded)
-    assert conf['TLMETHOD'] == 'kattis'
+    assert conf['TLMETHOD'] == 'moj'
+    assert conf['TLMOD[calibrafactor]'] == '0'
+    assert conf['CALIBRATIONTL'] == '0.02'
+    assert conf['TLMOD[cpp.sum]'] == '9.98'
+    # Only for the Kattis limit MOJ still computes from the same measurements.
     assert conf['KATTIS_AC_TO_TIME_LIMIT'] == '2'
-    assert conf['KATTIS_TIME_LIMIT_TO_TLE'] == '1.5'
+    assert conf['KATTIS_TIME_LIMIT_TO_TLE'] == '1'
     assert conf['KATTIS_TIME_RESOLUTION'] == '0.1'
-    assert conf['CALIBRATIONTL'] == '10'
+    assert conf['STOPWHEN_TLE'] == 'y'
     assert not [key for key in conf if key.startswith('TLOVERRIDE')]
     # Exactly what the estimate is about, filed by role -- no wrong-answer one,
     # since calibration runs everything a package ships.
@@ -405,3 +424,58 @@ async def test_ratios_moj_cannot_take_are_refused_before_uploading(
         )
 
     assert fake.uploads == []
+
+
+# -- the cap -------------------------------------------------------------------
+
+
+def test_a_test_judged_under_any_other_limit_is_reported():
+    """Every measurement assumes the cap; an unexecuted test or a solution the
+    package did not ship says nothing about it."""
+    slow = _solution('sols/slow.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+    hosts = [
+        _host(
+            'a',
+            [
+                _sol(
+                    'slow.cpp',
+                    'slow',
+                    [
+                        _test('t1', 'AC', 0.1),
+                        _test('t2', 'TLE', 0.59, tl=0.5),
+                        _test('t3', 'NT', None, tl=None),
+                    ],
+                ),
+                _sol('stray.cpp', 'good', [_test('t1', 'AC', 0.1, tl=0.5)]),
+            ],
+        )
+    ]
+
+    off = kattis.check_cap(hosts, {('slow', 'slow.cpp'): slow}, 10_000)
+
+    assert off == [kattis.OffCapTest('a', 'slow', 'slow.cpp', 't2', 500)]
+
+
+async def test_a_calibration_off_the_cap_is_refused(
+    calibrating_pkg, tmp_path, monkeypatch
+):
+    """The Kattis-era shape: the slow solution judged at MOJ's own 0.5 s limit."""
+    fake = FakeKattisMoj(tmp_path / 'snapshots', [_check(False), _check(True, j=5)])
+    fake.install(monkeypatch)
+    fake.calib_answer = cli.MojCalibration(
+        hosts=[
+            _host(
+                'j',
+                [
+                    _sol('sol.cpp', 'good', [_test('a', 'AC', 0.1)]),
+                    _sol('slow.cpp', 'slow', [_test('a', 'TLE', 0.59, tl=0.5)]),
+                ],
+                at=5,
+            )
+        ]
+    )
+
+    with pytest.raises(MojRunnerError, match=r'slow/slow\.cpp on a ran under 500 ms'):
+        await MojRunner().estimate_by_calibration(
+            build_entries(tmp_path, ['samples']), _strategy()
+        )

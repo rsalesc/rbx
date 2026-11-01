@@ -1,21 +1,28 @@
-"""Reading a MOJ Kattis calibration back as `rbx time` measurements.
+"""Reading a MOJ calibration back as `rbx time` measurements.
 
 When a problem estimates with `timing.multipliers`, `rbx time --runner moj` does not
 testrun anything: it uploads a package carrying the solutions the estimate is about
-(`ProbeCalibrated`), has MOJ calibrate it by the Kattis rule, and reads the
-calibration back. This module is the reading half, kept pure so it can be checked
-against recorded calibrations rather than against a judge.
+(`ProbeCalibrated`), has MOJ calibrate it, and reads the calibration back. This
+module is the reading half, kept pure so it can be checked against recorded
+calibrations rather than against a judge.
+
+The probe **caps every limit of the calibration at `inferenceTimeout`** (see
+`packaging.moj.timing.capped_calibration_lines`): the accepted solutions are
+measured under it, and the slow ones are judged against it rather than against
+MOJ's per-language Kattis limit -- which is not the limit rbx ends up writing, so
+evidence taken there answered the wrong question. `check_cap` is what makes sure
+the judge really did apply it.
 
 What a calibration says, per judge and per solution (`cli.CalibSolution`), is the
 same `{name, code, time, tl}` vector a testrun reports. Two facts shape how it is
 pooled across judges:
 
-- **MOJ publishes the limit as the max across the judges that calibrated**, so an
-  accepted solution's time is its worst test on its slowest judge -- the number the
-  published limit was computed from.
-- **A slow solution is judged against that limit on every judge**, killed at `etl`
-  (`TL + 2.2 s`) on a timeout. Its upper-bound evidence is therefore the *weakest*
-  judge's: the shortest time it was seen to survive, or the fastest it finished in.
+- **The limit is the max across the judges that calibrated**, so an accepted
+  solution's time is its worst test on its slowest judge.
+- **A slow solution's evidence is the *weakest* judge's**: the shortest time it was
+  seen to take on a test that exceeded the cap, or the fastest it finished in.
+  A `TLE` time is how long that test ran -- its real time, or the `etl` kill
+  (`cap + 2.2 s`) -- so either way the solution is known to take at least that.
 
 Design: `docs/plans/2026-11-01-moj-parallel-run-and-kattis-calibration-design.md`.
 """
@@ -83,8 +90,8 @@ def _per_host(
     bad = [code for code in codes if code not in _PASS_CODES and code != _TIMEOUT_CODE]
     if timed_out:
         # What it is known to have survived is the timed-out test's own time --
-        # the `etl` kill -- not the worst over every test, which is the same here
-        # and would only differ if a pass ever ran longer than a timeout.
+        # its real time, or the `etl` kill -- not the worst over every test, which
+        # would only differ if a pass ever ran longer than a timeout.
         worst = max(
             (
                 _ms(test.time)
@@ -170,3 +177,42 @@ class KattisCalibrationResult:
     moj_limits_ms: Dict[str, int]
     # Whether the package was already calibrated, so nothing was queued.
     reused: bool
+
+
+@dataclasses.dataclass(frozen=True)
+class OffCapTest:
+    """A test the judge ran under some limit other than the cap rbx asked for."""
+
+    host: str
+    category: str
+    file: str
+    test: str
+    tl_ms: Optional[int]
+
+
+def check_cap(
+    hosts: List[cli.CalibHost],
+    solutions_by_file: Dict[Tuple[str, str], Solution],
+    cap_ms: int,
+) -> List[OffCapTest]:
+    """Every executed test of a shipped solution whose limit is not `cap_ms`.
+
+    The cap is reached by MOJ's own arithmetic (`calibrafactor`, the dummy table,
+    `TLMOD` sums), none of which MOJ promises to keep. Every measurement and every
+    verdict rbx reads assumes the cap, so a single test judged under anything else
+    -- a missing sum, a changed formula -- means none of it can be trusted.
+    """
+    off: List[OffCapTest] = []
+    for host in hosts:
+        for sol in host.sols:
+            if (sol.category, sol.file) not in solutions_by_file:
+                continue
+            for test in sol.by_name.values():
+                if test.code in _NOT_EXECUTED_CODES:
+                    continue
+                tl_ms = _ms(test.tl)
+                if tl_ms != cap_ms:
+                    off.append(
+                        OffCapTest(host.host, sol.category, sol.file, test.name, tl_ms)
+                    )
+    return off

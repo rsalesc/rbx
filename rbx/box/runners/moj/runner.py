@@ -653,14 +653,18 @@ class MojRunner:
         strategy: 'timing_config.TimingStrategy',
         progress: Optional['utils.StatusProgress'] = None,
     ) -> kattis.KattisCalibrationResult:
-        """Have MOJ estimate the time limit by the Kattis rule, and read it back.
+        """Have MOJ measure every solution the estimate is about, and read it back.
 
-        The `rbx time` path for a problem that estimates with `timing.multipliers`
-        (which *are* the Kattis rule): one upload of the solutions the estimate is
-        about, one calibration on every judge, no testruns. The calibration
-        measures the accepted solutions (`sols/good`) one test at a time, computes
-        the limit, and judges the slow ones (`sols/slow`) against it -- the two
-        phases the testrun path runs separately.
+        The `rbx time` path for a problem that estimates with `timing.multipliers`:
+        one upload of the solutions the estimate is about, one calibration on
+        every judge, no testruns. The calibration measures the accepted solutions
+        (`sols/good`) one test at a time and then judges the slow ones
+        (`sols/slow`) -- the two phases the testrun path runs separately -- with
+        **every limit pinned at `inferenceTimeout`**. rbx estimates the limit from
+        those measurements and checks the slow ones against it by arithmetic;
+        judged at MOJ's own Kattis limit instead, they would answer for a limit
+        rbx does not write. Every test is checked to have run at the cap
+        (`kattis.check_cap`) before anything is read.
 
         Skips the upload and the calibration when this machine last uploaded the
         same package to the same problem and the judge reports it calibrated: the
@@ -742,12 +746,30 @@ class MojRunner:
                 f'than the package rbx just sent carries any measurement.\n'
                 f'See what the judges reported with `moj calib {moj_id}`.'
             )
+        off_cap = kattis.check_cap(hosts, solutions_by_file, mode.inference_timeout_ms)
+        if off_cap:
+            shown = '\n'.join(
+                f'  {off.host}: {off.category}/{off.file} on {off.test} ran under '
+                + (f'{off.tl_ms} ms' if off.tl_ms is not None else 'no limit at all')
+                for off in off_cap[:5]
+            )
+            more = f'\n  ... and {len(off_cap) - 5} more.' if len(off_cap) > 5 else ''
+            raise MojRunnerError(
+                f'MOJ calibrated `{moj_id}` under limits other than the '
+                f'{mode.inference_timeout_ms} ms (inferenceTimeout) rbx pinned every '
+                f'solution to, so none of its timings or verdicts can be read:\n'
+                f'{shown}{more}\n'
+                f"rbx reaches that cap through MOJ's own limit arithmetic "
+                f'(`TLMOD[calibrafactor]`, `CALIBRATIONTL`, `TLMOD[<lang>.sum]`); if '
+                f'MOJ changed it, estimate with `--runner local` meanwhile. See '
+                f'`moj calib {moj_id}`.'
+            )
         console.console.print(
             f'[status]moj · [item]{moj_id}[/item] · '
             + (
                 'reused the calibration of an unchanged package'
                 if reused
-                else 'calibrated by the Kattis rule'
+                else 'calibrated every solution under the inferenceTimeout cap'
             )
             + f' on {len(hosts)} judge(s) ({elapsed}).[/status]'
         )

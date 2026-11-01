@@ -1,4 +1,4 @@
-"""`rbx time --runner moj` with multipliers: one MOJ Kattis calibration, no testruns.
+"""`rbx time --runner moj` with multipliers: one MOJ calibration, no testruns.
 
 The runner is faked at the seam the estimation calls -- `estimate_by_calibration`
 -- so what is under test is how a calibration's measurements become the profile:
@@ -111,13 +111,14 @@ def _upper(profile: timing.TimingProfile):
 def test_the_limit_is_the_calibrations_and_nothing_is_testrun():
     """W = 260 ms, a = 2.0, r = 100 ms: 520 rounds up to 600, MOJ's own number.
 
-    The slow solution was killed at MOJ's `etl` (TL + 2.2 s = 2800 ms), which
-    clears the 900 ms it needs: confirmed, by the calibration alone.
+    The slow solution went over the 10 s cap every limit of the calibration is
+    pinned at, which clears the 900 ms it needs: confirmed, by the calibration
+    alone.
     """
     runner = _CalibratingRunner(
         [
             _measure('sols/ac.cpp', 'good', 260),
-            _measure('sols/slow.cpp', 'slow', 2800, timed_out=True, complete=False),
+            _measure('sols/slow.cpp', 'slow', 10450, timed_out=True, complete=False),
         ],
         limits={'cpp': 600, 'default': 600},
     )
@@ -182,25 +183,50 @@ def test_a_slow_solution_that_finished_leaves_no_limit_to_write():
 
 @pytest.mark.usefixtures('pkg')
 def test_a_slow_solution_the_calibration_cannot_settle_is_skipped_not_testrun():
-    """W = 3000 ms: TL 6000, so the slow one must take 9000 ms -- but MOJ kills at
-    `etl = TL + 2.2 s = 8200 ms`. The calibration cannot answer, and the
+    """W = 5000 ms: TL 10000, so the slow one must take 15000 ms -- but every
+    limit of the calibration is pinned at the 10 s inferenceTimeout, and MOJ kills
+    at `etl = cap + 2.2 s = 12200 ms`. The calibration cannot answer, and the
     estimate must not testrun to find out: the bound is recorded as skipped.
     """
     runner = _CalibratingRunner(
         [
-            _measure('sols/ac.cpp', 'good', 3000),
-            _measure('sols/slow.cpp', 'slow', 8200, timed_out=True, complete=False),
+            _measure('sols/ac.cpp', 'good', 5000),
+            _measure('sols/slow.cpp', 'slow', 12200, timed_out=True, complete=False),
         ],
-        limits={'cpp': 6000, 'default': 6000},
+        limits={'cpp': 10000, 'default': 10000},
     )
 
     profile = _estimate(runner)
 
     assert profile is not None
-    assert profile.timeLimit == 6000
+    assert profile.timeLimit == 10000
     upper = _upper(profile)
     assert upper.skipped == ['sols/slow.cpp']
     assert upper.confirmed == []
+
+
+@pytest.mark.usefixtures('pkg')
+def test_a_slow_solution_that_finished_under_the_cap_can_still_be_too_slow():
+    """`rollercoaster` on the park, 2026-11-01: W = 170 ms makes the limit 400 ms,
+    so a slow solution must take 600 ms -- and it finished every test, the
+    slowest in 6610 ms, under the 10 s cap. Finishing is not violating here: the
+    cap is far above the bound, so the profile records it confirmed.
+    """
+    runner = _CalibratingRunner(
+        [
+            _measure('sols/ac.cpp', 'good', 170),
+            _measure('sols/slow.cpp', 'slow', 6610),
+        ],
+        limits={'cpp': 400, 'default': 400},
+    )
+
+    profile = _estimate(runner)
+
+    assert profile is not None
+    assert profile.timeLimit == 400
+    upper = _upper(profile)
+    assert upper.confirmed == ['sols/slow.cpp']
+    assert upper.violating == []
 
 
 @pytest.mark.usefixtures('pkg')

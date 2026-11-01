@@ -237,10 +237,32 @@ def compute_bounds(
     )
 
 
-def _as_eval_result(bounds: TimingBounds, time_limit: int) -> timing_groups.EvalResult:
+def _respected_upper(
+    multipliers: schema.TimingMultipliers,
+    measured: timing_groups.GroupMeasurements,
+    time_limit: int,
+) -> List[str]:
+    """The measured slow solutions that still clear ``time_limit`` by
+    ``timeLimitToTle``: the same test the validation report applies."""
+    if multipliers.timeLimitToTle is None or measured.upper is None:
+        return []
+    return [
+        solution
+        for time, solution in measured.upper.violating_upper
+        if not violates_upper_bound(time, time_limit, multipliers.timeLimitToTle)
+    ]
+
+
+def _as_eval_result(
+    bounds: TimingBounds,
+    time_limit: int,
+    multipliers: schema.TimingMultipliers,
+    measured: timing_groups.GroupMeasurements,
+) -> timing_groups.EvalResult:
     """The estimated limit together with the bounds that produced it, so the
     group report can record them without computing them a second time."""
     return timing_groups.EvalResult(
+        respected_upper=_respected_upper(multipliers, measured, time_limit),
         time_limit=time_limit,
         # A derived lower bound names no solution: it is the limit of the group
         # this one derives from, not a measurement of its own.
@@ -376,7 +398,10 @@ def make_multipliers_eval(
     def _eval(measured: timing_groups.GroupMeasurements) -> timing_groups.EvalResult:
         bounds = compute_bounds(multipliers, measured)
         return _as_eval_result(
-            bounds, _check_bounds(bounds, multipliers, measured, force=force)
+            bounds,
+            _check_bounds(bounds, multipliers, measured, force=force),
+            multipliers,
+            measured,
         )
 
     return _eval
@@ -395,7 +420,10 @@ def make_multipliers_derive(
     ) -> timing_groups.EvalResult:
         bounds = compute_bounds(multipliers, measured, derived_from=tl)
         return _as_eval_result(
-            bounds, _check_bounds(bounds, multipliers, measured, force=force)
+            bounds,
+            _check_bounds(bounds, multipliers, measured, force=force),
+            multipliers,
+            measured,
         )
 
     return _derive
@@ -434,9 +462,11 @@ def _upper_timings(
 ) -> Optional[timing_groups.UpperTimings]:
     """The upper-bound evidence for one group.
 
-    ``pooled`` holds the slow solutions that finished under the limit they were
-    probed at, so every one of them violates the bound; ``confirmed`` holds the
-    ones that did not finish, which is the outcome the estimate needs.
+    ``pooled`` holds the slow solutions that finished, with their times: probed
+    at the bound, every one of them violates it, but measured under a higher cap
+    (a MOJ calibration) only the estimator can tell, which is why it reports
+    ``respected_upper``. ``confirmed`` holds the ones that did not finish, which
+    is the outcome the estimate needs.
     """
     skipped = skipped or []
     if not pooled and not confirmed and not skipped:
@@ -1240,11 +1270,20 @@ async def _estimate_with_moj_calibration(
     """Phase 1 *and* the slow solutions' evidence, out of one MOJ calibration.
 
     The testrun path measures the accepted solutions, estimates, then testruns the
-    slow ones at the estimate. A Kattis calibration does all three on the judge:
-    it measures `sols/good`, computes the limit by the very rule the multipliers
-    describe, and judges `sols/slow` against it. This reads that back into what
-    the estimation context and `SlowKnowledge` already consume, so the picker,
-    the groups and the profile are the ones every other path uses.
+    slow ones at the estimate. One MOJ calibration replaces both runs: the probe
+    pins every limit in it at `inferenceTimeout`, so it measures `sols/good`
+    under the cap the local estimation phase uses, and runs `sols/slow` under
+    that same cap. Each slow solution then either finished, with its real time,
+    or exceeded the cap -- and either answers the check at any limit whose
+    `timeLimitToTle` multiple is within the cap by arithmetic alone, on every
+    picker round trip. This reads that back into what the estimation context and
+    `SlowKnowledge` already consume, so the picker, the groups and the profile
+    are the ones every other path uses.
+
+    The slow solutions are deliberately not judged at MOJ's own Kattis limit,
+    which it computes per language: rbx groups languages, so the limit it
+    writes for one can be well above it, and evidence gathered there stopped at
+    the first test over a limit nobody was going to use.
 
     The gates the testrun path applies to the accepted solutions apply here too: a
     timeout (at `inferenceTimeout`, MOJ's `CALIBRATIONTL`), a wrong verdict, or a
@@ -1528,8 +1567,9 @@ class _ValidationOutcome:
     # nothing either way.
     failed: List[Tuple[Solution, Outcome]] = dataclasses.field(default_factory=list)
     # Not checked at this limit, and not run to check it either: what is known
-    # about them (a MOJ calibration that killed them at `TL + 2.2 s`) does not
-    # reach the limit they now have to clear. A warning, never a violation -- the
+    # about them (a MOJ calibration that ran them under the `inferenceTimeout`
+    # cap, and saw them exceed it) does not reach the limit they now have to
+    # clear, which is above that cap. A warning, never a violation -- the
     # check did not happen. Only a check that cannot run anything has these.
     unverified: List[Tuple[Solution, int, int]] = dataclasses.field(
         default_factory=list
@@ -1789,9 +1829,10 @@ def _report_validation_outcome(
     for solution, survived, required in outcome.unverified:
         console.console.print(
             f'[warning]⚠ {solution.href()} was not checked against this limit: MOJ '
-            f'stopped it at {survived} ms while calibrating, and the limit needs it '
-            f'to take at least {required} ms. Its upper bound is recorded as '
-            f'skipped.[/warning]'
+            f'calibrated it under the inferenceTimeout cap and saw it take over '
+            f'{survived} ms, but the limit needs it to take at least {required} ms. '
+            f'Raise inferenceTimeout above that to check it. Its upper bound is '
+            f'recorded as skipped.[/warning]'
         )
     for solution, time in outcome.violating:
         lang = find_language_name(solution)

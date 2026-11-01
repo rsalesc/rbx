@@ -428,16 +428,36 @@ order and appends it after every other test; `by_name` keeps it.
 **With `timing.multipliers`, `rbx time --runner moj` runs no testruns at all.**
 `timing.uses_moj_calibration` routes it to `_estimate_with_moj_calibration`, which
 calls `MojRunner.estimate_by_calibration`: one `ProbeCalibrated` package (LOWER
-solutions in `sols/good`, UPPER in `sols/slow`, filed by inference role;
-`TLMETHOD=kattis` + `KATTIS_*` from the multipliers) on `<id>-kattis`, `moj
-calibrate --all-judges`, then `moj calib` read back through `runners/moj/kattis.py`
-(accepted: worst test on the slowest judge; slow: the weakest judge's evidence). The
-result seeds `_EstimationContext` and `SlowKnowledge` directly, so picker, groups and
-profile are reused; `_validate_upper_bound(calibrated=...)` runs nothing, and a slow
-solution the `TL + 2.2 s` kill cannot confirm is `unverified` and recorded skipped.
+solutions in `sols/good`, UPPER in `sols/slow`, filed by inference role) on
+`<id>-kattis`, `moj calibrate --all-judges`, then `moj calib` read back through
+`runners/moj/kattis.py` (accepted: worst test on the slowest judge; slow: the weakest
+judge's evidence). The result seeds `_EstimationContext` and `SlowKnowledge`
+directly, so picker, groups and profile are reused, and `_validate_upper_bound(
+calibrated=...)` runs nothing.
+
+**The probe pins every limit of that calibration at `inferenceTimeout`**
+(`packaging/moj/timing.capped_calibration_lines`): `TLMETHOD=moj`,
+`TLMOD[calibrafactor]=0`, `CALIBRATIONTL=0.02` and `TLMOD[<lang>.sum]=cap - 0.02`
+for every shipped MOJ id and its normalized alias, so `0 x W + 0.02 + sum` is the cap
+in both calibration phases. `TLOVERRIDE` cannot do it -- `calibreitor.sh` exports
+`MOJ_CALIBRATING=1`, which `build-and-test.sh` reads as "ignore the override". It
+used to ask for `TLMETHOD=kattis`, which judged `sols/slow` at MOJ's **per-language**
+Kattis limit: rbx groups languages, so the limit it wrote for cpp could be twice
+MOJ's (a java solution set the group), and with `STOPWHEN_TLE` each slow solution
+stopped at its first test over a limit nobody used -- every one of them came back
+`unverified`. Capped, a slow solution either finishes with its real time or is known
+to take longer than the cap, so the check is arithmetic at any limit whose
+`timeLimitToTle` multiple fits under the cap, on every picker round trip; only a
+bound above the cap stays `unverified` (raise `inferenceTimeout`). The Kattis limit
+MOJ computes from the same measurements is still read (`kattis.calibrated`, never
+`effective`, which has the sum in it) for `_compare_with_moj_limits`.
+`kattis.check_cap` refuses the whole calibration if any executed test ran under
+another limit: the cap rides on MOJ arithmetic nothing promises to keep. Verified on
+the park on 2026-11-01 (every test `tl` = the cap, raw `TLKATTIS` unchanged).
 **The wait is on `moj calib`, for every judge `moj calibrate` said it queued**:
 `moj check` calls a judge done before its results are readable. A formula keeps the
-two-phase testrun path. Design:
+two-phase testrun path. `--calibrate` (`JudgeCalibrated`) still uses the Kattis
+block; it is a setter's package, not this probe. Design:
 `docs/plans/2026-11-01-moj-parallel-run-and-kattis-calibration-design.md`.
 
 ### Deferred Execution (`deferred.py`)

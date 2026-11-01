@@ -1060,13 +1060,21 @@ class MojPackager(BasePackager):
                 self._fixed_time_limits(), inference_timeout_ms=_inference_timeout_ms()
             )
         if isinstance(self.timing_mode, ProbeCalibrated):
+            # Not `kattis_limit_lines`, which `--calibrate` keeps: the probe pins
+            # every limit of the calibration at `inferenceTimeout` instead, so the
+            # slow solutions are judged at a limit rbx chose rather than at MOJ's
+            # per-language Kattis one. See `capped_calibration_lines`.
             mode = self.timing_mode
-            return moj_timing.kattis_limit_lines(
-                mode.ac_to_time_limit,
-                mode.time_limit_to_tle,
-                mode.time_resolution_ms,
+            assert self.probe is not None
+            languages: Set[str] = set()
+            for language in self.probe.submission_languages:
+                languages.add(language)
+                languages.add(normalize_moj_language(language))
+            return moj_timing.capped_calibration_lines(
                 mode.inference_timeout_ms,
-                explanation=moj_timing.PROBE_KATTIS_EXPLANATION,
+                sorted(languages),
+                mode.ac_to_time_limit,
+                mode.time_resolution_ms,
             )
         typing.assert_never(self.timing_mode)
 
@@ -1169,11 +1177,9 @@ class MojPackager(BasePackager):
         if isinstance(self.timing_mode, ProbeCalibrated):
             mode = self.timing_mode
             console.console.print(
-                f'MOJ will estimate the time limit by the Kattis rule '
-                f'([item]acToTimeLimit {mode.ac_to_time_limit:g}[/item], '
-                f'resolution [item]{mode.time_resolution_ms} ms[/item]), measuring '
-                f'the accepted solutions under [item]{mode.inference_timeout_ms} '
-                f'ms[/item].'
+                f'MOJ will calibrate every solution this package ships under '
+                f'[item]{mode.inference_timeout_ms} ms[/item] (inferenceTimeout); '
+                f'rbx estimates the time limit from what it measures.'
             )
             return
         if isinstance(self.timing_mode, ProbePinned):
