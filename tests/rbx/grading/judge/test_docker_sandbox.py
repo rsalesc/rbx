@@ -15,6 +15,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import List
 
+import psutil
 import pytest
 
 from rbx.grading.judge.program import ProgramNotFoundError
@@ -418,6 +419,94 @@ def test_normalize_priority():
     assert docker_agent.normalize_priority(-5) == 0
     assert docker_agent.normalize_priority(10**12) == unset
     assert docker_agent.normalize_priority(7) == 7
+
+
+def test_a_hangup_drops_a_queued_waiter(tmp_path: pathlib.Path):
+    hangup = docker_agent.Hangup()
+    raised: List[BaseException] = []
+    served = threading.Event()
+
+    def wait() -> None:
+        try:
+            with docker_agent.execution_slot(1, tmp_path, 0, hangup):
+                served.set()
+        except docker_agent.HostGone as e:
+            raised.append(e)
+
+    with docker_agent.execution_slot(1, tmp_path, 0):
+        thread = threading.Thread(target=wait)
+        thread.start()
+        _wait_for(lambda: len(_tickets(tmp_path)) == 1)
+        hangup.set()
+        # Leaves at once, while the slot is still held.
+        thread.join(timeout=docker_agent.SLOT_RECHECK_SECONDS / 2)
+        assert not thread.is_alive()
+        assert not _tickets(tmp_path)
+    assert len(raised) == 1
+    assert not served.is_set()
+    # And a hung-up agent never queues at all.
+    with pytest.raises(docker_agent.HostGone):
+        with docker_agent.execution_slot(1, tmp_path, 0, hangup):
+            pass
+    assert not _tickets(tmp_path)
+
+
+def test_an_agent_whose_host_hangs_up_kills_its_programs_and_exits(
+    tmp_path: pathlib.Path,
+):
+    # A program with no time limit (as sanitized runs have) holds the slot, and
+    # another request queues behind it; then the host goes away.
+    slots = tmp_path / 'slots'
+    looping, queued = tmp_path / 'looping', tmp_path / 'queued'
+    looping.mkdir()
+    queued.mkdir()
+    client = _agent(slots)
+    errors: List[BaseException] = []
+
+    def run(root: pathlib.Path, code: str) -> None:
+        try:
+            client.run(root, [sys.executable, '-c', code], SandboxParams())
+        except AgentError as e:
+            errors.append(e)
+
+    loop = 'import os\nopen("pid", "w").write(str(os.getpid()))\nwhile True: pass'
+    threads = [threading.Thread(target=run, args=(looping, loop))]
+    threads[0].start()
+    _wait_for(lambda: (looping / 'pid').exists() and (looping / 'pid').read_text())
+    pid = int((looping / 'pid').read_text())
+    threads.append(
+        threading.Thread(target=run, args=(queued, 'open("ran", "w").write("x")'))
+    )
+    threads[1].start()
+    _wait_for(lambda: len(_tickets(slots)) == 1)
+
+    agent_pid = client.request({'op': 'ping'})['pid']
+    started = time.monotonic()
+    client.close()
+    # The agent exited on its own: `close` would have killed it after 5s.
+    assert time.monotonic() - started < 4
+    assert not psutil.pid_exists(agent_pid)
+    for thread in threads:
+        thread.join(timeout=20)
+    # The queued request was dropped; the looping one was killed, and answered.
+    assert len(errors) == 1
+    assert 'HostGone' in str(errors[0])
+    assert not psutil.pid_exists(pid) or (
+        psutil.Process(pid).status() == psutil.STATUS_ZOMBIE
+    )
+    assert not (queued / 'ran').exists()
+    assert not _tickets(slots)
+    # The slot is free for the next rbx process.
+    acquired = threading.Event()
+
+    def take() -> None:
+        with docker_agent.execution_slot(1, slots, 0):
+            acquired.set()
+
+    taker = threading.Thread(target=take)
+    taker.start()
+    assert acquired.wait(timeout=5)
+    taker.join()
 
 
 def test_a_dead_agent_fails_requests_instead_of_hanging(tmp_path: pathlib.Path):

@@ -33,6 +33,7 @@ import json
 import os
 import pathlib
 import selectors
+import signal
 import stat
 import subprocess
 import sys
@@ -58,6 +59,10 @@ SLOTS_DIR = pathlib.Path('/tmp/rbx-slots')
 # Waiters sleep until whoever frees a slot wakes them (see `execution_slot`);
 # this is only how often they look anyway, in case a holder died holding one.
 SLOT_RECHECK_SECONDS = 0.5
+# Once the host hangs up, how often the agent sweeps for programs it still runs,
+# and for how long at most before it exits regardless.
+HANGUP_POLL_SECONDS = 0.1
+HANGUP_GRACE_SECONDS = 10.0
 # Which rbx process gets a slot first when several are waiting: lower first.
 # `rbx each` / `rbx on` set it to the problem's position in the run, so one
 # problem's local work runs back to back instead of interleaving with every
@@ -72,6 +77,40 @@ UNSET_PRIORITY = 999_999_999
 
 class AgentError(RuntimeError):
     """The agent could not be reached, or failed outside any program."""
+
+
+class HostGone(AgentError):
+    """The host hung up, so a request still queued or starting is dropped."""
+
+
+class Hangup:
+    """Raised once the host hangs up; wakes every waiter of this agent at once.
+
+    A waiter sleeps on its ticket (see `execution_slot`) and on `fileno()`,
+    which turns readable for good -- end-of-file -- when this is set.
+    """
+
+    def __init__(self) -> None:
+        self._read, self._write = os.pipe()
+        self._event = threading.Event()
+        self._lock = threading.Lock()
+
+    def fileno(self) -> int:
+        return self._read
+
+    def is_set(self) -> bool:
+        return self._event.is_set()
+
+    def set(self) -> None:
+        with self._lock:
+            if self._event.is_set():
+                return
+            self._event.set()
+            os.close(self._write)
+
+    def check(self) -> None:
+        if self.is_set():
+            raise HostGone('The host went away; the request was dropped.')
 
 
 # --------------------------------------------------------------------------
@@ -260,6 +299,7 @@ def execution_slot(
     slots: int,
     slots_dir: Optional[pathlib.Path] = None,
     priority: Any = None,
+    hangup: Optional[Hangup] = None,
 ) -> Iterator[None]:
     """Hold one of `slots` execution slots, shared by every agent in here.
 
@@ -292,6 +332,10 @@ def execution_slot(
     every `SLOT_RECHECK_SECONDS` on its own, the backstop for a holder that
     died without handing its slot on. All of this lives on the container's
     private /tmp, never the shared mount, so it is cheap and reliable.
+
+    Once `hangup` is set the host that asked is gone: a waiter leaves the queue
+    at once with `HostGone`, and never takes a slot to run something nobody
+    will read.
     """
     slots_dir = slots_dir or SLOTS_DIR
     waiting_dir = slots_dir / 'waiting'
@@ -304,7 +348,11 @@ def execution_slot(
     fd: Optional[int] = None
     reader: Optional[int] = None
     selector = selectors.DefaultSelector()
+    if hangup is not None:
+        selector.register(hangup, selectors.EVENT_READ)
     try:
+        if hangup is not None:
+            hangup.check()
         with _queue_lock(slots_dir):
             front = _front_ticket(waiting_dir)
             if front is None or ticket.name < front:
@@ -315,6 +363,8 @@ def execution_slot(
         while fd is None:
             assert reader is not None
             selector.select(SLOT_RECHECK_SECONDS)
+            if hangup is not None:
+                hangup.check()
             _drain(reader)
             with _queue_lock(slots_dir):
                 if not stat.S_ISFIFO(_lstat_mode(ticket)):
@@ -346,6 +396,9 @@ def execution_slot(
                 if _a_slot_is_free(paths):
                     _front_ticket(waiting_dir, wake=True)
     try:
+        if hangup is not None:
+            # Hung up while this one was being handed the slot.
+            hangup.check()
         yield
     finally:
         with _queue_lock(slots_dir):
@@ -358,6 +411,7 @@ def handle_request(
     request: Dict[str, Any],
     slots: int = 1,
     slots_dir: Optional[pathlib.Path] = None,
+    hangup: Optional[Hangup] = None,
 ) -> Any:
     """Run one request and return its JSON-able result."""
     op = request['op']
@@ -365,17 +419,19 @@ def handle_request(
         return {'pid': os.getpid()}
     # The wait for a slot happens before the program starts, so it never counts
     # towards the time the program is measured to take.
-    with execution_slot(slots, slots_dir, request.get('priority')):
-        return _run_request(request)
+    with execution_slot(slots, slots_dir, request.get('priority'), hangup):
+        return _run_request(request, hangup)
 
 
-def _run_request(request: Dict[str, Any]) -> Any:
+def _run_request(request: Dict[str, Any], hangup: Optional[Hangup] = None) -> Any:
     # Imported here so `keep` never pays for it.
     from rbx.grading.judge.sandboxes.stupid_sandbox import StupidSandbox
 
     op = request['op']
     root = pathlib.Path(request['root'])
     await_files(root, request.get('expect') or {})
+    if hangup is not None:
+        hangup.check()
     sandbox = StupidSandbox(path=root)
     params = SandboxParams.model_validate(request['params'])
     if op == 'run':
@@ -396,14 +452,47 @@ def _run_request(request: Dict[str, Any]) -> Any:
     raise ValueError(f'unknown op {op!r}')
 
 
+def _kill_programs() -> None:
+    """Kill every program this agent started, with their process groups.
+
+    Each program runs in a process group of its own (`setpgid` in
+    `program.get_preexec_fn`), so whatever it spawned goes too.
+    """
+    import psutil
+
+    own_group = os.getpgid(0)
+    try:
+        children = psutil.Process().children(recursive=True)
+    except psutil.Error:
+        return
+    for child in children:
+        try:
+            group = os.getpgid(child.pid)
+            if group != own_group:
+                os.killpg(group, signal.SIGKILL)
+            child.kill()
+        except (OSError, psutil.Error):
+            pass
+
+
 def serve(
     stdin: IO[str],
     stdout: IO[str],
     slots: int = 1,
     slots_dir: Optional[pathlib.Path] = None,
 ) -> None:
-    """Answer requests from `stdin` until it closes, each on its own thread."""
+    """Answer requests from `stdin` until it closes, each on its own thread.
+
+    `stdin` closing means the host is gone -- it exited, or was killed and
+    `docker exec` closed the agent's input -- so nobody will read what is still
+    being worked on. Leaving it be would be worse than wasteful: a request still
+    queued would go on to take the container-wide slot, and a program without a
+    time limit (sanitized runs have none) would hold it for good, stalling every
+    other rbx process. So queued requests drop out, running programs are
+    killed, and the agent exits.
+    """
     write_lock = threading.Lock()
+    hangup = Hangup()
 
     def answer(line: str) -> None:
         request_id = None
@@ -413,14 +502,18 @@ def serve(
             response = {
                 'id': request_id,
                 'ok': True,
-                'result': handle_request(request, slots, slots_dir),
+                'result': handle_request(request, slots, slots_dir, hangup),
             }
         except BaseException as e:  # reported back, never swallowed
             response = {'id': request_id, 'ok': False, 'error': _serialize_error(e)}
         payload = json.dumps(response)
         with write_lock:
-            stdout.write(payload + '\n')
-            stdout.flush()
+            try:
+                stdout.write(payload + '\n')
+                stdout.flush()
+            except (OSError, ValueError):
+                # The host is gone; there is nobody to answer.
+                pass
 
     threads: List[threading.Thread] = []
     for line in stdin:
@@ -430,8 +523,18 @@ def serve(
         thread.start()
         threads.append(thread)
         threads = [t for t in threads if t.is_alive()]
-    for thread in threads:
-        thread.join()
+    hangup.set()
+    deadline = time.monotonic() + HANGUP_GRACE_SECONDS
+    while True:
+        threads = [t for t in threads if t.is_alive()]
+        if not threads:
+            return
+        # Again on every round: a request may have started its program after
+        # the previous sweep.
+        _kill_programs()
+        if time.monotonic() >= deadline:
+            return
+        threads[0].join(HANGUP_POLL_SECONDS)
 
 
 def _register_agent() -> pathlib.Path:

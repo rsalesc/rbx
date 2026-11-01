@@ -26,6 +26,7 @@ the host's limits without noticing.
 
 from __future__ import annotations
 
+import atexit
 import functools
 import hashlib
 import importlib.metadata
@@ -461,6 +462,10 @@ class DockerRuntime:
                     last_error = e
                     continue
                 self._client = client
+                # Hang up on a clean exit too, so the agent never outlives us.
+                # (When this process is killed instead, `docker exec` dies with
+                # it, which closes the agent's input all the same.)
+                atexit.register(self.close)
                 return client
             raise _fail(
                 '[error]Could not start the rbx sandbox agent in container '
