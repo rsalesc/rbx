@@ -109,6 +109,13 @@ execution logic there -- change `StupidSandbox` and both paths get it. Rules:
   re-check every `SLOT_RECHECK_SECONDS` (0.5 s), the only backstop for a holder
   that died without handing its slot on (the kernel drops its `flock`). Never
   shorten that into a poll. Design: `docs/plans/2026-11-01-docker-sandbox-design.md`.
+- **The agent's stdin closing means the host is gone** (measured: SIGKILL of
+  the host's `docker exec -i` client closes the agent's stdin, and the agent
+  otherwise keeps running). `serve` then sets its `Hangup`: queued waiters drop
+  their ticket with `HostGone`, programs it started are killed with their
+  process groups (`_kill_programs`), and it exits. Without that, a sanitized run
+  (no time limit) stopped with Ctrl-C held the container-wide slot forever.
+  `DockerRuntime.client` registers `close` with `atexit` for clean exits.
 
 ## File Caching (`judge/cacher.py`, `judge/storage.py`)
 
