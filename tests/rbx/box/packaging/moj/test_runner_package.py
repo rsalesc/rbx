@@ -874,7 +874,7 @@ def test_judge_calibration_is_unchanged(testing_pkg, tmp_path):
         / 'conf'
     ).read_text()
 
-    assert _conf_value(conf, 'TLMOD[calibrafactor]') == '2'
+    assert _conf_value(conf, 'TLMETHOD') == 'kattis'
     assert not _overrides(conf)
 
 

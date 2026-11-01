@@ -2,7 +2,8 @@ import pytest
 import typer
 
 from rbx.box.packaging.moj import timing
-from rbx.box.packaging.moj.packager import JudgeCalibrated
+from rbx.box.packaging.moj.packager import JudgeCalibrated, check_timing_setup
+from rbx.box.schema import PackageTiming, TimingMultipliersOverride
 from tests.rbx.box.packaging.moj.conftest import (
     CHECKER,
     build_entries,
@@ -142,13 +143,13 @@ def test_packaging_without_a_limits_profile_fails(testing_pkg, tmp_path):
         )
 
 
-def test_calibrate_hands_the_ac_ratio_to_moj(testing_pkg, tmp_path):
+def _calibrated_conf(testing_pkg, tmp_path) -> str:
     testing_pkg.add_file('check.cpp').write_text(CHECKER)
     testing_pkg.set_checker('check.cpp')
     testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
     testing_pkg.save()
 
-    conf = (
+    return (
         run_packager(
             testing_pkg,
             tmp_path,
@@ -159,9 +160,42 @@ def test_calibrate_hands_the_ac_ratio_to_moj(testing_pkg, tmp_path):
         / 'conf'
     ).read_text()
 
-    # The environment's acToTimeLimit, so the judge's own measurements land where
-    # `rbx time` would have put the limit.
-    assert _conf_value(conf, 'TLMOD[calibrafactor]') == '2'
-    # Nothing is pinned, so the judge's measurement is not overridden either.
+
+def test_calibrate_asks_moj_for_the_kattis_rule(testing_pkg, tmp_path):
+    conf = _calibrated_conf(testing_pkg, tmp_path)
+
+    # The environment's timing.multipliers, as MOJ's Kattis method takes them, so
+    # the judge's own measurements land where `rbx time` would have put the limit.
+    assert _conf_value(conf, 'TLMETHOD') == 'kattis'
+    assert _conf_value(conf, 'KATTIS_AC_TO_TIME_LIMIT') == '2'
+    assert _conf_value(conf, 'KATTIS_TIME_RESOLUTION') == '0.1'
+    # The accepted solutions run under the inferenceTimeout rbx estimates under.
+    assert _conf_value(conf, 'CALIBRATIONTL') == '10'
+    # The old linear factor is gone, and nothing is pinned over the judge's limit.
+    assert 'TLMOD[calibrafactor]' not in _keys(conf)
     assert not [key for key in _keys(conf) if key.startswith('TLOVERRIDE[')]
-    assert 'CALIBRATIONTL' not in _keys(conf)
+
+
+def test_calibrate_reads_the_problem_multiplier_overrides(testing_pkg, tmp_path):
+    testing_pkg.yml.timing = PackageTiming(
+        multipliers=TimingMultipliersOverride(
+            acToTimeLimit=3, timeLimitToTle=2.5, timeResolution=50
+        )
+    )
+
+    conf = _calibrated_conf(testing_pkg, tmp_path)
+
+    assert _conf_value(conf, 'KATTIS_AC_TO_TIME_LIMIT') == '3'
+    assert _conf_value(conf, 'KATTIS_TIME_LIMIT_TO_TLE') == '2.5'
+    assert _conf_value(conf, 'KATTIS_TIME_RESOLUTION') == '0.05'
+
+
+def test_calibrate_refuses_multipliers_moj_would_refuse(testing_pkg, tmp_path):
+    # MOJ takes acToTimeLimit only in [1, 100]: refuse before anything is uploaded.
+    testing_pkg.yml.timing = PackageTiming(
+        multipliers=TimingMultipliersOverride(acToTimeLimit=0.5)
+    )
+    testing_pkg.save()
+
+    with pytest.raises(typer.Exit):
+        check_timing_setup(JudgeCalibrated())
