@@ -128,6 +128,14 @@ class DockerConfig(BaseModel):
         "sanitizers' ones) while Docker is enabled, since those name tools on this "
         'machine.',
     )
+    max_parallel: int = Field(
+        default=1,
+        ge=1,
+        description='Programs that may run in the container at once, across every '
+        'rbx command using it. Docker Desktop (macOS) can hand programs truncated '
+        'files when several read at the same time, so raise this only on a Linux '
+        'host, or knowing the risk.',
+    )
     idle_timeout: int = Field(
         default=900,
         description='Seconds the container stays up with no rbx command using it.',

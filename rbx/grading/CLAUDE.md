@@ -89,7 +89,11 @@ execution logic there -- change `StupidSandbox` and both paths get it. Rules:
 - Docker Desktop traps, both measured: a bind mount nested in another is dropped
   (boxes live outside every mount), and a file the host just wrote can read as
   empty in the guest for ~100ms -- every request carries a size manifest that
-  `await_files` waits on. Design: `docs/plans/2026-11-01-docker-sandbox-design.md`.
+  `await_files` waits on. And programs reading through the share **in parallel**
+  get mid-file EOFs and SIGBUS, so `execution_slot` runs one program at a time
+  across every agent in the container (`docker.max_parallel` to opt out). Do not
+  "optimise" that lock away without re-running the measurement in the design doc.
+  Design: `docs/plans/2026-11-01-docker-sandbox-design.md`.
 
 ## File Caching (`judge/cacher.py`, `judge/storage.py`)
 
