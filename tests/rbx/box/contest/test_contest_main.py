@@ -3,6 +3,8 @@
 import asyncio
 import os
 import pathlib
+import subprocess
+import threading
 from unittest import mock
 
 import pytest
@@ -761,7 +763,7 @@ class TestContestEach:
             result = runner.invoke(contest_main.app, ['each'])
 
         assert result.exit_code == 0, result.output
-        history.assert_called_once_with(None)
+        history.assert_called_once_with(None, parallel=False)
         # The picker handled it; no session was started behind it.
         start_app.assert_not_called()
 
@@ -951,3 +953,188 @@ class TestContestInline:
 
         assert result.exit_code == 0, result.output
         assert [c.args[0] for c in call.call_args_list] == ['bash -c', 'bash -c']
+
+
+class TestContestParallel:
+    """`--parallel`: problems run side by side, each chain still in order."""
+
+    @pytest.fixture
+    def contest_dir(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        clear_package_caches,
+    ) -> pathlib.Path:
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / 'contest.rbx.yml').write_text(
+            'name: ctt\n'
+            'problems:\n'
+            '  - short_name: A\n    path: probs/a\n'
+            '  - short_name: B\n    path: probs/b\n'
+        )
+        for name in ('a', 'b'):
+            _write_minimal_problem(tmp_path / 'probs' / name, f'prob-{name}')
+        return tmp_path
+
+    @staticmethod
+    def _completed(cmd: str, returncode: int = 0, output: bytes = b''):
+        return subprocess.CompletedProcess(cmd, returncode, stdout=output)
+
+    def test_each_parallel_opens_a_parallel_app(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with mock.patch('rbx.box.ui.command_app.start_command_app') as start_app:
+            result = runner.invoke(contest_main.app, ['each', '-p', 'build'])
+
+        assert result.exit_code == 0, result.output
+        assert start_app.call_args.kwargs['parallel'] is True
+
+    def test_each_is_sequential_by_default(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with mock.patch('rbx.box.ui.command_app.start_command_app') as start_app:
+            result = runner.invoke(contest_main.app, ['each', 'build'])
+
+        assert result.exit_code == 0, result.output
+        assert start_app.call_args.kwargs['parallel'] is False
+
+    def test_on_parallel_flag_precedes_the_problem_selector(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with mock.patch('rbx.box.ui.command_app.start_command_app') as start_app:
+            result = runner.invoke(
+                contest_main.app, ['on', '--parallel', 'A..B', 'build']
+            )
+
+        assert result.exit_code == 0, result.output
+        assert start_app.call_args.kwargs['parallel'] is True
+
+    def test_on_parallel_after_the_selector_belongs_to_the_command(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with mock.patch('rbx.box.ui.command_app.start_command_app') as start_app:
+            result = runner.invoke(contest_main.app, ['on', 'A..B', 'build', '-p'])
+
+        assert result.exit_code == 0, result.output
+        (commands,), kwargs = start_app.call_args
+        assert commands[0].argvs == [['rbx', 'build', '-p']]
+        assert kwargs['parallel'] is False
+
+    def test_each_parallel_without_args_reopens_history_in_parallel(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with mock.patch(
+            'rbx.box.ui.run_picker.open_run_history', return_value='done'
+        ) as history:
+            result = runner.invoke(contest_main.app, ['each', '-p'])
+
+        assert result.exit_code == 0, result.output
+        history.assert_called_once_with(None, parallel=True)
+
+    def test_inline_parallel_runs_the_problems_concurrently(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        # Each problem's first command waits for the other's: run one after
+        # another, the barrier would time out and break.
+        barrier = threading.Barrier(2, timeout=10)
+        calls = []
+        lock = threading.Lock()
+
+        def fake_run(cmd, **kwargs):
+            with lock:
+                calls.append((cmd, str(kwargs['cwd'])))
+            if cmd == 'rbx build':
+                barrier.wait()
+            return self._completed(cmd, output=f'{cmd} @ {kwargs["cwd"]}\n'.encode())
+
+        with (
+            mock.patch.object(contest_main.subprocess, 'run', side_effect=fake_run),
+            mock.patch.object(contest_main.subprocess, 'call') as call,
+            mock.patch('rbx.box.ui.command_app.start_command_app') as start_app,
+        ):
+            result = runner.invoke(
+                contest_main.app, ['each', '-ip', 'build', '::', 'run']
+            )
+
+        assert result.exit_code == 0, result.output
+        start_app.assert_not_called()
+        call.assert_not_called()
+        # Within a problem, the chain keeps its order.
+        for cwd in ('probs/a', 'probs/b'):
+            assert [c for c, d in calls if d == cwd] == ['rbx build', 'rbx run']
+        # Each command's captured output reaches the terminal.
+        for cwd in ('probs/a', 'probs/b'):
+            assert f'rbx build @ {cwd}' in result.output
+            assert f'rbx run @ {cwd}' in result.output
+
+    def test_inline_parallel_failure_skips_only_its_own_chain(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        calls = []
+        lock = threading.Lock()
+
+        def fake_run(cmd, **kwargs):
+            cwd = str(kwargs['cwd'])
+            with lock:
+                calls.append((cmd, cwd))
+            failing = cmd == 'rbx build' and cwd == 'probs/a'
+            return self._completed(cmd, returncode=3 if failing else 0)
+
+        with mock.patch.object(contest_main.subprocess, 'run', side_effect=fake_run):
+            result = runner.invoke(
+                contest_main.app, ['each', '-ip', 'build', '::', 'run']
+            )
+
+        assert result.exit_code == 1, result.output
+        assert sorted(calls) == [
+            ('rbx build', 'probs/a'),
+            ('rbx build', 'probs/b'),
+            ('rbx run', 'probs/b'),
+        ]
+        assert 'failed' in result.output
+        assert 'exit code 3' in result.output
+
+    def test_inline_parallel_keep_going_runs_a_failing_chain_through(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        calls = []
+        lock = threading.Lock()
+
+        def fake_run(cmd, **kwargs):
+            with lock:
+                calls.append((cmd, str(kwargs['cwd'])))
+            return self._completed(cmd, returncode=1 if cmd == 'rbx build' else 0)
+
+        with mock.patch.object(contest_main.subprocess, 'run', side_effect=fake_run):
+            result = runner.invoke(
+                contest_main.app, ['each', '-ikp', 'build', '::', 'run']
+            )
+
+        assert result.exit_code == 1, result.output
+        assert len(calls) == 4
+
+    def test_inline_parallel_on_one_problem_streams_to_the_terminal(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        # Nothing to run alongside, so nothing to hold back.
+        with (
+            mock.patch.object(contest_main.subprocess, 'call', return_value=0) as call,
+            mock.patch.object(contest_main.subprocess, 'run') as run,
+        ):
+            result = runner.invoke(contest_main.app, ['on', '-p', 'A', 'build'])
+
+        assert result.exit_code == 0, result.output
+        run.assert_not_called()
+        assert call.call_args.args[0] == 'rbx build'
+
+    def test_inline_parallel_captures_real_output(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        result = runner.invoke(
+            contest_main.app,
+            ['each', '-ip', 'bash', '-c', 'echo "in $(basename $PWD)"'],
+        )
+
+        assert result.exit_code == 0, result.output
+        assert 'in a' in result.output
+        assert 'in b' in result.output

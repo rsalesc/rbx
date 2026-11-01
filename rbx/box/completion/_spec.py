@@ -54,6 +54,16 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Run the problems at the same time instead of one after '
+                    "another. Each problem's chain still runs in order. Must come "
+                    'before the problem selector in `rbx on`.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--parallel', '-p'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,
@@ -86,6 +96,16 @@ SPEC = {
                     'kind': 'option',
                     'multiple': False,
                     'names': ['--inline', '-i'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
+                    'help': 'Run the problems at the same time instead of one after '
+                    "another. Each problem's chain still runs in order. Must come "
+                    'before the problem selector in `rbx on`.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--parallel', '-p'],
                     'takes_value': False,
                     'value': {'kind': 'none'},
                 },
@@ -2815,6 +2835,17 @@ SPEC = {
                             'value': {'kind': 'none'},
                         },
                         {
+                            'help': 'Run the problems at the same time instead of one '
+                            "after another. Each problem's chain still runs "
+                            'in order. Must come before the problem selector '
+                            'in `rbx on`.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--parallel', '-p'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
                             'multiple': False,
@@ -2855,6 +2886,17 @@ SPEC = {
                             'kind': 'option',
                             'multiple': False,
                             'names': ['--inline', '-i'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Run the problems at the same time instead of one '
+                            "after another. Each problem's chain still runs "
+                            'in order. Must come before the problem selector '
+                            'in `rbx on`.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--parallel', '-p'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
                         },

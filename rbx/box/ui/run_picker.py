@@ -130,8 +130,12 @@ def entries_from_manifest(manifest: run_history.RunManifest) -> List['CommandEnt
 def open_run_history(
     problem_names: Optional[List[str]] = None,
     root: pathlib.Path = pathlib.Path(),
+    parallel: bool = False,
 ) -> str:
     """Show the picker and reopen whatever is chosen.
+
+    `parallel` is not part of a recorded run: it applies to whatever the reopened
+    session queues from now on, as it would for a fresh one.
 
     Returns `NO_HISTORY` when there is nothing recorded and `NEW_REQUESTED` when
     the user picked the new-session row -- in both cases the caller falls back to
@@ -165,6 +169,6 @@ def open_run_history(
         return HANDLED
 
     entries = entries_from_manifest(handle.manifest)
-    app = rbxCommandApp(entries, run_handle=handle, restored=True)
+    app = rbxCommandApp(entries, parallel=parallel, run_handle=handle, restored=True)
     app.run()
     return HANDLED

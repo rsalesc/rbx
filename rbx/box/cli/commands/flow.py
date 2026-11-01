@@ -46,8 +46,11 @@ app = typer.Typer(cls=annotations.AliasGroup)
     command failed -- handy for a couple of problems, or for a script that cannot
     answer a TUI.
 
+    Pass `-p`/`--parallel` to run the selected problems at the same time instead
+    of one after another, as described for [`rbx each`](#rbx-each).
+
     Since flags after the problem selector belong to the chained commands,
-    `-k`/`--keep-going` and `-i`/`--inline` have to come first:
+    `-k`/`--keep-going`, `-i`/`--inline` and `-p`/`--parallel` have to come first:
     `rbx on -ik A build :: run`.
     """)
 )
@@ -62,8 +65,9 @@ def on(
     ],
     keep_going: bool = contest.KEEP_GOING_OPTION,
     inline: bool = contest.INLINE_OPTION,
+    parallel: bool = contest.PARALLEL_OPTION,
 ) -> None:
-    contest.on(ctx, problems, keep_going=keep_going, inline=inline)
+    contest.on(ctx, problems, keep_going=keep_going, inline=inline, parallel=parallel)
 
 
 @app.command(
@@ -98,10 +102,22 @@ def on(
     your terminal, one after another. Nothing is interactive in that mode, and the
     command exits non-zero if any command failed, so it is the mode to reach for
     from a script.
+
+    Pass `-p`/`--parallel` to run the problems at the same time rather than one
+    after another. Each problem's chain still runs in order. Only do this when the
+    commands do not compete for something they need alone -- timing solutions in
+    parallel, for instance, skews the measurements. In the TUI every tab runs on its
+    own; inline, each command's output is held back and printed in one block when
+    it finishes, so problems running side by side do not interleave their lines:
+
+    ```bash
+    rbx each -ip build
+    ```
 """)
 def each(
     ctx: typer.Context,
     keep_going: bool = contest.KEEP_GOING_OPTION,
     inline: bool = contest.INLINE_OPTION,
+    parallel: bool = contest.PARALLEL_OPTION,
 ) -> None:
-    contest.each(ctx, keep_going=keep_going, inline=inline)
+    contest.each(ctx, keep_going=keep_going, inline=inline, parallel=parallel)
