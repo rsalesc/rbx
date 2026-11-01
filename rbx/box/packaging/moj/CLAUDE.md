@@ -114,7 +114,8 @@ the override wins regardless. (Changing an override changes the `tl-checksum` an
 triggers a recalibration; that is equally harmless.) rbx does **not** pin anything
 through `TLMOD` any more: the pre-`TLOVERRIDE` trick -- a zero-slope
 `TLMOD[calibrafactor]=<base - 0.02>+0` `bc` expression plus `TLMOD[<lang>.sum]`
-increments -- is gone, and `calibrafactor` is now emitted only under `--calibrate`.
+increments -- is gone, and rbx emits no `calibrafactor` at all now (`--calibrate`
+uses the Kattis method instead, below).
 
 `CALIBRATIONTL` is raised alongside them: it is the dummy limit calibration enforces
 while it runs the solutions, and its 5s default can be tighter than what this problem
@@ -127,11 +128,21 @@ for a solution while estimating, and calibration re-runs the same ones
 **Without a profile the packager refuses**, rather than silently falling back to a
 factor nobody chose: run `rbx time -p moj`, or pass `--calibrate`.
 
-**`rbx package moj --calibrate`** hands the decision back to MOJ, emitting
-`TLMOD[calibrafactor]=<acToTimeLimit>` -- rbx's own ratio, so the judge's measurements
-land where `rbx time` would have put the limit, but measured on the judge machine
-rather than the setter's. It needs `timing.multipliers` in `env.rbx.yml`: a problem
+**`rbx package moj --calibrate`** hands the decision back to MOJ by its **Kattis
+method** (mojtools `tl-methods.sh`): `TLMETHOD=kattis` plus `KATTIS_AC_TO_TIME_LIMIT`,
+`KATTIS_TIME_LIMIT_TO_TLE` and `KATTIS_TIME_RESOLUTION` from the problem's resolved
+`timing.multipliers` (env, then the problem's `timing.multipliers` overrides), and
+`CALIBRATIONTL` from `inferenceTimeout`. That is exactly the rule `rbx time` applies
+locally -- `TLKATTIS[lang]` is the smallest multiple of `r` at least `a x` the worst
+accepted test -- and the same block the `rbx time --runner moj` probe
+(`ProbeCalibrated`) asks for, built from the shared `KattisParameters`. It replaced
+the linear `TLMOD[calibrafactor]=<acToTimeLimit>`, which ignored `timeResolution`
+and `timeLimitToTle`. MOJ's ranges (`a`, `b` in [1, 100], `r` in (0, 10] s) are
+refused before the build (`_kattis_parameters_or_die`, called from
+`check_timing_setup`). It needs `timing.multipliers` in `env.rbx.yml`: a problem
 estimating with a *formula* defines no such ratio, and packaging errors out saying so.
+Unlike the probe, solutions keep their outcome-based `sols/` directories, so the
+slow ones are judged against the calibrated limit too.
 
 **A third mode, `ProbePinned(default_ms, per_rbx_language_ms)`**, exists for the MOJ
 *runner* and is not reachable from the CLI. It pins exactly what the timing run asked

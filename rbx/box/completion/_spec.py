@@ -2462,8 +2462,9 @@ SPEC = {
                         },
                         {
                             'help': 'If set, let MOJ calibrate the time limits on the '
-                            'judge machine instead of pinning the ones '
-                            'estimated by `rbx time -p moj`.',
+                            'judge machine, by the Kattis rule with the '
+                            "problem's `timing.multipliers`, instead of "
+                            'pinning the ones estimated by `rbx time -p moj`.',
                             'kind': 'option',
                             'multiple': False,
                             'names': ['--calibrate'],

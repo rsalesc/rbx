@@ -50,9 +50,13 @@ that will judge the contest -- pass `--calibrate`:
 rbx package moj --calibrate
 ```
 
-MOJ then measures your accepted solutions and multiplies the worst time by the same ratio
-{{rbx}} would have used locally, so the limit lands where `rbx time` would have put it, but
-measured on the judge park.
+MOJ then times your accepted solutions on the judge and estimates the limit with the ratios
+from your [`timing.multipliers`](../profiling/computing.md#time-limit-ratios), as `rbx time`
+does locally. For each language, it takes the slowest accepted solution, multiplies its time
+by `acToTimeLimit`, and rounds up to a multiple of `timeResolution`. It then judges your
+too-slow solutions against that limit by `timeLimitToTle`, or by MOJ's default of `1.5`
+when you leave it unset. The limit lands where `rbx time` would have put it, but measured on
+the judge park.
 
 !!! warning
     `--calibrate` needs `timing.multipliers` in your `env.rbx.yml`. A problem that estimates its

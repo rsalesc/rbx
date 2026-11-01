@@ -153,8 +153,10 @@ class ProfilePinned:
 class JudgeCalibrated:
     """Let MOJ measure them. `rbx package moj --calibrate`.
 
-    No `TLOVERRIDE` at all: the judge's own calibration decides, scaled by
-    `TLMOD[calibrafactor]` = rbx's `acToTimeLimit`.
+    No `TLOVERRIDE` at all: the judge's own calibration decides, by the Kattis
+    method (`TLMETHOD=kattis`) with the problem's own `timing.multipliers` -- the
+    rule `rbx time` applies locally, so the limit lands where it would have put
+    it, but from the judge machine's measurements. See `KattisParameters`.
     """
 
 
@@ -213,18 +215,14 @@ class ProbePinned:
 
 
 @dataclasses.dataclass(frozen=True)
-class ProbeCalibrated:
-    """Let MOJ estimate the limit itself, by the Kattis rule. What `rbx time`
-    uploads when the problem estimates with `timing.multipliers`.
+class KattisParameters:
+    """rbx's `timing.multipliers`, as MOJ's Kattis method takes them.
 
     rbx's multipliers *are* the Kattis method MOJ implements next to its own
     (mojtools `tl-methods.sh`, spec 2025-09): `TLKATTIS[lang]` is the smallest
-    multiple of `r` that is at least `a x W[lang]`, `W` the worst accepted test.
-    So instead of testrunning each solution and estimating locally, the package
-    ships the solutions the estimate is about -- the lower-bound ones in
-    `sols/good`, the upper-bound ones in `sols/slow` -- and says `TLMETHOD=kattis`.
-    One calibration then measures the accepted solutions, computes the limit,
-    and judges the slow ones against it.
+    multiple of `r` that is at least `a x W[lang]`, `W` the worst accepted test,
+    and `sols/slow` is then judged against that limit, expected to need `b` times
+    it. Both `--calibrate` packages and the `rbx time` probe ask for it.
 
     Ranges are MOJ's own (`conf_tlmethod_sane`): `a` and `b` in [1, 100], `r` in
     (0, 10] seconds. Outside them the server refuses the package, so the
@@ -232,8 +230,8 @@ class ProbeCalibrated:
     """
 
     ac_to_time_limit: float
-    # None when the problem sets no `timeLimitToTle`: the slow solutions are then
-    # not shipped, and MOJ's own default (1.5) is emitted only so `conf` is total.
+    # None when the problem sets no `timeLimitToTle`: MOJ's own default (1.5) is
+    # then emitted, only so `conf` is total.
     time_limit_to_tle: Optional[float]
     time_resolution_ms: int
     # The cap every accepted solution runs under, as `CALIBRATIONTL`: what the
@@ -258,6 +256,21 @@ class ProbeCalibrated:
                 f'MOJ estimates by the Kattis rule only with `timeResolution` above 0 '
                 f'and at most 10000 ms, got `{self.time_resolution_ms}`.'
             )
+
+
+@dataclasses.dataclass(frozen=True)
+class ProbeCalibrated(KattisParameters):
+    """Let MOJ estimate the limit itself, by the Kattis rule. What `rbx time`
+    uploads when the problem estimates with `timing.multipliers`.
+
+    Instead of testrunning each solution and estimating locally, the package
+    ships the solutions the estimate is about -- the lower-bound ones in
+    `sols/good`, the upper-bound ones in `sols/slow` (only with a
+    `timeLimitToTle`), filed by inference role -- and says `TLMETHOD=kattis`. One
+    calibration then measures the accepted solutions, computes the limit, and
+    judges the slow ones against it. A setter's package asks MOJ for the same
+    method with `--calibrate` (`JudgeCalibrated`).
+    """
 
 
 # How a package settles its time limits. The packager refuses to guess between these,
@@ -374,26 +387,43 @@ def _inference_timeout_ms() -> int:
     )
 
 
-def _ac_to_time_limit_or_die() -> float:
-    """The ratio `--calibrate` hands MOJ as `TLMOD[calibrafactor]`.
+def _kattis_parameters_or_die() -> KattisParameters:
+    """The Kattis parameters `--calibrate` hands MOJ, from `timing.multipliers`.
 
-    It only exists in multiplier mode: a problem estimating with a formula has no
+    They only exist in multiplier mode: a problem estimating with a formula has no
     single ratio between the slowest accepted solution and the limit, so there is
-    nothing to hand the judge and the setter has to pin the limits instead.
+    nothing to hand the judge and the setter has to pin the limits instead. A
+    multiplier outside MOJ's range is refused here, naming the field, rather than
+    by the server after an upload.
     """
     multipliers = _resolved_multipliers()
     if multipliers is None:
         console.console.print(
-            '[error][item]--calibrate[/item] needs an [item]acToTimeLimit[/item], but '
-            'this problem estimates time limits with a formula.[/error]\n'
-            '[error]MOJ scales the measured runtime of the accepted solutions by a '
-            'single ratio, which a formula does not define.[/error]\n'
+            '[error][item]--calibrate[/item] needs [item]timing.multipliers[/item], '
+            'but this problem estimates time limits with a formula.[/error]\n'
+            '[error]MOJ estimates the limit by the Kattis rule, scaling the measured '
+            'runtime of the accepted solutions by a single ratio, which a formula '
+            'does not define.[/error]\n'
             '[error]Set [item]timing.multipliers[/item] in [item]env.rbx.yml[/item], '
             f'or run [item]rbx time -p {LIMITS_PROFILE}[/item] and package without '
             '[item]--calibrate[/item] to pin the limits instead.[/error]'
         )
         raise typer.Exit(1)
-    return multipliers.acToTimeLimit
+    try:
+        return KattisParameters(
+            ac_to_time_limit=multipliers.acToTimeLimit,
+            time_limit_to_tle=multipliers.timeLimitToTle,
+            time_resolution_ms=multipliers.timeResolution,
+            inference_timeout_ms=_inference_timeout_ms(),
+        )
+    except ValueError as e:
+        console.console.print(
+            f'[error]{e}[/error]\n'
+            '[error]MOJ refuses a package whose Kattis parameters are out of range. '
+            'Adjust [item]timing.multipliers[/item], or package without '
+            '[item]--calibrate[/item] to pin the limits instead.[/error]'
+        )
+        raise typer.Exit(1) from None
 
 
 def _refuse_non_min_groups(pkg: Package) -> None:
@@ -457,7 +487,7 @@ def check_timing_setup(timing_mode: TimingMode) -> None:
         _require_limits_profile()
         return
     if isinstance(timing_mode, JudgeCalibrated):
-        _ac_to_time_limit_or_die()
+        _kattis_parameters_or_die()
         if limits_info.get_saved_limits_profile(LIMITS_PROFILE) is not None:
             console.console.print(
                 f'[warning]A [item]{LIMITS_PROFILE}[/item] limits profile exists, but '
@@ -475,10 +505,10 @@ class MojPackager(BasePackager):
     shape everything else:
 
     - **Time limits go through `conf`, never `tl`.** MOJ measures the limit by
-      running every `sols/good` solution and scaling by `TLMOD[calibrafactor]`, so
-      `conf` carries the only limit knobs: by default rbx pins them there with
-      `TLOVERRIDE` from the `moj` limits profile, and `--calibrate` leaves them to
-      the judge. A remote timing run takes the third mode, `ProbePinned`. See
+      running every `sols/good` solution, so `conf` carries the only limit knobs:
+      by default rbx pins them there with `TLOVERRIDE` from the `moj` limits
+      profile, and `--calibrate` leaves them to the judge's Kattis method. A remote
+      timing run takes `ProbePinned` or `ProbeCalibrated`. See
       `rbx.box.packaging.moj.timing`.
     - **A single-file checker.** MOJ's bridge compiles `scripts/checker.cpp` with only
       `testlib.h` reachable, so the checker is amalgamated rather than shipped with
@@ -1006,7 +1036,14 @@ class MojPackager(BasePackager):
         the reason `check_timing_setup` gives.
         """
         if isinstance(self.timing_mode, JudgeCalibrated):
-            return moj_timing.calibrated_limit_lines(_ac_to_time_limit_or_die())
+            params = _kattis_parameters_or_die()
+            return moj_timing.kattis_limit_lines(
+                params.ac_to_time_limit,
+                params.time_limit_to_tle,
+                params.time_resolution_ms,
+                params.inference_timeout_ms,
+                explanation=moj_timing.CALIBRATE_EXPLANATION,
+            )
         if isinstance(self.timing_mode, ProbePinned):
             # Note `_require_limits_profile` deliberately does NOT fire here: that
             # check is about the `moj` profile, and this package does not consult it.
@@ -1029,6 +1066,7 @@ class MojPackager(BasePackager):
                 mode.time_limit_to_tle,
                 mode.time_resolution_ms,
                 mode.inference_timeout_ms,
+                explanation=moj_timing.PROBE_KATTIS_EXPLANATION,
             )
         typing.assert_never(self.timing_mode)
 
@@ -1120,6 +1158,13 @@ class MojPackager(BasePackager):
         this run submits can reach it.
         """
         if isinstance(self.timing_mode, JudgeCalibrated):
+            params = _kattis_parameters_or_die()
+            console.console.print(
+                f'MOJ will calibrate the time limit by the Kattis rule '
+                f'([item]acToTimeLimit {params.ac_to_time_limit:g}[/item], '
+                f'resolution [item]{params.time_resolution_ms} ms[/item]) from the '
+                'accepted solutions this package ships.'
+            )
             return
         if isinstance(self.timing_mode, ProbeCalibrated):
             mode = self.timing_mode
