@@ -1,0 +1,42 @@
+{
+    "$defs": {
+        "RegistryPreset": {
+            "properties": {
+                "name": {
+                    "maxLength": 32,
+                    "minLength": 3,
+                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9\\-]*$",
+                    "title": "Name",
+                    "type": "string"
+                },
+                "uri": {
+                    "title": "Uri",
+                    "type": "string"
+                },
+                "description": {
+                    "default": "",
+                    "title": "Description",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "name",
+                "uri"
+            ],
+            "title": "RegistryPreset",
+            "type": "object"
+        }
+    },
+    "properties": {
+        "presets": {
+            "default": [],
+            "items": {
+                "$ref": "#/$defs/RegistryPreset"
+            },
+            "title": "Presets",
+            "type": "array"
+        }
+    },
+    "title": "PresetRegistry",
+    "type": "object"
+}
