@@ -5,9 +5,13 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Annotated, List, Optional, Tuple
 
+import rich.markup
 import rich.prompt
+import rich.text
 import syncer
 import typer
 
@@ -472,6 +476,17 @@ INLINE_OPTION = typer.Option(
     ),
 )
 
+PARALLEL_OPTION = typer.Option(
+    False,
+    '--parallel',
+    '-p',
+    help=(
+        'Run the problems at the same time instead of one after another. Each '
+        "problem's chain still runs in order. Must come before the problem "
+        'selector in `rbx on`.'
+    ),
+)
+
 
 def _export_contest_selection() -> None:
     """Make the active contest selection visible to the `rbx` children we spawn.
@@ -491,7 +506,9 @@ def _export_contest_selection() -> None:
         os.environ[contest_state.ENV_VAR] = selection
 
 
-def _offer_run_history(problem_names: Optional[List[str]] = None) -> bool:
+def _offer_run_history(
+    problem_names: Optional[List[str]] = None, parallel: bool = False
+) -> bool:
     """Offer to reopen a past `each`/`on` session.
 
     Reached when there is no command to forward. Returns True once it has shown
@@ -501,7 +518,7 @@ def _offer_run_history(problem_names: Optional[List[str]] = None) -> bool:
     """
     from rbx.box.ui import run_picker
 
-    outcome = run_picker.open_run_history(problem_names)
+    outcome = run_picker.open_run_history(problem_names, parallel=parallel)
     return outcome == run_picker.HANDLED
 
 
@@ -515,37 +532,112 @@ def _build_command_argvs_or_die(
         raise typer.Exit(1) from e
 
 
-def _run_inline(commands: List['CommandEntry'], keep_going: bool) -> None:
+def _run_inline(
+    commands: List['CommandEntry'], keep_going: bool, parallel: bool = False
+) -> None:
     """Run every chain in this terminal instead of opening the TUI.
 
-    Each entry's commands run in order in the entry's directory, and their
-    output goes straight to the terminal -- nothing is captured, so a command
-    that draws its own progress still looks like it does on its own. A failing
+    Each entry's commands run in order in the entry's directory. A failing
     command skips the rest of that entry's chain unless `keep_going`; other
     entries run either way, mirroring the TUI. The exit code is non-zero if any
     command failed, which is what makes the flag usable from a script.
+
+    Entries run one after another, with output going straight to the terminal --
+    nothing is captured, so a command that draws its own progress still looks
+    like it does on its own. With `parallel`, every entry's chain runs on its own
+    thread instead; see `_run_chain_captured` for how their output is kept apart.
     """
-    failed = False
-    for command in commands:
-        for argv in command.argvs:
-            line = shlex.join(argv)
-            console.console.print(
-                f'[status]Running [item]{line}[/item] for '
-                f'[item]{command.display_name}[/item]...[/status]'
+    if parallel and len(commands) > 1:
+        lock = threading.Lock()
+        with ThreadPoolExecutor(max_workers=len(commands)) as pool:
+            results = list(
+                pool.map(
+                    lambda command: _run_chain_captured(command, keep_going, lock),
+                    commands,
+                )
             )
-            code = subprocess.call(line, cwd=command.cwd, shell=True)
-            if code == 0:
-                continue
-            failed = True
-            console.console.print(
-                f'[error]Command [item]{line}[/item] failed for '
-                f'[item]{command.display_name}[/item] with exit code {code}.[/error]'
-            )
-            if not keep_going:
-                break
+        failed = not all(results)
+    else:
+        failed = not all(
+            [_run_chain_in_terminal(command, keep_going) for command in commands]
+        )
 
     if failed:
         raise typer.Exit(1)
+
+
+def _run_chain_in_terminal(command: 'CommandEntry', keep_going: bool) -> bool:
+    """Run one entry's chain with its output going straight to the terminal."""
+    ok = True
+    for argv in command.argvs:
+        line = shlex.join(argv)
+        console.console.print(
+            f'[status]Running [item]{line}[/item] for '
+            f'[item]{command.display_name}[/item]...[/status]'
+        )
+        code = subprocess.call(line, cwd=command.cwd, shell=True)
+        if code == 0:
+            continue
+        ok = False
+        _print_inline_failure(command, line, code)
+        if not keep_going:
+            break
+    return ok
+
+
+def _run_chain_captured(
+    command: 'CommandEntry', keep_going: bool, lock: threading.Lock
+) -> bool:
+    """Run one entry's chain alongside others, printing each command's output whole.
+
+    Several children writing to one terminal at once would interleave their
+    lines and fight over progress bars, so each command's output (stdout and
+    stderr together) is captured and printed in one block, under a header that
+    names the problem, once the command finishes. `lock` keeps two blocks from
+    being printed into each other.
+    """
+    ok = True
+    for argv in command.argvs:
+        line = shlex.join(argv)
+        with lock:
+            console.console.print(
+                f'[status]Started [item]{line}[/item] for '
+                f'[item]{command.display_name}[/item]...[/status]'
+            )
+        completed = subprocess.run(
+            line,
+            cwd=command.cwd,
+            shell=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        output = completed.stdout.decode(errors='replace') if completed.stdout else ''
+        with lock:
+            console.console.rule(
+                f'[item]{command.display_name}[/item]: {rich.markup.escape(line)}',
+                align='left',
+            )
+            if output:
+                console.console.print(
+                    rich.text.Text.from_ansi(output.rstrip('\n')),
+                    highlight=False,
+                )
+            if completed.returncode != 0:
+                _print_inline_failure(command, line, completed.returncode)
+        if completed.returncode == 0:
+            continue
+        ok = False
+        if not keep_going:
+            break
+    return ok
+
+
+def _print_inline_failure(command: 'CommandEntry', line: str, code: int) -> None:
+    console.console.print(
+        f'[error]Command [item]{line}[/item] failed for '
+        f'[item]{command.display_name}[/item] with exit code {code}.[/error]'
+    )
 
 
 def _die_with_nothing_to_run() -> None:
@@ -576,6 +668,7 @@ def each(
     ctx: typer.Context,
     keep_going: bool = KEEP_GOING_OPTION,
     inline: bool = INLINE_OPTION,
+    parallel: bool = PARALLEL_OPTION,
 ) -> None:
     from rbx.box.ui.command_app import CommandEntry, start_command_app
 
@@ -586,7 +679,7 @@ def each(
         # empty `--inline` is a mistake rather than an invitation to browse.
         if inline:
             _die_with_nothing_to_run()
-        if _offer_run_history():
+        if _offer_run_history(parallel=parallel):
             return
     argvs, placeholder_prefix = _build_command_argvs_or_die(ctx.args)
     commands = [
@@ -600,9 +693,9 @@ def each(
         for problem in contest.problems
     ]
     if inline:
-        _run_inline(commands, keep_going=keep_going)
+        _run_inline(commands, keep_going=keep_going, parallel=parallel)
         return
-    start_command_app(commands, keep_going=keep_going)
+    start_command_app(commands, parallel=parallel, keep_going=keep_going)
 
 
 @app.command(
@@ -636,12 +729,13 @@ def on(
     ] = None,
     keep_going: bool = KEEP_GOING_OPTION,
     inline: bool = INLINE_OPTION,
+    parallel: bool = PARALLEL_OPTION,
 ) -> None:
     _export_contest_selection()
     if problems is None:
         # No selector and nothing to run: history is all that is on offer, since
         # there is no problem set to open a blank session over.
-        if not _offer_run_history():
+        if not _offer_run_history(parallel=parallel):
             console.console.print(
                 '[error]No recorded runs found for this contest.[/error]\n'
                 '[status]Pass a problem selector, e.g. '
@@ -666,7 +760,8 @@ def on(
         if inline:
             _die_with_nothing_to_run()
         if _offer_run_history(
-            [naming.get_contest_problem_label(p) for p in problems_of_interest]
+            [naming.get_contest_problem_label(p) for p in problems_of_interest],
+            parallel=parallel,
         ):
             # A selector but nothing to run: show this problem's history.
             return
@@ -690,10 +785,10 @@ def on(
     # so it takes the inline path whether or not the flag is there; anything
     # else needs the queue, and opens the app unless asked to stay inline.
     if inline or (len(problems_of_interest) == 1 and len(argvs) <= 1):
-        _run_inline(commands, keep_going=keep_going)
+        _run_inline(commands, keep_going=keep_going, parallel=parallel)
         return
 
-    start_command_app(commands, keep_going=keep_going)
+    start_command_app(commands, parallel=parallel, keep_going=keep_going)
 
 
 @app.command(
