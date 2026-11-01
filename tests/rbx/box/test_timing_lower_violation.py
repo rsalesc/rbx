@@ -204,7 +204,9 @@ class TestTable:
         )
         text = _table_text(profile)
 
-        assert 'without the margin acToTimeLimit asks for' in text
+        assert (
+            'without the margin acToTimeLimit (or fastestToTimeLimit) asks for' in text
+        )
         assert 'does not pass at the time limit' not in text
 
     def test_healthy_grouping_says_nothing(self):

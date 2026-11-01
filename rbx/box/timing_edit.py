@@ -15,7 +15,7 @@ may import neither.
 import enum
 import math
 from fractions import Fraction
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from pydantic import BaseModel
 
@@ -51,6 +51,26 @@ def violates_upper_bound(time: int, time_limit: int, time_limit_to_tle: float) -
     return time < time_limit * exact_ratio(time_limit_to_tle)
 
 
+def multipliers_lower_bound(
+    multipliers: TimingMultipliers, slowest: int, fastest: Optional[int]
+) -> Tuple[int, bool]:
+    """The smallest limit the accepted solutions allow under ``multipliers``, and
+    whether ``fastestToTimeLimit`` (rather than ``acToTimeLimit``) is what set it.
+
+    The slowest accepted solution times ``acToTimeLimit`` must fit, and so must
+    the fastest times ``fastestToTimeLimit`` when that is configured. The
+    single source of this rule: `timing.compute_bounds` estimates with it and
+    `assess` judges hand-set limits with it.
+    """
+    by_slowest = math.ceil(slowest * exact_ratio(multipliers.acToTimeLimit))
+    if multipliers.fastestToTimeLimit is None or fastest is None:
+        return by_slowest, False
+    by_fastest = math.ceil(fastest * exact_ratio(multipliers.fastestToTimeLimit))
+    if by_fastest > by_slowest:
+        return by_fastest, True
+    return by_slowest, False
+
+
 class GroupCheck(BaseModel):
     """How one group's time limit fares against the evidence recorded for it."""
 
@@ -59,7 +79,8 @@ class GroupCheck(BaseModel):
     estimated: Optional[int] = None
 
     # The smallest limit the group's own accepted solutions allow: their slowest
-    # scaled by `acToTimeLimit`, or the slowest itself without multipliers.
+    # scaled by `acToTimeLimit` (and the fastest by `fastestToTimeLimit`, when
+    # set), or the slowest itself without multipliers.
     min_ms: Optional[int] = None
     min_solution: Optional[str] = None
     # The largest limit its slow solutions allow.
@@ -139,7 +160,9 @@ def assess(
     min_ms = None
     if report.slowest is not None:
         if multipliers is not None:
-            min_ms = math.ceil(report.slowest * exact_ratio(multipliers.acToTimeLimit))
+            min_ms, _ = multipliers_lower_bound(
+                multipliers, report.slowest, report.fastest
+            )
         else:
             # A formula bounds nothing; a solution taking T still needs T.
             min_ms = report.slowest

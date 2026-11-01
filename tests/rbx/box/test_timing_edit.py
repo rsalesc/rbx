@@ -315,3 +315,17 @@ def test_profile_yaml_puts_one_line_per_solution_last_and_round_trips():
     assert LimitsProfile.model_validate(yaml.safe_load(text)) == profile
     # Nothing changes for a profile without timings.
     assert 'solutions' not in limits_info.profile_to_yaml(_profile())
+
+
+def test_assess_applies_the_fastest_ratio_to_a_hand_set_limit():
+    # fastest 200 * 5 = 1000 beats slowest 450 * 2 = 900.
+    multipliers = TimingMultipliers(
+        acToTimeLimit=2.0,
+        fastestToTimeLimit=5.0,
+        timeLimitToTle=1.5,
+        timeResolution=100,
+    )
+    check = timing_edit.assess(_report(), multipliers, 950)
+    assert check.min_ms == 1000
+    assert check.below_min and not check.rejects_own_solutions
+    assert timing_edit.assess(_report(), multipliers, 1000).ok

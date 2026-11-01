@@ -203,7 +203,8 @@ async def moj(
         '--calibrate',
         help='If set, let MOJ calibrate the time limits on the judge machine, by '
         "the Kattis rule with the problem's `timing.multipliers`, instead of "
-        'pinning the ones estimated by `rbx time -p moj`.',
+        'pinning the ones estimated by `rbx time -p moj`. Refused when the '
+        'multipliers set `fastestToTimeLimit`, which the Kattis rule lacks.',
     ),
     reference_only: bool = typer.Option(
         False,

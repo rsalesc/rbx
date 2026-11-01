@@ -650,7 +650,8 @@ def build_limits_table(
     if thin:
         caption_lines.append(
             f'[warning]⚠ {_subject(thin)} accepted and passes at the time limit of '
-            f'its own group, but without the margin acToTimeLimit asks for, because '
+            f'its own group, but without the margin acToTimeLimit (or '
+            f'fastestToTimeLimit) asks for, because '
             f'the limit was derived from another group. See the Source column for '
             f'what each group needs.[/warning]'
         )
@@ -670,7 +671,7 @@ def build_limits_table(
         caption_lines.append(
             f'[warning]⚠ {_subject(hand_thin)} accepted and passes at the time '
             f'limit set by hand for its group, but without the margin '
-            f'acToTimeLimit asks for.[/warning]'
+            f'acToTimeLimit (or fastestToTimeLimit) asks for.[/warning]'
         )
     above = [row for row in adjusted if row.check is not None and row.check.above_max]
     if above:

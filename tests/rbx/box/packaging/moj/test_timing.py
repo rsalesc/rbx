@@ -241,3 +241,17 @@ def test_calibrate_refuses_multipliers_moj_would_refuse(testing_pkg, tmp_path):
 
     with pytest.raises(typer.Exit):
         check_timing_setup(JudgeCalibrated())
+
+
+def test_calibrate_refuses_multipliers_that_are_not_the_kattis_rule(
+    testing_pkg, tmp_path
+):
+    # MOJ's Kattis method only scales the slowest accepted solution; it cannot
+    # reproduce a limit also bounded by the fastest one.
+    testing_pkg.yml.timing = PackageTiming(
+        multipliers=TimingMultipliersOverride(fastestToTimeLimit=4.0)
+    )
+    testing_pkg.save()
+
+    with pytest.raises(typer.Exit):
+        check_timing_setup(JudgeCalibrated())

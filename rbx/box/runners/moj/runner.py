@@ -1922,11 +1922,14 @@ def _calibrated_mode(
     Every strategy takes it: the probe only measures, under `inferenceTimeout`,
     and rbx estimates. The multipliers, when the problem has them, decide whether
     the slow solutions are shipped (only a `timeLimitToTle` gives them a bound to
-    check) and let MOJ's own Kattis limit be shown beside rbx's.
+    check) and, when they are the Kattis rule (`uses_kattis_estimation`), let
+    MOJ's own Kattis limit be shown beside rbx's.
     """
     multipliers = strategy.multipliers
     params: Optional[KattisParameters] = None
-    if multipliers is not None:
+    # MOJ's Kattis limit is only worth reading when it is rbx's own rule; with
+    # a `fastestToTimeLimit` it is not, so no `KATTIS_*` block is emitted.
+    if multipliers is not None and strategy.uses_kattis_estimation:
         try:
             params = KattisParameters(
                 ac_to_time_limit=multipliers.acToTimeLimit,

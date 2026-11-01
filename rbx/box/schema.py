@@ -1055,6 +1055,16 @@ solution, used to estimate the time limit from below: the slowest accepted solut
 times `acToTimeLimit` must fit within the time limit.""",
     )
 
+    fastestToTimeLimit: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="""Minimum ratio between the time limit and the fastest accepted
+solution, an additional lower bound on top of `acToTimeLimit`: the fastest accepted
+solution times `fastestToTimeLimit` must also fit within the time limit. When set,
+the estimate is no longer the Kattis rule (which only scales the slowest accepted
+solution), so a judge that estimates by that rule cannot reproduce it.""",
+    )
+
     timeLimitToTle: Optional[float] = Field(
         default=None,
         gt=0,
@@ -1079,6 +1089,15 @@ backwards compatibility; setting both is an error.""",
 The estimate is the smallest multiple of this value that is valid.""",
     )
 
+    @property
+    def uses_kattis_estimation(self) -> bool:
+        """Whether these multipliers estimate by the Kattis rule alone: the limit is
+        the slowest accepted solution times `acToTimeLimit`, rounded up to
+        `timeResolution`. A `fastestToTimeLimit` adds a bound that rule does not
+        have, so a judge estimating by it (MOJ's `TLMETHOD=kattis`) would not land
+        where rbx does."""
+        return self.fastestToTimeLimit is None
+
 
 class TimingMultipliersOverride(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -1089,6 +1108,15 @@ class TimingMultipliersOverride(BaseModel):
         description="""Overrides the environment `acToTimeLimit`: the minimum ratio
 between the time limit and the slowest accepted solution, which bounds the estimated
 time limit from below.""",
+    )
+
+    fastestToTimeLimit: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="""Overrides the environment `fastestToTimeLimit`: the minimum
+ratio between the time limit and the fastest accepted solution, an additional lower
+bound on top of `acToTimeLimit`. Setting it means the estimate is no longer the Kattis
+rule.""",
     )
 
     timeLimitToTle: Optional[float] = Field(

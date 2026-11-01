@@ -586,3 +586,15 @@ def test_the_limits_profile_round_trips_the_multipliers_and_the_bounds():
     assert reloaded.groups[0].upperBound == TimingBound(
         value=4066, solution='sols/tle.cpp'
     )
+
+
+def test_the_fastest_ratio_is_described_as_not_kattis():
+    multipliers = dict(acToTimeLimit=2.0, fastestToTimeLimit=4.0, timeResolution=100)
+    described = _describe_strategy(_multipliers(**multipliers))
+    assert (
+        '4.0x the fastest accepted solution (fastestToTimeLimit), so this is not '
+        'the Kattis rule' in described
+    )
+    assert 'fastestToTimeLimit 4.0' in describe_strategy_briefly(
+        _multipliers(**multipliers)
+    )
