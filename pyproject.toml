@@ -129,6 +129,11 @@ exclude = [
   ".claude",
   ".worktrees",
   "docs",
+  # Asciinema recordings for the docs site and the tests of their tooling:
+  # like docs/, nothing in them builds or tests the package (2.5.0 tripped the
+  # sdist limit by 0.03 MiB with ~0.4 MiB of these aboard).
+  "casts",
+  "tests/casts",
   "vscode/node_modules",
   "vscode/dist",
   "vscode/out",
