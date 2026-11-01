@@ -93,6 +93,14 @@ execution logic there -- change `StupidSandbox` and both paths get it. Rules:
   get mid-file EOFs and SIGBUS, so `execution_slot` runs one program at a time
   across every agent in the container (`docker.max_parallel` to opt out). Do not
   "optimise" that lock away without re-running the measurement in the design doc.
+- **Who gets a freed slot is a priority queue**, not whoever polls first:
+  `RBX_DOCKER_PRIORITY` (lower first; unset sorts after every explicit value,
+  `UNSET_PRIORITY`) rides on every `run`/`run_communication` request
+  (`AgentClient.priority`, read once in `docker_runtime`). `rbx each`/`rbx on`
+  set it to the problem's position, via `CommandEntry.env` -- folded into the
+  shell command as `export ...` so a resumed history run keeps it. Waiters drop
+  `waiting/<priority>-<monotonic_ns>-<pid>-<tid>` tickets; only the smallest may
+  lock a slot, and a ticket whose pid is dead is pruned on sight (#993).
   Design: `docs/plans/2026-11-01-docker-sandbox-design.md`.
 
 ## File Caching (`judge/cacher.py`, `judge/storage.py`)

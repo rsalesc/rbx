@@ -1138,3 +1138,104 @@ class TestContestParallel:
         assert result.exit_code == 0, result.output
         assert 'in a' in result.output
         assert 'in b' in result.output
+
+
+class TestDockerPriority:
+    """Each problem's commands carry its place in the Docker slot queue (#993)."""
+
+    @pytest.fixture
+    def contest_dir(
+        self,
+        tmp_path: pathlib.Path,
+        monkeypatch: pytest.MonkeyPatch,
+        clear_package_caches,
+    ) -> pathlib.Path:
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / 'contest.rbx.yml').write_text(
+            'name: ctt\n'
+            'problems:\n'
+            '  - short_name: A\n    path: probs/a\n'
+            '  - short_name: B\n    path: probs/b\n'
+            '  - short_name: C\n    path: probs/c\n'
+        )
+        for name in ('a', 'b', 'c'):
+            _write_minimal_problem(tmp_path / 'probs' / name, f'prob-{name}')
+        return tmp_path
+
+    @staticmethod
+    def _priorities(calls) -> list:
+        return [c.kwargs['env']['RBX_DOCKER_PRIORITY'] for c in calls]
+
+    def test_each_inline_gives_every_problem_its_position(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with mock.patch.object(contest_main.subprocess, 'call', return_value=0) as call:
+            result = runner.invoke(
+                contest_main.app, ['each', '--inline', 'build', '::', 'run']
+            )
+
+        assert result.exit_code == 0, result.output
+        # Chained commands of one problem share its priority.
+        assert self._priorities(call.call_args_list) == ['0', '0', '1', '1', '2', '2']
+        # On top of rbx's own environment, not instead of it.
+        assert all(
+            c.kwargs['env']['PATH'] == os.environ['PATH'] for c in call.call_args_list
+        )
+
+    def test_each_parallel_inline_gives_every_problem_its_position(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        result = runner.invoke(
+            contest_main.app,
+            [
+                'each',
+                '-ip',
+                'bash',
+                '-c',
+                'echo "$(basename $PWD)=$RBX_DOCKER_PRIORITY"',
+            ],
+        )
+
+        assert result.exit_code == 0, result.output
+        for line in ('a=0', 'b=1', 'c=2'):
+            assert line in result.output
+
+    def test_on_counts_positions_within_the_selection(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with mock.patch.object(contest_main.subprocess, 'call', return_value=0) as call:
+            result = runner.invoke(contest_main.app, ['on', '-i', 'B..C', 'build'])
+
+        assert result.exit_code == 0, result.output
+        assert [str(c.kwargs['cwd']) for c in call.call_args_list] == [
+            'probs/b',
+            'probs/c',
+        ]
+        assert self._priorities(call.call_args_list) == ['0', '1']
+
+    def test_each_hands_the_app_one_priority_per_problem(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with mock.patch('rbx.box.ui.command_app.start_command_app') as start_app:
+            result = runner.invoke(contest_main.app, ['each', 'build'])
+
+        assert result.exit_code == 0, result.output
+        (commands,), _ = start_app.call_args
+        assert [c.env for c in commands] == [
+            {'RBX_DOCKER_PRIORITY': '0'},
+            {'RBX_DOCKER_PRIORITY': '1'},
+            {'RBX_DOCKER_PRIORITY': '2'},
+        ]
+
+    def test_on_hands_the_app_one_priority_per_problem(
+        self, runner: CliRunner, contest_dir: pathlib.Path
+    ):
+        with mock.patch('rbx.box.ui.command_app.start_command_app') as start_app:
+            result = runner.invoke(contest_main.app, ['on', 'A..B', 'build'])
+
+        assert result.exit_code == 0, result.output
+        (commands,), _ = start_app.call_args
+        assert [c.env for c in commands] == [
+            {'RBX_DOCKER_PRIORITY': '0'},
+            {'RBX_DOCKER_PRIORITY': '1'},
+        ]

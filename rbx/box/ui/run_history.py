@@ -78,6 +78,7 @@ class TabRecord(BaseModel):
     prefix: Optional[str] = None
     placeholder_prefix: Optional[str] = None
     labels: Optional[Dict[str, str]] = None
+    env: Optional[Dict[str, str]] = None
     sub_commands: List[SubCommandRecord] = Field(default_factory=list)
 
 

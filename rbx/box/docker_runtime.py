@@ -43,6 +43,7 @@ from urllib.parse import unquote, urlparse
 from rbx import config, console, utils
 from rbx.box.exception import RbxException
 from rbx.box.setter_config import DockerConfig, get_setter_config
+from rbx.grading.judge.sandboxes import docker_agent
 from rbx.grading.judge.sandboxes.docker_agent import AgentClient, AgentError
 from rbx.grading.judge.sandboxes.docker_sandbox import DockerSandbox
 
@@ -448,7 +449,12 @@ class DockerRuntime:
             # it runs and the agent attaching to it.
             for _ in range(2):
                 self.up()
-                client = AgentClient(self._agent_command())
+                # `rbx each` / `rbx on` give each problem's process its place in
+                # the queue for execution slots (`RBX_DOCKER_PRIORITY`).
+                client = AgentClient(
+                    self._agent_command(),
+                    priority=docker_agent.priority_from_env(),
+                )
                 try:
                     client.ping()
                 except AgentError as e:

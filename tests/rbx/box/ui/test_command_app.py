@@ -1,10 +1,15 @@
 """Tests for the rbx on / rbx each command app (rbx.box.ui.command_app)."""
 
+import datetime
+import pathlib
+import subprocess
+
 import pytest
 from textual.widgets import Label, ListItem, ListView
 
 from rbx.box import setter_config
 from rbx.box.setter_config import ProblemLabelMode
+from rbx.box.ui import run_history, run_picker
 from rbx.box.ui.command_app import CommandEntry, rbxCommandApp
 
 
@@ -92,3 +97,45 @@ async def test_l_is_inert_without_labels():
         # and the sidebar shows no label hint.
         assert _persisted_mode() is ProblemLabelMode.NAME
         assert 'label:' not in _sidebar_subtitle(app)
+
+
+def _shell_output(command: str) -> str:
+    return subprocess.run(
+        command, shell=True, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def test_entry_env_reaches_every_command_it_runs(tmp_path: pathlib.Path):
+    entry = CommandEntry(
+        argvs=[['sh', '-c', 'echo "$PWD $RBX_DOCKER_PRIORITY"']],
+        cwd=str(tmp_path),
+        env={'RBX_DOCKER_PRIORITY': '3'},
+    )
+    (chained,) = entry.shell_commands
+    assert _shell_output(chained) == f'{tmp_path.resolve()} 3'
+    # A command typed into the tab later gets it too.
+    typed = entry.make_raw_shell_command('printenv RBX_DOCKER_PRIORITY')
+    assert _shell_output(typed) == '3'
+
+
+def test_entry_without_env_or_cwd_is_left_alone():
+    assert CommandEntry(argvs=[]).make_shell_command(['rbx', 'build']) == 'rbx build'
+    assert (
+        CommandEntry(argvs=[], cwd='/x').make_shell_command(['rbx', 'build'])
+        == 'cd /x && exec rbx build'
+    )
+
+
+def test_entry_env_survives_the_run_history():
+    entry = CommandEntry(argvs=[], name='A', env={'RBX_DOCKER_PRIORITY': '1'})
+    record = run_history.TabRecord(name=entry.display_name, env=entry.env)
+    manifest = run_history.RunManifest.model_validate_json(
+        run_history.RunManifest(
+            run_id='r',
+            started_at=datetime.datetime(2026, 1, 1),
+            updated_at=datetime.datetime(2026, 1, 1),
+            tabs=[record],
+        ).model_dump_json()
+    )
+    (reopened,) = run_picker.entries_from_manifest(manifest)
+    assert reopened.env == {'RBX_DOCKER_PRIORITY': '1'}
