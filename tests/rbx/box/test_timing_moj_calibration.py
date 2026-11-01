@@ -15,7 +15,7 @@ import pytest
 
 from rbx.box import package, timing, timing_config
 from rbx.box.runners.moj.kattis import KattisCalibrationResult, KattisMeasurement
-from rbx.box.schema import ExpectedOutcome, TimingMultipliers
+from rbx.box.schema import ExpectedOutcome, InferenceRole, TimingMultipliers
 from rbx.box.testing import testing_package
 
 
@@ -336,3 +336,32 @@ def test_a_formula_estimates_from_the_calibration_and_reads_no_slow_solution():
     assert profile.timeLimit == 520
     assert not [g for g in profile.groups or [] if g.upperValidation]
     assert runner.run_all == [False]
+
+
+@pytest.mark.usefixtures('pkg')
+def test_the_profile_records_every_solution_timing():
+    """`rbx time --edit` checks a hand-set limit per solution, so the profile
+    keeps each one's measurement -- the slow one as the cap it survived, which is
+    what lets the editor confirm it for limits well above the estimate."""
+    runner = _CalibratingRunner(
+        [
+            _measure('sols/ac.cpp', 'good', 260),
+            _measure('sols/slow.cpp', 'slow', 10450, timed_out=True, complete=False),
+        ],
+        limits={'cpp': 600, 'default': 600},
+    )
+
+    profile = _estimate(runner)
+
+    by_path = {timing.path: timing for timing in profile.solutions or []}
+    assert by_path['sols/ac.cpp'].role == InferenceRole.LOWER
+    assert by_path['sols/ac.cpp'].time == 260
+    assert by_path['sols/slow.cpp'].role == InferenceRole.UPPER
+    assert by_path['sols/slow.cpp'].time is None
+    assert by_path['sols/slow.cpp'].survivedAt is not None
+
+    # Written at the end of the file, one solution per line.
+    text = package.get_limits_file('local').read_text()
+    tail = text[text.index('solutions:') :]
+    assert '- {path: sols/ac.cpp, language: cpp, role: lower, time: 260}' in tail
+    assert text.rstrip().endswith('}')

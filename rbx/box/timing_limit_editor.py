@@ -12,10 +12,10 @@ from typing import TYPE_CHECKING, Callable, List, Optional
 
 import typer
 
-from rbx import console, utils
+from rbx import console
 from rbx.box import estimation_checksum, limits_info, package, timing_edit
 from rbx.box.formatting import href
-from rbx.box.schema import LimitsProfile, TimingGroupReport
+from rbx.box.schema import InferenceRole, LimitsProfile, TimingGroupReport
 
 if TYPE_CHECKING:
     from prompt_toolkit.formatted_text import AnyFormattedText
@@ -140,7 +140,7 @@ class LimitEditorState:
     def preview_text(self, preview):
         if self.done or preview is None:
             return ''
-        return preview(self.profile)
+        return preview(self.profile, self.target)
 
     def render_fragments(self):
         width = max(len(self.label(target)) for target in self.targets)
@@ -162,14 +162,125 @@ class LimitEditorState:
         return fragments
 
 
-def build_preview(width: Optional[int] = None) -> Callable[[LimitsProfile], object]:
-    from prompt_toolkit.formatted_text import ANSI
+_SOLUTION_STATUS = {
+    timing_edit.SolutionStatus.OK: '[success]✓[/success]',
+    timing_edit.SolutionStatus.THIN: '[warning]⚠ thin margin[/warning]',
+    timing_edit.SolutionStatus.FAILS: '[error]✗ fails[/error]',
+    timing_edit.SolutionStatus.PASSES: '[error]✗ passes[/error]',
+    timing_edit.SolutionStatus.UNVERIFIED: '[warning]? unverified[/warning]',
+    timing_edit.SolutionStatus.UNCHECKED: '[dim]– unchecked[/dim]',
+}
 
-    def _render(profile: LimitsProfile):
+NO_TIMINGS_HINT = (
+    '[dim]This profile records no per-solution timings: it was estimated before '
+    'rbx kept them. Re-run [item]rbx time[/item] on it to see each solution here.'
+    '[/dim]'
+)
+
+
+def _row_report(
+    profile: LimitsProfile, target: Optional[int]
+) -> Optional[TimingGroupReport]:
+    if target is None:
+        return profile.baseEstimate
+    assert profile.groups is not None
+    return profile.groups[target]
+
+
+def _time_limit(profile: LimitsProfile, target: Optional[int]) -> int:
+    if target is None:
+        return profile.timeLimit or 0
+    report = _row_report(profile, target)
+    assert report is not None
+    return report.timeLimit
+
+
+def build_solutions_table(profile: LimitsProfile, target: Optional[int]):
+    """Every recorded solution of the selected row, checked at its current limit.
+
+    Only the editor shows this: it is what makes a hand-set limit legible -- which
+    solution a step breaks, and how close the others are -- and nothing else
+    needs that much detail. Falls back to a hint on a profile that recorded no
+    timings.
+    """
+    import rich.markup
+    import rich.table
+
+    timings = timing_edit.group_solutions(profile, _row_report(profile, target))
+    if timings is None:
+        return NO_TIMINGS_HINT
+    time_limit = _time_limit(profile, target)
+    multipliers = profile.multipliers
+    label = (
+        'base'
+        if target is None
+        else ', '.join(
+            _row_report(profile, target).languages  # type: ignore[union-attr]
+        )
+    )
+    table = rich.table.Table(
+        title=f'Solutions ({label}) at {time_limit} ms',
+        title_style='bold bright_white',
+        header_style='bold bright_white',
+    )
+    table.add_column('Solution', style='bold blue')
+    table.add_column('Expected')
+    table.add_column('Time', justify='right')
+    table.add_column('Allows', justify='right')
+    table.add_column('Ratio', justify='right')
+    table.add_column('Check')
+    if not timings:
+        table.caption = 'No solution of these languages was timed.'
+    for check in timing_edit.check_solutions(timings, multipliers, time_limit):
+        lower = check.role == InferenceRole.LOWER
+        if check.time is not None:
+            time = f'{check.time} ms'
+        elif check.survived_at is not None:
+            time = f'> {check.survived_at} ms'
+        else:
+            time = '[dim]not run[/dim]'
+        if check.min_ms is not None:
+            allows = f'≥ {check.min_ms} ms'
+        elif check.max_ms is not None:
+            allows = f'≤ {check.max_ms} ms'
+        else:
+            allows = ''
+        required = None
+        if multipliers is not None:
+            required = (
+                multipliers.acToTimeLimit if lower else multipliers.timeLimitToTle
+            )
+        if check.ratio is not None:
+            ratio = f'{check.ratio:.2f}×'
+        elif check.survived_at is not None and time_limit:
+            ratio = f'> {check.survived_at / time_limit:.2f}×'
+        else:
+            ratio = ''
+        if ratio and required is not None:
+            ratio += f' [dim](≥ {required:g}×)[/dim]'
+        table.add_row(
+            rich.markup.escape(check.path),
+            'accepted' if lower else 'too slow',
+            time,
+            allows,
+            ratio,
+            _SOLUTION_STATUS[check.status],
+        )
+    return table
+
+
+def build_preview(
+    width: Optional[int] = None,
+) -> Callable[[LimitsProfile, Optional[int]], object]:
+    from prompt_toolkit.formatted_text import ANSI
+    from rich.console import Group
+
+    def _render(profile: LimitsProfile, target: Optional[int] = None):
         table = limits_info.build_limits_table(
             profile, title='Preview', show_check=True
         )
-        return ANSI(console.capture_ansi(table, width=width))
+        solutions = build_solutions_table(profile, target)
+        return ANSI(console.capture_ansi(Group(table, solutions), width=width))
 
     return _render
 
@@ -178,7 +289,9 @@ async def prompt_limits_edit(
     profile: LimitsProfile,
     input=None,
     output=None,
-    preview: Optional[Callable[[LimitsProfile], AnyFormattedText]] = None,
+    preview: Optional[
+        Callable[[LimitsProfile, Optional[int]], AnyFormattedText]
+    ] = None,
 ) -> Optional[LimitsProfile]:
     """Interactive editor. Returns the edited profile, or None if cancelled."""
     from prompt_toolkit.application import Application
@@ -358,7 +471,7 @@ async def edit_time_limits(profile: str = 'local', dry: bool = False) -> None:
             f'[item]{href(limits_path)}[/item].[/success]'
         )
         limits_path.parent.mkdir(parents=True, exist_ok=True)
-        limits_path.write_text(utils.model_to_yaml(edited))
+        limits_path.write_text(limits_info.profile_to_yaml(edited))
 
     limits_info.render_limits_table(
         edited, title=f'Time limits ({profile})', show_check=True

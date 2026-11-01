@@ -1,7 +1,11 @@
 """Judging a hand-set time limit against the evidence an estimate recorded."""
 
+import pytest
+
 from rbx.box import limits_info, timing_edit
 from rbx.box.schema import (
+    EstimationSolutionTiming,
+    InferenceRole,
     LimitModifiers,
     LimitsProfile,
     TimingBound,
@@ -191,3 +195,123 @@ def test_hand_set_captions_do_not_blame_a_derivation():
     text = _render(limits_info.build_limits_table(edited))
     assert 'set by hand for its group, but without the margin' in text
     assert 'derived from another group' not in text
+
+
+# --- per-solution timings -----------------------------------------------------
+
+
+def _timing(path, language='cpp', role=InferenceRole.LOWER, **kwargs):
+    return EstimationSolutionTiming(path=path, language=language, role=role, **kwargs)
+
+
+def test_check_solution_lower():
+    ac = _timing('sols/ac.cpp', time=450)
+    ok = timing_edit.check_solution(ac, MULTIPLIERS, 1000)
+    assert (ok.status, ok.min_ms) == (timing_edit.SolutionStatus.OK, 900)
+    assert ok.ratio == pytest.approx(1000 / 450)
+    thin = timing_edit.check_solution(ac, MULTIPLIERS, 800)
+    assert thin.status == timing_edit.SolutionStatus.THIN
+    fails = timing_edit.check_solution(ac, MULTIPLIERS, 400)
+    assert fails.status == timing_edit.SolutionStatus.FAILS
+    # A formula only asks that it passes.
+    assert (
+        timing_edit.check_solution(ac, None, 450).status
+        == timing_edit.SolutionStatus.OK
+    )
+
+
+def test_check_solution_upper():
+    slow = _timing('sols/slow.cpp', role=InferenceRole.UPPER, time=1600)
+    ok = timing_edit.check_solution(slow, MULTIPLIERS, 1000)
+    assert (ok.status, ok.max_ms) == (timing_edit.SolutionStatus.OK, 1066)
+    passes = timing_edit.check_solution(slow, MULTIPLIERS, 1100)
+    assert passes.status == timing_edit.SolutionStatus.PASSES
+
+    survived = _timing('sols/tle.cpp', role=InferenceRole.UPPER, survivedAt=1500)
+    assert (
+        timing_edit.check_solution(survived, MULTIPLIERS, 1000).status
+        == timing_edit.SolutionStatus.OK
+    )
+    assert (
+        timing_edit.check_solution(survived, MULTIPLIERS, 1100).status
+        == timing_edit.SolutionStatus.UNVERIFIED
+    )
+
+    never = _timing('sols/brute.cpp', role=InferenceRole.UPPER)
+    assert (
+        timing_edit.check_solution(never, MULTIPLIERS, 1000).status
+        == timing_edit.SolutionStatus.UNCHECKED
+    )
+    # Without timeLimitToTle nothing bounds the limit from above.
+    assert (
+        timing_edit.check_solution(slow, None, 1000).status
+        == timing_edit.SolutionStatus.UNCHECKED
+    )
+
+
+def test_check_solutions_lists_the_closest_to_the_limit_first():
+    checks = timing_edit.check_solutions(
+        [
+            _timing('a.cpp', time=100),
+            _timing('b.cpp', time=300),
+            _timing('never.cpp', role=InferenceRole.UPPER),
+            _timing('tle.cpp', role=InferenceRole.UPPER, survivedAt=5000),
+            _timing('slow.cpp', role=InferenceRole.UPPER, time=2000),
+        ],
+        MULTIPLIERS,
+        1000,
+    )
+    assert [check.path for check in checks] == [
+        'b.cpp',
+        'a.cpp',
+        'slow.cpp',
+        'tle.cpp',
+        'never.cpp',
+    ]
+
+
+def test_group_solutions():
+    timings = [_timing('a.cpp'), _timing('B.java', language='java', time=1)]
+    profile = _profile(solutions=timings, baseEstimate=_report())
+    assert timing_edit.group_solutions(_profile(), _report()) is None
+    assert timing_edit.group_solutions(profile, profile.groups[0]) == [timings[0]]
+    assert timing_edit.group_solutions(profile, profile.baseEstimate) == timings
+    assert timing_edit.group_solutions(profile, None) == timings
+
+
+def test_assess_confirms_against_the_limit_actually_survived():
+    # Seen running at 3000 ms: with timeLimitToTle 1.5 it stays confirmed for any
+    # limit up to 2000 ms, far above the 1000 ms it was estimated at.
+    solutions = [
+        _timing('sols/tle.cpp', role=InferenceRole.UPPER, survivedAt=3000),
+    ]
+    check = timing_edit.assess(_report(), MULTIPLIERS, 1800, solutions=solutions)
+    assert check.confirmed == ['sols/tle.cpp']
+    assert check.unverified == []
+    check = timing_edit.assess(_report(), MULTIPLIERS, 2100, solutions=solutions)
+    assert check.unverified == ['sols/tle.cpp']
+    # Without the timing it falls back to the estimated limit.
+    assert timing_edit.assess(_report(), MULTIPLIERS, 1800).unverified == [
+        'sols/tle.cpp'
+    ]
+
+
+def test_profile_yaml_puts_one_line_per_solution_last_and_round_trips():
+    import yaml
+
+    profile = _profile(
+        solutions=[
+            _timing('sols/ac.cpp', time=450),
+            _timing('sols/tle.cpp', role=InferenceRole.UPPER, survivedAt=3000),
+        ]
+    )
+    text = limits_info.profile_to_yaml(profile)
+    tail = text[text.index(limits_info.SOLUTIONS_HEADER) :]
+    assert tail.splitlines()[2:] == [
+        'solutions:',
+        '- {path: sols/ac.cpp, language: cpp, role: lower, time: 450}',
+        '- {path: sols/tle.cpp, language: cpp, role: upper, survivedAt: 3000}',
+    ]
+    assert LimitsProfile.model_validate(yaml.safe_load(text)) == profile
+    # Nothing changes for a profile without timings.
+    assert 'solutions' not in limits_info.profile_to_yaml(_profile())

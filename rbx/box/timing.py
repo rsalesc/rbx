@@ -98,6 +98,8 @@ class TimingProfile(BaseModel):
     # What the estimate was computed from; see `rbx.box.estimation_checksum`.
     # Stamped after the estimation finishes, not carried through it.
     estimationChecksum: Optional[str] = None
+    # Every solution the estimate was computed from; see `_EstimationContext`.
+    solutions: Optional[List[schema.EstimationSolutionTiming]] = None
 
     def to_limits(self):
         return schema.LimitsProfile(
@@ -111,6 +113,7 @@ class TimingProfile(BaseModel):
             groups=self.groups,
             baseEstimate=self.baseEstimate,
             estimationChecksum=self.estimationChecksum,
+            solutions=self.solutions,
         )
 
 
@@ -867,6 +870,38 @@ class _EstimationContext:
         """Whether there is a grouping decision for the setter to make."""
         return len(self.all_languages) > 1
 
+    def solution_timings(
+        self, knowledge: timing_validation.SlowKnowledge
+    ) -> List[schema.EstimationSolutionTiming]:
+        """What each solution measured, for the profile to keep.
+
+        The groups record only what bounded each limit; `rbx time --edit` needs
+        every solution, to say which one a hand-set limit breaks and by how much.
+        """
+        timings: List[schema.EstimationSolutionTiming] = []
+        for lang, per_solution in self.lower_timings.items():
+            for path, time in sorted(per_solution.items()):
+                timings.append(
+                    schema.EstimationSolutionTiming(
+                        path=path,
+                        language=lang,
+                        role=schema.InferenceRole.LOWER,
+                        time=time,
+                    )
+                )
+        for solution in self.upper_solutions:
+            path = str(solution.path)
+            timings.append(
+                schema.EstimationSolutionTiming(
+                    path=path,
+                    language=find_language_name(solution),
+                    role=schema.InferenceRole.UPPER,
+                    time=knowledge.measured_time(path),
+                    survivedAt=knowledge.survived_at(path),
+                )
+            )
+        return timings
+
     def slow_evidence(self, knowledge: timing_validation.SlowKnowledge):
         measured: Dict[str, Dict[str, int]] = {}
         confirmed: Dict[str, List[str]] = {}
@@ -939,6 +974,8 @@ class _EstimationContext:
         except timing_groups.GroupValidationError as e:
             self.console.print(f'[error]Invalid language groups: {e}[/error]')
             return None
+
+        profile.solutions = self.solution_timings(knowledge)
 
         defaulted = [
             lang
@@ -2277,7 +2314,7 @@ async def compute_time_limits(
             f'[success]Writing the following timing profile to [item]{href(limits_path)}[/item].[/success]'
         )
         limits_path.parent.mkdir(parents=True, exist_ok=True)
-        limits_path.write_text(utils.model_to_yaml(limits))
+        limits_path.write_text(limits_info.profile_to_yaml(limits))
 
     limits_info.render_limits_table(limits, title=f'Time limits ({profile})')
 
