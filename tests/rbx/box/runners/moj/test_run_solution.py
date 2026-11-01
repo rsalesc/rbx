@@ -451,6 +451,34 @@ async def test_a_rerun_that_is_still_a_tle_stays_a_tle(
     assert evals[1].log.time == 4.1
 
 
+async def test_a_parallel_rerun_appended_last_is_the_one_kept(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """The shape the park really returns for a parallel `rbx run` with a TLE.
+
+    Observed 2026-10-31 (testrun `1bc43d5c...`, 168 tests): 169 entries. Only the
+    first TLE in name order was rerun, serially, and its second entry came
+    **after every other test**, not beside the first. The rerun is what the judge
+    keeps, so it has to win wherever it lands -- including when it turns the
+    contended TLE into a pass -- and the duplicate must not read as a testcase
+    the judge left unaccounted for.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.results['sol.cpp'] = [
+        _test(SAMPLE_NAMES[0], 'TLE', 1.2),
+        _test(SAMPLE_NAMES[1], 'AC', 0.2),
+        _test(SAMPLE_NAMES[0], 'AC', 0.4),
+    ]
+
+    evals = await _run(runner, ctx)
+
+    assert [e.result.outcome for e in evals] == [Outcome.ACCEPTED, Outcome.ACCEPTED]
+    assert [e.log.time for e in evals] == [0.4, 0.2]
+    assert all(e.result.outcome != Outcome.SKIPPED for e in evals)
+
+
 async def test_a_testcase_the_judge_did_not_execute_is_skipped_not_refused(
     testing_pkg, tmp_path, monkeypatch
 ):

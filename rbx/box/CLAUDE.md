@@ -418,6 +418,27 @@ park that changed under the numbers -- is fixed by deleting the cache directory.
 
 Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 
+**`rbx run` judges in parallel; `rbx time` keeps measuring serially.** Only
+`RunPurpose.RUN` sets `ProbePackage.judge_in_parallel` (`ALLOWPARALLELTEST=y`,
+`TLERERUN=y`): a plain run wants a student's verdicts, and the park pins each
+parallel test to its own CPU group. MOJ then reruns only the *first* TLE in name
+order and appends it after every other test; `by_name` keeps it.
+
+**With `timing.multipliers`, `rbx time --runner moj` runs no testruns at all.**
+`timing.uses_moj_calibration` routes it to `_estimate_with_moj_calibration`, which
+calls `MojRunner.estimate_by_calibration`: one `ProbeCalibrated` package (LOWER
+solutions in `sols/good`, UPPER in `sols/slow`, filed by inference role;
+`TLMETHOD=kattis` + `KATTIS_*` from the multipliers) on `<id>-kattis`, `moj
+calibrate --all-judges`, then `moj calib` read back through `runners/moj/kattis.py`
+(accepted: worst test on the slowest judge; slow: the weakest judge's evidence). The
+result seeds `_EstimationContext` and `SlowKnowledge` directly, so picker, groups and
+profile are reused; `_validate_upper_bound(calibrated=...)` runs nothing, and a slow
+solution the `TL + 2.2 s` kill cannot confirm is `unverified` and recorded skipped.
+**The wait is on `moj calib`, for every judge `moj calibrate` said it queued**:
+`moj check` calls a judge done before its results are readable. A formula keeps the
+two-phase testrun path. Design:
+`docs/plans/2026-11-01-moj-parallel-run-and-kattis-calibration-design.md`.
+
 ### Deferred Execution (`deferred.py`)
 
 ```python

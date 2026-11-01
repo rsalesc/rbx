@@ -45,6 +45,7 @@ from rbx.box.packaging.moj.moj_language_utils import get_moj_language_from_rbx_l
 from rbx.box.packaging.moj.packager import (
     HALT_VERDICTS,
     MojPackager,
+    ProbeCalibrated,
     ProbePackage,
     ProbePinned,
 )
@@ -56,7 +57,7 @@ from rbx.box.runners.base import (
     RunPurpose,
     SolutionRunner,
 )
-from rbx.box.runners.moj import cli, problem_id
+from rbx.box.runners.moj import cli, kattis, problem_id
 from rbx.box.runners.moj.problem_id import ensure_moj_id, is_rbxt_id, moj_id_path
 from rbx.box.schema import CodeItem
 from rbx.grading.steps import (
@@ -279,6 +280,11 @@ def _note_on_run_verdict(verdict: Optional[str]) -> Optional[str]:
 # `_outcome_for_moj_code` makes; anything outside the family is still refused by
 # name.
 _RUNTIME_ERROR_CODE_PREFIX = 'RE_'
+
+
+def outcome_for_moj_code(code: str) -> Optional[Outcome]:
+    """The rbx `Outcome` for one MOJ per-test `code`; see `_outcome_for_moj_code`."""
+    return _outcome_for_moj_code(code)
 
 
 def _outcome_for_moj_code(code: str) -> Optional[Outcome]:
@@ -639,6 +645,166 @@ class MojRunner:
             f'[item]{utils.format_size(size)}[/item] of package files in '
             f'[item]{upload_elapsed}[/item], calibrated in '
             f'[item]{calibration_elapsed}[/item].[/status]'
+        )
+
+    async def estimate_by_calibration(
+        self,
+        entries: List[GenerationTestcaseEntry],
+        strategy: 'timing_config.TimingStrategy',
+        progress: Optional['utils.StatusProgress'] = None,
+    ) -> kattis.KattisCalibrationResult:
+        """Have MOJ estimate the time limit by the Kattis rule, and read it back.
+
+        The `rbx time` path for a problem that estimates with `timing.multipliers`
+        (which *are* the Kattis rule): one upload of the solutions the estimate is
+        about, one calibration on every judge, no testruns. The calibration
+        measures the accepted solutions (`sols/good`) one test at a time, computes
+        the limit, and judges the slow ones (`sols/slow`) against it -- the two
+        phases the testrun path runs separately.
+
+        Skips the upload and the calibration when this machine last uploaded the
+        same package to the same problem and the judge reports it calibrated: the
+        calibration is then simply read again.
+        """
+        mode = _calibrated_mode(strategy)
+        shim = _ProgressOnly(progress)
+
+        if progress:
+            progress.update('Reading your MOJ login...')
+        login = await cli.whoami()
+        moj_id = problem_id.derived_id(self._problem_id(login), KATTIS_ID_SUFFIX)
+
+        packager = MojPackager(
+            testcase_entries=entries,
+            timing_mode=mode,
+            # Halting a solution at its first timeout is the local abort rule for
+            # both phases: one timeout settles a slow solution, and fails an
+            # accepted one outright.
+            probe=ProbePackage(
+                submission_languages=_shipped_languages(mode),
+                halt_on=frozenset({'TLE'}),
+            ),
+        )
+        expected_tests = len(packager.testcase_names())
+        solutions_by_file = {
+            (tag, solution.path.name): solution
+            for tag, solution in packager.shipped_solutions()
+        }
+
+        elapsed = _Elapsed()
+        with tempfile.TemporaryDirectory(prefix='rbx-moj-kattis-') as tmp:
+            root = pathlib.Path(tmp)
+            build_path = root / 'build'
+            package_path = root / 'package'
+            build_path.mkdir(parents=True, exist_ok=True)
+            if progress:
+                progress.update('Building the MOJ calibration package...')
+            try:
+                await packager.package(build_path, package_path, [])
+            except typer.Exit as e:
+                raise MojRunnerError(
+                    'Could not build the MOJ calibration package for this problem; '
+                    'see the error above. `rbx time --runner moj` uploads a MOJ '
+                    'package, so anything that stops `rbx package moj` stops it too.'
+                ) from e
+            fingerprint = _directory_fingerprint(package_path)
+
+            since = _recorded_calibration(moj_id, fingerprint)
+            reused = since is not None and (await cli.check(moj_id)).is_ready
+            if not reused:
+                _forget_calibration(moj_id)
+                size = _directory_size(package_path)
+                await _with_ticker(
+                    shim,
+                    cli.upload(moj_id, package_path),
+                    f'Uploading the calibration package to [item]{moj_id}[/item] '
+                    f'([item]{utils.format_size(size)}[/item])... {{elapsed}}',
+                )
+
+        if not reused:
+            # Read *before* queueing: what `moj check` reports right after
+            # `moj calibrate` may still be the previous calibration, and only a
+            # judge that calibrated after this moment describes this package.
+            before = (await cli.check(moj_id)).calibrated_at
+            since = max(before.values(), default=0)
+            queued = await _calibrate_everywhere(moj_id)
+            calibration = await self._wait_for_fresh_calibration(
+                moj_id, since, queued, progress
+            )
+            _record_calibration(moj_id, fingerprint, since)
+        else:
+            calibration = await cli.calib(moj_id)
+
+        hosts = calibration.hosts_after(since)
+        if not hosts:
+            raise MojRunnerError(
+                f'MOJ reports `{moj_id}` calibrated, but no judge calibration newer '
+                f'than the package rbx just sent carries any measurement.\n'
+                f'See what the judges reported with `moj calib {moj_id}`.'
+            )
+        console.console.print(
+            f'[status]moj · [item]{moj_id}[/item] · '
+            + (
+                'reused the calibration of an unchanged package'
+                if reused
+                else 'calibrated by the Kattis rule'
+            )
+            + f' on {len(hosts)} judge(s) ({elapsed}).[/status]'
+        )
+        return kattis.KattisCalibrationResult(
+            moj_id=moj_id,
+            hosts=tuple(host.host for host in hosts),
+            measurements=kattis.measure_solutions(
+                hosts, solutions_by_file, expected_tests
+            ),
+            moj_limits_ms=kattis.limits_ms(calibration),
+            reused=reused,
+        )
+
+    async def _wait_for_fresh_calibration(
+        self,
+        moj_id: str,
+        since: int,
+        queued: List[str],
+        progress: Optional['utils.StatusProgress'],
+    ) -> cli.MojCalibration:
+        """Poll until every queued judge's calibration newer than `since` can be
+        read, and return it. Bounded.
+
+        Two traps, both observed. `MojCheck.is_ready` alone is not enough, unlike
+        in `prepare`: a problem calibrated before keeps reporting ready for a
+        moment after `moj calibrate` returns. And `moj check` is not enough
+        either: on 2026-10-31 it reported a judge calibrated ~13 s before that
+        judge's results reached `moj calib`, so reading then saw two judges of
+        three -- and MOJ publishes the limit as the max across all of them. So
+        the wait is on `moj calib` itself, for every judge `moj calibrate` said
+        it queued (or, when it named none, every judge `moj check` calls fresh).
+        """
+        elapsed = _Elapsed()
+        for attempt in range(CALIBRATION_POLL_ATTEMPTS):
+            check = await cli.check(moj_id)
+            fresh_in_check = {
+                host for host, at in check.calibrated_at.items() if at > since
+            }
+            if check.is_ready and fresh_in_check:
+                calibration = await cli.calib(moj_id)
+                readable = {host.host for host in calibration.hosts_after(since)}
+                wanted = set(queued) or fresh_in_check
+                if wanted <= readable:
+                    return calibration
+            if progress:
+                progress.update(
+                    f'Waiting for MOJ to calibrate [item]{moj_id}[/item] by the '
+                    f'Kattis rule ({elapsed})...'
+                )
+            if attempt + 1 < CALIBRATION_POLL_ATTEMPTS:
+                await asyncio.sleep(CALIBRATION_POLL_INTERVAL_SECONDS)
+        minutes = int(elapsed.seconds / 60)
+        raise MojRunnerError(
+            f'MOJ has not finished calibrating `{moj_id}` after {minutes} minutes, '
+            f'so rbx has no time limit to read and stopped waiting.\n'
+            f'Check the problem with `moj check {moj_id}`. Nothing was lost: '
+            f'running `rbx time` again picks up where this left off.'
         )
 
     def _say(
@@ -1342,6 +1508,11 @@ class MojRunner:
             probe=ProbePackage(
                 submission_languages=_testrun_languages(ctx),
                 halt_on=_halt_on(ctx),
+                # Only a plain run judges in parallel: it wants the verdicts a
+                # student would get. Both `rbx time` phases measure, and keep the
+                # serial judge. The `-run` problem is separate from theirs, so
+                # this moves no timing probe's fingerprint.
+                judge_in_parallel=ctx.purpose == RunPurpose.RUN,
             ),
         )
         # Kept for `run_solution`, which needs two things from this exact object:
@@ -1603,6 +1774,136 @@ def _probe_pin(ctx: RunContext) -> ProbePinned:
     )
     return ProbePinned(
         default_ms=strategy.inferenceTimeout, measuring=_measuring(ctx.purpose)
+    )
+
+
+# What distinguishes the Kattis calibration's remote problem from the testrun ones.
+# Its own problem, so a problem that switches strategy never evicts the testrun
+# probes' fingerprints (nor they its).
+KATTIS_ID_SUFFIX = 'kattis'
+
+
+class _ProgressOnly:
+    """The one thing `_with_ticker` reads off a `RunContext`."""
+
+    def __init__(self, progress: Optional['utils.StatusProgress']):
+        self.progress = progress
+
+
+def _calibrated_mode(strategy: 'timing_config.TimingStrategy') -> ProbeCalibrated:
+    """The package mode for this strategy, or a refusal naming the field."""
+    multipliers = strategy.multipliers_or_die()
+    try:
+        return ProbeCalibrated(
+            ac_to_time_limit=multipliers.acToTimeLimit,
+            time_limit_to_tle=multipliers.timeLimitToTle,
+            time_resolution_ms=multipliers.timeResolution,
+            inference_timeout_ms=strategy.inferenceTimeout,
+        )
+    except ValueError as e:
+        raise MojRunnerError(
+            f'{e}\nMOJ refuses a package whose Kattis parameters are out of range, '
+            f'so rbx will not upload one. Adjust `timing.multipliers`.'
+        ) from e
+
+
+def _shipped_languages(mode: ProbeCalibrated) -> Tuple[str, ...]:
+    """The MOJ ids of the solutions a calibrated probe ships.
+
+    Refuses a solution whose language MOJ cannot run, for the reason
+    `_testrun_languages` gives: leaving it out would estimate from incomplete data
+    with nothing saying so.
+    """
+    # Imported here, like the packager does: `solutions` reaches the runners.
+    from rbx.box.schema import InferenceRole
+    from rbx.box.solutions import get_inference_solutions
+
+    solutions = get_inference_solutions(InferenceRole.LOWER)
+    if mode.time_limit_to_tle is not None:
+        solutions += get_inference_solutions(InferenceRole.UPPER)
+    languages: List[str] = []
+    unmapped: List[Tuple[pathlib.Path, str]] = []
+    for solution in solutions:
+        rbx_language = find_language(solution).name
+        moj_language = get_moj_language_from_rbx_language(rbx_language)
+        if moj_language is None:
+            unmapped.append((solution.path, rbx_language))
+        elif moj_language not in languages:
+            languages.append(moj_language)
+    if unmapped:
+        listed = '\n'.join(f'  `{path}` (`{language}`)' for path, language in unmapped)
+        raise MojRunnerError(
+            f'These solutions are written in languages MOJ has no counterpart for, '
+            f'so the judge could not calibrate them:\n{listed}\n'
+            f'Give the language a `moj` id in the `extensions.moj` block of '
+            f'`env.rbx.yml`, or mark the solutions `inference: false`.'
+        )
+    if not languages:
+        raise MojRunnerError(
+            'There is no accepted solution to estimate the time limit from.'
+        )
+    return tuple(languages)
+
+
+async def _calibrate_everywhere(moj_id: str) -> List[str]:
+    """Queue the calibration on every judge, as `rbx package moj --upload` does.
+
+    MOJ publishes the limit as the max across the judges that calibrated, so the
+    estimate has to come from the whole park. `--all-judges` can fail where the
+    global request does not (it resolves the host list first); the package is
+    already uploaded by then, so fall back rather than leave it uncalibrated.
+    """
+    try:
+        return await cli.calibrate(moj_id, all_judges=True)
+    except cli.MojCliError:
+        console.console.print(
+            f'[warning]Could not queue [item]{moj_id}[/item] on every judge; '
+            f'asking for one calibration instead. The limit then comes from the '
+            f'judges that pick it up.[/warning]'
+        )
+        return await cli.calibrate(moj_id)
+
+
+# The Kattis calibrations this machine queued and saw finish: problem id ->
+# {fingerprint, since}. `since` is the server-clock time read before queueing, so
+# a later run reading the same calibration filters out older judges the same way.
+KATTIS_STATE_NAME = 'moj-kattis.json'
+
+
+def _read_calibration_state() -> Dict[str, Dict[str, Any]]:
+    path = package.get_problem_cache_dir() / KATTIS_STATE_NAME
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text())
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _recorded_calibration(moj_id: str, fingerprint: str) -> Optional[int]:
+    """`since` of the calibration recorded for this exact package, if any."""
+    entry = _read_calibration_state().get(moj_id)
+    if not isinstance(entry, dict) or entry.get('fingerprint') != fingerprint:
+        return None
+    since = entry.get('since')
+    return since if isinstance(since, int) else None
+
+
+def _record_calibration(moj_id: str, fingerprint: str, since: int) -> None:
+    state = _read_calibration_state()
+    state[moj_id] = {'fingerprint': fingerprint, 'since': since}
+    (package.get_problem_cache_dir() / KATTIS_STATE_NAME).write_text(
+        json.dumps(state, indent=2, sort_keys=True) + '\n'
+    )
+
+
+def _forget_calibration(moj_id: str) -> None:
+    state = _read_calibration_state()
+    if state.pop(moj_id, None) is None:
+        return
+    (package.get_problem_cache_dir() / KATTIS_STATE_NAME).write_text(
+        json.dumps(state, indent=2, sort_keys=True) + '\n'
     )
 
 

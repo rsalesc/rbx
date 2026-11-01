@@ -163,3 +163,38 @@ def calibrated_limit_lines(ac_to_time_limit: float) -> List[str]:
         f'TLMOD[calibrafactor]={ac_to_time_limit:g}',
         '',
     ]
+
+
+def kattis_limit_lines(
+    ac_to_time_limit: float,
+    time_limit_to_tle: Optional[float],
+    time_resolution_ms: int,
+    inference_timeout_ms: int,
+) -> List[str]:
+    """The `conf` block asking MOJ to estimate the limit by the Kattis rule.
+
+    rbx's `timing.multipliers` are that rule: `TLKATTIS[lang]` is the smallest
+    multiple of `r` that is at least `a x` the worst accepted test of `lang`
+    (mojtools `tl-methods.sh`). No `TLOVERRIDE`: the calibrated limit is the
+    answer this package exists to get, and calibration ignores an override anyway
+    (`MOJ_CALIBRATING=1`).
+    """
+    calibration_tl = max(
+        DEFAULT_CALIBRATION_TL_SECONDS, math.ceil(inference_timeout_ms / 1000)
+    )
+    tle_ratio = time_limit_to_tle if time_limit_to_tle is not None else 1.5
+    return [
+        '# MOJ ESTIMATES the time limit, by the Kattis rule: per language, the',
+        '# smallest multiple of the resolution that is at least acToTimeLimit times',
+        "# the slowest accepted test. These are the problem's own timing.multipliers;",
+        '# `rbx time` reads the limit, and every timing, back out of the calibration.',
+        'TLMETHOD=kattis',
+        f'KATTIS_AC_TO_TIME_LIMIT={ac_to_time_limit:g}',
+        f'KATTIS_TIME_LIMIT_TO_TLE={tle_ratio:g}',
+        f'KATTIS_TIME_RESOLUTION={time_resolution_ms / 1000:g}',
+        '',
+        '# The cap the accepted solutions run under while MOJ measures them: the',
+        "# problem's inferenceTimeout, exactly what `rbx time` caps them at locally.",
+        f'CALIBRATIONTL={calibration_tl}',
+        '',
+    ]

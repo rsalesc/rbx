@@ -57,6 +57,7 @@ if TYPE_CHECKING:
     # `solutions` under TYPE_CHECKING, so importing it at run time closes no
     # cycle.
     from rbx.box.runners.base import SolutionRunner
+    from rbx.box.runners.moj.kattis import KattisCalibrationResult
 
 
 class MissingLowerBoundError(RbxException):
@@ -1157,6 +1158,233 @@ def _resolve_inference_strategy(
     return timing_config.resolve_strategy(env_timing, package_timing)
 
 
+@dataclasses.dataclass
+class _CalibratedEvidence:
+    """What a MOJ Kattis calibration said about the slow solutions, beyond the
+    times `SlowKnowledge` holds: the ones it found broken or never ran, and how
+    long each timed-out one was seen to survive."""
+
+    failed: List[Tuple[Solution, Outcome]] = dataclasses.field(default_factory=list)
+    unmeasured: List[Solution] = dataclasses.field(default_factory=list)
+    survived_ms: Dict[str, int] = dataclasses.field(default_factory=dict)
+
+
+def uses_moj_calibration(
+    runner: Optional['SolutionRunner'], strategy: timing_config.TimingStrategy
+) -> bool:
+    """Whether `rbx time` estimates by asking MOJ to calibrate, not by testruns.
+
+    Only a backend that can (`estimate_by_calibration`, the MOJ runner) and only
+    for the multipliers strategy, which *is* the Kattis rule MOJ implements. A
+    formula -- configured or typed into the custom-formula escape hatch -- has no
+    MOJ counterpart and keeps the two-phase testrun path.
+    """
+    return strategy.uses_multipliers and callable(
+        getattr(runner, 'estimate_by_calibration', None)
+    )
+
+
+def _render_calibration_report(
+    target: rich.console.Console, result: 'KattisCalibrationResult'
+) -> None:
+    """One row per shipped solution: what the judges measured, pooled."""
+    import rich.table
+
+    table = rich.table.Table(
+        title=f'MOJ calibration ({", ".join(result.hosts)})', title_justify='left'
+    )
+    table.add_column('Solution')
+    table.add_column('Role')
+    table.add_column('Time', justify='right')
+    table.add_column('Verdict')
+    for measurement in result.measurements.values():
+        if not measurement.hosts:
+            verdict = '[error]not reported[/error]'
+        elif measurement.bad_codes:
+            verdict = f'[error]{", ".join(measurement.bad_codes)}[/error]'
+        elif measurement.timed_out:
+            verdict = '[warning]TLE[/warning]'
+        elif not measurement.complete:
+            verdict = '[warning]incomplete[/warning]'
+        else:
+            verdict = '[success]AC[/success]'
+        time = '-' if measurement.time_ms is None else f'{measurement.time_ms} ms'
+        if measurement.timed_out and measurement.time_ms is not None:
+            time = f'>{measurement.time_ms} ms'
+        table.add_row(
+            measurement.solution.href(),
+            'accepted' if measurement.category == 'good' else 'too slow',
+            time,
+            verdict,
+        )
+    target.print(table)
+    if result.moj_limits_ms:
+        limits = ', '.join(
+            f'{language} {limit} ms'
+            for language, limit in sorted(result.moj_limits_ms.items())
+        )
+        target.print(f"MOJ's Kattis limits: {limits}.")
+
+
+async def _estimate_with_moj_calibration(
+    runner: 'SolutionRunner',
+    strategy: timing_config.TimingStrategy,
+) -> Optional[
+    Tuple[
+        _EstimationContext,
+        timing_validation.SlowKnowledge,
+        _CalibratedEvidence,
+        'KattisCalibrationResult',
+    ]
+]:
+    """Phase 1 *and* the slow solutions' evidence, out of one MOJ calibration.
+
+    The testrun path measures the accepted solutions, estimates, then testruns the
+    slow ones at the estimate. A Kattis calibration does all three on the judge:
+    it measures `sols/good`, computes the limit by the very rule the multipliers
+    describe, and judges `sols/slow` against it. This reads that back into what
+    the estimation context and `SlowKnowledge` already consume, so the picker,
+    the groups and the profile are the ones every other path uses.
+
+    The gates the testrun path applies to the accepted solutions apply here too: a
+    timeout (at `inferenceTimeout`, MOJ's `CALIBRATIONTL`), a wrong verdict, or a
+    solution the judges did not report all stop the estimate.
+    """
+    from rbx.box.runners.moj.runner import outcome_for_moj_code
+    from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
+
+    lower_solutions = get_inference_solutions(InferenceRole.LOWER)
+    if not lower_solutions:
+        raise MissingLowerBoundError(_NO_LOWER_BOUND_MESSAGE)
+    multipliers = strategy.multipliers_or_die()
+    upper_solutions = (
+        get_inference_solutions(InferenceRole.UPPER)
+        if multipliers.timeLimitToTle is not None
+        else []
+    )
+
+    entries = await extract_generation_testcases_from_groups()
+    with utils.StatusProgress('Calibrating on MOJ...') as s:
+        result = await runner.estimate_by_calibration(  # type: ignore[attr-defined]
+            entries, strategy, progress=s
+        )
+
+    console.console.print()
+    console.console.rule('[status]MOJ calibration[/status]', style='status')
+    _render_calibration_report(console.console, result)
+
+    ok = True
+    lower_timings: Dict[str, Dict[str, int]] = {}
+    for solution in lower_solutions:
+        measurement = result.measurements.get(str(solution.path))
+        if measurement is None or not measurement.hosts:
+            console.console.print(
+                f'[error]✗ No judge reported on {solution.href()}, so it bounds '
+                f'nothing.[/error]'
+            )
+            ok = False
+        elif measurement.timed_out:
+            console.console.print(
+                f'[error]✗ {solution.href()} timed out on MOJ at the estimation cap '
+                f'of {strategy.inferenceTimeout} ms (inferenceTimeout). Raise it, or '
+                f'speed the solution up.[/error]'
+            )
+            ok = False
+        elif measurement.bad_codes:
+            console.console.print(
+                f'[error]✗ {solution.href()} is expected to be accepted, but MOJ '
+                f'reported {", ".join(measurement.bad_codes)}.[/error]'
+            )
+            ok = False
+        elif not measurement.complete or measurement.time_ms is None:
+            console.console.print(
+                f'[error]✗ MOJ did not report every test of {solution.href()}, so '
+                f'its slowest test is unknown.[/error]'
+            )
+            ok = False
+        else:
+            lang = find_language_name(solution)
+            lower_timings.setdefault(lang, {})[str(solution.path)] = measurement.time_ms
+    if not ok:
+        return None
+
+    knowledge = timing_validation.SlowKnowledge()
+    evidence = _CalibratedEvidence()
+    for solution in upper_solutions:
+        path = str(solution.path)
+        measurement = result.measurements.get(path)
+        if measurement is None or not measurement.hosts:
+            evidence.unmeasured.append(solution)
+        elif measurement.bad_codes:
+            outcome = outcome_for_moj_code(measurement.bad_codes[0])
+            evidence.failed.append((solution, outcome or Outcome.JUDGE_FAILED))
+        elif measurement.timed_out and measurement.time_ms is not None:
+            knowledge.record_timeout(path, measurement.time_ms)
+            evidence.survived_ms[path] = measurement.time_ms
+        elif measurement.complete and measurement.time_ms is not None:
+            knowledge.record_time(path, measurement.time_ms)
+        else:
+            # Stopped early without a timeout: nothing it did bounds anything.
+            evidence.unmeasured.append(solution)
+
+    console.console.rule('[status]Time report[/status]', style='status')
+    lower_flat = _flatten(lower_timings)
+    console.console.print(f'Fastest solution: {min(lower_flat)} ms')
+    console.console.print(f'Slowest solution: {max(lower_flat)} ms')
+
+    env = environment.get_environment()
+    all_languages = relevant_languages_for_estimation(
+        env_languages=[lang.name for lang in env.languages],
+        timing_languages=list(
+            OrderedSet(
+                [
+                    *lower_timings,
+                    *(find_language_name(solution) for solution in upper_solutions),
+                ]
+            )
+        ),
+    )
+    ctx = _EstimationContext(
+        console=console.console,
+        strategy=strategy,
+        env_groups=env.timing.groups,
+        all_languages=all_languages,
+        lower_timings=lower_timings,
+        upper_solutions=upper_solutions,
+    )
+    return ctx, knowledge, evidence, result
+
+
+def _compare_with_moj_limits(
+    profile: TimingProfile,
+    lower_timings: Dict[str, Dict[str, int]],
+    result: 'KattisCalibrationResult',
+) -> None:
+    """Warn where the limit rbx wrote is tighter than the one MOJ computed.
+
+    Both come from the same measurements by the same rule, so a language that is
+    its own group gets MOJ's number exactly; pooling languages can only raise it.
+    A tighter one means the two disagree about the rule or the data, and the
+    accepted solutions of that language would lose the margin MOJ gave them.
+    """
+    from rbx.box.packaging.moj.moj_language_utils import (
+        get_moj_language_from_rbx_language,
+    )
+
+    for lang in lower_timings:
+        moj_language = get_moj_language_from_rbx_language(lang)
+        moj_limit = result.moj_limits_ms.get(moj_language or '')
+        if moj_limit is None:
+            continue
+        ours = profile.timeLimitPerLanguage.get(lang, profile.timeLimit)
+        if ours < moj_limit:
+            console.console.print(
+                f'[warning]⚠ The {lang} limit written ({ours} ms) is tighter than '
+                f'the {moj_limit} ms MOJ computed from the same calibration.'
+                f'[/warning]'
+            )
+
+
 async def _run_for_inference(
     check: bool,
     detailed: bool,
@@ -1299,6 +1527,13 @@ class _ValidationOutcome:
     # Broke for a reason other than running out of time, so they are evidence of
     # nothing either way.
     failed: List[Tuple[Solution, Outcome]] = dataclasses.field(default_factory=list)
+    # Not checked at this limit, and not run to check it either: what is known
+    # about them (a MOJ calibration that killed them at `TL + 2.2 s`) does not
+    # reach the limit they now have to clear. A warning, never a violation -- the
+    # check did not happen. Only a check that cannot run anything has these.
+    unverified: List[Tuple[Solution, int, int]] = dataclasses.field(
+        default_factory=list
+    )
 
     @property
     def ok(self) -> bool:
@@ -1420,9 +1655,15 @@ async def _validate_upper_bound(
     ran: Optional[Set[str]] = None,
     benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
     keep_checker_stderr: bool = False,
+    calibrated: Optional['_CalibratedEvidence'] = None,
 ) -> _ValidationOutcome:
     """Run each slow solution at the limit this estimate demands of it, and say
     whether it is genuinely too slow.
+
+    With ``calibrated`` nothing is run at all: a MOJ Kattis calibration already
+    judged every slow solution, and its failures arrive with it. A solution the
+    calibration does not settle at this limit is *unverified*, never re-run by
+    testrun -- see `_estimate_with_moj_calibration`.
 
     Only the solutions whose answer is not already known are run: ``knowledge``
     carries what earlier iterations established, and a lower limit never needs
@@ -1443,6 +1684,28 @@ async def _validate_upper_bound(
         for solution in upper_solutions
         if knowledge.needs_run(str(solution.path), limits[find_language_name(solution)])
     ]
+    if calibrated is not None:
+        broken = {str(solution.path) for solution, _ in calibrated.failed}
+        broken.update(str(solution.path) for solution in calibrated.unmeasured)
+        unverified = [
+            solution for solution in to_run if str(solution.path) not in broken
+        ]
+        outcome = _classify_slow_solutions(
+            profile,
+            [s for s in upper_solutions if s not in unverified],
+            knowledge,
+            calibrated.failed,
+            calibrated.unmeasured,
+        )
+        outcome.unverified = [
+            (
+                solution,
+                calibrated.survived_ms.get(str(solution.path), 0),
+                limits[find_language_name(solution)],
+            )
+            for solution in unverified
+        ]
+        return outcome
     if not to_run:
         return _classify_slow_solutions(profile, upper_solutions, knowledge, [])
 
@@ -1523,6 +1786,13 @@ def _report_validation_outcome(
             f'[error]✗ {solution.href()} produced no verdict at all, so nothing '
             f'checks that it is too slow for the estimated time limit.[/error]'
         )
+    for solution, survived, required in outcome.unverified:
+        console.console.print(
+            f'[warning]⚠ {solution.href()} was not checked against this limit: MOJ '
+            f'stopped it at {survived} ms while calibrating, and the limit needs it '
+            f'to take at least {required} ms. Its upper bound is recorded as '
+            f'skipped.[/warning]'
+        )
     for solution, time in outcome.violating:
         lang = find_language_name(solution)
         time_limit = profile.timeLimitPerLanguage.get(lang, profile.timeLimit)
@@ -1548,9 +1818,13 @@ async def _estimate_and_validate(
     ran: Optional[Set[str]] = None,
     benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
     keep_checker_stderr: bool = False,
+    calibrated: Optional['_CalibratedEvidence'] = None,
 ) -> Optional[TimingProfile]:
     """Estimate a limit and check it against the solutions expected to be too
     slow, letting the setter re-decide until the two agree.
+
+    ``calibrated`` is a MOJ Kattis calibration's evidence about the slow
+    solutions: the check then runs nothing (see `_validate_upper_bound`).
 
     A violation is not fatal: it is new evidence. Carrying it back into the
     picker is what makes the second pass better informed than the first -- the
@@ -1594,14 +1868,20 @@ async def _estimate_and_validate(
             ran=ran,
             benchmark_level=benchmark_level,
             keep_checker_stderr=keep_checker_stderr,
+            calibrated=calibrated,
         )
         _report_validation_outcome(outcome, profile)
+        # What the profile records: everything known, minus the solutions this
+        # limit was not checked against, which it then lists as skipped.
+        recorded = knowledge.without(
+            str(solution.path) for solution, _, _ in outcome.unverified
+        )
         if outcome.ok:
             # Rebuilt so the profile records what the check found rather than
             # what was known before it ran. The limits cannot move: a confirmed
             # solution contributes no measurement, and a measured one that
             # respects the bound only widens the range the limit already fits.
-            return ctx.build(picked, knowledge=knowledge, announce=False)
+            return ctx.build(picked, knowledge=recorded, announce=False)
 
         violated = True
         if auto or not ctx.can_prompt:
@@ -1613,7 +1893,7 @@ async def _estimate_and_validate(
                 'the offending solutions are named under upperValidation in the '
                 'limits profile.[/warning]'
             )
-            return ctx.build(picked, knowledge=knowledge, force=True, announce=False)
+            return ctx.build(picked, knowledge=recorded, force=True, announce=False)
 
         ctx.console.print(
             '[warning]⚠ Re-opening the picker with what the check found. Regroup '
@@ -1793,44 +2073,73 @@ async def compute_time_limits(
         str(solution.path) for solution in get_inference_solutions(InferenceRole.LOWER)
     }
 
-    run = await _run_for_inference(
-        check=check,
-        detailed=detailed,
-        runs=runs,
-        formula=formula,
-        runner=runner,
-        benchmark_level=benchmark_level,
-        keep_checker_stderr=keep_checker_stderr,
-    )
-    if run is None:
-        return None
+    strategy = _resolve_inference_strategy(formula)
+    run: Optional[_InferenceRun] = None
+    calibration: Optional['KattisCalibrationResult'] = None
+    if uses_moj_calibration(runner, strategy):
+        # One MOJ calibration instead of two phases of testruns; see
+        # `_estimate_with_moj_calibration`.
+        assert runner is not None
+        prepared = await _estimate_with_moj_calibration(runner, strategy)
+        if prepared is None:
+            return None
+        ctx, knowledge, evidence, calibration = prepared
+        # Every solution the calibration judged already has a verdict, so
+        # `--run-all` must not testrun it again.
+        ran.update(str(solution.path) for solution in ctx.upper_solutions)
+        estimated_tl = await _estimate_and_validate(
+            ctx,
+            knowledge,
+            auto=auto,
+            skip_slow=skip_slow,
+            check=check,
+            detailed=detailed,
+            runs=runs,
+            runner=runner,
+            calibrated=evidence,
+        )
+        if estimated_tl is None:
+            return None
+        _compare_with_moj_limits(estimated_tl, ctx.lower_timings, calibration)
+    else:
+        run = await _run_for_inference(
+            check=check,
+            detailed=detailed,
+            runs=runs,
+            formula=formula,
+            runner=runner,
+            benchmark_level=benchmark_level,
+            keep_checker_stderr=keep_checker_stderr,
+        )
+        if run is None:
+            return None
 
-    knowledge = timing_validation.SlowKnowledge()
-    ctx = await build_estimation_context(
-        console.console,
-        run.result,
-        run.strategy,
-        upper_solutions=get_inference_solutions(InferenceRole.UPPER),
-        knowledge=knowledge,
-    )
-    if ctx is None:
-        return None
+        knowledge = timing_validation.SlowKnowledge()
+        built = await build_estimation_context(
+            console.console,
+            run.result,
+            run.strategy,
+            upper_solutions=get_inference_solutions(InferenceRole.UPPER),
+            knowledge=knowledge,
+        )
+        if built is None:
+            return None
 
-    estimated_tl = await _estimate_and_validate(
-        ctx,
-        knowledge,
-        auto=auto,
-        skip_slow=skip_slow,
-        check=check,
-        detailed=detailed,
-        runs=runs,
-        runner=runner,
-        ran=ran,
-        benchmark_level=benchmark_level,
-        keep_checker_stderr=keep_checker_stderr,
-    )
-    if estimated_tl is None:
-        return None
+        estimated_tl = await _estimate_and_validate(
+            built,
+            knowledge,
+            auto=auto,
+            skip_slow=skip_slow,
+            check=check,
+            detailed=detailed,
+            runs=runs,
+            runner=runner,
+            ran=ran,
+            benchmark_level=benchmark_level,
+            keep_checker_stderr=keep_checker_stderr,
+        )
+        if estimated_tl is None:
+            return None
 
     # Stamped here rather than inside the estimation: the checksum describes the
     # package the estimate was taken against, and that is only settled once the
@@ -1858,17 +2167,21 @@ async def compute_time_limits(
 
     if share is not None:
         rec = sharing.recording_console()
-        await print_run_report(
-            run.result,
-            rec,
-            _INFERENCE_VERIFICATION,
-            detailed=detailed,
-            skip_printing_limits=True,
-            # Benchmarked too, for the same reason `rbx run --share` benchmarks
-            # its copy: a shared report silently missing a block the setter asked
-            # for reads as a run that had nothing to report.
-            benchmark_level=benchmark_level,
-        )
+        if run is not None:
+            await print_run_report(
+                run.result,
+                rec,
+                _INFERENCE_VERIFICATION,
+                detailed=detailed,
+                skip_printing_limits=True,
+                # Benchmarked too, for the same reason `rbx run --share` benchmarks
+                # its copy: a shared report silently missing a block the setter
+                # asked for reads as a run that had nothing to report.
+                benchmark_level=benchmark_level,
+            )
+        elif calibration is not None:
+            # Nothing ran locally or by testrun: the calibration *is* the report.
+            _render_calibration_report(rec, calibration)
         rec.print()
         rec.print(
             limits_info.build_limits_table(limits, title=f'Time limits ({profile})')

@@ -24,6 +24,7 @@ import pytest
 from rbx.box.packaging.moj.packager import (
     JudgeCalibrated,
     MojPackager,
+    ProbeCalibrated,
     ProbePackage,
     ProbePinned,
     ProfilePinned,
@@ -451,6 +452,51 @@ def test_a_package_that_is_not_a_probe_keeps_mojs_parallel_default(
     assert not [line for line in directives if line.startswith('TLERERUN')]
 
 
+def _judging_probe_conf(testing_pkg, tmp_path) -> str:
+    _package_with_every_solution_kind(testing_pkg)
+    return (
+        run_packager(
+            testing_pkg,
+            tmp_path,
+            build_entries(tmp_path, ['samples']),
+            timing_mode=ProbePinned(default_ms=2000),
+            probe=ProbePackage(submission_languages=('cpp',), judge_in_parallel=True),
+        )
+        / 'conf'
+    ).read_text()
+
+
+def test_a_judging_probe_runs_its_tests_in_parallel(testing_pkg, tmp_path):
+    """`rbx run` wants verdicts, so it is judged as a student's submission is.
+
+    Measured on the park (2026-10-31, 168 tests): the serial probe took 74 s of
+    judge time, the parallel one 29 s, with each test pinned to its own CPU.
+    Said explicitly, so a changed MOJ default never changes what rbx asked for.
+    """
+    directives = _directives(_judging_probe_conf(testing_pkg, tmp_path))
+
+    assert 'ALLOWPARALLELTEST=y' in directives
+    assert 'ALLOWPARALLELTEST=n' not in directives
+    assert not [line for line in directives if line.startswith('MAXPARALLELTESTS')]
+
+
+def test_a_judging_probe_reruns_a_test_that_hit_the_limit(testing_pkg, tmp_path):
+    """Real judging gives a contended TLE a serial second chance; so does `rbx run`.
+
+    The rerun is appended to the verdicts, which `TestrunStatus.by_name` reads
+    last-entry-wins; `test_run_solution.py` pins that shape.
+    """
+    directives = _directives(_judging_probe_conf(testing_pkg, tmp_path))
+
+    assert 'TLERERUN=y' in directives
+    assert 'TLERERUN=n' not in directives
+
+
+def test_a_probe_measures_unless_asked_to_judge(testing_pkg, tmp_path):
+    # The default is the measuring probe: every `rbx time` phase relies on it.
+    assert not ProbePackage(submission_languages=('cpp',)).judge_in_parallel
+
+
 def test_a_binary_package_that_is_not_a_probe_still_halts_early(testing_pkg, tmp_path):
     # The suppression is the probe's alone; the judge-time saving still applies to a
     # package students actually submit to.
@@ -830,3 +876,49 @@ def test_judge_calibration_is_unchanged(testing_pkg, tmp_path):
 
     assert _conf_value(conf, 'TLMOD[calibrafactor]') == '2'
     assert not _overrides(conf)
+
+
+def _calibrated(**overrides) -> ProbeCalibrated:
+    fields = dict(
+        ac_to_time_limit=2.0,
+        time_limit_to_tle=1.5,
+        time_resolution_ms=100,
+        inference_timeout_ms=10000,
+    )
+    fields.update(overrides)
+    return ProbeCalibrated(**fields)
+
+
+@pytest.mark.parametrize(
+    'overrides',
+    [
+        {'ac_to_time_limit': 0.5},
+        {'ac_to_time_limit': 101},
+        {'time_limit_to_tle': 0.9},
+        {'time_resolution_ms': 0},
+        {'time_resolution_ms': 10_001},
+    ],
+)
+def test_kattis_ratios_moj_would_refuse_are_refused_first(overrides):
+    """MOJ's own ranges (`conf_tlmethod_sane`): a in [1, 100], b too, r in (0, 10] s."""
+    with pytest.raises(ValueError):
+        _calibrated(**overrides)
+
+
+def test_kattis_ratios_on_moj_boundaries_are_accepted():
+    _calibrated(ac_to_time_limit=1, time_limit_to_tle=100, time_resolution_ms=10_000)
+    _calibrated(time_limit_to_tle=None)
+
+
+def test_a_calibrated_mode_is_only_for_a_probe(testing_pkg, tmp_path):
+    """A setter's package says `--calibrate`; this one exists for `rbx time`."""
+    with pytest.raises(ValueError, match='--calibrate'):
+        MojPackager(build_entries(tmp_path, ['samples']), timing_mode=_calibrated())
+
+
+def test_a_calibrated_probe_is_a_legal_probe(testing_pkg, tmp_path):
+    MojPackager(
+        build_entries(tmp_path, ['samples']),
+        timing_mode=_calibrated(),
+        probe=ProbePackage(submission_languages=('cpp',)),
+    )

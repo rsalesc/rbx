@@ -324,6 +324,11 @@ class MojCheck(BaseModel):
     calibrated: bool = False
     being_calibrated: bool = False
     needs_recalibration: bool = False
+    # When each judge last calibrated this problem, on the server's clock. Read
+    # to tell a calibration rbx just queued from the one before it: `is_ready`
+    # alone can still describe the previous calibration for a moment after
+    # `moj calibrate` returns. See `MojRunner._wait_for_fresh_calibration`.
+    hosts: Dict[str, 'MojCheckHost'] = {}
 
     @property
     def is_ready(self) -> bool:
@@ -338,6 +343,119 @@ class MojCheck(BaseModel):
             and not self.being_calibrated
             and not self.needs_recalibration
         )
+
+    @property
+    def calibrated_at(self) -> Dict[str, int]:
+        """Each judge's last calibration time, for the judges that report one."""
+        return {host: h.at for host, h in self.hosts.items() if h.at is not None}
+
+
+class MojCheckHost(BaseModel):
+    """One judge's entry under `moj check`'s `tl.hosts`."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    at: Optional[int] = None
+
+
+MojCheck.model_rebuild()
+
+
+class CalibSolution(BaseModel):
+    """One solution of one judge's calibration, as `moj --json calib` reports it.
+
+    `tests` has the same `{name, code, time, tl}` shape a testrun reports, written
+    by the same `sol_tests_json` -- so a repeated name means the same thing here
+    (a rerun appended last), which `by_name` reads the same way.
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    file: str
+    category: str
+    lang: Optional[str] = None
+    verdict: Optional[str] = None
+    # The wall-clock cap the judge killed this solution's tests at:
+    # `2 + TL + 0.2 + 2 * drift` (build-and-test.sh's `ETL`). A test that timed
+    # out reports this as its time, so it is the most a timed-out solution can be
+    # known to have survived.
+    etl: Optional[float] = None
+    tests: List[TestrunTest] = []
+
+    @property
+    def by_name(self) -> Dict[str, TestrunTest]:
+        """The tests keyed by name, last entry winning. See `TestrunStatus.by_name`."""
+        return {test.name: test for test in self.tests}
+
+
+class CalibHost(BaseModel):
+    """One judge's calibration of a problem."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    host: str
+    # When this judge's calibration was recorded, on the server's clock. A judge
+    # that calibrated an *older* package stays listed, so this -- compared with
+    # what `moj check` reported before rbx queued its own calibration -- is what
+    # tells the two apart. `version` cannot: observed 2026-10-31, it differs from
+    # the top-level `checksum` on a calibration `moj check` calls current.
+    at: Optional[int] = None
+    version: Optional[str] = None
+    # Per-language limits this judge computed, in seconds, as MOJ spells them
+    # (`"0.6"`, `".4115"`). `tl` is MOJ's own method, `tl_kattis` the Kattis one.
+    tl: Dict[str, str] = {}
+    tl_kattis: Dict[str, str] = {}
+    # Languages with a `sols/good` solution that no accepted run calibrated here.
+    missing: List[str] = []
+    sols: List[CalibSolution] = []
+
+
+class CalibMethodLimits(BaseModel):
+    model_config = ConfigDict(extra='ignore')
+
+    calibrated: Dict[str, str] = {}
+    effective: Dict[str, str] = {}
+
+
+class KattisParams(BaseModel):
+    model_config = ConfigDict(extra='ignore')
+
+    a: Optional[float] = None
+    b: Optional[float] = None
+    r: Optional[float] = None
+
+
+class MojCalibration(BaseModel):
+    """The whole calibration of a problem, as `moj --json calib` reports it.
+
+    Observed shape (2026-10-31, `docs/plans/2026-11-01-moj-parallel-run-and-
+    kattis-calibration-design.md`): per judge, per solution, per test. The
+    published limit of each method is the **max across the judges** that
+    calibrated, under `time_limits_by_method.<method>.calibrated`.
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    checksum: Optional[str] = None
+    kattis: KattisParams = KattisParams()
+    time_limits_by_method: Dict[str, CalibMethodLimits] = {}
+    hosts: List[CalibHost] = []
+
+    def hosts_after(self, since: Optional[int]) -> List[CalibHost]:
+        """The judges that calibrated after `since` (server clock) and measured
+        something. `None` takes every judge that measured something."""
+        return [
+            host
+            for host in self.hosts
+            if host.sols
+            and host.tl_kattis
+            and (since is None or (host.at is not None and host.at > since))
+        ]
+
+    def kattis_limits(self) -> Dict[str, str]:
+        """MOJ's published Kattis limit per MOJ language, in seconds."""
+        block = self.time_limits_by_method.get('kattis')
+        return dict(block.calibrated) if block is not None else {}
 
 
 # Confirmed from the CLI source: `cmd_whoami` prints exactly
@@ -659,7 +777,21 @@ async def upload(problem_id: str, directory: pathlib.Path) -> None:
 ALL_JUDGES_FLAG = '--all-judges'
 
 
-async def calibrate(problem_id: str, *, all_judges: bool = False) -> None:
+# What `moj calibrate` prints once it has queued: `calibração de <id>: h1, h2, h3`
+# (observed 2026-10-31 with `--all-judges`). The host list is what tells a caller
+# which judges to wait for; nothing else in the CLI's output names them.
+_CALIBRATE_HOSTS_RE = re.compile(r'^calibra\S*\s+de\s+\S+:\s*(.+?)\s*$', re.MULTILINE)
+
+
+def queued_hosts(output: str) -> List[str]:
+    """The judges `moj calibrate` said it queued, or `[]` if it named none."""
+    match = _CALIBRATE_HOSTS_RE.search(output)
+    if match is None:
+        return []
+    return [host.strip() for host in match.group(1).split(',') if host.strip()]
+
+
+async def calibrate(problem_id: str, *, all_judges: bool = False) -> List[str]:
     """Queue a calibration. Repeating it does not queue a second one.
 
     Without `all_judges` the request is **global**: the server queues it once and
@@ -681,7 +813,9 @@ async def calibrate(problem_id: str, *, all_judges: bool = False) -> None:
     args = ['calibrate', problem_id]
     if all_judges:
         args.append(ALL_JUDGES_FLAG)
-    await _run_moj(args)
+    # The judges it queued, when it says: a caller that has to read *every*
+    # judge's calibration waits for exactly these. See `queued_hosts`.
+    return queued_hosts(await _run_moj(args))
 
 
 async def check(problem_id: str) -> MojCheck:
@@ -692,6 +826,12 @@ async def check(problem_id: str) -> MojCheck:
     # same as calibrated, and of the two readings only this one errs towards
     # waiting rather than towards trusting limits that may not exist.
     return MojCheck.model_validate(block if isinstance(block, dict) else {})
+
+
+async def calib(problem_id: str) -> MojCalibration:
+    """The problem's whole calibration: per judge, per solution, per test."""
+    payload = await _run_moj_json(['calib', problem_id])
+    return MojCalibration.model_validate(payload if isinstance(payload, dict) else {})
 
 
 async def testrun(ref: Union[str, pathlib.Path], solution: pathlib.Path) -> str:
