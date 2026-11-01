@@ -70,6 +70,27 @@ Main implementation. "Stupid" because it doesn't use OS-level sandboxing (unlike
 - `SandboxParams` -- `stdin`, `stdout_file`, `stderr_file`, `extra_files`, `address_space_limit`, `time_limit`, `wall_time_limit`, `memory_limit`, `stack_limit`, `max_processes`, `set_hostname`, `allow_network`
 - `CommunicationParams` -- Solution and interactor params, `capture_pipes` flag
 
+### `DockerSandbox` (opt-in, `judge/sandboxes/docker_sandbox.py` + `docker_agent.py`)
+
+Selected when the setter config has `docker.enabled` (`rbx/box/docker_runtime.py`
+builds the image, runs the container, binds the backend). It **subclasses
+`StupidSandbox` and overrides only `run`/`run_communication`** (plus
+`create_symlink`): the box is prepared on the host as usual, and an agent in the
+container runs the *same* `StupidSandbox` code on it (`StupidSandbox(path=box)`),
+reached over one `docker exec -i` per process with JSON lines. Never duplicate
+execution logic there -- change `StupidSandbox` and both paths get it. Rules:
+
+- `docker_agent.py` must not import `rbx.box`: the container imports only the
+  grading layer.
+- Host-only probes are gated by `SandboxBase.runs_on_host()`; a new probe that
+  reads this machine's compilers or rlimits must be gated the same way.
+- `cache_fingerprint()` keys caches on the image (`__executor__`); `None` keeps
+  native keys unchanged.
+- Docker Desktop traps, both measured: a bind mount nested in another is dropped
+  (boxes live outside every mount), and a file the host just wrote can read as
+  empty in the guest for ~100ms -- every request carries a size manifest that
+  `await_files` waits on. Design: `docs/plans/2026-11-01-docker-sandbox-design.md`.
+
 ## File Caching (`judge/cacher.py`, `judge/storage.py`)
 
 ### `Storage` (ABC) -> `FilesystemStorage`

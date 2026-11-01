@@ -31,6 +31,7 @@ def clear_all_functools_cache():
     test to rebuild compilation caches and OOMs CI under xdist parallelism.
     """
     from rbx.box import (
+        docker_runtime,
         environment,
         graders,
         header,
@@ -48,6 +49,7 @@ def clear_all_functools_cache():
     from rbx.grading import steps as grading_steps
 
     pkgs = [
+        docker_runtime,
         environment,
         graders,
         package,

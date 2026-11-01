@@ -303,6 +303,9 @@ def _check_stack_limit():
         return
     if sys.platform != 'darwin':
         return
+    if not package.get_sandbox_type().runs_on_host():
+        # Programs run in a container, under the stack limit it starts with.
+        return
     soft, hard = resource.RLIM_INFINITY, resource.RLIM_INFINITY
 
     TARGET = 256 * 1024 * 1024  # 256 MiB
@@ -823,7 +826,13 @@ async def compile_item(
         # __internal__/ dir (alongside the builtin headers) and is exposed via
         # -I__internal__ so <bits/stdc++.h> resolves there without putting the
         # mirrored package root on the include path.
-        bits_artifact = maybe_get_bits_stdcpp_for_commands(commands)
+        # Only for a host compiler: the probe runs `g++ -v` on this machine, and
+        # a container's compiler ships its own bits/stdc++.h anyway.
+        bits_artifact = (
+            maybe_get_bits_stdcpp_for_commands(commands)
+            if package.get_sandbox_type().runs_on_host()
+            else None
+        )
         if bits_artifact is not None:
             artifacts.inputs.append(bits_artifact)
         if bits_artifact is not None or added_always_include:

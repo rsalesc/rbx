@@ -820,6 +820,12 @@ def get_file_mapping(
 
 @functools.cache
 def get_sandbox_type() -> Type[SandboxBase]:
+    from rbx.box import docker_runtime
+
+    # The setter's machine decides, not the package: Docker is an opt-in in the
+    # setter config, and overrides whatever sandbox env.rbx.yml names.
+    if docker_runtime.docker_enabled():
+        return docker_runtime.get_sandbox_type()
     used_sandbox = get_environment().sandbox
     if used_sandbox == 'stupid':
         return StupidSandbox

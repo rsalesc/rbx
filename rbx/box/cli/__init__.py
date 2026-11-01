@@ -190,6 +190,13 @@ _GROUPS = [
         is_group=True,
     ),
     LazyCommand(
+        'docker',
+        'rbx.box.cli.commands.docker_cmds:app',
+        help='Manage the Docker container rbx runs programs in (sub-command).',
+        rich_help_panel='Configuration',
+        is_group=True,
+    ),
+    LazyCommand(
         'statements, st',
         'rbx.box.statements.build_statements:app',
         help='Manage statements (sub-command).',
