@@ -134,6 +134,17 @@ def test_run_args_isolate_the_container():
     assert f'{box}:{box}:rw' in args
 
 
+def test_agents_run_one_program_at_a_time_unless_configured():
+    def slots(runtime: DockerRuntime) -> str:
+        command = runtime._agent_command()  # noqa: SLF001
+        return command[command.index('--slots') + 1]
+
+    assert slots(_runtime()) == '1'
+    assert slots(_runtime(max_parallel=3)) == '3'
+    with pytest.raises(ValueError):
+        DockerConfig(max_parallel=0)
+
+
 def test_missing_docker_cli_fails_pointing_at_the_config():
     docker_runtime.ensure_daemon.cache_clear()
     with mock.patch.object(docker_runtime.shutil, 'which', return_value=None):

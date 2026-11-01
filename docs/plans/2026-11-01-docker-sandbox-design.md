@@ -104,7 +104,20 @@ DockerSandbox(StupidSandbox)                      keeper: docker_agent keep
    of the box's file sizes as the host sees them (following symlinks), and the
    agent waits until its view agrees before starting the program, failing loudly
    after 5 s. The wait is outside the measured time.
-5. Memory under `RLIMIT_AS` behaves as on any Linux host: an allocation over the
+5. **Parallel programs get broken reads.** Found through a real
+   `rbx each --parallel time` on a 13-problem contest: a reference solution
+   segfaulted on a 6.9 MB input it reads fine alone. Instrumented, it died at
+   recursion depth 0 after ~0.5-1M of ~1M numbers: `cin` hit end-of-file
+   mid-file, although the guest checked the file's size and SHA-1 right before
+   the program started. A program paging in its own binary also hit SIGBUS once.
+   With 13 programs at a time: 9/400 failures (fresh copies), 1/400 (rename or
+   old files); with programs serialized and staging still parallel: 0/400. So
+   the agent runs **one program at a time across the whole container** by
+   default -- an `flock` slot under the container's `/tmp`, shared by every
+   agent, held from `await_files` to the end of the run, outside measured
+   time. `docker.max_parallel` raises it. The image build is serialized across
+   processes too (`.build.lock`), so `each --parallel` builds it once.
+6. Memory under `RLIMIT_AS` behaves as on any Linux host: an allocation over the
    limit fails up front (RTE), which is why fixtures use `MLE_OR_RTE`.
 
 ## Testing
