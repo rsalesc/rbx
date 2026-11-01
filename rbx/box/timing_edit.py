@@ -12,6 +12,7 @@ table, and `timing` (which imports `limits_info`) reuses the arithmetic, so this
 may import neither.
 """
 
+import enum
 import math
 from fractions import Fraction
 from typing import List, Optional
@@ -19,6 +20,8 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 from rbx.box.schema import (
+    EstimationSolutionTiming,
+    InferenceRole,
     LimitModifiers,
     LimitsProfile,
     TimingBound,
@@ -116,12 +119,18 @@ def assess(
     report: TimingGroupReport,
     multipliers: Optional[TimingMultipliers],
     time_limit: Optional[int] = None,
+    solutions: Optional[List[EstimationSolutionTiming]] = None,
 ) -> GroupCheck:
     """Judge ``time_limit`` (the report's own limit by default) for this group.
 
     Pure arithmetic over what the report recorded, applying the rules
     `timing.compute_bounds` estimated with -- so at the estimated limit it
     reproduces exactly what the estimation concluded.
+
+    ``solutions`` are the group's own per-solution timings, when the profile
+    recorded them (see `group_solutions`). They make the slow side exact: a
+    confirmed solution is judged against the limit it was actually seen
+    surviving, instead of against the limit the group was estimated at.
     """
     if time_limit is None:
         time_limit = report.timeLimit
@@ -152,12 +161,21 @@ def assess(
             for bound in validation.violating
             if violates_upper_bound(bound.value, time_limit, to_tle)
         ]
-        # Confirmed means "still running at evidence_at * timeLimitToTle", which
-        # says nothing about any higher multiple.
-        if time_limit <= evidence_at:
-            confirmed = list(validation.confirmed)
-        else:
-            unverified = list(validation.confirmed)
+        survived = {
+            timing.path: timing.survivedAt
+            for timing in solutions or []
+            if timing.survivedAt is not None
+        }
+        for path in validation.confirmed:
+            if path in survived:
+                # Still running at `survived`: too slow for any limit whose
+                # multiple fits under it.
+                holds = not violates_upper_bound(survived[path], time_limit, to_tle)
+            else:
+                # Only known to survive evidence_at * timeLimitToTle, which says
+                # nothing about any higher multiple.
+                holds = time_limit <= evidence_at
+            (confirmed if holds else unverified).append(path)
 
     return GroupCheck(
         time_limit=time_limit,
@@ -231,7 +249,142 @@ def adjusted_checks(profile: LimitsProfile) -> List[GroupCheck]:
     if profile.baseEstimate is not None:
         reports.append(profile.baseEstimate)
     return [
-        assess(report, profile.multipliers)
+        assess(
+            report,
+            profile.multipliers,
+            solutions=group_solutions(profile, report),
+        )
         for report in reports
         if report.estimatedTimeLimit is not None
     ]
+
+
+def group_solutions(
+    profile: LimitsProfile, report: Optional[TimingGroupReport]
+) -> Optional[List[EstimationSolutionTiming]]:
+    """The recorded timings of the solutions a row is about: every solution for
+    the base row (``report`` is the base estimate, or None), the ones in the
+    group's languages otherwise. None when the profile recorded no timings."""
+    if profile.solutions is None:
+        return None
+    if report is None or report is profile.baseEstimate:
+        return list(profile.solutions)
+    languages = set(report.languages)
+    return [timing for timing in profile.solutions if timing.language in languages]
+
+
+class SolutionStatus(str, enum.Enum):
+    # Clears the limit as an accepted or a too-slow solution should.
+    OK = 'ok'
+    # Accepted and passes, without the headroom `acToTimeLimit` asks for.
+    THIN = 'thin'
+    # Accepted, and takes longer than the limit.
+    FAILS = 'fails'
+    # Expected too slow, and finishes within the limit times `timeLimitToTle`.
+    PASSES = 'passes'
+    # Expected too slow, and only seen running at a lower multiple of the limit.
+    UNVERIFIED = 'unverified'
+    # Expected too slow, and never run, or nothing bounds it from above.
+    UNCHECKED = 'unchecked'
+
+
+class SolutionCheck(BaseModel):
+    """How one solution fares at one limit."""
+
+    path: str
+    language: str
+    role: InferenceRole
+    time: Optional[int] = None
+    survived_at: Optional[int] = None
+    # The range of limits this solution allows: at least `min_ms` for an
+    # accepted one, at most `max_ms` for a slow one.
+    min_ms: Optional[int] = None
+    max_ms: Optional[int] = None
+    # How far the limit is from the solution, as the ratio the multiplier caps:
+    # limit / time for an accepted one, time / limit for a slow one.
+    ratio: Optional[float] = None
+    status: SolutionStatus
+
+
+def check_solution(
+    timing: EstimationSolutionTiming,
+    multipliers: Optional[TimingMultipliers],
+    time_limit: int,
+) -> SolutionCheck:
+    common = dict(
+        path=timing.path,
+        language=timing.language,
+        role=timing.role,
+        time=timing.time,
+        survived_at=timing.survivedAt,
+    )
+    if timing.role == InferenceRole.LOWER:
+        assert timing.time is not None
+        need = (
+            math.ceil(timing.time * exact_ratio(multipliers.acToTimeLimit))
+            if multipliers is not None
+            else timing.time
+        )
+        if time_limit < timing.time:
+            status = SolutionStatus.FAILS
+        elif time_limit < need:
+            status = SolutionStatus.THIN
+        else:
+            status = SolutionStatus.OK
+        return SolutionCheck(
+            **common,
+            min_ms=need,
+            ratio=time_limit / timing.time if timing.time else None,
+            status=status,
+        )
+
+    to_tle = multipliers.timeLimitToTle if multipliers is not None else None
+    if to_tle is None:
+        return SolutionCheck(
+            **common,
+            ratio=timing.time / time_limit if timing.time is not None else None,
+            status=SolutionStatus.UNCHECKED,
+        )
+    if timing.time is not None:
+        return SolutionCheck(
+            **common,
+            max_ms=math.floor(timing.time / exact_ratio(to_tle)),
+            ratio=timing.time / time_limit,
+            status=(
+                SolutionStatus.PASSES
+                if violates_upper_bound(timing.time, time_limit, to_tle)
+                else SolutionStatus.OK
+            ),
+        )
+    if timing.survivedAt is not None:
+        return SolutionCheck(
+            **common,
+            max_ms=math.floor(timing.survivedAt / exact_ratio(to_tle)),
+            status=(
+                SolutionStatus.UNVERIFIED
+                if violates_upper_bound(timing.survivedAt, time_limit, to_tle)
+                else SolutionStatus.OK
+            ),
+        )
+    return SolutionCheck(**common, status=SolutionStatus.UNCHECKED)
+
+
+def check_solutions(
+    timings: List[EstimationSolutionTiming],
+    multipliers: Optional[TimingMultipliers],
+    time_limit: int,
+) -> List[SolutionCheck]:
+    """Every solution checked at ``time_limit``: the accepted ones slowest
+    first, then the slow ones fastest first -- the closest to the limit lead."""
+    lower = sorted(
+        (t for t in timings if t.role == InferenceRole.LOWER),
+        key=lambda t: -(t.time or 0),
+    )
+    upper = sorted(
+        (t for t in timings if t.role == InferenceRole.UPPER),
+        key=lambda t: (
+            t.time if t.time is not None else t.survivedAt or float('inf'),
+            t.path,
+        ),
+    )
+    return [check_solution(t, multipliers, time_limit) for t in [*lower, *upper]]

@@ -1384,6 +1384,37 @@ class UnitTests(BaseModel):
     )
 
 
+class EstimationSolutionTiming(BaseModel):
+    """What one solution measured during the estimation of a limits profile."""
+
+    # Ignored rather than refused, for the reason `LimitsProfile` gives.
+    model_config = ConfigDict(extra='ignore')
+
+    path: str = Field(description='The solution, as named in `problem.rbx.yml`.')
+
+    language: str = Field(
+        description='The language it was timed as, which decides its group.'
+    )
+
+    role: InferenceRole = Field(
+        description="""Which side of the limit it bounds: `lower` for an accepted
+solution, `upper` for one expected to be too slow."""
+    )
+
+    time: Optional[int] = Field(
+        default=None,
+        description="""Its running time, in milliseconds, when it finished. Absent
+for a slow solution that never finished, or was never run.""",
+    )
+
+    survivedAt: Optional[int] = Field(
+        default=None,
+        description="""For a slow solution that never finished: the highest limit,
+in milliseconds, it was seen still running at. Absent when it finished, or was
+never run.""",
+    )
+
+
 class LimitsProfile(BaseModel):
     # Unknown keys are ignored, not refused -- the one model in this file that
     # tolerates them, and deliberately.
@@ -1470,6 +1501,19 @@ that a saved limit predates the current solutions or testset.
 
 Presentation-only; never used for limit resolution. Absent on a profile whose
 limit was not estimated (inherited from the package, or set by hand).
+""",
+    )
+
+    # Declared last on purpose: the profile is written in field order, and this
+    # list -- one entry per timed solution -- is the bulkiest and least read part
+    # of it. It goes below everything a setter opens the file for.
+    solutions: Optional[List[EstimationSolutionTiming]] = Field(
+        default=None,
+        description="""
+The timing of every solution the estimate was computed from. Written by
+`rbx time` and read by `rbx time --edit`, which checks a hand-set limit against
+each solution. Presentation-only; never used for limit resolution. Absent on a
+profile estimated before it was recorded.
 """,
     )
 

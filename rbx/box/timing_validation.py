@@ -59,6 +59,13 @@ class SlowKnowledge:
         """Its real time, or None if it has only ever been killed."""
         return self._per_solution.get(solution, _SolutionKnowledge()).time
 
+    def survived_at(self, solution: str) -> Optional[int]:
+        """The highest limit it was seen still running at, if it never finished."""
+        entry = self._per_solution.get(solution)
+        if entry is None or entry.time is not None:
+            return None
+        return entry.survived
+
     def is_confirmed(self, solution: str) -> bool:
         """Whether it is known to be too slow rather than merely unmeasured."""
         entry = self._per_solution.get(solution)

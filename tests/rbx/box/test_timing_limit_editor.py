@@ -9,8 +9,10 @@ from prompt_toolkit.output import DummyOutput
 from typer.testing import CliRunner
 
 from rbx import utils
-from rbx.box import cli, limits_info, package, timing_limit_editor
+from rbx.box import cli, limits_info, package, timing_edit, timing_limit_editor
 from rbx.box.schema import (
+    EstimationSolutionTiming,
+    InferenceRole,
     LimitModifiers,
     LimitsProfile,
     TimingBound,
@@ -148,6 +150,56 @@ def test_preview_renders_the_check_column():
     assert 'Check' in text
 
 
+def _with_timings() -> LimitsProfile:
+    profile = _profile()
+    profile.solutions = [
+        EstimationSolutionTiming(
+            path='sols/ac.cpp', language='cpp', role=InferenceRole.LOWER, time=450
+        ),
+        EstimationSolutionTiming(
+            path='sols/Ac.java', language='java', role=InferenceRole.LOWER, time=950
+        ),
+        EstimationSolutionTiming(
+            path='sols/tle.cpp',
+            language='cpp',
+            role=InferenceRole.UPPER,
+            survivedAt=2000,
+        ),
+    ]
+    return profile
+
+
+def _plain(renderable) -> str:
+    from rich.console import Console
+
+    console = Console(width=200, record=True, file=None)
+    console.print(renderable)
+    return console.export_text()
+
+
+def test_solutions_table_follows_the_selected_row():
+    profile = timing_edit.with_time_limit(_with_timings(), 0, 1100)
+    cpp = _plain(timing_limit_editor.build_solutions_table(profile, 0))
+    assert 'Solutions (cpp) at 1100 ms' in cpp
+    assert 'sols/ac.cpp' in cpp and 'sols/Ac.java' not in cpp
+    # 2000 ms survived, limit 1100 x 2.0 = 2200: no longer confirmed.
+    assert '> 2000 ms' in cpp and '? unverified' in cpp
+    base = _plain(timing_limit_editor.build_solutions_table(profile, None))
+    assert 'sols/ac.cpp' in base and 'sols/Ac.java' in base
+
+
+def test_solutions_table_falls_back_without_timings():
+    text = _plain(timing_limit_editor.build_solutions_table(_profile(), 0))
+    assert 'records no per-solution timings' in text
+    assert 'rbx time' in text
+
+
+def test_preview_shows_the_selected_rows_solutions():
+    render = timing_limit_editor.build_preview(width=200)
+    text = render(_with_timings(), 1).value
+    assert 'Solutions (java)' in text
+
+
 # --- the command -------------------------------------------------------------
 
 
@@ -204,6 +256,17 @@ def test_edit_writes_the_profile(
     assert path.exists()
     # Raised above the estimate, so the slow solution is unverified now.
     assert 'rbx run -p local' in result.output
+
+
+def test_edit_keeps_the_solution_timings(
+    runner: CliRunner, testing_pkg: testing_package.TestingPackage
+):
+    _save(_with_timings())
+    with _edit_to(1200):
+        result = runner.invoke(cli.app, ['time', '-e'])
+    assert result.exit_code == 0, result.output
+    saved = limits_info.get_saved_limits_profile('local')
+    assert saved.solutions == _with_timings().solutions
 
 
 def test_edit_dry_writes_nothing(

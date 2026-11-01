@@ -7,7 +7,7 @@ from typing import Callable, Dict, List, Optional
 import typer
 from pydantic import BaseModel
 
-from rbx import console
+from rbx import console, utils
 from rbx.box import package, timing_edit
 from rbx.box.environment import VerificationLevel
 from rbx.box.schema import (
@@ -166,6 +166,46 @@ def get_saved_limits_profile(
         # per-testcase path hits on a package that never ran `rbx timing`.
         return None
     return _parse_limits_profile(limits_path, source)
+
+
+SOLUTIONS_HEADER = (
+    '# What each solution measured during the estimation, for `rbx time --edit`.\n'
+    '# Presentation-only: never used to resolve a limit.\n'
+)
+
+
+def profile_to_yaml(profile: LimitsProfile) -> str:
+    """A limits profile as written to `.limits/<name>.yml`.
+
+    The per-solution timings go last, one solution per line, under a comment
+    saying what they are for: they are the longest and least read part of the
+    file, and a setter opening it is there for the limits above them.
+    """
+    import yaml
+
+    if not profile.solutions:
+        return utils.model_to_yaml(profile)
+    head = profile.model_copy()
+    head.solutions = None
+    entries = [
+        # The role in the spelling a setter writes in `problem.rbx.yml`
+        # (`inference: lower`); `InferenceRole` reads either back.
+        {
+            **timing.model_dump(mode='json', exclude_none=True),
+            'role': timing.role.value.lower(),
+        }
+        for timing in profile.solutions
+    ]
+    tail = yaml.dump(
+        {'solutions': entries},
+        Dumper=getattr(yaml, 'CSafeDumper', yaml.SafeDumper),
+        sort_keys=False,
+        allow_unicode=True,
+        # Flow style for scalar-only collections: each entry on one line.
+        default_flow_style=None,
+        width=10_000,
+    )
+    return utils.model_to_yaml(head) + '\n' + SOLUTIONS_HEADER + tail
 
 
 def get_display_limits_profile(
@@ -384,7 +424,12 @@ def _row_from_report(
     which ones broke it -- is not what holds for the limit now in force. A row
     left at its estimate keeps the recorded data verbatim.
     """
-    check = timing_edit.assess(report, profile.multipliers, time_limit)
+    check = timing_edit.assess(
+        report,
+        profile.multipliers,
+        time_limit,
+        solutions=timing_edit.group_solutions(profile, report),
+    )
     source = _report_source(report)
     validation = report.upperValidation
     confirmed = list(validation.confirmed) if validation is not None else []

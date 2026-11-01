@@ -28,9 +28,10 @@ Estimate one, and read it back:
 
 {{ asciinema("time-profiles") }}
 
-The file above carries more than the two limits: the per-language `modifiers` {{rbx}} derived,
-the ratios it estimated under, and a per-group record of where each number came from. You do
-not have to read that record, and you should not hand-maintain it — it is written for you, and
+Besides the two limits, the file stores the per-language `modifiers` {{rbx}} derived, the ratios
+it estimated under, a per-group record of where each number came from, and, at the end, a
+`solutions` list with what each solution measured. You do not have to read that record,
+and you should not hand-maintain it — it is written for you, and
 the [`LimitsProfile`](/schemas/LimitsProfile.json) schema is the authority on what it holds.
 
 The two fields you *will* set by hand are the limits themselves:
@@ -187,15 +188,23 @@ set that range.
 | `⚠ thin margin` | The accepted solutions pass, but with less headroom than `acToTimeLimit` asks for. |
 | `✗ AC fails` | An accepted solution needs more time than the limit gives it. |
 | `✗ slow passes` | A solution expected to be too slow finishes within the limit times `timeLimitToTle`. |
-| `? 2 unverified` | You raised the limit past the estimate, and this many slow solutions were only seen still running at the estimated limit. |
+| `? 2 unverified` | You raised the limit, and this many slow solutions were only seen still running for less than the new limit times `timeLimitToTle`. |
 
-Each check is arithmetic over what the estimate recorded, and the editor runs nothing. A `✗` or a `⚠` is already measured,
-so the fix is a different limit. A `?` isn't measured: nothing says whether those slow solutions
-still time out. Run the solutions against the profile to settle it:
+Each check is arithmetic over what the estimate recorded, and the editor runs nothing. A `✗` or
+a `⚠` is already measured, so the fix is a different limit. A `?` isn't measured: nothing says
+whether those slow solutions still time out. Run the solutions against the profile to settle it:
 
 ```bash
 rbx run -p boca
 ```
+
+Under the limits table, a second one lists every solution of the selected row with its measured
+time and the bound it sets on the limit. An accepted solution sets a minimum, and a slow one a
+maximum. Step the limit and watch which solution's check changes.
+
+A profile estimated before {{rbx}} recorded these timings shows a hint instead. Run `rbx time`
+on it again before you edit it to fill them in, since a new estimate replaces any limit you set
+by hand.
 
 The profile keeps the estimate next to your limit. Every later limits table marks that row as
 set by hand next to the estimate it replaced, and keeps the Check column.
