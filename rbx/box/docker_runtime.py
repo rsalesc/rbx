@@ -291,6 +291,18 @@ class DockerRuntime:
         # included), so this is where an unreachable daemon is reported as such
         # rather than as a failed build.
         ensure_daemon()
+        if not force and self.image_exists():
+            return
+        # `rbx each --parallel` starts one rbx per problem at once, and each would
+        # otherwise build the same image. The first builds; the rest wait, then
+        # find it built.
+        from filelock import FileLock
+
+        self.box_root().mkdir(parents=True, exist_ok=True)
+        with FileLock(str(self.box_root() / '.build.lock')):
+            self._build_image_locked(force)
+
+    def _build_image_locked(self, force: bool) -> None:
         user_base = self._user_base_tag()
         if user_base is not None and (force or not self.image_exists(user_base)):
             assert self.cfg.dockerfile is not None
@@ -423,6 +435,8 @@ class DockerRuntime:
             '-m',
             AGENT_MODULE,
             'serve',
+            '--slots',
+            str(self.cfg.max_parallel),
         ]
 
     def client(self) -> AgentClient:

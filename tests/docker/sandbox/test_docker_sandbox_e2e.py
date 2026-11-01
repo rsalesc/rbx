@@ -109,6 +109,29 @@ def test_host_is_read_only(sandbox: DockerSandbox, workspace: pathlib.Path):
     assert not (workspace / 'escaped').exists()
 
 
+def test_concurrent_reads_of_a_large_input_arrive_whole(runtime):
+    """The `rbx each --parallel` failure: many programs reading at once."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    data = os.urandom(8 * 1024 * 1024)
+    want = hashlib.sha1(data).hexdigest()
+    Sandbox = DockerSandbox.bind(runtime)
+
+    def one(_):
+        sb = Sandbox()
+        try:
+            with sb.create_file(pathlib.Path('big.bin')) as f:
+                f.write(data)
+            _, out = _run(sb, ['sh', '-c', 'cat big.bin | sha1sum'])
+            return out.split()[0] if out else ''
+        finally:
+            sb.cleanup(delete=True)
+
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        results = list(pool.map(one, range(120)))
+    assert results.count(want) == len(results)
+
+
 def test_large_fresh_input_arrives_whole(sandbox: DockerSandbox):
     data = os.urandom(96 * 1024 * 1024)
     with sandbox.create_file(pathlib.Path('big.bin')) as f:

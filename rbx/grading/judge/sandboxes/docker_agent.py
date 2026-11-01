@@ -18,7 +18,7 @@ grading layer: it never imports `rbx.box`.
 
 Usage (inside the container):
 
-    python -m rbx.grading.judge.sandboxes.docker_agent serve
+    python -m rbx.grading.judge.sandboxes.docker_agent serve --slots 1
     python -m rbx.grading.judge.sandboxes.docker_agent keep --idle-timeout 900
 """
 
@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import contextlib
+import fcntl
 import itertools
 import json
 import os
@@ -36,7 +38,7 @@ import tempfile
 import threading
 import time
 import traceback
-from typing import IO, Any, Dict, List, Optional, Tuple
+from typing import IO, Any, Dict, Iterator, List, Optional, Tuple
 
 from rbx.grading.judge.program import ProgramError, ProgramNotFoundError
 from rbx.grading.judge.sandbox import CommunicationParams, SandboxLog, SandboxParams
@@ -49,6 +51,9 @@ KEEPER_POLL_SECONDS = 5.0
 # `await_files`), and how often it looks.
 SYNC_TIMEOUT_SECONDS = 5.0
 SYNC_POLL_SECONDS = 0.01
+# Execution slots shared by every agent in the container (see `execution_slot`).
+SLOTS_DIR = pathlib.Path('/tmp/rbx-slots')
+SLOT_POLL_SECONDS = 0.005
 
 
 class AgentError(RuntimeError):
@@ -121,15 +126,65 @@ def await_files(root: pathlib.Path, expected: Dict[str, int]) -> None:
         time.sleep(SYNC_POLL_SECONDS)
 
 
-def handle_request(request: Dict[str, Any]) -> Any:
+@contextlib.contextmanager
+def execution_slot(
+    slots: int, slots_dir: Optional[pathlib.Path] = None
+) -> Iterator[None]:
+    """Hold one of `slots` execution slots, shared by every agent in here.
+
+    Docker Desktop's file sharing misbehaves when several programs read through
+    it at once: under parallel load a read in the middle of a file can come back
+    as end-of-file, and paging in an executable can fail with SIGBUS (measured:
+    9 in 400 runs of a 6.9 MB input with 13 at a time, 0 in 400 with one). The
+    files are intact; the reads are not. So by default programs run one at a
+    time across the whole container, whichever rbx process asked -- each rbx
+    process has its own agent, which is why this is a file lock and not a
+    `threading.Semaphore`. `slots` > 1 is the setter's opt-in to parallelism.
+
+    `flock` locks belong to the open file description, so each holder opens its
+    own descriptor, and two threads of one agent exclude each other as well as
+    two agents do. The kernel releases a slot whose holder died.
+    """
+    slots_dir = slots_dir or SLOTS_DIR
+    slots_dir.mkdir(parents=True, exist_ok=True)
+    paths = [slots_dir / f'slot-{i}' for i in range(max(1, slots))]
+    while True:
+        for path in paths:
+            fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                os.close(fd)
+                continue
+            try:
+                yield
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+                os.close(fd)
+            return
+        time.sleep(SLOT_POLL_SECONDS)
+
+
+def handle_request(
+    request: Dict[str, Any],
+    slots: int = 1,
+    slots_dir: Optional[pathlib.Path] = None,
+) -> Any:
     """Run one request and return its JSON-able result."""
+    op = request['op']
+    if op == 'ping':
+        return {'pid': os.getpid()}
+    # The wait for a slot happens before the program starts, so it never counts
+    # towards the time the program is measured to take.
+    with execution_slot(slots, slots_dir):
+        return _run_request(request)
+
+
+def _run_request(request: Dict[str, Any]) -> Any:
     # Imported here so `keep` never pays for it.
     from rbx.grading.judge.sandboxes.stupid_sandbox import StupidSandbox
 
     op = request['op']
-    if op == 'ping':
-        return {'pid': os.getpid()}
-
     root = pathlib.Path(request['root'])
     await_files(root, request.get('expect') or {})
     sandbox = StupidSandbox(path=root)
@@ -152,7 +207,12 @@ def handle_request(request: Dict[str, Any]) -> Any:
     raise ValueError(f'unknown op {op!r}')
 
 
-def serve(stdin: IO[str], stdout: IO[str]) -> None:
+def serve(
+    stdin: IO[str],
+    stdout: IO[str],
+    slots: int = 1,
+    slots_dir: Optional[pathlib.Path] = None,
+) -> None:
     """Answer requests from `stdin` until it closes, each on its own thread."""
     write_lock = threading.Lock()
 
@@ -161,7 +221,11 @@ def serve(stdin: IO[str], stdout: IO[str]) -> None:
         try:
             request = json.loads(line)
             request_id = request.get('id')
-            response = {'id': request_id, 'ok': True, 'result': handle_request(request)}
+            response = {
+                'id': request_id,
+                'ok': True,
+                'result': handle_request(request, slots, slots_dir),
+            }
         except BaseException as e:  # reported back, never swallowed
             response = {'id': request_id, 'ok': False, 'error': _serialize_error(e)}
         payload = json.dumps(response)
@@ -234,7 +298,11 @@ def keep(idle_timeout: float) -> None:
 def main(argv: Optional[List[str]] = None) -> None:
     parser = argparse.ArgumentParser(prog='rbx-docker-agent')
     sub = parser.add_subparsers(dest='cmd', required=True)
-    sub.add_parser('serve', help='Run programs requested over stdin.')
+    serve_parser = sub.add_parser('serve', help='Run programs requested over stdin.')
+    serve_parser.add_argument(
+        '--slots', type=int, default=1, help='Programs that may run at once.'
+    )
+    serve_parser.add_argument('--slots-dir', type=pathlib.Path, default=None)
     keep_parser = sub.add_parser('keep', help='Keep the container alive while used.')
     keep_parser.add_argument('--idle-timeout', type=float, default=900.0)
     args = parser.parse_args(argv)
@@ -245,7 +313,7 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     marker = _register_agent()
     try:
-        serve(sys.stdin, sys.stdout)
+        serve(sys.stdin, sys.stdout, args.slots, args.slots_dir)
     finally:
         marker.unlink(missing_ok=True)
 

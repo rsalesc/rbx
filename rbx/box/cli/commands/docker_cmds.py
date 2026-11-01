@@ -84,6 +84,10 @@ def status():
     console.console.print(f'Boxes:     [item]{runtime.box_root()}[/item] (read-write)')
     for mount in runtime.mounts():
         console.console.print(f'Mount:     [item]{mount}[/item] (read-only)')
+    parallel = runtime.cfg.max_parallel
+    console.console.print(
+        f'Parallel:  {parallel} program{"s" if parallel > 1 else ""} at a time'
+    )
     info = subprocess.run(
         ['docker', 'info', '--format', '{{.NCPU}} {{.MemTotal}}'],
         capture_output=True,
@@ -94,11 +98,11 @@ def status():
         console.console.print(
             f'Docker VM: {ncpu} CPUs, {int(mem) / 2**30:.1f} GiB memory'
         )
-        workers = get_setter_config().parallel.max_workers
-        if workers > int(ncpu):
+        if parallel > int(ncpu):
             console.console.print(
-                f'[warning]parallel.max_workers is {workers}, more than the {ncpu} CPUs '
-                'Docker has; parallel runs will contend and time unreliably.[/warning]'
+                f'[warning]docker.max_parallel is {parallel}, more than the {ncpu} '
+                'CPUs Docker has; parallel runs will contend and time '
+                'unreliably.[/warning]'
             )
 
 

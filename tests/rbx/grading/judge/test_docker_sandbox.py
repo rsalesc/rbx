@@ -26,11 +26,21 @@ from rbx.grading.steps_with_caching import _with_executor
 AGENT = [sys.executable, '-m', 'rbx.grading.judge.sandboxes.docker_agent', 'serve']
 
 
+def _agent(slots_dir: pathlib.Path, slots: int = 1) -> AgentClient:
+    # A private slots directory, so tests running in parallel never share slots.
+    return AgentClient([*AGENT, '--slots', str(slots), '--slots-dir', str(slots_dir)])
+
+
 class FakeBackend:
-    def __init__(self, box_root: pathlib.Path, visible: List[pathlib.Path]):
+    def __init__(
+        self,
+        box_root: pathlib.Path,
+        visible: List[pathlib.Path],
+        slots: int = 1,
+    ):
         self.root = box_root
         self.visible = visible
-        self.agent = AgentClient(AGENT)
+        self.agent = _agent(box_root.parent / 'slots', slots)
 
     def box_root(self) -> pathlib.Path:
         return self.root
@@ -133,26 +143,53 @@ def test_run_communication_goes_through_the_agent(sandbox: DockerSandbox):
     assert interactor.exitcode == 0
 
 
-def test_one_agent_serves_concurrent_requests(backend: FakeBackend):
-    Sandbox = DockerSandbox.bind(backend)
+TIMED = 'import time; s = time.time(); time.sleep(0.2); print(s, time.time())'
 
-    def job(i: int) -> str:
-        sb = Sandbox()
+
+def _intervals(backends: List[FakeBackend], jobs: int) -> List[tuple]:
+    """Run `jobs` timed programs concurrently, round-robin over `backends`."""
+
+    def job(i: int) -> tuple:
+        sb = DockerSandbox.bind(backends[i % len(backends)])()
         try:
-            sb.run(
-                [sys.executable, '-c', f'import time; time.sleep(0.3); print({i})'],
-                _params(),
-            )
-            return sb.get_file_to_string(pathlib.Path('out.txt')).strip()
+            sb.run([sys.executable, '-c', TIMED], _params())
+            start, end = sb.get_file_to_string(pathlib.Path('out.txt')).split()
+            return float(start), float(end)
         finally:
             sb.cleanup(delete=True)
 
-    start = time.monotonic()
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        results = list(pool.map(job, range(6)))
-    assert results == [str(i) for i in range(6)]
-    # Six 0.3s programs, in parallel rather than one after the other.
-    assert time.monotonic() - start < 1.5
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        return sorted(pool.map(job, range(jobs)))
+
+
+def _overlaps(intervals: List[tuple]) -> bool:
+    return any(b[0] < a[1] for a, b in zip(intervals, intervals[1:]))
+
+
+def test_programs_run_one_at_a_time_by_default(backend: FakeBackend):
+    # Concurrent requests to one agent are accepted, but run in turn.
+    assert not _overlaps(_intervals([backend], 4))
+
+
+def test_agents_share_the_slot_across_processes(tmp_path: pathlib.Path):
+    # Two agents stand for two rbx processes using the same container.
+    backends = [
+        FakeBackend(tmp_path / 'boxes', visible=[]),
+        FakeBackend(tmp_path / 'boxes', visible=[]),
+    ]
+    try:
+        assert not _overlaps(_intervals(backends, 4))
+    finally:
+        for backend in backends:
+            backend.agent.close()
+
+
+def test_more_slots_let_programs_run_together(tmp_path: pathlib.Path):
+    backend = FakeBackend(tmp_path / 'boxes', visible=[], slots=4)
+    try:
+        assert _overlaps(_intervals([backend], 4))
+    finally:
+        backend.agent.close()
 
 
 def test_a_dead_agent_fails_requests_instead_of_hanging(tmp_path: pathlib.Path):

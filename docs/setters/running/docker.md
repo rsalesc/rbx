@@ -82,12 +82,19 @@ Below, the settings you are most likely to change:
 | `dockerfile` | A Dockerfile to build the base image from, for anything `packages` can't express. |
 | `mounts` | Folders programs can see, read-only. Defaults to `[~]`. |
 | `command_substitutions` | Replaces the top-level `command_substitutions` while Docker is on, since those name tools on your machine, like a Homebrew `g++-15`. |
+| `max_parallel` | Programs that may run in the container at once, across every {{rbx}} command using it. Defaults to 1. |
 | `memory` | Optional memory cap for the whole container, in Docker syntax, like `8g`. Per-program memory limits apply either way. |
 | `idle_timeout` | Seconds the container stays up with no command using it. |
 | `pids_limit` | Most processes the container may hold at once. |
 
 Changing `packages`, `kotlin_version`, `base_image` or `dockerfile` changes what goes into the
 image: the next command builds a new one.
+
+!!! warning "Running programs in parallel"
+    By default, the container runs one program at a time, even when several commands use it at
+    once, such as `rbx each --parallel`. On macOS, Docker Desktop can hand a program a truncated
+    file when several programs read at once, which shows up as random runtime errors.
+    Raise `max_parallel` only on a Linux host, or if you accept that risk.
 
 !!! info
     If a compiler or interpreter is missing from the image, the compile or run that needs it fails,
