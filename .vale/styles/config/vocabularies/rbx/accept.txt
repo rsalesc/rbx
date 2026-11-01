@@ -88,7 +88,7 @@ stdin
 stdout
 subtree
 superset
-toolchain
+toolchains?
 traceback
 (?i)unbucketed
 uncached
@@ -108,3 +108,5 @@ APIs
 Smirnov
 Maletta
 (?i)docstrings?
+CPUs?
+Dockerfiles?

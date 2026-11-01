@@ -295,6 +295,36 @@ class SandboxBase(abc.ABC):
         """Whether the sandbox uses soft timeouts."""
         return False
 
+    @classmethod
+    def runs_on_host(cls) -> bool:
+        """Whether programs run directly on this machine, under its OS and limits.
+
+        Everything that probes the host on a program's behalf -- resolving a
+        compiler through `which`, reading `g++ -v` for its include paths,
+        diagnosing the host's hard rlimits -- is only meaningful when this is
+        true. A sandbox that runs programs elsewhere (a container) answers False,
+        and those probes are skipped: they would describe the wrong machine.
+        """
+        return True
+
+    def cache_fingerprint(self) -> Optional[str]:
+        """Identity of the environment programs run in, for cache keys.
+
+        Compilations and runs are cached by their commands and parameters. When
+        the same command can produce different artifacts depending on where it
+        runs (a container image instead of the host), the sandbox returns a
+        string identifying that environment, and it joins the cache key. None,
+        the default, leaves keys exactly as they have always been.
+        """
+        return None
+
+    def program_not_found_hint(self, executable: str) -> Optional[str]:
+        """Advice to print when `executable` could not be started.
+
+        None means the default advice (install it, put it on PATH) applies.
+        """
+        return None
+
     def relative_path(self, path: pathlib.Path) -> pathlib.Path:
         """Translate from a relative path inside the sandbox to a
         system path.

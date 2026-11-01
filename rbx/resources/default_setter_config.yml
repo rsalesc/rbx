@@ -59,3 +59,11 @@ sanitizers:
 # path:  problem path relative to the contest
 ui:
   problem_label: name
+
+# Run every program rbx compiles or executes inside a Docker container
+# (Linux, on your own CPU architecture): stack and memory limits apply even
+# on macOS, and programs get no network access. Needs Docker installed.
+# Turn on with `rbx docker enable`, or `RBX_DOCKER=1` for a single command.
+# Everything you can customize: https://rbx.rsalesc.dev/setters/running/docker/
+docker:
+  enabled: false

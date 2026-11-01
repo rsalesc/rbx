@@ -5,7 +5,7 @@ import pathlib
 import shlex
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict
+from typing import Dict, List, Optional
 
 import typer
 from pydantic import BaseModel, Field
@@ -83,6 +83,67 @@ class JudgingConfig(BaseModel):
     )
 
 
+DEFAULT_DOCKER_PACKAGES = ['g++', 'gcc', 'python3', 'pypy3', 'default-jdk-headless']
+DEFAULT_DOCKER_KOTLIN_VERSION = '2.1.21'
+
+
+class DockerConfig(BaseModel):
+    enabled: bool = Field(
+        default=False,
+        description='Run every program rbx compiles or executes inside a Docker '
+        'container on this machine, instead of directly on it. The container runs '
+        'Linux on your own CPU architecture, so stack and memory limits are '
+        'enforced even on macOS, programs have no network access and cannot write '
+        'outside their working directory.',
+    )
+    base_image: str = Field(
+        default='ubuntu:24.04',
+        description='Image the toolchains come from. rbx installs itself on top of '
+        'it. Must be Debian-based when `packages` is not empty.',
+    )
+    packages: List[str] = Field(
+        default_factory=DEFAULT_DOCKER_PACKAGES.copy,
+        description='apt packages installed on top of `base_image` (compilers and '
+        'interpreters your problems use).',
+    )
+    kotlin_version: Optional[str] = Field(
+        default=DEFAULT_DOCKER_KOTLIN_VERSION,
+        description='Kotlin compiler release installed in the image (as '
+        '`kotlinc`, from JetBrains: apt does not package a usable one). Set to '
+        'null to leave Kotlin out.',
+    )
+    dockerfile: Optional[str] = Field(
+        default=None,
+        description='A Dockerfile to build the base image from, instead of '
+        '`base_image`. Built with its own directory as the context.',
+    )
+    mounts: List[str] = Field(
+        default_factory=lambda: ['~'],
+        description='Host directories visible, read-only, to programs in the '
+        'container. Every problem and cache rbx uses must live under one of them.',
+    )
+    command_substitutions: Dict[str, str] = Field(
+        default={},
+        description='Used instead of the top-level `command_substitutions` (and the '
+        "sanitizers' ones) while Docker is enabled, since those name tools on this "
+        'machine.',
+    )
+    idle_timeout: int = Field(
+        default=900,
+        description='Seconds the container stays up with no rbx command using it.',
+    )
+    pids_limit: int = Field(
+        default=4096,
+        description='Most processes the container may hold at once, across every '
+        'program running in it.',
+    )
+    memory: Optional[str] = Field(
+        default=None,
+        description='Optional memory cap for the whole container, in Docker syntax '
+        "(e.g. '8g'). Per-program memory limits apply either way.",
+    )
+
+
 class ProblemLabelMode(str, enum.Enum):
     """What to display after the short name in the contest command-app sidebar.
 
@@ -144,9 +205,27 @@ class SetterConfig(BaseModel):
         default_factory=UIConfig,
         description='Configuration for the interactive UI.',
     )
+    docker: DockerConfig = Field(
+        default_factory=DockerConfig,
+        description='Run programs inside a Docker container (opt-in).',
+    )
+
+    def docker_enabled(self) -> bool:
+        """`docker.enabled`, unless `RBX_DOCKER` overrides it for this command."""
+        from rbx.box import docker_runtime
+
+        override = docker_runtime.env_override()
+        return self.docker.enabled if override is None else override
 
     def substitute_command(self, command: str, sanitized: bool = False) -> str:
         exe = shlex.split(command)[0]
+        if self.docker_enabled():
+            # The host's substitutions name tools on the host (clang++ for
+            # sanitizers on macOS, a Homebrew g++-15); the container has its own.
+            if exe in self.docker.command_substitutions:
+                exe = self.docker.command_substitutions[exe]
+                return ' '.join([exe, *shlex.split(command)[1:]])
+            return command
         if sanitized and exe in self.sanitizers.command_substitutions:
             exe = self.sanitizers.command_substitutions[exe]
             return ' '.join([exe, *shlex.split(command)[1:]])

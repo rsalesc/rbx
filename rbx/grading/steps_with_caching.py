@@ -12,6 +12,18 @@ from rbx.grading.steps import (
 )
 
 
+def _with_executor(params: Dict[str, Any], sandbox: SandboxBase) -> Dict[str, Any]:
+    """Key the cache on where programs run, when that is not the host.
+
+    A sandbox with no fingerprint leaves the key untouched, so caches written
+    before this existed stay valid.
+    """
+    fingerprint = sandbox.cache_fingerprint()
+    if fingerprint is not None:
+        params['__executor__'] = fingerprint
+    return params
+
+
 def _get_prefixed_cacheable_params(
     params: Dict[str, Any], prefix: str
 ) -> Dict[str, Any]:
@@ -31,7 +43,7 @@ async def compile(
     err: Optional[steps.CompilationError] = None
 
     async with dependency_cache(
-        commands, [artifacts], params.get_cacheable_params()
+        commands, [artifacts], _with_executor(params.get_cacheable_params(), sandbox)
     ) as is_cached:
         if not is_cached:
             with profiling.Profiler('steps.compile'):
@@ -70,7 +82,7 @@ async def run(
         and not grading_context.is_stress()
     )
 
-    cacheable_params = params.get_cacheable_params()
+    cacheable_params = _with_executor(params.get_cacheable_params(), sandbox)
     if metadata is not None and metadata.retryIndex is not None:
         cacheable_params['__retry_index__'] = metadata.retryIndex
 
@@ -130,6 +142,7 @@ async def run_coordinated(
             solution.params.get_cacheable_params(), 'solution'
         ),
     }
+    _with_executor(cacheable_params, sandbox)
     cacheable_params['line_capture'] = line_capture
     cacheable_params['tee_stderr'] = tee_stderr
 

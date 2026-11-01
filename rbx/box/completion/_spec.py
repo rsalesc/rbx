@@ -1556,6 +1556,136 @@ SPEC = {
         {
             'children': [
                 {
+                    'help': 'Run programs in a Docker container from...',
+                    'is_group': False,
+                    'name': 'enable',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'help': 'Run programs directly on this machine again.',
+                    'is_group': False,
+                    'name': 'disable',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'help': 'Show the Docker configuration and...',
+                    'is_group': False,
+                    'name': 'status',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'help': 'Build the image if needed and start the...',
+                    'is_group': False,
+                    'name': 'up',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'help': 'Stop and remove the container.',
+                    'is_group': False,
+                    'name': 'down',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'help': 'Rebuild the image from scratch, pulling a...',
+                    'is_group': False,
+                    'name': 'rebuild',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'help': 'Open a shell in the container, as you.',
+                    'is_group': False,
+                    'name': 'shell',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+            ],
+            'help': 'Manage the Docker container rbx runs...',
+            'is_group': True,
+            'name': 'docker',
+            'panel': 'Configuration',
+            'params': [
+                {
+                    'help': 'Show this message and exit.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--help'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                }
+            ],
+        },
+        {
+            'children': [
+                {
                     'help': 'Build statements.',
                     'is_group': False,
                     'name': 'build, b',

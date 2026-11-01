@@ -182,6 +182,12 @@ def get_global_dependency_cache() -> DependencyCache:
 
 @functools.cache
 def get_global_sandbox_type() -> Type[SandboxBase]:
+    from rbx.box import docker_runtime
+
+    # Precompiled headers are built here; in Docker mode they must come from the
+    # container's compiler, like everything they are later compiled into.
+    if docker_runtime.docker_enabled():
+        return docker_runtime.get_sandbox_type()
     return StupidSandbox
 
 

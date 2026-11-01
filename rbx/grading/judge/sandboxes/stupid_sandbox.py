@@ -64,10 +64,16 @@ class StupidSandbox(SandboxBase):
         file_cacher: Optional[FileCacher] = None,
         name: Optional[str] = None,
         temp_dir: Optional[pathlib.Path] = None,
+        path: Optional[pathlib.Path] = None,
     ):
         """Initialization.
 
         For arguments documentation, see SandboxBase.__init__.
+
+        path (Path|None): adopt this existing box directory instead of creating
+            a fresh one under `temp_dir`. Used to run programs in a box another
+            process prepared (see `DockerSandbox`); `reset()` still makes a new
+            directory.
 
         """
         if not temp_dir:
@@ -75,12 +81,17 @@ class StupidSandbox(SandboxBase):
         SandboxBase.__init__(self, file_cacher, name, temp_dir)
 
         # Make box directory
+        self._adopted_path = path
         self.initialize()
 
     def initialize(self):
-        self._path = pathlib.Path(
-            tempfile.mkdtemp(dir=str(self.temp_dir), prefix='rbx-%s-' % (self.name))
-        )
+        if self._adopted_path is not None:
+            self._path = self._adopted_path
+            self._adopted_path = None
+        else:
+            self._path = pathlib.Path(
+                tempfile.mkdtemp(dir=str(self.temp_dir), prefix='rbx-%s-' % (self.name))
+            )
         self.exec_num = -1
         self.log = None
         self.returncode = None

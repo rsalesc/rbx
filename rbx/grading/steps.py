@@ -753,14 +753,23 @@ def _maybe_complain_about_memory_limit(params: SandboxParams) -> None:
     _complain_about_memory_limit(params.address_space)
 
 
-def _finalize_limits(command: str, params: SandboxParams) -> None:
+def _finalize_limits(
+    command: str, params: SandboxParams, sandbox: Optional[SandboxBase] = None
+) -> None:
     """Settle the limits a program will actually run under, and complain if they
     are not the ones that were asked for.
 
     The order matters: the JVM carve-out drops both the stack and the memory
     limit, and a limit that was dropped is not one worth warning about.
+
+    The complaints read this machine's hard rlimits, so they are skipped for a
+    sandbox that does not run programs here (`SandboxBase.runs_on_host`): a
+    container starts with limits of its own, and warning about the host's would
+    be wrong in both directions.
     """
     _relax_limits_for_jvm(command, params)
+    if sandbox is not None and not sandbox.runs_on_host():
+        return
     _maybe_complain_about_stack_limit(params)
     _maybe_complain_about_memory_limit(params)
 
@@ -998,8 +1007,15 @@ def _check_for_compilation_warnings(
 
 
 def _build_program_error_run_log(
-    e: ProgramError, metadata: Optional[RunLogMetadata] = None
+    e: ProgramError,
+    metadata: Optional[RunLogMetadata] = None,
+    sandbox: Optional[SandboxBase] = None,
 ) -> RunLog:
+    message = str(e)
+    if sandbox is not None and isinstance(e, ProgramNotFoundError):
+        hint = sandbox.program_not_found_hint(e.executable)
+        if hint is not None:
+            message = f'{message} {hint}'
     return RunLog(
         exitcode=1,
         exitstatus=SandboxBase.EXIT_SANDBOX_ERROR,
@@ -1007,7 +1023,7 @@ def _build_program_error_run_log(
         wall_time=0.0,
         memory=0,
         metadata=metadata,
-        sandbox=str(e),
+        sandbox=message,
         exitindex=0,
     )
 
@@ -1059,7 +1075,10 @@ async def compile(
 ):
     sandbox.reset()
 
-    commands = _try_following_alias_for_commands(commands)
+    if sandbox.runs_on_host():
+        # `which` resolves aliases on *this* machine; in a container it would
+        # replace a compiler name with a host path that does not exist there.
+        commands = _try_following_alias_for_commands(commands)
     await _process_input_artifacts(artifacts, sandbox)
 
     if not commands:
@@ -1070,13 +1089,14 @@ async def compile(
     params = params.model_copy(deep=True)  # Copy to allow further modification.
 
     for i, command in enumerate(commands):
-        _maybe_complain_about_sanitization(command)
+        if sandbox.runs_on_host():
+            _maybe_complain_about_sanitization(command)
         cmd = _split_and_expand(command, sandbox, params)
         stdout_file = pathlib.PosixPath(f'compile-{i}.stdout')
         stderr_file = pathlib.PosixPath(f'compile-{i}.stderr')
         params.set_stdall(stdout=stdout_file, stderr=stderr_file)
 
-        _finalize_limits(command, params)
+        _finalize_limits(command, params, sandbox)
 
         try:
             sandbox_log = await asyncio.to_thread(sandbox.run, cmd, params)
@@ -1090,9 +1110,16 @@ async def compile(
                         f"'[item]{e.executable}[/item]' was not found while running",
                         utils.highlight_json_obj(cmd),
                     )
-                    err.print('[warning]Is it installed and on your PATH?[/warning]')
+                    hint = sandbox.program_not_found_hint(e.executable)
+                    if hint is not None:
+                        err.print(f'[warning]{hint}[/warning]')
+                    else:
+                        err.print(
+                            '[warning]Is it installed and on your PATH?[/warning]'
+                        )
                     if (
-                        LanguageKind.CXX in command_kinds(e.executable)
+                        hint is None
+                        and LanguageKind.CXX in command_kinds(e.executable)
                         and sys.platform == 'darwin'
                     ):
                         err.print(
@@ -1169,7 +1196,7 @@ async def run(
     cmd = _split_and_expand(command, sandbox, params)
     params = params.model_copy(deep=True)  # Copy to allow further modification.
 
-    _finalize_limits(command, params)
+    _finalize_limits(command, params, sandbox)
 
     try:
         sandbox_log = await asyncio.to_thread(sandbox.run, cmd, params)
@@ -1179,7 +1206,7 @@ async def run(
 
         run_log = _build_run_log(sandbox_log, sandbox, params, metadata)
     except ProgramError as e:
-        run_log = _build_program_error_run_log(e, metadata)
+        run_log = _build_program_error_run_log(e, metadata, sandbox)
 
     if artifacts.logs is not None:
         artifacts.logs.run = run_log.model_copy()
@@ -1216,7 +1243,7 @@ async def run_coordinated(
     # Solution only, on purpose: the interactor's limits are left exactly as
     # given, so an interactor-only `stackLimit` is neither relaxed for the JVM nor
     # diagnosed. `steps_run_coordinated_test.py` pins that behaviour.
-    _finalize_limits(solution.command, solution_params)
+    _finalize_limits(solution.command, solution_params, sandbox)
 
     try:
         solution_sandbox_log, interactor_sandbox_log = await asyncio.to_thread(
@@ -1242,8 +1269,8 @@ async def run_coordinated(
             interactor_sandbox_log, sandbox, interactor.params, interactor.metadata
         )
     except ProgramError as e:
-        solution_log = _build_program_error_run_log(e, solution.metadata)
-        interactor_log = _build_program_error_run_log(e, interactor.metadata)
+        solution_log = _build_program_error_run_log(e, solution.metadata, sandbox)
+        interactor_log = _build_program_error_run_log(e, interactor.metadata, sandbox)
 
     if artifacts.logs is not None:
         artifacts.logs.run = solution_log
