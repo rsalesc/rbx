@@ -289,7 +289,8 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
-                    'help': 'Where to run the solutions (local, moj, domjudge).',
+                    'help': 'Where to run the solutions (local, moj, domjudge). Defaults to '
+                    'moj for the moj profile, local otherwise.',
                     'kind': 'option',
                     'multiple': False,
                     'names': ['--runner'],
@@ -471,7 +472,8 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
-                    'help': 'Where to run the solutions being timed (local, moj, domjudge).',
+                    'help': 'Where to run the solutions being timed (local, moj, domjudge). '
+                    'Defaults to moj for the moj profile, local otherwise.',
                     'kind': 'option',
                     'multiple': False,
                     'names': ['--runner'],
@@ -605,7 +607,8 @@ SPEC = {
                     'value': {'completer': 'profile', 'kind': 'completer'},
                 },
                 {
-                    'help': 'Where to run the solutions being timed (local, moj, domjudge).',
+                    'help': 'Where to run the solutions being timed (local, moj, domjudge). '
+                    'Defaults to moj for the moj profile, local otherwise.',
                     'kind': 'option',
                     'multiple': False,
                     'names': ['--runner'],

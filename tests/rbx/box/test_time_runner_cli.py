@@ -99,18 +99,40 @@ def test_asking_for_moj_estimates_on_the_judge(
     assert isinstance(calls['runner'], MojRunner)
 
 
-def test_a_profile_does_not_select_a_backend(
+def test_the_moj_profile_defaults_to_the_moj_runner(
     runner: CliRunner,
     testing_pkg: testing_package.TestingPackage,
 ):
-    """`-p moj` names the `limits/moj.yml` file this command *writes*. Letting it
-    pick a transport too would leave no way to estimate MOJ limits locally, which
-    is what a setter without judge access has to be able to do."""
+    """`-p moj` without `--runner` times on the judge whose limits it writes."""
     result, calls = _invoke_time(runner, '-p', 'moj')
+
+    assert result.exit_code == 0, result.output
+    assert isinstance(calls['runner'], MojRunner)
+    assert calls['profile'] == 'moj'
+
+
+def test_an_explicit_runner_overrides_the_profile_default(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    """A setter without judge access must still be able to estimate MOJ limits
+    locally."""
+    result, calls = _invoke_time(runner, '-p', 'moj', '--runner', 'local')
 
     assert result.exit_code == 0, result.output
     assert isinstance(calls['runner'], LocalRunner)
     assert calls['profile'] == 'moj'
+
+
+def test_other_profiles_default_to_the_local_runner(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    result, calls = _invoke_time(runner, '-p', 'boca')
+
+    assert result.exit_code == 0, result.output
+    assert isinstance(calls['runner'], LocalRunner)
+    assert calls['profile'] == 'boca'
 
 
 def test_an_unknown_backend_is_refused_before_anything_runs(

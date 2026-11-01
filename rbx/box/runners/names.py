@@ -16,6 +16,13 @@ the completer both read the same tuple. There is no second copy to drift.
 # all, so this name and that fallback have to keep saying the same thing.
 DEFAULT_RUNNER = 'local'
 
+# Limits profiles whose name implies a runner when `--runner` is not given. A
+# default only: an explicit `--runner` always wins, so `-p moj --runner local`
+# still estimates MOJ limits on a machine with no judge access.
+PROFILE_DEFAULT_RUNNERS = {
+    'moj': 'moj',
+}
+
 # (name, one-line description). The description is what shell completion offers
 # beside the name, so it has to read as an answer to "where does this run?".
 #
@@ -34,3 +41,13 @@ def runner_names():
     """Just the names, in table order. What an error message lists, and what the
     `--runner` help text spells out -- neither of which may hard-code them."""
     return tuple(name for name, _ in RUNNERS)
+
+
+def resolve_runner_name(runner, profile):
+    """The runner a command uses: `runner` when the setter named one, otherwise
+    the one `profile` implies (`-p moj` runs on MOJ), otherwise `DEFAULT_RUNNER`."""
+    if runner is not None:
+        return runner
+    if profile is not None and profile in PROFILE_DEFAULT_RUNNERS:
+        return PROFILE_DEFAULT_RUNNERS[profile]
+    return DEFAULT_RUNNER

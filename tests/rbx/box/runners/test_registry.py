@@ -63,3 +63,19 @@ def test_the_completer_offers_exactly_the_runners_that_exist():
     offered = [(item.value, item.help) for item in completers.complete_runner(ctx, '')]
 
     assert offered == list(registry.RUNNERS)
+
+
+@pytest.mark.parametrize(
+    'runner, profile, expected',
+    [
+        (None, None, 'local'),
+        (None, 'local', 'local'),
+        (None, 'boca', 'local'),
+        (None, 'moj', 'moj'),
+        ('local', 'moj', 'local'),
+        ('domjudge', 'moj', 'domjudge'),
+        ('moj', None, 'moj'),
+    ],
+)
+def test_resolve_runner_name(runner, profile, expected):
+    assert registry.resolve_runner_name(runner, profile) == expected
