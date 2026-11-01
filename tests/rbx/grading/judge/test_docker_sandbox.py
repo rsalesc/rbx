@@ -6,6 +6,7 @@ rbx owns -- the wire protocol, error passthrough, concurrency, the box staying o
 the host -- and leaves only the container itself to the docker-gated suite.
 """
 
+import os
 import pathlib
 import subprocess
 import sys
@@ -253,6 +254,13 @@ def test_a_killed_waiter_does_not_block_the_queue(tmp_path: pathlib.Path):
         'with docker_agent.execution_slot(1, pathlib.Path(sys.argv[1]), 0):\n'
         '    pass\n'
     )
+    served = threading.Event()
+
+    def wait() -> None:
+        with docker_agent.execution_slot(1, tmp_path, 1):
+            served.set()
+
+    thread = threading.Thread(target=wait)
     with docker_agent.execution_slot(1, tmp_path, 0):
         process = subprocess.Popen([sys.executable, '-c', script, str(tmp_path)])
         try:
@@ -260,17 +268,101 @@ def test_a_killed_waiter_does_not_block_the_queue(tmp_path: pathlib.Path):
         finally:
             process.kill()
             process.wait()
-    # Its ticket outlived it, ahead of anything queued with priority 1.
-    assert len(_tickets(tmp_path)) == 1
+        # Its ticket outlived it, ahead of this one with priority 1, which
+        # prunes it on arrival.
+        assert len(_tickets(tmp_path)) == 1
+        thread.start()
+        _wait_for(
+            lambda: (
+                [t.name.split('-')[2] for t in _tickets(tmp_path)] == [str(os.getpid())]
+            )
+        )
+    # Handed straight on past the dead ticket, not after a re-check.
+    assert served.wait(timeout=docker_agent.SLOT_RECHECK_SECONDS / 2)
+    thread.join(timeout=20)
+    assert not _tickets(tmp_path)
+
+
+def test_a_freed_slot_is_handed_on_at_once(tmp_path: pathlib.Path):
+    # Waiters sleep until woken; the hand-off must not wait for a re-check.
+    acquired: List[float] = []
 
     def wait() -> None:
-        with docker_agent.execution_slot(1, tmp_path, 1):
-            pass
+        with docker_agent.execution_slot(1, tmp_path, 0):
+            acquired.append(time.monotonic())
 
-    thread = threading.Thread(target=wait)
-    thread.start()
+    with docker_agent.execution_slot(1, tmp_path, 0):
+        thread = threading.Thread(target=wait)
+        thread.start()
+        _wait_for(lambda: len(_tickets(tmp_path)) == 1)
+        released = time.monotonic()
     thread.join(timeout=20)
-    assert not thread.is_alive()
+    assert acquired[0] - released < docker_agent.SLOT_RECHECK_SECONDS / 2
+
+
+def test_waiters_do_not_burn_cpu(tmp_path: pathlib.Path):
+    # Waiters share the machine with the program being timed, so a queue of
+    # them must sleep, not poll. Measured in a child process of its own.
+    script = (
+        'import pathlib, resource, sys, threading, time\n'
+        'from rbx.grading.judge.sandboxes import docker_agent\n'
+        'd = pathlib.Path(sys.argv[1])\n'
+        'def wait():\n'
+        '    with docker_agent.execution_slot(1, d, 0):\n'
+        '        pass\n'
+        'for _ in range(20):\n'
+        '    threading.Thread(target=wait, daemon=True).start()\n'
+        'time.sleep(0.5)\n'
+        'r = resource.getrusage(resource.RUSAGE_SELF)\n'
+        'before = r.ru_utime + r.ru_stime\n'
+        'time.sleep(2)\n'
+        'r = resource.getrusage(resource.RUSAGE_SELF)\n'
+        'print(r.ru_utime + r.ru_stime - before)\n'
+    )
+    with docker_agent.execution_slot(1, tmp_path, 0):
+        out = subprocess.run(
+            [sys.executable, '-c', script, str(tmp_path)],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=60,
+        ).stdout
+    # Polling every 5ms used ~2 CPU-seconds here; sleeping uses ~0.01.
+    assert float(out) < 0.25
+
+
+def test_with_more_slots_waiters_still_go_in_priority_order(tmp_path: pathlib.Path):
+    served: List[str] = []
+    release = [threading.Event(), threading.Event()]
+    held = threading.Barrier(3)
+
+    def hold(i: int) -> None:
+        with docker_agent.execution_slot(2, tmp_path, 0):
+            held.wait()
+            release[i].wait()
+
+    def wait(label: str, priority: int) -> None:
+        with docker_agent.execution_slot(2, tmp_path, priority):
+            served.append(label)
+
+    holders = [threading.Thread(target=hold, args=(i,)) for i in range(2)]
+    for thread in holders:
+        thread.start()
+    held.wait()
+    waiters = []
+    for queued, (label, priority) in enumerate([('b', 2), ('a', 1)], start=1):
+        waiters.append(threading.Thread(target=wait, args=(label, priority)))
+        waiters[-1].start()
+        _wait_for(lambda n=queued: len(_tickets(tmp_path)) == n)
+    # One slot frees: 'a' takes it, and hands it on to 'b' when done, while
+    # the other slot is still held.
+    release[0].set()
+    _wait_for(lambda: len(served) == 2)
+    assert served == ['a', 'b']
+    release[1].set()
+    for thread in [*holders, *waiters]:
+        thread.join(timeout=20)
+    assert served == ['a', 'b']
     assert not _tickets(tmp_path)
 
 
