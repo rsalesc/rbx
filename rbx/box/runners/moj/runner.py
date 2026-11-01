@@ -44,10 +44,12 @@ from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.moj.moj_language_utils import get_moj_language_from_rbx_language
 from rbx.box.packaging.moj.packager import (
     HALT_VERDICTS,
+    KattisParameters,
     MojPackager,
     ProbeCalibrated,
     ProbePackage,
     ProbePinned,
+    calibrated_solutions,
 )
 from rbx.box.runners.base import (
     RunContext,
@@ -652,27 +654,42 @@ class MojRunner:
         entries: List[GenerationTestcaseEntry],
         strategy: 'timing_config.TimingStrategy',
         progress: Optional['utils.StatusProgress'] = None,
+        run_all: bool = False,
     ) -> kattis.KattisCalibrationResult:
-        """Have MOJ estimate the time limit by the Kattis rule, and read it back.
+        """Have MOJ measure every solution the estimate is about, and read it back.
 
-        The `rbx time` path for a problem that estimates with `timing.multipliers`
-        (which *are* the Kattis rule): one upload of the solutions the estimate is
-        about, one calibration on every judge, no testruns. The calibration
-        measures the accepted solutions (`sols/good`) one test at a time, computes
-        the limit, and judges the slow ones (`sols/slow`) against it -- the two
-        phases the testrun path runs separately.
+        The `rbx time --runner moj` path, whatever the strategy: one upload of the
+        solutions the estimate is about, one calibration on
+        every judge, no testruns. The calibration measures the accepted solutions
+        (`sols/good`) one test at a time and then judges the slow ones
+        (`sols/slow`) -- the two phases the testrun path runs separately -- with
+        **every limit pinned at `inferenceTimeout`**. rbx estimates the limit from
+        those measurements and checks the slow ones against it by arithmetic;
+        judged at MOJ's own Kattis limit instead, they would answer for a limit
+        rbx does not write. Every test is checked to have run at the cap
+        (`kattis.check_cap`) before anything is read.
+
+        `run_all` (`rbx time --run-all`) ships every other solution too, so the
+        same calibration judges them, and the result carries what a replay at the
+        estimated limit needs (`kattis.replay_test`). It goes to a problem of its
+        own, `<id>-kattis-all`: the fingerprint covers the shipped solutions, so
+        the two packages would otherwise evict each other's calibration each time
+        the flag is toggled.
 
         Skips the upload and the calibration when this machine last uploaded the
         same package to the same problem and the judge reports it calibrated: the
         calibration is then simply read again.
         """
-        mode = _calibrated_mode(strategy)
+        mode = _calibrated_mode(strategy, run_all=run_all)
         shim = _ProgressOnly(progress)
 
         if progress:
             progress.update('Reading your MOJ login...')
         login = await cli.whoami()
-        moj_id = problem_id.derived_id(self._problem_id(login), KATTIS_ID_SUFFIX)
+        moj_id = problem_id.derived_id(
+            self._problem_id(login),
+            KATTIS_ALL_ID_SUFFIX if run_all else KATTIS_ID_SUFFIX,
+        )
 
         packager = MojPackager(
             testcase_entries=entries,
@@ -742,12 +759,30 @@ class MojRunner:
                 f'than the package rbx just sent carries any measurement.\n'
                 f'See what the judges reported with `moj calib {moj_id}`.'
             )
+        off_cap = kattis.check_cap(hosts, solutions_by_file, mode.cap_ms)
+        if off_cap:
+            shown = '\n'.join(
+                f'  {off.host}: {off.category}/{off.file} on {off.test} ran under '
+                + (f'{off.tl_ms} ms' if off.tl_ms is not None else 'no limit at all')
+                for off in off_cap[:5]
+            )
+            more = f'\n  ... and {len(off_cap) - 5} more.' if len(off_cap) > 5 else ''
+            raise MojRunnerError(
+                f'MOJ calibrated `{moj_id}` under limits other than the '
+                f'{mode.cap_ms} ms (inferenceTimeout) rbx pinned every '
+                f'solution to, so none of its timings or verdicts can be read:\n'
+                f'{shown}{more}\n'
+                f"rbx reaches that cap through MOJ's own limit arithmetic "
+                f'(`TLMOD[calibrafactor]`, `CALIBRATIONTL`, `TLMOD[<lang>.sum]`); if '
+                f'MOJ changed it, estimate with `--runner local` meanwhile. See '
+                f'`moj calib {moj_id}`.'
+            )
         console.console.print(
             f'[status]moj · [item]{moj_id}[/item] · '
             + (
                 'reused the calibration of an unchanged package'
                 if reused
-                else 'calibrated by the Kattis rule'
+                else 'calibrated every solution under the inferenceTimeout cap'
             )
             + f' on {len(hosts)} judge(s) ({elapsed}).[/status]'
         )
@@ -757,8 +792,18 @@ class MojRunner:
             measurements=kattis.measure_solutions(
                 hosts, solutions_by_file, expected_tests
             ),
-            moj_limits_ms=kattis.limits_ms(calibration),
+            # Without the problem's own multipliers MOJ computed its Kattis limit
+            # from mojtools' defaults, which describe nothing about this problem.
+            moj_limits_ms=(
+                kattis.limits_ms(calibration) if mode.kattis is not None else {}
+            ),
             reused=reused,
+            cap_ms=mode.cap_ms,
+            calib_hosts=tuple(hosts),
+            files={
+                str(solution.path): key for key, solution in solutions_by_file.items()
+            },
+            names_by_entry=_names_by_entry(packager),
         )
 
     async def _wait_for_fresh_calibration(
@@ -1778,9 +1823,88 @@ def _probe_pin(ctx: RunContext) -> ProbePinned:
 
 
 # What distinguishes the Kattis calibration's remote problem from the testrun ones.
+class CalibrationReplayRunner:
+    """A `SolutionRunner` that runs nothing: it answers from a finished calibration.
+
+    `rbx time --run-all --runner moj` ships every solution in its one calibration
+    (`MojRunner.estimate_by_calibration(run_all=True)`), where they all ran under
+    the `inferenceTimeout` cap. What the setter wants to see afterwards is each
+    of them judged at the limit that was just *estimated*, through the ordinary
+    run report -- expected outcomes, `.rbx/runs`, `--detailed`, the exit code.
+    So this hands `run_solutions` one deferred per testcase, each the calibration's
+    own test re-judged at the solution's limit (`kattis.replay_test`), built by
+    the same `_evaluation_for` a testrun goes through: a replayed test and a
+    testrun of it produce identical `Evaluation`s.
+
+    Exact only for a limit within the cap, which is what `can_replay` checks; the
+    caller sends any other solution to a real testrun.
+    """
+
+    name = 'moj'
+    # Exactly what the judge it replays could report.
+    caps = MojRunner.caps
+
+    def __init__(self, calibration: kattis.KattisCalibrationResult):
+        self._calibration = calibration
+
+    async def prepare(self, ctx: RunContext) -> None:
+        return None
+
+    def run_solution(
+        self,
+        solution: 'SolutionSkeleton',
+        entries: List[GenerationTestcaseEntry],
+        ctx: RunContext,
+    ) -> List[Deferred[Evaluation]]:
+        assert solution.limits is not None and solution.limits.time is not None, (
+            f'`{solution.path}` has no time limit to replay its calibration at'
+        )
+        time_limit_ms = solution.limits.time
+        assert self._calibration.can_replay(str(solution.path), time_limit_ms), (
+            f'`{solution.path}` cannot be replayed at {time_limit_ms} ms'
+        )
+        return [
+            Deferred(
+                lambda entry=entry: self._evaluation(solution, entry, time_limit_ms)
+            )
+            for entry in entries
+        ]
+
+    async def _evaluation(
+        self,
+        solution: 'SolutionSkeleton',
+        entry: GenerationTestcaseEntry,
+        time_limit_ms: int,
+    ) -> Evaluation:
+        name = self._calibration.names_by_entry.get(_entry_key(entry))
+        test = (
+            kattis.replay_test(
+                self._calibration, str(solution.path), name, time_limit_ms
+            )
+            if name is not None
+            else None
+        )
+        if test is not None and _outcome_for_moj_code(test.code) is None:
+            # What `_result_from_status` refuses for a testrun, for its reason: a
+            # code mapped to a guessed outcome is a wrong verdict nobody sees.
+            raise MojRunnerError(
+                f'MOJ reported the verdict code `{test.code}` for `{solution.path}` '
+                f'on `{name}` while calibrating `{self._calibration.moj_id}`, and '
+                f'rbx does not know what it means. See `moj calib '
+                f'{self._calibration.moj_id}`.'
+            )
+        return _evaluation_for(solution, entry, test)
+
+    async def close(self) -> None:
+        return None
+
+
 # Its own problem, so a problem that switches strategy never evicts the testrun
 # probes' fingerprints (nor they its).
 KATTIS_ID_SUFFIX = 'kattis'
+# `rbx time --run-all`: the same calibration with every solution shipped. See
+# `MojRunner.estimate_by_calibration`.
+KATTIS_ALL_ID_SUFFIX = 'kattis-all'
 
 
 class _ProgressOnly:
@@ -1790,21 +1914,37 @@ class _ProgressOnly:
         self.progress = progress
 
 
-def _calibrated_mode(strategy: 'timing_config.TimingStrategy') -> ProbeCalibrated:
-    """The package mode for this strategy, or a refusal naming the field."""
-    multipliers = strategy.multipliers_or_die()
-    try:
-        return ProbeCalibrated(
-            ac_to_time_limit=multipliers.acToTimeLimit,
-            time_limit_to_tle=multipliers.timeLimitToTle,
-            time_resolution_ms=multipliers.timeResolution,
-            inference_timeout_ms=strategy.inferenceTimeout,
-        )
-    except ValueError as e:
-        raise MojRunnerError(
-            f'{e}\nMOJ refuses a package whose Kattis parameters are out of range, '
-            f'so rbx will not upload one. Adjust `timing.multipliers`.'
-        ) from e
+def _calibrated_mode(
+    strategy: 'timing_config.TimingStrategy', run_all: bool = False
+) -> ProbeCalibrated:
+    """The package mode for this strategy, or a refusal naming the field.
+
+    Every strategy takes it: the probe only measures, under `inferenceTimeout`,
+    and rbx estimates. The multipliers, when the problem has them, decide whether
+    the slow solutions are shipped (only a `timeLimitToTle` gives them a bound to
+    check) and let MOJ's own Kattis limit be shown beside rbx's.
+    """
+    multipliers = strategy.multipliers
+    params: Optional[KattisParameters] = None
+    if multipliers is not None:
+        try:
+            params = KattisParameters(
+                ac_to_time_limit=multipliers.acToTimeLimit,
+                time_limit_to_tle=multipliers.timeLimitToTle,
+                time_resolution_ms=multipliers.timeResolution,
+                inference_timeout_ms=strategy.inferenceTimeout,
+            )
+        except ValueError as e:
+            raise MojRunnerError(
+                f'{e}\nMOJ refuses a package whose Kattis parameters are out of '
+                f'range, so rbx will not upload one. Adjust `timing.multipliers`.'
+            ) from e
+    return ProbeCalibrated(
+        cap_ms=strategy.inferenceTimeout,
+        ship_slow=multipliers is not None and multipliers.timeLimitToTle is not None,
+        ship_rest=run_all,
+        kattis=params,
+    )
 
 
 def _shipped_languages(mode: ProbeCalibrated) -> Tuple[str, ...]:
@@ -1814,13 +1954,7 @@ def _shipped_languages(mode: ProbeCalibrated) -> Tuple[str, ...]:
     `_testrun_languages` gives: leaving it out would estimate from incomplete data
     with nothing saying so.
     """
-    # Imported here, like the packager does: `solutions` reaches the runners.
-    from rbx.box.schema import InferenceRole
-    from rbx.box.solutions import get_inference_solutions
-
-    solutions = get_inference_solutions(InferenceRole.LOWER)
-    if mode.time_limit_to_tle is not None:
-        solutions += get_inference_solutions(InferenceRole.UPPER)
+    solutions = calibrated_solutions(mode)
     languages: List[str] = []
     unmapped: List[Tuple[pathlib.Path, str]] = []
     for solution in solutions:
@@ -1836,7 +1970,8 @@ def _shipped_languages(mode: ProbeCalibrated) -> Tuple[str, ...]:
             f'These solutions are written in languages MOJ has no counterpart for, '
             f'so the judge could not calibrate them:\n{listed}\n'
             f'Give the language a `moj` id in the `extensions.moj` block of '
-            f'`env.rbx.yml`, or mark the solutions `inference: false`.'
+            f'`env.rbx.yml`, or mark the solutions `inference: false` (and '
+            f'leave `--run-all` off, which ships every solution).'
         )
     if not languages:
         raise MojRunnerError(

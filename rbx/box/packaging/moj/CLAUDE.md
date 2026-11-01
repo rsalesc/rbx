@@ -111,11 +111,13 @@ ships no scripts for falls back to it.
 
 Calibration still runs and its measurements still land in `tl` -- harmlessly, since
 the override wins regardless. (Changing an override changes the `tl-checksum` and so
-triggers a recalibration; that is equally harmless.) rbx does **not** pin anything
-through `TLMOD` any more: the pre-`TLOVERRIDE` trick -- a zero-slope
+triggers a recalibration; that is equally harmless.) A setter's package does **not**
+pin anything through `TLMOD` any more: the pre-`TLOVERRIDE` trick -- a zero-slope
 `TLMOD[calibrafactor]=<base - 0.02>+0` `bc` expression plus `TLMOD[<lang>.sum]`
-increments -- is gone, and rbx emits no `calibrafactor` at all now (`--calibrate`
-uses the Kattis method instead, below).
+increments -- is gone from it (`--calibrate` uses the Kattis method instead, below).
+Only the `rbx time` calibration probe still emits a `calibrafactor`, because
+calibration ignores `TLOVERRIDE` and that probe needs its limits pinned *during*
+calibration (see `ProbeCalibrated` below).
 
 `CALIBRATIONTL` is raised alongside them: it is the dummy limit calibration enforces
 while it runs the solutions, and its 5s default can be tighter than what this problem
@@ -134,8 +136,14 @@ method** (mojtools `tl-methods.sh`): `TLMETHOD=kattis` plus `KATTIS_AC_TO_TIME_L
 `timing.multipliers` (env, then the problem's `timing.multipliers` overrides), and
 `CALIBRATIONTL` from `inferenceTimeout`. That is exactly the rule `rbx time` applies
 locally -- `TLKATTIS[lang]` is the smallest multiple of `r` at least `a x` the worst
-accepted test -- and the same block the `rbx time --runner moj` probe
-(`ProbeCalibrated`) asks for, built from the shared `KattisParameters`. It replaced
+accepted test -- built from `KattisParameters`, which the `rbx time --runner moj`
+probe (`ProbeCalibrated`) shares. The probe does **not** share this block: it pins
+every limit of its calibration at `inferenceTimeout` instead
+(`capped_calibration_lines`: `TLMETHOD=moj`, `TLMOD[calibrafactor]=0`,
+`CALIBRATIONTL=0.02`, `TLMOD[<lang>.sum]=cap - 0.02`), because the Kattis limit MOJ
+would judge its slow solutions at is per language and rbx's is per language group --
+see `rbx/box/CLAUDE.md`. That is the zero-slope trick above, revived for a package
+whose limits are only ever measured under, never judged by. It replaced
 the linear `TLMOD[calibrafactor]=<acToTimeLimit>`, which ignored `timeResolution`
 and `timeLimitToTle`. MOJ's ranges (`a`, `b` in [1, 100], `r` in (0, 10] s) are
 refused before the build (`_kattis_parameters_or_die`, called from

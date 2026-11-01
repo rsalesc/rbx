@@ -20,12 +20,15 @@ Both **batch** and **interactive** problems are supported, though interactive on
 few caveats -- see [Interactive problems](#interactive-problems).
 
 The MOJ packager uses the `moj` [limits profile](../profiling/profiles.md), so create it with
-`rbx time -p moj` before packaging.
+`rbx time -p moj` before packaging. That command runs your solutions on MOJ itself and
+estimates the limits from MOJ's own timings. [Measuring on the judge
+itself](../profiling/remote.md) explains how.
+
+Without MOJ access, add `--runner local` and {{rbx}} estimates on your machine instead.
 
 !!! tip
-    You can also point `rbx run` and `rbx time` at MOJ itself, and have your solutions run on the
-    judge park instead of on your machine. See [Running on the judge itself](../running/remote.md)
-    and [Timing on the judge itself](../profiling/remote.md).
+    `rbx run` can run your solutions on MOJ too, instead of on your machine. See [Running on
+    the judge itself](../running/remote.md).
 
 ## Time limits
 
@@ -215,11 +218,12 @@ its own, and {{rbx}} will **refuse to package**:
 
 !!! warning "Leave headroom in the time limits"
     MOJ measures an interactive solution by the **wall time** of the whole interaction: your
-    interactor and the language runtime's startup count against the limit too. The limits
-    `rbx time -p moj` estimated locally don't include them, so a tight limit can turn a crash or
-    a wrong answer into a time limit. Give interactive problems a comfortable margin, or
-    [measure on MOJ itself](../profiling/remote.md#timing-on-moj) with `rbx time -p moj --runner moj`, whose
-    timings already include the whole interaction.
+    interactor and the language runtime's startup count against the limit too. Limits estimated
+    on your machine (`rbx time -p moj --runner local`) don't include them, so a tight limit can
+    turn a crash or a wrong answer into a time limit. Give those interactive problems a
+    comfortable margin. A plain `rbx time -p moj` [measures on MOJ
+    itself](../profiling/remote.md#timing-on-moj), and its timings already include the whole
+    interaction.
 
 MOJ doesn't show examples for an interactive problem, since a test's input is the interactor's
 secret. So {{rbx}} writes your samples into the statement itself, under an **Example** section:

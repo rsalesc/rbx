@@ -467,7 +467,31 @@ def test_the_profile_records_the_bounds_and_the_solutions_that_set_them():
     # floor(6100 / 1.5) = 4066: the LARGEST limit the slow solution still allows.
     assert group.upperBound == TimingBound(value=4066, solution='sols/tle.cpp')
     assert group.upperValidation is not None
-    assert group.upperValidation.confirmed == ['sols/hopeless.cpp']
+    # 6100 ms clears the 1950 ms the limit needs, so finishing does not make it a
+    # violation: it is confirmed beside the one that never finished. (Measured
+    # under a higher limit -- an earlier picker round, or a MOJ calibration cap.)
+    assert group.upperValidation.confirmed == ['sols/hopeless.cpp', 'sols/tle.cpp']
+    assert group.upperValidation.violating == []
+
+
+def test_a_measured_slow_solution_under_the_bound_is_still_a_violation():
+    profile = build_timing_profile(
+        timing_per_solution_per_language={'cpp': {'sols/ac.cpp': 630}},
+        strategy=_multipliers(acToTimeLimit=2.0, timeLimitToTle=1.5),
+        slow_timing_per_solution_per_language={'cpp': {'sols/tle.cpp': 1900}},
+        env_groups=[],
+        all_languages=['cpp'],
+        force=True,
+    )
+    assert profile.groups is not None
+    (group,) = profile.groups
+    assert group.timeLimit == 1300
+    # 1900 ms < 1300 x 1.5 = 1950 ms.
+    assert group.upperValidation is not None
+    assert group.upperValidation.confirmed == []
+    assert group.upperValidation.violating == [
+        TimingBound(value=1900, solution='sols/tle.cpp')
+    ]
 
 
 def test_a_group_with_no_upper_bound_records_only_its_drops():

@@ -25,8 +25,8 @@ in effect — the same ones your local run would use, per language group. Two th
   reject it.
 
 If what you want is a *time limit* rather than a verdict, reach for [`rbx time
---runner`](/setters/profiling/remote/) instead: it feeds the same remote timings into the
-estimation.
+--runner`](/setters/profiling/remote/) instead: it estimates the limit from the times the judge
+reports.
 
 ## Running on MOJ
 

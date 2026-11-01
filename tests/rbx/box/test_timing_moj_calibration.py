@@ -1,4 +1,4 @@
-"""`rbx time --runner moj` with multipliers: one MOJ Kattis calibration, no testruns.
+"""`rbx time --runner moj` with multipliers: one MOJ calibration, no testruns.
 
 The runner is faked at the seam the estimation calls -- `estimate_by_calibration`
 -- so what is under test is how a calibration's measurements become the profile:
@@ -57,9 +57,13 @@ class _CalibratingRunner:
         self.measurements = measurements
         self.limits = limits
         self.calls: List[timing_config.TimingStrategy] = []
+        self.run_all: List[bool] = []
 
-    async def estimate_by_calibration(self, entries, strategy, progress=None):
+    async def estimate_by_calibration(
+        self, entries, strategy, progress=None, run_all=False
+    ):
         self.calls.append(strategy)
+        self.run_all.append(run_all)
         return KattisCalibrationResult(
             moj_id='alice#rbxt-x-kattis',
             hosts=('judge',),
@@ -111,13 +115,14 @@ def _upper(profile: timing.TimingProfile):
 def test_the_limit_is_the_calibrations_and_nothing_is_testrun():
     """W = 260 ms, a = 2.0, r = 100 ms: 520 rounds up to 600, MOJ's own number.
 
-    The slow solution was killed at MOJ's `etl` (TL + 2.2 s = 2800 ms), which
-    clears the 900 ms it needs: confirmed, by the calibration alone.
+    The slow solution went over the 10 s cap every limit of the calibration is
+    pinned at, which clears the 900 ms it needs: confirmed, by the calibration
+    alone.
     """
     runner = _CalibratingRunner(
         [
             _measure('sols/ac.cpp', 'good', 260),
-            _measure('sols/slow.cpp', 'slow', 2800, timed_out=True, complete=False),
+            _measure('sols/slow.cpp', 'slow', 10450, timed_out=True, complete=False),
         ],
         limits={'cpp': 600, 'default': 600},
     )
@@ -182,25 +187,50 @@ def test_a_slow_solution_that_finished_leaves_no_limit_to_write():
 
 @pytest.mark.usefixtures('pkg')
 def test_a_slow_solution_the_calibration_cannot_settle_is_skipped_not_testrun():
-    """W = 3000 ms: TL 6000, so the slow one must take 9000 ms -- but MOJ kills at
-    `etl = TL + 2.2 s = 8200 ms`. The calibration cannot answer, and the
+    """W = 5000 ms: TL 10000, so the slow one must take 15000 ms -- but every
+    limit of the calibration is pinned at the 10 s inferenceTimeout, and MOJ kills
+    at `etl = cap + 2.2 s = 12200 ms`. The calibration cannot answer, and the
     estimate must not testrun to find out: the bound is recorded as skipped.
     """
     runner = _CalibratingRunner(
         [
-            _measure('sols/ac.cpp', 'good', 3000),
-            _measure('sols/slow.cpp', 'slow', 8200, timed_out=True, complete=False),
+            _measure('sols/ac.cpp', 'good', 5000),
+            _measure('sols/slow.cpp', 'slow', 12200, timed_out=True, complete=False),
         ],
-        limits={'cpp': 6000, 'default': 6000},
+        limits={'cpp': 10000, 'default': 10000},
     )
 
     profile = _estimate(runner)
 
     assert profile is not None
-    assert profile.timeLimit == 6000
+    assert profile.timeLimit == 10000
     upper = _upper(profile)
     assert upper.skipped == ['sols/slow.cpp']
     assert upper.confirmed == []
+
+
+@pytest.mark.usefixtures('pkg')
+def test_a_slow_solution_that_finished_under_the_cap_can_still_be_too_slow():
+    """`rollercoaster` on the park, 2026-11-01: W = 170 ms makes the limit 400 ms,
+    so a slow solution must take 600 ms -- and it finished every test, the
+    slowest in 6610 ms, under the 10 s cap. Finishing is not violating here: the
+    cap is far above the bound, so the profile records it confirmed.
+    """
+    runner = _CalibratingRunner(
+        [
+            _measure('sols/ac.cpp', 'good', 170),
+            _measure('sols/slow.cpp', 'slow', 6610),
+        ],
+        limits={'cpp': 400, 'default': 400},
+    )
+
+    profile = _estimate(runner)
+
+    assert profile is not None
+    assert profile.timeLimit == 400
+    upper = _upper(profile)
+    assert upper.confirmed == ['sols/slow.cpp']
+    assert upper.violating == []
 
 
 @pytest.mark.usefixtures('pkg')
@@ -220,11 +250,89 @@ def test_a_slow_solution_that_crashed_is_reported_broken():
     assert _upper(profile).confirmed == []
 
 
-def test_only_multipliers_with_a_calibrating_backend_take_this_path():
+def test_run_all_replays_what_the_calibration_judged_and_runs_the_rest(
+    testing_pkg: testing_package.TestingPackage,
+):
+    """`--run-all` with every solution shipped: the wrong-answer one is shown from
+    the calibration; one whose limit is above the cap is judged again for real.
+
+    The accepted solution already ran for the estimate, so it is in neither.
+    """
+    testing_pkg.add_solution('sols/ac.cpp', ExpectedOutcome.ACCEPTED)
+    testing_pkg.add_solution('sols/wa.cpp', ExpectedOutcome.WRONG_ANSWER)
+    testing_pkg.add_solution('sols/slow.py', ExpectedOutcome.ACCEPTED_OR_TLE)
+    calibration = KattisCalibrationResult(
+        moj_id='alice#rbxt-x-kattis-all',
+        hosts=('judge',),
+        measurements={},
+        moj_limits_ms={},
+        reused=False,
+        cap_ms=10_000,
+        files={
+            'sols/ac.cpp': ('good', 'ac.cpp'),
+            'sols/wa.cpp': ('wrong', 'wa.cpp'),
+            'sols/slow.py': ('pass', 'slow.py'),
+        },
+    )
+    profile = timing.TimingProfile(timeLimit=1000, timeLimitPerLanguage={'py': 12_000})
+    batches = []
+
+    async def record(profile, batch, batch_runner, title, **kwargs):
+        batches.append(
+            (sorted(str(s.path) for s in batch), type(batch_runner).__name__)
+        )
+        return True
+
+    real = object()
+    with mock.patch('rbx.box.timing._run_batch', record):
+        ok = asyncio.run(
+            timing._run_remaining(  # noqa: SLF001
+                profile,
+                {'sols/ac.cpp'},
+                check=False,
+                detailed=False,
+                runs=0,
+                runner=real,  # type: ignore[arg-type]
+                calibration=calibration,
+            )
+        )
+
+    assert ok
+    assert batches == [
+        (['sols/wa.cpp'], 'CalibrationReplayRunner'),
+        (['sols/slow.py'], 'object'),
+    ]
+
+
+def test_every_strategy_with_a_calibrating_backend_takes_this_path():
+    """The calibration only measures; rbx computes the limit by either rule."""
     runner = _CalibratingRunner([], limits={})
     formula = timing_config.TimingStrategy(formula='2 * slowest', inferenceTimeout=1)
 
     assert timing.uses_moj_calibration(runner, _strategy())
-    assert not timing.uses_moj_calibration(runner, formula)
+    assert timing.uses_moj_calibration(runner, formula)
     assert not timing.uses_moj_calibration(None, _strategy())
     assert not timing.uses_moj_calibration(object(), _strategy())
+
+
+@pytest.mark.usefixtures('pkg')
+def test_a_formula_estimates_from_the_calibration_and_reads_no_slow_solution():
+    """`2 * slowest` over a 260 ms accepted solution: 520 ms, nothing testrun.
+
+    A formula has no upper bound, so the slow solution is not even read: its
+    measurement here would be wrong to use, and it bounds nothing.
+    """
+    runner = _CalibratingRunner(
+        [_measure('sols/ac.cpp', 'good', 260)],
+        limits={},
+    )
+    formula = timing_config.TimingStrategy(
+        formula='2 * slowest', inferenceTimeout=10000
+    )
+
+    profile = _estimate(runner, strategy=formula)
+
+    assert profile is not None
+    assert profile.timeLimit == 520
+    assert not [g for g in profile.groups or [] if g.upperValidation]
+    assert runner.run_all == [False]

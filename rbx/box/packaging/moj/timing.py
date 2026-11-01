@@ -23,7 +23,7 @@ only the emitted strings are in seconds, the unit mojtools uses.
 """
 
 import math
-from typing import Dict, List, NamedTuple, Optional
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 # `calibreitor.sh` enforces this dummy limit (`CALIBRATIONTL`, 5s by default) on the
 # accepted solutions while it measures them. A problem whose own limit is larger
@@ -161,14 +161,6 @@ CALIBRATE_EXPLANATION = [
     '# have put it. Package without --calibrate to pin the limits instead.',
 ]
 
-# ... and in the throwaway package `rbx time --runner moj` estimates on.
-PROBE_KATTIS_EXPLANATION = [
-    '# MOJ ESTIMATES the time limit, by the Kattis rule: per language, the',
-    '# smallest multiple of the resolution that is at least acToTimeLimit times',
-    "# the slowest accepted test. These are the problem's own timing.multipliers;",
-    '# `rbx time` reads the limit, and every timing, back out of the calibration.',
-]
-
 
 def kattis_limit_lines(
     ac_to_time_limit: float,
@@ -183,8 +175,10 @@ def kattis_limit_lines(
     multiple of `r` that is at least `a x` the worst accepted test of `lang`
     (mojtools `tl-methods.sh`). No `TLOVERRIDE`: the calibrated limit is the
     answer, and calibration ignores an override anyway (`MOJ_CALIBRATING=1`).
-    `explanation` says which package asks: a setter's `--calibrate` one, or the
-    probe `rbx time` reads the limit back from.
+    `explanation` says which package asks. Only a setter's `--calibrate` one
+    does: the `rbx time` probe pins its calibration instead
+    (`capped_calibration_lines`), because the Kattis limit MOJ judges the slow
+    solutions at is not the limit rbx ends up writing.
     """
     calibration_tl = max(
         DEFAULT_CALIBRATION_TL_SECONDS, math.ceil(inference_timeout_ms / 1000)
@@ -200,5 +194,87 @@ def kattis_limit_lines(
         '# The cap the accepted solutions run under while MOJ measures them: the',
         "# problem's inferenceTimeout, exactly what `rbx time` caps them at locally.",
         f'CALIBRATIONTL={calibration_tl}',
+        '',
+    ]
+
+
+# MOJ's own method adds this to every calibrated limit (`calibreitor.sh`:
+# `TL[lang] = calibrafactor * W[lang] + 0.02`), and the capped probe below has to
+# take it back out to land on the cap exactly.
+MOJ_TL_OFFSET_MS = 20
+
+# ... and in the throwaway package `rbx time --runner moj` estimates on.
+PROBE_CAPPED_EXPLANATION = [
+    '# ONE CALIBRATION, BOTH rbx time PHASES, EVERY SOLUTION CAPPED AT THE SAME',
+    "# LIMIT: the problem's inferenceTimeout. MOJ's own method computes",
+    '# TL[lang] = calibrafactor x W[lang] + 0.02 and then adds TLMOD[lang.sum],',
+    '# both while it measures sols/good and while it judges sols/slow; TLOVERRIDE',
+    '# would be ignored during calibration (MOJ_CALIBRATING=1). A zero factor, a',
+    '# 0.02 s dummy and a sum of cap - 0.02 s land every one of those limits on the',
+    '# cap, whatever sols/good measured, so a slow solution either finishes with',
+    '# its real time or is known to take longer than the cap -- which is what',
+    '# `rbx time` checks its own limit against. The limit MOJ itself would publish',
+    '# by the Kattis rule (TLKATTIS) is computed from the same measurements anyway.',
+]
+
+
+def _seconds(ms: int) -> str:
+    """`fmt_seconds` without trailing zeros: `1980` -> `1.98`, `5000` -> `5`."""
+    return fmt_seconds(ms).rstrip('0').rstrip('.')
+
+
+def capped_calibration_lines(
+    cap_ms: int,
+    languages: List[str],
+    kattis: Optional[Tuple[float, int]] = None,
+) -> List[str]:
+    """The `conf` block making a calibration judge everything at `cap_ms`.
+
+    What the `rbx time` probe asks for: see `PROBE_CAPPED_EXPLANATION`. The
+    sums are per *language*, since `build-and-test.sh` reads only
+    `TLMOD[$LANGUAGE.sum]`; `languages` must name every MOJ id a shipped solution
+    can be judged under -- both spellings of one that MOJ normalizes.
+
+    `kattis` is the problem's `(acToTimeLimit, timeResolution)`, when it has
+    `timing.multipliers`: MOJ computes its Kattis limit from these same
+    measurements whatever the method, and rbx shows it beside its own. A formula
+    has no such ratio, and mojtools then falls back to its own defaults.
+
+    `KATTIS_TIME_LIMIT_TO_TLE` is pinned to 1 either way, rather than the
+    problem's own: it only decides MOJ's own verdict on the slow solutions, which
+    rbx does not read, and how long a timed-out test keeps running past the cap
+    (the calibration floor is `b x` the Kattis limit *plus the sum*), which rbx
+    does not need.
+    """
+    if cap_ms <= MOJ_TL_OFFSET_MS:
+        raise ValueError(
+            f'A capped MOJ calibration needs a cap above {MOJ_TL_OFFSET_MS} ms, '
+            f'got `{cap_ms}`.'
+        )
+    if not languages:
+        raise ValueError('A capped MOJ calibration needs at least one language.')
+    increment = _seconds(cap_ms - MOJ_TL_OFFSET_MS)
+    return [
+        *PROBE_CAPPED_EXPLANATION,
+        'TLMETHOD=moj',
+        'TLMOD[calibrafactor]=0',
+        f'CALIBRATIONTL={_seconds(MOJ_TL_OFFSET_MS)}',
+        *(f'TLMOD[{language}.sum]={increment}' for language in sorted(set(languages))),
+        '',
+        *(
+            [
+                '# Only for TLKATTIS, which MOJ computes from the same measurements:',
+                "# the problem's own acToTimeLimit and timeResolution.",
+                f'KATTIS_AC_TO_TIME_LIMIT={kattis[0]:g}',
+                'KATTIS_TIME_LIMIT_TO_TLE=1',
+                f'KATTIS_TIME_RESOLUTION={kattis[1] / 1000:g}',
+            ]
+            if kattis is not None
+            else [
+                '# How long MOJ lets a test run past the cap, through its Kattis',
+                '# floor: as short as it goes.',
+                'KATTIS_TIME_LIMIT_TO_TLE=1',
+            ]
+        ),
         '',
     ]

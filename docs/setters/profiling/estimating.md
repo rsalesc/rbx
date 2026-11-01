@@ -138,8 +138,8 @@ rbx time --skip-slow
 ```
 
 The estimate is written with its upper bound unchecked. Useful when the check is the expensive
-part, as it is [on a remote judge](remote.md). If the environment sets no upper-bound ratio
-there is nothing to check, and this phase never runs.
+part of a run. If the environment doesn't set an upper-bound ratio, there is nothing to check,
+and this phase never runs.
 
 ## Running each solution several times
 

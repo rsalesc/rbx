@@ -130,8 +130,10 @@ class UpperTimings(BaseModel):
     # they were probed at elapsed, so they respect the upper bound and there is
     # no time to bound it with.
     confirmed_upper: List[str] = []
-    # Slow solutions that finished under the limit they were probed at, so they
-    # violate the upper bound. Each carries the time it actually took.
+    # Slow solutions that finished, each with the time it actually took. Probed at
+    # the bound (a testrun), every one of them violates it; measured under a cap
+    # above it (a MOJ calibration), only those the estimator does not name in
+    # ``EvalResult.respected_upper`` do.
     violating_upper: List[Measurement] = []
     # Slow solutions that were not run at all.
     skipped_upper: List[str] = []
@@ -170,6 +172,13 @@ class EvalResult(BaseModel):
     # ``time_limit`` is below it. Only a limit that did not come from those
     # solutions can break that -- an estimated one is built from this very bound.
     lower_violation: Optional[TimingBound] = None
+    # Slow solutions with a measured time (``UpperTimings.violating_upper``) that
+    # still take at least ``timeLimitToTle`` times ``time_limit``. A testrun
+    # probes each slow solution *at* that multiple, so one that finished there
+    # always violates; a calibration runs them all under one cap well above it,
+    # so finishing says nothing until it is compared with the limit -- which only
+    # the estimator knows.
+    respected_upper: List[str] = []
 
 
 # An estimator that derives no bounds at all (the formula path) may return the
@@ -231,11 +240,20 @@ def _record_provenance(
         # with `exclude_unset`, so assigning an empty record would make an
         # estimated group emit `upperValidation` while a derived one omits the
         # key -- a distinction that means nothing to whoever reads the file.
+        respected = set(result.respected_upper)
         report.upperValidation = TimingGroupUpperValidation(
-            confirmed=list(upper.confirmed_upper),
+            confirmed=[
+                *upper.confirmed_upper,
+                *(
+                    solution
+                    for _, solution in upper.violating_upper
+                    if solution in respected
+                ),
+            ],
             violating=[
                 TimingBound(value=time, solution=solution)
                 for time, solution in upper.violating_upper
+                if solution not in respected
             ],
             skipped=list(upper.skipped_upper),
         )
