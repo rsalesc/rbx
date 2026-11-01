@@ -1,3 +1,22 @@
+## 2.4.0 (2026-11-02)
+
+### Feat
+
+- **sandbox**: serve docker execution slots by per-problem priority (#996)
+- **sandbox**: run programs in an opt-in docker container (#990)
+- **time**: record per-solution timings and show them in rbx time --edit (#989)
+- **time**: add rbx time --edit to tune an estimated profile by hand (#988)
+- **contest**: add --parallel to rbx each and rbx on (#986)
+- **runners**: default to the moj runner for the moj profile (#985)
+- **moj**: calibrate --calibrate packages by MOJ's Kattis method (#984)
+- **moj**: parallel rbx run, and rbx time through MOJ's Kattis calibration (#983)
+- **moj**: run interactive problems on the MOJ remote runner (#982)
+
+### Fix
+
+- **sandbox**: run one program at a time in the docker container (#992)
+- **moj**: judge slow solutions under the cap, estimate any strategy from one calibration (#987)
+
 ## 2.3.4 (2026-10-31)
 
 ### Feat
