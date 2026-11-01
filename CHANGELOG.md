@@ -1,3 +1,13 @@
+## 2.5.1 (2026-11-02)
+
+### Feat
+
+- **timing**: add fastestToTimeLimit multiplier (#1002)
+
+### Refactor
+
+- **timing**: drop the Kattis remark from the fastestToTimeLimit line
+
 ## 2.5.0 (2026-11-02)
 
 ### Fix
