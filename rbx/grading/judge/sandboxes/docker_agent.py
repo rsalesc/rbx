@@ -54,6 +54,16 @@ SYNC_POLL_SECONDS = 0.01
 # Execution slots shared by every agent in the container (see `execution_slot`).
 SLOTS_DIR = pathlib.Path('/tmp/rbx-slots')
 SLOT_POLL_SECONDS = 0.005
+# Which rbx process gets a slot first when several are waiting: lower first.
+# `rbx each` / `rbx on` set it to the problem's position in the run, so one
+# problem's local work runs back to back instead of interleaving with every
+# other problem's (see `execution_slot`).
+PRIORITY_ENV_VAR = 'RBX_DOCKER_PRIORITY'
+# What a request without a priority waits as: after every explicit one, so a
+# standalone `rbx run` beside an `rbx each` never jumps ahead of it, and runs
+# whenever that queue has nobody waiting (among themselves, unset requests are
+# served first come, first served).
+UNSET_PRIORITY = 999_999_999
 
 
 class AgentError(RuntimeError):
@@ -126,9 +136,68 @@ def await_files(root: pathlib.Path, expected: Dict[str, int]) -> None:
         time.sleep(SYNC_POLL_SECONDS)
 
 
+def normalize_priority(value: Any) -> int:
+    """A request's priority as the queue orders it; anything unusable is unset."""
+    if value is None or isinstance(value, bool):
+        return UNSET_PRIORITY
+    try:
+        priority = int(value)
+    except (TypeError, ValueError):
+        return UNSET_PRIORITY
+    return min(max(priority, 0), UNSET_PRIORITY)
+
+
+def priority_from_env(environ: Optional[Dict[str, str]] = None) -> Optional[int]:
+    """This process's `RBX_DOCKER_PRIORITY`, or None when unset or not a number."""
+    raw = (os.environ if environ is None else environ).get(PRIORITY_ENV_VAR, '')
+    try:
+        return int(raw.strip())
+    except ValueError:
+        return None
+
+
+def _ticket_pid(name: str) -> Optional[int]:
+    try:
+        return int(name.split('-')[2])
+    except (IndexError, ValueError):
+        return None
+
+
+def _first_live_ticket(waiting_dir: pathlib.Path) -> Optional[str]:
+    """The ticket to be served next, or None when nobody is waiting.
+
+    A ticket whose process is gone is removed when it reaches the front: a
+    waiter killed while queued never runs its cleanup, and its ticket must not
+    hold up the queue. Only the front is checked, since every waiter polls this
+    and only the front decides anything.
+    """
+    for name in sorted(os.listdir(waiting_dir)):
+        pid = _ticket_pid(name)
+        if pid is None:
+            continue
+        if pid == os.getpid() or _pid_alive(pid):
+            return name
+        (waiting_dir / name).unlink(missing_ok=True)
+    return None
+
+
+def _try_lock_a_slot(paths: List[pathlib.Path]) -> Optional[int]:
+    for path in paths:
+        fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(fd)
+            continue
+        return fd
+    return None
+
+
 @contextlib.contextmanager
 def execution_slot(
-    slots: int, slots_dir: Optional[pathlib.Path] = None
+    slots: int,
+    slots_dir: Optional[pathlib.Path] = None,
+    priority: Any = None,
 ) -> Iterator[None]:
     """Hold one of `slots` execution slots, shared by every agent in here.
 
@@ -144,25 +213,46 @@ def execution_slot(
     `flock` locks belong to the open file description, so each holder opens its
     own descriptor, and two threads of one agent exclude each other as well as
     two agents do. The kernel releases a slot whose holder died.
+
+    A slot that frees goes to the lowest `priority` waiting, ties first come,
+    first served. Leaving it to whoever polls first interleaves the problems of
+    an `rbx each` -- a test of A, one of F, one of A again -- so they all finish
+    their local work together near the end, and a remote stage that could have
+    started on A sits idle until then. Each waiter drops a ticket in `waiting/`
+    named so that names sort in serving order (priority, then the monotonic
+    clock every process in the container shares, then pid and thread), and only
+    the first ticket may take a slot. That directory is on the container's
+    private /tmp, never the shared mount, so listing it is cheap and reliable.
     """
     slots_dir = slots_dir or SLOTS_DIR
-    slots_dir.mkdir(parents=True, exist_ok=True)
+    waiting_dir = slots_dir / 'waiting'
+    waiting_dir.mkdir(parents=True, exist_ok=True)
     paths = [slots_dir / f'slot-{i}' for i in range(max(1, slots))]
-    while True:
-        for path in paths:
-            fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                os.close(fd)
-                continue
-            try:
-                yield
-            finally:
-                fcntl.flock(fd, fcntl.LOCK_UN)
-                os.close(fd)
-            return
-        time.sleep(SLOT_POLL_SECONDS)
+    ticket = waiting_dir / (
+        f'{normalize_priority(priority):010d}-{time.monotonic_ns():020d}-'
+        f'{os.getpid()}-{threading.get_ident()}'
+    )
+    ticket.touch()
+    fd: Optional[int] = None
+    try:
+        while True:
+            first = _first_live_ticket(waiting_dir)
+            if first is None or first == ticket.name:
+                fd = _try_lock_a_slot(paths)
+                if fd is not None:
+                    break
+            elif not ticket.exists():
+                # Someone emptied the queue under us; without a ticket this
+                # waiter could never reach the front.
+                ticket.touch()
+            time.sleep(SLOT_POLL_SECONDS)
+    finally:
+        ticket.unlink(missing_ok=True)
+    try:
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 
 def handle_request(
@@ -176,7 +266,7 @@ def handle_request(
         return {'pid': os.getpid()}
     # The wait for a slot happens before the program starts, so it never counts
     # towards the time the program is measured to take.
-    with execution_slot(slots, slots_dir):
+    with execution_slot(slots, slots_dir, request.get('priority')):
         return _run_request(request)
 
 
@@ -347,8 +437,10 @@ class AgentClient:
     request waiting for it.
     """
 
-    def __init__(self, command: List[str]):
+    def __init__(self, command: List[str], priority: Optional[int] = None):
         self.command = command
+        # Sent with every program this client asks for; see `execution_slot`.
+        self.priority = priority
         self._lock = threading.Lock()
         self._process: Optional[subprocess.Popen] = None
         self._stderr: Optional[IO[bytes]] = None
@@ -432,6 +524,7 @@ class AgentClient:
         result = self.request(
             {
                 'op': 'run',
+                'priority': self.priority,
                 'root': str(root),
                 'expect': manifest(root),
                 'command': command,
@@ -452,6 +545,7 @@ class AgentClient:
         solution, interactor = self.request(
             {
                 'op': 'run_communication',
+                'priority': self.priority,
                 'root': str(root),
                 'expect': manifest(root),
                 'command': command,

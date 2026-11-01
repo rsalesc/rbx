@@ -7,6 +7,7 @@ the host -- and leaves only the container itself to the docker-gated suite.
 """
 
 import pathlib
+import subprocess
 import sys
 import threading
 import time
@@ -190,6 +191,141 @@ def test_more_slots_let_programs_run_together(tmp_path: pathlib.Path):
         assert _overlaps(_intervals([backend], 4))
     finally:
         backend.agent.close()
+
+
+def _wait_for(predicate, timeout: float = 20.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        assert time.monotonic() < deadline, 'timed out'
+        time.sleep(0.01)
+
+
+def _tickets(slots_dir: pathlib.Path) -> List[pathlib.Path]:
+    waiting = slots_dir / 'waiting'
+    return list(waiting.iterdir()) if waiting.is_dir() else []
+
+
+def _served_order(slots_dir: pathlib.Path, waiters: List[tuple]) -> List[str]:
+    """Queue `(label, priority)` waiters, in that order, behind a held slot.
+
+    Each is queued only once the previous one's ticket is down, so arrival
+    order is exactly the list's; then the slot is released and the order in
+    which they got it is returned.
+    """
+    served: List[str] = []
+
+    def wait(label: str, priority) -> None:
+        with docker_agent.execution_slot(1, slots_dir, priority):
+            served.append(label)
+
+    threads = []
+    with docker_agent.execution_slot(1, slots_dir, 0):
+        for queued, (label, priority) in enumerate(waiters, start=1):
+            thread = threading.Thread(target=wait, args=(label, priority))
+            thread.start()
+            threads.append(thread)
+            _wait_for(lambda n=queued: len(_tickets(slots_dir)) == n)
+    for thread in threads:
+        thread.join(timeout=20)
+    assert not _tickets(slots_dir)
+    return served
+
+
+def test_a_freed_slot_goes_to_the_lowest_priority(tmp_path: pathlib.Path):
+    waiters = [('2', 2), ('0', 0), ('1', 1)]
+    assert _served_order(tmp_path, waiters) == ['0', '1', '2']
+
+
+def test_equal_priorities_are_first_come_first_served(tmp_path: pathlib.Path):
+    waiters = [('a', 5), ('b', 5), ('c', 5)]
+    assert _served_order(tmp_path, waiters) == ['a', 'b', 'c']
+
+
+def test_an_unset_priority_goes_after_explicit_ones(tmp_path: pathlib.Path):
+    waiters = [('unset', None), ('late', 1_000_000), ('first', 0)]
+    assert _served_order(tmp_path, waiters) == ['first', 'late', 'unset']
+
+
+def test_a_killed_waiter_does_not_block_the_queue(tmp_path: pathlib.Path):
+    script = (
+        'import pathlib, sys\n'
+        'from rbx.grading.judge.sandboxes import docker_agent\n'
+        'with docker_agent.execution_slot(1, pathlib.Path(sys.argv[1]), 0):\n'
+        '    pass\n'
+    )
+    with docker_agent.execution_slot(1, tmp_path, 0):
+        process = subprocess.Popen([sys.executable, '-c', script, str(tmp_path)])
+        try:
+            _wait_for(lambda: len(_tickets(tmp_path)) == 1)
+        finally:
+            process.kill()
+            process.wait()
+    # Its ticket outlived it, ahead of anything queued with priority 1.
+    assert len(_tickets(tmp_path)) == 1
+
+    def wait() -> None:
+        with docker_agent.execution_slot(1, tmp_path, 1):
+            pass
+
+    thread = threading.Thread(target=wait)
+    thread.start()
+    thread.join(timeout=20)
+    assert not thread.is_alive()
+    assert not _tickets(tmp_path)
+
+
+def test_agents_serve_requests_in_their_clients_priority_order(
+    tmp_path: pathlib.Path,
+):
+    # Three agents stand for three problems of an `rbx each`; their requests
+    # arrive in the order 2, 0, 1 while another program holds the slot.
+    slots = tmp_path / 'slots'
+    backends = [FakeBackend(tmp_path / 'boxes', visible=[]) for _ in range(3)]
+    for backend, priority in zip(backends, [2, 0, 1]):
+        backend.agent.priority = priority
+
+    def job(backend: FakeBackend) -> float:
+        sb = DockerSandbox.bind(backend)()
+        try:
+            sb.run([sys.executable, '-c', TIMED], _params())
+            return float(sb.get_file_to_string(pathlib.Path('out.txt')).split()[0])
+        finally:
+            sb.cleanup(delete=True)
+
+    try:
+        for backend in backends:
+            backend.agent.ping()
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            with docker_agent.execution_slot(1, slots, 0):
+                futures = []
+                for queued, backend in enumerate(backends, start=1):
+                    futures.append(pool.submit(job, backend))
+                    _wait_for(lambda n=queued: len(_tickets(slots)) == n)
+            starts = [future.result() for future in futures]
+    finally:
+        for backend in backends:
+            backend.agent.close()
+    by_start = sorted(zip(starts, [2, 0, 1]))
+    assert [priority for _, priority in by_start] == [0, 1, 2]
+
+
+def test_priority_from_env():
+    var = docker_agent.PRIORITY_ENV_VAR
+    assert docker_agent.priority_from_env({var: '3'}) == 3
+    assert docker_agent.priority_from_env({var: ' 4 '}) == 4
+    assert docker_agent.priority_from_env({var: 'soon'}) is None
+    assert docker_agent.priority_from_env({var: ''}) is None
+    assert docker_agent.priority_from_env({}) is None
+
+
+def test_normalize_priority():
+    unset = docker_agent.UNSET_PRIORITY
+    assert docker_agent.normalize_priority(None) == unset
+    assert docker_agent.normalize_priority('x') == unset
+    assert docker_agent.normalize_priority(True) == unset
+    assert docker_agent.normalize_priority(-5) == 0
+    assert docker_agent.normalize_priority(10**12) == unset
+    assert docker_agent.normalize_priority(7) == 7
 
 
 def test_a_dead_agent_fails_requests_instead_of_hanging(tmp_path: pathlib.Path):

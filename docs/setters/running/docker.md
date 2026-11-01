@@ -96,6 +96,15 @@ image: the next command builds a new one.
     file when several programs read at once, which shows up as random runtime errors.
     Raise `max_parallel` only on a Linux host, or if you accept that risk.
 
+!!! note "Which problem goes first"
+    When `rbx each --parallel` or `rbx on --parallel` has programs from several problems waiting
+    for the container, the problem that comes earliest in the contest goes first. That way the
+    first problems finish their work in the container early and move on to their next command
+    while later ones are still running.
+
+    A command you start on its own meanwhile, like `rbx run` in another terminal, waits behind
+    those problems.
+
 !!! info
     If a compiler or interpreter is missing from the image, the compile or run that needs it fails,
     saying which one is missing and which setting to change.

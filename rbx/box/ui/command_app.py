@@ -223,6 +223,9 @@ class CommandEntry:
     # Precomputed sidebar labels per ProblemLabelMode, so the UI can swap them
     # live without reloading problem packages. None for non-contest entries.
     labels: Optional[Dict[ProblemLabelMode, str]] = None
+    # Variables every command of the entry runs with, on top of rbx's own
+    # environment (e.g. `RBX_DOCKER_PRIORITY`, set per problem by `each`/`on`).
+    env: Optional[Dict[str, str]] = None
 
     @property
     def display_name(self) -> str:
@@ -231,11 +234,21 @@ class CommandEntry:
         return ' '.join(self.argvs[0]) if self.argvs else ''
 
     def make_raw_shell_command(self, cmd: str) -> str:
+        # `env` is folded into the command line rather than handed to the pane:
+        # the recorded `shell_command` is what a resumed run executes verbatim,
+        # so a variable living anywhere else would be lost on resume.
         if self.prefix is not None:
             cmd = f'{self.prefix} {cmd}'
+        steps = []
         if self.cwd is not None:
-            cmd = f'cd {shlex.quote(self.cwd)} && exec {cmd}'
-        return cmd
+            steps.append(f'cd {shlex.quote(self.cwd)}')
+            cmd = f'exec {cmd}'
+        if self.env:
+            steps.append(
+                'export '
+                + ' '.join(f'{k}={shlex.quote(v)}' for k, v in self.env.items())
+            )
+        return ' && '.join([*steps, cmd])
 
     def make_shell_command(self, argv: List[str]) -> str:
         return self.make_raw_shell_command(shlex.join(argv))
@@ -679,6 +692,7 @@ class rbxCommandApp(rbxBaseApp):
                 name=tab.entry.display_name,
                 cwd=tab.entry.cwd,
                 prefix=tab.entry.prefix,
+                env=tab.entry.env,
                 placeholder_prefix=tab.entry.placeholder_prefix,
                 labels=(
                     {mode.value: label for mode, label in tab.entry.labels.items()}

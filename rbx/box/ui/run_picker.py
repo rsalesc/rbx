@@ -122,6 +122,7 @@ def entries_from_manifest(manifest: run_history.RunManifest) -> List['CommandEnt
                 prefix=tab.prefix,
                 placeholder_prefix=tab.placeholder_prefix,
                 labels=labels or None,
+                env=tab.env,
             )
         )
     return entries

@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Annotated, List, Optional, Tuple
+from typing import TYPE_CHECKING, Annotated, Dict, List, Optional, Tuple
 
 import rich.markup
 import rich.prompt
@@ -532,6 +532,26 @@ def _build_command_argvs_or_die(
         raise typer.Exit(1) from e
 
 
+def _problem_env(position: int) -> Dict[str, str]:
+    """What each problem's commands run with, given its position in the run.
+
+    In Docker mode every program runs in one shared container, one at a time,
+    and the position is that problem's place in the queue (the first problem's
+    programs go first). So problem A's local work finishes first and its remote
+    stage, if any, starts while B's local work runs, instead of every problem
+    finishing together at the end. Natively nothing reads it.
+    """
+    from rbx.grading.judge.sandboxes.docker_agent import PRIORITY_ENV_VAR
+
+    return {PRIORITY_ENV_VAR: str(position)}
+
+
+def _child_env(command: 'CommandEntry') -> Optional[Dict[str, str]]:
+    if not command.env:
+        return None
+    return {**os.environ, **command.env}
+
+
 def _run_inline(
     commands: List['CommandEntry'], keep_going: bool, parallel: bool = False
 ) -> None:
@@ -575,7 +595,9 @@ def _run_chain_in_terminal(command: 'CommandEntry', keep_going: bool) -> bool:
             f'[status]Running [item]{line}[/item] for '
             f'[item]{command.display_name}[/item]...[/status]'
         )
-        code = subprocess.call(line, cwd=command.cwd, shell=True)
+        code = subprocess.call(
+            line, cwd=command.cwd, shell=True, env=_child_env(command)
+        )
         if code == 0:
             continue
         ok = False
@@ -608,6 +630,7 @@ def _run_chain_captured(
             line,
             cwd=command.cwd,
             shell=True,
+            env=_child_env(command),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -689,8 +712,9 @@ def each(
             name=naming.get_contest_problem_label(problem),
             labels=naming.get_contest_problem_labels(problem),
             cwd=str(problem.get_path()),
+            env=_problem_env(position),
         )
-        for problem in contest.problems
+        for position, problem in enumerate(contest.problems)
     ]
     if inline:
         _run_inline(commands, keep_going=keep_going, parallel=parallel)
@@ -777,8 +801,9 @@ def on(
             name=naming.get_contest_problem_label(p),
             labels=naming.get_contest_problem_labels(p),
             cwd=str(p.get_path()),
+            env=_problem_env(position),
         )
-        for p in problems_of_interest
+        for position, p in enumerate(problems_of_interest)
     ]
 
     # A single command on a single problem already reads fine in the terminal,
