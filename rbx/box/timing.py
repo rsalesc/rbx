@@ -165,6 +165,9 @@ class TimingBounds(BaseModel):
     # limit can end up below what the group's own good solutions need.
     own_lower: Optional[int] = None
     own_lower_solution: Optional[str] = None
+    # Whether ``own_lower`` was set by the fastest accepted solution through
+    # ``fastestToTimeLimit`` rather than by the slowest through ``acToTimeLimit``.
+    own_lower_by_fastest: bool = False
 
     def violates_own_lower(self, time_limit: int) -> bool:
         """Whether ``time_limit`` is below what this group's own accepted
@@ -193,15 +196,21 @@ def compute_bounds(
     ``derived_from`` supplies the lower bound for a group whose limit did NOT
     come from its own accepted solutions (a reference group or the base
     estimate); otherwise the lower bound is this group's slowest accepted
-    solution scaled by ``acToTimeLimit``.
+    solution scaled by ``acToTimeLimit`` -- or its fastest scaled by
+    ``fastestToTimeLimit``, when that is set and asks for more.
     """
     own_lower = None
     own_lower_solution = None
+    by_fastest = False
     if measured.lower is not None:
-        own_lower = math.ceil(
-            measured.lower.slowest * _exact(multipliers.acToTimeLimit)
+        own_lower, by_fastest = timing_edit.multipliers_lower_bound(
+            multipliers, measured.lower.slowest, measured.lower.fastest
         )
-        own_lower_solution = measured.lower.slowest_solution
+        own_lower_solution = (
+            measured.lower.fastest_solution
+            if by_fastest
+            else measured.lower.slowest_solution
+        )
 
     lower_solution = None
     if derived_from is not None:
@@ -232,6 +241,7 @@ def compute_bounds(
         derived=derived_from is not None,
         own_lower=own_lower,
         own_lower_solution=own_lower_solution,
+        own_lower_by_fastest=by_fastest,
     )
 
 
@@ -352,11 +362,18 @@ def _check_bounds(
     else:
         fast_solution = bounds.lower_solution or 'the accepted solution'
         assert measured.lower is not None
-        lower_side = (
-            f'{fast_solution} runs in {measured.lower.slowest} ms, which with '
-            f'acToTimeLimit {multipliers.acToTimeLimit} requires a limit of at '
-            f'least {bounds.lower} ms'
-        )
+        if bounds.own_lower_by_fastest:
+            lower_side = (
+                f'{fast_solution} runs in {measured.lower.fastest} ms, which with '
+                f'fastestToTimeLimit {multipliers.fastestToTimeLimit} requires a '
+                f'limit of at least {bounds.lower} ms'
+            )
+        else:
+            lower_side = (
+                f'{fast_solution} runs in {measured.lower.slowest} ms, which with '
+                f'acToTimeLimit {multipliers.acToTimeLimit} requires a limit of at '
+                f'least {bounds.lower} ms'
+            )
     slow_solution = bounds.upper_solution or 'the slow solution'
     assert measured.upper is not None
     upper_side = (
@@ -445,11 +462,13 @@ def _lower_timings(
     if not pooled:
         return None
     slowest, slowest_solution = max(pooled)
+    fastest, fastest_solution = min(pooled)
     return timing_groups.GroupTimings(
-        fastest=min(pooled)[0],
+        fastest=fastest,
         slowest=slowest,
         solution_count=len(pooled),
         slowest_solution=slowest_solution,
+        fastest_solution=fastest_solution,
     )
 
 
@@ -725,6 +744,11 @@ def _describe_strategy(strategy: timing_config.TimingStrategy) -> str:
         f'  the limit is at least {multipliers.acToTimeLimit}x the slowest accepted '
         f'solution (acToTimeLimit)',
     ]
+    if multipliers.fastestToTimeLimit is not None:
+        lines.append(
+            f'  and at least {multipliers.fastestToTimeLimit}x the fastest accepted '
+            f'solution (fastestToTimeLimit), so this is not the Kattis rule'
+        )
     if multipliers.timeLimitToTle is not None:
         lines.append(
             f'  and every solution expected to be too slow must take at least '
@@ -756,6 +780,8 @@ def describe_strategy_briefly(strategy: timing_config.TimingStrategy) -> str:
         return f'based on the formula {strategy.formula_or_die()}'
     multipliers = strategy.multipliers_or_die()
     ratios = f'acToTimeLimit {multipliers.acToTimeLimit}'
+    if multipliers.fastestToTimeLimit is not None:
+        ratios += f', fastestToTimeLimit {multipliers.fastestToTimeLimit}'
     if multipliers.timeLimitToTle is not None:
         ratios += f' and timeLimitToTle {multipliers.timeLimitToTle}'
     else:
@@ -2250,9 +2276,11 @@ async def compute_time_limits(
         )
         if estimated_tl is None:
             return None
-        if strategy.multipliers is not None:
+        if strategy.uses_kattis_estimation:
             # MOJ's Kattis limit is the multipliers' rule on the judge's own
-            # numbers; next to a formula it would compare two unrelated things.
+            # numbers; next to a formula, or multipliers with a
+            # `fastestToTimeLimit` the Kattis rule lacks, it would compare two
+            # different rules.
             _compare_with_moj_limits(estimated_tl, ctx.lower_timings, calibration)
     else:
         run = await _run_for_inference(

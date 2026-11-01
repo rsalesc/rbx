@@ -448,6 +448,18 @@ def _kattis_parameters_or_die() -> KattisParameters:
             '[item]--calibrate[/item] to pin the limits instead.[/error]'
         )
         raise typer.Exit(1)
+    if not multipliers.uses_kattis_estimation:
+        console.console.print(
+            '[error][item]--calibrate[/item] needs the Kattis rule, but this '
+            "problem's [item]timing.multipliers[/item] set "
+            '[item]fastestToTimeLimit[/item].[/error]\n'
+            '[error]MOJ estimates the limit by the Kattis rule, scaling only the '
+            'slowest accepted solution; it cannot also bound the limit by the '
+            'fastest one, so it would not land where rbx does.[/error]\n'
+            f'[error]Run [item]rbx time -p {LIMITS_PROFILE}[/item] and package '
+            'without [item]--calibrate[/item] to pin the limits instead.[/error]'
+        )
+        raise typer.Exit(1)
     try:
         return KattisParameters(
             ac_to_time_limit=multipliers.acToTimeLimit,

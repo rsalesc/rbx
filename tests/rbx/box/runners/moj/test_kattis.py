@@ -643,6 +643,32 @@ async def test_a_formula_calibrates_without_slow_solutions_or_kattis_ratios(
     assert result.moj_limits_ms == {}
 
 
+async def test_a_fastest_ratio_calibrates_without_kattis_ratios(
+    calibrating_pkg, tmp_path, monkeypatch
+):
+    """With `fastestToTimeLimit` rbx's rule is not MOJ's Kattis one, so the
+    probe asks for no Kattis limit and none is compared."""
+    fake = FakeKattisMoj(tmp_path / 'snapshots', [_check(False), _check(True, j=5)])
+    fake.install(monkeypatch)
+    fake.calib_answer = cli.MojCalibration(
+        time_limits_by_method={
+            'kattis': cli.CalibMethodLimits(calibrated={'cpp': '1'})
+        },
+        hosts=[_host('j', [_sol('sol.cpp', 'good', [_test('a', 'AC', 0.1)])], at=5)],
+    )
+
+    result = await MojRunner().estimate_by_calibration(
+        build_entries(tmp_path, ['samples']), _strategy(fastestToTimeLimit=4.0)
+    )
+
+    _, uploaded = fake.uploads[-1]
+    conf = _conf(uploaded)
+    assert 'KATTIS_AC_TO_TIME_LIMIT' not in conf
+    # The upper bound still ships its slow solutions.
+    assert (uploaded / 'sols' / 'slow').exists()
+    assert result.moj_limits_ms == {}
+
+
 def _replayable(hosts: List[cli.CalibHost]) -> kattis.KattisCalibrationResult:
     return kattis.KattisCalibrationResult(
         moj_id='alice#rbxt-x-kattis-all',

@@ -213,3 +213,29 @@ def test_a_formula_environment_accepts_a_problem_cap():
     env = TimingConfig(formula='slowest * 2')
     strategy = resolve_strategy(env, PackageTiming(inferenceTimeout=45000))
     assert strategy == TimingStrategy(formula='slowest * 2', inferenceTimeout=45000)
+
+
+def test_multipliers_without_fastest_ratio_are_the_kattis_rule():
+    strategy = TimingStrategy(multipliers=TimingMultipliers(acToTimeLimit=2.0))
+    assert strategy.uses_kattis_estimation
+
+
+def test_fastest_ratio_means_kattis_estimation_is_not_used():
+    strategy = TimingStrategy(
+        multipliers=TimingMultipliers(acToTimeLimit=2.0, fastestToTimeLimit=4.0)
+    )
+    assert not strategy.uses_kattis_estimation
+
+
+def test_a_formula_is_not_kattis_estimation():
+    assert not TimingStrategy(formula='2 * slowest').uses_kattis_estimation
+
+
+def test_a_problem_override_of_the_fastest_ratio_turns_kattis_off():
+    env = TimingConfig(multipliers=TimingMultipliers(acToTimeLimit=2.0))
+    pkg = PackageTiming(multipliers=TimingMultipliersOverride(fastestToTimeLimit=3.0))
+    strategy = resolve_strategy(env, pkg)
+    assert strategy.multipliers == TimingMultipliers(
+        acToTimeLimit=2.0, fastestToTimeLimit=3.0
+    )
+    assert not strategy.uses_kattis_estimation

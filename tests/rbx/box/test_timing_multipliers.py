@@ -359,3 +359,66 @@ def test_forcing_changes_nothing_when_the_bound_is_respected():
         make_multipliers_eval(multipliers, force=True)(measured).time_limit
         == make_multipliers_eval(multipliers)(measured).time_limit
     )
+
+
+def _spread(
+    fastest: int, slowest: int, fastest_solution: str, slowest_solution: str
+) -> GroupMeasurements:
+    return GroupMeasurements(
+        lower=GroupTimings(
+            fastest=fastest,
+            slowest=slowest,
+            solution_count=2,
+            fastest_solution=fastest_solution,
+            slowest_solution=slowest_solution,
+        )
+    )
+
+
+def test_fastest_ratio_raises_the_limit_when_it_asks_for_more():
+    multipliers = TimingMultipliers(
+        acToTimeLimit=2.0, fastestToTimeLimit=5.0, timeResolution=100
+    )
+    # slowest 300 * 2 = 600; fastest 150 * 5 = 750 -> 800.
+    bounds = compute_bounds(
+        multipliers, _spread(150, 300, 'sols/fast.cpp', 'sols/slow.cpp')
+    )
+    assert bounds.lower == 750
+    assert bounds.lower_solution == 'sols/fast.cpp'
+    assert bounds.own_lower_by_fastest
+    assert bounds.time_limit == 800
+
+
+def test_fastest_ratio_changes_nothing_when_the_slowest_binds():
+    multipliers = TimingMultipliers(
+        acToTimeLimit=2.0, fastestToTimeLimit=3.0, timeResolution=100
+    )
+    # slowest 300 * 2 = 600; fastest 150 * 3 = 450.
+    bounds = compute_bounds(
+        multipliers, _spread(150, 300, 'sols/fast.cpp', 'sols/slow.cpp')
+    )
+    assert bounds.lower == 600
+    assert bounds.lower_solution == 'sols/slow.cpp'
+    assert not bounds.own_lower_by_fastest
+
+
+def test_fastest_ratio_names_itself_when_the_range_is_empty():
+    eval_fn = _eval_limit(
+        TimingMultipliers(
+            acToTimeLimit=2.0,
+            fastestToTimeLimit=6.0,
+            timeLimitToTle=1.5,
+            timeResolution=100,
+        )
+    )
+    measured = _spread(150, 300, 'sols/fast.cpp', 'sols/slow.cpp')
+    measured = GroupMeasurements(
+        lower=measured.lower,
+        upper=UpperTimings(fastest_slow=1000, fastest_slow_solution='sols/tle.cpp'),
+    )
+    # Lower 900 (150 * 6), upper 666 (1000 / 1.5).
+    with pytest.raises(TimingRangeError) as exc:
+        eval_fn(measured)
+    message = str(exc.value)
+    assert 'fastestToTimeLimit 6.0' in message
+    assert 'sols/fast.cpp' in message

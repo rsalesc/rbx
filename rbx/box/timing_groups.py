@@ -109,6 +109,8 @@ class GroupTimings(BaseModel):
     solution_count: int
     # Which solution took ``slowest`` -- the one that drives the limit up.
     slowest_solution: Optional[str] = None
+    # Which solution took ``fastest`` -- the one ``fastestToTimeLimit`` scales.
+    fastest_solution: Optional[str] = None
 
 
 class UpperTimings(BaseModel):

@@ -57,6 +57,16 @@ in formula mode.""",
         """Whether this strategy estimates with multipliers rather than a formula."""
         return self.multipliers is not None
 
+    @property
+    def uses_kattis_estimation(self) -> bool:
+        """Whether this strategy estimates by the Kattis rule: multipliers whose
+        only lower bound is the slowest accepted solution scaled by
+        `acToTimeLimit`. False for a formula, and for multipliers that set
+        `fastestToTimeLimit`. Anything that hands the estimate to a judge's own
+        Kattis implementation, or compares rbx's limit with one, must check this.
+        """
+        return uses_kattis_estimation(self.multipliers)
+
     def formula_or_die(self) -> str:
         """The formula to estimate with. Only call in formula mode."""
         assert self.formula is not None, 'This strategy estimates with multipliers.'
@@ -66,6 +76,12 @@ in formula mode.""",
         """The multipliers to estimate with. Only call in multipliers mode."""
         assert self.multipliers is not None, 'This strategy estimates with a formula.'
         return self.multipliers
+
+
+def uses_kattis_estimation(multipliers: Optional[TimingMultipliers]) -> bool:
+    """Whether ``multipliers`` (None meaning formula mode) estimate by the Kattis
+    rule alone. See `TimingMultipliers.uses_kattis_estimation`."""
+    return multipliers is not None and multipliers.uses_kattis_estimation
 
 
 def resolve_multipliers(
