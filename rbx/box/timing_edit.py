@@ -1,0 +1,237 @@
+"""Checking a time limit against the evidence an estimate left behind.
+
+`rbx time` records, on each group of a limits profile, what bounded its limit:
+the slowest accepted solution (`slowest`, `lowerBound`), the slow solutions that
+capped it (`upperBound`) and what checking them against the limit found
+(`upperValidation`). That is enough to judge *any* limit for the group, not only
+the one that was estimated, without running a single solution -- which is what
+`rbx time --edit` does on every keystroke.
+
+A leaf module on purpose: `limits_info` renders the result in every limits
+table, and `timing` (which imports `limits_info`) reuses the arithmetic, so this
+may import neither.
+"""
+
+import math
+from fractions import Fraction
+from typing import List, Optional
+
+from pydantic import BaseModel
+
+from rbx.box.schema import (
+    LimitModifiers,
+    LimitsProfile,
+    TimingBound,
+    TimingGroupReport,
+    TimingMultipliers,
+)
+
+
+def exact_ratio(ratio: float) -> Fraction:
+    """The ratio the setter typed in YAML, as an exact rational.
+
+    ``str()`` yields the shortest repr that round-trips, so the 1.1 stored as
+    1.100000000000000088... comes back as exactly 11/10. Every bound is computed
+    in this arithmetic: the numbers end up serialized in the limits profile, so
+    a setter recomputing them by hand must get the same answer rbx did.
+    """
+    return Fraction(str(ratio))
+
+
+def violates_upper_bound(time: int, time_limit: int, time_limit_to_tle: float) -> bool:
+    """Whether a slow solution taking ``time`` is too fast for ``time_limit``.
+
+    The same comparison `compute_bounds` makes, in the same exact arithmetic:
+    the limit may be at most ``time / timeLimitToTle``, so the solution must take
+    at least ``time_limit * timeLimitToTle``.
+    """
+    return time < time_limit * exact_ratio(time_limit_to_tle)
+
+
+class GroupCheck(BaseModel):
+    """How one group's time limit fares against the evidence recorded for it."""
+
+    time_limit: int
+    # The limit the evidence was measured against, when it is not `time_limit`.
+    estimated: Optional[int] = None
+
+    # The smallest limit the group's own accepted solutions allow: their slowest
+    # scaled by `acToTimeLimit`, or the slowest itself without multipliers.
+    min_ms: Optional[int] = None
+    min_solution: Optional[str] = None
+    # The largest limit its slow solutions allow.
+    max_ms: Optional[int] = None
+    max_solution: Optional[str] = None
+    # The group's slowest accepted solution, to tell a limit it outright fails
+    # from one it clears without the configured margin.
+    slowest_ms: Optional[int] = None
+
+    # Slow solutions measured to finish within `time_limit * timeLimitToTle`.
+    violating: List[TimingBound] = []
+    # Slow solutions seen still running at a limit at least this one.
+    confirmed: List[str] = []
+    # Slow solutions only seen still running at a *lower* limit than this one:
+    # they may well finish in time now, and nothing measured says either way.
+    unverified: List[str] = []
+
+    @property
+    def rejects_own_solutions(self) -> bool:
+        return self.slowest_ms is not None and self.time_limit < self.slowest_ms
+
+    @property
+    def below_min(self) -> bool:
+        return self.min_ms is not None and self.time_limit < self.min_ms
+
+    @property
+    def above_max(self) -> bool:
+        return self.max_ms is not None and self.time_limit > self.max_ms
+
+    @property
+    def breaks_upper(self) -> bool:
+        return self.above_max or bool(self.violating)
+
+    @property
+    def ok(self) -> bool:
+        return not (self.below_min or self.breaks_upper or self.unverified)
+
+
+def evidence_limit(report: TimingGroupReport) -> int:
+    """The limit the report's bounds and validation were measured against."""
+    if report.estimatedTimeLimit is not None:
+        return report.estimatedTimeLimit
+    return report.timeLimit
+
+
+def _min_solution(report: TimingGroupReport) -> Optional[str]:
+    # An estimated group's lower bound is set by its own slowest solution; a
+    # derived one names none, but records its own when the limit undercut it.
+    if report.lowerBound is not None and report.lowerBound.solution is not None:
+        return report.lowerBound.solution
+    if report.lowerViolation is not None:
+        return report.lowerViolation.solution
+    return None
+
+
+def assess(
+    report: TimingGroupReport,
+    multipliers: Optional[TimingMultipliers],
+    time_limit: Optional[int] = None,
+) -> GroupCheck:
+    """Judge ``time_limit`` (the report's own limit by default) for this group.
+
+    Pure arithmetic over what the report recorded, applying the rules
+    `timing.compute_bounds` estimated with -- so at the estimated limit it
+    reproduces exactly what the estimation concluded.
+    """
+    if time_limit is None:
+        time_limit = report.timeLimit
+    evidence_at = evidence_limit(report)
+
+    min_ms = None
+    if report.slowest is not None:
+        if multipliers is not None:
+            min_ms = math.ceil(report.slowest * exact_ratio(multipliers.acToTimeLimit))
+        else:
+            # A formula bounds nothing; a solution taking T still needs T.
+            min_ms = report.slowest
+
+    max_ms = None
+    max_solution = None
+    to_tle = multipliers.timeLimitToTle if multipliers is not None else None
+    if to_tle is not None and report.upperBound is not None:
+        max_ms = report.upperBound.value
+        max_solution = report.upperBound.solution
+
+    violating: List[TimingBound] = []
+    confirmed: List[str] = []
+    unverified: List[str] = []
+    validation = report.upperValidation
+    if validation is not None and to_tle is not None:
+        violating = [
+            bound
+            for bound in validation.violating
+            if violates_upper_bound(bound.value, time_limit, to_tle)
+        ]
+        # Confirmed means "still running at evidence_at * timeLimitToTle", which
+        # says nothing about any higher multiple.
+        if time_limit <= evidence_at:
+            confirmed = list(validation.confirmed)
+        else:
+            unverified = list(validation.confirmed)
+
+    return GroupCheck(
+        time_limit=time_limit,
+        estimated=evidence_at if evidence_at != time_limit else None,
+        min_ms=min_ms,
+        min_solution=_min_solution(report),
+        max_ms=max_ms,
+        max_solution=max_solution,
+        slowest_ms=report.slowest,
+        violating=violating,
+        confirmed=confirmed,
+        unverified=unverified,
+    )
+
+
+def _retarget(
+    report: TimingGroupReport,
+    multipliers: Optional[TimingMultipliers],
+    time_limit: int,
+) -> None:
+    """Point ``report`` at ``time_limit``, keeping the evidence it was built on."""
+    evidence_at = evidence_limit(report)
+    report.timeLimit = time_limit
+    report.estimatedTimeLimit = None if time_limit == evidence_at else evidence_at
+    # `lowerViolation` keeps its meaning -- recorded only while the limit is
+    # below what the group's own accepted solutions allow -- so every reader of
+    # it (the limits table, its captions) sees a hand-set limit the same way.
+    check = assess(report, multipliers)
+    report.lowerViolation = (
+        TimingBound(value=check.min_ms, solution=check.min_solution)
+        if check.below_min and check.min_ms is not None
+        else None
+    )
+
+
+def with_time_limit(
+    profile: LimitsProfile, group: Optional[int], time_limit: int
+) -> LimitsProfile:
+    """A copy of ``profile`` with the limit of one group set to ``time_limit``.
+
+    ``group`` indexes ``profile.groups``; ``None`` is the base limit. The group's
+    per-language modifiers move with it, since those -- not the report -- are what
+    a run is judged against.
+    """
+    profile = profile.model_copy(deep=True)
+    if group is None:
+        profile.timeLimit = time_limit
+        if profile.baseEstimate is not None:
+            _retarget(profile.baseEstimate, profile.multipliers, time_limit)
+        return profile
+    assert profile.groups is not None
+    report = profile.groups[group]
+    _retarget(report, profile.multipliers, time_limit)
+    for language in report.languages:
+        profile.modifiers.setdefault(language, LimitModifiers()).time = time_limit
+    return profile
+
+
+def is_editable(profile: LimitsProfile) -> bool:
+    """Whether ``profile`` carries the evidence of an estimate to edit against."""
+    return (
+        not profile.inheritFromPackage
+        and profile.timeLimit is not None
+        and (bool(profile.groups) or profile.baseEstimate is not None)
+    )
+
+
+def adjusted_checks(profile: LimitsProfile) -> List[GroupCheck]:
+    """The checks of every limit in ``profile`` that was set by hand."""
+    reports = list(profile.groups or [])
+    if profile.baseEstimate is not None:
+        reports.append(profile.baseEstimate)
+    return [
+        assess(report, profile.multipliers)
+        for report in reports
+        if report.estimatedTimeLimit is not None
+    ]

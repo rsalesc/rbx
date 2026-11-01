@@ -8,7 +8,7 @@ import typer
 from pydantic import BaseModel
 
 from rbx import console
-from rbx.box import package
+from rbx.box import package, timing_edit
 from rbx.box.environment import VerificationLevel
 from rbx.box.schema import (
     LimitModifiers,
@@ -180,6 +180,9 @@ def get_display_limits_profile(
     display = get_limits_profile(profile, root=root)
     display.groups = saved.groups
     display.baseEstimate = saved.baseEstimate
+    # The table judges a limit set by hand against the ratios it was estimated
+    # with; the expansion above starts from the package and does not carry them.
+    display.multipliers = saved.multipliers
     return display
 
 
@@ -289,6 +292,13 @@ class LimitsTableRow(BaseModel):
     # The group's slowest accepted solution, to tell a limit its solutions
     # outright fail from one they merely clear without the configured margin.
     slowest_ms: Optional[int] = None
+    # The limit was set by hand (`rbx time --edit`) away from this estimate.
+    adjusted_from: Optional[int] = None
+    # Slow solutions only confirmed too slow at the estimate, below this limit.
+    unverified_upper: List[str] = []
+    # The limit judged against the group's recorded evidence; absent on rows
+    # that carry none (the degraded per-modifier view).
+    check: Optional[timing_edit.GroupCheck] = None
 
     @property
     def violates_lower(self) -> bool:
@@ -361,6 +371,56 @@ def _report_source(report: TimingGroupReport) -> str:
     return source + _bounds_note(report) + _violation_note(report)
 
 
+def _row_from_report(
+    report: TimingGroupReport,
+    languages: str,
+    profile: LimitsProfile,
+    time_limit: Optional[int] = None,
+) -> LimitsTableRow:
+    """One table row out of a group report.
+
+    A limit set by hand is judged afresh against the report's evidence: what was
+    recorded about the *estimated* limit -- which slow solutions it confirmed,
+    which ones broke it -- is not what holds for the limit now in force. A row
+    left at its estimate keeps the recorded data verbatim.
+    """
+    check = timing_edit.assess(report, profile.multipliers, time_limit)
+    source = _report_source(report)
+    validation = report.upperValidation
+    confirmed = list(validation.confirmed) if validation is not None else []
+    violating = (
+        [bound.solution for bound in validation.violating if bound.solution]
+        if validation is not None
+        else []
+    )
+    lower_violation = report.lowerViolation
+    unverified: List[str] = []
+    adjusted_from = check.estimated
+    if adjusted_from is not None:
+        source += f' · set by hand, estimated {adjusted_from} ms'
+        confirmed = list(check.confirmed)
+        violating = [bound.solution for bound in check.violating if bound.solution]
+        unverified = list(check.unverified)
+    return LimitsTableRow(
+        languages=languages,
+        solutions=report.solutionCount,
+        time_limit_ms=check.time_limit,
+        source=source,
+        defaulted=report.origin == TimingGroupOrigin.DEFAULTED,
+        is_leftover=report.isLeftover,
+        confirmed_upper=confirmed,
+        violating_upper=violating,
+        lower_violation_ms=lower_violation.value if lower_violation else None,
+        lower_violation_solution=(
+            lower_violation.solution if lower_violation else None
+        ),
+        slowest_ms=report.slowest,
+        adjusted_from=adjusted_from,
+        unverified_upper=unverified,
+        check=check,
+    )
+
+
 def _base_row(profile: LimitsProfile) -> LimitsTableRow:
     """The fallback row: the base time limit applied when nothing else does.
 
@@ -368,35 +428,22 @@ def _base_row(profile: LimitsProfile) -> LimitsTableRow:
     solution, so it carries the same ``estimated (fastest / slowest)`` provenance
     as the group rows; otherwise it is just the configured base.
     """
-    source = 'base'
-    solutions = None
-    confirmed: List[str] = []
-    violating: List[str] = []
-    lower_violation = None
-    slowest = None
     if profile.baseEstimate is not None:
-        source = _report_source(profile.baseEstimate)
-        solutions = profile.baseEstimate.solutionCount
-        lower_violation = profile.baseEstimate.lowerViolation
-        slowest = profile.baseEstimate.slowest
-        validation = profile.baseEstimate.upperValidation
-        if validation is not None:
-            confirmed = list(validation.confirmed)
-            violating = [
-                bound.solution for bound in validation.violating if bound.solution
-            ]
+        row = _row_from_report(
+            profile.baseEstimate,
+            '(base)',
+            profile,
+            time_limit=profile.timeLimit or 0,
+        )
+        # The base is a fallback, never a defaulted group or the leftover one.
+        row.defaulted = False
+        row.is_leftover = False
+        return row
     return LimitsTableRow(
         languages='(base)',
-        solutions=solutions,
+        solutions=None,
         time_limit_ms=profile.timeLimit or 0,
-        source=source,
-        confirmed_upper=confirmed,
-        violating_upper=violating,
-        lower_violation_ms=lower_violation.value if lower_violation else None,
-        lower_violation_solution=(
-            lower_violation.solution if lower_violation else None
-        ),
-        slowest_ms=slowest,
+        source='base',
     )
 
 
@@ -404,45 +451,10 @@ def build_limits_table_rows(profile: LimitsProfile) -> List[LimitsTableRow]:
     rows: List[LimitsTableRow] = []
     if profile.groups:
         for report in profile.groups:
-            source = _report_source(report)
             languages = ', '.join(report.languages)
             if report.isLeftover:
                 languages = f'{LEFTOVER_MARKER}{languages}'
-            rows.append(
-                LimitsTableRow(
-                    languages=languages,
-                    solutions=report.solutionCount,
-                    time_limit_ms=report.timeLimit,
-                    source=source,
-                    defaulted=report.origin == TimingGroupOrigin.DEFAULTED,
-                    is_leftover=report.isLeftover,
-                    confirmed_upper=(
-                        list(report.upperValidation.confirmed)
-                        if report.upperValidation is not None
-                        else []
-                    ),
-                    violating_upper=(
-                        [
-                            bound.solution
-                            for bound in report.upperValidation.violating
-                            if bound.solution
-                        ]
-                        if report.upperValidation is not None
-                        else []
-                    ),
-                    lower_violation_ms=(
-                        report.lowerViolation.value
-                        if report.lowerViolation is not None
-                        else None
-                    ),
-                    lower_violation_solution=(
-                        report.lowerViolation.solution
-                        if report.lowerViolation is not None
-                        else None
-                    ),
-                    slowest_ms=report.slowest,
-                )
-            )
+            rows.append(_row_from_report(report, languages, profile))
         # Leftover group is shown first; stable sort keeps the rest in order.
         rows.sort(key=lambda r: not r.is_leftover)
         # Base (fallback) row always leads the table.
@@ -508,7 +520,40 @@ def _subject(rows: List[LimitsTableRow]) -> str:
     return f'Each of {", ".join(named)} is'
 
 
-def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
+def _range_text(check: timing_edit.GroupCheck) -> str:
+    if check.min_ms is not None and check.max_ms is not None:
+        return f'{check.min_ms}–{check.max_ms} ms'
+    if check.min_ms is not None:
+        return f'≥ {check.min_ms} ms'
+    if check.max_ms is not None:
+        return f'≤ {check.max_ms} ms'
+    return ''
+
+
+def check_cell(check: Optional[timing_edit.GroupCheck]) -> str:
+    """The Check column: whether the limit fits what the group's solutions
+    allow, and the range they allow it in. Rich markup."""
+    if check is None:
+        return ''
+    allowed = _range_text(check)
+    if check.rejects_own_solutions:
+        status = '[error]✗ AC fails[/error]'
+    elif check.breaks_upper:
+        status = '[error]✗ slow passes[/error]'
+    elif check.below_min:
+        status = '[warning]⚠ thin margin[/warning]'
+    elif check.unverified:
+        status = f'[warning]? {len(check.unverified)} unverified[/warning]'
+    else:
+        status = '[success]✓[/success]'
+    if not allowed:
+        return status
+    return f'{status} [dim]{allowed}[/dim]'
+
+
+def build_limits_table(
+    profile: LimitsProfile, title: str = 'Time limits', show_check: bool = False
+):
     """Build a styled rich Table of the resolved per-language/group limits.
 
     Structural column/header styles use literal rich style strings (the resolved
@@ -522,6 +567,11 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
     import rich.table
 
     rows = build_limits_table_rows(profile)
+    adjusted = [row for row in rows if row.adjusted_from is not None]
+    # Shown whenever a limit was set by hand, where it is the only place that
+    # says whether the hand-set limit still holds; an untouched estimate keeps
+    # the table it always had.
+    show_check = show_check or bool(adjusted)
     caption_lines: List[str] = []
     if any(row.is_leftover for row in rows):
         caption_lines.append(
@@ -538,8 +588,9 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
     # never consulted. Split by severity: a limit its solutions outright fail is
     # a different problem from one they clear without the configured margin, and
     # collapsing the two would understate the first.
+    derived = [row for row in rows if row.adjusted_from is None]
     rejecting = [
-        row for row in rows if row.violates_lower and row.rejects_own_solutions
+        row for row in derived if row.violates_lower and row.rejects_own_solutions
     ]
     if rejecting:
         caption_lines.append(
@@ -548,13 +599,50 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
             f'instead of estimated from it. Regroup, or drop the reference so the '
             f'group is estimated from its own solutions.[/error]'
         )
-    thin = [row for row in rows if row.violates_lower and not row.rejects_own_solutions]
+    thin = [
+        row for row in derived if row.violates_lower and not row.rejects_own_solutions
+    ]
     if thin:
         caption_lines.append(
             f'[warning]⚠ {_subject(thin)} accepted and passes at the time limit of '
             f'its own group, but without the margin acToTimeLimit asks for, because '
             f'the limit was derived from another group. See the Source column for '
             f'what each group needs.[/warning]'
+        )
+    # The same two cases for a limit the setter chose, which nobody derived.
+    hand_rejecting = [
+        row for row in adjusted if row.violates_lower and row.rejects_own_solutions
+    ]
+    if hand_rejecting:
+        caption_lines.append(
+            f'[error]⚠ {_subject(hand_rejecting)} accepted, but does not pass at '
+            f'the time limit set by hand for its group.[/error]'
+        )
+    hand_thin = [
+        row for row in adjusted if row.violates_lower and not row.rejects_own_solutions
+    ]
+    if hand_thin:
+        caption_lines.append(
+            f'[warning]⚠ {_subject(hand_thin)} accepted and passes at the time '
+            f'limit set by hand for its group, but without the margin '
+            f'acToTimeLimit asks for.[/warning]'
+        )
+    above = [row for row in adjusted if row.check is not None and row.check.above_max]
+    if above:
+        plural = 's' if len(above) > 1 else ''
+        caption_lines.append(
+            f'[error]⚠ The time limit set by hand for {len(above)} group{plural} '
+            f'is above what its solutions expected to be too slow allow: they '
+            f'finish within it times timeLimitToTle.[/error]'
+        )
+    unverified = {solution for row in rows for solution in row.unverified_upper}
+    if unverified:
+        plural = 's' if len(unverified) > 1 else ''
+        caption_lines.append(
+            f'[warning]? {len(unverified)} solution{plural} expected to be too slow '
+            f'{"were" if plural else "was"} only confirmed too slow for the '
+            f'estimated limit, which is below the one set by hand. Run the '
+            f'solutions against this profile to check.[/warning]'
         )
     # Terse on purpose: the validation run already reported each offending
     # solution by name, with what to do about it. This only says the table's
@@ -588,7 +676,10 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
     table.add_column('Solutions', justify='right', style='bright_white')
     table.add_column('Time Limit', justify='right', style='bold bright_white')
     table.add_column('Source', style='bright_white')
+    if show_check:
+        table.add_column('Check')
     for row in rows:
+        extra = [check_cell(row.check)] if show_check else []
         sols = '' if row.solutions is None else str(row.solutions)
         tl = f'{row.time_limit_ms} ms'
         # The Source cell carries setter-controlled text (solution paths), and
@@ -606,6 +697,7 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
                 f'[{style}]{sols}[/{style}]',
                 f'[{style}]{tl}[/{style}]',
                 f'[{style}]{source}[/{style}]',
+                *extra,
             )
         elif row.defaulted:
             # Defaulted rows are warnings: the yellow signals the fallback and
@@ -615,6 +707,7 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
                 f'[warning]{sols}[/warning]',
                 f'[warning]{tl}[/warning]',
                 f'[warning]⚠ {source}[/warning]',
+                *extra,
             )
         else:
             table.add_row(
@@ -622,9 +715,12 @@ def build_limits_table(profile: LimitsProfile, title: str = 'Time limits'):
                 sols,
                 _highlight_ms(tl),
                 _highlight_ms(_source_markup(source)),
+                *extra,
             )
     return table
 
 
-def render_limits_table(profile: LimitsProfile, title: str = 'Time limits') -> None:
-    console.console.print(build_limits_table(profile, title))
+def render_limits_table(
+    profile: LimitsProfile, title: str = 'Time limits', show_check: bool = False
+) -> None:
+    console.console.print(build_limits_table(profile, title, show_check=show_check))

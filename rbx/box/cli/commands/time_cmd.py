@@ -354,7 +354,43 @@ async def time(
     ] = False,
     fail_fast: _FailFast = False,
     keep_checker_stderr: _KeepCheckerStderr = False,
+    edit: Annotated[
+        bool,
+        typer.Option(
+            '--edit',
+            '-e',
+            help='Tune the time limits of an estimated profile by hand, checking '
+            'each one against what the estimate measured. Runs no solution.',
+        ),
+    ] = False,
 ):
+    if edit:
+        # Every other flag here shapes an estimation, and the editor runs none:
+        # one of them alongside `--edit` is a command line that asks for both.
+        conflicting = [
+            name
+            for name, given in (
+                ('--strategy', strategy is not None),
+                ('--auto', auto),
+                ('--integrate', integrate),
+                ('--runner', runner is not None),
+                ('--share', share is not None),
+                ('--skip-slow', skip_slow),
+                ('--run-all', run_all),
+                ('--fail-fast', fail_fast),
+            )
+            if given
+        ]
+        if conflicting:
+            console.console.print(
+                f'[error]--edit cannot be combined with '
+                f'{", ".join(conflicting)}.[/error]'
+            )
+            raise typer.Exit(1)
+        from rbx.box import timing_limit_editor
+
+        await timing_limit_editor.edit_time_limits(profile, dry=dry)
+        return
     await _estimate(
         check=check,
         validate=validate,

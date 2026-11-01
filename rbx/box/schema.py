@@ -1234,6 +1234,15 @@ Presentation-only.""",
 time limit found. Absent when the group has no slow solutions. Presentation-only.""",
     )
 
+    estimatedTimeLimit: Optional[int] = Field(
+        default=None,
+        description="""The time limit `rbx time` estimated for this group, recorded
+only when the setter has since changed `timeLimit` by hand with `rbx time --edit`.
+The bounds and the upper validation of this report were measured against this
+limit, not against `timeLimit`. Absent while the limit is the estimated one.
+Presentation-only.""",
+    )
+
     lowerViolation: Optional[TimingBound] = Field(
         default=None,
         description="""The smallest time limit this group's own accepted solutions
