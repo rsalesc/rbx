@@ -747,7 +747,7 @@ def _describe_strategy(strategy: timing_config.TimingStrategy) -> str:
     if multipliers.fastestToTimeLimit is not None:
         lines.append(
             f'  and at least {multipliers.fastestToTimeLimit}x the fastest accepted '
-            f'solution (fastestToTimeLimit), so this is not the Kattis rule'
+            f'solution (fastestToTimeLimit)'
         )
     if multipliers.timeLimitToTle is not None:
         lines.append(
