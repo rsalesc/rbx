@@ -2,7 +2,7 @@
 # yaml-language-server: $schema=https://rsalesc.github.io/rbx/schemas/Preset.json
 name: "olympiad"
 description: "IOI-style preset: points-scored problems, plain or interactive, with or without a grader, and a contest with a Scoring section."
-min_version: "2.3.4"
+min_version: "2.4.0"
 uri: "rsalesc/rbx/rbx/resources/presets/olympiad"
 problem: "problem"
 contest: "contest"
