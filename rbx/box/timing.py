@@ -3,7 +3,6 @@ from __future__ import annotations
 import dataclasses
 import functools
 import math
-from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
 
 import rich
@@ -23,6 +22,7 @@ from rbx.box import (
     schema,
     sharing,
     timing_config,
+    timing_edit,
     timing_group_picker,
     timing_groups,
     timing_validation,
@@ -133,15 +133,10 @@ def step_up(x: Any, step: int) -> int:
     return (x + step - 1) // step * step
 
 
-def _exact(ratio: float) -> Fraction:
-    """The ratio the setter typed in YAML, as an exact rational.
-
-    ``str()`` yields the shortest repr that round-trips, so the 1.1 stored as
-    1.100000000000000088... comes back as exactly 11/10. Every bound is computed
-    in this arithmetic: the numbers end up serialized in the limits profile, so
-    a setter recomputing them by hand must get the same answer rbx did.
-    """
-    return Fraction(str(ratio))
+# Moved to the leaf `timing_edit`, which `limits_info` can import; kept here
+# under their old names for every caller in this module.
+_exact = timing_edit.exact_ratio
+violates_upper_bound = timing_edit.violates_upper_bound
 
 
 class TimingBounds(BaseModel):
@@ -1534,16 +1529,6 @@ async def _run_for_inference(
         # the screen. `close` ends a *batch*, not the runner: see
         # `SolutionRunner.close`.
         await result.close()
-
-
-def violates_upper_bound(time: int, time_limit: int, time_limit_to_tle: float) -> bool:
-    """Whether a slow solution taking ``time`` is too fast for ``time_limit``.
-
-    The same comparison `compute_bounds` makes, in the same exact arithmetic:
-    the limit may be at most ``time / timeLimitToTle``, so the solution must take
-    at least ``time_limit * timeLimitToTle``.
-    """
-    return time < time_limit * _exact(time_limit_to_tle)
 
 
 def can_validate_upper_bound(

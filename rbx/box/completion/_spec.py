@@ -562,6 +562,15 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Tune the time limits of an estimated profile by hand, checking '
+                    'each one against what the estimate measured. Runs no solution.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--edit', '-e'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,
