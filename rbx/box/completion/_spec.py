@@ -1556,6 +1556,38 @@ SPEC = {
         {
             'children': [
                 {
+                    'help': 'Run programs in a Docker container from...',
+                    'is_group': False,
+                    'name': 'enable',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
+                    'help': 'Run programs directly on this machine again.',
+                    'is_group': False,
+                    'name': 'disable',
+                    'panel': None,
+                    'params': [
+                        {
+                            'help': 'Show this message and exit.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--help'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        }
+                    ],
+                },
+                {
                     'help': 'Show the Docker configuration and...',
                     'is_group': False,
                     'name': 'status',

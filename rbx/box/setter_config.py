@@ -210,9 +210,16 @@ class SetterConfig(BaseModel):
         description='Run programs inside a Docker container (opt-in).',
     )
 
+    def docker_enabled(self) -> bool:
+        """`docker.enabled`, unless `RBX_DOCKER` overrides it for this command."""
+        from rbx.box import docker_runtime
+
+        override = docker_runtime.env_override()
+        return self.docker.enabled if override is None else override
+
     def substitute_command(self, command: str, sanitized: bool = False) -> str:
         exe = shlex.split(command)[0]
-        if self.docker.enabled:
+        if self.docker_enabled():
             # The host's substitutions name tools on the host (clang++ for
             # sanitizers on macOS, a Homebrew g++-15); the container has its own.
             if exe in self.docker.command_substitutions:

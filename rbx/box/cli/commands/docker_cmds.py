@@ -25,11 +25,54 @@ def _runtime() -> docker_runtime.DockerRuntime:
     return docker_runtime.DockerRuntime(get_setter_config().docker)
 
 
+@app.command('enable', help='Run programs in a Docker container from now on (opt-in).')
+def enable():
+    # Check what can be checked before touching the config, so a machine that
+    # cannot run the container is told so and left as it was.
+    docker_runtime.ensure_daemon()
+    path = docker_runtime.set_enabled(True)
+    runtime = _runtime()
+    runtime.build_image()
+    console.console.print(
+        '[success]Docker is enabled.[/success] rbx now compiles and runs programs '
+        f'inside [item]{runtime.image_tag}[/item].'
+    )
+    console.console.print(f'Saved in [item]{path}[/item].')
+    console.console.print(
+        'Installed languages, mounts and more can be customized there; see '
+        f'[item]{docker_runtime.DOCS_URL}[/item].'
+    )
+    console.console.print(
+        'Undo with [item]rbx docker disable[/item], or set '
+        f'[item]{docker_runtime.DOCKER_ENV_VAR}=0[/item] for a single command.'
+    )
+
+
+@app.command('disable', help='Run programs directly on this machine again.')
+def disable():
+    path = docker_runtime.set_enabled(False)
+    _runtime().down()
+    console.console.print(
+        '[success]Docker is disabled.[/success] rbx runs programs directly on this '
+        'machine again.'
+    )
+    console.console.print(
+        f'Saved in [item]{path}[/item]; your other [item]docker[/item] settings are '
+        'kept for next time.'
+    )
+
+
 @app.command('status', help='Show the Docker configuration and container state.')
 def status():
-    cfg = get_setter_config().docker
     runtime = _runtime()
-    enabled = '[success]yes[/success]' if cfg.enabled else '[error]no[/error]'
+    enabled = (
+        '[success]yes[/success]'
+        if docker_runtime.docker_enabled()
+        else '[error]no[/error]'
+    )
+    override = docker_runtime.env_override()
+    if override is not None:
+        enabled += f' (from {docker_runtime.DOCKER_ENV_VAR})'
     console.console.print(f'Enabled:   {enabled}')
     console.console.print(f'Image:     [item]{runtime.image_tag}[/item]', end='')
     console.console.print(' (built)' if runtime.image_exists() else ' (not built)')

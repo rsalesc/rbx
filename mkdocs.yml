@@ -35,6 +35,7 @@ nav:
       - "Running":
           - "setters/running/index.md"
           - "On the judge itself": "setters/running/remote.md"
+          - "In a Docker container": "setters/running/docker.md"
       - "Grading":
           - "setters/grading/index.md"
           - "Checkers": "setters/grading/checkers.md"

@@ -135,10 +135,10 @@ def test_run_args_isolate_the_container():
 
 
 def test_missing_docker_cli_fails_pointing_at_the_config():
-    docker_runtime._ensure_daemon.cache_clear()  # noqa: SLF001
+    docker_runtime.ensure_daemon.cache_clear()
     with mock.patch.object(docker_runtime.shutil, 'which', return_value=None):
         with pytest.raises(DockerUnavailableError) as exc:
-            docker_runtime._ensure_daemon()  # noqa: SLF001
+            docker_runtime.ensure_daemon()
     assert 'docker.enabled' in str(exc.value)
     assert 'rbx config edit' in str(exc.value)
 
@@ -184,3 +184,97 @@ def test_sandbox_type_follows_the_setter_config():
             docker_runtime.get_sandbox_type.cache_clear()
             global_package.get_global_sandbox_type.cache_clear()
     assert environment.get_sandbox_type() is StupidSandbox
+
+
+@pytest.fixture
+def setter_config_file(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch):
+    path = tmp_path / 'setter_config.yml'
+    monkeypatch.setattr(setter_config, 'get_setter_config_path', lambda: path)
+    setter_config.get_setter_config.cache_clear()
+    yield path
+    setter_config.get_setter_config.cache_clear()
+
+
+def test_enable_adds_a_docker_section_keeping_comments(setter_config_file):
+    setter_config_file.write_text(
+        '# my precious comment\nhyperlinks: false  # inline too\n'
+    )
+    docker_runtime.set_enabled(True)
+    text = setter_config_file.read_text()
+    assert '# my precious comment' in text
+    assert 'hyperlinks: false  # inline too' in text
+    assert docker_runtime.DOCS_URL in text
+    cfg = setter_config.get_setter_config()
+    assert cfg.docker.enabled and not cfg.hyperlinks
+
+
+def test_disable_keeps_the_other_docker_settings(setter_config_file):
+    setter_config_file.write_text(
+        'docker:\n  enabled: true\n  packages: [g++]  # only c++\n'
+    )
+    docker_runtime.set_enabled(False)
+    text = setter_config_file.read_text()
+    assert 'packages: [g++]  # only c++' in text
+    cfg = setter_config.get_setter_config()
+    assert not cfg.docker.enabled
+    assert cfg.docker.packages == ['g++']
+
+
+def test_enable_creates_the_config_from_the_default(setter_config_file):
+    docker_runtime.set_enabled(True)
+    text = setter_config_file.read_text()
+    # The default template's comments come along, and its disabled section is
+    # flipped rather than duplicated.
+    assert 'rbx docker enable' in text
+    assert text.count('docker:') == 1
+    assert setter_config.get_setter_config().docker.enabled
+
+
+def test_default_setter_configs_ship_docker_disabled():
+    for name in ('default_setter_config.yml', 'default_setter_config.mac.yml'):
+        path = pathlib.Path(setter_config.__file__).parent.parent / 'resources' / name
+        cfg = docker_runtime.utils.model_from_yaml(SetterConfig, path.read_text())
+        assert cfg.docker == DockerConfig(enabled=False)
+
+
+@pytest.mark.parametrize(
+    'value,expected', [('1', True), ('true', True), ('0', False), ('off', False)]
+)
+def test_rbx_docker_env_var_overrides_the_config(
+    value, expected, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv('RBX_DOCKER', value)
+    for enabled in (True, False):
+        cfg = SetterConfig(docker=DockerConfig(enabled=enabled))
+        with mock.patch.object(docker_runtime, 'get_setter_config', return_value=cfg):
+            assert docker_runtime.docker_enabled() is expected
+
+
+def test_unset_or_unknown_env_var_defers_to_the_config(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    cfg = SetterConfig(docker=DockerConfig(enabled=True))
+    with mock.patch.object(docker_runtime, 'get_setter_config', return_value=cfg):
+        monkeypatch.delenv('RBX_DOCKER', raising=False)
+        assert docker_runtime.docker_enabled()
+        monkeypatch.setenv('RBX_DOCKER', 'maybe')
+        assert docker_runtime.docker_enabled()
+
+
+def test_rbx_docker_env_var_also_switches_command_substitutions(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    cfg = SetterConfig(
+        command_substitutions={'g++': 'g++-15'},
+        sanitizers=setter_config.SanitizersConfig(
+            command_substitutions={'g++': 'clang++'}
+        ),
+        docker=DockerConfig(enabled=False, command_substitutions={'g++': 'g++-13'}),
+    )
+    monkeypatch.setenv('RBX_DOCKER', '1')
+    # In the container: the host's clang++ for sanitizers must not leak in.
+    assert cfg.substitute_command('g++ a.cpp', sanitized=True) == 'g++-13 a.cpp'
+    cfg.docker.enabled = True
+    monkeypatch.setenv('RBX_DOCKER', '0')
+    assert cfg.substitute_command('g++ a.cpp') == 'g++-15 a.cpp'
+    assert cfg.substitute_command('g++ a.cpp', sanitized=True) == 'clang++ a.cpp'

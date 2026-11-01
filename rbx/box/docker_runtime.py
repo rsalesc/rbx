@@ -290,7 +290,7 @@ class DockerRuntime:
         # Every way into Docker comes through here first (the cache fingerprint
         # included), so this is where an unreachable daemon is reported as such
         # rather than as a failed build.
-        _ensure_daemon()
+        ensure_daemon()
         user_base = self._user_base_tag()
         if user_base is not None and (force or not self.image_exists(user_base)):
             assert self.cfg.dockerfile is not None
@@ -397,7 +397,7 @@ class DockerRuntime:
     def up(self) -> None:
         self.validate()
         self.box_root().mkdir(parents=True, exist_ok=True)
-        _ensure_daemon()
+        ensure_daemon()
         self.image_id()
         from filelock import FileLock
 
@@ -470,7 +470,7 @@ class DockerRuntime:
 
 
 @functools.cache
-def _ensure_daemon() -> None:
+def ensure_daemon() -> None:
     if shutil.which('docker') is None:
         raise _fail(
             '[error]Docker is enabled for rbx, but the [item]docker[/item] command '
@@ -491,8 +491,58 @@ def _ensure_daemon() -> None:
         )
 
 
+DOCKER_ENV_VAR = 'RBX_DOCKER'
+DOCS_URL = 'https://rbx.rsalesc.dev/setters/running/docker/'
+
+
+def env_override() -> Optional[bool]:
+    """`RBX_DOCKER=1` / `RBX_DOCKER=0` for one command, or None when unset."""
+    value = os.environ.get(DOCKER_ENV_VAR, '').strip().lower()
+    if value in ('1', 'true', 'yes', 'on'):
+        return True
+    if value in ('0', 'false', 'no', 'off'):
+        return False
+    return None
+
+
 def docker_enabled() -> bool:
-    return get_setter_config().docker.enabled
+    return get_setter_config().docker_enabled()
+
+
+def set_enabled(enabled: bool) -> pathlib.Path:
+    """Flip `docker.enabled` in the setter config file, in place.
+
+    Edited as YAML rather than re-dumped from the model, so the setter's
+    comments, ordering and other settings survive (`save_setter_config` would
+    rewrite the whole file). A config without a `docker` section gets one.
+    """
+    from ruamel.yaml import YAML
+
+    from rbx.box import setter_config
+
+    setter_config.get_setter_config()  # Creates the file from the default if missing.
+    path = setter_config.get_setter_config_path()
+    yaml = YAML()
+    yaml.preserve_quotes = True
+    data = yaml.load(path.read_text()) or {}
+    section = data.get('docker')
+    if section is None:
+        data['docker'] = {'enabled': enabled}
+        if hasattr(data, 'yaml_set_comment_before_after_key'):
+            data.yaml_set_comment_before_after_key(
+                'docker',
+                before=f'\nRun programs inside a Docker container. See {DOCS_URL}',
+            )
+    else:
+        section['enabled'] = enabled
+    with path.open('w') as f:
+        yaml.dump(data, f)
+    setter_config.get_setter_config.cache_clear()
+    # Fail here, on a file the user can still fix, rather than on the next run.
+    setter_config.get_setter_config()
+    get_runtime.cache_clear()
+    get_sandbox_type.cache_clear()
+    return path
 
 
 @functools.cache
