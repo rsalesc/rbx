@@ -1,57 +1,47 @@
 # Measuring on the judge itself
 
-[`rbx time`](estimating.md) measures wherever {{rbx}} runs, so the straightforward way to get
-limits for a judge is to run it *on* that judge's hardware. `--runner` is the other way: it
-measures your solutions **on the judge park**, through the judge's own CLI, and feeds those
-timings into the same estimation you would get locally.
-
-```bash
-rbx time -p moj --runner moj
-```
+[`rbx time`](estimating.md) usually measures your solutions on the machine {{rbx}} runs on. It
+can also measure them **on the judge**: your solutions run on the judge's own machines, and
+{{rbx}} estimates the time limits from the running times the judge reports back.
 
 ## Why measure there
 
-A time limit is a claim about hardware. Estimate on your laptop and you have a limit that is
-correct for your laptop — different CPU, different compiler flags, none of the neighbouring load
-a judge machine carries. The margin you thought you left may not be there.
+A time limit is a claim about hardware. Estimate on your laptop and you get a limit that's
+correct for your laptop. The judge has another CPU and other compiler flags, and it shares its
+machines with a contest's worth of submissions, so the margin you thought you left may not be
+there.
 
-Measuring on the park removes the guess: the timings are the judge's own, so the limit is
-derived from the machine that will enforce it.
+Measuring on the judge removes the guess: the timings are the judge's own, so you derive the
+limit from the machines that enforce it.
+
+Only the timings change. The estimate itself is still computed by {{rbx}}, on your side, by the
+same [rules](estimating.md) a local `rbx time` follows, and it ends in the same limits profile.
 
 If what you want is a *verdict* rather than a limit, reach for [`rbx run
---runner`](../running/remote.md) instead. The two commands share everything below.
+--runner`](../running/remote.md) instead.
 
 ## Timing on MOJ
 
 <!-- TODO(record): rbx time --runner moj cast -- needs a live moj login, so it cannot be recorded from CI or from a machine without judge access -->
 
-{% include "_partials/moj-backend.md" %}
-
-## The two phases, and the two uploads
-
-MOJ enforces the time limit from inside the package, so the limit {{rbx}} is measuring under has
-to be *in* what it uploads. The two phases of a run measure under different limits, and
-therefore need different packages:
-
-1. **Estimating** runs the accepted solutions under the [estimation
-   cap](estimating.md#the-estimation-cap) — one limit for every language.
-2. **[Checking the upper bound](estimating.md#checking-the-upper-bound)** runs the too-slow
-   solutions at the bound the estimate demands of them, which differs per language group.
-
-So a full run uploads twice, and the second upload usually costs a calibration wait as well.
-Each trip through the language-group picker that *changes* a limit costs another one.
-
-Finished testruns are cached, so re-running `rbx time`, or regrouping back onto limits already
-probed, costs no judge time at all. And `--skip-slow` stops after the estimate, which is the
-one-upload path:
+With the `moj` limits profile, `rbx time` measures on MOJ by default, so this is all it takes:
 
 ```bash
-rbx time -p moj --runner moj --skip-slow
+rbx time -p moj
 ```
 
-Each command uploads to a throwaway problem of its own — `…-run` for `rbx run`, `…` and
-`…-slow` for the two phases of `rbx time` — so alternating between the commands never costs a
-re-upload.
+{{rbx}} has MOJ run the solutions the estimate needs: the accepted ones, and the ones you expect
+to be too slow. MOJ reports how long each one took on its machines, and {{rbx}} estimates the
+limit from those times, exactly as it would from a local run.
+
+{{rbx}} remembers what it already asked MOJ to run, so running `rbx time` again on an unchanged
+problem costs no judge time at all.
+
+To estimate the `moj` profile on your own machine instead, pass `--runner local`.
+
+### What it needs, and what it cannot tell you
+
+{% include "_partials/moj-backend.md" %}
 
 ## Timing on DOMjudge
 
@@ -59,28 +49,10 @@ re-upload.
 rbx time -p domjudge --runner domjudge
 ```
 
+It works the same way: {{rbx}} runs your solutions on DOMjudge and estimates the limits from the
+times DOMjudge reports. Running it again on an unchanged problem only re-submits the solutions
+you changed.
+
 ### What it needs, and what it cannot tell you
 
 {% include "_partials/domjudge-backend.md" %}
-
-### The two phases, and the two uploads
-
-DOMjudge enforces the time limit from inside the package, so — exactly as on MOJ — the two
-phases measure under different limits and therefore need different packages. Each phase uploads
-to a problem of its own, `rbxt-…-estimation` and `rbxt-…-validation`, so alternating between
-them never costs a re-upload.
-
-The estimation package pins a deliberately generous limit. DOMjudge kills a run at the limit,
-so a package pinned near the answer you are looking for would truncate exactly the measurements
-that matter most.
-
-Finished judgings are cached, and so is the upload: re-running `rbx time`, or regrouping back
-onto limits already probed, re-submits only the solutions whose source changed, and re-uploads
-the package only when the package itself changed. A judging {{rbx}} could not read — a compile
-error above all — is never cached, so fixing it and running again really does try again.
-
-`--skip-slow` stops after the estimate, which is the one-upload path:
-
-```bash
-rbx time -p domjudge --runner domjudge --skip-slow
-```
