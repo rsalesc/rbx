@@ -14,6 +14,7 @@ from unittest import mock
 import pytest
 
 from rbx.box import package, timing, timing_config
+from rbx.box.runners.moj import cli, kattis
 from rbx.box.runners.moj.kattis import KattisCalibrationResult, KattisMeasurement
 from rbx.box.schema import ExpectedOutcome, InferenceRole, TimingMultipliers
 from rbx.box.testing import testing_package
@@ -231,6 +232,97 @@ def test_a_slow_solution_that_finished_under_the_cap_can_still_be_too_slow():
     upper = _upper(profile)
     assert upper.confirmed == ['sols/slow.cpp']
     assert upper.violating == []
+
+
+def _split_judges(category: str, file: str) -> List[cli.CalibHost]:
+    """Judge `a` times the solution out at the 10 s cap and `STOPWHEN_TLE` halts it
+    there, short of t3; judge `b` runs every test, the slowest in 6.61 s."""
+    tests_a = [
+        cli.TestrunTest(name='t1', code='AC', time=0.1, tl=10.0),
+        cli.TestrunTest(name='t2', code='TLE', time=10.45, tl=10.0),
+    ]
+    tests_b = [
+        cli.TestrunTest(name='t1', code='AC', time=0.1, tl=10.0),
+        cli.TestrunTest(name='t2', code='AC', time=6.61, tl=10.0),
+        cli.TestrunTest(name='t3', code='AC', time=1.2, tl=10.0),
+    ]
+    return [
+        cli.CalibHost(
+            host=host,
+            at=200,
+            sols=[cli.CalibSolution(file=file, category=category, tests=tests)],
+        )
+        for host, tests in (('a', tests_a), ('b', tests_b))
+    ]
+
+
+def _calibrated(hosts: List[cli.CalibHost], files: Dict[str, str]):
+    """`measure_solutions` over `hosts`, for the solutions at `files` (path ->
+    category), as the runner reads a calibration back."""
+    solutions = {s.path.as_posix(): s for s in package.get_solutions()}
+    return list(
+        kattis.measure_solutions(
+            hosts,
+            {
+                (category, path.split('/')[-1]): solutions[path]
+                for path, category in files.items()
+            },
+            3,
+        ).values()
+    )
+
+
+@pytest.mark.usefixtures('pkg')
+def test_a_slow_solution_one_judge_finished_is_bounded_by_that_finish():
+    """One judge timed it out, the other finished it in 6610 ms: the finish is the
+    weakest judge's evidence, so the bound is checked against it -- the solution
+    is not left unmeasured, which fails the upper-bound check."""
+    hosts = _split_judges('slow', 'slow.cpp') + [
+        cli.CalibHost(
+            host=host,
+            at=200,
+            sols=[
+                cli.CalibSolution(
+                    file='ac.cpp',
+                    category='good',
+                    tests=[
+                        cli.TestrunTest(name='t1', code='AC', time=0.1, tl=10.0),
+                        cli.TestrunTest(name='t2', code='AC', time=0.17, tl=10.0),
+                        cli.TestrunTest(name='t3', code='AC', time=0.1, tl=10.0),
+                    ],
+                )
+            ],
+        )
+        for host in ('a', 'b')
+    ]
+    runner = _CalibratingRunner(
+        _calibrated(hosts, {'sols/ac.cpp': 'good', 'sols/slow.cpp': 'slow'}),
+        limits={'cpp': 400, 'default': 400},
+    )
+
+    profile = _estimate(runner)
+
+    assert profile is not None
+    assert profile.timeLimit == 400
+    upper = _upper(profile)
+    assert upper.confirmed == ['sols/slow.cpp']
+    assert upper.violating == []
+
+
+@pytest.mark.usefixtures('pkg')
+def test_an_accepted_solution_that_timed_out_on_one_judge_says_so(capsys):
+    runner = _CalibratingRunner(
+        _calibrated(
+            _split_judges('good', 'ac.cpp'),
+            {'sols/ac.cpp': 'good', 'sols/slow.cpp': 'slow'},
+        ),
+        limits={},
+    )
+
+    assert _estimate(runner) is None
+    out = capsys.readouterr().out
+    assert 'timed out on MOJ' in out
+    assert 'did not report every test' not in out
 
 
 @pytest.mark.usefixtures('pkg')
