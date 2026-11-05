@@ -19,8 +19,8 @@ contexts, which is what makes the overlay portable (design §6.2).
 import pathlib
 from typing import Dict, List, Optional
 
-from rbx import utils
-from rbx.box.statements import render, sample_staging, sourcemap
+from rbx import console, utils
+from rbx.box.statements import demacro_utils, render, sample_staging, sourcemap
 from rbx.box.statements.context import (
     ContestRenderContext,
     ProblemRenderContext,
@@ -180,6 +180,28 @@ def render_problem_tex(
     # Per-block TikZ labeling must happen before the full-doc compile so the
     # externalized PDF filenames match the labels the substitution rewrites to.
     if externalize:
+        # A picture drawn by a macro only exists at its use sites once the
+        # macro is expanded, so expand those first (#1006). Only this build --
+        # the one that exists to produce figures -- sees the expanded text; the
+        # PDF a setter builds never does.
+        picture_macros = _collect_statement_macros(
+            render_root,
+            template_rel,
+            problem_root,
+            [
+                *latex_blocks.values(),
+                *latex_explanations.values(),
+                *file_latex_explanations.values(),
+            ],
+            defs=latex_blocks.get('defs'),
+        )
+        latex_blocks = render.expand_picture_macros(latex_blocks, picture_macros)
+        latex_explanations = render.expand_picture_macros(
+            latex_explanations, picture_macros
+        )
+        file_latex_explanations = render.expand_picture_macros(
+            file_latex_explanations, picture_macros
+        )
         latex_blocks = render.externalize_blocks(latex_blocks)
         latex_explanations = render.externalize_blocks(latex_explanations)
         file_latex_explanations = render.externalize_blocks(file_latex_explanations)
@@ -252,6 +274,40 @@ def render_problem_tex(
         )
 
     return tex
+
+
+def _collect_statement_macros(
+    render_root: pathlib.Path,
+    template_rel: str,
+    problem_root: pathlib.Path,
+    texts: List[str],
+    defs: Optional[str],
+) -> demacro_utils.MacroDefinitions:
+    """The macros a statement's blocks can use, read statically: the
+    template's preamble and the local packages and files it loads, then
+    whatever the blocks themselves define, the ``defs`` block last so it wins
+    (as it does in the export).
+
+    Best effort: a template that cannot be read contributes nothing, and the
+    labeling then proceeds as it did before #1006."""
+    macros = demacro_utils.MacroDefinitions()
+    template = render_root / template_rel
+    try:
+        macros.merge(
+            demacro_utils.collect_macro_definitions(template, base_dir=render_root)
+        )
+    except Exception as e:  # A static read must not fail a build.
+        console.console.print(
+            f'[warning]Could not read the macros of template {template_rel}: '
+            f'{e}[/warning]'
+        )
+    for text in [*texts, *([defs] if defs is not None else [])]:
+        macros.merge(
+            demacro_utils.collect_macro_definitions_from_text(
+                sourcemap.strip(text), base_dir=problem_root
+            )
+        )
+    return macros
 
 
 def write_blocks(root: pathlib.Path, name: str, blocks: render.StatementBlocks) -> None:

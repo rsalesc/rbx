@@ -1,8 +1,11 @@
 import pathlib
-from typing import List, Mapping, Optional, Tuple
+import re
+from typing import Any, Callable, List, Mapping, Optional, Tuple
 
 from TexSoup import TexSoup
-from TexSoup.data import BraceGroup, BracketGroup, TexNode
+from TexSoup.data import BraceGroup, BracketGroup, TexNamedEnv, TexNode
+
+from rbx.box.statements import tex_scan
 
 EXTERNALIZATION_DIR = 'artifacts/tikz_figures/'
 
@@ -51,31 +54,103 @@ def inject_in_preamble(soup: TexNode, latex_code: str):
         soup.insert(0, TexSoup(latex_code))
 
 
-def inject_externalization_for_tikz(soup: TexNode):
-    preamble_injection = f"""
+EXTERNALIZATION_PREAMBLE = f"""
 \\usepackage{{tikz}}
 \\usetikzlibrary{{external}}
 \\tikzexternalize[prefix={EXTERNALIZATION_DIR}]
 """
-    inject_in_preamble(soup, preamble_injection)
 
 
-def get_top_level_tikz_nodes(soup: TexNode) -> List[TexNode]:
+def inject_externalization_for_tikz(soup: TexNode):
+    inject_in_preamble(soup, EXTERNALIZATION_PREAMBLE)
+
+
+def inject_in_preamble_text(text: str, latex_code: str) -> str:
+    r"""``text`` with ``latex_code`` spliced in right after ``\documentclass``
+    (prepended when there is none).
+
+    The text counterpart of :func:`inject_in_preamble`, and the one a compile
+    should use: it never prints a soup back, so nothing else in the document
+    changes. A TexSoup round trip does not preserve TeX -- it prints
+    ``\def\foo#1{x}`` as ``\def\foo{#1}{x}``, which TeX reads differently."""
+    code = latex_code if latex_code.endswith('\n') else latex_code + '\n'
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == '%':
+            i = tex_scan.skip_comment(text, i)
+            continue
+        if ch != '\\':
+            i += 1
+            continue
+        name, j = tex_scan.read_control_sequence(text, i)
+        if name != 'documentclass':
+            skipped = tex_scan.skip_verbatim(text, name, j)
+            i = j if skipped is None else skipped
+            continue
+        k = tex_scan.skip_blanks(text, j)
+        if k < n and text[k] == '[':
+            end = tex_scan.read_group(text, k, '[')
+            k = tex_scan.skip_blanks(text, end) if end is not None else k
+        if k < n and text[k] == '{':
+            end = tex_scan.read_group(text, k)
+            if end is not None:
+                return text[:end] + '\n' + code + text[end:]
+        break
+    return code + text
+
+
+# A picture inside one of these is a template, drawn wherever the macro is
+# used, not a figure of its own: labeling it would give every use the same name.
+_DEFINITION_COMMANDS = frozenset(
+    {
+        'newcommand',
+        'renewcommand',
+        'providecommand',
+        'def',
+        'gdef',
+        'edef',
+        'xdef',
+        'DeclareRobustCommand',
+        'newenvironment',
+        'renewenvironment',
+        'NewDocumentCommand',
+        'RenewDocumentCommand',
+        'DeclareDocumentCommand',
+    }
+)
+
+
+def get_top_level_tikz_nodes(
+    soup: TexNode, source: Optional[str] = None
+) -> List[TexNode]:
     """
     Returns a list of tikzpicture nodes that are NOT nested inside other tikzpictures.
     We only want to externalize the outermost container.
+
+    Pictures inside a macro definition's body are not figures either: they are
+    drawn where the macro is used, which is where the export path expands
+    them (``render.expand_picture_macros``). With ``source`` -- the text the
+    soup was parsed from -- the bodies are found by reading the text, which
+    also catches a definition TexSoup misparses (a comment between
+    ``\\newcommand{\\foo}`` and its body leaves the body outside the command).
     """
     all_tikzs = list(soup.find_all('tikzpicture'))
     top_level = []
+    bodies = tex_scan.definition_bodies(source) if source is not None else []
 
     for node in all_tikzs:
         if not isinstance(node, TexNode):
+            continue
+        position = getattr(node, 'position', None)
+        if position is not None and tex_scan.within(position, bodies):
             continue
         # Check ancestors
         is_nested = False
         parent = node.parent
         while parent:
-            if parent.name == 'tikzpicture':
+            if parent.name == 'tikzpicture' or parent.name in _DEFINITION_COMMANDS:
                 is_nested = True
                 break
             parent = parent.parent
@@ -146,13 +221,13 @@ def get_tikz_node_label(tikz_node: TexNode) -> Optional[Tuple[TexNode, str]]:
 
 
 def get_top_level_labeled_tikz_nodes(
-    soup: TexNode,
+    soup: TexNode, source: Optional[str] = None
 ) -> List[Tuple[TexNode, TexNode, str]]:
     """
     Returns a list of tikzpicture nodes that are NOT nested inside other tikzpictures.
     We only want to externalize the outermost container.
     """
-    top_level_tikz = get_top_level_tikz_nodes(soup)
+    top_level_tikz = get_top_level_tikz_nodes(soup, source)
 
     labeled_tikz = []
     for node in top_level_tikz:
@@ -173,7 +248,9 @@ def add_labels_to_tikz_nodes(soup: TexNode, prefix: str = 'figure'):
 
         fig_name = f'{prefix}_{i}'
         cmd_str = f'\\tikzsetnextfilename{{{fig_name}}}'
-        replacement_block = f'{cmd_str}\n{str(node)}'
+        # No line break between the two: in running text it would typeset as
+        # an extra space before the picture.
+        replacement_block = f'{cmd_str}{str(node)}'
 
         # Parse and replace
         # *TexSoup(...).contents unpacks the list of nodes from the new soup
@@ -183,16 +260,570 @@ def add_labels_to_tikz_nodes(soup: TexNode, prefix: str = 'figure'):
 def replace_labeled_tikz_nodes(
     soup: TexNode, prefix: str = EXTERNALIZATION_DIR, center: bool = True
 ):
+    """Replace each labeled picture with an ``\\includegraphics`` of its
+    externalized PDF, placed the way the picture was (see
+    :func:`figure_placement`); ``center`` wraps the display ones."""
     labeled_tikz = get_top_level_labeled_tikz_nodes(soup)
 
-    for tikz_node, label_node, label in labeled_tikz:
-        fig_name = f'{prefix}{label}'
-
-        cmd_str = f'\\includegraphics{{{fig_name}}}'
-        if center:
-            cmd_str = f'\\begin{{center}}{cmd_str}\\end{{center}}'
+    # The soup's own text stands in for its source: where printing it back is
+    # not faithful, `_run_text` notices and reads the tokens instead.
+    source = str(soup)
+    replacements = [
+        (tikz_node, label_node, _figure_tex(prefix + label, tikz_node, center, source))
+        for tikz_node, label_node, label in labeled_tikz
+    ]
+    for tikz_node, label_node, cmd_str in replacements:
         label_node.delete()
         tikz_node.replace_with(*TexSoup(cmd_str).contents)
+
+
+# --- Where a figure sits: inline in text, or a display of its own ------------
+
+INLINE = 'inline'
+DISPLAY = 'display'
+CENTERED = 'centered'
+
+# End a paragraph, so a figure next to one is not in running text with it.
+_PARAGRAPH_BARRIERS = frozenset(
+    {
+        'par',
+        'item',
+        'part',
+        'chapter',
+        'section',
+        'subsection',
+        'subsubsection',
+        'paragraph',
+        'subparagraph',
+        # Typeset in a paragraph of its own.
+        'caption',
+        # TeX's display math, as TexSoup names it.
+        '$$',
+        'displaymath',
+    }
+)
+
+# Environments that stand on their own lines: a figure beside one is not in
+# running text with it either. Anything else (`minipage`, `tabular`, a nested
+# picture) is a box in the line, and counts as content.
+_DISPLAY_ENVIRONMENTS = frozenset(
+    {
+        'center',
+        'flushleft',
+        'flushright',
+        'itemize',
+        'enumerate',
+        'description',
+        'quote',
+        'quotation',
+        'verse',
+        'figure',
+        'figure*',
+        'table',
+        'table*',
+        'verbatim',
+        'lstlisting',
+        'minted',
+        'equation',
+        'equation*',
+        'align',
+        'align*',
+        'gather',
+        'gather*',
+        'multline',
+        'multline*',
+    }
+)
+
+# Commands that put nothing in the line: declarations, spacing, labels.
+_NO_TEXT_COMMANDS = frozenset(
+    {
+        'tikzsetnextfilename',
+        'centering',
+        'raggedright',
+        'raggedleft',
+        'noindent',
+        'indent',
+        'leavevmode',
+        'label',
+        'vspace',
+        'vspace*',
+        'vfill',
+        'smallskip',
+        'medskip',
+        'bigskip',
+        'hspace',
+        'hspace*',
+        'hfill',
+        'hfil',
+        'quad',
+        'qquad',
+        'nopagebreak',
+        'tiny',
+        'scriptsize',
+        'footnotesize',
+        'small',
+        'normalsize',
+        'large',
+        'Large',
+        'LARGE',
+        'huge',
+        'Huge',
+        'bfseries',
+        'itshape',
+        'ttfamily',
+        'sffamily',
+        'rmfamily',
+        'mdseries',
+        'upshape',
+        'normalfont',
+        'bf',
+        'it',
+        'tt',
+        'sf',
+        'rm',
+        'sc',
+        'sl',
+    }
+)
+
+_COMMENT_RE = re.compile(r'(?<!\\)%[^\n]*')
+_PARAGRAPH_BREAK_RE = re.compile(r'\n[ \t]*\n')
+
+
+def _is_environment(node: Any) -> bool:
+    return isinstance(getattr(node, 'expr', None), TexNamedEnv)
+
+
+def _is_root(node: Any) -> bool:
+    return getattr(node, 'parent', None) is None
+
+
+def _is_transparent_group(node: Any) -> bool:
+    """A group whose edges are not paragraph edges: ``{...}`` or a command's
+    argument (``\\textbf{...}``). An environment's, an ``\\item``'s and the
+    block's own edges are."""
+    if _is_root(node) or _is_environment(node):
+        return False
+    return getattr(node, 'name', None) != 'item'
+
+
+def _body_items(parent: Any) -> List[Any]:
+    """``parent``'s contents without its arguments' (an environment's
+    ``{arg}``s lead its contents in TexSoup)."""
+    contents = list(parent.contents)
+    if _is_environment(parent):
+        skip = sum(len(list(arg.contents)) for arg in parent.args)
+        return contents[skip:]
+    return contents
+
+
+def _index_in(items: List[Any], node: Any) -> int:
+    position = getattr(node, 'position', None)
+    for i, item in enumerate(items):
+        if item is node:
+            return i
+    for i, item in enumerate(items):
+        if position is not None and getattr(item, 'position', None) == position:
+            return i
+    return -1
+
+
+def _text_side(text: str, forward: bool) -> Optional[str]:
+    """Classify a run of text next to a figure: ``'content'`` when it puts
+    words in the figure's paragraph, ``'boundary'`` when a blank line ends the
+    paragraph first, ``None`` when it is blank and the search goes on."""
+    # A comment is not blank -- a line holding one is not an empty line -- but
+    # it is not content either.
+    marked = _COMMENT_RE.sub('\x00', tex_scan.strip_tags(text))
+    breaks = list(_PARAGRAPH_BREAK_RE.finditer(marked))
+    if forward:
+        near = marked[: breaks[0].start()] if breaks else marked
+    else:
+        near = marked[breaks[-1].end() :] if breaks else marked
+    if near.replace('\x00', '').strip():
+        return 'content'
+    return 'boundary' if breaks else None
+
+
+def _node_side(node: Any) -> Optional[str]:
+    name = getattr(node, 'name', None)
+    if name in _PARAGRAPH_BARRIERS:
+        return 'boundary'
+    if _is_environment(node) and name in _DISPLAY_ENVIRONMENTS:
+        return 'boundary'
+    if name in _NO_TEXT_COMMANDS:
+        return None
+    if name == 'BraceGroup' and not tex_scan.strip_tags(str(node.string)).strip():
+        return None
+    return 'content'
+
+
+def _side_from_tokens(items: List[Any], forward: bool) -> str:
+    """:func:`_side` without the source text: the tokens as TexSoup kept them,
+    which loses the whitespace it drops between items."""
+    run: List[str] = []
+
+    def flush() -> Optional[str]:
+        text = ''.join(run if forward else reversed(run))
+        run.clear()
+        return _text_side(text, forward)
+
+    for item in items if forward else reversed(items):
+        if hasattr(item, 'name'):
+            verdict = flush() if run else None
+            if verdict is None:
+                verdict = _node_side(item)
+            if verdict is not None:
+                return verdict
+            continue
+        text = str(item)
+        # TexSoup keeps a comment's text but drops the newline ending it.
+        run.append(text + '\n' if text.startswith('%') else text)
+    if run:
+        verdict = flush()
+        if verdict is not None:
+            return verdict
+    return 'edge'
+
+
+def _span(node: Any, source: str) -> Optional[Tuple[int, int]]:
+    """Where ``node`` is in ``source``, when what it prints is what is there
+    (or, for a picture, when its ``\\end`` can be found)."""
+    position = getattr(node, 'position', None)
+    if position is None:
+        return None
+    text = str(node)
+    if source.startswith(text, position):
+        return position, position + len(text)
+    if getattr(node, 'name', None) == 'tikzpicture':
+        end = _picture_end(source, node)
+        if end is not None:
+            return position, end
+    return None
+
+
+_BLANK = ' \t\r\n'
+
+
+def _side(items: List[Any], forward: bool, source: Optional[str], anchor: Any) -> str:
+    """What lies on one side of ``anchor`` among its siblings ``items`` (those
+    on that side), nearest first: ``'content'``, a paragraph ``'boundary'``, or
+    the ``'edge'`` of the parent.
+
+    The text between nodes is read off ``source``, the text the soup was
+    parsed from: TexSoup drops whitespace between items -- the newline after
+    an ``\\end{...}`` or ending a comment, a blank line between two
+    environments -- and a dropped newline is a lost paragraph break. Without a
+    faithful ``source``, the tokens are all there is."""
+    anchor_span = _span(anchor, source) if source is not None else None
+    if source is None or anchor_span is None:
+        return _side_from_tokens(items, forward)
+
+    cursor = anchor_span[1] if forward else anchor_span[0]
+    trailing: List[Any] = []
+    for item in items if forward else reversed(items):
+        if not hasattr(item, 'name'):
+            trailing.append(item)
+            continue
+        span = _span(item, source)
+        if span is None:
+            return _side_from_tokens(items, forward)
+        gap = source[cursor : span[0]] if forward else source[span[1] : cursor]
+        verdict = _text_side(gap, forward) or _node_side(item)
+        if verdict is not None:
+            return verdict
+        cursor = span[1] if forward else span[0]
+        trailing = []
+
+    # The text between the last node and the parent's edge.
+    if trailing:
+        positions = [getattr(item, 'position', None) for item in trailing]
+        if any(p is None for p in positions):
+            return _side_from_tokens(items, forward)
+        if forward:
+            end = max(p + len(str(t)) for p, t in zip(positions, trailing))
+            while end < len(source) and source[end] in _BLANK:
+                end += 1
+            gap = source[cursor:end]
+        else:
+            begin = min(positions)
+            while begin > 0 and source[begin - 1] in _BLANK:
+                begin -= 1
+            gap = source[begin:cursor]
+        verdict = _text_side(gap, forward)
+        if verdict is not None:
+            return verdict
+    return 'edge'
+
+
+def _alone_in_paragraph(node: Any, source: Optional[str]) -> bool:
+    parent = getattr(node, 'parent', None)
+    if parent is None:
+        return True
+    items = _body_items(parent)
+    index = _index_in(items, node)
+    if index < 0:
+        return False
+    before = _side(items[:index], forward=False, source=source, anchor=node)
+    after = _side(items[index + 1 :], forward=True, source=source, anchor=node)
+    if 'content' in (before, after):
+        return False
+    if 'edge' in (before, after) and _is_transparent_group(parent):
+        return _alone_in_paragraph(parent, source)
+    return True
+
+
+def _enclosing_environment(node: Any) -> Optional[str]:
+    parent = getattr(node, 'parent', None)
+    while parent is not None and _is_transparent_group(parent):
+        parent = getattr(parent, 'parent', None)
+    if parent is None or not _is_environment(parent):
+        return None
+    return parent.name
+
+
+def figure_placement(node: TexNode, source: Optional[str] = None) -> str:
+    """How a figure (a picture, or the ``\\includegraphics`` standing for one)
+    sits in its block.
+
+    - :data:`INLINE` -- in running text: other content shares its paragraph,
+      as in ``press \\tikz{...} to send``.
+    - :data:`CENTERED` -- alone in its paragraph, in a ``center`` environment
+      already.
+    - :data:`DISPLAY` -- alone in its paragraph anywhere else.
+
+    "Alone" is TeX's paragraph: up to a blank line, ``\\par``, ``\\item``, a
+    sectioning command or a display environment, through ``{...}`` groups
+    and command arguments; comments and commands that typeset nothing
+    (``\\centering``, ``\\vspace``, font switches) do not count.
+
+    ``source`` is the text ``node``'s soup was parsed from; without it the
+    whitespace TexSoup drops can hide a paragraph break."""
+    if not _alone_in_paragraph(node, source):
+        return INLINE
+    if _enclosing_environment(node) == 'center':
+        return CENTERED
+    return DISPLAY
+
+
+def _figure_tex(
+    ref: str, node: TexNode, center: bool, source: Optional[str] = None
+) -> str:
+    """The TeX a figure becomes: a bare ``\\includegraphics`` in running text
+    or in an existing ``center``, and wrapped in a ``center`` of its own
+    (``center``) when it is a display."""
+    cmd = f'\\includegraphics{{{ref}}}'
+    if center and figure_placement(node, source) == DISPLAY:
+        return f'\\begin{{center}}{cmd}\\end{{center}}'
+    return cmd
+
+
+# --- Text-level labeling and substitution ------------------------------------
+#
+# What the build uses. Edits are spliced into the setter's text at the
+# positions TexSoup reports, so nothing outside a picture is ever printed back
+# from a soup (see `inject_in_preamble_text` for why that matters).
+
+
+def _picture_end(text: str, node: TexNode) -> Optional[int]:
+    """The index just past ``node``'s ``\\end{tikzpicture}`` in ``text``."""
+    position = getattr(node, 'position', None)
+    if position is None or not text.startswith('\\begin', position):
+        return None
+    parsed = tex_scan.read_environment_name(text, position + len('\\begin'))
+    if parsed is None or parsed[0] != 'tikzpicture':
+        return None
+    return tex_scan.find_environment_end(text, parsed[1], 'tikzpicture')
+
+
+def _splice(text: str, edits: List[Tuple[int, int, str]]) -> str:
+    for start, end, replacement in sorted(edits, reverse=True):
+        text = text[:start] + replacement + text[end:]
+    return text
+
+
+def label_tikz_pictures(text: str, prefix: str = 'figure') -> str:
+    """``text`` with a ``\\tikzsetnextfilename{<prefix>_<i>}`` before every
+    unlabeled top-level picture, so ``\\tikzexternalize`` names its PDF.
+    ``i`` counts every top-level picture, labeled or not. Returned unchanged
+    when there is nothing to label."""
+    if 'tikzpicture' not in text:
+        return text
+    escaped = escape_for_texsoup(text)  # same length: positions carry over
+    soup = parse_latex(escaped)
+    edits: List[Tuple[int, int, str]] = []
+    for i, node in enumerate(get_top_level_tikz_nodes(soup, escaped)):
+        if get_tikz_node_label(node):
+            continue
+        position = getattr(node, 'position', None)
+        if position is None or not text.startswith('\\begin', position):
+            continue
+        edits.append((position, position, f'\\tikzsetnextfilename{{{prefix}_{i}}}'))
+    return _splice(text, edits)
+
+
+def substitute_labeled_tikz_pictures(
+    text: str, prefix: str = EXTERNALIZATION_DIR, center: bool = True
+) -> str:
+    """``text`` with every labeled top-level picture -- label included --
+    replaced by an ``\\includegraphics`` of its externalized PDF, placed as
+    :func:`figure_placement` says. The inverse of :func:`label_tikz_pictures`."""
+    if 'tikzsetnextfilename' not in text:
+        return text
+    escaped = escape_for_texsoup(text)  # same length: positions carry over
+    soup = parse_latex(escaped)
+    edits: List[Tuple[int, int, str]] = []
+    for tikz, label_node, label in get_top_level_labeled_tikz_nodes(soup, escaped):
+        start = getattr(label_node, 'position', None)
+        end = _picture_end(escaped, tikz)
+        if start is None or end is None:
+            continue
+        edits.append((start, end, _figure_tex(prefix + label, tikz, center, escaped)))
+    return _splice(text, edits)
+
+
+def _convert_tikz_command(text: str, i: int) -> Optional[Tuple[str, int]]:
+    """``i`` is just past ``\\tikz``: the equivalent environment and the index
+    past the command, or ``None`` when its extent cannot be read."""
+    n = len(text)
+    k = tex_scan.skip_blanks(text, i)
+    options = ''
+    if k < n and text[k] == '[':
+        end = tex_scan.read_group(text, k, '[')
+        if end is None:
+            return None
+        options = text[k:end]
+        k = tex_scan.skip_blanks(text, end)
+    if k >= n:
+        return None
+    if text[k] == '{':
+        end = tex_scan.read_group(text, k)
+        if end is None:
+            return None
+        body = text[k + 1 : end - 1]
+    else:
+        # `\tikz <one path>;` -- the picture is everything up to the first `;`
+        # outside braces.
+        end = k
+        depth = 0
+        while end < n:
+            ch = text[end]
+            if ch == '\\':
+                _, end = tex_scan.read_control_sequence(text, end)
+                continue
+            if ch == '%':
+                end = tex_scan.skip_comment(text, end)
+                continue
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth < 0:
+                    return None
+            elif ch == ';' and depth == 0:
+                break
+            end += 1
+        if end >= n:
+            return None
+        end += 1
+        body = text[k:end]
+    body = normalize_tikz_commands(body)
+    return f'\\begin{{tikzpicture}}{options}{body}\\end{{tikzpicture}}', end
+
+
+def normalize_tikz_commands(text: str) -> str:
+    """``text`` with every ``\\tikz[...]{...}`` and ``\\tikz[...] ...;`` written
+    as the ``tikzpicture`` environment it stands for, so labeling and
+    substitution -- which work on environments -- see it too."""
+    if '\\tikz' not in text:
+        return text
+    out: List[str] = []
+    last = 0
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == '%':
+            i = tex_scan.skip_comment(text, i)
+            continue
+        if ch != '\\':
+            i += 1
+            continue
+        name, j = tex_scan.read_control_sequence(text, i)
+        skipped = tex_scan.skip_verbatim(text, name, j)
+        if skipped is not None:
+            i = skipped
+            continue
+        converted = _convert_tikz_command(text, j) if name == 'tikz' else None
+        if converted is None:
+            i = j
+            continue
+        replacement, end = converted
+        out.append(text[last:i])
+        out.append(replacement)
+        last = i = end
+    out.append(text[last:])
+    return ''.join(out)
+
+
+def draws_tikz_pictures(text: str) -> bool:
+    """Whether ``text`` draws a TikZ picture -- a ``tikzpicture`` or a
+    ``\\tikz`` outside a macro definition's body and outside comments."""
+    if 'tikz' not in text:
+        return False
+    normalized = normalize_tikz_commands(text)
+    try:
+        soup = parse_latex(escape_for_texsoup(normalized))
+    except Exception:
+        return '\\begin{tikzpicture}' in normalized
+    return bool(get_top_level_tikz_nodes(soup, normalized))
+
+
+def _format_pt(value: float) -> str:
+    return f'{value:.2f}'.rstrip('0').rstrip('.') + 'pt'
+
+
+def size_inline_figures(
+    text: str,
+    figure_height: Callable[[str], Optional[float]],
+    prefix: str = EXTERNALIZATION_DIR,
+) -> str:
+    """``text`` with a ``height`` on every bare ``\\includegraphics{<prefix>...}``
+    that sits in running text, ``figure_height(ref)`` points tall.
+
+    For a renderer that does not lay an image out at its natural size: pandoc
+    carries the option as ``{height="..pt"}``, so an inline figure -- a button
+    drawn in a sentence -- keeps the size it has in the PDF instead of the
+    rasterized PNG's pixel size. In LaTeX it is the figure's natural height, so
+    it changes nothing."""
+    if prefix not in text:
+        return text
+    escaped = escape_for_texsoup(text)  # same length: positions carry over
+    soup = parse_latex(escaped)
+    edits: List[Tuple[int, int, str]] = []
+    for node in soup.find_all('includegraphics'):
+        args = list(node.args)
+        if any(isinstance(arg, BracketGroup) for arg in args):
+            continue
+        brace = next((arg for arg in args if isinstance(arg, BraceGroup)), None)
+        if brace is None:
+            continue
+        ref = str(brace.string).strip()
+        position = getattr(node, 'position', None)
+        if (
+            not ref.startswith(prefix)
+            or position is None
+            or not text.startswith('\\includegraphics', position)
+            or figure_placement(node, escaped) != INLINE
+        ):
+            continue
+        height = figure_height(ref)
+        if height is None:
+            continue
+        at = position + len('\\includegraphics')
+        edits.append((at, at, f'[height={_format_pt(height)}]'))
+    return _splice(text, edits)
 
 
 def strip_asset_ext(ref: str) -> str:
