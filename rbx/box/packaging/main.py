@@ -215,6 +215,14 @@ async def moj(
         'upload much faster -- at the cost of nothing verifying the dropped solutions '
         'on the judge. For iterating; package again without it before going live.',
     ),
+    strict_statement: bool = typer.Option(
+        False,
+        '--strict-statement',
+        help='If set, fail when a statement uses TeX that MOJ may not show -- a '
+        'construct outside what the Markdown converter supports, or one pandoc '
+        'drops -- instead of warning and packaging anyway. Nothing is packaged or '
+        'uploaded then. Same as `extensions.moj.strictStatement`.',
+    ),
 ):
     from rbx.box.packaging.moj.packager import (
         JudgeCalibrated,
@@ -240,6 +248,7 @@ async def moj(
             main_language=language,
             timing_mode=timing_mode,
             reference_only=reference_only,
+            strict_statement=strict_statement,
         )
         return
 
@@ -259,6 +268,7 @@ async def moj(
             main_language=language,
             timing_mode=timing_mode,
             reference_only=reference_only,
+            strict_statement=strict_statement,
             into_dir=directory,
         )
         await upload_package(problem_id, directory)

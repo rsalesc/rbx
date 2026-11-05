@@ -49,6 +49,12 @@ class MojExtension(RejectsRemovedFields):
         'limits profile still apply on top of it. Toggling it makes MOJ recalibrate '
         'the problem.',
     )
+    strictStatement: bool = Field(
+        default=False,
+        description='Fail `rbx package moj` when a statement uses TeX that MOJ may '
+        'not show, instead of warning and packaging anyway. Same as '
+        '`--strict-statement`; recommended in CI.',
+    )
 
 
 class MojLanguageExtension(RejectsRemovedFields):

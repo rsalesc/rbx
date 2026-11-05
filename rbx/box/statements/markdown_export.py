@@ -19,22 +19,35 @@ alt text triggers ``implicit_figures`` on MOJ's side, captioning every figure
 nested contexts in a way a regex over ``![image](`` is not, and it gives any
 later fix a home.
 
-A second defect has to be corrected *before* pandoc runs, on the TeX --
-monospace wrappers holding math, which live in ``monospace_math.py``. So the
+Two more defects have to be corrected *before* pandoc runs, on the TeX --
+monospace wrappers holding math, which live in ``monospace_math.py``, and the
+text-symbol and spacing commands pandoc silently drops (``\\textbar``,
+``\\space``, ``\\quad``), which ``processing/text_symbols.py`` translates. So the
 output here is deliberately **not** what a plain ``pandoc -f latex -t markdown``
 would produce.
+
+What pandoc *still* drops is reported, not lost: ``convert_tex_to_markdown``
+runs the TeX reader with ``--verbose`` and hands back each ``Skipped '...'``
+line, and any pandoc warning, as a ``PandocDiagnostic``. That is the safety net
+for everything the translation table and the validator do not know yet -- it
+reports what the *installed* pandoc actually lost.
 
 **The goldens in ``tests/.../testdata/markdown_export`` are pandoc-version
 sensitive.** They record what a specific pandoc emits; a diff there means pandoc
 changed its Markdown writer, not that the expectation was wrong.
 """
 
+import contextlib
+import dataclasses
 import json
+import logging
 import re
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterator, List, Optional
 
 from rbx import tooling
 from rbx.box.statements.monospace_math import rewrap_monospace_math
+from rbx.box.statements.polygon_utils import PolygonTeXConfig
+from rbx.box.statements.processing import text_symbols
 
 
 class MojGateError(ValueError):
@@ -71,10 +84,136 @@ def _fix_images(node: Any, rewrite_url: Optional[Callable[[str], str]]) -> None:
         _fix_images(value, rewrite_url)
 
 
-def tex_to_markdown(
+def markdown_tex_config() -> PolygonTeXConfig:
+    """The TeX the Markdown path can show: the Polygon subset, plus every
+    command ``text_symbols`` translates and every text command pandoc converts
+    on its own. A validator using it warns only about what would really be lost
+    or misrendered, not about ``\\textbar`` or ``\\textless``.
+
+    Externalized TikZ needs no entry: by the time a block is validated, each
+    figure is already an ``\\includegraphics``.
+    """
+    config = PolygonTeXConfig.default()
+    config.allowed_commands |= text_symbols.supported_names()
+    return config
+
+
+@dataclasses.dataclass(frozen=True)
+class PandocDiagnostic:
+    """Something pandoc reported while reading a block's TeX.
+
+    ``snippet`` is set for a ``Skipped '<snippet>'`` line -- content pandoc's
+    reader dropped -- and ``None`` for a warning, whose ``message`` is pandoc's
+    own text. ``line``/``column`` are pandoc's, in the TeX it was handed, which
+    the pre-pandoc passes may have shifted; they are kept for de-duplication,
+    not for display.
+    """
+
+    message: str
+    snippet: Optional[str] = None
+    line: Optional[int] = None
+    column: Optional[int] = None
+
+    @property
+    def dropped(self) -> bool:
+        return self.snippet is not None
+
+
+@dataclasses.dataclass(frozen=True)
+class MarkdownConversion:
+    markdown: str
+    diagnostics: List[PandocDiagnostic]
+
+
+_SKIPPED_RE = re.compile(
+    r"^Skipped '(?P<snippet>.*)' at line (?P<line>\d+) column (?P<column>\d+)\s*$",
+    re.DOTALL,
+)
+
+
+class _Capture(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__(level=logging.INFO)
+        self.records: List[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+
+@contextlib.contextmanager
+def _capturing_pandoc_log() -> Iterator[_Capture]:
+    """Route pypandoc's re-logged pandoc stderr into a list, for one call.
+
+    pypandoc re-logs each ``[LEVEL] message`` line of pandoc's stderr on its
+    ``pypandoc`` logger. INFO is below every default threshold, so it is let
+    through here; and the capture is the *only* place the records go, so a
+    pandoc warning reaches the setter once, as an rbx warning. That means
+    detaching the logger's own handlers too, not just cutting propagation:
+    pypandoc installs a stderr ``StreamHandler`` the first time it converts with
+    none attached, which would otherwise print every ``[INFO] Skipped`` line
+    raw.
+    """
+    logger = logging.getLogger('pypandoc')
+    capture = _Capture()
+    old_level, old_propagate = logger.level, logger.propagate
+    old_handlers = list(logger.handlers)
+    for handler in old_handlers:
+        logger.removeHandler(handler)
+    logger.addHandler(capture)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    try:
+        yield capture
+    finally:
+        logger.removeHandler(capture)
+        for handler in old_handlers:
+            logger.addHandler(handler)
+        logger.setLevel(old_level)
+        logger.propagate = old_propagate
+
+
+def diagnostics_from_records(
+    records: List[logging.LogRecord],
+) -> List[PandocDiagnostic]:
+    """``Skipped`` lines and warnings, once each.
+
+    pandoc's reader backtracks, so one dropped command can be reported twice at
+    the same position; those collapse. Every other INFO line is progress chatter
+    and is ignored.
+    """
+    seen = set()
+    diagnostics: List[PandocDiagnostic] = []
+    for record in records:
+        message = record.getMessage().strip()
+        match = _SKIPPED_RE.match(message)
+        if match is not None:
+            diagnostic = PandocDiagnostic(
+                message=message,
+                snippet=match.group('snippet').strip(),
+                line=int(match.group('line')),
+                column=int(match.group('column')),
+            )
+        elif record.levelno >= logging.WARNING:
+            diagnostic = PandocDiagnostic(message=message)
+        else:
+            continue
+        if diagnostic in seen:
+            continue
+        seen.add(diagnostic)
+        diagnostics.append(diagnostic)
+    return diagnostics
+
+
+def prepare_tex_for_pandoc(tex: str) -> str:
+    """The TeX fix-ups pandoc needs before it reads a block; see the module
+    docstring."""
+    return text_symbols.translate_text_symbols(rewrap_monospace_math(tex))
+
+
+def convert_tex_to_markdown(
     tex: str, *, rewrite_image_url: Optional[Callable[[str], str]] = None
-) -> str:
-    """Convert one Polygon-TeX block to Markdown.
+) -> MarkdownConversion:
+    """Convert one Polygon-TeX block to Markdown, with what pandoc dropped.
 
     ``rewrite_image_url`` maps each image reference to what the document should
     cite instead. It runs on the AST rather than over the emitted Markdown so a
@@ -85,11 +224,28 @@ def tex_to_markdown(
 
     tooling.PANDOC.ensure()
 
-    ast = json.loads(
-        pypandoc.convert_text(rewrap_monospace_math(tex), 'json', format='latex')
-    )
+    with _capturing_pandoc_log() as capture:
+        ast = json.loads(
+            pypandoc.convert_text(
+                prepare_tex_for_pandoc(tex),
+                'json',
+                format='latex',
+                extra_args=['--verbose'],
+            )
+        )
     _fix_images(ast, rewrite_image_url)
-    return pypandoc.convert_text(json.dumps(ast), 'markdown', format='json')
+    markdown = pypandoc.convert_text(json.dumps(ast), 'markdown', format='json')
+    return MarkdownConversion(
+        markdown=markdown, diagnostics=diagnostics_from_records(capture.records)
+    )
+
+
+def tex_to_markdown(
+    tex: str, *, rewrite_image_url: Optional[Callable[[str], str]] = None
+) -> str:
+    """Convert one Polygon-TeX block to Markdown, discarding the diagnostics;
+    see ``convert_tex_to_markdown``."""
+    return convert_tex_to_markdown(tex, rewrite_image_url=rewrite_image_url).markdown
 
 
 # `validate-problem.sh` soft-warns on any of these, because MOJ injects the

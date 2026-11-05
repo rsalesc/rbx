@@ -112,3 +112,90 @@ def test_gate_guard_rejects_leaked_examples(block):
 )
 def test_gate_guard_accepts_clean_blocks(block):
     markdown_export.check_moj_gate(block, block_name='legend')
+
+
+# --- what pandoc drops (#1013) -------------------------------------------------
+
+
+def test_a_dropped_command_is_reported_with_its_snippet():
+    conversion = markdown_export.convert_tex_to_markdown(r'a \foo{x} b')
+    assert [d.snippet for d in conversion.diagnostics] == [r'\foo{x}']
+    assert all(d.dropped for d in conversion.diagnostics)
+
+
+def test_translated_symbols_are_not_reported_as_dropped():
+    conversion = markdown_export.convert_tex_to_markdown(r'a \textbar\space b \foo{x}')
+    assert [d.snippet for d in conversion.diagnostics] == [r'\foo{x}']
+
+
+def test_clean_input_has_no_diagnostics():
+    tex = r'Read $n$ and \textbf{print} \texttt{x}. \textless{} \S'
+    assert markdown_export.convert_tex_to_markdown(tex).diagnostics == []
+
+
+def test_layout_only_commands_are_not_reported():
+    tex = '\\noindent a\n\n\\medskip\n\\vspace{1em}\n\\begin{center}\\centering b\\end{center}'
+    assert markdown_export.convert_tex_to_markdown(tex).diagnostics == []
+
+
+def test_a_backtracked_skip_is_reported_once():
+    # pandoc's reader reports `\centering` twice here at one position; it is
+    # not in the table when called raw, so go through the raw diagnostics.
+    import logging
+
+    record = logging.LogRecord(
+        'pypandoc', logging.INFO, '', 0, "Skipped '\\x ' at line 1 column 3", (), None
+    )
+    diagnostics = markdown_export.diagnostics_from_records([record, record])
+    assert [d.snippet for d in diagnostics] == ['\\x']
+
+
+def test_other_info_lines_are_ignored_and_warnings_kept():
+    import logging
+
+    records = [
+        logging.LogRecord('pypandoc', logging.INFO, '', 0, 'Loaded foo', (), None),
+        logging.LogRecord(
+            'pypandoc', logging.WARNING, '', 0, 'Could not convert TeX math', (), None
+        ),
+    ]
+    diagnostics = markdown_export.diagnostics_from_records(records)
+    assert diagnostics == [
+        markdown_export.PandocDiagnostic(message='Could not convert TeX math')
+    ]
+
+
+def test_capturing_leaves_the_pypandoc_logger_as_it_was():
+    import logging
+
+    logger = logging.getLogger('pypandoc')
+    before = (logger.level, logger.propagate)
+    markdown_export.convert_tex_to_markdown(r'a \foo b')
+    assert (logger.level, logger.propagate) == before
+    # pypandoc may add its own handler on an uncaptured call; ours never stays.
+    assert not any(type(h).__name__ == '_Capture' for h in logger.handlers)
+
+
+def test_the_markdown_config_supports_translated_and_native_commands():
+    from rbx.box.statements import polygon_utils
+
+    tex = r'a \textbar\space b \textless{} \hspace*{1em} \foo{x}'
+    errors = polygon_utils.validate_polygon_tex(
+        tex, markdown_export.markdown_tex_config()
+    )
+    assert [e.construct for e in errors] == [r'\foo']
+    # The Polygon default is untouched.
+    assert len(polygon_utils.validate_polygon_tex(tex)) == 5
+
+
+def test_dropped_content_is_never_printed_raw(capfd):
+    # pypandoc installs its own stderr handler after its first conversion with
+    # none attached; a later capture must still be the only place records go.
+    import pypandoc
+
+    pypandoc.convert_text('x', 'markdown', format='latex')
+    markdown_export.convert_tex_to_markdown(r'a \foo b')
+    markdown_export.convert_tex_to_markdown(r'a \foo b')
+    captured = capfd.readouterr()
+    assert 'Skipped' not in captured.err
+    assert 'Skipped' not in captured.out

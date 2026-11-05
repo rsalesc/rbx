@@ -2651,6 +2651,19 @@ SPEC = {
                             'value': {'kind': 'none'},
                         },
                         {
+                            'help': 'If set, fail when a statement uses TeX that MOJ '
+                            'may not show -- a construct outside what the '
+                            'Markdown converter supports, or one pandoc drops '
+                            '-- instead of warning and packaging anyway. '
+                            'Nothing is packaged or uploaded then. Same as '
+                            '`extensions.moj.strictStatement`.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--strict-statement'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
                             'multiple': False,

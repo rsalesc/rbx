@@ -522,6 +522,21 @@ What the packager owes the gate (`validate-problem.sh`):
   `SAMPLE=no`](#samples-are-optional-but-say-so-with-sampleno)). `check_moj_gate` refuses to
   package rather than shipping a statement that warns.
 
+### Statement diagnostics (`statement_diagnostics.py`, #1012/#1013)
+
+Each shipped statement is checked twice and reported once. Before conversion,
+`_write_statement_documents` validates every shipped block (`BODY_BLOCKS`
+plus `explanation_<i>`) with `validate_polygon_tex(...,
+markdown_tex_config())`; during conversion, `statement.py` hands pandoc's
+dropped-content diagnostics to the same `StatementDiagnostics`. A construct
+both report in one block is shown once, as dropped; repeats are grouped
+(`x6`). Positions are within the block -- blocks reach export with sourcemap
+tags stripped. A main statement that also fills its own `en`/`es` slot is
+diagnosed on the first pass only. Warnings by default; `--strict-statement`
+or `extensions.moj.strictStatement` turns any finding into `typer.Exit(1)`
+after all statements are written but before `package()` returns, so no zip
+exists and `--upload` never runs. Probes carry no statement and so no report.
+
 ### Languages: one main statement, translations beside it
 
 MOJ knows three statement languages (`STMT_LANGS_ALL="pt en es"` in mojtools'

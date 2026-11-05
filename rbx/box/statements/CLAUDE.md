@@ -156,6 +156,12 @@ PDFs it produces) and don't depend on the statement build:
 - `processing/macro_meaning.py` — the `\meaning` dump hook and its parser
   (run-time macro definitions, #1007).
 - `processing/pdf_geometry.py` — page size of a figure PDF (`/MediaBox`).
+- `processing/text_symbols.py` — the table of text-symbol/spacing commands
+  pandoc drops (`\textbar`, `\space`, `\quad`, `\hspace{<len>}`, layout-only
+  `\vspace`/`\medskip`), and the text-mode scanner that translates them
+  before pandoc runs (#1011). Adding a symbol is one `TEXT_SYMBOLS` row plus a
+  test row. `PANDOC_NATIVE` lists what pandoc converts itself, tested against
+  the installed pandoc.
 
 Tests mirror the layout under `tests/rbx/box/statements/processing/`.
 
@@ -314,6 +320,20 @@ nested markup, display math or an unbalanced delimiter bails untouched. The
 conversion is **not** scoped into `convert_to_polygon_tex`: Polygon renders real
 LaTeX and handles the original correctly, so this is a pandoc fix on the pandoc
 path, and the PDF build is unaffected.
+
+`text_symbols.translate_text_symbols` runs right after it
+(`markdown_export.prepare_tex_for_pandoc`), text mode only: math, verbatim,
+comments and `\url`/`\href`/`\includegraphics` targets are copied untouched.
+
+**What pandoc still drops is reported (#1013).** `convert_tex_to_markdown`
+runs the TeX reader with `--verbose`, captures pypandoc's re-logged stderr for
+that call only (detaching pypandoc's own stderr `StreamHandler`, which it
+installs after its first uncaptured conversion and which would print every
+`[INFO] Skipped` raw), and returns each `Skipped '<snippet>'` (deduped: the
+reader backtracks and reports some twice) and every pandoc warning as a
+`PandocDiagnostic`. `markdown_tex_config()` is the validator config for this
+path: the Polygon subset plus `text_symbols.supported_names()`. Consumed by
+`packaging/moj/statement_diagnostics.py`.
 
 `monospace_math.py` is a **leaf module** — pure text in, text out, no rbx
 imports — so it is exhaustively unit-tested without pandoc or a package on disk

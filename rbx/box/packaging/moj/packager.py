@@ -14,7 +14,7 @@ from rbx.box.dependencies import graph as deps_graph
 from rbx.box.dependencies.amalgamation import AmalgamationError, amalgamate
 from rbx.box.dependencies.scanner import DependencyKind
 from rbx.box.generation_schema import GenerationTestcaseEntry
-from rbx.box.packaging.moj import mojtools, naming
+from rbx.box.packaging.moj import mojtools, naming, statement_diagnostics
 from rbx.box.packaging.moj import statement as moj_statement
 from rbx.box.packaging.moj import timing as moj_timing
 from rbx.box.packaging.moj.extension import MojExtension, MojLanguageExtension
@@ -573,6 +573,7 @@ class MojPackager(BasePackager):
         timing_mode: TimingMode = DEFAULT_TIMING_MODE,
         probe: Optional[ProbePackage] = None,
         reference_only: bool = False,
+        strict_statement: bool = False,
     ):
         super().__init__(testcase_entries)
         # The language of the statement that fills MOJ's canonical slot, used for
@@ -591,6 +592,10 @@ class MojPackager(BasePackager):
         # --reference-only`, to keep the calibration MOJ runs on upload short.
         # See `_solutions_to_ship`.
         self.reference_only = reference_only
+        # Fail, rather than warn, when a statement uses TeX MOJ may not show.
+        # `extensions.moj.strictStatement` turns it on too; see
+        # `_strict_statement`.
+        self.strict_statement = strict_statement
         # MOJ's own driver files, fetched from upstream mojtools on first use. See
         # `_mojtools_files`.
         self._mojtools: Optional[mojtools.MojtoolsFiles] = None
@@ -951,9 +956,35 @@ class MojPackager(BasePackager):
 
         moj_statement.report_selection(selection)
         self._statement_selection = selection
-        self._write_statement_documents(into_path, selection.main, language=None)
+        diagnostics: List[statement_diagnostics.StatementDiagnostics] = []
+        diagnostics.append(
+            self._write_statement_documents(into_path, selection.main, language=None)
+        )
         for language, statement in selection.translations.items():
-            self._write_statement_documents(into_path, statement, language=language)
+            # The main statement fills its own `en`/`es` slot too; it was
+            # already validated and reported once.
+            report = statement is not selection.main
+            result = self._write_statement_documents(
+                into_path, statement, language=language, diagnose=report
+            )
+            if report:
+                diagnostics.append(result)
+
+        strict = self._strict_statement()
+        found = statement_diagnostics.report_all(diagnostics, strict=strict)
+        if found and strict:
+            console.console.print(
+                '[error]Strict statement mode is on (`--strict-statement` or '
+                '`extensions.moj.strictStatement`), so nothing was packaged.[/error]'
+            )
+            raise typer.Exit(1)
+
+    def _strict_statement(self) -> bool:
+        """Whether statement findings fail the build: the flag, or
+        `extensions.moj.strictStatement`."""
+        if self.strict_statement:
+            return True
+        return environment.get_extension_or_default('moj', MojExtension).strictStatement
 
     def _write_statement_documents(
         self,
@@ -961,8 +992,13 @@ class MojPackager(BasePackager):
         statement: Statement,
         *,
         language: Optional[str],
-    ) -> None:
+        diagnose: bool = True,
+    ) -> statement_diagnostics.StatementDiagnostics:
         """Write one statement's body and notes, suffixed with `language` if any.
+
+        Returns what the statement may lose on MOJ -- the validator's findings
+        over every shipped block, and whatever pandoc dropped converting them --
+        for `_write_statement` to report. Empty when `diagnose` is unset.
 
         Each statement goes through the whole sequence on its own -- bundle,
         materialize, rasterize, convert, write, discard -- so a translation that
@@ -980,6 +1016,18 @@ class MojPackager(BasePackager):
             console.console.print(f'[error]{e}[/error]')
             raise typer.Exit(1) from e
 
+        diagnostics = statement_diagnostics.StatementDiagnostics(
+            f'{statement.language} ({statement.variant})'
+        )
+        sink = diagnostics if diagnose else None
+        if sink is not None:
+            for name in moj_statement.BODY_BLOCKS:
+                sink.validate_block(name, bundle.blocks.get(name) or '')
+            for index, explanation in sorted(bundle.explanations.items()):
+                sink.validate_block(
+                    statement_diagnostics.explanation_block(index), explanation
+                )
+
         bundle.materialize(into_path)
         # After materialize, so the PDFs are on disk under the .png names the
         # layout already rewrote every reference to.
@@ -996,18 +1044,20 @@ class MojPackager(BasePackager):
                     bundle.explanations,
                     language=statement.language,
                     docs_root=docs_path,
+                    diagnostics=sink,
                 )
                 notes = {}
             else:
                 examples = ''
                 notes = moj_statement.build_notes(
-                    bundle.explanations, docs_root=docs_path
+                    bundle.explanations, docs_root=docs_path, diagnostics=sink
                 )
             body = moj_statement.build_enunciado(
                 bundle.blocks,
                 language=statement.language,
                 docs_root=docs_path,
                 examples=examples,
+                diagnostics=sink,
             )
         except MojGateError as e:
             console.console.print(
@@ -1025,6 +1075,7 @@ class MojPackager(BasePackager):
         # Last, and only in the inlining mode: the documents that were just
         # written carry the figures themselves, so the files are dead weight.
         moj_statement.discard_inlined_assets(bundle, into_path)
+        return diagnostics
 
     def _write_conf(self, into_path: pathlib.Path) -> None:
         pkg = package.find_problem_package_or_die()
