@@ -212,6 +212,9 @@ class TestrunStatus(BaseModel):
     # and `total_tests: 0`. That difference is the only structural signal telling
     # a truncated run from one that never started; see `ran_nothing`.
     total_tests: Optional[int] = None
+    # The judge's wall clock for the run: mojtools' `TOTALTIME`, compilation
+    # through the last test, in whole seconds. Queue and report time excluded.
+    # Shown on the solution header; see `runner._judged_chips`.
     duration_s: Optional[float] = None
     tl_used: Optional[float] = None
     # Which machine of the park ran this. The 2026-08-21 probe came back

@@ -1557,6 +1557,87 @@ async def test_a_poll_writes_to_its_own_slot_and_no_other(
     assert not any('other' in text for text in _chips(ctx, 'sol.cpp'))
 
 
+def _finished(duration_s: Optional[float]) -> cli.TestrunStatus:
+    return cli.TestrunStatus(
+        status='done',
+        total_tests=2,
+        duration_s=duration_s,
+        tests=[
+            _test(SAMPLE_NAMES[0], 'AC', 0.1),
+            _test(SAMPLE_NAMES[1], 'AC', 0.2),
+        ],
+    )
+
+
+async def test_a_finished_solution_says_how_long_the_judge_spent_on_it(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """`duration_s` is mojtools' `TOTALTIME`: build plus every test, on the judge.
+
+    It is the judge's own clock, so it leaves out what rbx's wait includes -- the
+    queue and the report MOJ renders after judging -- and is the number to read
+    when the question is how long a solution takes to judge.
+    """
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.statuses['sol.cpp'] = _finished(29)
+
+    await _run(runner, ctx)
+
+    chips = _chips(ctx, 'sol.cpp')
+    assert 'done' in chips
+    assert 'judged in 29s' in chips
+
+
+async def test_a_judge_time_under_a_second_is_not_shown_as_zero(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """`TOTALTIME` is whole seconds, truncated, so `0` means "under one"."""
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.statuses['sol.cpp'] = _finished(0)
+
+    await _run(runner, ctx)
+
+    assert 'judged in <1s' in _chips(ctx, 'sol.cpp')
+
+
+async def test_no_judge_time_is_made_up_when_moj_sends_none(
+    testing_pkg, tmp_path, monkeypatch
+):
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.statuses['sol.cpp'] = _finished(None)
+
+    await _run(runner, ctx)
+
+    chips = _chips(ctx, 'sol.cpp')
+    assert 'done' in chips
+    assert not any(text.startswith('judged in') for text in chips)
+
+
+async def test_a_cached_solution_keeps_the_judge_time_it_was_measured_with(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """The cache stores the whole status, so a hit still knows the judge time --
+    of the testrun it names, which is the one that really ran."""
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.statuses['sol.cpp'] = _finished(29)
+    await _run(runner, ctx)
+
+    await _run(runner, ctx)
+
+    assert len(fake.submissions) == 1
+    chips = _chips(ctx, 'sol.cpp')
+    assert 'cached' in chips
+    assert 'judged in 29s' in chips
+
+
 def test_poll_chips_say_only_what_the_judge_reported(testing_pkg):
     """A `0/0` on a run that has not started would read as a lost testset.
 

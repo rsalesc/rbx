@@ -1094,6 +1094,7 @@ class MojRunner:
                 solution,
                 RunnerChip(f'testrun {run}'),
                 RunnerChip('cached', style='green'),
+                *_judged_chips(status),
             )
             # Deliberately put through the *same* derivation a fresh status goes
             # through, rather than storing the derived `_TestrunResult`. That is
@@ -1128,6 +1129,7 @@ class MojRunner:
             solution,
             RunnerChip(f'testrun {run}'),
             RunnerChip('done', style='green'),
+            *_judged_chips(status),
             RunnerChip(str(since)),
         )
 
@@ -2290,6 +2292,26 @@ TICKER_INTERVAL_SECONDS = 1.0
 # solution header while this runner is waiting on the judge -- the same clock,
 # formatted the same way, so a header and a summary line never disagree.
 _Elapsed = utils.Elapsed
+
+
+def _judged_chips(status: cli.TestrunStatus) -> List[RunnerChip]:
+    """How long the judge itself spent on a finished testrun, if it said.
+
+    `duration_s` is mojtools' `TOTALTIME` (`build-and-test.sh`): the judge's wall
+    clock from before compilation to after the last test, the TLE rerun included.
+    It leaves out what rbx's own wait chip counts on top -- the queue, and the
+    HTML report MOJ renders after judging, ~20 s on the 2026-10-31 probe -- so it
+    is the number that answers "how long does this solution take to judge".
+
+    Whole seconds, truncated (`EPOCHSECONDS` differences), so a `0` is "under a
+    second" and is said that way rather than as an instant run. Absent rather
+    than defaulted when the judge sends none.
+    """
+    if status.duration_s is None:
+        return []
+    seconds = int(status.duration_s)
+    shown = f'{seconds}s' if seconds > 0 else '<1s'
+    return [RunnerChip(f'judged in {shown}')]
 
 
 async def _with_ticker(

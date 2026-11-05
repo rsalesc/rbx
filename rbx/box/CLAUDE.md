@@ -363,7 +363,7 @@ problem, the testrun id, the judge's own state word, its host and how long the w
 been. Only what the judge actually answered with goes there -- a `0/0` on a run that has
 not started would read as a lost testset -- and the counts are `correct`, never "tests
 run", since a solution the validation phase *expects* to fail would otherwise look stuck at
-zero. The slot is **left holding** `done` (or `cached`) rather than cleared when the
+zero. The finished slot also carries `judged in Ns` (`_judged_chips`), MOJ's `duration_s` -- mojtools' `TOTALTIME`, the judge's whole-second wall clock from build to final verdict, queue and report excluded; a cached hit replays the stored one. The slot is **left holding** `done` (or `cached`) rather than cleared when the
 solution finishes: the reporter rebuilds its block on every drawn frame, so the last frame
 -- the one frozen into scrollback, and the only one a non-terminal console emits at all --
 renders whatever the board holds then, and clearing first dropped the testrun id out of the
@@ -506,7 +506,7 @@ Evaluations are **not truly parallel** -- they are deferred/lazy sequential. The
   `_fits_as_block` is the height guard: a live region taller than the terminal is redrawn by moving the cursor back over its own output, so a package with more groups than the terminal has rows falls back to the per-group Live this class used to be. The fallback is the pre-block behaviour exactly, so the degradation is a familiar one.
 
   `close()` (on `TraditionalRunReporter`, called from a `finally` in `print_run_report`) stops whatever is live. The report loop does not always reach the end of a solution -- a deferred can raise, which is the normal shape of a remote judge that never answered -- and a `Live` left started keeps the cursor hidden and overwrites the first lines of the traceback that follows.
-- **`SingleSolutionRunReporter`** -- Verbose per-testcase details (used when only 1 solution). Deliberately not a block: it prints a line per testcase, so the region that would have to stay live is as tall as the testset. It reports the wall clock once, at the end, on a terminal only.
+- **`SingleSolutionRunReporter`** -- Verbose per-testcase details (used when only 1 solution). Deliberately not a block: it prints a line per testcase, so the region that would have to stay live is as tall as the testset. It reports the wall clock once, at the end, on a terminal only. Its header is printed before the backend has said anything, so the board's final chips are printed as a line of their own at solution end (`_backend_chips_line`); the live reporter's per-group fallback does the same.
 
 ### Verdict Verification
 
