@@ -40,6 +40,7 @@ from rbx.box.solutions import (
     GroupSkeleton,
     LiveRunReporter,
     RunSolutionResult,
+    SingleSolutionRunReporter,
     SolutionOutcomeStatus,
     SolutionReportSkeleton,
     SolutionSkeleton,
@@ -3199,6 +3200,87 @@ async def test_the_frozen_frame_still_carries_the_backend_chips(
     )
     assert 'testrun 4821' in header
     assert 'done' in header
+
+
+def _finished_board(result: RunSolutionResult) -> None:
+    result.progress_board.set(
+        'sol.cpp',
+        RunnerChip('testrun 4821'),
+        RunnerChip('done', style='green'),
+        RunnerChip('judged in 29s'),
+    )
+
+
+async def test_a_single_solution_run_prints_the_backend_chips_once_it_ends(
+    mock_problem_root, mock_binary_scoring
+):
+    """`rbx run <one solution>` has no live header to put them on.
+
+    So the chips the backend finished with -- the testrun that produced the
+    numbers, how long the judge spent on it -- are printed once, as a line of
+    their own, when the solution ends.
+    """
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    _finished_board(result)
+    console = recording_console()
+
+    with fresh_issue_stack():
+        await drive_reporter(
+            SingleSolutionRunReporter(result, VerificationLevel.FULL, console),
+            skeleton,
+        )
+
+    assert 'testrun 4821 · done · judged in 29s' in rendered_lines(console)
+
+
+async def test_a_package_too_tall_for_the_block_prints_the_backend_chips(
+    mock_problem_root, mock_binary_scoring
+):
+    """The per-group fallback prints a plain header, so the chips go after."""
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(
+        mock_problem_root, solution, {'group1': 1, 'group2': 1, 'group3': 1}
+    )
+    result = make_run_result(
+        skeleton,
+        {
+            ('group1', 0): Outcome.ACCEPTED,
+            ('group2', 0): Outcome.ACCEPTED,
+            ('group3', 0): Outcome.ACCEPTED,
+        },
+    )
+    _finished_board(result)
+    console = terminal_console(height=4)
+
+    reporter = LiveRunReporter(result, VerificationLevel.FULL, console)
+    with fresh_issue_stack():
+        await drive_reporter(reporter, skeleton)
+    reporter.close()
+
+    lines = rendered_lines(console)
+    assert 'testrun 4821 · done · judged in 29s' in lines
+    # Once, not also on a header that never draws them.
+    assert sum('judged in 29s' in line for line in lines) == 1
+
+
+async def test_a_single_solution_run_with_no_backend_chips_prints_no_line(
+    mock_problem_root, mock_binary_scoring
+):
+    """A local run writes nothing on the board, so it reports exactly as before."""
+    solution = Solution(path=pathlib.Path('sol.cpp'), outcome=ExpectedOutcome.ACCEPTED)
+    skeleton = make_reporter_skeleton(mock_problem_root, solution, {'group1': 1})
+    result = make_run_result(skeleton, {('group1', 0): Outcome.ACCEPTED})
+    console = recording_console()
+
+    with fresh_issue_stack():
+        await drive_reporter(
+            SingleSolutionRunReporter(result, VerificationLevel.FULL, console),
+            skeleton,
+        )
+
+    assert '·' not in console.export_text(clear=False)
 
 
 async def test_a_slow_testcase_repaints_the_header_while_it_waits(

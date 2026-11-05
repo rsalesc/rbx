@@ -2642,6 +2642,26 @@ def _print_solution_header(
     console.print(f'({solution.runs_dir_href()})')
 
 
+def _backend_chips_line(
+    result: 'RunSolutionResult', solution: Solution
+) -> Optional[rich.text.Text]:
+    """What the backend left on the board for `solution`, as a line of its own.
+
+    For the reporters whose header is printed once, before the backend has said
+    anything worth keeping -- the single-solution reporter and the live
+    reporter's per-group fallback. Printed when the solution ends, the board then
+    holds the backend's finished state (a remote runner's testrun id, how long
+    the judge spent on it); the live block draws the same chips on its header
+    instead. `None` for a board slot left empty, which is every local run.
+    """
+    chips = result.progress_board.get(str(solution.path))
+    if not chips:
+        return None
+    return rich.text.Text(' · ', style='bright_black').join(
+        rich.text.Text(chip.text, style=chip.style) for chip in chips
+    )
+
+
 @dataclasses.dataclass
 class SolutionTiming:
     time: int
@@ -3625,6 +3645,12 @@ class LiveRunReporter(TraditionalRunReporter):
             verification=self.verification,
             print_message=True,
         )
+        # The block draws these on its header; the per-group fallback printed a
+        # plain one, so they would otherwise never reach the screen.
+        if not self._block:
+            chips = _backend_chips_line(self.result, solution)
+            if chips is not None:
+                self.console.print(chips)
         return report
 
     def _stop_live(self) -> None:
@@ -3713,6 +3739,10 @@ class SingleSolutionRunReporter(TraditionalRunReporter):
             verification=self.verification,
             print_message=False,
         )
+        # This reporter's header never draws the board, so its chips go here.
+        chips = _backend_chips_line(self.result, solution)
+        if chips is not None:
+            self.console.print(chips)
         # Terminal only, for the same reason the live chip is: a shared report,
         # an e2e golden and a cast are all non-terminal, and a wall clock in any
         # of them is a diff on every run.

@@ -57,6 +57,15 @@ upload and a calibration on the next run.
 `rbx run` and each phase of `rbx time` upload to a problem of their own (`…-run` for `rbx run`,
 `…` and `…-slow` for `rbx time`), so alternating between the commands never costs a re-upload.
 
+When `rbx run` finishes a solution, the report says how long MOJ spent judging it, next to the
+id of the testrun: `testrun 7a0c98df… · done · judged in 29s`. That's the judge's own clock, from compiling the
+solution to its final verdict, reruns of timed-out tests included. It counts whole seconds,
+rounded down, so a run under a second reads `<1s`.
+
+It doesn't count the time the solution spent waiting, behind your other solutions and in MOJ's
+queue, nor the report MOJ renders afterwards. So it's usually much shorter than the elapsed time
+{{rbx}} shows next to it on a fresh run. A cached solution keeps the time of the testrun that produced it.
+
 ## Running on DOMjudge
 
 ```bash
