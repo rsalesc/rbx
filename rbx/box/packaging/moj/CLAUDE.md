@@ -176,6 +176,25 @@ numbers came from.
 calibrates it, since mojtools refuses to judge without that file. Pinning removes
 rbx's dependence on *what* calibration measures, not on it running.
 
+### `TLCLOCK=cpu` and `TLUNIFIED`
+
+**Every package -- setter's and probe alike -- emits `TLCLOCK=cpu`**
+(`timing.clock_lines`): MOJ charges the limit by the test cgroup's CPU time
+(user+sys, unwaited children included), as rbx does locally, and the wall clock
+becomes only a ceiling (3x TL, at least TL + 3.2 s; `WALLTL` raises that floor).
+Probes carry it so `rbx time --runner moj` measures under the clock the setter's
+package is judged by. MOJ rejects it with `CPUNEEDED > 1`, which rbx never emits.
+It adds ~25 ms of jail setup to every measured time.
+
+**`TLUNIFIED=y` comes from `extensions.moj.unifiedTimeLimit`** (`MojExtension`,
+default false = MOJ's default; both bundled presets ship it true), setter packages
+only (`MojPackager._unified_time_limit`). MOJ then calibrates one limit from the
+worst good time across every language. Per-language `TLOVERRIDE`/`TLMOD` still win
+over it, so under the default pinned mode it changes nothing judged -- emitted
+anyway, without an rbx warning, by the setter's choice; it bites under
+`--calibrate`. A probe never carries it: rbx measures per language group.
+Toggling either knob recalibrates the problem on MOJ.
+
 ### `STOPWHEN_*`
 
 BINARY problems get `STOPWHEN_WA/TLE/RE=y`: the verdict is decided by the first

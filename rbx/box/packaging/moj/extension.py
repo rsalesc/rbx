@@ -41,6 +41,14 @@ class MojExtension(RejectsRemovedFields):
         'Leave unset to upload under your own login, which is a private personal '
         'org nobody else can see.',
     )
+    unifiedTimeLimit: bool = Field(
+        default=False,
+        description='Give every language the same time limit on MOJ (`TLUNIFIED=y` '
+        'in `conf`): MOJ calibrates it from the worst accepted time across all '
+        'languages, as if they were one. Per-language limits pinned from the `moj` '
+        'limits profile still apply on top of it. Toggling it makes MOJ recalibrate '
+        'the problem.',
+    )
 
 
 class MojLanguageExtension(RejectsRemovedFields):
