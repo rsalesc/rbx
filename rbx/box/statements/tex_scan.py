@@ -235,7 +235,8 @@ ENVIRONMENT_LIKE = frozenset({'newenvironment', 'renewenvironment'})
 # foo\endcsname{...}` defines `\foo`, which a static read cannot name.
 _NOT_A_NAME = frozenset({'csname', 'expandafter', 'noexpand'})
 
-_PARAM_RE = re.compile(r'#+(\d)')
+# A parameter (`#1`, or `##1` one body deep); `\#` is a character, not one.
+_PARAM_RE = re.compile(r'\\.|#+(\d)')
 
 
 @dataclasses.dataclass(frozen=True)
@@ -333,7 +334,7 @@ def parse_definition(text: str, command: str, i: int) -> Optional[Definition]:
                 return None
             else:
                 k += 1
-        n_args = len(set(_PARAM_RE.findall(strip_tags(text[j:k]))))
+        n_args = len(set(filter(None, _PARAM_RE.findall(strip_tags(text[j:k])))))
         default = None
         j = k
     else:
@@ -407,3 +408,49 @@ def definition_bodies(text: str) -> List[Tuple[int, int]]:
 
 def within(position: int, spans: List[Tuple[int, int]]) -> bool:
     return any(start <= position < end for start, end in spans)
+
+
+def verbatim_spans(text: str) -> List[Tuple[int, int]]:
+    """The spans of ``text`` TeX does not tokenize: ``\\verb`` arguments and
+    verbatim-like environments, delimiters included."""
+    spans: List[Tuple[int, int]] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == '%':
+            i = skip_comment(text, i)
+            continue
+        if ch != '\\':
+            i += 1
+            continue
+        name, j = read_control_sequence(text, i)
+        skipped = skip_verbatim(text, name, j)
+        if skipped is not None:
+            spans.append((i, skipped))
+            i = skipped
+            continue
+        i = j
+    return spans
+
+
+def find_begin_document(text: str) -> Optional[int]:
+    """Where ``\\begin{document}`` starts in ``text``, outside comments."""
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == '%':
+            i = skip_comment(text, i)
+            continue
+        if ch != '\\':
+            i += 1
+            continue
+        name, j = read_control_sequence(text, i)
+        if name == 'begin':
+            parsed = read_environment_name(text, j)
+            if parsed is not None and parsed[0] == 'document':
+                return i
+        skipped = skip_verbatim(text, name, j)
+        i = j if skipped is None else skipped
+    return None

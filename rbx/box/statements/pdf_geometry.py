@@ -23,9 +23,6 @@ _MEDIABOX_RE = re.compile(
 )
 _STREAM_RE = re.compile(rb'stream\r?\n')
 
-# PDF user space is in big points (1/72 in); TeX's `pt` is 1/72.27 in.
-_PT_PER_BP = 72.27 / 72
-
 
 def _inflated_streams(data: bytes) -> Iterator[bytes]:
     for match in _STREAM_RE.finditer(data):
@@ -52,9 +49,10 @@ def media_box(data: bytes) -> Optional[Tuple[float, float]]:
     return None
 
 
-def page_height_pt(path: pathlib.Path) -> Optional[float]:
-    """The height of a one-page PDF, in TeX points; ``None`` when it cannot be
-    read."""
+def page_height_bp(path: pathlib.Path) -> Optional[float]:
+    """The height of a one-page PDF in big points (1/72 in, PDF's unit and
+    CSS's ``pt``); ``None`` when it cannot be read. Only the first page box is
+    read: an externalized figure has one page."""
     try:
         data = path.read_bytes()
     except OSError:
@@ -62,4 +60,4 @@ def page_height_pt(path: pathlib.Path) -> Optional[float]:
     box = media_box(data)
     if box is None or box[1] <= 0:
         return None
-    return box[1] * _PT_PER_BP
+    return box[1]

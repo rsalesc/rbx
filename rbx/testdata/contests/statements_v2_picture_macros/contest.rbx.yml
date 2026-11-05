@@ -4,6 +4,7 @@ titles:
   en: 'Statements v2 Picture Macros Contest'
 problems:
   - short_name: 'A'
+  - short_name: 'B'
 statements:
   - name: 'main-en'
     language: 'en'

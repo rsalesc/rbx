@@ -1,0 +1,17 @@
+%- block defs
+\newcommand{\pdot}{\tikz{\fill[red] (0,0) circle (2pt);}}
+%- endblock
+%- block legend
+First \pdot\ red.
+
+\renewcommand{\pdot}{\tikz{\fill[blue] (0,0) circle (4pt);}}
+Then \pdot\ blue. Press \pkgbutton{Go} or \strButton.
+
+Write \verb|\ratingstar| to get \ratingstar.
+%- endblock
+%- block input
+A single integer $n$.
+%- endblock
+%- block output
+Print $n$.
+%- endblock

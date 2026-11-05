@@ -709,3 +709,56 @@ def test_expand_handles_escaped_dollars():
     # TexSoup cannot parse `\$`; expansion used to give up on the whole block.
     defs = extract_definitions(r'\newcommand{\price}{5}')
     assert expand_macros(r'Costs \$\price.', defs) == r'Costs \$5.'
+
+
+def test_escaped_hash_is_not_a_parameter():
+    # Review finding 6: `\#` is a literal `#`, never `#1`'s parameter character.
+    defs = extract_definitions(
+        r'\newcommand{\issue}[1]{Issue \##1}'
+        r'\newcommand{\outer}{\def\inner##1{\#\###1}}'
+        r'\def\lit\#{x}'
+    )
+    assert expand_macros(r'\issue{3}', defs) == r'Issue \#3'
+    assert defs.get('inner').body == r'\#\##1'
+    assert defs.get('inner').n_args == 1
+    assert defs.get('lit').n_args == 0
+
+
+def test_expand_skips_verbatim_and_let():
+    # Review findings 8 and 9: `\verb|\foo|` shows the name, and `\let\old\foo`
+    # names `\foo` (and `\old`) without calling it.
+    defs = extract_definitions(r'\newcommand{\foo}{FOO}\newcommand{\old}{OLD}')
+    tex = (
+        r'\verb|\foo| \foo '
+        r'\begin{verbatim}\foo\end{verbatim} '
+        r'\let\old\foo \let\foo=\relax \let \old \foo'
+    )
+    assert expand_macros(tex, defs) == tex.replace(r'| \foo ', '| FOO ')
+
+
+def test_expandable_picture_macros_leaves_out_unsafe_ones():
+    from rbx.box.statements.demacro_utils import (
+        count_definitions,
+        expandable_picture_macros,
+    )
+
+    tex = (
+        r'\newcommand{\ok}[1]{\tikz{\node {#1};}}'
+        r'\newcommand{\via}{\ok{a}}'
+        r'\def\pic@text#1{#1}\newcommand{\at}{\tikz{\node {\pic@text{x}};}}'
+        r'\newcommand{\t@en}{\def\str{\tikz{\node {Send};}}}'
+        r'\newcommand{\twice}{\tikz{\fill (0,0) circle (1pt);}}'
+        r'\renewcommand{\twice}{\tikz{\fill (0,0) circle (2pt);}}'
+        r'\newcommand{\usesat}{\at}'
+    )
+    defs = extract_definitions(tex, 'p.sty')
+    redefined = [n for n, c in count_definitions(tex).items() if c > 1]
+    expandable, reasons = expandable_picture_macros(defs, redefined)
+    assert sorted(expandable) == ['ok', 'via']
+    assert reasons == {
+        'at': 'its body uses a macro with @ in its name',
+        'str': r'defined inside \t@en',
+        't@en': r'it draws through \str',
+        'twice': 'defined more than once',
+        'usesat': r'it draws through \at',
+    }

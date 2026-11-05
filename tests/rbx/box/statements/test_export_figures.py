@@ -69,10 +69,10 @@ async def test_inline_figures_get_their_natural_height(cleandir_with_testdata, c
 
         fig = EXTERNALIZATION_DIR
         assert legend.startswith(
-            rf'Press \includegraphics[height=14pt]{{{fig}legend_0}} to thank, or '
-            rf'\includegraphics[height=14pt]{{{fig}legend_1}} to leave.'
+            rf'Press \includegraphics[height=13.95pt]{{{fig}legend_0}} to thank, or '
+            rf'\includegraphics[height=13.95pt]{{{fig}legend_1}} to leave.'
         )
-        assert rf'Rated \includegraphics[height=14pt]{{{fig}legend_3}}.' in legend
+        assert rf'Rated \includegraphics[height=13.95pt]{{{fig}legend_3}}.' in legend
         # Displays keep their natural size.
         assert rf'\begin{{center}}\includegraphics{{{fig}legend_2}}' in legend
         assert rf'\includegraphics{{{fig}legend_4}}' in legend
@@ -103,23 +103,20 @@ async def test_a_picture_left_in_a_block_is_reported(cleandir_with_testdata, cap
 
 
 @pytest.mark.test_pkg('contests/statements_v2_picture_macros')
-async def test_figures_externalized_without_a_label_are_reported(
+async def test_a_picture_macro_left_unexpanded_is_reported_by_block(
     cleandir_with_testdata, capsys
 ):
-    with cd.new_package_cd(pathlib.Path('A')):
+    """The fallback for a picture macro the build would not expand: the export
+    expands it into raw TikZ, as before #1006 -- but now says which block lost
+    a picture."""
+    with cd.new_package_cd(pathlib.Path('B')):
         package_utils.clear_package_cache()
         pkg = package.find_problem_package_or_die()
         st = pkg.expanded_statements[0]
-        overlay = await _build(st, pkg)
-        figures = overlay / EXTERNALIZATION_DIR
-        figures.mkdir(parents=True, exist_ok=True)
-        (figures / 'legend_0.pdf').write_bytes(_figure(10))
-        (figures / 'statement-figure0.pdf').write_bytes(_figure(10))
+        await _build(st, pkg)
         capsys.readouterr()
 
         export.get_processed_statement_blocks(st)
 
         out = _out(capsys)
-        assert 'TikZ externalized 1 picture(s) rbx did not label' in out
-        assert 'statement-figure0.pdf' in out
-        assert 'legend_0' not in out
+        assert 'The legend block of statement en still has a TikZ picture' in out

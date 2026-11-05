@@ -45,7 +45,11 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from rbx import console
 from rbx.box.statements import tex_scan
-from rbx.box.statements.demacro_utils import MacroDef, MacroDefinitions
+from rbx.box.statements.demacro_utils import (
+    MacroDef,
+    MacroDefinitions,
+    collect_macro_definitions_from_text,
+)
 
 #: Written next to ``statement.tex`` by the main pdflatex job.
 DUMP_FILE = 'macros.meaning'
@@ -72,8 +76,9 @@ _MAIN_JOB = 'statement'
 def inject_dump_hook(tex: str, names: Iterable[str]) -> str:
     """``tex`` with the dump hook for ``names`` injected after ``\\documentclass``.
 
-    The hook only allocates a ``\\write`` stream when one is free (TeX has 16),
-    so a document already using them all compiles as before, without a dump.
+    The hook allocates its ``\\write`` stream only when the document ends, and
+    only when one is free (TeX has 16), so a document that uses them all --
+    whenever it allocates them -- compiles as before, just without a dump.
     One name per line: the list may be long, and TeX reads a line into a fixed
     buffer."""
     from rbx.box.statements.texsoup_utils import inject_in_preamble_text
@@ -85,8 +90,6 @@ def inject_dump_hook(tex: str, names: Iterable[str]) -> str:
     )
     hook = (
         '\\makeatletter\n'
-        '\\ifnum\\count17<15 %\n'
-        '\\newwrite\\rbx@meaningdump\n'
         '\\def\\rbx@dumpcs#1#2{\\ifcsname#2\\endcsname'
         '\\immediate\\write\\rbx@meaningdump'
         '{#1:\\expandafter\\meaning\\csname#2\\endcsname}\\fi}%\n'
@@ -98,6 +101,9 @@ def inject_dump_hook(tex: str, names: Iterable[str]) -> str:
         '\\edef\\rbx@thisjob{\\jobname}%\n'
         f'\\edef\\rbx@mainjob{{\\detokenize{{{_MAIN_JOB}}}}}%\n'
         '\\ifx\\rbx@thisjob\\rbx@mainjob\n'
+        # `\count17` is the kernel's last allocated `\write`.
+        '\\ifnum\\count17<15 %\n'
+        '\\newwrite\\rbx@meaningdump\n'
         '\\begingroup\\newlinechar=-1 \\escapechar=92 %\n'
         f'\\immediate\\openout\\rbx@meaningdump={DUMP_FILE}\\relax\n'
         f'\\immediate\\write\\rbx@meaningdump{{{_HEADER}}}%\n'
@@ -105,14 +111,23 @@ def inject_dump_hook(tex: str, names: Iterable[str]) -> str:
         f'\\immediate\\write\\rbx@meaningdump{{{_FOOTER}}}%\n'
         '\\immediate\\closeout\\rbx@meaningdump\n'
         '\\endgroup\n'
-        '\\fi}%\n'
         '\\fi\n'
+        '\\fi}%\n'
         '\\makeatother\n'
     )
     return inject_in_preamble_text(tex, hook)
 
 
-_HEX_ESCAPE_RE = re.compile(rb'\^\^([0-9a-f]{2})')
+# `^^xx` (a byte in hex) or `^^C` (a control character, C = byte + 64; `^^?`
+# is 127): how TeX prints a byte it deems unprintable.
+_HEX_ESCAPE_RE = re.compile(rb'\^\^([0-9a-f]{2}|[@-_?])')
+
+
+def _unescape_byte(match: 're.Match[bytes]') -> bytes:
+    code = match.group(1)
+    if len(code) == 2:
+        return bytes([int(code, 16)])
+    return bytes([(code[0] + 64) % 128])
 
 
 def read_dump(path: pathlib.Path) -> Optional[Dict[str, Dict[str, str]]]:
@@ -126,7 +141,7 @@ def read_dump(path: pathlib.Path) -> Optional[Dict[str, Dict[str, str]]]:
         return None
     # pdfTeX prints a byte it deems unprintable as `^^xx`; TeX Live's default
     # tables print UTF-8 as is, but not every installation does.
-    raw = _HEX_ESCAPE_RE.sub(lambda m: bytes([int(m.group(1), 16)]), raw)
+    raw = _HEX_ESCAPE_RE.sub(_unescape_byte, raw)
     lines = raw.decode('utf-8', errors='replace').split('\n')
     while lines and not lines[-1]:
         lines.pop()
@@ -278,10 +293,30 @@ def _used_names(document: str) -> Set[str]:
     return used
 
 
+def body_definitions(
+    document: str, base_dir: pathlib.Path, source_file: Optional[pathlib.Path] = None
+) -> MacroDefinitions:
+    """The names the body of ``document`` defines at its top level (directly or
+    in a file it inputs there), outside any other macro's body.
+
+    TeX's end-of-document meaning is no authority on these: the template runs
+    the blocks inside a group, so a block's ``\\renewcommand{\\vec}`` is gone by
+    the end and ``\\meaning`` reports the kernel's ``\\vec``. The definition the
+    block text sees is the one written right there."""
+    begin = tex_scan.find_begin_document(document)
+    if begin is None:
+        return MacroDefinitions()
+    defined = collect_macro_definitions_from_text(
+        document[begin:], base_dir=base_dir, source_file=source_file
+    )
+    return defined.select(lambda name: defined.nested_in(name) is None)
+
+
 def resolve(
     static: MacroDefinitions,
     dump: Optional[Dict[str, Dict[str, str]]],
     document: Optional[str] = None,
+    body: Optional[MacroDefinitions] = None,
 ) -> MacroDefinitions:
     """The definitions ``macros.json`` should hold: each name's run-time
     definition from ``dump`` where TeX gave one, its static one otherwise.
@@ -293,7 +328,11 @@ def resolve(
     name had several definitions in different scopes, or when the one picked
     sits in another macro's body (or a package option's code), which may never
     have run -- and, given the compiled ``document``, only for names it uses:
-    a package's internal helper going unread harms nothing."""
+    a package's internal helper going unread harms nothing.
+
+    A name ``body`` defines (see :func:`body_definitions`) takes that
+    definition, whatever TeX says."""
+    body = body if body is not None else MacroDefinitions()
     resolved = MacroDefinitions()
     doubtful: List[str] = []
     used = _used_names(document) if document is not None else None
@@ -301,6 +340,10 @@ def resolve(
         macro = static.get(name)
         assert macro is not None
         runtime = None
+        written = body.get(name)
+        if written is not None:
+            resolved.add(written)
+            continue
         if dump is not None and _NAME_RE.fullmatch(name):
             runtime = macro_from_meaning(name, dump.get(name, {}), macro.source_file)
         if runtime is not None:

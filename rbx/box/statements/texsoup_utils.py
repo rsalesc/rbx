@@ -391,6 +391,12 @@ _COMMENT_RE = re.compile(r'(?<!\\)%[^\n]*')
 _PARAGRAPH_BREAK_RE = re.compile(r'\n[ \t]*\n')
 
 
+def _group_text(group: Any) -> str:
+    """What a group holds, as text. Not TexSoup's ``.string``, which asserts
+    unless the group holds exactly one piece of text (``{}``, ``{\\bf x}``)."""
+    return tex_scan.strip_tags(''.join(str(item) for item in group.contents))
+
+
 def _is_environment(node: Any) -> bool:
     return isinstance(getattr(node, 'expr', None), TexNamedEnv)
 
@@ -400,12 +406,16 @@ def _is_root(node: Any) -> bool:
 
 
 def _is_transparent_group(node: Any) -> bool:
-    """A group whose edges are not paragraph edges: ``{...}`` or a command's
-    argument (``\\textbf{...}``). An environment's, an ``\\item``'s and the
-    block's own edges are."""
-    if _is_root(node) or _is_environment(node):
-        return False
-    return getattr(node, 'name', None) != 'item'
+    """A group whose edges are not paragraph edges: a plain ``{...}``."""
+    return getattr(node, 'name', None) == 'BraceGroup'
+
+
+def _is_command(node: Any) -> bool:
+    """A command whose argument (or, for ``\\item``, whose text) holds the
+    figure: never a place for a ``center`` -- inside ``\\textbf``,
+    ``\\caption`` or ``\\centerline`` it would not even compile, and after an
+    ``\\item`` the figure shares the line with the label."""
+    return not (_is_root(node) or _is_environment(node) or _is_transparent_group(node))
 
 
 def _body_items(parent: Any) -> List[Any]:
@@ -454,7 +464,7 @@ def _node_side(node: Any) -> Optional[str]:
         return 'boundary'
     if name in _NO_TEXT_COMMANDS:
         return None
-    if name == 'BraceGroup' and not tex_scan.strip_tags(str(node.string)).strip():
+    if name == 'BraceGroup' and not _group_text(node).strip():
         return None
     return 'content'
 
@@ -561,6 +571,8 @@ def _alone_in_paragraph(node: Any, source: Optional[str]) -> bool:
     parent = getattr(node, 'parent', None)
     if parent is None:
         return True
+    if _is_command(parent):
+        return False
     items = _body_items(parent)
     index = _index_in(items, node)
     if index < 0:
@@ -574,13 +586,37 @@ def _alone_in_paragraph(node: Any, source: Optional[str]) -> bool:
     return True
 
 
-def _enclosing_environment(node: Any) -> Optional[str]:
+# A display in one of these is already placed: a `center` of its own would
+# center it twice (`figure` + `\centering`) or change a box's alignment.
+_PLACED_ENVIRONMENTS = frozenset(
+    {
+        'center',
+        'figure',
+        'figure*',
+        'table',
+        'table*',
+        'wrapfigure',
+        'minipage',
+        'subfigure',
+    }
+)
+
+
+def _already_placed(node: Any) -> bool:
+    """Whether ``node``'s display already has its alignment: it sits in a
+    :data:`_PLACED_ENVIRONMENTS` environment, or after a ``\\centering`` in its
+    group."""
+    child = node
     parent = getattr(node, 'parent', None)
-    while parent is not None and _is_transparent_group(parent):
-        parent = getattr(parent, 'parent', None)
-    if parent is None or not _is_environment(parent):
-        return None
-    return parent.name
+    while parent is not None:
+        items = _body_items(parent)
+        index = _index_in(items, child)
+        if any(getattr(item, 'name', None) == 'centering' for item in items[:index]):
+            return True
+        if not _is_transparent_group(parent):
+            return _is_environment(parent) and parent.name in _PLACED_ENVIRONMENTS
+        child, parent = parent, getattr(parent, 'parent', None)
+    return False
 
 
 def figure_placement(node: TexNode, source: Optional[str] = None) -> str:
@@ -588,21 +624,23 @@ def figure_placement(node: TexNode, source: Optional[str] = None) -> str:
     sits in its block.
 
     - :data:`INLINE` -- in running text: other content shares its paragraph,
-      as in ``press \\tikz{...} to send``.
-    - :data:`CENTERED` -- alone in its paragraph, in a ``center`` environment
-      already.
+      as in ``press \\tikz{...} to send``, or it is a command's argument or an
+      ``\\item``'s text.
+    - :data:`CENTERED` -- alone in its paragraph where its alignment is already
+      decided: a ``center``, ``figure`` or ``minipage``, or after
+      ``\\centering``.
     - :data:`DISPLAY` -- alone in its paragraph anywhere else.
 
     "Alone" is TeX's paragraph: up to a blank line, ``\\par``, ``\\item``, a
-    sectioning command or a display environment, through ``{...}`` groups
-    and command arguments; comments and commands that typeset nothing
+    ``\\caption``, a sectioning command or a display environment, through
+    ``{...}`` groups; comments and commands that typeset nothing
     (``\\centering``, ``\\vspace``, font switches) do not count.
 
     ``source`` is the text ``node``'s soup was parsed from; without it the
     whitespace TexSoup drops can hide a paragraph break."""
     if not _alone_in_paragraph(node, source):
         return INLINE
-    if _enclosing_environment(node) == 'center':
+    if _already_placed(node):
         return CENTERED
     return DISPLAY
 
@@ -790,7 +828,13 @@ def size_inline_figures(
     prefix: str = EXTERNALIZATION_DIR,
 ) -> str:
     """``text`` with a ``height`` on every bare ``\\includegraphics{<prefix>...}``
-    that sits in running text, ``figure_height(ref)`` points tall.
+    that sits in running text, ``figure_height(ref)`` big points tall.
+
+    Written as ``pt`` with the big-point number: pandoc keeps ``pt`` (it drops
+    ``bp``) and CSS's ``pt`` *is* the big point, so the HTML a judge renders
+    gets the exact size; LaTeX reads it 0.4% small, which it does not show. The
+    figure's depth (TikZ's ``.dpth``) is not carried: an image in HTML sits on
+    the baseline, so a figure aligned below it rides slightly high.
 
     For a renderer that does not lay an image out at its natural size: pandoc
     carries the option as ``{height="..pt"}``, so an inline figure -- a button
@@ -809,7 +853,7 @@ def size_inline_figures(
         brace = next((arg for arg in args if isinstance(arg, BraceGroup)), None)
         if brace is None:
             continue
-        ref = str(brace.string).strip()
+        ref = _group_text(brace).strip()
         position = getattr(node, 'position', None)
         if (
             not ref.startswith(prefix)

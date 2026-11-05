@@ -17,7 +17,8 @@ contexts, which is what makes the overlay portable (design §6.2).
 """
 
 import pathlib
-from typing import Dict, List, Optional
+import re
+from typing import Dict, List, Optional, Tuple
 
 from rbx import console, utils
 from rbx.box.statements import demacro_utils, render, sample_staging, sourcemap
@@ -184,16 +185,20 @@ def render_problem_tex(
         # macro is expanded, so expand those first (#1006). Only this build --
         # the one that exists to produce figures -- sees the expanded text; the
         # PDF a setter builds never does.
-        picture_macros = _collect_statement_macros(
+        picture_macros = _expandable_picture_macros(
             render_root,
             template_rel,
             problem_root,
             [
-                *latex_blocks.values(),
-                *latex_explanations.values(),
-                *file_latex_explanations.values(),
+                *(('block', name, text) for name, text in latex_blocks.items()),
+                *(
+                    ('explanation', str(i), text)
+                    for i, text in {
+                        **file_latex_explanations,
+                        **latex_explanations,
+                    }.items()
+                ),
             ],
-            defs=latex_blocks.get('defs'),
         )
         latex_blocks = render.expand_picture_macros(latex_blocks, picture_macros)
         latex_explanations = render.expand_picture_macros(
@@ -276,20 +281,22 @@ def render_problem_tex(
     return tex
 
 
-def _collect_statement_macros(
+def _expandable_picture_macros(
     render_root: pathlib.Path,
     template_rel: str,
     problem_root: pathlib.Path,
-    texts: List[str],
-    defs: Optional[str],
+    texts: List[Tuple[str, str, str]],
 ) -> demacro_utils.MacroDefinitions:
-    """The macros a statement's blocks can use, read statically: the
-    template's preamble and the local packages and files it loads, then
-    whatever the blocks themselves define, the ``defs`` block last so it wins
-    (as it does in the export).
+    """The picture macros the blocks can safely have expanded, read
+    statically in document order: the template's preamble and the local
+    packages and files it loads, then each block and explanation.
 
-    Best effort: a template that cannot be read contributes nothing, and the
-    labeling then proceeds as it did before #1006."""
+    Safely means the static read is the definition TeX uses at the use site
+    (``demacro_utils.expandable_picture_macros``). A macro that fails that is
+    left alone -- the build then does what it did before #1006 -- and, when a
+    block uses it, named in a warning: its figures will be missing.
+
+    Best effort: a template that cannot be read contributes nothing."""
     macros = demacro_utils.MacroDefinitions()
     template = render_root / template_rel
     try:
@@ -301,13 +308,40 @@ def _collect_statement_macros(
             f'[warning]Could not read the macros of template {template_rel}: '
             f'{e}[/warning]'
         )
-    for text in [*texts, *([defs] if defs is not None else [])]:
+    redefined: Dict[str, int] = {}
+    for kind, name, text in texts:
+        plain = sourcemap.strip(text)
+        # Its own pseudo-file, so a redefinition in another block counts as
+        # one from another scope.
         macros.merge(
             demacro_utils.collect_macro_definitions_from_text(
-                sourcemap.strip(text), base_dir=problem_root
+                plain,
+                base_dir=problem_root,
+                source_file=problem_root / f'<{kind} {name}>',
             )
         )
-    return macros
+        for defined, count in demacro_utils.count_definitions(plain).items():
+            redefined[defined] = redefined.get(defined, 0) + count
+
+    expandable, reasons = demacro_utils.expandable_picture_macros(
+        macros, [name for name, count in redefined.items() if count > 1]
+    )
+    used = [
+        f'\\{name} ({reason})'
+        for name, reason in sorted(reasons.items())
+        if any(
+            re.search(rf'\\{re.escape(name)}(?![A-Za-z@])', text)
+            for kind, block, text in texts
+            if (kind, block) != ('block', 'defs')
+        )
+    ]
+    if used:
+        console.console.print(
+            '[warning]Not expanding these TikZ-drawing macros for the export, '
+            'so the pictures they draw will be missing from it: '
+            f'{", ".join(used)}.[/warning]'
+        )
+    return expandable
 
 
 def write_blocks(root: pathlib.Path, name: str, blocks: render.StatementBlocks) -> None:

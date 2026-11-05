@@ -365,6 +365,9 @@ def compile_pdf(
             static_macros,
             macro_meaning.read_dump(root / macro_meaning.DUMP_FILE),
             document=document,
+            body=macro_meaning.body_definitions(
+                document, root, source_file=root / 'statement.tex'
+            ),
         )
         macro_defs.to_json_file(root / 'macros.json')
 

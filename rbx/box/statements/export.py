@@ -26,7 +26,6 @@ import dataclasses
 import enum
 import pathlib
 import posixpath
-import re
 import shutil
 import tempfile
 from typing import Dict, Iterable, List, Literal, Optional, Protocol, Set
@@ -47,7 +46,6 @@ from rbx.box.statements.render import StatementBlocks
 from rbx.box.statements.schema import Statement, StatementType
 from rbx.box.statements.texsoup_utils import (
     ASSET_EXTS,
-    EXTERNALIZATION_DIR,
     draws_tikz_pictures,
     rewrite_includegraphics,
     size_inline_figures,
@@ -96,7 +94,7 @@ def get_substituted_statement_blocks(statement: Statement) -> StatementBlocks:
     # Figures in running text get their natural height, which only exists now
     # that the build has compiled them (see `size_inline_figures`).
     def figure_height(ref: str) -> Optional[float]:
-        return pdf_geometry.page_height_pt(statement_dir / f'{ref}.pdf')
+        return pdf_geometry.page_height_bp(statement_dir / f'{ref}.pdf')
 
     statement_blocks.blocks = {
         name: size_inline_figures(text, figure_height)
@@ -107,11 +105,6 @@ def get_substituted_statement_blocks(statement: Statement) -> StatementBlocks:
         for index, text in statement_blocks.explanations.items()
     }
     return statement_blocks
-
-
-# What pdflatex calls a picture it externalizes with no `\tikzsetnextfilename`:
-# `<jobname>-figure<n>`, the job being `statement`.
-_UNLABELED_FIGURE_RE = re.compile(r'statement-figure\d+')
 
 
 def _document_name(key: object) -> str:
@@ -137,28 +130,6 @@ def _warn_raw_pictures(statement: Statement, blocks: StatementBlocks) -> None:
             'from a macro defined in the [item]defs[/item] block or the '
             'template.[/warning]'
         )
-
-
-def _warn_unlabeled_figures(statement: Statement, statement_dir: pathlib.Path) -> None:
-    """Name the figures TikZ externalized without a label. rbx labels every
-    picture it sees in the statement's text; one that still got an automatic
-    name came from somewhere else -- the template, or a macro rbx could not
-    see -- and nothing in the export refers to it."""
-    figures_dir = statement_dir / EXTERNALIZATION_DIR
-    unlabeled = sorted(
-        path.name
-        for path in figures_dir.glob('*.pdf')
-        if _UNLABELED_FIGURE_RE.fullmatch(path.stem)
-    )
-    if not unlabeled:
-        return
-    console.console.print(
-        f'[warning]Statement [item]{statement.language}[/item]: TikZ externalized '
-        f'{len(unlabeled)} picture(s) rbx did not label '
-        f'([item]{", ".join(unlabeled)}[/item]). They are drawn by the template or '
-        'by a macro rbx could not read, and the exported statement does not '
-        'show them.[/warning]'
-    )
 
 
 def get_processed_statement_blocks(
@@ -211,7 +182,6 @@ def get_processed_statement_blocks(
         for explanation_index, explanation in statement_blocks.explanations.items()
     }
     _warn_raw_pictures(statement, statement_blocks)
-    _warn_unlabeled_figures(statement, overlay_dir)
 
     if normalize:
         # For last, try to convert to Polygon TeX.

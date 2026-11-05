@@ -477,14 +477,40 @@ def _substituted(text: str) -> str:
             f'\\begin{{tabular}}{{cc}}{PIC} & x\\end{{tabular}}',
             f'\\begin{{tabular}}{{cc}}\\includegraphics{{{FIG}b_0}} & x\\end{{tabular}}',
         ),
-        # A caption is a paragraph of its own; `\centering` puts nothing in
-        # the line.
+        # A caption is a paragraph of its own, and `figure` + `\centering`
+        # already center: no second center (review finding 7).
         (
             f'\\begin{{figure}}\\centering\n{PIC}\n\\caption{{c}}\\end{{figure}}',
-            f'\\begin{{figure}}\\centering\n\\begin{{center}}'
-            f'\\includegraphics{{{FIG}b_0}}\\end{{center}}\n'
+            f'\\begin{{figure}}\\centering\n\\includegraphics{{{FIG}b_0}}\n'
             '\\caption{c}\\end{figure}',
         ),
+        (
+            f'{{\\centering {PIC}\n\n}}',
+            f'{{\\centering \\includegraphics{{{FIG}b_0}}\n\n}}',
+        ),
+        (
+            f'\\begin{{minipage}}{{3cm}}{PIC}\\end{{minipage}}',
+            f'\\begin{{minipage}}{{3cm}}\\includegraphics{{{FIG}b_0}}\\end{{minipage}}',
+        ),
+        # A command's argument or an item's text: never a center there.
+        (
+            f'\\centerline{{{PIC}}}',
+            f'\\centerline{{\\includegraphics{{{FIG}b_0}}}}',
+        ),
+        (
+            f'\\begin{{itemize}}\\item {PIC}\n\\item x\\end{{itemize}}',
+            f'\\begin{{itemize}}\\item \\includegraphics{{{FIG}b_0}}\n'
+            '\\item x\\end{itemize}',
+        ),
+        # Groups that are not plain text next to a figure (review finding 1:
+        # TexSoup's `.string` asserted on them).
+        (f'First {PIC}{{}} red.', f'First \\includegraphics{{{FIG}b_0}}{{}} red.'),
+        (
+            f'Text.\n\n{PIC}{{}}\n\nMore',
+            f'Text.\n\n\\begin{{center}}\\includegraphics{{{FIG}b_0}}'
+            '\\end{center}{}\n\nMore',
+        ),
+        (f'{PIC} {{\\bf x}}', f'\\includegraphics{{{FIG}b_0}} {{\\bf x}}'),
         # `\tikz{...}` and `\tikz ...;` are pictures too.
         (
             r'Press \tikz[baseline=(c.base)]{\node (c) {T};}, now.',
@@ -563,3 +589,13 @@ def test_inject_in_preamble_text_changes_nothing_else():
         '\\def\\x#1{#1}\n\\begin{document}'
     )
     assert texsoup_utils.inject_in_preamble_text('body', 'X') == 'X\nbody'
+
+
+def test_size_inline_figures_survives_non_text_groups():
+    # Review finding 1: `{}` and `\includegraphics{\foo}` used to assert.
+    text = f'First \\includegraphics{{{FIG}a}}{{}} red, \\includegraphics{{\\foo}}.'
+    assert texsoup_utils.size_inline_figures(text, lambda ref: 10.0) == (
+        text.replace(
+            f'\\includegraphics{{{FIG}a}}', f'\\includegraphics[height=10pt]{{{FIG}a}}'
+        )
+    )

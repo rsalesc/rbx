@@ -98,6 +98,7 @@ def test_read_dump(tmp_path: pathlib.Path):
         b'N:a:macro:->x\n'
         # pdfTeX may escape bytes it deems unprintable.
         b'N:b:macro:->^^c3^^banica\n'
+        b'N:t:macro:->a^^Ib^^?\n'
         # A body holding the newline character breaks its line.
         b'N:c:macro:->one\n'
         b'two\n'
@@ -107,6 +108,7 @@ def test_read_dump(tmp_path: pathlib.Path):
     assert macro_meaning.read_dump(path) == {
         'a': {'N': 'macro:->x', 'I': 'macro:[#1]->y'},
         'b': {'N': 'macro:->única'},
+        't': {'N': 'macro:->a\tb\x7f'},
         'c': {'N': 'macro:->one\ntwo'},
     }
 
@@ -321,3 +323,75 @@ def test_dump_survives_tikz_externalization_in_the_same_compile(
     assert macro_meaning.read_dump(tmp_path / macro_meaning.DUMP_FILE) == {
         'word': {'N': '\\long macro:->hello'}
     }
+
+
+@pytest.mark.skipif(shutil.which('pdflatex') is None, reason='needs pdflatex')
+def test_a_document_using_every_write_stream_still_compiles(tmp_path: pathlib.Path):
+    """Review finding 5: the hook must not take a stream the document needs.
+    It allocates at the end of the document, and only when one is free."""
+    doc = (
+        '\\documentclass{article}\n'
+        + ''.join(f'\\newwrite\\w{chr(97 + i)}\n' for i in range(13))
+        + '\\newcommand{\\word}{hello}\n\\begin{document}\\word\\end{document}\n'
+    )
+    (tmp_path / 'statement.tex').write_text(
+        macro_meaning.inject_dump_hook(doc, ['word'])
+    )
+    completed = subprocess.run(
+        ['pdflatex', '-interaction', 'nonstopmode', 'statement.tex'],
+        cwd=tmp_path,
+        capture_output=True,
+    )
+    assert completed.returncode == 0, completed.stdout.decode(errors='replace')
+    # No stream left: no dump, and the static definitions stand.
+    assert macro_meaning.read_dump(tmp_path / macro_meaning.DUMP_FILE) is None
+
+
+@pytest.mark.skipif(shutil.which('pdflatex') is None, reason='needs pdflatex')
+def test_block_local_redefinitions_beat_the_end_of_document_meaning(
+    tmp_path: pathlib.Path,
+):
+    """Review finding 2: the template runs the blocks inside a group, so by
+    the end of the document a block's `\\renewcommand{\\vec}` is gone and TeX
+    reports the kernel's `\\vec`. What the block text sees is what it wrote;
+    the package's language table still resolves to what TeX ran (#1007)."""
+    (tmp_path / 'strings.sty').write_text(
+        r'\newcommand{\strings@en}{\def\strLine{Output a line }}'
+        '\n'
+        r'\newcommand{\strings@es}{\def\strLine{Imprima una linea }}'
+        '\n'
+        r'\csname strings@en\endcsname'
+        '\n'
+    )
+    doc = (
+        '\\documentclass{article}\n\\usepackage{strings}\n\\begin{document}\n'
+        '\\begingroup\n'
+        '\\renewcommand{\\vec}[1]{\\mathbf{#1}}\n'
+        '\\renewcommand{\\b}{blue}\n'
+        'Let $\\vec{v}$ be a \\b{} vector. \\strLine 1.\n'
+        '\\endgroup\n\\end{document}\n'
+    )
+    static = collect_macro_definitions_from_text(
+        doc, base_dir=tmp_path, source_file=tmp_path / 'statement.tex'
+    )
+    (tmp_path / 'statement.tex').write_text(macro_meaning.inject_dump_hook(doc, static))
+    completed = subprocess.run(
+        ['pdflatex', '-interaction', 'nonstopmode', 'statement.tex'],
+        cwd=tmp_path,
+        capture_output=True,
+    )
+    assert completed.returncode == 0, completed.stdout.decode(errors='replace')
+    dump = macro_meaning.read_dump(tmp_path / macro_meaning.DUMP_FILE)
+    # TeX itself only knows the kernel's definitions by now.
+    assert 'mathbf' not in dump['vec']['N']
+
+    resolved = macro_meaning.resolve(
+        static,
+        dump,
+        document=doc,
+        body=macro_meaning.body_definitions(doc, tmp_path),
+    )
+    summary = _summary(resolved)
+    assert summary['vec'] == (1, None, r'\mathbf{#1}')
+    assert summary['b'] == (0, None, 'blue')
+    assert summary['strLine'] == (0, None, 'Output a line ')

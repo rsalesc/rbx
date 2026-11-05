@@ -191,15 +191,24 @@ consumes the v2 overlay directly. The standalone overlay root
 **Externalized figures (#1006).** Labeling reads each block's text, so on the
 externalize path the engine first makes every picture visible there:
 
-- `engine._collect_statement_macros` reads, statically, the template's preamble
-  (and the local `.sty`/`\input` files it loads), the blocks' own definitions
-  and the `defs` block last; `render.expand_picture_macros` expands, in every
+- `engine._expandable_picture_macros` reads, statically and in document order,
+  the template's preamble (and the local `.sty`/`\input` files it loads), then
+  each block and explanation; `render.expand_picture_macros` expands, in every
   block and explanation (separate-file ones included) but `defs`, the uses of
   the macros whose body draws a picture (`demacro_utils.select_picture_macros`,
   transitive). Arguments are substituted first, so each use is a picture of its
   own and gets its own `<block>_<i>` label. No content-hash dedup: the same
   expanded text can render differently in context (font size, `\textwidth`),
   so one PDF per use is the only safe answer.
+- Only macros whose static read is what TeX uses at the use site are expanded
+  (`demacro_utils.expandable_picture_macros`): not one defined more than once
+  (in different scopes, or twice where the blocks are), nested in a macro body
+  or option code (#1007's table-by-option shape), whose body names an `@`
+  macro (a block cannot spell it), or that draws through one of those. Those
+  are left alone -- the pre-#1006 behavior -- and named in a warning when a
+  block uses them; the export's raw-TikZ warning then names the block. Note the
+  externalize build's PDF *is* user-visible on the Polygon path (the packager
+  ships it), so expansion must keep its meaning.
 - `render.externalize_blocks` rewrites `\tikz[...]{...}` / `\tikz ...;` as the
   `tikzpicture` it is (`texsoup_utils.normalize_tikz_commands`), then labels.
   Pictures inside a definition's body are never labeled: they are templates.
@@ -210,33 +219,43 @@ externalize path the engine first makes every picture visible there:
   groups, definitions, `@` as a letter, sourcemap tags as blanks). The compile's
   externalization preamble goes in the same way (`inject_in_preamble_text`).
 - Substitution decides per figure (`texsoup_utils.figure_placement`): **inline**
-  (other content in its TeX paragraph) becomes a bare `\includegraphics`;
-  **display** (alone) is wrapped in a `center`; already inside a `center` it is
-  left bare. Paragraph edges are blank lines, `\par`, `\item`, `\caption`,
-  sectioning and display environments, seen through `{...}` and command
-  arguments; the text between TexSoup items is read off the source because
-  TexSoup drops whitespace (a lost newline is a lost paragraph break).
+  (other content in its TeX paragraph, or a command's argument / an `\item`'s
+  text, where a `center` could not go) becomes a bare `\includegraphics`;
+  **display** (alone) is wrapped in a `center`; already placed (`center`,
+  `figure`, `table`, `minipage`, `subfigure`, or after `\centering`) it is left
+  bare. Paragraph edges are blank lines, `\par`, `\item`, `\caption`,
+  sectioning and display environments, seen through `{...}` groups; the text
+  between TexSoup items is read off the source because TexSoup drops
+  whitespace (a lost newline is a lost paragraph break). Never use TexSoup's
+  `.string` on a group here: it asserts unless the group is plain text.
 - `export.get_substituted_statement_blocks` gives each inline figure its natural
   height (`size_inline_figures`, read off the PDF's `/MediaBox` by
-  `pdf_geometry.py`), which pandoc carries as `{height="..pt"}` so MOJ shows a
-  button in a sentence at text size rather than at the 300-DPI raster's.
+  `pdf_geometry.py`, in big points written as `pt`: CSS's `pt` is TeX's `bp`,
+  and pandoc drops `bp`), which pandoc carries as `{height="..pt"}` so MOJ shows
+  a button in a sentence at text size rather than at the 300-DPI raster's. The
+  `.dpth` depth is not carried, so a baseline-aligned figure rides slightly high.
 - `export.get_processed_statement_blocks` warns, naming the block, when a block
-  still draws TikZ after all this (no target can show it), and lists the
-  `statement-figure<n>.pdf` TikZ externalized without a label.
+  still draws TikZ after all this (no target can show it). TikZ the template
+  draws itself is not reported: it is not part of the statement text.
 
 **Macro definitions from the compile (#1007).** `macros.json` no longer trusts a
 static read: `render.compile_pdf(demacro=True)` collects the names statically,
 injects `macro_meaning.inject_dump_hook` after `\documentclass` (an
 `\AtEndDocument` `\immediate\write` of each name's `\meaning`, one per line, to
 `macros.meaning`, main job only so TikZ's per-figure jobs leave it alone, and
-only when a `\write` stream is free), and `macro_meaning.resolve` lets what TeX
-reported override the static body. A name TeX cannot answer for keeps its static
+allocating its `\write` stream only then and only when one is free), and
+`macro_meaning.resolve` lets what TeX reported override the static body --
+except for names the document *body* defines at its top level
+(`macro_meaning.body_definitions`): the template runs the blocks in a group, so
+by the end of the document a block's `\renewcommand{\vec}` is gone and TeX
+would report the kernel's. A name TeX cannot answer for keeps its static
 definition; that is silent when unambiguous and a warning, for names the
 document uses, when the name had definitions in several scopes
 (`MacroDefinitions.conflicts`) or the one picked is nested in another macro's
 body or a `\DeclareOption` (`nested_in`). Static collection itself is a text
 scan in document order (inputs merged where they are loaded), keeps `@` in
-names and un-doubles nested `##`.
+names and un-doubles nested `##` (never touching `\#`). Expansion skips
+`\verb`/verbatim contents and the names `\let` binds.
 
 **Two consumers, two layouts (#640, #642).** The Polygon upload uses
 `FlatLayout`; the **MOJ packager** uses `SubtreeLayout` wrapped in a

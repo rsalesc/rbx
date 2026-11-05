@@ -150,3 +150,38 @@ async def test_picture_macros_stay_unexpanded_outside_the_export_build(
         tex = (pathlib.Path('build') / 'statement-en.tex').read_text()
         assert r'Press \button{Thanks!}' in tex
         assert 'tikzsetnextfilename' not in tex
+
+
+@pytest.mark.test_pkg('contests/statements_v2_picture_macros')
+async def test_picture_macros_whose_static_read_is_unsafe_stay_unexpanded(
+    cleandir_with_testdata, capsys
+):
+    """Review findings 3, 4 and 8: a macro redefined between uses, one picked
+    from a table at run time, and one whose body names an `@` macro are not
+    spliced into the blocks -- the build does what it did before #1006 and
+    says so -- and nothing inside `\\verb` is expanded."""
+    with cd.new_package_cd(pathlib.Path('B')):
+        package_utils.clear_package_cache()
+        pkg = package.find_problem_package_or_die()
+        capsys.readouterr()
+        await build_statements.build_statement(
+            pkg.expanded_statements[0],
+            pkg,
+            output_type=StatementType.TeX,
+            use_samples=False,
+            extra_mergeable_params=_externalize_params(),
+        )
+        out = ' '.join(capsys.readouterr().out.split())
+
+        legend = _build_overlay_blocks('blocks.ext.yml').blocks['legend']
+        assert legend.count(r'\pdot') == 3  # the \renewcommand and both uses
+        assert r'\pkgbutton{Go}' in legend
+        assert r'\strButton' in legend
+        assert 'Enviar' not in legend
+        assert r'\verb|\ratingstar|' in legend
+        # The one safe macro is still expanded and labeled.
+        assert r'get \tikzsetnextfilename{legend_' in legend
+
+        assert 'Not expanding these TikZ-drawing macros' in out
+        for name in (r'\pdot', r'\pkgbutton', r'\strButton'):
+            assert name in out

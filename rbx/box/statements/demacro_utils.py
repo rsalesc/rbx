@@ -188,6 +188,16 @@ def _parse(
     return macro, definition
 
 
+_ESCAPED_OR_DOUBLED_RE = re.compile(r'\\.|##')
+
+
+def _halve_hashes(text: str) -> str:
+    """``##`` -> ``#``, leaving escaped characters (``\\#``) alone."""
+    return _ESCAPED_OR_DOUBLED_RE.sub(
+        lambda m: '#' if m.group(0) == '##' else m.group(0), text
+    )
+
+
 def _undouble(macro: MacroDef, depth: int) -> MacroDef:
     """A definition nested ``depth`` macro bodies deep is written with its
     parameter characters doubled once per level (``\\def\\inner##1{##1}``);
@@ -196,8 +206,8 @@ def _undouble(macro: MacroDef, depth: int) -> MacroDef:
         return macro
     body, default = macro.body, macro.default
     for _ in range(depth):
-        body = body.replace('##', '#')
-        default = default.replace('##', '#') if default is not None else None
+        body = _halve_hashes(body)
+        default = _halve_hashes(default) if default is not None else None
     return dataclasses.replace(macro, body=body, default=default)
 
 
@@ -454,6 +464,82 @@ def select_picture_macros(macro_defs: MacroDefinitions) -> MacroDefinitions:
     return macro_defs.select(lambda name: name in pictures)
 
 
+_AT_NAME_RE = re.compile(r'\\[A-Za-z]*@')
+
+
+def count_definitions(text: str) -> Dict[str, int]:
+    """How many times ``text`` defines each name it collects, nested ones
+    included."""
+    counts: Dict[str, int] = {}
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch == '%':
+            i = tex_scan.skip_comment(text, i)
+            continue
+        if ch != '\\':
+            i += 1
+            continue
+        name, j = tex_scan.read_control_sequence(text, i)
+        skipped = tex_scan.skip_verbatim(text, name, j)
+        if skipped is not None:
+            i = skipped
+            continue
+        if name in _COLLECTED:
+            definition = tex_scan.parse_definition(text, name, j)
+            if definition is not None:
+                counts[definition.name] = counts.get(definition.name, 0) + 1
+        i = j
+    return counts
+
+
+def expandable_picture_macros(
+    macro_defs: MacroDefinitions, redefined: Iterable[str] = ()
+) -> Tuple[MacroDefinitions, Dict[str, str]]:
+    """The picture macros (:func:`select_picture_macros`) that can be expanded
+    at their use sites with the same meaning they have there, and why each of
+    the others cannot.
+
+    Expansion splices a body read statically into the block, so it must be
+    the one TeX uses at that point and must still mean the same in the
+    block's catcodes. Left alone are those:
+
+    - with several definitions in different scopes, or written inside another
+      macro's body or option code: which one runs is TeX's call (#1007);
+    - in ``redefined``: defined more than once where the blocks are, so
+      the one in effect depends on where the use is;
+    - whose body names a ``@`` macro, which a block cannot spell outside
+      ``\\makeatletter``;
+    - that draw through one of the above.
+    """
+    pictures = select_picture_macros(macro_defs)
+    redefined = set(redefined)
+    reasons: Dict[str, str] = {}
+    for name in pictures:
+        macro = pictures.get(name)
+        assert macro is not None
+        if pictures.conflicts(name) or name in redefined:
+            reasons[name] = 'defined more than once'
+        elif pictures.nested_in(name) is not None:
+            reasons[name] = f'defined inside \\{pictures.nested_in(name)}'
+        elif _AT_NAME_RE.search(macro.body):
+            reasons[name] = 'its body uses a macro with @ in its name'
+
+    names = set(pictures)
+    changed = True
+    while changed:
+        changed = False
+        for name in names - set(reasons):
+            macro = pictures.get(name)
+            assert macro is not None
+            for called in set(_CONTROL_WORD_RE.findall(macro.body)) & set(reasons):
+                reasons[name] = f'it draws through \\{called}'
+                changed = True
+                break
+    return pictures.select(lambda name: name not in reasons), reasons
+
+
 # --- Expansion ---------------------------------------------------------------
 
 # Expansion never looks inside these: a use of `\foo` in `\newcommand{\foo}`
@@ -473,7 +559,11 @@ _DEFINITION_COMMANDS = frozenset(
     }
 )
 
-_BODY_PARAM_RE = re.compile(r'#(#|\d)')
+# A control symbol first, so `\#` (a literal `#`) is never a parameter.
+# `\let\old\foo` (and `\let\foo=\bar`) names `\foo`; it does not call it.
+_LET_TARGET_RE = re.compile(r'\\let\s*(?:\\[A-Za-z@]+\s*=?\s*)?\Z')
+
+_BODY_PARAM_RE = re.compile(r'\\.|#(#|\d)')
 
 
 def _substitute_body(body: str, args: List[str]) -> str:
@@ -483,6 +573,8 @@ def _substitute_body(body: str, args: List[str]) -> str:
 
     def replace(match: 're.Match[str]') -> str:
         token = match.group(1)
+        if token is None:  # an escaped character
+            return match.group(0)
         if token == '#':
             return '#'
         index = int(token) - 1
@@ -527,6 +619,7 @@ def _find_and_expand(tex_content: str, macro_defs: MacroDefinitions) -> Tuple[st
         return tex_content, 0
 
     replacements: List[Tuple[int, int, str]] = []
+    verbatim = tex_scan.verbatim_spans(tex_content)
 
     def visit(node: TexNode) -> None:
         name = getattr(node, 'name', None)
@@ -538,6 +631,8 @@ def _find_and_expand(tex_content: str, macro_defs: MacroDefinitions) -> Tuple[st
             macro is not None
             and pos is not None
             and tex_content.startswith('\\' + name, pos)
+            and not tex_scan.within(pos, verbatim)
+            and not _LET_TARGET_RE.search(tex_content[max(0, pos - 120) : pos])
         ):
             use = _read_use(tex_content, pos + 1 + len(name), macro)
             if use is not None:
