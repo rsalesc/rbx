@@ -1,3 +1,16 @@
+## 2.5.2 (2026-11-05)
+
+### Feat
+
+- **moj**: translate dropped TeX symbols, report what pandoc loses, strict mode (#1015)
+- **moj**: show the judge time per solution on rbx run (#1014)
+- **moj**: judge by CPU time and add extensions.moj.unifiedTimeLimit (#1010)
+
+### Fix
+
+- **moj**: ship the interaction and scoring blocks in the MOJ statement (#1016)
+- **statements**: export macro-drawn TikZ and run-time macro definitions (#1008)
+
 ## 2.5.1 (2026-11-02)
 
 ### Feat
