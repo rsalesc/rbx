@@ -120,6 +120,53 @@ def test_falls_back_to_the_dummy_statement_without_statements(moj_package):
     assert 'ainda não disponível' in text
 
 
+def _set_unified_time_limit_in_env(testing_pkg, value: bool) -> None:
+    env_path = testing_pkg.preset.path('env.rbx.yml')
+    env = env_path.read_text()
+    assert 'unifiedTimeLimit: true' in env
+    env_path.write_text(
+        env.replace('unifiedTimeLimit: true', f'unifiedTimeLimit: {str(value).lower()}')
+    )
+    testing_utils.clear_all_functools_cache()
+
+
+def test_conf_charges_the_time_limit_by_cpu_time(moj_package):
+    assert 'TLCLOCK=cpu' in (moj_package / 'conf').read_text().splitlines()
+
+
+def test_the_default_preset_unifies_the_time_limit(moj_package):
+    assert 'TLUNIFIED=y' in (moj_package / 'conf').read_text().splitlines()
+
+
+def test_unified_time_limit_is_not_emitted_when_the_flag_is_off(testing_pkg, tmp_path):
+    _set_unified_time_limit_in_env(testing_pkg, False)
+    minimal_package(testing_pkg)
+
+    pkg_path = run_packager(testing_pkg, tmp_path, build_entries(tmp_path, ['samples']))
+    conf = (pkg_path / 'conf').read_text()
+
+    assert 'TLUNIFIED' not in conf
+    # The clock does not depend on the flag.
+    assert 'TLCLOCK=cpu' in conf.splitlines()
+
+
+def test_a_calibrated_package_carries_both_knobs(testing_pkg, tmp_path):
+    minimal_package(testing_pkg)
+
+    pkg_path = run_packager(
+        testing_pkg,
+        tmp_path,
+        build_entries(tmp_path, ['samples']),
+        pin_limits=False,
+        timing_mode=JudgeCalibrated(),
+    )
+    lines = (pkg_path / 'conf').read_text().splitlines()
+
+    assert 'TLCLOCK=cpu' in lines
+    assert 'TLUNIFIED=y' in lines
+    assert 'TLMETHOD=kattis' in lines
+
+
 def test_writes_a_statement_with_the_mandatory_sections(moj_package):
     text = (moj_package / 'docs' / 'enunciado.md').read_text()
     # validate-problem.sh hard-fails without these two headings.

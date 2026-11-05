@@ -44,6 +44,18 @@ Since the limits come from a profile, packaging **fails** if you haven't created
 deliberate: falling back to a factor nobody chose is exactly the silent behavior the pinning is
 there to remove.
 
+Every package also asks MOJ to charge the limit by **CPU time**, the way {{rbx}} does on your
+machine, instead of MOJ's default of wall time. MOJ calls this choice the problem's *clock*.
+
+Wall time still applies as a looser ceiling: three times the limit, and at least the limit plus
+3.2 seconds. So a solution that sleeps or blocks waiting for input still gets a time limit
+exceeded verdict.
+
+!!! warning "Re-upload well before a contest"
+    MOJ calibrates a problem again when its clock changes, and hides the problem's time limit
+    on the contest page until the judges finish. Re-uploading a problem you last packaged with
+    an older {{rbx}}, which used wall time, does exactly that.
+
 ### Letting MOJ calibrate instead
 
 If you'd rather have the limits measured on the judge machine -- which is, after all, the machine
@@ -69,6 +81,23 @@ the judge park.
 Either way, the package is only judgeable **after a judge calibrates it** -- that's a MOJ rule,
 not an {{rbx}} one. Pinning removes your dependency on *what* calibration measures, not on it
 running.
+
+#### Using one limit for every language
+
+By default, MOJ calibrates a limit per language. You can ask it for one limit instead,
+taken from the slowest accepted solution across all languages, as if they were one. Students
+then see one limit rather than one per language. You turn it on in the `moj` block under
+`extensions` in your `env.rbx.yml`, which holds the MOJ-specific settings:
+
+```yaml title="env.rbx.yml"
+extensions:
+  moj:
+    unifiedTimeLimit: true
+```
+
+The bundled presets set it. If the key is missing, it's off. It only changes the limit under
+`--calibrate`: the per-language limits {{rbx}} pins otherwise take precedence over it. Like
+the clock, changing it makes MOJ calibrate the problem again and hide its limit until it's done.
 
 ## Statements
 
@@ -217,10 +246,10 @@ its own, and {{rbx}} will **refuse to package**:
 - an interactor that isn't written in C++.
 
 !!! warning "Leave headroom in the time limits"
-    MOJ measures an interactive solution by the **wall time** of the whole interaction: your
-    interactor and the language runtime's startup count against the limit too. Limits estimated
-    on your machine (`rbx time -p moj --runner local`) don't include them, so a tight limit can
-    turn a crash or a wrong answer into a time limit. Give those interactive problems a
+    MOJ charges an interactive solution with the combined **CPU time** of your solution and the
+    interactor: the interactor and the language runtime's startup count against the limit too.
+    Limits estimated on your machine (`rbx time -p moj --runner local`) don't include them, so a
+    tight limit can turn a crash or a wrong answer into a time limit exceeded verdict. Give those interactive problems a
     comfortable margin. A plain `rbx time -p moj` [measures on MOJ
     itself](../profiling/remote.md#timing-on-moj), and its timings already include the whole
     interaction.

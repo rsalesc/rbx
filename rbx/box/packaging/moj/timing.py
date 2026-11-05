@@ -278,3 +278,38 @@ def capped_calibration_lines(
         ),
         '',
     ]
+
+
+def clock_lines() -> List[str]:
+    """The `conf` block charging the time limit by CPU time, in every package.
+
+    MOJ defaults to the wall clock (`TLCLOCK=wall`); rbx judges solutions by CPU
+    time locally, so a MOJ package asks for the same clock -- a setter's package
+    and a probe alike, so what `rbx time --runner moj` measures is what the
+    package will be judged by. The wall clock stays as a looser ceiling (3x the
+    limit, at least the limit + 3.2 s), so a solution that sleeps or blocks still
+    dies, as TLE. MOJ refuses this on a parallel problem (`CPUNEEDED > 1`), which
+    rbx never emits.
+    """
+    return [
+        '# Charge the time limit by CPU time (user + sys, child processes included),',
+        '# as rbx does locally. The wall clock is only a looser ceiling: 3x the limit,',
+        '# at least the limit + 3.2 s.',
+        'TLCLOCK=cpu',
+        '',
+    ]
+
+
+def unified_lines() -> List[str]:
+    """The `conf` block giving every language one time limit (`TLUNIFIED=y`).
+
+    Emitted when `extensions.moj.unifiedTimeLimit` is set. MOJ then takes the
+    worst accepted time across every language, as if they were one (the Kattis
+    model). Per-language `TLOVERRIDE`/`TLMOD` still apply on top of it.
+    """
+    return [
+        '# One time limit for every language: MOJ calibrates from the worst accepted',
+        '# time across all of them, as if they were a single language.',
+        'TLUNIFIED=y',
+        '',
+    ]

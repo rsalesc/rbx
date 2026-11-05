@@ -17,7 +17,7 @@ from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.moj import mojtools, naming
 from rbx.box.packaging.moj import statement as moj_statement
 from rbx.box.packaging.moj import timing as moj_timing
-from rbx.box.packaging.moj.extension import MojLanguageExtension
+from rbx.box.packaging.moj.extension import MojExtension, MojLanguageExtension
 from rbx.box.packaging.moj.moj_language_utils import (
     get_emitted_moj_languages,
     get_moj_language_extension,
@@ -1069,12 +1069,28 @@ class MojPackager(BasePackager):
                     '',
                 ]
             )
+        lines.extend(moj_timing.clock_lines())
+        if self._unified_time_limit():
+            lines.extend(moj_timing.unified_lines())
         lines.extend(self._time_limit_lines())
         lines.extend(self._stopwhen_lines())
         lines.extend(self._parallelism_lines())
         (into_path / 'conf').write_text('\n'.join(lines))
 
     # -- time limits ----------------------------------------------------------
+
+    def _unified_time_limit(self) -> bool:
+        """Whether to emit `TLUNIFIED=y`: `extensions.moj.unifiedTimeLimit`.
+
+        Only for a package a setter builds. A probe exists for rbx to measure
+        under limits it chose per language group, and MOJ's unified limit is
+        not one of them.
+        """
+        if self.probe is not None:
+            return False
+        return environment.get_extension_or_default(
+            'moj', MojExtension
+        ).unifiedTimeLimit
 
     def _time_limit_lines(self) -> List[str]:
         """The `conf` block that decides the time limits.
@@ -1259,7 +1275,7 @@ class MojPackager(BasePackager):
             )
             if self._is_interactive():
                 console.console.print(
-                    '[warning]MOJ judges an interactive problem by the wall time of '
+                    '[warning]MOJ judges an interactive problem by the CPU time of '
                     'the contestant AND the interactor, process startup included, '
                     'while the pinned limits above were estimated from the solution '
                     'alone.[/warning]\n'

@@ -333,6 +333,15 @@ def _probe_conf(testing_pkg, tmp_path) -> str:
     ).read_text()
 
 
+def test_a_probe_package_is_timed_by_cpu_but_never_unified(testing_pkg, tmp_path):
+    # rbx measures under the clock the setter's package is judged by; the
+    # unified limit is not one `rbx time` measures under, so the default
+    # preset's flag stays out of a probe.
+    lines = _probe_conf(testing_pkg, tmp_path).splitlines()
+    assert 'TLCLOCK=cpu' in lines
+    assert not any(line.startswith('TLUNIFIED') for line in lines)
+
+
 def test_a_probe_package_halts_a_solution_at_its_first_timeout(testing_pkg, tmp_path):
     """The judge does what `abort_on` does locally, because rbx cannot here.
 

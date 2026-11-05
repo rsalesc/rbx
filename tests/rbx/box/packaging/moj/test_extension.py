@@ -21,3 +21,14 @@ def test_unknown_field_is_rejected():
     # fail loudly rather than be silently ignored at upload time.
     with pytest.raises(ValidationError):
         MojExtension.model_validate({'orgs': 'unicamp'})
+
+
+def test_unified_time_limit_defaults_to_off():
+    # MOJ's own default is a per-language limit; the bundled presets turn it on.
+    assert MojExtension().unifiedTimeLimit is False
+
+
+def test_unified_time_limit_is_read_off_the_environment_extensions():
+    extensions = Extensions.model_validate({'moj': {'unifiedTimeLimit': True}})
+    assert extensions.moj is not None
+    assert extensions.moj.unifiedTimeLimit is True
