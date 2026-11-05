@@ -5,7 +5,7 @@ from typing import Any, Callable, List, Mapping, Optional, Tuple
 from TexSoup import TexSoup
 from TexSoup.data import BraceGroup, BracketGroup, TexNamedEnv, TexNode
 
-from rbx.box.statements.processing import tex_scan
+from rbx.box.statements.processing import figure_size, tex_scan
 
 EXTERNALIZATION_DIR = 'artifacts/tikz_figures/'
 
@@ -867,6 +867,76 @@ def size_inline_figures(
             continue
         at = position + len('\\includegraphics')
         edits.append((at, at, f'[height={_format_pt(height)}]'))
+    return _splice(text, edits)
+
+
+def _includegraphics_extent(
+    text: str, position: int
+) -> Optional[Tuple[Optional[str], str, int]]:
+    """``text[position:]`` starts ``\\includegraphics``: its options (``None``
+    without brackets), its reference and the index past it -- or ``None`` for
+    a starred form, two optional arguments (a bounding box) or a group that
+    does not close."""
+    i = position + len('\\includegraphics')
+    if i < len(text) and text[i] == '*':
+        return None
+    i = tex_scan.skip_blanks(text, i)
+    options = None
+    if i < len(text) and text[i] == '[':
+        end = tex_scan.read_group(text, i, '[')
+        if end is None:
+            return None
+        options = text[i + 1 : end - 1]
+        i = tex_scan.skip_blanks(text, end)
+        if i < len(text) and text[i] == '[':
+            return None
+    if i >= len(text) or text[i] != '{':
+        return None
+    end = tex_scan.read_group(text, i)
+    if end is None:
+        return None
+    return options, text[i + 1 : end - 1].strip(), end
+
+
+def size_figures(
+    text: str,
+    natural_size: Callable[[str], Optional[Tuple[float, float]]],
+    scale: float,
+) -> str:
+    """``text`` with every ``\\includegraphics`` given the explicit size an
+    HTML renderer needs to show it as the PDF does, times ``scale``.
+
+    ``natural_size(ref)`` is the referenced file's natural size in big points
+    (``None`` when unknown). The options are computed by
+    :func:`figure_size.figure_options` -- a width for a display figure, a
+    height for one in running text (:func:`figure_placement`), the author's
+    own size converted where it can be -- and a figure it cannot reason about
+    is left exactly as written.
+
+    For a target that renders to HTML (MOJ): in LaTeX the result is the
+    figure scaled by ``scale``, which no PDF build wants."""
+    if '\\includegraphics' not in text:
+        return text
+    escaped = escape_for_texsoup(text)  # same length: positions carry over
+    soup = parse_latex(escaped)
+    edits: List[Tuple[int, int, str]] = []
+    for node in soup.find_all('includegraphics'):
+        position = getattr(node, 'position', None)
+        if position is None or not text.startswith('\\includegraphics', position):
+            continue
+        extent = _includegraphics_extent(text, position)
+        if extent is None:
+            continue
+        options, ref, end = extent
+        sized = figure_size.figure_options(
+            options,
+            natural_size(ref),
+            scale=scale,
+            inline=figure_placement(node, escaped) == INLINE,
+        )
+        if sized is None:
+            continue
+        edits.append((position, end, f'\\includegraphics[{sized}]{{{ref}}}'))
     return _splice(text, edits)
 
 

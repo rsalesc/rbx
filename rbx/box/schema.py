@@ -43,6 +43,7 @@ from rbx.box.fields import (
 )
 from rbx.box.formatting import href
 from rbx.box.issue_codes import IssuesConfig
+from rbx.box.packaging.moj.extension import MojStatementExtension
 from rbx.box.scoring.dependencies import (
     Aggregation,
     DependencyPolicy,
@@ -1571,6 +1572,16 @@ profile estimated before it was recorded.
         return res
 
 
+class ProblemExtensions(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    moj: Optional[MojStatementExtension] = Field(
+        default=None,
+        description='MOJ settings for this problem. They override the ones of the '
+        'contest and of `env.rbx.yml`.',
+    )
+
+
 class Package(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
@@ -1760,6 +1771,11 @@ that is correct and used as reference -- and should have the `accepted` outcome.
     issues: IssuesConfig = Field(
         default_factory=IssuesConfig,
         description='Which issues `rbx issues` and `rbx run` report for this problem.',
+    )
+
+    extensions: Optional[ProblemExtensions] = Field(
+        default=None,
+        description='Settings for the judges this problem is exported to.',
     )
 
     def set_inherited_languages(self, languages: Optional[List[str]]) -> None:

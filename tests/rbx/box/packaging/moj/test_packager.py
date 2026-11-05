@@ -3,7 +3,9 @@ import fnmatch
 import json
 import shutil
 import stat
+import struct
 import subprocess
+import zlib
 from unittest import mock
 
 import pytest
@@ -13,8 +15,9 @@ from rbx import testing_utils
 from rbx.box.packaging import packager as packager_module
 from rbx.box.packaging.moj import mojtools
 from rbx.box.packaging.moj import statement as moj_statement
+from rbx.box.packaging.moj.extension import MojStatementExtension
 from rbx.box.packaging.moj.packager import JudgeCalibrated, MojPackager
-from rbx.box.schema import PointsScoring, ScoreType, TaskType
+from rbx.box.schema import PointsScoring, ProblemExtensions, ScoreType, TaskType
 from rbx.box.scoring.dependencies import Aggregation, DependencyPolicy
 from rbx.box.statements.schema import ConversionType, StatementType
 from tests.rbx.box.packaging.moj.conftest import (
@@ -898,6 +901,82 @@ def test_package_inlines_the_figures_and_ships_no_asset_files(
     assert '](samples/' not in note
     assert not (into_path / 'docs' / 'assets').exists()
     assert not (into_path / 'docs' / 'samples').exists()
+
+
+def _png_at_300_dpi(width: int, height: int) -> bytes:
+    def chunk(kind: bytes, body: bytes) -> bytes:
+        crc = zlib.crc32(kind + body) & 0xFFFFFFFF
+        return struct.pack('>I', len(body)) + kind + body + struct.pack('>I', crc)
+
+    rows = b''.join(b'\x00' + b'\xff' * 3 * width for _ in range(height))
+    return (
+        b'\x89PNG\r\n\x1a\n'
+        + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
+        # 11811 px/m is 300 DPI.
+        + chunk(b'pHYs', struct.pack('>IIB', 11811, 11811, 1))
+        + chunk(b'IDAT', zlib.compress(rows))
+        + chunk(b'IEND', b'')
+    )
+
+
+FIGURE_BLOCKS = {
+    'pt': {
+        'legend': 'Aperte \\includegraphics{fig} agora.\n\n'
+        '\\begin{center}\\includegraphics{fig}\\end{center}\n\n'
+        '\\includegraphics[width=0.5\\textwidth]{fig}',
+        'input': 'Entrada.',
+        'output': 'Saída.',
+    }
+}
+
+
+def _package_figures(testing_pkg, tmp_path, monkeypatch, figure_scale=None):
+    monkeypatch.setattr(moj_statement, 'INLINE_IMAGES_AS_BASE64', False)
+    minimal_package(testing_pkg)
+    with_statements(
+        testing_pkg,
+        monkeypatch,
+        FIGURE_BLOCKS,
+        explanations={0: '\\includegraphics{diagram}'},
+    )
+    # 600x300 px at 300 DPI: 144x72bp in the PDF.
+    (testing_pkg.root / 'statement' / 'fig.png').write_bytes(_png_at_300_dpi(600, 300))
+    if figure_scale is not None:
+        testing_pkg.yml.extensions = ProblemExtensions(
+            moj=MojStatementExtension(figureScale=figure_scale)
+        )
+        testing_pkg.save()
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+    body = (into_path / 'docs' / 'enunciado.md').read_text()
+    note = (into_path / 'docs' / 'notes' / 'sample001.md').read_text()
+    return body, note
+
+
+def test_package_gives_every_figure_its_pdf_size_times_the_figure_scale(
+    testing_pkg, tmp_path, monkeypatch
+):
+    body, note = _package_figures(testing_pkg, tmp_path, monkeypatch)
+
+    # The default scale, 1.09: inline by height, display by width, and a
+    # fraction of the text width left a fraction of the column.
+    assert body.split('## Entrada')[0].strip() == (
+        'Aperte ![](assets/fig.png){height="78.48pt"} agora.\n\n'
+        '::: center\n![](assets/fig.png){width="156.96pt"}\n:::\n\n'
+        '![](assets/fig.png){width="50%"}'
+    )
+    # The 1x1 sample figure records no resolution: 72 DPI, as pdfTeX lays it out.
+    assert note.strip() == '![](samples/000/diagram.png){width="1.09pt"}'
+
+
+def test_a_problem_can_override_the_figure_scale(testing_pkg, tmp_path, monkeypatch):
+    body, _ = _package_figures(testing_pkg, tmp_path, monkeypatch, figure_scale=1.0)
+
+    assert '![](assets/fig.png){height="72pt"}' in body
+    assert '![](assets/fig.png){width="144pt"}' in body
+    assert '![](assets/fig.png){width="50%"}' in body
 
 
 def test_package_writes_sample_notes_by_test_name(testing_pkg, tmp_path, monkeypatch):

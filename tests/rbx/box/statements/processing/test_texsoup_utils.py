@@ -599,3 +599,54 @@ def test_size_inline_figures_survives_non_text_groups():
             f'\\includegraphics{{{FIG}a}}', f'\\includegraphics[height=10pt]{{{FIG}a}}'
         )
     )
+
+
+def test_size_figures_sizes_every_figure_for_html():
+    text = (
+        r'Press \includegraphics{btn.png} now.'
+        '\n\n'
+        r'\begin{center}\includegraphics{fig.png}\end{center}'
+        '\n\n'
+        r'\includegraphics[width=0.5\textwidth]{fig.png}'
+        '\n\n'
+        r'\includegraphics[height=12.3bp]{btn.png} and more'
+        '\n\n'
+        r'\includegraphics[angle=90]{fig.png}'
+        '\n\n'
+        r'\includegraphics{unknown.svg}'
+    )
+    sizes = {'btn.png': (20.0, 10.0), 'fig.png': (300.0, 100.0)}
+    assert texsoup_utils.size_figures(text, sizes.get, 1.09) == (
+        r'Press \includegraphics[height=10.9pt]{btn.png} now.'
+        '\n\n'
+        r'\begin{center}\includegraphics[width=327pt]{fig.png}\end{center}'
+        '\n\n'
+        r'\includegraphics[width=0.5\textwidth]{fig.png}'
+        '\n\n'
+        r'\includegraphics[height=13.41pt]{btn.png} and more'
+        '\n\n'
+        r'\includegraphics[angle=90]{fig.png}'
+        '\n\n'
+        r'\includegraphics{unknown.svg}'
+    )
+
+
+def test_size_figures_scales_the_inline_height_the_export_gave():
+    # `size_inline_figures` runs first, on every target; on MOJ the height it
+    # wrote is an absolute size like any other, and is scaled.
+    text = f'Press \\includegraphics{{{FIG}a}} now.'
+    sized = texsoup_utils.size_inline_figures(text, lambda ref: 10.0)
+    assert texsoup_utils.size_figures(sized, lambda ref: (40.0, 10.0), 1.5) == (
+        f'Press \\includegraphics[height=14.94pt]{{{FIG}a}} now.'
+    )
+
+
+def test_size_figures_leaves_forms_it_cannot_read_alone():
+    text = (
+        r'\includegraphics*{a} \includegraphics[0,0][1,1]{a} '
+        r'\includegraphics{\foo} text'
+    )
+    assert texsoup_utils.size_figures(text, lambda ref: None, 1.09) == text
+    assert texsoup_utils.size_figures('no figures', lambda ref: None, 1.09) == (
+        'no figures'
+    )

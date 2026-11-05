@@ -120,3 +120,27 @@ async def test_a_picture_macro_left_unexpanded_is_reported_by_block(
 
         out = _out(capsys)
         assert 'The legend block of statement en still has a TikZ picture' in out
+
+
+@pytest.mark.test_pkg('contests/statements_v2_picture_macros')
+async def test_the_shared_bundle_does_not_scale_figures(cleandir_with_testdata):
+    """The MOJ figure scale is applied by the MOJ packager alone: the bundle
+    Polygon uploads keeps display figures at their natural size, and inline
+    ones at exactly their natural height."""
+    with cd.new_package_cd(pathlib.Path('A')):
+        package_utils.clear_package_cache()
+        pkg = package.find_problem_package_or_die()
+        st = pkg.expanded_statements[0]
+        overlay = await _build(st, pkg)
+        figures = overlay / EXTERNALIZATION_DIR
+        figures.mkdir(parents=True, exist_ok=True)
+        for index in range(5):
+            (figures / f'legend_{index}.pdf').write_bytes(_figure(13.95))
+
+        legend = export.build_statement_bundle(st, layout=export.FlatLayout()).blocks[
+            'legend'
+        ]
+
+        assert 'width=' not in legend
+        assert legend.count('[height=13.95pt]') == 3
+        assert legend.count(r'\includegraphics{') == 2

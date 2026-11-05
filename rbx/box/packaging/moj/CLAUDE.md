@@ -624,6 +624,37 @@ converts with `pdftoppm -png -r 300 -singlefile` after `materialize`. A statemen
 with no PDF figure never probes for poppler; one that has them and no poppler
 **refuses to package**, naming the figures. SVG passes through untouched.
 
+### Figure sizes: `figureScale`
+
+An `<img>` with no size shows at its pixel size, so a TikZ figure rasterized at
+300 DPI would show at 3.125x its PDF size, capped only by the column
+(`render-statement.sh`: `max-width:52rem`, `img{max-width:100%}`, 16px text vs
+the PDF's 11pt). `moj_statement.size_figures` therefore rewrites every
+`\includegraphics` in the bundle (after `build_statement_bundle`, before
+pandoc) via `texsoup_utils.size_figures` / `processing/figure_size.py`:
+
+- natural size (`image_geometry.natural_size_bp`) is read off the bundled
+  **source** (the PDF, not the PNG it becomes), matched by `dest` against the
+  reference resolved from the slot's `document_dir`;
+- display figures get `width=<bp>pt` only (so `max-width:100%` shrinks without
+  distorting; an author `height` becomes a width through the aspect ratio),
+  inline ones `height=<bp>pt` (the `size_inline_figures` height the shared export
+  already wrote is scaled like any author height);
+- author absolute lengths are converted and scaled, `<f>\textwidth`/`\linewidth`/
+  `\columnwidth`/`\hsize` widths become `<f>\textwidth` (pandoc -> `"<100f>%"`,
+  unscaled), `em`/`ex` kept, anything else (`angle`, `trim`, expressions,
+  `\includegraphics*`, two optional args) left untouched;
+- rasters with no recorded resolution are taken at 72 DPI, pdfTeX's
+  `\pdfimageresolution` default, so MOJ matches the PDF.
+
+The multiplier is `extensions.moj.figureScale` (default
+`DEFAULT_FIGURE_SCALE = 1.09`, ~12pt/11pt), resolved by `settings.figure_scale()`:
+problem (`Package.extensions.moj`) over contest (`ContestExtensions.moj`) over
+env (`MojExtension`, which subclasses `MojStatementExtension` and adds `org`,
+env-only). Only the MOJ path calls `size_figures`; the shared export (Polygon)
+is untouched, pinned by `test_export_figures.py::test_the_shared_bundle_does_not_scale_figures`.
+The raster DPI stays 300 for HiDPI crispness.
+
 ## `author`
 
 MOJ hard-requires a non-empty `author` file. rbx has no first-class author field, so

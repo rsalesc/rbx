@@ -1,7 +1,9 @@
 """The size of a one-page PDF figure, read without a PDF library.
 
-What the export needs is the natural height of an externalized TikZ figure, so
-an inline one can be given it (``texsoup_utils.size_inline_figures``). pdfTeX
+What the export needs is the natural size of an externalized TikZ figure, so
+an inline one can be given its height (``texsoup_utils.size_inline_figures``)
+and MOJ can show every figure at the size it has in the PDF
+(``texsoup_utils.size_figures``). pdfTeX
 writes the page size as a ``/MediaBox``, which is the figure's bounding box --
 TikZ's externalization crops the page to the picture. Since PDF 1.5 the page
 dictionary usually sits in a compressed object stream, so the streams are
@@ -49,10 +51,23 @@ def media_box(data: bytes) -> Optional[Tuple[float, float]]:
     return None
 
 
+def page_size_bp(path: pathlib.Path) -> Optional[Tuple[float, float]]:
+    """``(width, height)`` of a one-page PDF in big points (1/72 in, PDF's unit
+    and CSS's ``pt``); ``None`` when it cannot be read or is degenerate. Only
+    the first page box is read: an externalized figure has one page."""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    box = media_box(data)
+    if box is None or box[0] <= 0 or box[1] <= 0:
+        return None
+    return box
+
+
 def page_height_bp(path: pathlib.Path) -> Optional[float]:
-    """The height of a one-page PDF in big points (1/72 in, PDF's unit and
-    CSS's ``pt``); ``None`` when it cannot be read. Only the first page box is
-    read: an externalized figure has one page."""
+    """The height of a one-page PDF in big points; ``None`` when it cannot be
+    read. See :func:`page_size_bp`."""
     try:
         data = path.read_bytes()
     except OSError:

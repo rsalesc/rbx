@@ -117,6 +117,46 @@ A few things to keep in mind:
   externalization produces) is rasterized to PNG for you. That needs `pdftoppm`, from poppler; a
   statement with PDF figures and no poppler installed refuses to package, naming the figures.
 
+### Sizing figures
+
+MOJ shows your statement as a web page, with larger text than your PDF statement: 16 pixels
+against 11 points. So that figures keep the same size next to the text, {{rbx}} gives each
+figure an explicit size: the size it has in your PDF statement, times a *figure scale* that
+defaults to `1.09`.
+
+The size a figure has in your PDF statement depends on what you wrote:
+
+- A figure with **no size** of its own, such as a TikZ picture, takes its natural size. For a PNG
+  or JPEG image, that's its pixel size at the resolution the file records, or at 72 DPI when it
+  records none, as `pdflatex` does.
+- A figure with a **`width`, `height` or `scale`** takes the size you asked for. A width that's a
+  fraction of the line, such as `width=0.5\textwidth`, stays that fraction of the page and
+  ignores the figure scale. A length in `em` or `ex` is already relative to the text, so it's
+  kept as written.
+- {{rbx}} leaves alone a figure it can't size, such as an SVG with no size of its own, or one
+  with options like `angle` or `trim`.
+
+A figure on a line of its own gets a width, so it still shrinks to fit a narrow screen. A figure
+inside a sentence gets a height, so it matches the text around it.
+
+If figures still look too large or too small on MOJ, set `figureScale` in your `env.rbx.yml`:
+
+```yaml title="env.rbx.yml"
+extensions:
+  moj:
+    figureScale: 1.0  # the same size as in the PDF
+```
+
+A contest can set its own figure scale in its `contest.rbx.yml`, and a problem in its
+`problem.rbx.yml`. A problem's setting overrides its contest's, and a contest's overrides the
+one in `env.rbx.yml`:
+
+```yaml title="problem.rbx.yml"
+extensions:
+  moj:
+    figureScale: 1.2
+```
+
 ### Choosing the main statement
 
 You can put a different statement in the main slot with the `-l` or `--language` flag, passing
