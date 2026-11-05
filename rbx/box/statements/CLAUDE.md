@@ -156,6 +156,12 @@ PDFs it produces) and don't depend on the statement build:
 - `processing/macro_meaning.py` — the `\meaning` dump hook and its parser
   (run-time macro definitions, #1007).
 - `processing/pdf_geometry.py` — page size of a figure PDF (`/MediaBox`).
+- `processing/image_geometry.py` — natural size of a figure file as pdfTeX lays
+  it out: PDF `/MediaBox`, PNG `pHYs` / JPEG JFIF density, 72 DPI when none.
+- `processing/figure_size.py` — leaf: the `\includegraphics` options an HTML
+  renderer needs (`figure_options`), from the author's options, the natural
+  size and a scale. Driven by `texsoup_utils.size_figures`, which only the MOJ
+  packager calls (`figureScale`, see `packaging/moj/CLAUDE.md`).
 
 Tests mirror the layout under `tests/rbx/box/statements/processing/`.
 

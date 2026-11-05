@@ -15,6 +15,7 @@ from rbx.box.dependencies.amalgamation import AmalgamationError, amalgamate
 from rbx.box.dependencies.scanner import DependencyKind
 from rbx.box.generation_schema import GenerationTestcaseEntry
 from rbx.box.packaging.moj import mojtools, naming
+from rbx.box.packaging.moj import settings as moj_settings
 from rbx.box.packaging.moj import statement as moj_statement
 from rbx.box.packaging.moj import timing as moj_timing
 from rbx.box.packaging.moj.extension import MojLanguageExtension
@@ -979,6 +980,7 @@ class MojPackager(BasePackager):
         except export.StatementExportError as e:
             console.console.print(f'[error]{e}[/error]')
             raise typer.Exit(1) from e
+        bundle = moj_statement.size_figures(bundle, moj_settings.figure_scale())
 
         bundle.materialize(into_path)
         # After materialize, so the PDFs are on disk under the .png names the

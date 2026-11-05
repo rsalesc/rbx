@@ -26,6 +26,7 @@ facts worth carrying in your head:
 import dataclasses
 import enum
 import pathlib
+import posixpath
 import re
 from typing import Callable, Dict, List, Mapping, Optional, Sequence
 
@@ -38,6 +39,7 @@ from rbx.box import package
 from rbx.box.packaging.moj import naming, statement_assets
 from rbx.box.statements import export
 from rbx.box.statements.markdown_export import check_moj_gate, tex_to_markdown
+from rbx.box.statements.processing import image_geometry, texsoup_utils
 from rbx.box.statements.schema import Statement
 from rbx.box.testcase_sample_utils import StatementSample
 
@@ -500,6 +502,58 @@ def moj_layout() -> statement_assets.RasterizingLayout:
                 'sample_explanation': 'docs',
             },
         )
+    )
+
+
+def _natural_sizer(
+    bundle: export.StatementBundle, slot: export.DocumentSlot
+) -> Callable[[str], Optional[image_geometry.Size]]:
+    """The natural size, in big points, of the figure a reference in ``slot``'s
+    documents cites, read off the bundled *source* -- the PDF a figure was
+    authored as, not the PNG it is rasterized to."""
+    sources = {
+        texsoup_utils.strip_asset_ext(str(bundled.dest)): bundled.asset.source
+        for bundled in bundle.assets
+    }
+    base = str(moj_layout().document_dir(slot))
+
+    def natural_size(ref: str) -> Optional[image_geometry.Size]:
+        dest = posixpath.normpath(posixpath.join(base, ref))
+        return image_geometry.natural_size_bp(
+            sources.get(texsoup_utils.strip_asset_ext(dest))
+        )
+
+    return natural_size
+
+
+def size_figures(
+    bundle: export.StatementBundle, scale: float
+) -> export.StatementBundle:
+    """``bundle`` with every figure given the size MOJ should show it at: its
+    size in the PDF statement, times ``scale`` (``figureScale``).
+
+    MOJ renders the statement as HTML, where an image with no size shows at its
+    pixel size -- a TikZ figure rasterized at 300 DPI at 3.125 times its PDF
+    size, until the column caps it. So each ``\\includegraphics`` is given an
+    explicit size (``texsoup_utils.size_figures``), which pandoc carries as
+    ``{width="..pt"}``. Applied here, on the MOJ bundle only: the same options
+    in a PDF build would scale the figure there too.
+    """
+    body = _natural_sizer(bundle, export.DocumentSlot.body())
+    return dataclasses.replace(
+        bundle,
+        blocks={
+            name: texsoup_utils.size_figures(text, body, scale)
+            for name, text in bundle.blocks.items()
+        },
+        explanations={
+            index: texsoup_utils.size_figures(
+                text,
+                _natural_sizer(bundle, export.DocumentSlot.sample(index)),
+                scale,
+            )
+            for index, text in bundle.explanations.items()
+        },
     )
 
 

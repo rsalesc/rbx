@@ -22,6 +22,7 @@ from rbx.box.fields import (
 )
 from rbx.box.issue_codes import IssuesConfig
 from rbx.box.packaging.cms.extension import CmsExtension
+from rbx.box.packaging.moj.extension import MojStatementExtension
 from rbx.box.statements.expander import expand_contest_statements
 from rbx.box.statements.schema import (
     DOCUMENT_TYPES,
@@ -229,6 +230,12 @@ class ContestExtensions(BaseModel):
         default=None,
         description='CMS contest and task settings. They override the ones in '
         '`env.rbx.yml` field by field.',
+    )
+
+    moj: Optional[MojStatementExtension] = Field(
+        default=None,
+        description='MOJ settings for every problem of the contest. They override '
+        'the ones in `env.rbx.yml`, and a problem can override them in turn.',
     )
 
 
