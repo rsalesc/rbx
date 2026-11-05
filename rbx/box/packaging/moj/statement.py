@@ -36,8 +36,15 @@ from rbx import console
 from rbx.box import naming as box_naming
 from rbx.box import package
 from rbx.box.packaging.moj import naming, statement_assets
+from rbx.box.packaging.moj.statement_diagnostics import (
+    StatementDiagnostics,
+    explanation_block,
+)
 from rbx.box.statements import export
-from rbx.box.statements.markdown_export import check_moj_gate, tex_to_markdown
+from rbx.box.statements.markdown_export import (
+    check_moj_gate,
+    convert_tex_to_markdown,
+)
 from rbx.box.statements.schema import Statement
 from rbx.box.testcase_sample_utils import StatementSample
 
@@ -503,16 +510,41 @@ def moj_layout() -> statement_assets.RasterizingLayout:
     )
 
 
+# The blocks `build_enunciado` ships, in order. Any other block a statement
+# renders (`interaction`, a custom one) has no place in a MOJ document.
+BODY_BLOCKS = ('legend', 'input', 'output', 'notes')
+
+
+def _to_markdown(
+    tex: str,
+    *,
+    block: str,
+    rewrite_image_url: Optional[Callable[[str], str]],
+    diagnostics: Optional[StatementDiagnostics],
+) -> str:
+    """Convert one block's TeX, handing what pandoc dropped to `diagnostics`."""
+    conversion = convert_tex_to_markdown(tex, rewrite_image_url=rewrite_image_url)
+    if diagnostics is not None:
+        diagnostics.add_pandoc(block, conversion.diagnostics)
+    return conversion.markdown.strip()
+
+
 def _convert(
     blocks: Mapping[str, str],
     name: str,
     rewrite_image_url: Optional[Callable[[str], str]] = None,
+    diagnostics: Optional[StatementDiagnostics] = None,
 ) -> str:
     """Convert one block to Markdown and check it against MOJ's gate."""
     content = (blocks.get(name) or '').strip()
     if not content:
         return ''
-    markdown = tex_to_markdown(content, rewrite_image_url=rewrite_image_url).strip()
+    markdown = _to_markdown(
+        content,
+        block=name,
+        rewrite_image_url=rewrite_image_url,
+        diagnostics=diagnostics,
+    )
     check_moj_gate(markdown, block_name=name)
     return markdown
 
@@ -524,6 +556,7 @@ def build_enunciado(
     title: Optional[str] = None,
     docs_root: Optional[pathlib.Path] = None,
     examples: str = '',
+    diagnostics: Optional[StatementDiagnostics] = None,
 ) -> str:
     """Render `docs/enunciado.md` from a bundle's blocks.
 
@@ -539,19 +572,23 @@ def build_enunciado(
     Optional so a caller with no package on disk -- a test converting blocks, a
     statement with no images -- keeps working; without it the references are left
     as the bundle wrote them whatever the switch says.
+
+    `diagnostics`, when given, collects what pandoc dropped from each block.
     """
     del title  # See the docstring: MOJ injects the <h1> from display_title.
 
     headings = _headings(language)
     rewrite = _image_rewriter(docs_root)
-    parts = [_convert(blocks, 'legend', rewrite)]
+    parts = [_convert(blocks, 'legend', rewrite, diagnostics)]
 
     # Emitted unconditionally, empty block or not: these two headings ARE the
     # release gate, grepped out of the raw file by validate-problem.sh.
-    parts.append(f'## {headings["input"]}\n\n{_convert(blocks, "input", rewrite)}')
-    parts.append(f'## {headings["output"]}\n\n{_convert(blocks, "output", rewrite)}')
+    input_md = _convert(blocks, 'input', rewrite, diagnostics)
+    output_md = _convert(blocks, 'output', rewrite, diagnostics)
+    parts.append(f'## {headings["input"]}\n\n{input_md}')
+    parts.append(f'## {headings["output"]}\n\n{output_md}')
 
-    notes = _convert(blocks, 'notes', rewrite)
+    notes = _convert(blocks, 'notes', rewrite, diagnostics)
     if notes:
         parts.append(f'## {headings["notes"]}\n\n{notes}')
 
@@ -598,6 +635,7 @@ def build_examples(
     *,
     language: Optional[str],
     docs_root: Optional[pathlib.Path] = None,
+    diagnostics: Optional[StatementDiagnostics] = None,
 ) -> str:
     """The `## Exemplo` section of a problem whose package sets `SAMPLE=no`.
 
@@ -629,7 +667,12 @@ def build_examples(
                 parts.append(_fenced(sample.outputPath.read_text()))
         explanation = (explanations.get(index) or '').strip()
         if explanation:
-            markdown = tex_to_markdown(explanation, rewrite_image_url=rewrite).strip()
+            markdown = _to_markdown(
+                explanation,
+                block=explanation_block(index),
+                rewrite_image_url=rewrite,
+                diagnostics=diagnostics,
+            )
             check_moj_gate(markdown, block_name=f'explanation for example {index + 1}')
             parts.append(markdown)
     return '\n\n'.join(parts)
@@ -653,6 +696,7 @@ def build_notes(
     explanations: Mapping[int, str],
     *,
     docs_root: Optional[pathlib.Path] = None,
+    diagnostics: Optional[StatementDiagnostics] = None,
 ) -> Dict[str, str]:
     """Render each sample explanation, keyed by the sample's test name.
 
@@ -667,7 +711,12 @@ def build_notes(
         if not content:
             continue
         name = sample_note_name(index)
-        markdown = tex_to_markdown(content, rewrite_image_url=rewrite).strip()
+        markdown = _to_markdown(
+            content,
+            block=explanation_block(index),
+            rewrite_image_url=rewrite,
+            diagnostics=diagnostics,
+        )
         check_moj_gate(markdown, block_name=f'explanation for {name}')
         notes[name] = markdown + '\n'
     return notes

@@ -146,6 +146,54 @@ A few things to keep in mind:
   externalization produces) is rasterized to PNG for you. That needs `pdftoppm`, from poppler; a
   statement with PDF figures and no poppler installed refuses to package, naming the figures.
 
+### Checking what the conversion loses
+
+MOJ's converter, pandoc, understands less TeX than pdfLaTeX does. When it meets a command it
+doesn't know, it drops it, and that part of your statement silently disappears from the
+Markdown.
+
+{{rbx}} fills in the most common gaps itself. Before pandoc runs, it translates a table of text
+symbols and spacing commands into the characters they print: `\textbar` becomes `|`, `\quad`
+an em space, `\textrightarrow` an arrow, and `\hspace{2em}` two em spaces. It also drops
+vertical spacing such as `\vspace` and `\medskip` on purpose, since flowing Markdown has nothing
+to show for it.
+
+For the rest, {{rbx}} checks each block of your statement against the TeX it can convert:
+the [subset Polygon supports](https://polygon.codeforces.com/docs/statements-tex-manual),
+plus the symbols in that table and the ones pandoc converts on its own. It warns you, while it
+packages, about every command outside that set:
+
+```text
+The en (default) statement uses TeX that MOJ may not show:
+  Block legend:
+    - \fbox{boxed}: dropped by pandoc, missing from the package
+  Block output:
+    - \section at 3:5: outside what the MOJ statement converter supports
+Rewrite them, define a macro for them, or ask for a translation in rbx
+(`rbx/box/statements/processing/text_symbols.py`).
+```
+
+The header gives the statement's language and variant, which is `default` when it declares
+none. A command pandoc **dropped** isn't in the package at all. Any other command is still there, but it may come out wrong, so {{rbx}}
+gives its line and column within the block.
+
+Each block is one of `legend`, `input`, `output` and `notes`, or `explanation_<i>` for the
+explanation of sample `i`, counting from 0. To clear a warning, rewrite the command, or define a
+macro for it in terms of supported commands. For a plain symbol, you can also ask us to add it
+to {{rbx}}'s translation table.
+
+The warnings don't stop packaging. To make them fail the build instead, pass
+`--strict-statement`, or turn it on for every build in your `env.rbx.yml`:
+
+```yaml title="env.rbx.yml"
+extensions:
+  moj:
+    strictStatement: true
+```
+
+In strict mode, {{rbx}} stops before it builds the package, so `--upload` never sends a
+statement with missing content. We recommend it in CI.
+
 ### Choosing the main statement
 
 You can put a different statement in the main slot with the `-l` or `--language` flag, passing
