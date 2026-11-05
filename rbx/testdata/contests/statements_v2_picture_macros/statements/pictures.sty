@@ -1,0 +1,9 @@
+% Picture macros rbx must not expand before externalizing (review of #1006).
+\RequirePackage{tikz}
+% A body naming an @ macro: a block cannot spell it.
+\def\pic@text#1{\textbf{#1}}
+\newcommand{\pkgbutton}[1]{\tikz[baseline=(c.base)]{\node[draw] (c) {\pic@text{#1}};}}
+% A string table picked at run time (#1007): statically, the last one wins.
+\newcommand{\pictures@en}{\def\strButton{\tikz{\node {Send};}}}
+\newcommand{\pictures@es}{\def\strButton{\tikz{\node {Enviar};}}}
+\csname pictures@en\endcsname

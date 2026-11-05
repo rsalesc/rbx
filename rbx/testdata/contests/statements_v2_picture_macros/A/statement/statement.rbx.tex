@@ -1,0 +1,21 @@
+%- block defs
+\newcommand{\button}[1]{\tikz[baseline=(c.base)]{\node[draw] (c) {#1};}}
+\newcommand{\badge} % the body is on the next line
+{\begin{tikzpicture}\draw (0,0) rectangle (1,1);\end{tikzpicture}}
+%- endblock
+%- block legend
+Press \button{Thanks!} to thank, or \button{Bye} to leave.
+
+\badge
+
+\begin{center}
+\badge
+\end{center}
+Rated \ratingstar.
+%- endblock
+%- block input
+A single integer $n$.
+%- endblock
+%- block output
+Print $n$.
+%- endblock

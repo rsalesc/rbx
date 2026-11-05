@@ -1,0 +1,14 @@
+---
+name: 'sv2pics'
+titles:
+  en: 'Statements v2 Picture Macros Contest'
+problems:
+  - short_name: 'A'
+  - short_name: 'B'
+statements:
+  - name: 'main-en'
+    language: 'en'
+    file: 'statements/contest.rbx.tex'
+    type: 'rbxTeX'
+    standaloneProblemTemplate: 'statements/problem-standalone.rbx.tex'
+    contestProblemTemplate: 'statements/problem-in-contest.rbx.tex'

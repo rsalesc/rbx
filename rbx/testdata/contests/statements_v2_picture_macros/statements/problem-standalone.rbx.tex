@@ -1,0 +1,26 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage{import}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage{pictures}
+% A picture macro the template provides (#1006).
+\newcommand{\ratingstar}{\tikz{\fill (0,0) circle (2pt);}}
+\begin{document}
+
+\section*{\VAR{problem.title | escape}}
+
+\begingroup
+%- if problem.blocks.defs is defined
+\VAR{problem.blocks.defs}
+%- endif
+
+\VAR{problem.blocks.legend}
+
+\subsection*{Input}
+\VAR{problem.blocks.input}
+
+\subsection*{Output}
+\VAR{problem.blocks.output}
+\endgroup
+
+\end{document}

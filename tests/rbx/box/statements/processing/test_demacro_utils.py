@@ -1,11 +1,13 @@
 import pathlib
 
-from rbx.box.statements.demacro_utils import (
+from rbx.box.statements.processing.demacro_utils import (
     MacroDef,
     MacroDefinitions,
     collect_macro_definitions,
+    collect_macro_definitions_from_text,
     expand_macros,
     extract_definitions,
+    select_picture_macros,
 )
 
 
@@ -568,3 +570,195 @@ def test_collect_from_default_icpc_preset_does_not_crash():
     defs = collect_macro_definitions(sty)
     # icpc.sty defines several macros via \newcommand; make sure we still see them.
     assert 'insereArquivo' in defs
+
+
+# ---------------------------------------------------------------------------
+# Reading definitions the way TeX does (#1006, #1007)
+# ---------------------------------------------------------------------------
+
+
+def _summary(defs: MacroDefinitions):
+    return {
+        name: (defs.get(name).n_args, defs.get(name).default, defs.get(name).body)
+        for name in defs
+    }
+
+
+def test_extract_steps_over_a_comment_between_name_and_body():
+    # The `\thanksButton` of #1006: valid LaTeX that TexSoup reads as a
+    # `\newcommand` with no body.
+    tex = (
+        r'\newcommand{\thanksButton} % this is just for text' + '\n'
+        r'{\tikz{\node {Thanks!};}}'
+    )
+    assert _summary(extract_definitions(tex)) == {
+        'thanksButton': (0, None, r'\tikz{\node {Thanks!};}')
+    }
+
+
+def test_extract_reads_spaced_optional_arguments():
+    tex = r'\newcommand{\x}[1] [d] {b #1}'
+    assert _summary(extract_definitions(tex)) == {'x': (1, 'd', 'b #1')}
+
+
+def test_extract_keeps_at_in_names():
+    tex = r'\newcommand{\icpcstrings@en}{E}\def\foo@bar{x}\newcommand\plain{p}'
+    assert _summary(extract_definitions(tex)) == {
+        'icpcstrings@en': (0, None, 'E'),
+        'foo@bar': (0, None, 'x'),
+        'plain': (0, None, 'p'),
+    }
+
+
+def test_extract_def_counts_parameters():
+    tex = r'\def\pair#1#2{(#1, #2)}'
+    assert _summary(extract_definitions(tex)) == {'pair': (2, None, '(#1, #2)')}
+
+
+def test_extract_ignores_comments_and_verbatim():
+    tex = '% \\newcommand{\\a}{A}\n\\verb|\\def\\b{B}|\n\\newcommand{\\c}{C}'
+    assert _summary(extract_definitions(tex)) == {'c': (0, None, 'C')}
+
+
+def test_nested_definitions_are_undoubled_and_scoped():
+    tex = r'\newcommand{\outer}{\def\inner##1{[##1]}}'
+    defs = extract_definitions(tex, 'x.sty')
+    assert _summary(defs) == {
+        'outer': (0, None, r'\def\inner##1{[##1]}'),
+        'inner': (1, None, '[#1]'),
+    }
+    assert defs.nested_in('inner') == 'outer'
+    assert defs.nested_in('outer') is None
+
+
+def test_definitions_in_different_scopes_conflict():
+    # The icpclang.sty shape of #1007: one table per language, each `\def`ing
+    # the same string; statically the last one wins.
+    tex = (
+        r'\newcommand{\strings@en}{\def\line{Output a line }}'
+        r'\newcommand{\strings@es}{\def\line{Imprima una línea }}'
+    )
+    defs = extract_definitions(tex, 'icpclang.sty')
+    assert defs.get('line').body == 'Imprima una línea '
+    assert defs.nested_in('line') == 'strings@es'
+    assert [c.body for c in defs.conflicts('line')] == ['Output a line ']
+
+
+def test_redefinition_in_the_same_scope_is_not_a_conflict():
+    tex = r'\newcommand{\foo}{old}\renewcommand{\foo}{new}'
+    defs = extract_definitions(tex, 'a.tex')
+    assert defs.get('foo').body == 'new'
+    assert defs.conflicts('foo') == []
+
+
+def test_definitions_in_package_option_code_are_scoped():
+    tex = r'\DeclareOption{pt}{\def\lang{pt}}\DeclareOption*{\def\other{x}}'
+    defs = extract_definitions(tex, 'p.sty')
+    assert defs.nested_in('lang') == 'DeclareOption{pt}'
+    assert defs.nested_in('other') == 'DeclareOption*'
+
+
+def test_cross_file_redefinitions_conflict_after_merge(tmp_path: pathlib.Path):
+    (tmp_path / 'pkg.sty').write_text(r'\newcommand{\word}{package}')
+    (tmp_path / 'main.tex').write_text(
+        r'\usepackage{pkg}' + '\n' + r'\renewcommand{\word}{document}'
+    )
+    defs = collect_macro_definitions(tmp_path / 'main.tex')
+    # Document order: the package is loaded first, so the document's wins.
+    assert defs.get('word').body == 'document'
+    assert [c.body for c in defs.conflicts('word')] == ['package']
+
+
+def test_collect_from_text_resolves_inputs_against_base_dir(tmp_path: pathlib.Path):
+    (tmp_path / 'assets').mkdir()
+    (tmp_path / 'assets' / 'helpers.tex').write_text(r'\newcommand{\helper}{H}')
+    defs = collect_macro_definitions_from_text(
+        r'\input{assets/helpers.tex}\newcommand{\own}{O}', base_dir=tmp_path
+    )
+    assert _summary(defs) == {'helper': (0, None, 'H'), 'own': (0, None, 'O')}
+
+
+def test_select_picture_macros_follows_calls():
+    defs = extract_definitions(
+        r'\newcommand{\button}[1]{\tikz{\node {#1};}}'
+        r'\newcommand{\badge}{\begin{tikzpicture}\draw (0,0);\end{tikzpicture}}'
+        r'\newcommand{\twice}{\button{a}\button{b}}'
+        r'\newcommand{\tree}{\node {x};}'
+        r'\newcommand{\style}{\tikzset{a/.style={}}}'
+    )
+    assert sorted(select_picture_macros(defs)) == ['badge', 'button', 'twice']
+
+
+def test_expand_consumes_exactly_the_arguments_the_macro_takes():
+    defs = extract_definitions(r'\newcommand{\one}[1]{<#1>}\newcommand{\zero}{Z}')
+    assert expand_macros(r'\one{a}{b} \zero{c} \one x', defs) == '<a>{b} Z{c} <x>'
+
+
+def test_expand_undoubles_nested_parameters():
+    defs = extract_definitions(r'\newcommand{\mk}{\def\inner##1{[##1]}}')
+    assert expand_macros(r'\mk', defs) == r'\def\inner#1{[#1]}'
+
+
+def test_expand_leaves_definitions_alone():
+    defs = extract_definitions(r'\newcommand{\a}{A}')
+    tex = r'\newcommand{\b}{\a} \a'
+    assert expand_macros(tex, defs) == r'\newcommand{\b}{\a} A'
+
+
+def test_expand_handles_escaped_dollars():
+    # TexSoup cannot parse `\$`; expansion used to give up on the whole block.
+    defs = extract_definitions(r'\newcommand{\price}{5}')
+    assert expand_macros(r'Costs \$\price.', defs) == r'Costs \$5.'
+
+
+def test_escaped_hash_is_not_a_parameter():
+    # Review finding 6: `\#` is a literal `#`, never `#1`'s parameter character.
+    defs = extract_definitions(
+        r'\newcommand{\issue}[1]{Issue \##1}'
+        r'\newcommand{\outer}{\def\inner##1{\#\###1}}'
+        r'\def\lit\#{x}'
+    )
+    assert expand_macros(r'\issue{3}', defs) == r'Issue \#3'
+    assert defs.get('inner').body == r'\#\##1'
+    assert defs.get('inner').n_args == 1
+    assert defs.get('lit').n_args == 0
+
+
+def test_expand_skips_verbatim_and_let():
+    # Review findings 8 and 9: `\verb|\foo|` shows the name, and `\let\old\foo`
+    # names `\foo` (and `\old`) without calling it.
+    defs = extract_definitions(r'\newcommand{\foo}{FOO}\newcommand{\old}{OLD}')
+    tex = (
+        r'\verb|\foo| \foo '
+        r'\begin{verbatim}\foo\end{verbatim} '
+        r'\let\old\foo \let\foo=\relax \let \old \foo'
+    )
+    assert expand_macros(tex, defs) == tex.replace(r'| \foo ', '| FOO ')
+
+
+def test_expandable_picture_macros_leaves_out_unsafe_ones():
+    from rbx.box.statements.processing.demacro_utils import (
+        count_definitions,
+        expandable_picture_macros,
+    )
+
+    tex = (
+        r'\newcommand{\ok}[1]{\tikz{\node {#1};}}'
+        r'\newcommand{\via}{\ok{a}}'
+        r'\def\pic@text#1{#1}\newcommand{\at}{\tikz{\node {\pic@text{x}};}}'
+        r'\newcommand{\t@en}{\def\str{\tikz{\node {Send};}}}'
+        r'\newcommand{\twice}{\tikz{\fill (0,0) circle (1pt);}}'
+        r'\renewcommand{\twice}{\tikz{\fill (0,0) circle (2pt);}}'
+        r'\newcommand{\usesat}{\at}'
+    )
+    defs = extract_definitions(tex, 'p.sty')
+    redefined = [n for n, c in count_definitions(tex).items() if c > 1]
+    expandable, reasons = expandable_picture_macros(defs, redefined)
+    assert sorted(expandable) == ['ok', 'via']
+    assert reasons == {
+        'at': 'its body uses a macro with @ in its name',
+        'str': r'defined inside \t@en',
+        't@en': r'it draws through \str',
+        'twice': 'defined more than once',
+        'usesat': r'it draws through \at',
+    }

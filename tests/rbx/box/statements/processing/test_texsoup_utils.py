@@ -1,6 +1,8 @@
+import pytest
 from TexSoup import TexSoup
 
-from rbx.box.statements.texsoup_utils import (
+from rbx.box.statements.processing import texsoup_utils
+from rbx.box.statements.processing.texsoup_utils import (
     add_labels_to_tikz_nodes,
     get_tikz_node_label,
     get_top_level_labeled_tikz_nodes,
@@ -256,12 +258,14 @@ A
 
 
 def test_add_labels_and_replace():
-    from rbx.box.statements.texsoup_utils import replace_labeled_tikz_nodes
+    from rbx.box.statements.processing.texsoup_utils import replace_labeled_tikz_nodes
 
     latex = r"""\begin{tikzpicture}
 A
 \end{tikzpicture}
+
 Text
+
 \begin{tikzpicture}
 B
 \end{tikzpicture}"""
@@ -287,12 +291,13 @@ B
 
 
 def test_add_labels_and_replace_mixed():
-    from rbx.box.statements.texsoup_utils import replace_labeled_tikz_nodes
+    from rbx.box.statements.processing.texsoup_utils import replace_labeled_tikz_nodes
 
     latex = r"""\tikzsetnextfilename{manual}
 \begin{tikzpicture}
 Manual
 \end{tikzpicture}
+
 \begin{tikzpicture}
 Auto
 \end{tikzpicture}"""
@@ -319,7 +324,7 @@ Auto
 
 
 def test_add_labels_and_replace_no_center():
-    from rbx.box.statements.texsoup_utils import replace_labeled_tikz_nodes
+    from rbx.box.statements.processing.texsoup_utils import replace_labeled_tikz_nodes
 
     latex = r"""\begin{tikzpicture}
 A
@@ -406,3 +411,191 @@ def test_rewrite_includegraphics_empty_remap_is_identity():
     # no-round-trip guarantee for callers with nothing to rewrite.
     block = r'\includegraphics{pic}'
     assert rewrite_includegraphics(block, {}) is block
+
+
+# ---------------------------------------------------------------------------
+# Figures in running text vs. displays (#1006, option B)
+# ---------------------------------------------------------------------------
+
+FIG = 'artifacts/tikz_figures/'
+PIC = r'\begin{tikzpicture}P\end{tikzpicture}'
+
+
+def _substituted(text: str) -> str:
+    return texsoup_utils.substitute_labeled_tikz_pictures(
+        texsoup_utils.label_tikz_pictures(
+            texsoup_utils.normalize_tikz_commands(text), prefix='b'
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    'text, expected',
+    [
+        # In running text: a bare figure, no paragraph break.
+        (f'Press {PIC}, now.', rf'Press \includegraphics{{{FIG}b_0}}, now.'),
+        (
+            f'one button:\n{PIC}.\nAfter',
+            f'one button:\n\\includegraphics{{{FIG}b_0}}.\nAfter',
+        ),
+        # A display gets a center of its own...
+        (
+            f'Text.\n\n{PIC}\n\nMore',
+            f'Text.\n\n\\begin{{center}}\\includegraphics{{{FIG}b_0}}'
+            '\\end{center}\n\nMore',
+        ),
+        # ... unless it already is in one: no `:::: center` / `::: center`.
+        (
+            f'We include it.\n\\begin{{center}}\n{PIC}\n\\end{{center}}\nOf course',
+            f'We include it.\n\\begin{{center}}\n\\includegraphics{{{FIG}b_0}}\n'
+            '\\end{center}\nOf course',
+        ),
+        # Text next to it inside a center is still running text.
+        (
+            f'\\begin{{center}}Press {PIC} here\\end{{center}}',
+            f'\\begin{{center}}Press \\includegraphics{{{FIG}b_0}} here\\end{{center}}',
+        ),
+        # Comments are not content, and a comment line is not a blank line.
+        (
+            f'Text. % c\n\n% only a comment\n{PIC}% x\n\nNext',
+            f'Text. % c\n\n% only a comment\n\\begin{{center}}'
+            f'\\includegraphics{{{FIG}b_0}}\\end{{center}}% x\n\nNext',
+        ),
+        (f'Text\n% c\n{PIC}', f'Text\n% c\n\\includegraphics{{{FIG}b_0}}'),
+        # Through groups and arguments, to the paragraph around them.
+        (
+            f'a\n\n{{\\small {PIC}}}\n\nb',
+            f'a\n\n{{\\small \\begin{{center}}\\includegraphics{{{FIG}b_0}}'
+            '\\end{center}}\n\nb',
+        ),
+        (
+            f'see \\textbf{{{PIC}}} ok',
+            f'see \\textbf{{\\includegraphics{{{FIG}b_0}}}} ok',
+        ),
+        # A table cell is running text: a center there would not even compile.
+        (
+            f'\\begin{{tabular}}{{cc}}{PIC} & x\\end{{tabular}}',
+            f'\\begin{{tabular}}{{cc}}\\includegraphics{{{FIG}b_0}} & x\\end{{tabular}}',
+        ),
+        # A caption is a paragraph of its own, and `figure` + `\centering`
+        # already center: no second center (review finding 7).
+        (
+            f'\\begin{{figure}}\\centering\n{PIC}\n\\caption{{c}}\\end{{figure}}',
+            f'\\begin{{figure}}\\centering\n\\includegraphics{{{FIG}b_0}}\n'
+            '\\caption{c}\\end{figure}',
+        ),
+        (
+            f'{{\\centering {PIC}\n\n}}',
+            f'{{\\centering \\includegraphics{{{FIG}b_0}}\n\n}}',
+        ),
+        (
+            f'\\begin{{minipage}}{{3cm}}{PIC}\\end{{minipage}}',
+            f'\\begin{{minipage}}{{3cm}}\\includegraphics{{{FIG}b_0}}\\end{{minipage}}',
+        ),
+        # A command's argument or an item's text: never a center there.
+        (
+            f'\\centerline{{{PIC}}}',
+            f'\\centerline{{\\includegraphics{{{FIG}b_0}}}}',
+        ),
+        (
+            f'\\begin{{itemize}}\\item {PIC}\n\\item x\\end{{itemize}}',
+            f'\\begin{{itemize}}\\item \\includegraphics{{{FIG}b_0}}\n'
+            '\\item x\\end{itemize}',
+        ),
+        # Groups that are not plain text next to a figure (review finding 1:
+        # TexSoup's `.string` asserted on them).
+        (f'First {PIC}{{}} red.', f'First \\includegraphics{{{FIG}b_0}}{{}} red.'),
+        (
+            f'Text.\n\n{PIC}{{}}\n\nMore',
+            f'Text.\n\n\\begin{{center}}\\includegraphics{{{FIG}b_0}}'
+            '\\end{center}{}\n\nMore',
+        ),
+        (f'{PIC} {{\\bf x}}', f'\\includegraphics{{{FIG}b_0}} {{\\bf x}}'),
+        # `\tikz{...}` and `\tikz ...;` are pictures too.
+        (
+            r'Press \tikz[baseline=(c.base)]{\node (c) {T};}, now.',
+            rf'Press \includegraphics{{{FIG}b_0}}, now.',
+        ),
+        (
+            r'A line \tikz \draw (0,0) -- (1,0); here.',
+            rf'A line \includegraphics{{{FIG}b_0}} here.',
+        ),
+    ],
+)
+def test_substitution_keeps_each_figure_where_it_was(text, expected):
+    assert _substituted(text) == expected
+
+
+def test_labeling_is_a_splice_not_a_round_trip():
+    # A TexSoup round trip prints `\def\foo#1{x}` as `\def\foo{#1}{x}`, which
+    # TeX reads as something else; nothing outside the pictures may change.
+    text = '\\def\\foo#1{x #1}\nCost \\$5: ' + PIC + ' % done\n'
+    labeled = texsoup_utils.label_tikz_pictures(text, prefix='legend')
+    assert labeled == text.replace(PIC, r'\tikzsetnextfilename{legend_0}' + PIC)
+    assert texsoup_utils.substitute_labeled_tikz_pictures(labeled) == (
+        text.replace(PIC, rf'\includegraphics{{{FIG}legend_0}}')
+    )
+    # Nothing to label: the very same text.
+    assert texsoup_utils.label_tikz_pictures('\\def\\foo#1{x}', 'x') == (
+        '\\def\\foo#1{x}'
+    )
+
+
+def test_pictures_inside_definitions_are_not_labeled():
+    text = (
+        '\\newcommand{\\a}{' + PIC + '}\n'
+        # TexSoup leaves this body outside the command; the text scan does not.
+        '\\newcommand{\\b} % note\n{' + PIC + '}\n'
+        '\\def\\c{\\tikz{\\draw (0,0);}}\n'
+    )
+    normalized = texsoup_utils.normalize_tikz_commands(text)
+    assert texsoup_utils.label_tikz_pictures(normalized, 'defs') == normalized
+    assert not texsoup_utils.draws_tikz_pictures(text)
+    assert texsoup_utils.draws_tikz_pictures(text + '\\tikz{\\draw (0,0);}')
+
+
+def test_normalize_tikz_commands_leaves_lookalikes_and_verbatim_alone():
+    text = (
+        r'\tikzset{a/.style={}} \tikzstyle{b}=[] \verb|\tikz{x}| '
+        '% \\tikz{y}\n'
+        r'\tikz[s]{\node {\tikz \draw (0,0);};}'
+    )
+    assert texsoup_utils.normalize_tikz_commands(text) == (
+        r'\tikzset{a/.style={}} \tikzstyle{b}=[] \verb|\tikz{x}| '
+        '% \\tikz{y}\n'
+        r'\begin{tikzpicture}[s]\node {\begin{tikzpicture}\draw (0,0);'
+        r'\end{tikzpicture}};\end{tikzpicture}'
+    )
+
+
+def test_size_inline_figures_only_touches_running_text():
+    text = (
+        f'Press \\includegraphics{{{FIG}a}} now.\n\n'
+        f'\\begin{{center}}\\includegraphics{{{FIG}b}}\\end{{center}}\n'
+        f'And \\includegraphics[width=1cm]{{{FIG}c}}, '
+        r'\includegraphics{img/photo} '
+        f'and \\includegraphics{{{FIG}unknown}}.'
+    )
+    heights = {f'{FIG}a': 14.00432, f'{FIG}b': 99.0, f'{FIG}c': 5.0}
+    assert texsoup_utils.size_inline_figures(text, heights.get) == text.replace(
+        f'\\includegraphics{{{FIG}a}}', f'\\includegraphics[height=14pt]{{{FIG}a}}'
+    )
+
+
+def test_inject_in_preamble_text_changes_nothing_else():
+    text = '% lead\n\\documentclass[a4paper]{article}\\def\\x#1{#1}\n\\begin{document}'
+    assert texsoup_utils.inject_in_preamble_text(text, '\\usepackage{foo}') == (
+        '% lead\n\\documentclass[a4paper]{article}\n\\usepackage{foo}\n'
+        '\\def\\x#1{#1}\n\\begin{document}'
+    )
+    assert texsoup_utils.inject_in_preamble_text('body', 'X') == 'X\nbody'
+
+
+def test_size_inline_figures_survives_non_text_groups():
+    # Review finding 1: `{}` and `\includegraphics{\foo}` used to assert.
+    text = f'First \\includegraphics{{{FIG}a}}{{}} red, \\includegraphics{{\\foo}}.'
+    assert texsoup_utils.size_inline_figures(text, lambda ref: 10.0) == (
+        text.replace(
+            f'\\includegraphics{{{FIG}a}}', f'\\includegraphics[height=10pt]{{{FIG}a}}'
+        )
+    )

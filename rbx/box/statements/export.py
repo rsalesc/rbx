@@ -30,16 +30,22 @@ import shutil
 import tempfile
 from typing import Dict, Iterable, List, Literal, Optional, Protocol, Set
 
-from rbx import utils
-from rbx.box.statements import demacro_utils, polygon_utils, sample_staging
+from rbx import console, utils
+from rbx.box.statements import polygon_utils, sample_staging
 from rbx.box.statements.build_statements import (
     get_produced_tikz_pdfs,
     get_statement_dir,
 )
-from rbx.box.statements.demacro_utils import MacroDefinitions
+from rbx.box.statements.processing import demacro_utils, pdf_geometry
+from rbx.box.statements.processing.demacro_utils import MacroDefinitions
+from rbx.box.statements.processing.texsoup_utils import (
+    ASSET_EXTS,
+    draws_tikz_pictures,
+    rewrite_includegraphics,
+    size_inline_figures,
+)
 from rbx.box.statements.render import StatementBlocks
 from rbx.box.statements.schema import Statement, StatementType
-from rbx.box.statements.texsoup_utils import ASSET_EXTS, rewrite_includegraphics
 
 
 class StatementExportError(ValueError):
@@ -80,7 +86,46 @@ def get_substituted_statement_blocks(statement: Statement) -> StatementBlocks:
     statement_blocks = utils.model_from_yaml(
         StatementBlocks, substituted_blocks_path.read_text()
     )
+
+    # Figures in running text get their natural height, which only exists now
+    # that the build has compiled them (see `size_inline_figures`).
+    def figure_height(ref: str) -> Optional[float]:
+        return pdf_geometry.page_height_bp(statement_dir / f'{ref}.pdf')
+
+    statement_blocks.blocks = {
+        name: size_inline_figures(text, figure_height)
+        for name, text in statement_blocks.blocks.items()
+    }
+    statement_blocks.explanations = {
+        index: size_inline_figures(text, figure_height)
+        for index, text in statement_blocks.explanations.items()
+    }
     return statement_blocks
+
+
+def _document_name(key: object) -> str:
+    if isinstance(key, int):
+        return f'explanation of sample {key + 1}'
+    return f'{key} block'
+
+
+def _warn_raw_pictures(statement: Statement, blocks: StatementBlocks) -> None:
+    """Name every block still holding TikZ after externalization and macro
+    expansion. No export target can draw it -- pandoc drops it from MOJ's
+    Markdown, and Polygon does not render TikZ -- so it would vanish without a
+    word (#1006)."""
+    documents: Dict[object, str] = {**blocks.blocks, **blocks.explanations}
+    for key, text in documents.items():
+        if key == 'defs' or not draws_tikz_pictures(text):
+            continue
+        console.console.print(
+            f'[warning]The {_document_name(key)} of statement '
+            f'[item]{statement.language}[/item] still has a TikZ picture after '
+            'externalization; no export target can show it, so it will be '
+            'missing from the exported statement. Draw it where it is used, or '
+            'from a macro defined in the [item]defs[/item] block or the '
+            'template.[/warning]'
+        )
 
 
 def get_processed_statement_blocks(
@@ -132,6 +177,7 @@ def get_processed_statement_blocks(
         explanation_index: demacro_utils.expand_macros(explanation, macros)
         for explanation_index, explanation in statement_blocks.explanations.items()
     }
+    _warn_raw_pictures(statement, statement_blocks)
 
     if normalize:
         # For last, try to convert to Polygon TeX.

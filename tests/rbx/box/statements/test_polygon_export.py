@@ -4,13 +4,13 @@ import pytest
 
 from rbx.box import cd, package, package_utils
 from rbx.box.statements import build_statements
+from rbx.box.statements.processing.texsoup_utils import EXTERNALIZATION_DIR
 from rbx.box.statements.schema import (
     ConversionType,
     StatementType,
     TexToPDF,
     rbxToTeX,
 )
-from rbx.box.statements.texsoup_utils import EXTERNALIZATION_DIR
 
 
 def _externalize_params():
@@ -78,7 +78,7 @@ async def test_get_processed_statement_blocks_reads_overlay(cleandir_with_testda
 @pytest.mark.test_pkg('contests/statements_v2_polygon')
 async def test_processed_blocks_expand_macros_when_present(cleandir_with_testdata):
     from rbx.box.statements import export as sbu
-    from rbx.box.statements.demacro_utils import MacroDefinitions
+    from rbx.box.statements.processing.demacro_utils import MacroDefinitions
 
     with cd.new_package_cd(pathlib.Path('A')):
         package_utils.clear_package_cache()
@@ -141,7 +141,7 @@ async def test_processed_blocks_skip_polygon_conversion_when_not_normalizing(
     cleandir_with_testdata,
 ):
     from rbx.box.statements import export
-    from rbx.box.statements.demacro_utils import MacroDefinitions
+    from rbx.box.statements.processing.demacro_utils import MacroDefinitions
 
     with cd.new_package_cd(pathlib.Path('A')):
         package_utils.clear_package_cache()
@@ -178,7 +178,7 @@ async def test_processed_blocks_dump_survives_a_non_normalizing_call(
     cleandir_with_testdata,
 ):
     from rbx.box.statements import export
-    from rbx.box.statements.demacro_utils import MacroDefinitions
+    from rbx.box.statements.processing.demacro_utils import MacroDefinitions
 
     with cd.new_package_cd(pathlib.Path('A')):
         package_utils.clear_package_cache()

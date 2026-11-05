@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar
 from pydantic import BaseModel, Field
 
 from rbx import console, tooling
-from rbx.box.statements import overlay, sourcemap, texsoup_utils
+from rbx.box.statements import overlay, sourcemap
 from rbx.box.statements.context import (
     ContestRenderContext,
     ProblemRenderContext,
@@ -33,7 +33,6 @@ from rbx.box.statements.context import (
     contest_jinja_kwargs,
     problem_jinja_kwargs,
 )
-from rbx.box.statements.demacro_utils import collect_macro_definitions
 from rbx.box.statements.latex_jinja import (
     FilterTarget,
     JinjaSyntax,
@@ -42,6 +41,8 @@ from rbx.box.statements.latex_jinja import (
     render_latex_template_blocks,
     render_markdown_template_blocks,
 )
+from rbx.box.statements.processing import demacro_utils, macro_meaning, texsoup_utils
+from rbx.box.statements.processing.demacro_utils import MacroDefinitions
 
 Mode = Literal['latex', 'markdown']
 
@@ -151,24 +152,54 @@ VarBlock = TypeVar('VarBlock')
 
 def externalize_blocks(blocks: Dict[VarBlock, str]) -> Dict[VarBlock, str]:
     """Label each block's TikZ pictures so ``\\tikzexternalize`` emits one PDF per
-    figure (forced on by the Polygon export path)."""
-    res = {}
-    for key in blocks:
-        tex_node = texsoup_utils.parse_latex(blocks[key])
-        texsoup_utils.add_labels_to_tikz_nodes(tex_node, prefix=str(key))
-        res[key] = str(tex_node)
-    return res
+    figure (forced on by the Polygon export path).
+
+    ``\\tikz{...}`` is rewritten as the ``tikzpicture`` it stands for first, so
+    it is labeled too. The labels are spliced into the text, which is otherwise
+    left exactly as written."""
+    return {
+        key: texsoup_utils.label_tikz_pictures(
+            texsoup_utils.normalize_tikz_commands(value), prefix=str(key)
+        )
+        for key, value in blocks.items()
+    }
 
 
 def substitute_externalized_blocks(blocks: Dict[Any, str]) -> Dict[Any, str]:
     """Replace each block's labeled TikZ pictures with ``\\includegraphics`` of the
-    externalized PDF — the inverse of :func:`externalize_blocks`."""
-    res = {}
-    for key in blocks:
-        tex_node = texsoup_utils.parse_latex(blocks[key])
-        texsoup_utils.replace_labeled_tikz_nodes(tex_node)
-        res[key] = str(tex_node)
-    return res
+    externalized PDF — the inverse of :func:`externalize_blocks`. Each figure
+    keeps its place: inline in running text, centered when it is a display
+    (see ``texsoup_utils.figure_placement``)."""
+    return {
+        key: texsoup_utils.substitute_labeled_tikz_pictures(value)
+        for key, value in blocks.items()
+    }
+
+
+def expand_picture_macros(
+    blocks: Dict[VarBlock, str], macros: MacroDefinitions
+) -> Dict[VarBlock, str]:
+    """Expand, in every block but ``defs``, the uses of the ``macros`` that draw
+    a TikZ picture (#1006).
+
+    Labeling reads a block's own text, so a picture drawn by a macro --
+    ``\\newcommand{\\button}{\\tikz{...}}`` used as ``press \\button`` -- would
+    never get a label: TikZ would externalize it under a name nothing
+    references, and the export would expand the macro back into raw TikZ that
+    no target can show. Expanded first, every use is a picture of its own, with
+    its arguments in place, and gets its own label.
+
+    ``defs`` is left alone: it holds the definitions themselves. Expanding a use
+    of a picture macro written in another definition's body would change what
+    that definition says, so uses inside definitions are left alone everywhere.
+    """
+    pictures = demacro_utils.select_picture_macros(macros)
+    if not len(pictures):
+        return dict(blocks)
+    return {
+        key: value if key == 'defs' else demacro_utils.expand_macros(value, pictures)
+        for key, value in blocks.items()
+    }
 
 
 def extract_blocks(
@@ -269,10 +300,23 @@ def compile_pdf(
 
     input_str = tex.decode()
     if externalize:
-        tex_node = texsoup_utils.parse_latex(input_str)
-        texsoup_utils.inject_externalization_for_tikz(tex_node)
+        input_str = texsoup_utils.inject_in_preamble_text(
+            input_str, texsoup_utils.EXTERNALIZATION_PREAMBLE
+        )
         (root / texsoup_utils.EXTERNALIZATION_DIR).mkdir(exist_ok=True, parents=True)
-        input_str = str(tex_node)
+
+    # Demacro: the static pass names the macros, and TeX itself reports what
+    # each one meant in this compile (#1007, `macro_meaning`). Collected before
+    # the hook goes in, so the hook's own helpers are not among them.
+    static_macros: Optional[MacroDefinitions] = None
+    document = ''
+    if demacro:
+        document = sourcemap.strip(input_str)
+        static_macros = demacro_utils.collect_macro_definitions_from_text(
+            document, base_dir=root, source_file=root / 'statement.tex'
+        )
+        (root / macro_meaning.DUMP_FILE).unlink(missing_ok=True)
+        input_str = macro_meaning.inject_dump_hook(input_str, static_macros)
 
     # Tag-free, and remembered: pdflatex reports its errors against this file.
     input_str = sourcemap.emit(root / 'statement.tex', input_str)
@@ -311,8 +355,15 @@ def compile_pdf(
         console.console.print('[error]PdfLaTeX compilation failed.[/error]')
         raise LatexCompilationError(parse_errors(logs), logs, root)
 
-    if demacro:
-        macro_defs = collect_macro_definitions(root / 'statement.tex')
+    if static_macros is not None:
+        macro_defs = macro_meaning.resolve(
+            static_macros,
+            macro_meaning.read_dump(root / macro_meaning.DUMP_FILE),
+            document=document,
+            body=macro_meaning.body_definitions(
+                document, root, source_file=root / 'statement.tex'
+            ),
+        )
         macro_defs.to_json_file(root / 'macros.json')
 
     return typing.cast(bytes, pdf)

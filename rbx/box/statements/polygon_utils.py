@@ -4,7 +4,7 @@ from typing import List, NamedTuple, Optional, Set, Tuple
 from TexSoup.data import BracketGroup, TexCmd, TexNamedEnv, TexNode, Token
 
 from rbx.box.exception import RbxException
-from rbx.box.statements.texsoup_utils import (
+from rbx.box.statements.processing.texsoup_utils import (
     escape_for_texsoup,
     parse_latex,
     unescape_from_texsoup,
