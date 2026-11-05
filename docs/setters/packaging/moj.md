@@ -173,13 +173,14 @@ Rewrite them, define a macro for them, or ask for a translation in rbx
 (`rbx/box/statements/processing/text_symbols.py`).
 ```
 
-The header gives the statement's language and variant. A command pandoc **dropped** isn't
-in the package at all. Any other command is still there, but it may come out wrong, so {{rbx}}
+The header gives the statement's language and variant, which is `default` when it declares
+none. A command pandoc **dropped** isn't in the package at all. Any other command is still there, but it may come out wrong, so {{rbx}}
 gives its line and column within the block.
 
 Each block is one of `legend`, `input`, `output` and `notes`, or `explanation_<i>` for the
 explanation of sample `i`, counting from 0. To clear a warning, rewrite the command, or define a
-macro for it in terms of the commands that set supports.
+macro for it in terms of supported commands. For a plain symbol, you can also ask us to add it
+to {{rbx}}'s translation table.
 
 The warnings don't stop packaging. To make them fail the build instead, pass
 `--strict-statement`, or turn it on for every build in your `env.rbx.yml`:
