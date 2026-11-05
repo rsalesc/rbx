@@ -458,3 +458,78 @@ def test_enunciado_ends_with_the_examples():
         examples='## Exemplo\n\nx',
     )
     assert text.endswith('## Saída\n\nO.\n\n## Exemplo\n\nx\n')
+
+
+INTERACTIVE_BLOCKS = {
+    'legend': 'Find the hidden treasure.',
+    'interaction': r'Print \texttt{? x y} to ask; read the distance $d$.',
+}
+
+
+@pytest.mark.parametrize(
+    'language, heading, pointer',
+    [
+        ('en', '## Interaction', 'See the *Interaction* section below.'),
+        ('pt-br', '## Interação', 'Veja a seção *Interação* abaixo.'),
+        ('es', '## Interacción', 'Consulte la sección *Interacción* más abajo.'),
+    ],
+)
+def test_interaction_block_becomes_a_section(language, heading, pointer):
+    """An interactive statement's protocol lives in `interaction`; the PDF
+    prints it as its own section, and so must MOJ."""
+    doc = statement.build_enunciado(INTERACTIVE_BLOCKS, language=language)
+    assert heading in doc
+    assert '`? x y`' in doc
+    # Empty input/output sections point at the protocol instead of being blank,
+    # and the headings the gate greps for are still there.
+    assert doc.count(pointer) == 2
+
+
+def test_interaction_comes_after_output_and_before_notes():
+    doc = statement.build_enunciado(
+        {**INTERACTIVE_BLOCKS, 'output': 'The answer.', 'notes': 'Flush.'},
+        language='en',
+    )
+    assert (
+        doc.index('## Input')
+        < doc.index('## Output')
+        < doc.index('## Interaction')
+        < doc.index('## Notes')
+    )
+
+
+def test_given_input_and_output_are_kept_next_to_an_interaction():
+    doc = statement.build_enunciado(
+        {**INTERACTIVE_BLOCKS, 'input': 'A line with $N$.'}, language='en'
+    )
+    input_section = doc[doc.index('## Input') : doc.index('## Output')]
+    output_section = doc[doc.index('## Output') : doc.index('## Interaction')]
+    assert 'A line with $N$.' in input_section
+    assert 'See the *Interaction*' not in input_section
+    assert 'See the *Interaction* section below.' in output_section
+
+
+def test_no_interaction_section_or_pointer_without_the_block():
+    doc = statement.build_enunciado(BLOCKS, language='en')
+    assert '## Interaction' not in doc
+    assert 'See the *Interaction*' not in doc
+
+
+def test_scoring_block_becomes_a_section():
+    doc = statement.build_enunciado(
+        {**BLOCKS, 'scoring': 'Subtask 1 is worth $30$ points.'}, language='en'
+    )
+    assert doc.index('## Output') < doc.index('## Scoring')
+    assert 'Subtask 1 is worth $30$ points.' in doc
+
+
+def test_unshipped_blocks_lists_only_visible_blocks_left_out():
+    blocks = {
+        **BLOCKS,
+        'interaction': 'Protocol.',
+        'defs': r'\newcommand{\x}{y}',
+        'preamble': r'\usepackage{tikz}',
+        'story': 'Once upon a time.',
+        'empty': '  \n',
+    }
+    assert statement.unshipped_blocks(blocks) == ['story']

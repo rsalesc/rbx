@@ -1021,6 +1021,7 @@ class MojPackager(BasePackager):
         )
         sink = diagnostics if diagnose else None
         if sink is not None:
+            sink.add_unshipped_blocks(moj_statement.unshipped_blocks(bundle.blocks))
             for name in moj_statement.BODY_BLOCKS:
                 sink.validate_block(name, bundle.blocks.get(name) or '')
             for index, explanation in sorted(bundle.explanations.items()):

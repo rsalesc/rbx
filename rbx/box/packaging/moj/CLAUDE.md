@@ -484,7 +484,14 @@ mojtools' `lang/*/compile.sh` do. `binfile.sh` is upstream's to escape (`printf 
 `PolygonPackager` does, so the build leaves the `blocks.sub.yml` / `macros.json`
 / TikZ PDFs that [`statements/export.py`](../../statements/export.py) reads. The
 packager then converts each block TeX → Markdown with pandoc and writes
-`docs/enunciado.md` plus `docs/notes/<sample>.md`.
+`docs/enunciado.md` plus `docs/notes/<sample>.md`. The body ships
+`statement.BODY_BLOCKS` in template order -- legend, `## Input`, `## Output`
+(always emitted: they are the gate), `## Interaction`, `## Scoring`, `## Notes`.
+With an `interaction` block, an empty input/output section points to it instead
+of being blank. Any other non-empty block not in `HIDDEN_BLOCKS` (`defs`,
+`preamble`, `macros`, `editorial`) is reported by `unshipped_blocks` as an
+`UNSHIPPED_BLOCK` finding, so it warns (or fails under strict) rather than
+vanishing.
 
 **`statement_types()` is overridden only to return nothing for a probe package**
 (see [The probe package](#the-probe-package) below); for every package a setter
@@ -525,7 +532,7 @@ What the packager owes the gate (`validate-problem.sh`):
 ### Statement diagnostics (`statement_diagnostics.py`, #1012/#1013)
 
 Each shipped statement is checked twice and reported once. Before conversion,
-`_write_statement_documents` validates every shipped block (`BODY_BLOCKS`
+`_write_statement_documents` validates every shipped block (`BODY_BLOCKS`, interaction and scoring included,
 plus `explanation_<i>`) with `validate_polygon_tex(...,
 markdown_tex_config())`; during conversion, `statement.py` hands pandoc's
 dropped-content diagnostics to the same `StatementDiagnostics`. A construct

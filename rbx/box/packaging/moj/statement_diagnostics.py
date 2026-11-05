@@ -43,6 +43,8 @@ class FindingKind(enum.Enum):
     UNSUPPORTED = 'unsupported'
     # Any other pandoc warning, in pandoc's words.
     PANDOC_WARNING = 'pandoc-warning'
+    # A whole block the MOJ document has no section for: none of it ships.
+    UNSHIPPED_BLOCK = 'unshipped-block'
 
 
 @dataclasses.dataclass(frozen=True)
@@ -111,6 +113,17 @@ class StatementDiagnostics:
                     construct=error.construct,
                     location=error.location,
                     reason=error.reason,
+                )
+            )
+
+    def add_unshipped_blocks(self, blocks: List[str]) -> None:
+        """Report blocks the MOJ document leaves out entirely."""
+        for block in blocks:
+            self.findings.append(
+                Finding(
+                    block=block,
+                    kind=FindingKind.UNSHIPPED_BLOCK,
+                    construct=f'%- block {block}',
                 )
             )
 
@@ -190,6 +203,12 @@ def _describe(kind: FindingKind, construct: str, group: List[Finding]) -> str:
     if kind == FindingKind.DROPPED:
         return (
             f'[item]{shown}[/item]{count}: dropped by pandoc, missing from the package'
+        )
+    if kind == FindingKind.UNSHIPPED_BLOCK:
+        return (
+            'the whole block is left out: the MOJ statement has no section for '
+            'it. Move its text into legend, input, output, interaction, scoring '
+            'or notes'
         )
     if kind == FindingKind.PANDOC_WARNING:
         return f'pandoc{count}: {shown}'
