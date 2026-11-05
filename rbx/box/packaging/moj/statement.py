@@ -56,9 +56,30 @@ SAMPLES_GROUP = 'samples'
 # case insensitively, so a translated statement passes the gate with its own
 # headings and a reader never sees a section titled in the wrong language.
 _HEADINGS = {
-    'pt': {'input': 'Entrada', 'output': 'Saída', 'notes': 'Notas'},
-    'en': {'input': 'Input', 'output': 'Output', 'notes': 'Notes'},
-    'es': {'input': 'Entrada', 'output': 'Salida', 'notes': 'Notas'},
+    'pt': {
+        'input': 'Entrada',
+        'output': 'Saída',
+        'interaction': 'Interação',
+        'scoring': 'Pontuação',
+        'notes': 'Notas',
+        'see_interaction': 'Veja a seção *Interação* abaixo.',
+    },
+    'en': {
+        'input': 'Input',
+        'output': 'Output',
+        'interaction': 'Interaction',
+        'scoring': 'Scoring',
+        'notes': 'Notes',
+        'see_interaction': 'See the *Interaction* section below.',
+    },
+    'es': {
+        'input': 'Entrada',
+        'output': 'Salida',
+        'interaction': 'Interacción',
+        'scoring': 'Puntuación',
+        'notes': 'Notas',
+        'see_interaction': 'Consulte la sección *Interacción* más abajo.',
+    },
 }
 
 # The examples a problem with `SAMPLE=no` writes into its own text, under the
@@ -510,9 +531,29 @@ def moj_layout() -> statement_assets.RasterizingLayout:
     )
 
 
-# The blocks `build_enunciado` ships, in order. Any other block a statement
-# renders (`interaction`, a custom one) has no place in a MOJ document.
-BODY_BLOCKS = ('legend', 'input', 'output', 'notes')
+# The blocks `build_enunciado` ships, in the order the statement templates
+# render them: legend, then `\inputdesc`, `\outputdesc`, `\interactiondesc`,
+# `\scoringdesc`, and the notes. An interactive problem's protocol lives in
+# `interaction`, often with empty input/output blocks, so leaving it out drops
+# the very part a contestant needs.
+BODY_BLOCKS = ('legend', 'input', 'output', 'interaction', 'scoring', 'notes')
+
+# Blocks a statement defines that are never meant to be shown: TeX setup
+# (`defs`, `preamble`, `macros`) and the editorial. Every other non-empty block
+# that is not in `BODY_BLOCKS` is left out of the MOJ document, and the packager
+# reports it (`unshipped_blocks`) rather than dropping it silently.
+HIDDEN_BLOCKS = frozenset({'defs', 'preamble', 'macros', 'editorial'})
+
+
+def unshipped_blocks(blocks: Mapping[str, str]) -> List[str]:
+    """The non-empty blocks `build_enunciado` leaves out, in a stable order."""
+    return sorted(
+        name
+        for name, content in blocks.items()
+        if name not in BODY_BLOCKS
+        and name not in HIDDEN_BLOCKS
+        and (content or '').strip()
+    )
 
 
 def _to_markdown(
@@ -585,8 +626,20 @@ def build_enunciado(
     # release gate, grepped out of the raw file by validate-problem.sh.
     input_md = _convert(blocks, 'input', rewrite, diagnostics)
     output_md = _convert(blocks, 'output', rewrite, diagnostics)
+    interaction_md = _convert(blocks, 'interaction', rewrite, diagnostics)
+    if interaction_md:
+        # An interactive statement usually leaves input/output to the
+        # interaction protocol; point there rather than show empty sections.
+        input_md = input_md or headings['see_interaction']
+        output_md = output_md or headings['see_interaction']
     parts.append(f'## {headings["input"]}\n\n{input_md}')
     parts.append(f'## {headings["output"]}\n\n{output_md}')
+    if interaction_md:
+        parts.append(f'## {headings["interaction"]}\n\n{interaction_md}')
+
+    scoring = _convert(blocks, 'scoring', rewrite, diagnostics)
+    if scoring:
+        parts.append(f'## {headings["scoring"]}\n\n{scoring}')
 
     notes = _convert(blocks, 'notes', rewrite, diagnostics)
     if notes:

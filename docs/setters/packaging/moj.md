@@ -177,8 +177,10 @@ The header gives the statement's language and variant, which is `default` when i
 none. A command pandoc **dropped** isn't in the package at all. Any other command is still there, but it may come out wrong, so {{rbx}}
 gives its line and column within the block.
 
-Each block is one of `legend`, `input`, `output` and `notes`, or `explanation_<i>` for the
-explanation of sample `i`, counting from 0. To clear a warning, rewrite the command, or define a
+Each block is one of `legend`, `input`, `output`, `interaction`, `scoring` and `notes`, or
+`explanation_<i>` for the explanation of sample `i`, counting from 0. Any other block the
+statement defines, except setup blocks such as `defs`, has no section on MOJ. {{rbx}} reports it
+as left out, so move its text into one of the blocks above. To clear a warning, rewrite the command, or define a
 macro for it in terms of supported commands. For a plain symbol, you can also ask us to add it
 to {{rbx}}'s translation table.
 
@@ -301,6 +303,10 @@ its own, and {{rbx}} will **refuse to package**:
     comfortable margin. A plain `rbx time -p moj` [measures on MOJ
     itself](../profiling/remote.md#timing-on-moj), and its timings already include the whole
     interaction.
+
+The statement's `interaction` block becomes an **Interaction** section after **Output**, as in
+the PDF. When `input` or `output` is empty, that section says to see **Interaction** instead of
+staying blank.
 
 MOJ doesn't show examples for an interactive problem, since a test's input is the interactor's
 secret. So {{rbx}} writes your samples into the statement itself, under an **Example** section:

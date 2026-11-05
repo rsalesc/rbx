@@ -209,3 +209,48 @@ def test_an_empty_report_is_falsy_and_silent(capsys):
     assert not diagnostics
     diagnostics.report(strict=True)
     assert capsys.readouterr().out == ''
+
+
+BLOCKS_WITH_INTERACTION_AND_CUSTOM = {
+    'pt': {
+        'legend': 'Ache o tesouro.',
+        'interaction': r'Imprima \texttt{? x y} para perguntar.',
+        'story': 'Era uma vez.',
+    }
+}
+
+
+def test_interaction_ships_and_an_unknown_block_is_reported(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    into_path = _package(
+        testing_pkg, tmp_path, monkeypatch, BLOCKS_WITH_INTERACTION_AND_CUSTOM
+    )
+
+    text = (into_path / 'docs' / 'enunciado.md').read_text()
+    assert '## Interação' in text
+    assert '`? x y`' in text
+    assert 'Era uma vez' not in text
+
+    out = capsys.readouterr().out
+    assert 'Block story' in out
+    assert 'the whole block is left out' in out
+    assert 'Block interaction' not in out
+
+
+def test_strict_mode_fails_on_an_unshipped_block(
+    testing_pkg, tmp_path, monkeypatch, capsys
+):
+    minimal_package(testing_pkg)
+    with_statements(testing_pkg, monkeypatch, BLOCKS_WITH_INTERACTION_AND_CUSTOM)
+    with pytest.raises(typer.Exit) as exc:
+        run_packager(
+            testing_pkg,
+            tmp_path,
+            build_entries(tmp_path, ['samples']),
+            strict_statement=True,
+        )
+    assert exc.value.exit_code == 1
+    out = capsys.readouterr().out
+    assert 'Block story' in out
+    assert 'Strict statement mode is on' in out
