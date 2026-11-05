@@ -1,6 +1,6 @@
 import pathlib
 
-from rbx.box.statements.demacro_utils import (
+from rbx.box.statements.processing.demacro_utils import (
     MacroDef,
     MacroDefinitions,
     collect_macro_definitions,
@@ -737,7 +737,7 @@ def test_expand_skips_verbatim_and_let():
 
 
 def test_expandable_picture_macros_leaves_out_unsafe_ones():
-    from rbx.box.statements.demacro_utils import (
+    from rbx.box.statements.processing.demacro_utils import (
         count_definitions,
         expandable_picture_macros,
     )

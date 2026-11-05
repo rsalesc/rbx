@@ -141,6 +141,24 @@ The build is a pipeline of small, unit-tested pieces:
   `input`/`output` handles are **root-relative**; the explanation goes through
   `\subimport` (base-relative). Both are relative → the overlay is portable.
 
+## TeX processing (`processing/`)
+
+The low-level TeX helpers the export path is built on live in the
+`rbx.box.statements.processing` subpackage. They operate on TeX text (or the
+PDFs it produces) and don't depend on the statement build:
+
+- `processing/tex_scan.py` — leaf TeX scanner: control words, comments, balanced
+  groups, definition extents, verbatim spans.
+- `processing/texsoup_utils.py` — TexSoup parsing, TikZ labeling/substitution,
+  figure placement, preamble injection.
+- `processing/demacro_utils.py` — static macro collection (`MacroDefinitions`)
+  and expansion, picture-macro selection.
+- `processing/macro_meaning.py` — the `\meaning` dump hook and its parser
+  (run-time macro definitions, #1007).
+- `processing/pdf_geometry.py` — page size of a figure PDF (`/MediaBox`).
+
+Tests mirror the layout under `tests/rbx/box/statements/processing/`.
+
 ## LaTeX integration (unchanged)
 
 - `latex.py` — `Latex.build_pdf(temp_dir)` writes `statement.tex` and runs
@@ -215,7 +233,7 @@ externalize path the engine first makes every picture visible there:
 - Labeling and substitution are **splices at TexSoup positions**
   (`label_tikz_pictures`, `substitute_labeled_tikz_pictures`), never a soup
   printed back: TexSoup prints `\def\foo#1{x}` as `\def\foo{#1}{x}`. Extents are
-  read with `tex_scan.py`, a leaf TeX scanner (control words, comments, balanced
+  read with `processing/tex_scan.py`, a leaf TeX scanner (control words, comments, balanced
   groups, definitions, `@` as a letter, sourcemap tags as blanks). The compile's
   externalization preamble goes in the same way (`inject_in_preamble_text`).
 - Substitution decides per figure (`texsoup_utils.figure_placement`): **inline**
@@ -230,7 +248,7 @@ externalize path the engine first makes every picture visible there:
   `.string` on a group here: it asserts unless the group is plain text.
 - `export.get_substituted_statement_blocks` gives each inline figure its natural
   height (`size_inline_figures`, read off the PDF's `/MediaBox` by
-  `pdf_geometry.py`, in big points written as `pt`: CSS's `pt` is TeX's `bp`,
+  `processing/pdf_geometry.py`, in big points written as `pt`: CSS's `pt` is TeX's `bp`,
   and pandoc drops `bp`), which pandoc carries as `{height="..pt"}` so MOJ shows
   a button in a sentence at text size rather than at the 300-DPI raster's. The
   `.dpth` depth is not carried, so a baseline-aligned figure rides slightly high.

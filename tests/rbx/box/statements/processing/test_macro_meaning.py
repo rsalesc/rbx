@@ -4,14 +4,15 @@ import subprocess
 
 import pytest
 
-from rbx.box.statements import macro_meaning, render
-from rbx.box.statements.demacro_utils import (
+from rbx.box.statements import render
+from rbx.box.statements.latex import LatexResult
+from rbx.box.statements.processing import macro_meaning
+from rbx.box.statements.processing.demacro_utils import (
     MacroDef,
     MacroDefinitions,
     collect_macro_definitions_from_text,
     extract_definitions,
 )
-from rbx.box.statements.latex import LatexResult
 
 
 def _summary(defs: MacroDefinitions):
@@ -292,7 +293,7 @@ def test_dump_survives_tikz_externalization_in_the_same_compile(
 ):
     """Externalization re-runs the document once per figure, under another
     job name; only the main job may write the dump."""
-    from rbx.box.statements import texsoup_utils
+    from rbx.box.statements.processing import texsoup_utils
 
     doc = (
         '\\documentclass{article}\n'

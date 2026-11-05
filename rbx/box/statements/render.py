@@ -25,13 +25,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, TypeVar
 from pydantic import BaseModel, Field
 
 from rbx import console, tooling
-from rbx.box.statements import (
-    demacro_utils,
-    macro_meaning,
-    overlay,
-    sourcemap,
-    texsoup_utils,
-)
+from rbx.box.statements import overlay, sourcemap
 from rbx.box.statements.context import (
     ContestRenderContext,
     ProblemRenderContext,
@@ -39,7 +33,6 @@ from rbx.box.statements.context import (
     contest_jinja_kwargs,
     problem_jinja_kwargs,
 )
-from rbx.box.statements.demacro_utils import MacroDefinitions
 from rbx.box.statements.latex_jinja import (
     FilterTarget,
     JinjaSyntax,
@@ -48,6 +41,8 @@ from rbx.box.statements.latex_jinja import (
     render_latex_template_blocks,
     render_markdown_template_blocks,
 )
+from rbx.box.statements.processing import demacro_utils, macro_meaning, texsoup_utils
+from rbx.box.statements.processing.demacro_utils import MacroDefinitions
 
 Mode = Literal['latex', 'markdown']
 

@@ -1,8 +1,8 @@
 import pytest
 from TexSoup import TexSoup
 
-from rbx.box.statements import texsoup_utils
-from rbx.box.statements.texsoup_utils import (
+from rbx.box.statements.processing import texsoup_utils
+from rbx.box.statements.processing.texsoup_utils import (
     add_labels_to_tikz_nodes,
     get_tikz_node_label,
     get_top_level_labeled_tikz_nodes,
@@ -258,7 +258,7 @@ A
 
 
 def test_add_labels_and_replace():
-    from rbx.box.statements.texsoup_utils import replace_labeled_tikz_nodes
+    from rbx.box.statements.processing.texsoup_utils import replace_labeled_tikz_nodes
 
     latex = r"""\begin{tikzpicture}
 A
@@ -291,7 +291,7 @@ B
 
 
 def test_add_labels_and_replace_mixed():
-    from rbx.box.statements.texsoup_utils import replace_labeled_tikz_nodes
+    from rbx.box.statements.processing.texsoup_utils import replace_labeled_tikz_nodes
 
     latex = r"""\tikzsetnextfilename{manual}
 \begin{tikzpicture}
@@ -324,7 +324,7 @@ Auto
 
 
 def test_add_labels_and_replace_no_center():
-    from rbx.box.statements.texsoup_utils import replace_labeled_tikz_nodes
+    from rbx.box.statements.processing.texsoup_utils import replace_labeled_tikz_nodes
 
     latex = r"""\begin{tikzpicture}
 A

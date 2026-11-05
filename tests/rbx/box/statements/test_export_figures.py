@@ -9,7 +9,8 @@ import pytest
 from rbx import utils
 from rbx.box import cd, package, package_utils
 from rbx.box.statements import build_statements, export
-from rbx.box.statements.demacro_utils import MacroDefinitions
+from rbx.box.statements.processing.demacro_utils import MacroDefinitions
+from rbx.box.statements.processing.texsoup_utils import EXTERNALIZATION_DIR
 from rbx.box.statements.render import StatementBlocks
 from rbx.box.statements.schema import (
     ConversionType,
@@ -17,7 +18,6 @@ from rbx.box.statements.schema import (
     TexToPDF,
     rbxToTeX,
 )
-from rbx.box.statements.texsoup_utils import EXTERNALIZATION_DIR
 
 
 def _externalize_params():

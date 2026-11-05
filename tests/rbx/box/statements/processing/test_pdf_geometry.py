@@ -3,7 +3,7 @@ import zlib
 
 import pytest
 
-from rbx.box.statements import pdf_geometry
+from rbx.box.statements.processing import pdf_geometry
 
 
 def _pdf(page_dict: bytes, compressed: bool) -> bytes:

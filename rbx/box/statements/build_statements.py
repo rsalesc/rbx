@@ -98,7 +98,7 @@ def get_produced_tikz_pdfs(
     """The externalized per-block TikZ figure PDFs produced by the forced
     externalize build, yielded as ``(absolute_path, overlay_relative_path)`` for
     Polygon resource upload."""
-    from rbx.box.statements.texsoup_utils import EXTERNALIZATION_DIR
+    from rbx.box.statements.processing.texsoup_utils import EXTERNALIZATION_DIR
 
     d = get_statement_dir(statement)
     for pdf in sorted((d / EXTERNALIZATION_DIR).glob('**/*.pdf')):

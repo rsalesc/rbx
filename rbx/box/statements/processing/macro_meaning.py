@@ -10,7 +10,7 @@ so an English statement exported to MOJ shipped a Spanish sentence.
 
 So the demacro compile (``render.compile_pdf(..., demacro=True)``) is asked:
 
-1. The static pass (:mod:`rbx.box.statements.demacro_utils`) still finds the
+1. The static pass (:mod:`rbx.box.statements.processing.demacro_utils`) still finds the
    *names*, and stays the fallback for anything TeX cannot answer.
 2. :func:`inject_dump_hook` adds, right after ``\documentclass``, an
    ``\AtEndDocument`` hook that writes ``\meaning`` of each name to
@@ -44,8 +44,8 @@ import re
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from rbx import console
-from rbx.box.statements import tex_scan
-from rbx.box.statements.demacro_utils import (
+from rbx.box.statements.processing import tex_scan
+from rbx.box.statements.processing.demacro_utils import (
     MacroDef,
     MacroDefinitions,
     collect_macro_definitions_from_text,
@@ -81,7 +81,7 @@ def inject_dump_hook(tex: str, names: Iterable[str]) -> str:
     whenever it allocates them -- compiles as before, just without a dump.
     One name per line: the list may be long, and TeX reads a line into a fixed
     buffer."""
-    from rbx.box.statements.texsoup_utils import inject_in_preamble_text
+    from rbx.box.statements.processing.texsoup_utils import inject_in_preamble_text
 
     calls = ''.join(
         f'\\rbx@dumpmeaning{{{name}}}%\n'

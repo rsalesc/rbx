@@ -21,7 +21,7 @@ import re
 from typing import Dict, List, Optional, Tuple
 
 from rbx import console, utils
-from rbx.box.statements import demacro_utils, render, sample_staging, sourcemap
+from rbx.box.statements import render, sample_staging, sourcemap
 from rbx.box.statements.context import (
     ContestRenderContext,
     ProblemRenderContext,
@@ -30,6 +30,7 @@ from rbx.box.statements.context import (
 from rbx.box.statements.context import (
     problem_jinja_kwargs as _problem_jinja_kwargs,
 )
+from rbx.box.statements.processing import demacro_utils
 from rbx.box.statements.schema import StatementType
 from rbx.box.testcase_sample_utils import StatementSample
 

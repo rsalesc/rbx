@@ -31,25 +31,21 @@ import tempfile
 from typing import Dict, Iterable, List, Literal, Optional, Protocol, Set
 
 from rbx import console, utils
-from rbx.box.statements import (
-    demacro_utils,
-    pdf_geometry,
-    polygon_utils,
-    sample_staging,
-)
+from rbx.box.statements import polygon_utils, sample_staging
 from rbx.box.statements.build_statements import (
     get_produced_tikz_pdfs,
     get_statement_dir,
 )
-from rbx.box.statements.demacro_utils import MacroDefinitions
-from rbx.box.statements.render import StatementBlocks
-from rbx.box.statements.schema import Statement, StatementType
-from rbx.box.statements.texsoup_utils import (
+from rbx.box.statements.processing import demacro_utils, pdf_geometry
+from rbx.box.statements.processing.demacro_utils import MacroDefinitions
+from rbx.box.statements.processing.texsoup_utils import (
     ASSET_EXTS,
     draws_tikz_pictures,
     rewrite_includegraphics,
     size_inline_figures,
 )
+from rbx.box.statements.render import StatementBlocks
+from rbx.box.statements.schema import Statement, StatementType
 
 
 class StatementExportError(ValueError):

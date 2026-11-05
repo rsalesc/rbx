@@ -1,6 +1,6 @@
 import pytest
 
-from rbx.box.statements import tex_scan
+from rbx.box.statements.processing import tex_scan
 
 TAG = '\ue0003:7\ue001'  # a sourcemap tag
 

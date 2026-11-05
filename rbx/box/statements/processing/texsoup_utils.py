@@ -5,7 +5,7 @@ from typing import Any, Callable, List, Mapping, Optional, Tuple
 from TexSoup import TexSoup
 from TexSoup.data import BraceGroup, BracketGroup, TexNamedEnv, TexNode
 
-from rbx.box.statements import tex_scan
+from rbx.box.statements.processing import tex_scan
 
 EXTERNALIZATION_DIR = 'artifacts/tikz_figures/'
 

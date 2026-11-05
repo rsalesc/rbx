@@ -9,7 +9,7 @@ Collection is a static read, so it cannot know which of several definitions TeX
 actually ran: a ``\def`` nested inside another macro's body only happens if that
 macro is called, and a package can pick a table by option (#1007). The compile
 that writes ``macros.json`` therefore asks TeX for the definitions in effect
-(:mod:`rbx.box.statements.macro_meaning`), and uses this module to know which
+(:mod:`rbx.box.statements.processing.macro_meaning`), and uses this module to know which
 names to ask about. To tell those cases apart, :class:`MacroDefinitions` keeps,
 beside the definition it settled on, whether that one was nested in another
 macro's body and which *other* definitions of the name it saw.
@@ -23,8 +23,8 @@ from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Set,
 
 from TexSoup.data import TexNode
 
-from rbx.box.statements import tex_scan
-from rbx.box.statements.texsoup_utils import (
+from rbx.box.statements.processing import tex_scan
+from rbx.box.statements.processing.texsoup_utils import (
     escape_for_texsoup,
     parse_latex,
 )
