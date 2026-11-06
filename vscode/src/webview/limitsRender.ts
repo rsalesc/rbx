@@ -9,9 +9,12 @@
 import type {
   GroupCheck,
   InspectResult,
+  LastRun,
   Row,
+  RunSolution,
   SolutionCheck,
 } from '../rbx/limitsInspect';
+import { shortName } from '../rbx/outcome';
 import { expectationDisplay } from '../rbx/expectation';
 
 export function esc(text: string): string {
@@ -226,8 +229,73 @@ function solutionLink(s: SolutionCheck): string {
   return `<a href="#" class="sol${hue}${display?.bold ? ' bold' : ''}" data-action="open" data-path="${esc(s.path)}" title="${esc(title)}">${esc(basename(s.path))}</a>`;
 }
 
-function solutionTable(solutions: SolutionCheck[], tl: number | null, m: Margins): string {
-  if (solutions.length === 0) {
+function since(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const minutes = Math.round((Date.now() - Date.parse(iso)) / 60_000);
+  if (!Number.isFinite(minutes)) return '';
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 48 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
+}
+
+/**
+ * The rows the last run adds under the estimate. Each says what that run
+ * judged, at the limit it ran under -- not at the limit now on screen, which it
+ * flags when the two differ: nothing here is re-judged.
+ */
+function runRows(runs: RunSolution[], tl: number | null, profile: string, lastRun: LastRun | null | undefined): string {
+  if (runs.length === 0) return '';
+  const otherProfile =
+    lastRun && lastRun.profiles.length > 0 && !lastRun.profiles.includes(profile)
+      ? ` · <span class="warn-text" title="The run resolved its limits from ${esc(lastRun.profiles.join(', '))}, not ${esc(profile)}">under ${esc(lastRun.profiles.join(', '))}</span>`
+      : '';
+  const when = lastRun?.endedAt ? ` · ${esc(since(lastRun.endedAt))}` : lastRun && !lastRun.finished ? ' · still running' : '';
+  const sep = `<tr class="run-sep"><td colspan="6"><i class="codicon codicon-history"></i> From the last run${otherProfile}${when}</td></tr>`;
+  const body = runs
+    .map((r) => {
+      const display = expectationDisplay(r.expectedOutcome);
+      const expected = display?.label ?? r.expectedOutcome;
+      const verdict = r.outcome === null ? 'not run' : shortName(r.outcome);
+      const status = r.matchesExpectation
+        ? `<span class="status st-ok" title="Got ${esc(verdict)}, as declared (${esc(expected)})">${esc(verdict)}</span>`
+        : `<span class="status st-fails" title="Got ${esc(verdict)}, but problem.rbx.yml declares ${esc(expected)}">${esc(verdict)} ≠ ${esc(expected)}</span>`;
+      const moved = r.timeLimit !== null && tl !== null && r.timeLimit !== tl;
+      const at =
+        r.timeLimit === null
+          ? '<span class="dim">no limit</span>'
+          : `<span class="${moved ? 'warn-text' : 'dim'}" title="${esc(
+              moved
+                ? `Judged at ${ms(r.timeLimit)}; the limit on screen is now ${ms(tl)}. Run again to see it at the new limit.`
+                : `Judged at ${ms(r.timeLimit)}, the limit on screen.`,
+            )}">at ${esc(ms(r.timeLimit))}${moved ? ' ⚠' : ''}</span>`;
+      const incomplete = r.complete ? '' : ' <span class="dim" title="Not every test was judged">(partial)</span>';
+      return `<tr class="run-row">
+        <td>${solutionLink({ path: r.path, expectedOutcome: r.expectedOutcome } as SolutionCheck)}</td>
+        <td>${esc(r.language ?? '?')}</td>
+        <td><span class="role run" title="Judged by the last run, not measured by the estimate">run</span></td>
+        <td class="num">${r.maxTime !== null ? esc(ms(r.maxTime)) : '—'}</td>
+        <td class="num">${at}</td>
+        <td>${status}${incomplete}</td>
+      </tr>`;
+    })
+    .join('');
+  return sep + body;
+}
+
+function solutionTable(
+  allSolutions: SolutionCheck[],
+  tl: number | null,
+  m: Margins,
+  runs: RunSolution[] = [],
+  profile = '',
+  lastRun?: LastRun | null,
+): string {
+  // A slow solution the estimate never ran, which the run did judge, is shown
+  // once: as the run's row, which actually says something about it.
+  const ranPaths = new Set(runs.map((r) => r.path));
+  const solutions = allSolutions.filter((s) => !(s.status === 'unchecked' && ranPaths.has(s.path)));
+  if (solutions.length === 0 && runs.length === 0) {
     return '';
   }
   const body = solutions
@@ -259,7 +327,7 @@ function solutionTable(solutions: SolutionCheck[], tl: number | null, m: Margins
   return `<table class="sols">
     <colgroup><col class="c-sol"><col class="c-lang"><col class="c-role"><col class="c-num"><col class="c-num"><col class="c-status"></colgroup>
     <thead><tr><th>solution</th><th>lang</th><th>role</th><th class="num">time</th><th class="num">allows</th><th>status</th></tr></thead>
-    <tbody>${body}</tbody></table>`;
+    <tbody>${body}${runRows(runs, tl, profile, lastRun)}</tbody></table>`;
 }
 
 // ---------------------------------------------------------------- rows
@@ -372,7 +440,14 @@ function derivation(row: Row): string {
   return '';
 }
 
-function groupSection(row: Row, d: Domain, m: Margins, step: number, title: string): string {
+function groupSection(
+  row: Row,
+  d: Domain,
+  m: Margins,
+  step: number,
+  title: string,
+  result?: InspectResult,
+): string {
   const r = row.report;
   const origin = r ? `<span class="origin o-${r.origin}">${esc(r.origin)}${r.isLeftover ? ' · leftover' : ''}</span>` : '';
   const editor = row.editable ? limitEditor(row, step) : derivation(row) || `<b>${esc(ms(row.timeLimit))}</b>`;
@@ -391,7 +466,7 @@ function groupSection(row: Row, d: Domain, m: Margins, step: number, title: stri
     </div>
     ${measured ? `<div class="measured">${measured}</div>` : ''}
     ${hasStrip ? strip(row, d, m) : ''}
-    ${solutionTable(row.solutions, row.timeLimit, m)}
+    ${solutionTable(row.solutions, row.timeLimit, m, row.runSolutions ?? [], result?.profile ?? '', result?.lastRun)}
   </section>`;
 }
 
@@ -548,15 +623,15 @@ export function renderDocument(state: ViewState, opts: RenderOptions = {}): stri
   </header>`;
 
   const groupSections = groups
-    .map((g) => groupSection(g, d, margins, step, esc((g.report?.languages ?? []).join(', '))))
+    .map((g) => groupSection(g, d, margins, step, esc((g.report?.languages ?? []).join(', ')), result))
     .join('');
   const leftover =
-    base && base.solutions.length > 0
-      ? groupSection({ ...base, editable: false, check: null }, d, margins, step, 'other languages (base limit)')
+    base && groups.length > 0 && (base.solutions.length > 0 || (base.runSolutions ?? []).length > 0)
+      ? groupSection({ ...base, editable: false, check: null }, d, margins, step, 'other languages (base limit)', result)
       : '';
   const onlyBase =
-    groups.length === 0 && base && (base.solutions.length > 0 || base.check)
-      ? groupSection(base, d, margins, step, 'all languages')
+    groups.length === 0 && base && (base.solutions.length > 0 || base.check || (base.runSolutions ?? []).length > 0)
+      ? groupSection(base, d, margins, step, 'all languages', result)
       : '';
   const noSolutions = !result.hasSolutions && rows.some((r) => r.report)
     ? `<div class="banner info"><i class="codicon codicon-info"></i> This profile recorded no per-solution timings (older rbx); showing group summaries only.</div>`

@@ -147,3 +147,13 @@ body.dragging, body.dragging * { cursor: ew-resize !important; user-select: none
 /* rbx has not answered for the value on screen yet. */
 .updating .status, .updating .badges, .updating .band, .updating .pt { opacity: 0.45; transition: opacity 120ms; }
 .updating-note { font-size: 0.85em; opacity: 0.7; display: inline-flex; align-items: center; gap: 4px; }
+
+/* Rows from the last run: under the estimate, set apart by a rule and a tint. */
+table.sols tr.run-sep td {
+  padding-top: 10px; border-bottom: 1px dashed var(--vscode-panel-border);
+  font-size: 0.85em; opacity: 0.75; text-transform: none;
+}
+table.sols tr.run-row td { background: color-mix(in srgb, var(--vscode-textBlockQuote-background) 55%, transparent); font-style: italic; }
+table.sols tr.run-row td .status { font-style: normal; }
+.role.run { color: var(--vscode-descriptionForeground); font-style: normal; }
+.warn-text { color: var(--vscode-editorWarning-foreground); }

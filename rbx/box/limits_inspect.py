@@ -286,9 +286,113 @@ def inspect(
             },
             'editable': timing_edit.is_editable(profile),
             'hasSolutions': bool(profile.solutions),
-            'rows': _rows(profile),
+            'rows': _with_last_run(_rows(profile), profile, root),
+            'lastRun': _last_run_header(root),
             'effective': _effective(profile, root),
             'stale': _stale(profile),
         }
     )
     return out
+
+
+# ------------------------------------------------------------------ last run
+
+
+def _load_last_run(root: pathlib.Path):
+    """The published report of the last `rbx run` (or `rbx time --run-all`),
+    and the profiles its limits came from. None when there is no usable one."""
+    from rbx.box import run_report
+
+    runs_dir = package.get_problem_runs_dir(root)
+    path = run_report.report_path(runs_dir)
+    if not path.is_file():
+        return None
+    try:
+        report = run_report.RunReport.model_validate(yaml.safe_load(path.read_text()))
+    except Exception:
+        return None
+    if report.version != run_report.REPORT_VERSION:
+        return None
+    profiles: List[str] = []
+    skeleton = runs_dir / 'skeleton.yml'
+    try:
+        data = yaml.safe_load(skeleton.read_text()) if skeleton.is_file() else None
+        for limits in ((data or {}).get('limits') or {}).values():
+            name = (limits or {}).get('profile')
+            if name and name not in profiles:
+                profiles.append(name)
+    except Exception:
+        pass
+    return report, profiles
+
+
+def _last_run_header(root: pathlib.Path) -> Optional[Dict[str, Any]]:
+    loaded = _load_last_run(root)
+    if loaded is None:
+        return None
+    report, profiles = loaded
+    return {
+        'profiles': profiles,
+        'finished': report.finished,
+        'endedAt': report.endedAt,
+    }
+
+
+def _language_of(path: str) -> Optional[str]:
+    from rbx.box import code
+
+    try:
+        for solution in package.get_solutions():
+            if str(solution.path) == path:
+                return code.find_language_name(solution)
+    except Exception:
+        return None
+    return None
+
+
+def _with_last_run(
+    rows: List[Dict[str, Any]], profile: LimitsProfile, root: pathlib.Path
+) -> List[Dict[str, Any]]:
+    """Attach to each row the solutions the last run judged and the estimate did
+    not measure -- what `rbx time --run-all` (or any `rbx run`) adds on top of
+    the estimate. Each one is read off the published run report: its verdict,
+    whether it met its declaration, its slowest test and the limit it ran under.
+    Nothing here is re-judged at the limit now on screen.
+    """
+    for row in rows:
+        row['runSolutions'] = []
+    loaded = _load_last_run(root)
+    if loaded is None:
+        return rows
+    report, _ = loaded
+    measured = {
+        timing.path
+        for timing in profile.solutions or []
+        if timing.time is not None or timing.survivedAt is not None
+    }
+    by_language: Dict[str, Dict[str, Any]] = {}
+    for row in rows[1:]:
+        for language in (row['report'] or {}).get('languages', []):
+            by_language[language] = row
+    for solution in report.solutions:
+        if solution.path in measured:
+            continue
+        language = _language_of(solution.path)
+        row = by_language.get(language or '', rows[0])
+        row['runSolutions'].append(
+            {
+                'path': solution.path,
+                'language': language,
+                'expectedOutcome': solution.expectedOutcome.name,
+                'outcome': solution.outcome.value if solution.outcome else None,
+                'matchesExpectation': solution.matchesExpectation,
+                'complete': solution.complete,
+                'maxTime': round(solution.maxTime * 1000)
+                if solution.maxTime is not None
+                else None,
+                'timeLimit': round(solution.timeLimit * 1000)
+                if solution.timeLimit is not None
+                else None,
+            }
+        )
+    return rows

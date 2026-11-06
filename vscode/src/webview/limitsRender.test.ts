@@ -30,3 +30,46 @@ test('renders rbx errors and host errors instead of the document', () => {
   assert.match(html, /bad yaml/);
   assert.match(renderDocument({ updating: false, error: 'no rbx' }), /no rbx/);
 });
+
+test('appends the last run under the estimate, flagged when it ran at another limit', () => {
+  assert.ok(parsed.ok);
+  const result = parsed.result;
+  const rows = (result.rows ?? []).map((row) =>
+    row.key === '0'
+      ? {
+          ...row,
+          runSolutions: [
+            {
+              path: 'solutions/wrong/review-no-wrap.cpp',
+              language: 'cpp',
+              expectedOutcome: 'INCORRECT',
+              outcome: 'wrong-answer',
+              matchesExpectation: true,
+              complete: true,
+              maxTime: 12,
+              timeLimit: 500,
+            },
+            {
+              path: 'solutions/slow/brute.cpp',
+              language: 'cpp',
+              expectedOutcome: 'TIME_LIMIT_EXCEEDED',
+              outcome: 'accepted',
+              matchesExpectation: false,
+              complete: true,
+              maxTime: 300,
+              timeLimit: 400,
+            },
+          ],
+        }
+      : row,
+  );
+  const html = renderDocument({
+    result: { ...result, rows, lastRun: { profiles: ['demo'], finished: true } },
+    updating: false,
+  });
+  assert.match(html, /From the last run/);
+  assert.equal((html.match(/class="run-row"/g) ?? []).length, 2);
+  // Judged at 400 while the group's limit is 500: said, never re-judged.
+  assert.match(html, /at 400 ms ⚠/);
+  assert.match(html, /AC ≠ TLE/);
+});

@@ -63,6 +63,31 @@ export interface SolutionCheck {
   readonly expectedOutcome?: string | null;
 }
 
+/**
+ * A solution the last run judged and the estimate did not measure, read off
+ * `.rbx/runs/report.yml` -- typically what `rbx time --run-all` adds.
+ */
+export interface RunSolution {
+  readonly path: string;
+  readonly language: string | null;
+  readonly expectedOutcome: string;
+  /** An `Outcome` value (`wrong-answer`, ...); null when nothing was judged. */
+  readonly outcome: string | null;
+  readonly matchesExpectation: boolean;
+  readonly complete: boolean;
+  /** ms. */
+  readonly maxTime: number | null;
+  /** The limit it ran under, in ms. */
+  readonly timeLimit: number | null;
+}
+
+export interface LastRun {
+  /** The limits profiles the run resolved its limits from. */
+  readonly profiles: string[];
+  readonly finished: boolean;
+  readonly endedAt?: string | null;
+}
+
 export interface Row {
   /** `base`, or the group's index as a string: what `--set`/`--revert` take. */
   readonly key: string;
@@ -71,6 +96,7 @@ export interface Row {
   readonly editable: boolean;
   readonly check: GroupCheck | null;
   readonly solutions: SolutionCheck[];
+  readonly runSolutions?: RunSolution[];
 }
 
 export interface Multipliers {
@@ -105,6 +131,7 @@ export interface InspectResult {
   readonly hasSolutions?: boolean;
   readonly rows?: Row[];
   readonly effective?: EffectiveLimits;
+  readonly lastRun?: LastRun | null;
   /** The checksum bucket that moved since the estimate, or null. */
   readonly stale?: 'solutions' | 'interactor' | 'tests' | null;
 }
