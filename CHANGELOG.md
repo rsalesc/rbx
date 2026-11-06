@@ -1,3 +1,13 @@
+## 2.6.1 (2026-11-06)
+
+### Feat
+
+- **time**: keep --run-all verdicts in the limits profile and show them in the editors (#1022)
+
+### Refactor
+
+- **time**: concise limits table captions and Source cell (#1021)
+
 ## 2.6.0 (2026-11-06)
 
 ### Feat
