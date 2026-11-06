@@ -1399,6 +1399,7 @@ async def _estimate_with_moj_calibration(
     runner: 'SolutionRunner',
     strategy: timing_config.TimingStrategy,
     run_all: bool = False,
+    force_calibration: bool = False,
 ) -> Optional[
     Tuple[
         _EstimationContext,
@@ -1447,7 +1448,11 @@ async def _estimate_with_moj_calibration(
     entries = await extract_generation_testcases_from_groups()
     with utils.StatusProgress('Calibrating on MOJ...') as s:
         result = await runner.estimate_by_calibration(  # type: ignore[attr-defined]
-            entries, strategy, progress=s, run_all=run_all
+            entries,
+            strategy,
+            progress=s,
+            run_all=run_all,
+            force=force_calibration,
         )
 
     console.console.print()
@@ -2365,6 +2370,7 @@ async def compute_time_limits(
     fail_fast: bool = False,
     benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
     keep_checker_stderr: bool = False,
+    force_calibration: bool = False,
 ):
     if package.get_main_solution() is None:
         # An error, not a warning: with no accepted solution nothing bounds the
@@ -2389,7 +2395,7 @@ async def compute_time_limits(
         # `_estimate_with_moj_calibration`.
         assert runner is not None
         prepared = await _estimate_with_moj_calibration(
-            runner, strategy, run_all=run_all
+            runner, strategy, run_all=run_all, force_calibration=force_calibration
         )
         if prepared is None:
             return None

@@ -616,6 +616,36 @@ async def test_an_unchanged_package_reads_the_calibration_again(
     assert second.measurements == first.measurements
 
 
+async def test_a_forced_calibration_uploads_a_changed_package_and_calibrates(
+    calibrating_pkg, tmp_path, monkeypatch
+):
+    """`rbx time --force-calibration`: the judge would not recalibrate the same
+    bytes, so the forced package differs from it -- by a comment, never a setting
+    -- and the next unforced run reuses the fresh calibration."""
+    fake = FakeKattisMoj(
+        tmp_path / 'snapshots',
+        [_check(False), _check(True, j=5), _check(True, j=5), _check(True, j=9)],
+    )
+    fake.install(monkeypatch)
+    fake.calib_answer = cli.MojCalibration(
+        hosts=[_host('j', [_sol('sol.cpp', 'good', [_test('a', 'AC', 0.1)])], at=9)]
+    )
+    entries = build_entries(tmp_path, ['samples'])
+
+    first = await MojRunner().estimate_by_calibration(entries, _strategy())
+    forced = await MojRunner().estimate_by_calibration(entries, _strategy(), force=True)
+    after = await MojRunner().estimate_by_calibration(entries, _strategy())
+
+    assert not first.reused
+    assert not forced.reused
+    assert after.reused
+    assert len(fake.uploads) == 2
+    assert len(fake.calibrations) == 2
+    (_, clean), (_, changed) = fake.uploads
+    assert _conf(clean) == _conf(changed)
+    assert (clean / 'conf').read_text() != (changed / 'conf').read_text()
+
+
 async def test_ratios_moj_cannot_take_are_refused_before_uploading(
     calibrating_pkg, tmp_path, monkeypatch
 ):

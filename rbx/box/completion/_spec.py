@@ -571,6 +571,16 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Calibrate again on a runner that calibrates (moj), even when '
+                    'the package is unchanged since the last calibration and it '
+                    'would be reused.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--force-calibration', '-f'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,
