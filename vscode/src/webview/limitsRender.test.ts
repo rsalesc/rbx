@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { parseInspect } from '../rbx/limitsInspect';
 import fixture from './limitsRender.fixture.json';
-import { renderDocument } from './limitsRender';
+import { allowedRange, renderDocument } from './limitsRender';
 
 // `rbx time-inspect -p demo` on a two-group profile with a hand-set JVM limit.
 const parsed = parseInspect(JSON.stringify(fixture));
@@ -41,6 +41,17 @@ test('a slow solution finishing within the limit itself would be accepted; past 
   assert.match(java(1500), /margin &lt; ×1\.5/);
   assert.doesNotMatch(java(1500), /would be accepted/);
   assert.match(java(2200), /would be accepted/);
+});
+
+test('the allowed band is capped by a slow solution only seen still running', () => {
+  assert.ok(parsed.ok);
+  const cpp = parsed.result.rows?.find((r) => r.key === '0');
+  assert.ok(cpp);
+  // brute.cpp survived at 1600 ms with timeLimitToTle 1.5: TL <= 1066 ms.
+  assert.deepStrictEqual(allowedRange(cpp), { min: 100, max: 1066 });
+  const noUpper = { ...cpp, check: cpp.check && { ...cpp.check, max_ms: null } };
+  assert.deepStrictEqual(allowedRange(noUpper), { min: 100, max: 1066 });
+  assert.deepStrictEqual(allowedRange({ ...noUpper, solutions: [] }), { min: 100, max: null });
 });
 
 test('says when a profile inherits the package limits, or was never estimated', () => {

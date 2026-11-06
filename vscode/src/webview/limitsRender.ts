@@ -163,17 +163,34 @@ function tickLabel(v: number): string {
   return v >= 1000 ? `${v / 1000}s` : `${v}ms`;
 }
 
+/**
+ * The limits a row's evidence allows, as rbx bounds them: from below by the
+ * group's check, from above by the tightest of the group's upper bound and
+ * each slow solution's own `max_ms`. A bound set by a solution only seen still
+ * running lives on that solution alone, never in the group's `upperBound`.
+ */
+export function allowedRange(row: Row): { min: number | null; max: number | null } {
+  const uppers = [
+    row.check?.max_ms ?? null,
+    ...row.solutions.filter((s) => !isAccepted(s)).map((s) => s.max_ms),
+  ].filter((v): v is number => v !== null);
+  return {
+    min: row.check?.min_ms ?? null,
+    max: uppers.length > 0 ? Math.min(...uppers) : null,
+  };
+}
+
 function strip(row: Row, d: Domain, m: Margins): string {
   const toTle = m.toTle;
   const parts: string[] = [];
-  const check = row.check;
   // The range of limits the evidence allows: the green band.
-  if (check && (check.min_ms !== null || check.max_ms !== null)) {
-    const a = xOf(check.min_ms ?? d.lo, d);
-    const b = xOf(check.max_ms ?? d.hi, d);
+  const band = allowedRange(row);
+  if (band.min !== null || band.max !== null) {
+    const a = xOf(band.min ?? d.lo, d);
+    const b = xOf(band.max ?? d.hi, d);
     if (b > a) {
       parts.push(
-        `<rect class="band" x="${a}" y="${AXIS_Y - 14}" width="${b - a}" height="28" rx="3"><title>Limits the evidence allows: ${esc(ms(check.min_ms))} … ${esc(check.max_ms === null ? '∞' : ms(check.max_ms))}</title></rect>`,
+        `<rect class="band" x="${a}" y="${AXIS_Y - 14}" width="${b - a}" height="28" rx="3"><title>Limits the evidence allows: ${esc(ms(band.min))} … ${esc(band.max === null ? '∞' : ms(band.max))}</title></rect>`,
       );
     }
   }
