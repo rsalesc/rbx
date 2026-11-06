@@ -208,6 +208,11 @@ A profile estimated before {{rbx}} recorded these timings shows a hint instead. 
 on it again before you edit it to fill them in, since a new estimate replaces any limit you set
 by hand.
 
+A profile with a `runs` list adds a section under `from rbx time --run-all`, with one row per
+solution showing its expected outcome, verdict and slowest time next to the limit it ran at.
+Since the editor never judges those rows again, stepping away from that limit turns the row's
+`at N ms` yellow and adds a ⚠.
+
 The profile keeps the estimate next to your limit. Every later limits table marks that row as
 set by hand next to the estimate it replaced, and keeps the Check column.
 

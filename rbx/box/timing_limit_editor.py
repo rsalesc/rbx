@@ -15,7 +15,12 @@ import typer
 from rbx import console
 from rbx.box import estimation_checksum, limits_info, package, timing_edit
 from rbx.box.formatting import href
-from rbx.box.schema import InferenceRole, LimitsProfile, TimingGroupReport
+from rbx.box.schema import (
+    InferenceRole,
+    LimitsProfile,
+    LimitsProfileRun,
+    TimingGroupReport,
+)
 
 if TYPE_CHECKING:
     from prompt_toolkit.formatted_text import AnyFormattedText
@@ -266,7 +271,48 @@ def build_solutions_table(profile: LimitsProfile, target: Optional[int]):
             ratio,
             _SOLUTION_STATUS[check.status],
         )
+    _add_run_rows(
+        table,
+        timing_edit.group_runs(profile, _row_report(profile, target)),
+        time_limit,
+    )
     return table
+
+
+def _add_run_rows(table, runs: List[LimitsProfileRun], time_limit: int) -> None:
+    """The `rbx time --run-all` verdicts, in a section of their own under the
+    estimate's solutions.
+
+    Each is the verdict at the limit it was judged at, never re-judged at the
+    limit on screen: the editor runs nothing. That limit is said on every row,
+    so a step away from it reads as a row that may no longer hold.
+    """
+    import rich.markup
+
+    if not runs:
+        return
+    table.add_section()
+    table.add_row('[dim]from rbx time --run-all[/dim]', '', '', '', '', '')
+    for run in runs:
+        verdict = run.outcome.short_name() if run.outcome is not None else 'not run'
+        if run.matchesExpectation:
+            check = f'[success]✓ {verdict}[/success]'
+        else:
+            check = f'[error]✗ {verdict}[/error]'
+        if run.complete is False:
+            check += ' [dim](partial)[/dim]'
+        style = run.expectedOutcome.style()
+        expected = run.expectedOutcome.name.lower().replace('_', ' ')
+        table.add_row(
+            rich.markup.escape(run.path),
+            f'[{style}]{expected}[/{style}]',
+            f'{run.time} ms' if run.time is not None else '[dim]–[/dim]',
+            f'[warning]at {run.timeLimit} ms ⚠[/warning]'
+            if run.timeLimit != time_limit
+            else f'[dim]at {run.timeLimit} ms[/dim]',
+            '',
+            check,
+        )
 
 
 def build_preview(

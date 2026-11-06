@@ -16,6 +16,7 @@ from rbx.box.schema import (
     InferenceRole,
     LimitModifiers,
     LimitsProfile,
+    LimitsProfileRun,
     TimingBound,
     TimingGroupOrigin,
     TimingGroupReport,
@@ -434,3 +435,73 @@ def test_every_profile_is_listed_as_a_time_profile_asset(pkg):
         ('local.yml', {'profile': 'local'}),
         ('moj.yml', {'profile': 'moj'}),
     ]
+
+
+# ------------------------------------------------------------------ profile runs
+
+
+def _profile_with_runs() -> LimitsProfile:
+    profile = _profile()
+    profile.runs = [
+        LimitsProfileRun(
+            path='sols/wa.cpp',
+            language='cpp',
+            timeLimit=500,
+            expectedOutcome=ExpectedOutcome.WRONG_ANSWER,
+            outcome=Outcome.WRONG_ANSWER,
+            matchesExpectation=True,
+            time=12,
+        ),
+        LimitsProfileRun(
+            path='sols/slow.java',
+            language='java',
+            timeLimit=1200,
+            expectedOutcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+            outcome=Outcome.ACCEPTED,
+            matchesExpectation=False,
+            time=900,
+            complete=False,
+        ),
+    ]
+    return profile
+
+
+def test_the_profile_runs_are_shown_under_their_group(pkg):
+    result = limits_inspect.inspect(_source(_profile_with_runs()), 'local')
+
+    assert result['runsSource'] == 'profile'
+    assert _row(result, '0')['runSolutions'] == [
+        {
+            'path': 'sols/wa.cpp',
+            'language': 'cpp',
+            'expectedOutcome': 'WRONG_ANSWER',
+            'outcome': 'wrong-answer',
+            'matchesExpectation': True,
+            'complete': True,
+            'maxTime': 12,
+            'timeLimit': 500,
+        }
+    ]
+    java = _row(result, '1')['runSolutions']
+    assert [(r['path'], r['complete'], r['timeLimit']) for r in java] == [
+        ('sols/slow.java', False, 1200)
+    ]
+
+
+def test_the_profile_runs_win_over_the_last_run(pkg):
+    # A later `rbx run` overwrote the report; the profile still knows what
+    # `--run-all` found at its own limit.
+    _write_last_run(
+        'local',
+        [_ran('sols/wa.cpp', ExpectedOutcome.WRONG_ANSWER, Outcome.ACCEPTED, False)],
+    )
+
+    result = limits_inspect.inspect(_source(_profile_with_runs()), 'local')
+
+    assert [r['outcome'] for r in _row(result, '0')['runSolutions']] == ['wrong-answer']
+
+
+def test_without_profile_runs_the_last_run_is_the_source(pkg):
+    result = limits_inspect.inspect(_source(_profile()), 'local')
+
+    assert result['runsSource'] == 'lastRun'

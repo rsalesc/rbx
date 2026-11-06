@@ -555,21 +555,26 @@ kept in the file but not applied.
 Every change is an edit to the YAML, so undo, save and your diff work as they do
 for any file. A drag is one edit, made when you let go.
 
-### The last run
+### The judged solutions
 
-At the bottom of each group, under a dashed line, are the solutions the last
-run judged and the estimate didn't measure: every solution expected to fail,
-plus any slow solution the estimate didn't need to run. Running
-[`rbx time --run-all`](../setters/profiling/estimating.md#checking-the-rest-of-the-package),
-or any `rbx run`, fills them in.
+At the bottom of each group, under a dashed line, are the solutions the estimate
+didn't measure but that were judged at its limit: every solution expected to
+fail, plus any slow solution the estimate didn't need to run.
 
-Each row shows the verdict the run gave,
-whether it matches the declared outcome, the slowest test, and the limit it ran
-under. A run made under another profile names that profile in the line over its rows.
+[`rbx time --run-all`](../setters/profiling/estimating.md#checking-the-rest-of-the-package)
+saves these verdicts in the profile itself, and the line over the rows then reads
+**From `rbx time --run-all`**. They stay there until the next estimate, whatever
+you run in between. A profile without them shows **From the last run** instead,
+filled in by any `rbx run`. When that run resolved its limits from another
+profile, the line names it.
+
+Each row shows the verdict, whether it matches the declared outcome, the slowest
+test, and the limit it was judged at.
 
 Those verdicts aren't judged again when you move the limit. A row whose limit
 differs from the one on screen turns yellow and gets a ⚠, and hovering it shows
-both limits. Running the solutions again updates it.
+both limits. Running `rbx time --run-all` again updates it, or any `rbx run` for
+a profile without saved verdicts.
 
 ### Moving between profiles
 
