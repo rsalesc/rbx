@@ -3,6 +3,7 @@ Comprehensive tests for the rbx.box.timing module.
 """
 
 import pathlib
+import types
 from unittest import mock
 
 import pytest
@@ -459,6 +460,18 @@ class TestComputeTimeLimits:
         assert result is not None
         assert result.timeLimit == 1000
         assert limits_path.exists()
+        # No runner handed in is the local one, and the profile says so.
+        assert yaml.safe_load(limits_path.read_text())['runner'] == 'local'
+
+        # A runner handed in is the one recorded: where the estimate was measured.
+        await timing.compute_time_limits(
+            check=True,
+            detailed=False,
+            runs=0,
+            profile='local',
+            runner=types.SimpleNamespace(name='domjudge'),
+        )
+        assert yaml.safe_load(limits_path.read_text())['runner'] == 'domjudge'
 
     @mock.patch('rbx.box.package.get_main_solution')
     @mock.patch('rbx.box.timing.get_inference_solutions')

@@ -61,6 +61,8 @@ def _measure(
 class _CalibratingRunner:
     """A backend that answers the estimate with a canned calibration."""
 
+    name = 'moj'
+
     def __init__(
         self,
         measurements: List[KattisMeasurement],
