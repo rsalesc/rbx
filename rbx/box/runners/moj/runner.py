@@ -415,16 +415,25 @@ MOJ_COMPILE_HINT = (
 )
 
 
-async def fetch_compile_stderr(
-    result: kattis.KattisCalibrationResult, solution_path: str
-) -> Optional[str]:
-    """The judge's compiler stderr for a calibrated solution that did not compile.
+@dataclasses.dataclass(frozen=True)
+class CompileReport:
+    """One judge's calibration report for a solution that did not compile."""
 
-    One `moj calib-report` download, read by `kattis.compile_stderr`. **Best
-    effort, and only ever extra**: the caller has already said the solution did
-    not compile and quoted the command that shows why, so any failure here -- no
-    report listed, the download refused, a report of another shape -- comes back
-    `None` and costs the setter nothing but this convenience.
+    host: str
+    html: str
+    # The compiler's stderr, scraped out of `html`; `None` when the report did
+    # not have the shape `kattis.compile_stderr` reads.
+    stderr: Optional[str]
+
+
+async def fetch_compile_report(
+    result: kattis.KattisCalibrationResult, solution_path: str
+) -> Optional[CompileReport]:
+    """The report showing why a calibrated solution did not compile.
+
+    One `moj calib-report` download from the judge `kattis.compile_report` picks.
+    **Best effort**: any failure -- no report listed, the download refused --
+    comes back `None`, and the caller falls back to quoting the command.
     """
     found = kattis.compile_report(result, solution_path)
     if found is None:
@@ -437,7 +446,7 @@ async def fetch_compile_stderr(
             text = out.read_text(errors='replace')
         except (cli.MojCliError, OSError):
             return None
-    return kattis.compile_stderr(text)
+    return CompileReport(host=host, html=text, stderr=kattis.compile_stderr(text))
 
 
 def _run_never_started(

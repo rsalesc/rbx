@@ -961,12 +961,32 @@ def test_the_compiler_output_is_fetched_from_the_first_judge_that_kept_it():
         out.write_text(_CE_REPORT.read_text())
 
     with mock.patch.object(cli, 'calib_report', fake_calib_report):
-        stderr = asyncio.run(
-            runner_module.fetch_compile_stderr(result, 'sols/broken.cpp')
+        report = asyncio.run(
+            runner_module.fetch_compile_report(result, 'sols/broken.cpp')
         )
 
     assert calls == [('rsalesc#rbxt-ab2113f5-kattis', 'b', 'good-broken.cpp')]
-    assert stderr is not None and 'was not declared in this scope' in stderr
+    assert report is not None
+    assert report.host == 'b'
+    assert report.html == _CE_REPORT.read_text()
+    assert report.stderr is not None
+    assert 'was not declared in this scope' in report.stderr
+
+
+def test_a_report_of_another_shape_is_kept_whole_with_no_stderr():
+    result = _compile_failed_result(['good-broken.cpp'])
+
+    async def redesigned(problem_id, host, name, out):
+        out.write_text('<h1 id="erro">new layout</h1>')
+
+    with mock.patch.object(cli, 'calib_report', redesigned):
+        report = asyncio.run(
+            runner_module.fetch_compile_report(result, 'sols/broken.cpp')
+        )
+
+    assert report == runner_module.CompileReport(
+        host='b', html='<h1 id="erro">new layout</h1>', stderr=None
+    )
 
 
 def test_a_failed_download_is_no_compiler_output_not_an_error():
@@ -977,7 +997,7 @@ def test_a_failed_download_is_no_compiler_output_not_an_error():
 
     with mock.patch.object(cli, 'calib_report', refuse):
         assert (
-            asyncio.run(runner_module.fetch_compile_stderr(result, 'sols/broken.cpp'))
+            asyncio.run(runner_module.fetch_compile_report(result, 'sols/broken.cpp'))
             is None
         )
 
@@ -990,6 +1010,6 @@ def test_nothing_is_fetched_when_no_judge_kept_a_report():
 
     with mock.patch.object(cli, 'calib_report', unexpected):
         assert (
-            asyncio.run(runner_module.fetch_compile_stderr(result, 'sols/broken.cpp'))
+            asyncio.run(runner_module.fetch_compile_report(result, 'sols/broken.cpp'))
             is None
         )

@@ -17,7 +17,6 @@ from typing import (
 
 import rich
 import rich.console
-import rich.text
 import typer
 from ordered_set import OrderedSet
 from pydantic import BaseModel, Field
@@ -1291,56 +1290,57 @@ def _judges_phrase(reporting: Sequence[str], hosts: Sequence[str]) -> str:
     return f'on {", ".join(reporting)}'
 
 
-# How much of the judge's compiler output is shown inline. The first errors are
-# the ones that matter, and the full report is one quoted command away.
-_MOJ_COMPILE_STDERR_LINES = 40
-
-
 async def _print_moj_compile_error(
     result: 'KattisCalibrationResult',
     solution: Solution,
     measurement: 'KattisMeasurement',
 ) -> None:
-    """Say that an accepted solution did not compile on MOJ, and show why.
+    """Say that an accepted solution did not compile on MOJ, and where to see why.
 
     The compiler output is not in the calibration, only in the judge's
-    per-solution report, so it is fetched (`fetch_compile_stderr`) and shown when
-    the report reads as expected. The command that downloads the full report is
-    quoted either way, since the inline part is a best-effort scrape.
+    per-solution report. That is fetched (`fetch_compile_report`) and saved to a
+    file through the warning stack, which lists it again on the way out: the
+    scraped stderr when the report reads as expected, the whole report when it
+    does not. When nothing could be fetched, the command that downloads it is
+    quoted instead.
     """
-    from rbx.box.runners.moj.kattis import compile_report, compile_report_command
-    from rbx.box.runners.moj.runner import MOJ_COMPILE_HINT, fetch_compile_stderr
+    from rbx.box.runners.moj.kattis import compile_report_command
+    from rbx.box.runners.moj.runner import MOJ_COMPILE_HINT, fetch_compile_report
+    from rbx.box.sanitizers import warning_stack
 
     path = str(solution.path)
-    command = compile_report_command(result, path)
-    see = (
-        f'See the full report with `{command}`.'
-        if command is not None
-        else 'Compile the file on its own, with the flags of that script, '
-        'to see the error.'
+    report = await fetch_compile_report(result, path)
+    if report is None:
+        content, suffix = None, '.moj-compile.log'
+        judge = f'MOJ ({", ".join(measurement.compile_error_hosts)})'
+    elif report.stderr is not None:
+        content, suffix = report.stderr + '\n', '.moj-compile.log'
+        judge = f'MOJ ({report.host})'
+    else:
+        content, suffix = report.html, '.moj-report.html'
+        judge = f'MOJ ({report.host})'
+    error = warning_stack.get_warning_stack().add_remote_compilation_error(
+        solution.path, judge, content, suffix=suffix
     )
+
+    if error.log is not None and report is not None and report.stderr is not None:
+        see = f'Its compiler output on {report.host} is in {href(error.log)}.'
+    elif error.log is not None and report is not None:
+        see = f'The report from {report.host} is in {href(error.log)}.'
+    else:
+        command = compile_report_command(result, path)
+        see = (
+            f'See the full report with `{command}`.'
+            if command is not None
+            else 'Compile the file on its own, with the flags of that script, '
+            'to see the error.'
+        )
     console.console.print(
         f'[error]✗ {solution.href()} is expected to be accepted, but it did '
         f'not compile on MOJ '
         f'({_judges_phrase(measurement.compile_error_hosts, measurement.hosts)}'
         f'). {MOJ_COMPILE_HINT} {see}[/error]'
     )
-    stderr = await fetch_compile_stderr(result, path)
-    found = compile_report(result, path)
-    if stderr is None or found is None:
-        return
-    lines = stderr.splitlines()
-    shown = lines[:_MOJ_COMPILE_STDERR_LINES]
-    console.console.print(f'[status]Compiler output on {found[0]}:[/status]')
-    # Plain `Text`, never markup: compiler output is full of brackets.
-    console.console.print(
-        rich.text.Text('\n'.join(f'  {line}' for line in shown)), soft_wrap=True
-    )
-    if len(lines) > len(shown):
-        console.console.print(
-            f'[status]  ... {len(lines) - len(shown)} more line(s) in the full '
-            f'report.[/status]'
-        )
 
 
 def _render_calibration_report(

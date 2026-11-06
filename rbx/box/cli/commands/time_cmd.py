@@ -293,6 +293,13 @@ async def _estimate(
         # limits profile untouched, and `rbx time` must not report success for a
         # limit it did not produce. The reasons were printed where they were
         # found; this only turns them into an exit code a pipeline can see.
+        #
+        # The warning stack is printed first: `new_package_cd` prints it only on
+        # a clean return, and what it holds -- above all a solution MOJ could not
+        # compile, with its saved compiler output -- is often why this failed.
+        from rbx.box.sanitizers import warning_stack
+
+        warning_stack.print_warning_stack_report()
         raise typer.Exit(1)
 
 

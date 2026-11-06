@@ -8,6 +8,7 @@ the upload, the freshness wait) is `tests/rbx/box/runners/moj/test_kattis.py`.
 """
 
 import asyncio
+import pathlib
 from typing import Dict, List, Optional, Tuple
 from unittest import mock
 
@@ -16,6 +17,8 @@ import pytest
 from rbx.box import package, timing, timing_config
 from rbx.box.runners.moj import cli, kattis
 from rbx.box.runners.moj.kattis import KattisCalibrationResult, KattisMeasurement
+from rbx.box.runners.moj.runner import CompileReport
+from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import (
     ExpectedOutcome,
     InferenceRole,
@@ -551,60 +554,95 @@ def test_the_calibration_table_names_the_judges_that_failed_to_compile(capsys):
     assert 'incomplete' not in out
 
 
-@pytest.mark.usefixtures('pkg')
-def test_the_judges_compiler_output_is_shown_under_the_error(capsys):
+def _compile_failed_runner(reports=('good-ac.cpp',)) -> _CalibratingRunner:
+    """`sols/ac.cpp` did not compile on judges `a` and `b`, each keeping a report."""
     hosts = _never_compiled_on('ab', 'good', 'ac.cpp')
     for host in hosts:
-        host.reports = ['good-ac.cpp']
-    runner = _CalibratingRunner(
+        host.reports = list(reports)
+    return _CalibratingRunner(
         _calibrated(hosts, {'sols/ac.cpp': 'good'}),
         limits={},
         calib_hosts=tuple(hosts),
         files={'sols/ac.cpp': ('good', 'ac.cpp')},
     )
-    # Brackets that would be markup, and more lines than are shown inline.
-    stderr = '\n'.join(
-        ['ac.cpp:1:1: error: [[nodiscard]] x[0] <vector>']
-        + [f'note {i}' for i in range(50)]
-    )
+
+
+def _estimate_fetching(runner, report: Optional[CompileReport]):
     fetched = []
 
     async def fake_fetch(result, path):
         fetched.append(path)
-        return stderr
+        return report
 
-    with mock.patch('rbx.box.runners.moj.runner.fetch_compile_stderr', fake_fetch):
+    with mock.patch('rbx.box.runners.moj.runner.fetch_compile_report', fake_fetch):
         assert _estimate(runner) is None
-
-    out = capsys.readouterr().out
-    assert fetched == ['sols/ac.cpp']
-    assert "moj calib-report 'alice#rbxt-x-kattis' --host a --sol good-ac.cpp" in (
-        ' '.join(out.split())
-    )
-    assert 'Compiler output on a:' in out
-    assert 'ac.cpp:1:1: error: [[nodiscard]] x[0] <vector>' in out
-    assert 'note 38' in out
-    assert 'note 39' not in out
-    assert '11 more line(s) in the full report' in out
+    return fetched
 
 
 @pytest.mark.usefixtures('pkg')
-def test_no_compiler_output_still_quotes_the_report(capsys):
-    hosts = _never_compiled_on('a', 'good', 'ac.cpp')
-    hosts[0].reports = ['good-ac.cpp']
-    runner = _CalibratingRunner(
-        _calibrated(hosts, {'sols/ac.cpp': 'good'}),
-        limits={},
-        calib_hosts=tuple(hosts),
-        files={'sols/ac.cpp': ('good', 'ac.cpp')},
+def test_the_judges_compiler_output_is_saved_and_left_on_the_warning_stack(capsys):
+    stderr = 'ac.cpp:1:1: error: [[nodiscard]] x[0] <vector>\nnote: here'
+
+    fetched = _estimate_fetching(
+        _compile_failed_runner(), CompileReport(host='a', html='<html/>', stderr=stderr)
     )
 
-    async def nothing(result, path):
-        return None
+    assert fetched == ['sols/ac.cpp']
+    errors = warning_stack.get_warning_stack().remote_compilation_errors
+    error = errors[pathlib.Path('sols/ac.cpp')]
+    assert error.judge == 'MOJ (a)'
+    assert error.log is not None and error.log.name == 'ac.cpp.moj-compile.log'
+    assert error.log.read_text() == stderr + '\n'
+    out = ' '.join(capsys.readouterr().out.split())
+    assert 'Its compiler output on a is in' in out
+    assert 'ac.cpp.moj-compile.log' in out
+    # Saved, not printed.
+    assert '[[nodiscard]]' not in out
 
-    with mock.patch('rbx.box.runners.moj.runner.fetch_compile_stderr', nothing):
-        assert _estimate(runner) is None
+
+@pytest.mark.usefixtures('pkg')
+def test_the_warning_stack_lists_the_saved_compiler_output(capsys):
+    _estimate_fetching(
+        _compile_failed_runner(),
+        CompileReport(host='a', html='<html/>', stderr='boom'),
+    )
+    capsys.readouterr()
+
+    warning_stack.print_warning_stack_report()
 
     out = ' '.join(capsys.readouterr().out.split())
-    assert 'See the full report with `moj calib-report' in out
-    assert 'Compiler output' not in out
+    assert '1 solutions did not compile remotely' in out
+    assert 'sols/ac.cpp on MOJ (a), compiler output at' in out
+    assert 'ac.cpp.moj-compile.log' in out
+
+
+@pytest.mark.usefixtures('pkg')
+def test_a_report_that_cannot_be_read_is_saved_whole(capsys):
+    _estimate_fetching(
+        _compile_failed_runner(),
+        CompileReport(host='b', html='<h1>new layout</h1>', stderr=None),
+    )
+
+    error = warning_stack.get_warning_stack().remote_compilation_errors[
+        pathlib.Path('sols/ac.cpp')
+    ]
+    assert error.log is not None and error.log.name == 'ac.cpp.moj-report.html'
+    assert error.log.read_text() == '<h1>new layout</h1>'
+    out = ' '.join(capsys.readouterr().out.split())
+    assert 'The report from b is in' in out
+
+
+@pytest.mark.usefixtures('pkg')
+def test_nothing_fetched_still_quotes_the_report_command(capsys):
+    _estimate_fetching(_compile_failed_runner(), None)
+
+    error = warning_stack.get_warning_stack().remote_compilation_errors[
+        pathlib.Path('sols/ac.cpp')
+    ]
+    assert error.log is None
+    assert error.judge == 'MOJ (a, b)'
+    out = ' '.join(capsys.readouterr().out.split())
+    assert (
+        "See the full report with `moj calib-report 'alice#rbxt-x-kattis' "
+        '--host a --sol good-ac.cpp'
+    ) in out
