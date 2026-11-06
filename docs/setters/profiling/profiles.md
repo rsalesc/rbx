@@ -30,8 +30,10 @@ Estimate one, and read it back:
 
 Besides the two limits, the file stores the per-language `modifiers` {{rbx}} derived, the ratios
 it estimated under, a per-group record of where each number came from, and, at the end, a
-`solutions` list with what each solution measured. You do not have to read that record,
-and you should not hand-maintain it — it is written for you, and
+`solutions` list with what each solution measured. A profile written by
+[`rbx time --run-all`](estimating.md#checking-the-rest-of-the-package) also ends with a `runs`
+list: the verdict every other solution got at the estimated limit. You don't have to read any of
+it, and you shouldn't hand-maintain it — it is written for you, and
 the [`LimitsProfile`](/schemas/LimitsProfile.json) schema is the authority on what it holds.
 
 The two fields you *will* set by hand are the limits themselves:

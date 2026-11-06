@@ -182,6 +182,12 @@ fails if any of them does not behave as `problem.rbx.yml` says it does. The solu
 already ran are not run again: an accepted one was measured under a far looser cap, and a slow
 one timed out at a bound above the limit, so both answers already hold.
 
+When the stage finishes, {{rbx}} saves the profile a second time with a `runs` list at the end:
+each solution's verdict, its slowest time, and the limit it was judged at. The list sits apart
+from the profile's `solutions` list ([what each solution measured](profiles.md)), since none of
+these runs went into the estimate. A solution that misbehaves is recorded too, and that's the
+entry you'll most want to read later.
+
 This stage judges rather than measures, so it runs them exactly as
 [`rbx run`](../running/index.md) would: with twice the time limit, and with the warning that
 appears when a TLE solution passes within `2*TL`. The verdicts are the ones the limit itself
@@ -192,7 +198,8 @@ estimate is measured against, and a doubled cap is a corrupted measurement.
 Add `--fail-fast` (or `--ff`) to stop each of those solutions at its first non-accepted
 verdict. It applies to this stage only, it is for quick experimentation, and the report drops
 its timing summary under it — a solution that stopped early was not timed on the testcases that
-never ran.
+never ran. For the same reason, its entry in `runs` is marked `complete: false`: its time is only
+a lower bound.
 
 ### `rbx preship`
 
