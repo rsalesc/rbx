@@ -485,6 +485,50 @@ def test_interaction_block_becomes_a_section(language, heading, pointer):
     assert doc.count(pointer) == 2
 
 
+@pytest.mark.parametrize(
+    'language, heading, absent',
+    [
+        ('en', '## Interaction', ('## Input', '## Output')),
+        ('pt-br', '## Interação', ('## Entrada', '## Saída')),
+        ('es', '## Interacción', ('## Entrada', '## Salida')),
+    ],
+)
+def test_interactive_problem_ships_only_the_interaction(language, heading, absent):
+    """MOJ accepts `## Interação` in place of the input/output pair when the
+    package ships an arbiter, so the empty pair is left out, not padded."""
+    doc = statement.build_enunciado(
+        INTERACTIVE_BLOCKS, language=language, interactive=True
+    )
+    assert heading in doc
+    assert '`? x y`' in doc
+    for missing in absent:
+        assert missing not in doc
+    assert 'Interaction*' not in doc and 'Interação*' not in doc
+
+
+def test_interactive_problem_drops_only_the_empty_side():
+    """The gate waives each heading on its own, so a described side stays and
+    the empty one is left out rather than pointed at the protocol."""
+    doc = statement.build_enunciado(
+        {**INTERACTIVE_BLOCKS, 'input': 'A line with $N$.'},
+        language='en',
+        interactive=True,
+    )
+    assert doc.index('## Input') < doc.index('## Interaction')
+    assert 'A line with $N$.' in doc
+    assert '## Output' not in doc
+    assert 'See the *Interaction*' not in doc
+
+
+def test_interactive_problem_without_an_interaction_keeps_the_pair():
+    doc = statement.build_enunciado(
+        {'legend': 'Prose.'}, language='en', interactive=True
+    )
+    assert '## Input' in doc
+    assert '## Output' in doc
+    assert '## Interaction' not in doc
+
+
 def test_interaction_comes_after_output_and_before_notes():
     doc = statement.build_enunciado(
         {**INTERACTIVE_BLOCKS, 'output': 'The answer.', 'notes': 'Flush.'},

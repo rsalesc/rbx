@@ -147,3 +147,24 @@ def test_samples_are_written_into_the_statement(interactive_with_samples):
 def test_samples_ship_no_notes(interactive_with_samples):
     # With SAMPLE=no MOJ renders no sample notes; the explanation is in the text.
     assert not (interactive_with_samples / 'docs' / 'notes').exists()
+
+
+def test_statement_ships_only_the_interaction_section(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """An interactive problem that leaves input/output to the protocol ships
+    `## Interação` alone: MOJ accepts it in place of the pair."""
+    _interactive_package(testing_pkg)
+    with_statements(
+        testing_pkg,
+        monkeypatch,
+        {'pt': {'legend': 'Ache o número.', 'interaction': 'Imprima um palpite.'}},
+    )
+    packaged = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples', 'tests'])
+    )
+    text = (packaged / 'docs' / 'enunciado.md').read_text()
+
+    assert '## Interação\n\nImprima um palpite.' in text
+    assert '## Entrada' not in text
+    assert '## Saída' not in text
