@@ -19,6 +19,7 @@ import * as vscode from 'vscode';
 
 import { ActiveProblem } from './activeProblem';
 import { log } from './log';
+import { EditQueue } from './rbx/editQueue';
 import {
   InspectResult,
   ProfileEdit,
@@ -56,24 +57,24 @@ interface WantedEdit {
 }
 
 /**
- * One open profile editor.
- *
- * Every call to rbx goes through one queue, `pump`, with at most one call in
- * flight. An edit asked for while another is running does not wait in line: it
- * *replaces* whatever was waiting, since the client always sends an absolute
- * value (the limit it wants, not "+100"). So any number of clicks or drag steps
- * costs at most one call more than the one already running, and nothing in the
- * webview is ever disabled while it happens.
+ * One open profile editor. Every call to rbx goes through one `EditQueue`
+ * (rbx/editQueue.ts): one call in flight, the latest wanted edit wins, and
+ * nothing in the webview is ever disabled while it happens.
  */
 class ProfileSession implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private result?: InspectResult;
   private error?: string;
   private timer?: NodeJS.Timeout;
-  private inFlight = false;
-  private editInFlight = false;
-  private wanted?: WantedEdit;
-  private refreshWanted = false;
+  private readonly queue = new EditQueue<WantedEdit>({
+    runEdit: (wanted) => this.runEdit(wanted),
+    refresh: async () => {
+      const result = await this.inspect();
+      if (result !== undefined) this.result = result;
+    },
+    settled: () => this.post(),
+    onError: (error) => log(`time profile: ${String(error)}`),
+  });
   /** The newest edit rbx has answered for; the client keeps its optimistic values until then. */
   private answeredSeq = 0;
   /** The text an edit just wrote, whose change event must not re-ask rbx. */
@@ -126,7 +127,7 @@ class ProfileSession implements vscode.Disposable {
   private async post(): Promise<void> {
     const state: ViewState = {
       result: this.result,
-      updating: this.editInFlight || this.wanted !== undefined,
+      updating: this.queue.updating,
       error: this.error,
       nav: await navInfo(this.active, this.root, this.profile),
       seq: this.answeredSeq,
@@ -136,42 +137,12 @@ class ProfileSession implements vscode.Disposable {
 
   private schedule(): void {
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => {
-      this.refreshWanted = true;
-      void this.pump();
-    }, REFRESH_DEBOUNCE_MS);
+    this.timer = setTimeout(() => this.queue.refresh(), REFRESH_DEBOUNCE_MS);
   }
 
   private request(wanted: WantedEdit): void {
-    this.wanted = wanted;
+    this.queue.edit(wanted);
     void this.post();
-    void this.pump();
-  }
-
-  private async pump(): Promise<void> {
-    if (this.inFlight) return;
-    const wanted = this.wanted;
-    if (wanted === undefined && !this.refreshWanted) return;
-    this.inFlight = true;
-    try {
-      if (wanted !== undefined) {
-        this.wanted = undefined;
-        this.editInFlight = true;
-        await this.runEdit(wanted);
-        this.answeredSeq = Math.max(this.answeredSeq, wanted.seq);
-      } else {
-        this.refreshWanted = false;
-        const result = await this.inspect();
-        if (result !== undefined) this.result = result;
-      }
-    } catch (e) {
-      log(`time profile: ${String(e)}`);
-    } finally {
-      this.inFlight = false;
-      this.editInFlight = false;
-    }
-    await this.post();
-    void this.pump();
   }
 
   private async inspect(edit?: ProfileEdit): Promise<InspectResult | undefined> {
@@ -197,6 +168,16 @@ class ProfileSession implements vscode.Disposable {
   }
 
   private async runEdit(wanted: WantedEdit): Promise<void> {
+    try {
+      await this.applyEdit(wanted);
+    } finally {
+      // Answered even when it failed: the client must drop its optimistic
+      // value either way, or a failed edit would hold it on screen for good.
+      this.answeredSeq = Math.max(this.answeredSeq, wanted.seq);
+    }
+  }
+
+  private async applyEdit(wanted: WantedEdit): Promise<void> {
     const result = await this.inspect(wanted.edit);
     if (result === undefined) return;
     if (result.errors.length > 0 || result.yaml === undefined) {
@@ -217,9 +198,8 @@ class ProfileSession implements vscode.Disposable {
       case 'ready':
       case 'refresh':
         this.error = undefined;
-        this.refreshWanted = true;
         await this.post();
-        await this.pump();
+        this.queue.refresh();
         return;
       case 'edit':
         this.request({ edit: message.edit, preview: message.preview === true, seq: message.seq ?? 0 });

@@ -10,7 +10,7 @@
  * on screen, so five quick clicks on + mean +5 steps; the host keeps only the
  * latest value and sends it when rbx is free.
  */
-import type { InspectResult, Row } from '../rbx/limitsInspect';
+import { canDropOptimistic, snapLimit, stepProblem, withOptimistic } from './limitsModel';
 import { Domain, STRIP_W, ViewState, domainFor, msAtX, renderDocument } from './limitsRender';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
@@ -31,19 +31,8 @@ function step(): number {
   return state.result?.multipliers?.timeResolution ?? 100;
 }
 
-/** rbx's last answer, with every optimistic limit laid over it. */
 function displayed(): ViewState {
-  const result = state.result;
-  if (result === undefined || optimistic.size === 0) return state;
-  const rows: Row[] | undefined = result.rows?.map((row) =>
-    optimistic.has(row.key) ? { ...row, timeLimit: optimistic.get(row.key) ?? row.timeLimit } : row,
-  );
-  const patched: InspectResult = {
-    ...result,
-    rows,
-    timeLimit: optimistic.has('base') ? optimistic.get('base') : result.timeLimit,
-  };
-  return { ...state, result: patched, updating: true };
+  return withOptimistic(state, optimistic);
 }
 
 function draw(): void {
@@ -65,7 +54,7 @@ window.addEventListener('message', (event: MessageEvent) => {
   state = message.state;
   // Once rbx has caught up with everything asked of it, its answer is the
   // truth; until then the optimistic values stay on top of it.
-  if (!state.updating && (state.seq ?? 0) >= sentSeq && dragging === undefined) optimistic.clear();
+  if (canDropOptimistic(state, sentSeq, dragging !== undefined)) optimistic.clear();
   draw();
 });
 
@@ -76,7 +65,7 @@ function currentLimit(row: string): number | undefined {
 }
 
 function setLimit(row: string, ms: number, commit: boolean): void {
-  const value = Math.max(step(), Math.round(ms));
+  const value = snapLimit(ms, 1);
   optimistic.set(row, value);
   draw();
   vscode.postMessage({ type: 'edit', edit: { kind: 'set', row, ms: value }, preview: !commit, seq: ++sentSeq });
@@ -119,12 +108,8 @@ root.addEventListener('click', (event) => {
 
 function navStep(delta: number): void {
   const nav = state.nav;
-  if (nav === undefined) return;
-  const withProfiles = nav.problems.filter((p) => p.profiles.length > 0);
-  const index = withProfiles.findIndex((p) => p.root === nav.root);
-  if (withProfiles.length < 2) return;
-  const next = withProfiles[(index + delta + withProfiles.length) % withProfiles.length];
-  vscode.postMessage({ type: 'nav', root: next.root, profile: nav.profile });
+  const next = nav === undefined ? undefined : stepProblem(nav, delta);
+  if (next !== undefined) vscode.postMessage({ type: 'nav', root: next.root, profile: nav?.profile });
 }
 
 root.addEventListener('change', (event) => {
@@ -173,8 +158,7 @@ function commit(target: HTMLInputElement): void {
 function limitAt(event: PointerEvent, svg: SVGSVGElement, domain: Domain): number {
   const rect = svg.getBoundingClientRect();
   const x = ((event.clientX - rect.left) / rect.width) * STRIP_W;
-  const s = step();
-  return Math.max(s, Math.round(msAtX(x, domain) / s) * s);
+  return snapLimit(msAtX(x, domain), step());
 }
 
 root.addEventListener('pointerdown', (event) => {
