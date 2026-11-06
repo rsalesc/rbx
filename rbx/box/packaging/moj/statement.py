@@ -14,9 +14,11 @@ facts worth carrying in your head:
   must carry no title of its own.
 - **`## Entrada`/`## Saída` are the release gate.** `validate-problem.sh` greps
   them out of the RAW file as `^\\s*#{1,3}\\s*(entrada|input)` and
-  `…(saída|saida|salida|output)`, so they are emitted unconditionally -- a
-  statement that simply has no input section still needs the heading. The gate
-  applies to every translation too.
+  `…(saída|saida|salida|output)`, so a statement that simply has no input
+  section still needs the heading. The one exception is an interactive problem
+  (one that ships `scripts/arbitro.*`): a `## Interação` (`Interaction`,
+  `Interacción`) section waives either heading, so an empty input or output
+  block is left out. The gate applies to every translation too.
 - **Portuguese is the canonical slot, and the languages are an allowlist.**
   `statement-langs.sh` reads `docs/enunciado.md` as Portuguese and looks for a
   translation only at `docs/enunciado.<lang>.md` for `<lang>` in `pt en es` --
@@ -598,6 +600,7 @@ def build_enunciado(
     docs_root: Optional[pathlib.Path] = None,
     examples: str = '',
     diagnostics: Optional[StatementDiagnostics] = None,
+    interactive: bool = False,
 ) -> str:
     """Render `docs/enunciado.md` from a bundle's blocks.
 
@@ -615,6 +618,11 @@ def build_enunciado(
     as the bundle wrote them whatever the switch says.
 
     `diagnostics`, when given, collects what pandoc dropped from each block.
+
+    `interactive` says the package ships an interactor (`scripts/arbitro.*`).
+    Only then may an `## Interação` section stand in for an empty `## Entrada`
+    or `## Saída`: MOJ warns about one that does so in a package without an
+    arbiter.
     """
     del title  # See the docstring: MOJ injects the <h1> from display_title.
 
@@ -622,18 +630,20 @@ def build_enunciado(
     rewrite = _image_rewriter(docs_root)
     parts = [_convert(blocks, 'legend', rewrite, diagnostics)]
 
-    # Emitted unconditionally, empty block or not: these two headings ARE the
-    # release gate, grepped out of the raw file by validate-problem.sh.
+    # These two headings ARE the release gate, grepped out of the raw file by
+    # validate-problem.sh, so they are emitted even for an empty block -- except
+    # in an interactive problem with an `## Interação` section, which the gate
+    # takes in place of either one.
     input_md = _convert(blocks, 'input', rewrite, diagnostics)
     output_md = _convert(blocks, 'output', rewrite, diagnostics)
     interaction_md = _convert(blocks, 'interaction', rewrite, diagnostics)
-    if interaction_md:
-        # An interactive statement usually leaves input/output to the
-        # interaction protocol; point there rather than show empty sections.
-        input_md = input_md or headings['see_interaction']
-        output_md = output_md or headings['see_interaction']
-    parts.append(f'## {headings["input"]}\n\n{input_md}')
-    parts.append(f'## {headings["output"]}\n\n{output_md}')
+    for key, body in (('input', input_md), ('output', output_md)):
+        if body or not (interactive and interaction_md):
+            if not body and interaction_md:
+                # No arbiter to let Interação stand in: point at the protocol
+                # rather than show an empty section.
+                body = headings['see_interaction']
+            parts.append(f'## {headings[key]}\n\n{body}')
     if interaction_md:
         parts.append(f'## {headings["interaction"]}\n\n{interaction_md}')
 

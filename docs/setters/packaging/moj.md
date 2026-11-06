@@ -304,9 +304,9 @@ its own, and {{rbx}} will **refuse to package**:
     itself](../profiling/remote.md#timing-on-moj), and its timings already include the whole
     interaction.
 
-The statement's `interaction` block becomes an **Interaction** section after **Output**, as in
-the PDF. When `input` or `output` is empty, that section says to see **Interaction** instead of
-staying blank.
+The statement's `interaction` block becomes an **Interaction** section, as in the PDF. MOJ
+accepts it in place of either heading, so when you leave `input` or `output` empty,
+{{rbx}} leaves that section out of the statement instead of shipping it blank.
 
 MOJ doesn't show examples for an interactive problem, since a test's input is the interactor's
 secret. So {{rbx}} writes your samples into the statement itself, under an **Example** section:

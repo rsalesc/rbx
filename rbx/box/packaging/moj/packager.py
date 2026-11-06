@@ -1059,6 +1059,7 @@ class MojPackager(BasePackager):
                 docs_root=docs_path,
                 examples=examples,
                 diagnostics=sink,
+                interactive=self._is_interactive(),
             )
         except MojGateError as e:
             console.console.print(

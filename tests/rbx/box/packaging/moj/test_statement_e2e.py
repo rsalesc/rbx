@@ -17,6 +17,7 @@ import subprocess
 
 import pytest
 
+from rbx.box.schema import TaskType
 from tests.rbx.box.packaging.moj.conftest import (
     PT_BLOCKS,
     build_entries,
@@ -126,6 +127,45 @@ def test_validate_problem_accepts_a_package_without_samples(testing_pkg, tmp_pat
 
     check = _check(_validate(mojtools, package, tmp_path), 'examples_present')
     assert check['ok'], check['detail']
+
+
+INTERACTOR = """#include "testlib.h"
+int main(int argc, char *argv[]) {
+  registerInteraction(argc, argv);
+  int x = inf.readInt();
+  if (ouf.readInt() != x)
+    quitf(_wa, "wrong");
+  quitf(_ok, "ok");
+}
+"""
+
+
+def test_validate_problem_accepts_an_interaction_only_statement(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """An interactive package whose statement carries `## Interação` and no
+    `## Entrada`/`## Saída` passes the gate, with no soft warning either."""
+    mojtools = _mojtools()
+    testing_pkg.set_type(TaskType.COMMUNICATION)
+    testing_pkg.add_file('interactor.cpp').write_text(INTERACTOR)
+    testing_pkg.set_interactor('interactor.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.save()
+    with_statements(
+        testing_pkg,
+        monkeypatch,
+        {'pt': {'legend': 'Ache o número.', 'interaction': 'Imprima um palpite.'}},
+    )
+    package = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples', 'tests'])
+    )
+    assert '## Entrada' not in (package / 'docs' / 'enunciado.md').read_text()
+
+    report = _validate(mojtools, package, tmp_path)
+    for name in ('has_statement', 'html_builds', 'secao_entrada', 'secao_saida'):
+        check = _check(report, name)
+        assert check['ok'], f'{name}: {check["detail"]}'
+    assert report['render_warnings'] == ''
 
 
 def test_validate_problem_passes_the_translation_gate(packaged, tmp_path):

@@ -486,9 +486,10 @@ mojtools' `lang/*/compile.sh` do. `binfile.sh` is upstream's to escape (`printf 
 packager then converts each block TeX → Markdown with pandoc and writes
 `docs/enunciado.md` plus `docs/notes/<sample>.md`. The body ships
 `statement.BODY_BLOCKS` in template order -- legend, `## Input`, `## Output`
-(always emitted: they are the gate), `## Interaction`, `## Scoring`, `## Notes`.
-With an `interaction` block, an empty input/output section points to it instead
-of being blank. Any other non-empty block not in `HIDDEN_BLOCKS` (`defs`,
+(the gate), `## Interaction`, `## Scoring`, `## Notes`. An interactive problem
+with an `interaction` block leaves an empty input/output section out (see the
+gate below); a non-interactive one with that block points the empty section at
+it instead of leaving it blank. Any other non-empty block not in `HIDDEN_BLOCKS` (`defs`,
 `preamble`, `macros`, `editorial`) is reported by `unshipped_blocks` as an
 `UNSHIPPED_BLOCK` finding, so it warns (or fails under strict) rather than
 vanishing.
@@ -518,9 +519,18 @@ never pass the gate however well it renders.
 What the packager owes the gate (`validate-problem.sh`):
 
 - `## Entrada` / `## Saída`, **hard-required**, grepped from the raw file. Emitted
-  unconditionally, even when the block is empty. Heading text follows the
-  statement language (`entrada|input`, `saída|saida|output`, matched case
-  insensitively), defaulting to Portuguese.
+  even when the block is empty. Heading text follows the statement language
+  (`entrada|input`, `saída|saida|output`, matched case insensitively),
+  defaulting to Portuguese. **Exception (MOJ, 2026-11-06):** a `## Interação` /
+  `Interaction` / `Interacción` section may replace the pair, in every
+  translation; `validate-problem.sh` waives each heading on its own. rbx uses
+  it only when the package ships `scripts/arbitro.*`
+  (`build_enunciado(interactive=True)`), dropping whichever of the two blocks
+  is empty: MOJ warns, without failing, about an Interação section replacing
+  them in a package with no arbiter, and about an interactive one with no
+  Interação at all. MOJ's `SAMPLE=no` alone does not waive the pair, and for
+  function submissions Entrada/Saída still describe parameters and return
+  value.
 - **No title.** `render-statement.sh` injects the `<h1>` from `display_title` and
   strips a legacy `% Title` first line.
 - **No examples section and no ``` fence** -- both land in `render_warnings`,
