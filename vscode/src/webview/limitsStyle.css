@@ -96,7 +96,10 @@ table.sols th, table.sols td { padding: 3px 8px; text-align: left; overflow: hid
 table.sols th { font-weight: normal; opacity: 0.6; border-bottom: 1px solid var(--vscode-panel-border); }
 table.sols td { border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 50%, transparent); }
 table.sols tr:hover td { background: var(--vscode-list-hoverBackground); }
-table.sols a { color: var(--vscode-textLink-foreground); text-decoration: none; }
+table.sols a { text-decoration: none; }
+/* Link blue only for a solution with no declared expectation: a coloured one
+   must win, and `table.sols a` would outrank a bare `.hue-*` class. */
+table.sols a:not([class*="hue-"]) { color: var(--vscode-textLink-foreground); }
 a:hover { text-decoration: underline; }
 a.bold { font-weight: 600; }
 /* Expected outcome, in the run view's own hue table (webview/style.css). */
