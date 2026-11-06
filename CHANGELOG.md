@@ -1,3 +1,9 @@
+## 2.6.0 (2026-11-06)
+
+### Feat
+
+- **vscode**: time profile view and editor (#1020)
+
 ## 2.5.3 (2026-11-06)
 
 ### Feat
