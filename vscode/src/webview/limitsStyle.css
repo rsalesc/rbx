@@ -85,17 +85,35 @@ g.pt { color: var(--c); }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.85em; }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 
-table.sols { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 0.93em; }
-table.sols th { text-align: left; font-weight: normal; opacity: 0.6; border-bottom: 1px solid var(--vscode-panel-border); padding: 3px 6px; }
-table.sols td { padding: 3px 6px; border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 50%, transparent); }
+table.sols { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 0.93em; table-layout: fixed; }
+table.sols col.c-lang { width: 70px; }
+table.sols col.c-role { width: 56px; }
+table.sols col.c-num { width: 110px; }
+table.sols col.c-status { width: 150px; }
+/* Header and cell share one padding, and nothing inside a cell adds its own
+   horizontal padding or border, so every header sits over its column's text. */
+table.sols th, table.sols td { padding: 3px 8px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.sols th { font-weight: normal; opacity: 0.6; border-bottom: 1px solid var(--vscode-panel-border); }
+table.sols td { border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 50%, transparent); }
 table.sols tr:hover td { background: var(--vscode-list-hoverBackground); }
-.num { text-align: right; font-variant-numeric: tabular-nums; }
-a { color: var(--vscode-textLink-foreground); text-decoration: none; }
+table.sols a { color: var(--vscode-textLink-foreground); text-decoration: none; }
 a:hover { text-decoration: underline; }
-.role { font-size: 0.8em; font-weight: 600; padding: 0 5px; border-radius: 3px; }
+a.bold { font-weight: 600; }
+/* Expected outcome, in the run view's own hue table (webview/style.css). */
+.hue-green { color: var(--vscode-charts-green); }
+.hue-red { color: var(--vscode-charts-red); }
+.hue-yellow { color: var(--vscode-charts-yellow); }
+.hue-blue { color: var(--vscode-charts-blue); }
+.hue-purple { color: var(--vscode-charts-purple); }
+.hue-orange { color: var(--vscode-charts-orange); }
+.hue-dim { color: var(--vscode-descriptionForeground); }
+.hue-neutral { color: var(--vscode-foreground); }
+.role { font-size: 0.85em; font-weight: 600; }
 .role.ac { color: var(--vscode-testing-iconPassed); }
 .role.tle { color: var(--vscode-editorWarning-foreground); }
-.chip { font-size: 0.85em; padding: 0 6px; border-radius: 8px; color: var(--c); border: 1px solid var(--c); }
+.status { color: var(--c); cursor: help; }
+.status::before { content: '● '; }
+.badge { cursor: help; }
 
 .effective .effs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 .eff { padding: 2px 8px; border-radius: 3px; background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-panel-border); font-variant-numeric: tabular-nums; }

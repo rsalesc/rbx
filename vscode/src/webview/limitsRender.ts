@@ -11,8 +11,8 @@ import type {
   InspectResult,
   Row,
   SolutionCheck,
-  SolutionStatus,
 } from '../rbx/limitsInspect';
+import { expectationDisplay } from '../rbx/expectation';
 
 export function esc(text: string): string {
   return text
@@ -34,30 +34,72 @@ function basename(path: string): string {
   return path.split('/').pop() ?? path;
 }
 
-const STATUS_LABEL: Record<SolutionStatus, string> = {
-  ok: 'ok',
-  thin: 'thin margin',
-  fails: 'fails',
-  passes: 'passes',
-  unverified: 'unverified',
-  unchecked: 'unchecked',
-};
-
-const STATUS_HINT: Record<SolutionStatus, string> = {
-  ok: 'Clears the limit the way it should.',
-  thin: 'Accepted, but without the headroom acToTimeLimit asks for.',
-  fails: 'Accepted solution that takes longer than the limit.',
-  passes: 'Expected too slow, but finishes within limit × timeLimitToTle.',
-  unverified: 'Expected too slow, but only seen running at a lower multiple of this limit.',
-  unchecked: 'Expected too slow, and never run, or nothing bounds it.',
-};
-
-function statusChip(status: SolutionStatus): string {
-  return `<span class="chip st-${status}" title="${esc(STATUS_HINT[status])}">${esc(STATUS_LABEL[status])}</span>`;
+/** The margins the estimate was built with, as the hovers spell them out. */
+interface Margins {
+  readonly ac?: number;
+  readonly toTle?: number;
 }
 
 function isAccepted(s: SolutionCheck): boolean {
   return s.role.toUpperCase() === 'LOWER';
+}
+
+/**
+ * rbx's status, worded for what actually happens at this limit.
+ *
+ * `passes` is rbx's name for "finishes within TL × timeLimitToTle", which is
+ * not the same as being accepted: a solution finishing between TL and that
+ * multiple still gets TLE, just with less margin than asked for. The two read
+ * very differently to a setter, so they are told apart here by the one number
+ * the status does not carry -- whether the time is under the limit itself.
+ */
+function statusWording(s: SolutionCheck, tl: number | null, m: Margins): { label: string; hint: string } {
+  const k = m.toTle;
+  switch (s.status) {
+    case 'ok':
+      return isAccepted(s)
+        ? {
+            label: 'ok',
+            hint: `Accepted at ${ms(s.time)}${s.min_ms !== null ? `; needs TL ≥ ${ms(s.min_ms)}${m.ac !== undefined ? ` (×${m.ac} headroom)` : ''}, and has it.` : '.'}`,
+          }
+        : {
+            label: 'ok',
+            hint:
+              s.time !== null
+                ? `Still running past TL × ${k ?? '?'}${tl !== null && k !== undefined ? ` = ${ms(Math.round(tl * k))}` : ''} (finishes at ${ms(s.time)}): times out with margin.`
+                : `Seen still running at ${ms(s.survived_at)}, past TL × ${k ?? '?'}: times out with margin.`,
+          };
+    case 'thin':
+      return {
+        label: 'thin headroom',
+        hint: `Accepted at ${ms(s.time)}, but under the ×${m.ac ?? '?'} headroom acToTimeLimit asks for: needs TL ≥ ${ms(s.min_ms)}.`,
+      };
+    case 'fails':
+      return { label: 'would get TLE', hint: `Should be accepted, but takes ${ms(s.time)}: longer than the limit.` };
+    case 'passes':
+      if (s.time !== null && tl !== null && s.time <= tl) {
+        return { label: 'would be accepted', hint: `Should be too slow, but finishes at ${ms(s.time)}: within the limit itself.` };
+      }
+      return {
+        label: `margin < ×${k ?? '?'}`,
+        hint: `Still gets TLE, but finishes at ${ms(s.time)}, before TL × ${k ?? '?'}${tl !== null && k !== undefined ? ` = ${ms(Math.round(tl * k))}` : ''}: less margin than timeLimitToTle asks for.${s.max_ms !== null ? ` Keep TL ≤ ${ms(s.max_ms)} to restore it.` : ''}`,
+      };
+    case 'unverified':
+      return {
+        label: 'unverified',
+        hint: `Only seen still running at ${ms(s.survived_at)}; TL × ${k ?? '?'} is now higher, so nothing measured says it still times out with margin.${s.max_ms !== null ? ` Verified for TL ≤ ${ms(s.max_ms)}.` : ''}`,
+      };
+    case 'unchecked':
+      return {
+        label: 'unchecked',
+        hint: k === undefined ? 'No timeLimitToTle is set, so nothing checks slow solutions.' : 'Never run during the estimate.',
+      };
+  }
+}
+
+function statusChip(s: SolutionCheck, tl: number | null, m: Margins): string {
+  const { label, hint } = statusWording(s, tl, m);
+  return `<span class="status st-${s.status}" title="${esc(hint)}">${esc(label)}</span>`;
 }
 
 // ---------------------------------------------------------------- the strip
@@ -112,7 +154,8 @@ function tickLabel(v: number): string {
   return v >= 1000 ? `${v / 1000}s` : `${v}ms`;
 }
 
-function strip(row: Row, d: Domain, toTle: number | undefined): string {
+function strip(row: Row, d: Domain, m: Margins): string {
+  const toTle = m.toTle;
   const parts: string[] = [];
   const check = row.check;
   // The range of limits the evidence allows: the green band.
@@ -146,7 +189,7 @@ function strip(row: Row, d: Domain, toTle: number | undefined): string {
   for (const s of row.solutions) {
     const label = `${s.path} (${s.language}) — ${isAccepted(s) ? 'accepted' : 'too slow'}, ${
       s.time !== null ? ms(s.time) : s.survived_at !== null ? `still running at ${ms(s.survived_at)}` : 'never measured'
-    } — ${STATUS_LABEL[s.status]}`;
+    } — ${statusWording(s, row.timeLimit, m).label}`;
     if (isAccepted(s) && s.time !== null) {
       const x = xOf(s.time, d);
       parts.push(
@@ -169,7 +212,14 @@ function strip(row: Row, d: Domain, toTle: number | undefined): string {
 
 // ---------------------------------------------------------------- the table
 
-function solutionTable(solutions: SolutionCheck[]): string {
+function solutionLink(s: SolutionCheck): string {
+  const display = expectationDisplay(s.expectedOutcome ?? undefined);
+  const hue = display ? ` hue-${display.hue}` : '';
+  const title = display ? `${s.path} — expected ${display.label}` : s.path;
+  return `<a href="#" class="sol${hue}${display?.bold ? ' bold' : ''}" data-action="open" data-path="${esc(s.path)}" title="${esc(title)}">${esc(basename(s.path))}</a>`;
+}
+
+function solutionTable(solutions: SolutionCheck[], tl: number | null, m: Margins): string {
   if (solutions.length === 0) {
     return '';
   }
@@ -189,52 +239,113 @@ function solutionTable(solutions: SolutionCheck[]): string {
         : s.max_ms !== null
           ? `TL ≤ ${esc(ms(s.max_ms))}`
           : '—';
-      const ratio = s.ratio !== null ? `${s.ratio.toFixed(s.ratio >= 10 ? 0 : 2)}×` : '—';
       return `<tr>
-        <td><a href="#" data-action="open" data-path="${esc(s.path)}" title="${esc(s.path)}">${esc(basename(s.path))}</a></td>
+        <td>${solutionLink(s)}</td>
         <td>${esc(s.language)}</td>
-        <td><span class="role ${accepted ? 'ac' : 'tle'}">${accepted ? 'AC' : 'TLE'}</span></td>
+        <td><span class="role ${accepted ? 'ac' : 'tle'}" title="${accepted ? 'Bounds the limit from below: must be accepted' : 'Bounds the limit from above: must time out'}">${accepted ? 'AC' : 'TLE'}</span></td>
         <td class="num">${time}</td>
         <td class="num">${allows}</td>
-        <td class="num" title="${accepted ? 'limit / time' : 'time / limit'}">${ratio}</td>
-        <td>${statusChip(s.status)}</td>
+        <td>${statusChip(s, tl, m)}</td>
       </tr>`;
     })
     .join('');
   return `<table class="sols">
-    <thead><tr><th>solution</th><th>lang</th><th>role</th><th class="num">time</th><th class="num">allows</th><th class="num">ratio</th><th>status</th></tr></thead>
+    <colgroup><col class="c-sol"><col class="c-lang"><col class="c-role"><col class="c-num"><col class="c-num"><col class="c-status"></colgroup>
+    <thead><tr><th>solution</th><th>lang</th><th>role</th><th class="num">time</th><th class="num">allows</th><th>status</th></tr></thead>
     <tbody>${body}</tbody></table>`;
 }
 
 // ---------------------------------------------------------------- rows
 
-function checkBadges(check: GroupCheck | null): string {
+function badge(kind: 'ok' | 'warn' | 'err', text: string, hint: string): string {
+  return `<span class="badge ${kind}" title="${esc(hint)}">${esc(text)}</span>`;
+}
+
+function checkBadges(check: GroupCheck | null, m: Margins): string {
   if (check === null) {
     return '';
   }
+  const tl = check.time_limit;
+  const k = m.toTle;
+  const tleAt = k !== undefined ? Math.round(tl * k) : undefined;
   const out: string[] = [];
+
+  // The fast side.
   if (check.rejectsOwnSolutions) {
-    out.push(`<span class="badge err">rejects its own accepted solution (${esc(ms(check.slowest_ms))})</span>`);
+    out.push(
+      badge(
+        'err',
+        `${basename(check.min_solution ?? 'an accepted solution')} would get TLE`,
+        `The slowest accepted solution takes ${ms(check.slowest_ms)}, longer than this ${ms(tl)} limit.`,
+      ),
+    );
   } else if (check.belowMin) {
     out.push(
-      `<span class="badge warn" title="${esc(check.min_solution ?? '')}">below the minimum ${esc(ms(check.min_ms))}</span>`,
+      badge(
+        'warn',
+        `headroom < ×${m.ac ?? '?'}`,
+        `Every accepted solution still passes, but the slowest (${check.min_solution ?? '?'}, ${ms(check.slowest_ms)}) gets less than the ×${m.ac ?? '?'} headroom acToTimeLimit asks for. Raise TL to ≥ ${ms(check.min_ms)}.`,
+      ),
     );
   }
-  if (check.max_ms !== null && check.time_limit > check.max_ms) {
-    out.push(
-      `<span class="badge err" title="${esc(check.max_solution ?? '')}">above the maximum ${esc(ms(check.max_ms))}</span>`,
-    );
-  }
+
+  // The slow side. A violating solution finishing *within* the limit really is
+  // accepted; one finishing between TL and TL × timeLimitToTle still gets TLE,
+  // only with less margin than asked for -- a warning, not a wrong verdict.
   for (const v of check.violating) {
+    const name = basename(v.solution ?? '?');
+    if (v.value <= tl) {
+      out.push(
+        badge('err', `${name} would be accepted`, `Should be too slow, but finishes at ${ms(v.value)}: within this ${ms(tl)} limit.`),
+      );
+    } else {
+      out.push(
+        badge(
+          'warn',
+          `${name}: TLE margin < ×${k ?? '?'}`,
+          `Still gets TLE, but finishes at ${ms(v.value)}, before TL × ${k ?? '?'} = ${ms(tleAt)}: less margin than timeLimitToTle asks for.${check.max_ms !== null ? ` Keep TL ≤ ${ms(check.max_ms)} to restore it.` : ''}`,
+        ),
+      );
+    }
+  }
+  if (check.violating.length === 0 && check.max_ms !== null && tl > check.max_ms) {
+    // Above the bound without a measured finish to name: the bound came from a
+    // solution only seen still running.
     out.push(
-      `<span class="badge err">${esc(basename(v.solution ?? '?'))} would pass (${esc(ms(v.value))})</span>`,
+      badge(
+        'warn',
+        `TLE margin < ×${k ?? '?'}`,
+        `${check.max_solution ?? 'A slow solution'} was only shown to run past TL × ${k ?? '?'} for TL ≤ ${ms(check.max_ms)}.`,
+      ),
     );
   }
   if (check.unverified.length > 0) {
-    out.push(`<span class="badge warn">${check.unverified.length} slow solution(s) unverified at this limit</span>`);
+    out.push(
+      badge(
+        'warn',
+        `${check.unverified.length} slow unverified`,
+        `${check.unverified.join(', ')}: only seen still running at a lower limit than TL × ${k ?? '?'} = ${ms(tleAt)}, so nothing measured says ${check.unverified.length === 1 ? 'it' : 'they'} still time out with margin. Re-estimate to check.`,
+      ),
+    );
   }
+
   if (out.length === 0 && check.ok) {
-    out.push('<span class="badge ok">consistent with the estimate</span>');
+    const lines: string[] = [];
+    if (check.min_ms !== null) {
+      lines.push(
+        `Accepted: the slowest takes ${ms(check.slowest_ms)}; with ×${m.ac ?? '?'} headroom it needs TL ≥ ${ms(check.min_ms)}.`,
+      );
+    }
+    if (check.max_ms !== null) {
+      lines.push(`Too slow: ${check.max_solution ?? 'every slow solution'} keeps a ×${k ?? '?'} margin for TL ≤ ${ms(check.max_ms)}.`);
+    }
+    if (check.confirmed.length > 0) {
+      lines.push(`Seen still running past TL × ${k ?? '?'} = ${ms(tleAt)}: ${check.confirmed.join(', ')}.`);
+    }
+    if (lines.length === 0) {
+      lines.push('Nothing recorded for this group bounds the limit.');
+    }
+    out.push(badge('ok', `margins hold at ${ms(tl)}`, lines.join('\n')));
   }
   return out.join(' ');
 }
@@ -273,7 +384,7 @@ function derivation(row: Row): string {
   return '';
 }
 
-function groupSection(row: Row, d: Domain, toTle: number | undefined, step: number, busy: boolean, title: string): string {
+function groupSection(row: Row, d: Domain, m: Margins, step: number, busy: boolean, title: string): string {
   const r = row.report;
   const origin = r ? `<span class="origin o-${r.origin}">${esc(r.origin)}${r.isLeftover ? ' · leftover' : ''}</span>` : '';
   const editor = row.editable ? limitEditor(row, step, busy) : derivation(row) || `<b>${esc(ms(row.timeLimit))}</b>`;
@@ -288,11 +399,11 @@ function groupSection(row: Row, d: Domain, toTle: number | undefined, step: numb
       ${editor}
       ${origin}
       ${handSet(row, busy)}
-      <span class="badges">${checkBadges(row.check)}</span>
+      <span class="badges">${checkBadges(row.check, m)}</span>
     </div>
     ${measured ? `<div class="measured">${measured}</div>` : ''}
-    ${hasStrip ? strip(row, d, toTle) : ''}
-    ${solutionTable(row.solutions)}
+    ${hasStrip ? strip(row, d, m) : ''}
+    ${solutionTable(row.solutions, row.timeLimit, m)}
   </section>`;
 }
 
@@ -357,6 +468,7 @@ export function renderDocument(state: ViewState): string {
   const busy = state.busy;
   const step = result.multipliers?.timeResolution ?? 100;
   const toTle = result.multipliers?.timeLimitToTle;
+  const margins: Margins = { ac: result.multipliers?.acToTimeLimit, toTle };
   const rows = result.rows ?? [];
   const base = rows.find((r) => r.key === 'base');
   const groups = rows.filter((r) => r.key !== 'base');
@@ -392,7 +504,7 @@ export function renderDocument(state: ViewState): string {
     <div class="limits ${result.inheritFromPackage ? 'muted' : ''}">
       <label>Base TL ${baseEditor}</label>
       ${base ? handSet(base, busy) : ''}
-      ${base ? `<span class="badges">${checkBadges(base.check)}</span>` : ''}
+      ${base ? `<span class="badges">${checkBadges(base.check, margins)}</span>` : ''}
       <label>ML <input type="number" min="1" value="${result.memoryLimit ?? ''}" placeholder="${result.effective?.package.memoryLimit ?? ''}" data-action="memory" aria-label="memory limit in MB"${dis}/> <span class="unit">MB</span></label>
       <label class="check"><input type="checkbox" data-action="inherit" ${result.inheritFromPackage ? 'checked' : ''}${dis}/> use problem.rbx.yml limits</label>
     </div>
@@ -400,15 +512,15 @@ export function renderDocument(state: ViewState): string {
   </header>`;
 
   const groupSections = groups
-    .map((g) => groupSection(g, d, toTle, step, busy, esc((g.report?.languages ?? []).join(', '))))
+    .map((g) => groupSection(g, d, margins, step, busy, esc((g.report?.languages ?? []).join(', '))))
     .join('');
   const leftover =
     base && base.solutions.length > 0
-      ? groupSection({ ...base, editable: false, check: null }, d, toTle, step, busy, 'other languages (base limit)')
+      ? groupSection({ ...base, editable: false, check: null }, d, margins, step, busy, 'other languages (base limit)')
       : '';
   const onlyBase =
     groups.length === 0 && base && (base.solutions.length > 0 || base.check)
-      ? groupSection(base, d, toTle, step, busy, 'all languages')
+      ? groupSection(base, d, margins, step, busy, 'all languages')
       : '';
   const noSolutions = !result.hasSolutions && rows.some((r) => r.report)
     ? `<div class="banner info"><i class="codicon codicon-info"></i> This profile recorded no per-solution timings (older rbx); showing group summaries only.</div>`

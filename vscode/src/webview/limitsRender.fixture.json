@@ -1,1 +1,395 @@
-{"version": 1, "profile": "demo", "path": ".limits/demo.yml", "errors": [], "inheritFromPackage": false, "timeLimit": 500, "memoryLimit": null, "outputLimit": null, "formula": null, "multipliers": {"acToTimeLimit": 2.0, "fastestToTimeLimit": 3.0, "timeLimitToTle": 1.5, "timeResolution": 100}, "modifiers": {"cpp": {"time": 500}, "c": {"time": 500}, "java": {"time": 1500}, "kotlin": {"time": 1500}, "py": {"time": 2000}}, "editable": true, "hasSolutions": true, "rows": [{"key": "base", "report": {"languages": [], "timeLimit": 500, "origin": "estimated", "solutionCount": 8, "fastest": 10, "slowest": 50, "isLeftover": false, "lowerBound": {"value": 100, "solution": "solutions/good/reference.cpp"}}, "timeLimit": 500, "editable": true, "check": {"time_limit": 500, "estimated": null, "min_ms": 100, "min_solution": "solutions/good/reference.cpp", "max_ms": null, "max_solution": null, "slowest_ms": 50, "violating": [], "confirmed": [], "unverified": [], "ok": true, "belowMin": false, "breaksUpper": false, "rejectsOwnSolutions": false}, "solutions": []}, {"key": "0", "report": {"languages": ["cpp", "c"], "timeLimit": 500, "origin": "estimated", "solutionCount": 5, "fastest": 10, "slowest": 50, "isLeftover": false, "lowerBound": {"value": 100, "solution": "solutions/good/reference.cpp"}, "upperBound": {"value": 1066, "solution": "solutions/slow/brute.cpp"}, "upperValidation": {"confirmed": ["solutions/slow/brute.cpp"], "violating": [], "skipped": []}}, "timeLimit": 500, "editable": true, "check": {"time_limit": 500, "estimated": null, "min_ms": 100, "min_solution": "solutions/good/reference.cpp", "max_ms": 1066, "max_solution": "solutions/slow/brute.cpp", "slowest_ms": 50, "violating": [], "confirmed": ["solutions/slow/brute.cpp"], "unverified": [], "ok": true, "belowMin": false, "breaksUpper": false, "rejectsOwnSolutions": false}, "solutions": [{"path": "solutions/good/reference.cpp", "language": "cpp", "role": "LOWER", "time": 50, "survived_at": null, "min_ms": 100, "max_ms": null, "ratio": 10.0, "status": "ok"}, {"path": "solutions/good/review-blind.cpp", "language": "cpp", "role": "LOWER", "time": 20, "survived_at": null, "min_ms": 40, "max_ms": null, "ratio": 25.0, "status": "ok"}, {"path": "solutions/good/santiago.cpp", "language": "cpp", "role": "LOWER", "time": 20, "survived_at": null, "min_ms": 40, "max_ms": null, "ratio": 25.0, "status": "ok"}, {"path": "solutions/good/gemini-sandboxed.cpp", "language": "cpp", "role": "LOWER", "time": 10, "survived_at": null, "min_ms": 20, "max_ms": null, "ratio": 50.0, "status": "ok"}, {"path": "solutions/good/vinicius-gpt-O(nm).cpp", "language": "cpp", "role": "LOWER", "time": 10, "survived_at": null, "min_ms": 20, "max_ms": null, "ratio": 50.0, "status": "ok"}, {"path": "solutions/slow/brute.cpp", "language": "cpp", "role": "UPPER", "time": null, "survived_at": 1600, "min_ms": null, "max_ms": 1066, "ratio": null, "status": "ok"}]}, {"key": "1", "report": {"languages": ["java", "kotlin"], "timeLimit": 1500, "origin": "estimated", "solutionCount": 1, "fastest": 150, "slowest": 150, "isLeftover": false, "lowerBound": {"value": 450, "solution": "solutions/good/review_simulation.java"}, "upperBound": {"value": 1400, "solution": "solutions/slow/quadratic.java"}, "upperValidation": {"confirmed": [], "violating": [{"value": 2100, "solution": "solutions/slow/quadratic.java"}], "skipped": []}, "estimatedTimeLimit": 1200}, "timeLimit": 1500, "editable": true, "check": {"time_limit": 1500, "estimated": 1200, "min_ms": 450, "min_solution": "solutions/good/review_simulation.java", "max_ms": 1400, "max_solution": "solutions/slow/quadratic.java", "slowest_ms": 150, "violating": [{"value": 2100, "solution": "solutions/slow/quadratic.java"}], "confirmed": [], "unverified": [], "ok": false, "belowMin": false, "breaksUpper": true, "rejectsOwnSolutions": false}, "solutions": [{"path": "solutions/good/review_simulation.java", "language": "java", "role": "LOWER", "time": 150, "survived_at": null, "min_ms": 300, "max_ms": null, "ratio": 10.0, "status": "ok"}, {"path": "solutions/slow/quadratic.java", "language": "java", "role": "UPPER", "time": 2100, "survived_at": null, "min_ms": null, "max_ms": 1400, "ratio": 1.4, "status": "passes"}]}, {"key": "2", "report": {"languages": ["py"], "timeLimit": 2000, "origin": "multiplier", "solutionCount": 2, "fastest": 90, "slowest": 190, "relativeToLanguage": "cpp", "multiplier": 4.0, "isLeftover": false}, "timeLimit": 2000, "editable": false, "check": {"time_limit": 2000, "estimated": null, "min_ms": 380, "min_solution": null, "max_ms": null, "max_solution": null, "slowest_ms": 190, "violating": [], "confirmed": [], "unverified": [], "ok": true, "belowMin": false, "breaksUpper": false, "rejectsOwnSolutions": false}, "solutions": [{"path": "solutions/good/alejandro.py", "language": "py", "role": "LOWER", "time": 190, "survived_at": null, "min_ms": 380, "max_ms": null, "ratio": 10.526315789473685, "status": "ok"}, {"path": "solutions/good/review-simulation.py", "language": "py", "role": "LOWER", "time": 90, "survived_at": null, "min_ms": 180, "max_ms": null, "ratio": 22.22222222222222, "status": "ok"}, {"path": "solutions/slow/brute.py", "language": "py", "role": "UPPER", "time": null, "survived_at": null, "min_ms": null, "max_ms": null, "ratio": null, "status": "unchecked"}]}], "effective": {"timeLimit": 500, "memoryLimit": 1024, "outputLimit": 4096, "languages": [{"language": "cpp", "timeLimit": 500, "memoryLimit": 1024}, {"language": "c", "timeLimit": 500, "memoryLimit": 1024}, {"language": "py", "timeLimit": 2000, "memoryLimit": 1024}, {"language": "java", "timeLimit": 1500, "memoryLimit": 1024}, {"language": "kt", "timeLimit": 500, "memoryLimit": 1024}, {"language": "kotlin", "timeLimit": 1500, "memoryLimit": 1024}], "package": {"timeLimit": 1000, "memoryLimit": 1024, "outputLimit": 4096}}, "stale": "solutions"}
+{
+ "version": 1,
+ "profile": "demo",
+ "path": ".limits/demo.yml",
+ "errors": [],
+ "inheritFromPackage": false,
+ "timeLimit": 500,
+ "memoryLimit": null,
+ "outputLimit": null,
+ "formula": null,
+ "multipliers": {
+  "acToTimeLimit": 2.0,
+  "fastestToTimeLimit": 3.0,
+  "timeLimitToTle": 1.5,
+  "timeResolution": 100
+ },
+ "modifiers": {
+  "cpp": {
+   "time": 500
+  },
+  "c": {
+   "time": 500
+  },
+  "java": {
+   "time": 1500
+  },
+  "kotlin": {
+   "time": 1500
+  },
+  "py": {
+   "time": 2000
+  }
+ },
+ "editable": true,
+ "hasSolutions": true,
+ "rows": [
+  {
+   "key": "base",
+   "report": {
+    "languages": [],
+    "timeLimit": 500,
+    "origin": "estimated",
+    "solutionCount": 8,
+    "fastest": 10,
+    "slowest": 50,
+    "isLeftover": false,
+    "lowerBound": {
+     "value": 100,
+     "solution": "solutions/good/reference.cpp"
+    }
+   },
+   "timeLimit": 500,
+   "editable": true,
+   "check": {
+    "time_limit": 500,
+    "estimated": null,
+    "min_ms": 100,
+    "min_solution": "solutions/good/reference.cpp",
+    "max_ms": null,
+    "max_solution": null,
+    "slowest_ms": 50,
+    "violating": [],
+    "confirmed": [],
+    "unverified": [],
+    "ok": true,
+    "belowMin": false,
+    "breaksUpper": false,
+    "rejectsOwnSolutions": false
+   },
+   "solutions": []
+  },
+  {
+   "key": "0",
+   "report": {
+    "languages": [
+     "cpp",
+     "c"
+    ],
+    "timeLimit": 500,
+    "origin": "estimated",
+    "solutionCount": 5,
+    "fastest": 10,
+    "slowest": 50,
+    "isLeftover": false,
+    "lowerBound": {
+     "value": 100,
+     "solution": "solutions/good/reference.cpp"
+    },
+    "upperBound": {
+     "value": 1066,
+     "solution": "solutions/slow/brute.cpp"
+    },
+    "upperValidation": {
+     "confirmed": [
+      "solutions/slow/brute.cpp"
+     ],
+     "violating": [],
+     "skipped": []
+    }
+   },
+   "timeLimit": 500,
+   "editable": true,
+   "check": {
+    "time_limit": 500,
+    "estimated": null,
+    "min_ms": 100,
+    "min_solution": "solutions/good/reference.cpp",
+    "max_ms": 1066,
+    "max_solution": "solutions/slow/brute.cpp",
+    "slowest_ms": 50,
+    "violating": [],
+    "confirmed": [
+     "solutions/slow/brute.cpp"
+    ],
+    "unverified": [],
+    "ok": true,
+    "belowMin": false,
+    "breaksUpper": false,
+    "rejectsOwnSolutions": false
+   },
+   "solutions": [
+    {
+     "path": "solutions/good/reference.cpp",
+     "language": "cpp",
+     "role": "LOWER",
+     "time": 50,
+     "survived_at": null,
+     "min_ms": 100,
+     "max_ms": null,
+     "ratio": 10.0,
+     "status": "ok",
+     "expectedOutcome": "ACCEPTED"
+    },
+    {
+     "path": "solutions/good/review-blind.cpp",
+     "language": "cpp",
+     "role": "LOWER",
+     "time": 20,
+     "survived_at": null,
+     "min_ms": 40,
+     "max_ms": null,
+     "ratio": 25.0,
+     "status": "ok",
+     "expectedOutcome": "ACCEPTED"
+    },
+    {
+     "path": "solutions/good/santiago.cpp",
+     "language": "cpp",
+     "role": "LOWER",
+     "time": 20,
+     "survived_at": null,
+     "min_ms": 40,
+     "max_ms": null,
+     "ratio": 25.0,
+     "status": "ok",
+     "expectedOutcome": "ACCEPTED"
+    },
+    {
+     "path": "solutions/good/gemini-sandboxed.cpp",
+     "language": "cpp",
+     "role": "LOWER",
+     "time": 10,
+     "survived_at": null,
+     "min_ms": 20,
+     "max_ms": null,
+     "ratio": 50.0,
+     "status": "ok",
+     "expectedOutcome": "ACCEPTED"
+    },
+    {
+     "path": "solutions/good/vinicius-gpt-O(nm).cpp",
+     "language": "cpp",
+     "role": "LOWER",
+     "time": 10,
+     "survived_at": null,
+     "min_ms": 20,
+     "max_ms": null,
+     "ratio": 50.0,
+     "status": "ok",
+     "expectedOutcome": "ACCEPTED"
+    },
+    {
+     "path": "solutions/slow/brute.cpp",
+     "language": "cpp",
+     "role": "UPPER",
+     "time": null,
+     "survived_at": 1600,
+     "min_ms": null,
+     "max_ms": 1066,
+     "ratio": null,
+     "status": "ok",
+     "expectedOutcome": "TIME_LIMIT_EXCEEDED"
+    }
+   ]
+  },
+  {
+   "key": "1",
+   "report": {
+    "languages": [
+     "java",
+     "kotlin"
+    ],
+    "timeLimit": 1500,
+    "origin": "estimated",
+    "solutionCount": 1,
+    "fastest": 150,
+    "slowest": 150,
+    "isLeftover": false,
+    "lowerBound": {
+     "value": 450,
+     "solution": "solutions/good/review_simulation.java"
+    },
+    "upperBound": {
+     "value": 1400,
+     "solution": "solutions/slow/quadratic.java"
+    },
+    "upperValidation": {
+     "confirmed": [],
+     "violating": [
+      {
+       "value": 2100,
+       "solution": "solutions/slow/quadratic.java"
+      }
+     ],
+     "skipped": []
+    },
+    "estimatedTimeLimit": 1200
+   },
+   "timeLimit": 1500,
+   "editable": true,
+   "check": {
+    "time_limit": 1500,
+    "estimated": 1200,
+    "min_ms": 450,
+    "min_solution": "solutions/good/review_simulation.java",
+    "max_ms": 1400,
+    "max_solution": "solutions/slow/quadratic.java",
+    "slowest_ms": 150,
+    "violating": [
+     {
+      "value": 2100,
+      "solution": "solutions/slow/quadratic.java"
+     }
+    ],
+    "confirmed": [],
+    "unverified": [],
+    "ok": false,
+    "belowMin": false,
+    "breaksUpper": true,
+    "rejectsOwnSolutions": false
+   },
+   "solutions": [
+    {
+     "path": "solutions/good/review_simulation.java",
+     "language": "java",
+     "role": "LOWER",
+     "time": 150,
+     "survived_at": null,
+     "min_ms": 300,
+     "max_ms": null,
+     "ratio": 10.0,
+     "status": "ok",
+     "expectedOutcome": "ACCEPTED"
+    },
+    {
+     "path": "solutions/slow/quadratic.java",
+     "language": "java",
+     "role": "UPPER",
+     "time": 2100,
+     "survived_at": null,
+     "min_ms": null,
+     "max_ms": 1400,
+     "ratio": 1.4,
+     "status": "passes",
+     "expectedOutcome": "TIME_LIMIT_EXCEEDED"
+    }
+   ]
+  },
+  {
+   "key": "2",
+   "report": {
+    "languages": [
+     "py"
+    ],
+    "timeLimit": 2000,
+    "origin": "multiplier",
+    "solutionCount": 2,
+    "fastest": 90,
+    "slowest": 190,
+    "relativeToLanguage": "cpp",
+    "multiplier": 4.0,
+    "isLeftover": false
+   },
+   "timeLimit": 2000,
+   "editable": false,
+   "check": {
+    "time_limit": 2000,
+    "estimated": null,
+    "min_ms": 380,
+    "min_solution": null,
+    "max_ms": null,
+    "max_solution": null,
+    "slowest_ms": 190,
+    "violating": [],
+    "confirmed": [],
+    "unverified": [],
+    "ok": true,
+    "belowMin": false,
+    "breaksUpper": false,
+    "rejectsOwnSolutions": false
+   },
+   "solutions": [
+    {
+     "path": "solutions/good/alejandro.py",
+     "language": "py",
+     "role": "LOWER",
+     "time": 190,
+     "survived_at": null,
+     "min_ms": 380,
+     "max_ms": null,
+     "ratio": 10.526315789473685,
+     "status": "ok",
+     "expectedOutcome": "ACCEPTED"
+    },
+    {
+     "path": "solutions/good/review-simulation.py",
+     "language": "py",
+     "role": "LOWER",
+     "time": 90,
+     "survived_at": null,
+     "min_ms": 180,
+     "max_ms": null,
+     "ratio": 22.22222222222222,
+     "status": "ok",
+     "expectedOutcome": "ACCEPTED"
+    },
+    {
+     "path": "solutions/slow/brute.py",
+     "language": "py",
+     "role": "UPPER",
+     "time": null,
+     "survived_at": null,
+     "min_ms": null,
+     "max_ms": null,
+     "ratio": null,
+     "status": "unchecked",
+     "expectedOutcome": "TIME_LIMIT_EXCEEDED"
+    }
+   ]
+  }
+ ],
+ "effective": {
+  "timeLimit": 500,
+  "memoryLimit": 1024,
+  "outputLimit": 4096,
+  "languages": [
+   {
+    "language": "cpp",
+    "timeLimit": 500,
+    "memoryLimit": 1024
+   },
+   {
+    "language": "c",
+    "timeLimit": 500,
+    "memoryLimit": 1024
+   },
+   {
+    "language": "py",
+    "timeLimit": 2000,
+    "memoryLimit": 1024
+   },
+   {
+    "language": "java",
+    "timeLimit": 1500,
+    "memoryLimit": 1024
+   },
+   {
+    "language": "kt",
+    "timeLimit": 500,
+    "memoryLimit": 1024
+   },
+   {
+    "language": "kotlin",
+    "timeLimit": 1500,
+    "memoryLimit": 1024
+   }
+  ],
+  "package": {
+   "timeLimit": 1000,
+   "memoryLimit": 1024,
+   "outputLimit": 4096
+  }
+ },
+ "stale": "solutions"
+}

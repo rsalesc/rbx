@@ -213,7 +213,23 @@ def _rows(profile: LimitsProfile) -> List[Dict[str, Any]]:
         rows[0]['solutions'] = [
             s for s in rows[0]['solutions'] if s['language'] not in grouped
         ]
+    expected = _expected_outcomes()
+    for row in rows:
+        for solution in row['solutions']:
+            solution['expectedOutcome'] = expected.get(solution['path'])
     return rows
+
+
+def _expected_outcomes() -> Dict[str, str]:
+    """What `problem.rbx.yml` declares for each solution, by path: the
+    `ExpectedOutcome` member name, as the run skeleton spells it."""
+    try:
+        return {
+            str(solution.path): solution.outcome.name
+            for solution in package.get_solutions()
+        }
+    except Exception:
+        return {}
 
 
 def _stale(profile: LimitsProfile) -> Optional[str]:

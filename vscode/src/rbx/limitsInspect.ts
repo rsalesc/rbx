@@ -59,6 +59,8 @@ export interface SolutionCheck {
   readonly max_ms: number | null;
   readonly ratio: number | null;
   readonly status: SolutionStatus;
+  /** What problem.rbx.yml declares for it: an `ExpectedOutcome` member name. */
+  readonly expectedOutcome?: string | null;
 }
 
 export interface Row {
