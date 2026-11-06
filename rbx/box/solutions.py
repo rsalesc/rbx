@@ -306,6 +306,11 @@ class SolutionReportSkeleton(BaseModel):
     # `rbx.box.testset_findings`.
     duplicate_tests: List[testset_findings.DuplicateTest] = []
     verification: VerificationLevel
+    # The runner the run was dispatched to (`local`, `moj`, ...). Read by
+    # `time-inspect`, which shows a run's verdicts beside a limits profile only
+    # when both came from the same runner. None for a run that predates it, or
+    # one no runner dispatched (`rbx irun`).
+    runner: Optional[str] = None
     capture_pipes: bool = False
     # When set (irun -e), the solution's stderr is interleaved with its output in
     # true line order. Riding on the skeleton keeps a toggled flag from ever
@@ -727,6 +732,7 @@ async def _get_report_skeleton(
     keep_checker_stderr: bool = False,
     only_accepted: bool = False,
     validation: Optional[run_validation.RunValidation] = None,
+    runner_name: Optional[str] = None,
 ) -> SolutionReportSkeleton:
     pkg = package.find_problem_package_or_die()
 
@@ -813,6 +819,7 @@ async def _get_report_skeleton(
         lints=lints,
         duplicate_tests=duplicate_tests,
         verification=verification,
+        runner=runner_name,
         capture_pipes=should_capture_pipes(package.get_interactor_or_nil()),
         keep_checker_stderr=keep_checker_stderr,
         sanitized=sanitized,
@@ -1117,6 +1124,7 @@ async def run_solutions(
         keep_checker_stderr=keep_checker_stderr,
         only_accepted=only_accepted,
         validation=validation,
+        runner_name=runner.name,
     )
 
     checker_digest, interactor_digest = await _compile_checking_digests(check)

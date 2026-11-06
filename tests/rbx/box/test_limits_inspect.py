@@ -270,15 +270,16 @@ def test_staleness_is_the_bucket_the_checksum_says_moved(pkg):
     assert limits_inspect.inspect(_source(_profile()), 'local')['stale'] is None
 
 
-def _write_last_run(profile_name: str, solutions):
+def _write_last_run(profile_name: str, solutions, runner=None):
     runs_dir = package.get_problem_runs_dir()
     run_report.write_report(
         run_report.report_path(runs_dir),
         run_report.RunReport(solutions=solutions, finished=True),
     )
-    (runs_dir / 'skeleton.yml').write_text(
-        yaml.safe_dump({'limits': {'cpp': {'time': 500, 'profile': profile_name}}})
-    )
+    skeleton = {'limits': {'cpp': {'time': 500, 'profile': profile_name}}}
+    if runner is not None:
+        skeleton['runner'] = runner
+    (runs_dir / 'skeleton.yml').write_text(yaml.safe_dump(skeleton))
 
 
 def _ran(path, expected, outcome, matches=True, max_time=0.012, tl=0.5):
@@ -348,6 +349,67 @@ def test_a_slow_solution_the_estimate_never_ran_shows_its_run(pkg):
     assert [
         (r['path'], r['outcome'], r['matchesExpectation']) for r in java['runSolutions']
     ] == [('sols/quadratic.java', 'accepted', False)]
+
+
+def _wa_run():
+    return [_ran('sols/wa.cpp', ExpectedOutcome.WRONG_ANSWER, Outcome.WRONG_ANSWER)]
+
+
+def _shown(result):
+    return [r['path'] for row in result['rows'] for r in row['runSolutions']]
+
+
+def test_a_run_under_another_profile_on_the_same_runner_is_shown(pkg):
+    _write_last_run('other', _wa_run(), runner='local')
+    profile = _profile()
+    profile.runner = 'local'
+
+    result = limits_inspect.inspect(_source(profile), 'local')
+
+    assert result['lastRun']['runner'] == 'local'
+    assert _shown(result) == ['sols/wa.cpp']
+
+
+def test_a_local_run_is_not_shown_beside_a_profile_measured_on_moj(pkg):
+    _write_last_run('moj', _wa_run(), runner='local')
+    profile = _profile()
+    profile.runner = 'moj'
+
+    result = limits_inspect.inspect(_source(profile), 'moj')
+
+    # The header still says what the last run was; only its verdicts are left out.
+    assert result['lastRun']['runner'] == 'local'
+    assert _shown(result) == []
+
+
+def test_a_moj_run_is_not_shown_beside_a_profile_measured_locally(pkg):
+    _write_last_run('local', _wa_run(), runner='moj')
+    profile = _profile()
+    profile.runner = 'local'
+
+    assert _shown(limits_inspect.inspect(_source(profile), 'local')) == []
+
+
+def test_without_a_recorded_runner_the_profile_name_implies_it(pkg):
+    # Written before rbx recorded runners: `-p moj` ran on MOJ, the rest locally.
+    _write_last_run('local', _wa_run())
+
+    assert _shown(limits_inspect.inspect(_source(_profile()), 'moj')) == []
+    assert _shown(limits_inspect.inspect(_source(_profile()), 'local')) == [
+        'sols/wa.cpp'
+    ]
+
+    _write_last_run('moj', _wa_run())
+    assert _shown(limits_inspect.inspect(_source(_profile()), 'moj')) == ['sols/wa.cpp']
+
+
+def test_a_recorded_runner_wins_over_the_one_the_profile_name_implies(pkg):
+    # `rbx time -p moj --runner local`: MOJ limits, measured on this machine.
+    _write_last_run('local', _wa_run(), runner='local')
+    profile = _profile()
+    profile.runner = 'local'
+
+    assert _shown(limits_inspect.inspect(_source(profile), 'moj')) == ['sols/wa.cpp']
 
 
 def test_without_a_run_report_there_is_nothing_from_a_run(pkg):

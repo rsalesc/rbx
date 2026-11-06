@@ -1581,6 +1581,17 @@ limit was not estimated (inherited from the package, or set by hand).
 """,
     )
 
+    runner: Optional[str] = Field(
+        default=None,
+        description="""
+The runner the estimate was measured on (`local`, `moj`, ...), as `--runner`
+names it. Written by `rbx time`; consumers compare it with where a run happened
+before showing that run's verdicts beside this profile, since timings taken on
+one machine say nothing about another. Presentation-only; never used for limit
+resolution. Absent on a profile written before it was recorded, or not estimated.
+""",
+    )
+
     # Declared last on purpose: the profile is written in field order, and this
     # list -- one entry per timed solution -- is the bulkiest and least read part
     # of it. It goes below everything a setter opens the file for.

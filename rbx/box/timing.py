@@ -42,6 +42,7 @@ from rbx.box.code import find_language_name
 from rbx.box.environment import VerificationLevel
 from rbx.box.exception import RbxException
 from rbx.box.formatting import href
+from rbx.box.runners import names as runner_names
 from rbx.box.runners.base import RunPurpose
 from rbx.box.schema import InferenceRole, Solution
 from rbx.box.solutions import (
@@ -2463,6 +2464,8 @@ async def compute_time_limits(
 
     limits_path = package.get_limits_file(profile)
     limits = estimated_tl.to_limits()
+    # Where it was measured: a run on another runner is not evidence about it.
+    limits.runner = runner.name if runner is not None else runner_names.DEFAULT_RUNNER
     if dry:
         # The estimation itself already ran in full -- exercising it is the
         # whole point of a dry run -- so the profile it produced is still worth

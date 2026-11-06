@@ -84,6 +84,12 @@ export interface RunSolution {
 export interface LastRun {
   /** The limits profiles the run resolved its limits from. */
   readonly profiles: string[];
+  /**
+   * The runner it ran on (`local`, `moj`, ...). rbx leaves `runSolutions` empty
+   * when it differs from the one the profile was measured on. Absent on an
+   * older rbx.
+   */
+  readonly runner?: string;
   readonly finished: boolean;
   readonly endedAt?: string | null;
 }

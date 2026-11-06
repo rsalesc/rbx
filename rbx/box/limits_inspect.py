@@ -286,7 +286,7 @@ def inspect(
             },
             'editable': timing_edit.is_editable(profile),
             'hasSolutions': bool(profile.solutions),
-            'rows': _with_runs(_rows(profile), profile, root),
+            'rows': _with_runs(_rows(profile), profile, profile_name, root),
             'runsSource': 'profile' if profile.runs else 'lastRun',
             'lastRun': _last_run_header(root),
             'effective': _effective(profile, root),
@@ -315,6 +315,7 @@ def _load_last_run(root: pathlib.Path):
     if report.version != run_report.REPORT_VERSION:
         return None
     profiles: List[str] = []
+    runner: Optional[str] = None
     skeleton = runs_dir / 'skeleton.yml'
     try:
         data = yaml.safe_load(skeleton.read_text()) if skeleton.is_file() else None
@@ -322,18 +323,32 @@ def _load_last_run(root: pathlib.Path):
             name = (limits or {}).get('profile')
             if name and name not in profiles:
                 profiles.append(name)
+        runner = (data or {}).get('runner')
     except Exception:
         pass
-    return report, profiles
+    return report, profiles, _runner_or_implied(runner, profiles)
+
+
+def _runner_or_implied(runner: Optional[str], profiles: List[str]) -> str:
+    """The runner something was measured on: the recorded one, or else -- for a
+    skeleton or profile written before rbx recorded it -- the one its profile
+    implies when `--runner` is not given (`-p moj` runs on MOJ)."""
+    from rbx.box.runners import names
+
+    if runner:
+        return runner
+    implied = {names.resolve_runner_name(None, name) for name in profiles}
+    return implied.pop() if len(implied) == 1 else names.DEFAULT_RUNNER
 
 
 def _last_run_header(root: pathlib.Path) -> Optional[Dict[str, Any]]:
     loaded = _load_last_run(root)
     if loaded is None:
         return None
-    report, profiles = loaded
+    report, profiles, runner = loaded
     return {
         'profiles': profiles,
+        'runner': runner,
         'finished': report.finished,
         'endedAt': report.endedAt,
     }
@@ -361,7 +376,10 @@ def _attach(rows: List[Dict[str, Any]], language: Optional[str], entry) -> None:
 
 
 def _with_runs(
-    rows: List[Dict[str, Any]], profile: LimitsProfile, root: pathlib.Path
+    rows: List[Dict[str, Any]],
+    profile: LimitsProfile,
+    profile_name: str,
+    root: pathlib.Path,
 ) -> List[Dict[str, Any]]:
     """Attach to each row the solutions judged on top of the estimate.
 
@@ -371,7 +389,7 @@ def _with_runs(
     without `--run-all` or before rbx recorded the runs.
     """
     if not profile.runs:
-        return _with_last_run(rows, profile, root)
+        return _with_last_run(rows, profile, profile_name, root)
     for row in rows:
         row['runSolutions'] = []
     for run in profile.runs:
@@ -393,20 +411,29 @@ def _with_runs(
 
 
 def _with_last_run(
-    rows: List[Dict[str, Any]], profile: LimitsProfile, root: pathlib.Path
+    rows: List[Dict[str, Any]],
+    profile: LimitsProfile,
+    profile_name: str,
+    root: pathlib.Path,
 ) -> List[Dict[str, Any]]:
     """Attach to each row the solutions the last run judged and the estimate did
     not measure -- what `rbx time --run-all` (or any `rbx run`) adds on top of
     the estimate. Each one is read off the published run report: its verdict,
     whether it met its declaration, its slowest test and the limit it ran under.
     Nothing here is re-judged at the limit now on screen.
+
+    Only a run on the runner the profile was measured on counts: a run under
+    another profile is still comparable on the same machine, but a local verdict
+    says nothing about a limit MOJ measured, nor the other way around.
     """
     for row in rows:
         row['runSolutions'] = []
     loaded = _load_last_run(root)
     if loaded is None:
         return rows
-    report, _ = loaded
+    report, _, run_runner = loaded
+    if run_runner != _runner_or_implied(profile.runner, [profile_name]):
+        return rows
     measured = {
         timing.path
         for timing in profile.solutions or []
