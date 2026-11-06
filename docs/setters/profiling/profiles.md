@@ -184,7 +184,7 @@ set that range.
 
 | Check | Meaning |
 | --- | --- |
-| `✓` | The limit fits every bound the estimate found. |
+| *the range, unmarked* | The limit fits every bound the estimate found. |
 | `⚠ thin margin` | The accepted solutions pass, but with less headroom than `acToTimeLimit` asks for. |
 | `✗ AC fails` | An accepted solution needs more time than the limit gives it. |
 | `✗ slow passes` | A solution expected to be too slow finishes within the limit times `timeLimitToTle`. |

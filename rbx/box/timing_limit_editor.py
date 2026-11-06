@@ -168,7 +168,8 @@ class LimitEditorState:
 
 
 _SOLUTION_STATUS = {
-    timing_edit.SolutionStatus.OK: '[success]✓[/success]',
+    # Blank, so the solutions that need attention stand out.
+    timing_edit.SolutionStatus.OK: '',
     timing_edit.SolutionStatus.THIN: '[warning]⚠ thin margin[/warning]',
     timing_edit.SolutionStatus.FAILS: '[error]✗ fails[/error]',
     timing_edit.SolutionStatus.PASSES: '[error]✗ passes[/error]',

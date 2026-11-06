@@ -647,7 +647,8 @@ def check_cell(check: Optional[timing_edit.GroupCheck]) -> str:
     elif check.unverified:
         status = f'[warning]? {len(check.unverified)} unverified[/warning]'
     else:
-        status = '[success]✓[/success]'
+        # A limit that fits gets no mark, so the ones that don't stand out.
+        return f'[dim]{allowed}[/dim]'
     if not allowed:
         return status
     return f'{status} [dim]{allowed}[/dim]'
@@ -749,13 +750,8 @@ def build_limits_table(
             f'[error]✗ {len(violating)} too-slow solution{plural} finish within '
             f'the estimated limit; see upperValidation in the profile.[/error]'
         )
-    confirmed = {solution for row in rows for solution in row.confirmed_upper}
-    if confirmed:
-        plural = 's' if len(confirmed) > 1 else ''
-        caption_lines.append(
-            f'[success]✓ {len(confirmed)} too-slow solution{plural} confirmed at '
-            f'the current limit.[/success]'
-        )
+    # Confirmed slow solutions get no line: the captions are for what needs
+    # attention, and a clean table saying nothing is the healthy outcome.
     caption = '\n'.join(caption_lines) if caption_lines else None
     table = rich.table.Table(
         title=title,

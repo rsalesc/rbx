@@ -86,14 +86,15 @@ footnote saying so.
     arithmetic that turned the timings into `100` is in
     [How the limit is computed](/setters/profiling/computing).
 
-The run closes on the check that makes the number trustworthy:
+Before the final limits table, the run prints the check that makes the number
+trustworthy:
 
 ```
-✓ 1 too-slow solution confirmed at the current limit.
+✓ sols/quadratic.cpp is too slow for the estimated time limit, as expected.
 ```
 
-That's `sols/quadratic.cpp`, the solution `gardens` declares with `outcome: tle`, run at the
-limit {{rbx}} just picked and timing out as it was supposed to. A limit nothing is checked
+That's the solution `gardens` declares with `outcome: tle`, run at the limit {{rbx}} just
+picked and timing out as it was supposed to. A limit nothing is checked
 against is still a guess.
 
 !!! warning "`100 ms` next to a declared `1000 ms`"
@@ -169,8 +170,8 @@ work.
   broke are the ones with a red mark when it's over.
 
 The pane is still on `A`, so compare it against `B`. `chocolate` declares no solution as too slow, so
-there is no upper bound to derive and no upper bound to check -- its report simply ends
-after the limits table, with no "too-slow solution confirmed" line. That absence is the *healthy*
+there is no upper bound to derive and no upper bound to check -- its report has no "too slow
+for the estimated time limit" line before the limits table. That absence is the *healthy*
 outcome for a problem shaped like that, not a step that failed silently -- worth knowing,
 because the ratios it prints still recite the upper-bound rule that, here, nothing triggers.
 

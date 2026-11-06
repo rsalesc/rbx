@@ -659,7 +659,7 @@ def test_caption_notes_the_solutions_that_violate_the_upper_bound():
     assert '[error]' in caption
 
 
-def test_caption_notes_the_confirmed_slow_solutions():
+def test_confirmed_slow_solutions_get_no_caption():
     from rbx.box.limits_info import build_limits_table
 
     profile = LimitsProfile(
@@ -679,9 +679,9 @@ def test_caption_notes_the_confirmed_slow_solutions():
         ],
     )
     caption = build_limits_table(profile).caption or ''
-    assert '1 too-slow solution confirmed' in caption
-    assert 'sols/hopeless.cpp' not in caption
-    assert '[success]' in caption
+    # Only problems are captioned: a confirmed slow solution is the healthy case.
+    assert 'confirmed' not in caption
+    assert '✓' not in caption
 
 
 def test_no_upper_validation_caption_without_slow_solutions():
