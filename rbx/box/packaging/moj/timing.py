@@ -206,15 +206,18 @@ MOJ_TL_OFFSET_MS = 20
 # ... and in the throwaway package `rbx time --runner moj` estimates on.
 PROBE_CAPPED_EXPLANATION = [
     '# ONE CALIBRATION, BOTH rbx time PHASES, EVERY SOLUTION CAPPED AT THE SAME',
-    "# LIMIT: the problem's inferenceTimeout. MOJ's own method computes",
-    '# TL[lang] = calibrafactor x W[lang] + 0.02 and then adds TLMOD[lang.sum],',
-    '# both while it measures sols/good and while it judges sols/slow; TLOVERRIDE',
-    '# would be ignored during calibration (MOJ_CALIBRATING=1). A zero factor, a',
-    '# 0.02 s dummy and a sum of cap - 0.02 s land every one of those limits on the',
-    '# cap, whatever sols/good measured, so a slow solution either finishes with',
+    "# LIMIT: the problem's inferenceTimeout. TLOVERRIDE is ignored during",
+    '# calibration (MOJ_CALIBRATING=1), so the cap goes through the two limits',
+    '# calibration does use. sols/good runs under CALIBRATIONTL, set to the cap.',
+    '# sols/slow runs under TL[lang] = calibrafactor x W[lang] + 0.02, which bc',
+    '# evaluates; a factor of "<cap - 0.02>+0" reads as (cap - 0.02) + 0 x W + 0.02,',
+    '# the cap whatever sols/good measured. So a slow solution either finishes with',
     '# its real time or is known to take longer than the cap -- which is what',
-    '# `rbx time` checks its own limit against. The limit MOJ itself would publish',
-    '# by the Kattis rule (TLKATTIS) is computed from the same measurements anyway.',
+    '# `rbx time` checks its own limit against. No TLMOD[lang.sum]: MOJ adds it to',
+    '# the Kattis limit too, which stretches every timed-out test in sols/slow to',
+    '# about cap + 2 x the worst accepted time instead of cap + 2.2 s. The limit',
+    '# MOJ itself would publish by the Kattis rule (TLKATTIS) is computed from the',
+    '# same measurements anyway.',
 ]
 
 
@@ -225,15 +228,19 @@ def _seconds(ms: int) -> str:
 
 def capped_calibration_lines(
     cap_ms: int,
-    languages: List[str],
     kattis: Optional[Tuple[float, int]] = None,
 ) -> List[str]:
     """The `conf` block making a calibration judge everything at `cap_ms`.
 
-    What the `rbx time` probe asks for: see `PROBE_CAPPED_EXPLANATION`. The
-    sums are per *language*, since `build-and-test.sh` reads only
-    `TLMOD[$LANGUAGE.sum]`; `languages` must name every MOJ id a shipped solution
-    can be judged under -- both spellings of one that MOJ normalizes.
+    What the `rbx time` probe asks for: see `PROBE_CAPPED_EXPLANATION`.
+
+    The cap is reached without `TLMOD[<lang>.sum]` on purpose. `build-and-test.sh`
+    adds the sum to the *other* method's limit as well while it judges
+    `pass`/`slow`/`wrong`, and lets each test run until
+    `max(that limit, b x TLKATTIS) + 0.5 s` when that exceeds `TL + 2.2 s`
+    (`MOJ_CALIB_ALT`). With a sum of `cap - 0.02` that floor was
+    `cap + a x W + 0.5`, so every test a slow solution timed out on ran well past
+    the cap -- 25 s per test on a 15 s cap -- for nothing rbx reads.
 
     `kattis` is the problem's `(acToTimeLimit, timeResolution)`, when it has
     `timing.multipliers`: MOJ computes its Kattis limit from these same
@@ -243,23 +250,18 @@ def capped_calibration_lines(
     `KATTIS_TIME_LIMIT_TO_TLE` is pinned to 1 either way, rather than the
     problem's own: it only decides MOJ's own verdict on the slow solutions, which
     rbx does not read, and how long a timed-out test keeps running past the cap
-    (the calibration floor is `b x` the Kattis limit *plus the sum*), which rbx
-    does not need.
+    (through the `b x TLKATTIS` floor above), which rbx does not need.
     """
     if cap_ms <= MOJ_TL_OFFSET_MS:
         raise ValueError(
             f'A capped MOJ calibration needs a cap above {MOJ_TL_OFFSET_MS} ms, '
             f'got `{cap_ms}`.'
         )
-    if not languages:
-        raise ValueError('A capped MOJ calibration needs at least one language.')
-    increment = _seconds(cap_ms - MOJ_TL_OFFSET_MS)
     return [
         *PROBE_CAPPED_EXPLANATION,
         'TLMETHOD=moj',
-        'TLMOD[calibrafactor]=0',
-        f'CALIBRATIONTL={_seconds(MOJ_TL_OFFSET_MS)}',
-        *(f'TLMOD[{language}.sum]={increment}' for language in sorted(set(languages))),
+        f'TLMOD[calibrafactor]={_seconds(cap_ms - MOJ_TL_OFFSET_MS)}+0',
+        f'CALIBRATIONTL={_seconds(cap_ms)}',
         '',
         *(
             [

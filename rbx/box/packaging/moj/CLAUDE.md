@@ -113,9 +113,8 @@ Calibration still runs and its measurements still land in `tl` -- harmlessly, si
 the override wins regardless. (Changing an override changes the `tl-checksum` and so
 triggers a recalibration; that is equally harmless.) A setter's package does **not**
 pin anything through `TLMOD` any more: the pre-`TLOVERRIDE` trick -- a zero-slope
-`TLMOD[calibrafactor]=<base - 0.02>+0` `bc` expression plus `TLMOD[<lang>.sum]`
-increments -- is gone from it (`--calibrate` uses the Kattis method instead, below).
-Only the `rbx time` calibration probe still emits a `calibrafactor`, because
+`TLMOD[calibrafactor]=<base - 0.02>+0` `bc` expression -- is gone from it (`--calibrate` uses the Kattis method instead, below).
+Only the `rbx time` calibration probe still emits that `calibrafactor`, because
 calibration ignores `TLOVERRIDE` and that probe needs its limits pinned *during*
 calibration (see `ProbeCalibrated` below).
 
@@ -139,8 +138,10 @@ locally -- `TLKATTIS[lang]` is the smallest multiple of `r` at least `a x` the w
 accepted test -- built from `KattisParameters`, which the `rbx time --runner moj`
 probe (`ProbeCalibrated`) shares. The probe does **not** share this block: it pins
 every limit of its calibration at `inferenceTimeout` instead
-(`capped_calibration_lines`: `TLMETHOD=moj`, `TLMOD[calibrafactor]=0`,
-`CALIBRATIONTL=0.02`, `TLMOD[<lang>.sum]=cap - 0.02`), because the Kattis limit MOJ
+(`capped_calibration_lines`: `TLMETHOD=moj`, `CALIBRATIONTL=<cap>`,
+`TLMOD[calibrafactor]=<cap - 0.02>+0`, and deliberately no `TLMOD[<lang>.sum]`, which
+MOJ would add to the slow phase's Kattis floor and so stretch every timed-out test
+well past the cap), because the Kattis limit MOJ
 would judge its slow solutions at is per language and rbx's is per language group --
 see `rbx/box/CLAUDE.md`. That is the zero-slope trick above, revived for a package
 whose limits are only ever measured under, never judged by. It replaced

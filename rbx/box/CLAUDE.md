@@ -455,9 +455,14 @@ calibrated=...)` runs nothing.
 
 **The probe pins every limit of that calibration at `inferenceTimeout`**
 (`packaging/moj/timing.capped_calibration_lines`): `TLMETHOD=moj`,
-`TLMOD[calibrafactor]=0`, `CALIBRATIONTL=0.02` and `TLMOD[<lang>.sum]=cap - 0.02`
-for every shipped MOJ id and its normalized alias, so `0 x W + 0.02 + sum` is the cap
-in both calibration phases. `TLOVERRIDE` cannot do it -- `calibreitor.sh` exports
+`CALIBRATIONTL=<cap>` (the `sols/good` phase) and the zero-slope
+`TLMOD[calibrafactor]=<cap - 0.02>+0`, which `calibreitor.sh` hands to `bc` as
+`(cap - 0.02) + 0 x W + 0.02` (the `sols/slow` phase). It used to reach the cap with
+`TLMOD[<lang>.sum]=cap - 0.02` instead, but MOJ adds the sum to its Kattis limit too
+while judging `slow`, and runs each test up to `max(that, b x TLKATTIS) + 0.5 s` when
+that beats `TL + 2.2 s` (`MOJ_CALIB_ALT`): every timed-out test then ran to about
+`cap + a x W` (25 s on a 15 s cap). Measured live 2026-11-06: 9 s -> 7 s per timed-out
+test on a 4 s cap, identical estimate. `TLOVERRIDE` cannot do it -- `calibreitor.sh` exports
 `MOJ_CALIBRATING=1`, which `build-and-test.sh` reads as "ignore the override". It
 used to ask for `TLMETHOD=kattis`, which judged `sols/slow` at MOJ's **per-language**
 Kattis limit: rbx groups languages, so the limit it wrote for cpp could be twice
