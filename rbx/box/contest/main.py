@@ -498,10 +498,15 @@ def _export_contest_selection() -> None:
     enough -- for the inline `subprocess.call`, for the commands the TUI
     spawns, and for whatever the user types into the TUI later.
 
-    No-op when there is no explicit selection (single-contest mode), and a
-    self-assignment when the selection came from the env var in the first place.
+    A selection implied by the contest itself (a dispatcher with one variant,
+    #1004) is exported too, so the children agree with this process even from
+    inside a problem another variant would claim. No-op when the canonical
+    contest is the one in use, and a self-assignment when the selection came
+    from the env var in the first place.
     """
     selection = contest_state.resolve_explicit_selection()
+    if selection is None and contest_package.find_contest_yaml() is not None:
+        selection = contest_package.get_selected_variant_id()
     if selection is not None:
         os.environ[contest_state.ENV_VAR] = selection
 
@@ -910,6 +915,11 @@ def list_contests():
         return
 
     active = contest_state.resolve_explicit_selection()
+    if active is None:
+        # No -C: a lone dispatcher variant is selected implicitly (#1004).
+        implied = contest_package.find_contest_yaml(contest_root)
+        if implied is not None and implied != variants.get(None):
+            active = contest_package.get_selected_variant_id(contest_root)
     default_path = variants.get(None)
 
     if default_path is not None:

@@ -4622,8 +4622,8 @@ SPEC = {
             'value': {'kind': 'none'},
         },
         {
-            'help': 'Select a contest variant by id (when contest.rbx.yml has use_variants: '
-            'true). Defaults to the RBX_CONTEST env var.',
+            'help': 'Select a contest variant by id (when contest.rbx.yml has sibling variants). '
+            'Defaults to the RBX_CONTEST env var; optional when only one contest applies.',
             'kind': 'option',
             'multiple': False,
             'names': ['-C', '--contest'],

@@ -226,6 +226,8 @@ def test_contest_listing_of_a_dispatcher_without_a_selection_is_empty(
     (cleandir / 'contest.div1.rbx.yml').write_text(
         'name: "div1"\nproblems:\n  - short_name: "A"\n    path: "cats"\n'
     )
+    # Two variants: with one, the selection would be implied (#1004).
+    (cleandir / 'contest.div2.rbx.yml').write_text('name: "div2"\n')
     _write_problem(cleandir / 'cats')
     contest_utils.clear_all_caches()
 

@@ -24,7 +24,7 @@ import pathlib
 from typing import List, Optional
 
 from rbx import config
-from rbx.box.contest import contest_package, contest_state
+from rbx.box.contest import contest_package
 from rbx.box.contest.schema import Contest, ContestStatement
 from rbx.box.exception import RbxException
 from rbx.box.statements.schema import Statement, StatementKind
@@ -117,7 +117,9 @@ def _raise_dispatcher_hint_if_unselected() -> None:
     contest-less problem, so callers must NOT fall back to the bundled default
     when this raises (design S15, decision 2)."""
     contest_root = contest_package.find_contest_root()
-    if contest_root is not None and contest_state.resolve_explicit_selection() is None:
+    # Only an unselected dispatcher resolves to no contest file at all: a
+    # selection, explicit or implied (#1004), always names one.
+    if contest_root is not None and contest_package.find_contest_yaml() is None:
         variants = contest_package.discover_contest_variants(contest_root)
         available = sorted(v for v in variants if v is not None)
         if available:

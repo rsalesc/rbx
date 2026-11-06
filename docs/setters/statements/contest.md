@@ -112,9 +112,11 @@ on its own, exactly **one** contest statement must carry a
   default template and **warns**.
 
 !!! warning "Unselected dispatcher"
-    The zero-match fallback has one exception. If the contest here is an
-    unselected multi-contest dispatcher, `rbx st b` errors instead of falling
-    back. Pass `-C <id>`, or set `RBX_CONTEST=<id>`, to pick a contest.
+    The zero-match fallback has one exception. If the contest here is a
+    multi-contest dispatcher and {{rbx}} can't tell which contest you mean,
+    `rbx st b` errors instead of falling back. {{rbx}} picks a contest for you
+    when only one contest lists the problem, or when the dispatcher has one
+    variant. Otherwise, pass `-C <id>`, or set `RBX_CONTEST=<id>`.
 
 ## Building the book
 
