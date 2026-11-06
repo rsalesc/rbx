@@ -11,8 +11,10 @@ from rbx import console, utils
 from rbx.box import package, timing_edit
 from rbx.box.environment import VerificationLevel
 from rbx.box.schema import (
+    ExpectedOutcome,
     LimitModifiers,
     LimitsProfile,
+    TimingBound,
     TimingGroupOrigin,
     TimingGroupReport,
 )
@@ -336,6 +338,11 @@ class LimitsTableRow(BaseModel):
     adjusted_from: Optional[int] = None
     # Slow solutions only confirmed too slow at the estimate, below this limit.
     unverified_upper: List[str] = []
+    # The bounds the limit had to fit in, when a solution set them. A derived
+    # lower bound names none and is left out: the multiplier source already
+    # restates it.
+    lower_bound: Optional[TimingBound] = None
+    upper_bound: Optional[TimingBound] = None
     # The limit judged against the group's recorded evidence; absent on rows
     # that carry none (the degraded per-modifier view).
     check: Optional[timing_edit.GroupCheck] = None
@@ -354,61 +361,30 @@ class LimitsTableRow(BaseModel):
         return self.slowest_ms is not None and self.slowest_ms > self.time_limit_ms
 
 
-def _bounds_note(report: TimingGroupReport) -> str:
-    """The range the group's limit had to fit in, and who set each side.
-
-    The lower bound is shown only when a solution set it: a derived one merely
-    restates the limit the multiplier source already names.
-
-    The solution paths land here verbatim: this is a data field, and escaping
-    them for rich would bake one renderer's syntax into it. ``build_limits_table``
-    escapes the whole cell instead.
-    """
-    parts: List[str] = []
-    lower = report.lowerBound
-    if lower is not None and lower.solution is not None:
-        parts.append(f'≥ {lower.value} ms from {lower.solution}')
-    upper = report.upperBound
-    if upper is not None:
-        note = f'≤ {upper.value} ms'
-        if upper.solution is not None:
-            note += f' from {upper.solution}'
-        parts.append(note)
-    if not parts:
-        return ''
-    return ' [' + ', '.join(parts) + ']'
+def solution_name(path: str) -> str:
+    """The last component of a solution path: what a crowded cell shows."""
+    return pathlib.PurePosixPath(path).name
 
 
-def _violation_note(report: TimingGroupReport) -> str:
-    """What the group's own accepted solutions need, when its limit denies it.
-
-    Spelled out beside the limit rather than left to the caption: the caption
-    counts the groups, this says which row and by how much.
-    """
-    violation = report.lowerViolation
-    if violation is None:
-        return ''
-    note = f'needs ≥ {violation.value} ms'
-    if violation.solution is not None and report.slowest is not None:
-        note += f' ({violation.solution} takes {report.slowest} ms)'
-    elif violation.solution is not None:
-        note += f' from {violation.solution}'
-    return f' ⚠ {note}'
+def _range(fastest: Optional[int], slowest: Optional[int]) -> str:
+    if fastest is None or slowest is None or fastest == slowest:
+        value = slowest if slowest is not None else fastest
+        return f'{value} ms'
+    return f'{fastest}–{slowest} ms'
 
 
 def _report_source(report: TimingGroupReport) -> str:
+    """Where the group's limit came from, in one short line. The bounds and any
+    violation are separate row fields, rendered on lines of their own."""
     if report.origin == TimingGroupOrigin.ESTIMATED:
-        source = (
-            f'estimated (fastest {report.fastest} ms / slowest {report.slowest} ms)'
-        )
-    elif report.origin == TimingGroupOrigin.MULTIPLIER:
+        return f'estimated · AC {_range(report.fastest, report.slowest)}'
+    if report.origin == TimingGroupOrigin.MULTIPLIER:
         ref = report.relativeToLanguage or 'base'
         source = f'×{report.multiplier} of {ref}'
         if report.increment is not None:
             source += f' + {report.increment} ms'
-    else:
-        source = 'DEFAULTED to base'
-    return source + _bounds_note(report) + _violation_note(report)
+        return source
+    return 'DEFAULTED to base'
 
 
 def _row_from_report(
@@ -442,7 +418,6 @@ def _row_from_report(
     unverified: List[str] = []
     adjusted_from = check.estimated
     if adjusted_from is not None:
-        source += f' · set by hand, estimated {adjusted_from} ms'
         confirmed = list(check.confirmed)
         violating = [bound.solution for bound in check.violating if bound.solution]
         unverified = list(check.unverified)
@@ -462,6 +437,12 @@ def _row_from_report(
         slowest_ms=report.slowest,
         adjusted_from=adjusted_from,
         unverified_upper=unverified,
+        lower_bound=(
+            report.lowerBound
+            if report.lowerBound is not None and report.lowerBound.solution
+            else None
+        ),
+        upper_bound=report.upperBound,
         check=check,
     )
 
@@ -537,12 +518,12 @@ def _source_markup(source: str) -> str:
     return source
 
 
-# Matches a time figure like "1000 ms" so the number can be highlighted while
-# the unit is dimmed; applied uniformly to the Time Limit column and to the
-# fastest/slowest figures inside the Source column. The guards keep it off
-# solution names, which the Source column also carries: `tle_2000ms.cpp` is an
-# ordinary name for a solution in a package about timing.
-_MS_PATTERN = re.compile(r'(?<![\w.])(\d+)\s*ms(?![\w.])')
+# Matches a time figure like "1000 ms" (or a range like "30–380 ms") so the
+# number can be highlighted while the unit is dimmed; applied uniformly to the
+# Time Limit column and to the figures inside the Source column. The guards keep
+# it off solution names, which the Source column also carries: `tle_2000ms.cpp`
+# is an ordinary name for a solution in a package about timing.
+_MS_PATTERN = re.compile(r'(?<![\w.])(\d+(?:–\d+)?)\s*ms(?![\w.])')
 
 
 def _highlight_ms(text: str) -> str:
@@ -551,18 +532,94 @@ def _highlight_ms(text: str) -> str:
     return _MS_PATTERN.sub(r'[timelimit]\1[/timelimit] [dim]ms[/dim]', text)
 
 
+# Solutions are colored by what they are expected to do, as everywhere else in
+# rbx: the lower bound is always set by an accepted one, the upper by a slow one.
+_LOWER_STYLE = ExpectedOutcome.ACCEPTED.style()
+_UPPER_STYLE = ExpectedOutcome.TIME_LIMIT_EXCEEDED.style()
+
+
 def _subject(rows: List[LimitsTableRow]) -> str:
-    """Name the solutions a caption is about, or count their groups when the
-    rows carry no name. Always phrased so a singular verb follows."""
+    """The accepted solutions a caption is about, by name, or a count of their
+    groups when the rows carry no name."""
     named = [
-        row.lower_violation_solution for row in rows if row.lower_violation_solution
+        solution_name(row.lower_violation_solution)
+        for row in rows
+        if row.lower_violation_solution
     ]
     if not named:
         plural = 's' if len(rows) > 1 else ''
-        return f'The slowest accepted solution of {len(rows)} group{plural} is'
-    if len(named) == 1:
-        return f'{named[0]} is'
-    return f'Each of {", ".join(named)} is'
+        return f'slowest of {len(rows)} group{plural}'
+    return ', '.join(named)
+
+
+def _source_line_count(row: LimitsTableRow) -> int:
+    return (
+        1
+        + (row.lower_bound is not None)
+        + (row.upper_bound is not None)
+        + (row.lower_violation_ms is not None)
+        + (row.adjusted_from is not None)
+    )
+
+
+def _source_cell(row: LimitsTableRow, style: Optional[str] = None):
+    """The Source column: provenance first, then one line per bound and per
+    problem, so the solution names never run together on one line."""
+    import rich.console
+    import rich.markup
+    import rich.table
+    import rich.text
+
+    def styled(text: str, fallback: str) -> str:
+        if style is not None:
+            return f'[{style}]{text}[/{style}]'
+        return fallback
+
+    source = rich.markup.escape(row.source)
+    if row.defaulted and style == 'warning':
+        source = f'⚠ {source}'
+    lines: List[object] = [
+        styled(source, _highlight_ms(_source_markup(source))),
+    ]
+
+    bounds = rich.table.Table.grid(padding=(0, 1))
+    bounds.add_column(justify='right', no_wrap=True)
+    bounds.add_column()
+    for sign, bound, sol_style in (
+        ('≥', row.lower_bound, _LOWER_STYLE),
+        ('≤', row.upper_bound, _UPPER_STYLE),
+    ):
+        if bound is None:
+            continue
+        name = (
+            rich.markup.escape(solution_name(bound.solution)) if bound.solution else ''
+        )
+        bounds.add_row(
+            f'[dim]{sign}[/dim] {_highlight_ms(f"{bound.value} ms")}',
+            f'[{sol_style}]{name}[/{sol_style}]',
+        )
+    if bounds.row_count:
+        lines.append(bounds)
+
+    if row.lower_violation_ms is not None:
+        note = f'⚠ needs ≥ {row.lower_violation_ms} ms'
+        if row.lower_violation_solution is not None:
+            name = rich.markup.escape(solution_name(row.lower_violation_solution))
+            if row.slowest_ms is not None:
+                note += f': {name} takes {row.slowest_ms} ms'
+            else:
+                note += f': {name}'
+        lines.append(styled(note, f'[warning]{note}[/warning]'))
+    if row.adjusted_from is not None:
+        lines.append(f'[dim]set by hand · estimated {row.adjusted_from} ms[/dim]')
+    if len(lines) == 1:
+        return lines[0]
+    return rich.console.Group(
+        *(
+            rich.text.Text.from_markup(line) if isinstance(line, str) else line
+            for line in lines
+        )
+    )
 
 
 def _range_text(check: timing_edit.GroupCheck) -> str:
@@ -608,7 +665,6 @@ def build_limits_table(
     tests. Cell-level markup still uses theme names (``warning``/``success``/
     ``item``), which resolve through the markup path.
     """
-    import rich.markup
     import rich.table
 
     rows = build_limits_table_rows(profile)
@@ -620,12 +676,11 @@ def build_limits_table(
     caption_lines: List[str] = []
     if any(row.is_leftover for row in rows):
         caption_lines.append(
-            f'{LEFTOVER_MARKER}leftover: languages not assigned to a group, '
-            'pooled together (default).'
+            f'{LEFTOVER_MARKER}leftover: languages in no group, pooled together.'
         )
     if any(row.defaulted for row in rows):
         caption_lines.append(
-            '[warning]⚠ DEFAULTED: no accepted solutions and no whenEmpty rule; '
+            '[warning]⚠ DEFAULTED: no accepted solution and no whenEmpty rule; '
             'fell back to the base time limit.[/warning]'
         )
     # The grouping handed a group a limit its own good solutions cannot meet --
@@ -633,27 +688,24 @@ def build_limits_table(
     # never consulted. Split by severity: a limit its solutions outright fail is
     # a different problem from one they clear without the configured margin, and
     # collapsing the two would understate the first.
+    margin = 'acToTimeLimit/fastestToTimeLimit margin'
     derived = [row for row in rows if row.adjusted_from is None]
     rejecting = [
         row for row in derived if row.violates_lower and row.rejects_own_solutions
     ]
     if rejecting:
         caption_lines.append(
-            f'[error]⚠ {_subject(rejecting)} accepted, but does not pass at the '
-            f'time limit of its own group, which was derived from another group '
-            f'instead of estimated from it. Regroup, or drop the reference so the '
-            f'group is estimated from its own solutions.[/error]'
+            f'[error]✗ Accepted, but fails the derived group limit: '
+            f'{_subject(rejecting)}. Regroup, or estimate the group on its '
+            f'own.[/error]'
         )
     thin = [
         row for row in derived if row.violates_lower and not row.rejects_own_solutions
     ]
     if thin:
         caption_lines.append(
-            f'[warning]⚠ {_subject(thin)} accepted and passes at the time limit of '
-            f'its own group, but without the margin acToTimeLimit (or '
-            f'fastestToTimeLimit) asks for, because '
-            f'the limit was derived from another group. See the Source column for '
-            f'what each group needs.[/warning]'
+            f'[warning]⚠ Passes the derived group limit without the {margin}: '
+            f'{_subject(thin)}.[/warning]'
         )
     # The same two cases for a limit the setter chose, which nobody derived.
     hand_rejecting = [
@@ -661,34 +713,31 @@ def build_limits_table(
     ]
     if hand_rejecting:
         caption_lines.append(
-            f'[error]⚠ {_subject(hand_rejecting)} accepted, but does not pass at '
-            f'the time limit set by hand for its group.[/error]'
+            f'[error]✗ Accepted, but fails the hand-set group limit: '
+            f'{_subject(hand_rejecting)}.[/error]'
         )
     hand_thin = [
         row for row in adjusted if row.violates_lower and not row.rejects_own_solutions
     ]
     if hand_thin:
         caption_lines.append(
-            f'[warning]⚠ {_subject(hand_thin)} accepted and passes at the time '
-            f'limit set by hand for its group, but without the margin '
-            f'acToTimeLimit (or fastestToTimeLimit) asks for.[/warning]'
+            f'[warning]⚠ Passes the hand-set group limit without the {margin}: '
+            f'{_subject(hand_thin)}.[/warning]'
         )
     above = [row for row in adjusted if row.check is not None and row.check.above_max]
     if above:
         plural = 's' if len(above) > 1 else ''
         caption_lines.append(
-            f'[error]⚠ The time limit set by hand for {len(above)} group{plural} '
-            f'is above what its solutions expected to be too slow allow: they '
-            f'finish within it times timeLimitToTle.[/error]'
+            f'[error]✗ {len(above)} hand-set limit{plural} above the upper bound: '
+            f'a too-slow solution finishes within it × timeLimitToTle.[/error]'
         )
     unverified = {solution for row in rows for solution in row.unverified_upper}
     if unverified:
         plural = 's' if len(unverified) > 1 else ''
         caption_lines.append(
-            f'[warning]? {len(unverified)} solution{plural} expected to be too slow '
-            f'{"were" if plural else "was"} only confirmed too slow for the '
-            f'estimated limit, which is below the one set by hand. Run the '
-            f'solutions against this profile to check.[/warning]'
+            f'[warning]? {len(unverified)} too-slow solution{plural} confirmed '
+            f'only below the hand-set limit; run against this profile to '
+            f'check.[/warning]'
         )
     # Terse on purpose: the validation run already reported each offending
     # solution by name, with what to do about it. This only says the table's
@@ -697,17 +746,15 @@ def build_limits_table(
     if violating:
         plural = 's' if len(violating) > 1 else ''
         caption_lines.append(
-            f'[error]⚠ {len(violating)} solution{plural} expected to be too slow '
-            f'finished within the estimated limit, so the upper bound is not '
-            f'respected; named under upperValidation in the limits profile.[/error]'
+            f'[error]✗ {len(violating)} too-slow solution{plural} finish within '
+            f'the estimated limit; see upperValidation in the profile.[/error]'
         )
     confirmed = {solution for row in rows for solution in row.confirmed_upper}
     if confirmed:
         plural = 's' if len(confirmed) > 1 else ''
         caption_lines.append(
-            f'[success]✓ {len(confirmed)} solution{plural} expected to be too slow '
-            f'{"were" if plural else "was"} confirmed too slow for the estimated '
-            f'limit.[/success]'
+            f'[success]✓ {len(confirmed)} too-slow solution{plural} confirmed at '
+            f'the current limit.[/success]'
         )
     caption = '\n'.join(caption_lines) if caption_lines else None
     table = rich.table.Table(
@@ -716,7 +763,8 @@ def build_limits_table(
         header_style='bold bright_white',
         caption=caption,
         caption_style='bright_black',
-        show_lines=False,
+        # Rows whose Source spans several lines run together without a rule.
+        show_lines=any(_source_line_count(row) > 1 for row in rows),
     )
     table.add_column('Languages', style='bold blue')
     table.add_column('Solutions', justify='right', style='bright_white')
@@ -728,39 +776,24 @@ def build_limits_table(
         extra = [check_cell(row.check)] if show_check else []
         sols = '' if row.solutions is None else str(row.solutions)
         tl = f'{row.time_limit_ms} ms'
-        # The Source cell carries setter-controlled text (solution paths), and
-        # the cells below are rendered as markup. Escaping happens here, at the
-        # one place that renders it, so `row.source` stays the real value for
-        # any other consumer -- and before the styling helpers, whose own markup
-        # must survive.
-        source = rich.markup.escape(row.source)
+        # Red beats the defaulted yellow: a limit the group's own solutions
+        # cannot meet is a broken grouping, not a fallback. Either one overrides
+        # the per-figure time highlight.
+        style: Optional[str] = None
         if row.violates_lower:
-            # Red beats the defaulted yellow: a limit the group's own solutions
-            # cannot meet is a broken grouping, not a fallback.
             style = 'error' if row.rejects_own_solutions else 'warning'
+        elif row.defaulted:
+            style = 'warning'
+        if style is None:
+            table.add_row(
+                row.languages, sols, _highlight_ms(tl), _source_cell(row), *extra
+            )
+        else:
             table.add_row(
                 f'[{style}]{row.languages}[/{style}]',
                 f'[{style}]{sols}[/{style}]',
                 f'[{style}]{tl}[/{style}]',
-                f'[{style}]{source}[/{style}]',
-                *extra,
-            )
-        elif row.defaulted:
-            # Defaulted rows are warnings: the yellow signals the fallback and
-            # deliberately overrides the per-figure time highlight.
-            table.add_row(
-                f'[warning]{row.languages}[/warning]',
-                f'[warning]{sols}[/warning]',
-                f'[warning]{tl}[/warning]',
-                f'[warning]⚠ {source}[/warning]',
-                *extra,
-            )
-        else:
-            table.add_row(
-                row.languages,
-                sols,
-                _highlight_ms(tl),
-                _highlight_ms(_source_markup(source)),
+                _source_cell(row, style),
                 *extra,
             )
     return table

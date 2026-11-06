@@ -89,7 +89,7 @@ footnote saying so.
 The run closes on the check that makes the number trustworthy:
 
 ```
-✓ 1 solution expected to be too slow was confirmed too slow for the estimated limit.
+✓ 1 too-slow solution confirmed at the current limit.
 ```
 
 That's `sols/quadratic.cpp`, the solution `gardens` declares with `outcome: tle`, run at the
@@ -170,7 +170,7 @@ work.
 
 The pane is still on `A`, so compare it against `B`. `chocolate` declares no solution as too slow, so
 there is no upper bound to derive and no upper bound to check -- its report simply ends
-after the limits table, with no "confirmed too slow" line. That absence is the *healthy*
+after the limits table, with no "too-slow solution confirmed" line. That absence is the *healthy*
 outcome for a problem shaped like that, not a step that failed silently -- worth knowing,
 because the ratios it prints still recite the upper-bound rule that, here, nothing triggers.
 

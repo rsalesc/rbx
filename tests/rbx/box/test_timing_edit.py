@@ -159,7 +159,9 @@ def test_table_rows_judge_hand_set_limits_afresh():
     assert row.adjusted_from == 1000
     assert row.confirmed_upper == []
     assert row.unverified_upper == ['sols/tle.cpp']
-    assert 'set by hand, estimated 1000 ms' in row.source
+    assert 'set by hand · estimated 1000 ms' in _render(
+        limits_info.build_limits_table(edited)
+    )
 
 
 def test_table_rows_keep_recorded_data_at_the_estimate():
@@ -187,14 +189,14 @@ def test_check_column_shows_only_when_asked_or_adjusted():
     text = _render(limits_info.build_limits_table(edited))
     assert 'Check' in text
     assert '1 unverified' in text
-    assert 'only confirmed too slow for the estimated limit' in text
+    assert 'confirmed only below the hand-set limit' in text
 
 
 def test_hand_set_captions_do_not_blame_a_derivation():
     edited = timing_edit.with_time_limit(_profile(), 0, 800)
     text = _render(limits_info.build_limits_table(edited))
-    assert 'set by hand for its group, but without the margin' in text
-    assert 'derived from another group' not in text
+    assert 'Passes the hand-set group limit without the' in text
+    assert 'derived' not in text
 
 
 # --- per-solution timings -----------------------------------------------------

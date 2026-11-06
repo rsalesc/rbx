@@ -191,7 +191,7 @@ class TestTable:
     def test_rejecting_group_is_named_in_the_caption(self):
         text = _table_text(_profile(_multipliers(), **_REJECTING))
 
-        assert 'sol.java is accepted, but does not pass at the time limit' in text
+        assert 'Accepted, but fails the derived group limit: sol.java.' in text
         assert 'needs ≥ 1800 ms' in text
         assert 'sol.java takes 900 ms' in text
 
@@ -205,9 +205,10 @@ class TestTable:
         text = _table_text(profile)
 
         assert (
-            'without the margin acToTimeLimit (or fastestToTimeLimit) asks for' in text
+            'Passes the derived group limit without the '
+            'acToTimeLimit/fastestToTimeLimit margin: sol.java.' in text
         )
-        assert 'does not pass at the time limit' not in text
+        assert 'fails the derived group limit' not in text
 
     def test_healthy_grouping_says_nothing(self):
         profile = _profile(
@@ -217,8 +218,8 @@ class TestTable:
         )
         text = _table_text(profile)
 
-        assert 'does not pass at the time limit' not in text
-        assert 'without the margin' not in text
+        assert 'fails the derived group limit' not in text
+        assert 'without the' not in text
         assert '⚠' not in text
 
     def test_several_violating_groups_are_all_named(self):
@@ -237,8 +238,7 @@ class TestTable:
         )
         text = _table_text(profile)
 
-        assert 'Each of' in text
-        assert 'sol.java' in text and 'sol.py' in text
+        assert 'fails the derived group limit: sol.java, sol.py.' in text
 
 
 def test_formula_mode_does_not_start_reporting_on_slow_solutions():
@@ -291,4 +291,4 @@ def test_preview_surfaces_the_violation_instead_of_hiding_the_table():
 
     assert 'Time Limit' in text  # the table itself, not an inline error
     assert 'cpp' in text and 'java' in text
-    assert 'does not pass at the time limit' in text
+    assert 'fails the derived group limit' in text
