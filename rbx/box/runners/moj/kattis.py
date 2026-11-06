@@ -464,10 +464,11 @@ def check_cap(
 ) -> List[OffCapTest]:
     """Every executed test of a shipped solution whose limit is not `cap_ms`.
 
-    The cap is reached by MOJ's own arithmetic (`calibrafactor`, the dummy table,
-    `TLMOD` sums), none of which MOJ promises to keep. Every measurement and every
-    verdict rbx reads assumes the cap, so a single test judged under anything else
-    -- a missing sum, a changed formula -- means none of it can be trusted.
+    The cap is reached by MOJ's own arithmetic (`calibrafactor` evaluated by `bc`,
+    the `CALIBRATIONTL` dummy table), none of which MOJ promises to keep. Every
+    measurement and every verdict rbx reads assumes the cap, so a single test
+    judged under anything else -- a factor no longer evaluated, a changed formula
+    -- means none of it can be trusted.
     """
     off: List[OffCapTest] = []
     for host in hosts:

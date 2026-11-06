@@ -1185,14 +1185,8 @@ class MojPackager(BasePackager):
             # slow solutions are judged at a limit rbx chose rather than at MOJ's
             # per-language Kattis one. See `capped_calibration_lines`.
             mode = self.timing_mode
-            assert self.probe is not None
-            languages: Set[str] = set()
-            for language in self.probe.submission_languages:
-                languages.add(language)
-                languages.add(normalize_moj_language(language))
             return moj_timing.capped_calibration_lines(
                 mode.cap_ms,
-                sorted(languages),
                 kattis=(
                     (mode.kattis.ac_to_time_limit, mode.kattis.time_resolution_ms)
                     if mode.kattis is not None

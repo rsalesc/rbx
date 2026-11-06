@@ -828,7 +828,7 @@ class MojRunner:
                 f'solution to, so none of its timings or verdicts can be read:\n'
                 f'{shown}{more}\n'
                 f"rbx reaches that cap through MOJ's own limit arithmetic "
-                f'(`TLMOD[calibrafactor]`, `CALIBRATIONTL`, `TLMOD[<lang>.sum]`); if '
+                f'(`TLMOD[calibrafactor]`, `CALIBRATIONTL`); if '
                 f'MOJ changed it, estimate with `--runner local` meanwhile. See '
                 f'`moj calib {moj_id}`.'
             )

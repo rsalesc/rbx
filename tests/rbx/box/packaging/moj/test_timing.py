@@ -35,19 +35,15 @@ def test_fmt_seconds_is_exact():
 
 
 def test_a_capped_calibration_lands_every_limit_on_the_cap():
-    """`0 x W + 0.02 + (cap - 0.02)`, one sum per language MOJ may judge under."""
-    lines = timing.capped_calibration_lines(
-        2000, ['py3', 'cpp', 'py'], kattis=(2.0, 500)
-    )
+    """The dummy is the cap, and `(cap - 0.02) + 0 x W + 0.02` is too -- with no
+    per-language sum, which MOJ would add to the Kattis floor as well."""
+    lines = timing.capped_calibration_lines(2000, kattis=(2.0, 500))
     conf = '\n'.join(lines)
 
     assert [line for line in lines if '=' in line and not line.startswith('#')] == [
         'TLMETHOD=moj',
-        'TLMOD[calibrafactor]=0',
-        'CALIBRATIONTL=0.02',
-        'TLMOD[cpp.sum]=1.98',
-        'TLMOD[py.sum]=1.98',
-        'TLMOD[py3.sum]=1.98',
+        'TLMOD[calibrafactor]=1.98+0',
+        'CALIBRATIONTL=2',
         'KATTIS_AC_TO_TIME_LIMIT=2',
         'KATTIS_TIME_LIMIT_TO_TLE=1',
         'KATTIS_TIME_RESOLUTION=0.5',
@@ -58,22 +54,19 @@ def test_a_capped_calibration_lands_every_limit_on_the_cap():
 def test_a_capped_calibration_for_a_formula_carries_no_kattis_ratios():
     """Nothing to compare MOJ's Kattis limit with, but the timeout ratio stays at 1
     so a test that exceeds the cap is still cut short."""
-    lines = timing.capped_calibration_lines(2000, ['cpp'])
+    lines = timing.capped_calibration_lines(2000)
 
     assert [line for line in lines if '=' in line and not line.startswith('#')] == [
         'TLMETHOD=moj',
-        'TLMOD[calibrafactor]=0',
-        'CALIBRATIONTL=0.02',
-        'TLMOD[cpp.sum]=1.98',
+        'TLMOD[calibrafactor]=1.98+0',
+        'CALIBRATIONTL=2',
         'KATTIS_TIME_LIMIT_TO_TLE=1',
     ]
 
 
-def test_a_capped_calibration_needs_a_cap_and_a_language():
+def test_a_capped_calibration_needs_a_cap_above_the_offset():
     with pytest.raises(ValueError, match='above 20 ms'):
-        timing.capped_calibration_lines(20, ['cpp'])
-    with pytest.raises(ValueError, match='language'):
-        timing.capped_calibration_lines(2000, [])
+        timing.capped_calibration_lines(20)
 
 
 def test_fixed_limits_split_into_a_default_and_the_languages_off_it():

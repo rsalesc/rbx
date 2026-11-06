@@ -485,9 +485,9 @@ async def test_the_package_pins_every_limit_of_the_calibration_at_the_cap(
     assert problem.endswith('-kattis')
     conf = _conf(uploaded)
     assert conf['TLMETHOD'] == 'moj'
-    assert conf['TLMOD[calibrafactor]'] == '0'
-    assert conf['CALIBRATIONTL'] == '0.02'
-    assert conf['TLMOD[cpp.sum]'] == '9.98'
+    assert conf['TLMOD[calibrafactor]'] == '9.98+0'
+    assert conf['CALIBRATIONTL'] == '10'
+    assert not [key for key in conf if key.endswith('.sum]')]
     # Only for the Kattis limit MOJ still computes from the same measurements.
     assert conf['KATTIS_AC_TO_TIME_LIMIT'] == '2'
     assert conf['KATTIS_TIME_LIMIT_TO_TLE'] == '1'
@@ -766,7 +766,7 @@ async def test_a_formula_calibrates_without_slow_solutions_or_kattis_ratios(
 
     _, uploaded = fake.uploads[-1]
     conf = _conf(uploaded)
-    assert conf['TLMOD[cpp.sum]'] == '9.98'
+    assert conf['TLMOD[calibrafactor]'] == '9.98+0'
     assert 'KATTIS_AC_TO_TIME_LIMIT' not in conf
     assert not (uploaded / 'sols' / 'slow').exists()
     assert result.moj_limits_ms == {}
