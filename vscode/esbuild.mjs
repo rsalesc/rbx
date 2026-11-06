@@ -35,6 +35,8 @@ const webview = await esbuild.context({
     'src/webview/launcherMain.ts',
     'src/webview/panelMain.ts',
     'src/webview/statementMain.mts',
+    'src/webview/limitsMain.ts',
+    'src/webview/limitsStyle.css',
     'src/webview/style.css',
     'src/webview/panelStyle.css',
     'src/webview/statementStyle.css',

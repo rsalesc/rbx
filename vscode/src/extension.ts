@@ -22,6 +22,7 @@ import { registerDiagnostics } from './diagnostics';
 import { registerDispatch } from './dispatch';
 import { FocusScope } from './focus';
 import { registerInteractionDecorations } from './interactionDecorations';
+import { registerLimitsEditor } from './limitsEditor';
 import { initLog, log } from './log';
 import { registerPromoteCommands } from './promoteCommands';
 import { Promoter } from './promoter';
@@ -212,6 +213,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const statementSources = registerStatementSources(context, focus, declared);
   registerAssetsView(context, focus, active, dispatcher, declared);
   registerStatementPreview({ context, reports: statementReports, sources: statementSources, active, dispatcher });
+  registerLimitsEditor(context, active);
   registerStatementDiagnostics(context, statementReports);
   registerInteractionDecorations(context);
 
