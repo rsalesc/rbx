@@ -150,3 +150,26 @@ def test_an_unknown_backend_is_refused_before_anything_runs(
     )
     # Nothing was estimated, and nothing was written.
     assert calls == {}
+
+
+def test_forcing_a_calibration_reaches_the_moj_estimate(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    result, calls = _invoke_time(runner, '--runner', 'moj', '-f')
+
+    assert result.exit_code == 0, result.output
+    assert isinstance(calls['runner'], MojRunner)
+    assert calls['force_calibration'] is True
+
+
+def test_forcing_a_calibration_on_a_runner_that_does_not_calibrate_is_refused(
+    runner: CliRunner,
+    testing_pkg: testing_package.TestingPackage,
+):
+    """A flag that silently did nothing would read as a fresh measurement."""
+    result, calls = _invoke_time(runner, '--runner', 'local', '--force-calibration')
+
+    assert result.exit_code == 1
+    assert '--force-calibration only applies' in result.output
+    assert calls == {}

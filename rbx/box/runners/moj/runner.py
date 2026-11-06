@@ -20,6 +20,7 @@ import json
 import pathlib
 import re
 import tempfile
+import uuid
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -698,6 +699,7 @@ class MojRunner:
         strategy: 'timing_config.TimingStrategy',
         progress: Optional['utils.StatusProgress'] = None,
         run_all: bool = False,
+        force: bool = False,
     ) -> kattis.KattisCalibrationResult:
         """Have MOJ measure every solution the estimate is about, and read it back.
 
@@ -722,6 +724,14 @@ class MojRunner:
         Skips the upload and the calibration when this machine last uploaded the
         same package to the same problem and the judge reports it calibrated: the
         calibration is then simply read again.
+
+        `force` (`rbx time --force-calibration`) uploads and calibrates anyway, for
+        when the park changed under an unchanged package. The judge keys its own
+        state on the package, and `moj calibrate` does not queue a calibration it
+        considers already done, so re-sending the same bytes is not enough: a
+        nonce comment goes into `conf` (`_force_new_package`). The *clean*
+        fingerprint is what gets recorded, so the next unforced run reuses this
+        fresh calibration instead of uploading again.
         """
         mode = _calibrated_mode(strategy, run_all=run_all)
         shim = _ProgressOnly(progress)
@@ -769,10 +779,12 @@ class MojRunner:
                 ) from e
             fingerprint = _directory_fingerprint(package_path)
 
-            since = _recorded_calibration(moj_id, fingerprint)
+            since = None if force else _recorded_calibration(moj_id, fingerprint)
             reused = since is not None and (await cli.check(moj_id)).is_ready
             if not reused:
                 _forget_calibration(moj_id)
+                if force:
+                    _force_new_package(package_path)
                 size = _directory_size(package_path)
                 await _with_ticker(
                     shim,
@@ -2026,6 +2038,20 @@ def _shipped_languages(mode: ProbeCalibrated) -> Tuple[str, ...]:
             'There is no accepted solution to estimate the time limit from.'
         )
     return tuple(languages)
+
+
+def _force_new_package(package_path: pathlib.Path) -> None:
+    """Make the package differ from whatever the judge holds, without changing it.
+
+    A comment line in `conf`, which mojtools sources as shell, so nothing reads
+    it. Unique per call, so a forced run is never mistaken by the judge for the
+    package it already calibrated -- not even the previous forced one.
+    """
+    conf = package_path / 'conf'
+    text = conf.read_text()
+    if text and not text.endswith('\n'):
+        text += '\n'
+    conf.write_text(f'{text}# rbx: forced recalibration {uuid.uuid4().hex}\n')
 
 
 async def _calibrate_everywhere(moj_id: str) -> List[str]:

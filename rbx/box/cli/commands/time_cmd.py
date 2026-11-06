@@ -141,6 +141,7 @@ async def _estimate(
     fail_fast: bool,
     benchmark_level: int,
     keep_checker_stderr: bool,
+    force_calibration: bool = False,
 ) -> None:
     """The body of `rbx time`, shared with `rbx preship`.
 
@@ -172,6 +173,15 @@ async def _estimate(
     solution_runner = runners_registry.get_runner(
         runners_registry.resolve_runner_name(runner, profile)
     )
+    # Refused rather than ignored: on a backend that measures by running the
+    # solutions there is no calibration to force, and a flag that silently does
+    # nothing reads as a fresh measurement that never happened.
+    if force_calibration and not timing.uses_moj_calibration(solution_runner, None):
+        console.console.print(
+            '[error]--force-calibration only applies to a runner that calibrates '
+            '(moj); this one measures every run afresh.[/error]'
+        )
+        raise typer.Exit(1)
 
     current_profile = limits_info.get_display_limits_profile(profile)
     if current_profile is None:
@@ -286,6 +296,7 @@ async def _estimate(
         fail_fast=fail_fast,
         benchmark_level=level,
         keep_checker_stderr=keep_checker_stderr,
+        force_calibration=force_calibration,
     )
     if estimated is None:
         # Every failure of the estimation -- an unsatisfiable range, a solution
@@ -370,6 +381,16 @@ async def time(
             'each one against what the estimate measured. Runs no solution.',
         ),
     ] = False,
+    force_calibration: Annotated[
+        bool,
+        typer.Option(
+            '--force-calibration',
+            '-f',
+            help='Calibrate again on a runner that calibrates (moj), even when the '
+            'package is unchanged since the last calibration and it would be '
+            'reused.',
+        ),
+    ] = False,
 ):
     if edit:
         # Every other flag here shapes an estimation, and the editor runs none:
@@ -385,6 +406,7 @@ async def time(
                 ('--skip-slow', skip_slow),
                 ('--run-all', run_all),
                 ('--fail-fast', fail_fast),
+                ('--force-calibration', force_calibration),
             )
             if given
         ]
@@ -415,6 +437,7 @@ async def time(
         fail_fast=fail_fast,
         benchmark_level=benchmark_level,
         keep_checker_stderr=keep_checker_stderr,
+        force_calibration=force_calibration,
     )
 
 
