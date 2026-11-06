@@ -3,7 +3,17 @@ from __future__ import annotations
 import dataclasses
 import functools
 import math
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 import rich
 import rich.console
@@ -1273,6 +1283,13 @@ def uses_moj_calibration(
     return callable(getattr(runner, 'estimate_by_calibration', None))
 
 
+def _judges_phrase(reporting: Sequence[str], hosts: Sequence[str]) -> str:
+    """Which judges reported something: all of them, or the ones that did."""
+    if len(hosts) > 1 and set(reporting) == set(hosts):
+        return f'every judge: {", ".join(reporting)}'
+    return f'on {", ".join(reporting)}'
+
+
 def _render_calibration_report(
     target: rich.console.Console, result: 'KattisCalibrationResult'
 ) -> None:
@@ -1289,6 +1306,11 @@ def _render_calibration_report(
     for measurement in result.measurements.values():
         if not measurement.hosts:
             verdict = '[error]not reported[/error]'
+        elif measurement.compile_error_hosts:
+            verdict = (
+                f'[error]Compilation Error[/error] '
+                f'({_judges_phrase(measurement.compile_error_hosts, measurement.hosts)})'
+            )
         elif measurement.bad_codes:
             verdict = f'[error]{", ".join(measurement.bad_codes)}[/error]'
         elif measurement.timed_out:
@@ -1353,7 +1375,7 @@ async def _estimate_with_moj_calibration(
     timeout (at `inferenceTimeout`, MOJ's `CALIBRATIONTL`), a wrong verdict, or a
     solution the judges did not report all stop the estimate.
     """
-    from rbx.box.runners.moj.runner import outcome_for_moj_code
+    from rbx.box.runners.moj.runner import MOJ_COMPILE_HINT, outcome_for_moj_code
     from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 
     lower_solutions = get_inference_solutions(InferenceRole.LOWER)
@@ -1386,6 +1408,16 @@ async def _estimate_with_moj_calibration(
             console.console.print(
                 f'[error]✗ No judge reported on {solution.href()}, so it bounds '
                 f'nothing.[/error]'
+            )
+            ok = False
+        elif measurement.compile_error_hosts:
+            console.console.print(
+                f'[error]✗ {solution.href()} is expected to be accepted, but it did '
+                f'not compile on MOJ '
+                f'({_judges_phrase(measurement.compile_error_hosts, measurement.hosts)}'
+                f'). {MOJ_COMPILE_HINT} MOJ does not report the compiler output '
+                f'of a calibration: compile the file on its own, with the flags '
+                f'of that script, to see the error.[/error]'
             )
             ok = False
         elif measurement.timed_out:

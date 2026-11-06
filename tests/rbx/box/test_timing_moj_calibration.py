@@ -16,7 +16,11 @@ import pytest
 from rbx.box import package, timing, timing_config
 from rbx.box.runners.moj import cli, kattis
 from rbx.box.runners.moj.kattis import KattisCalibrationResult, KattisMeasurement
-from rbx.box.schema import ExpectedOutcome, InferenceRole, TimingMultipliers
+from rbx.box.schema import (
+    ExpectedOutcome,
+    InferenceRole,
+    TimingMultipliers,
+)
 from rbx.box.testing import testing_package
 
 
@@ -457,3 +461,81 @@ def test_the_profile_records_every_solution_timing():
     tail = text[text.index('solutions:') :]
     assert '- {path: sols/ac.cpp, language: cpp, role: lower, time: 260}' in tail
     assert text.rstrip().endswith('}')
+
+
+def _never_compiled_on(hosts: str, category: str, file: str) -> List[cli.CalibHost]:
+    """`file` with no tests and `Compilation Error` on every judge in `hosts`."""
+    return [
+        cli.CalibHost(
+            host=host,
+            at=200,
+            sols=[
+                cli.CalibSolution(
+                    file=file,
+                    category=category,
+                    verdict='Compilation Error',
+                    expect=cli.CalibExpect(state='norun', why='ce'),
+                )
+            ],
+        )
+        for host in hosts
+    ]
+
+
+@pytest.mark.usefixtures('pkg')
+def test_an_accepted_solution_that_did_not_compile_says_so(capsys):
+    runner = _CalibratingRunner(
+        _calibrated(
+            _never_compiled_on('abc', 'good', 'ac.cpp'),
+            {'sols/ac.cpp': 'good'},
+        ),
+        limits={},
+    )
+
+    assert _estimate(runner) is None
+    out = ' '.join(capsys.readouterr().out.split())
+    assert 'did not compile on MOJ (every judge: a, b, c)' in out
+    assert 'scripts/<lang>/compile.sh' in out
+    assert 'incomplete' not in out
+    assert 'did not report every test' not in out
+
+
+@pytest.mark.usefixtures('pkg')
+def test_a_slow_solution_that_did_not_compile_is_reported_broken():
+    measurements = _calibrated(
+        _never_compiled_on('a', 'slow', 'slow.cpp'), {'sols/slow.cpp': 'slow'}
+    ) + [_measure('sols/ac.cpp', 'good', 260)]
+    runner = _CalibratingRunner(measurements, limits={'cpp': 600, 'default': 600})
+
+    profile = _estimate(runner)
+
+    assert profile is not None
+    assert _upper(profile).confirmed == []
+
+
+@pytest.mark.usefixtures('pkg')
+def test_the_calibration_table_names_the_judges_that_failed_to_compile(capsys):
+    hosts = [
+        cli.CalibHost(
+            host='a',
+            at=200,
+            sols=[
+                cli.CalibSolution(
+                    file='ac.cpp',
+                    category='good',
+                    tests=[
+                        cli.TestrunTest(name=f't{i}', code='AC', time=0.1, tl=10.0)
+                        for i in range(1, 4)
+                    ],
+                )
+            ],
+        ),
+        *_never_compiled_on('b', 'good', 'ac.cpp'),
+    ]
+    runner = _CalibratingRunner(_calibrated(hosts, {'sols/ac.cpp': 'good'}), limits={})
+
+    assert _estimate(runner) is None
+    out = ' '.join(capsys.readouterr().out.split())
+    assert 'Compilation Error (on b)' in out
+    assert 'did not compile on MOJ (on b)' in out
+    assert 'incomplete' not in out

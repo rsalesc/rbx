@@ -249,6 +249,103 @@ def test_a_wrong_answer_is_a_bad_code_and_a_missing_solution_is_unmeasured():
     assert not measured['sols/gone.cpp'].measured
 
 
+def _never_compiled(file: str, category: str) -> cli.CalibSolution:
+    """The shape `moj --json calib` reported on 2026-11-05 for a solution missing
+    an `#include`: no tests, a run-level verdict and a `norun` expectation."""
+    return cli.CalibSolution.model_validate(
+        {
+            'file': file,
+            'lang': 'cpp',
+            'category': category,
+            'verdict': 'Compilation Error',
+            'tests': [],
+            'method': 'moj',
+            'expect': {
+                'state': 'norun',
+                'why': 'ce',
+                'counts': {},
+                'tmax': None,
+                'tl': 15,
+                'drift': 0,
+                'method': 'moj',
+            },
+        }
+    )
+
+
+def test_a_solution_that_did_not_compile_is_a_compile_error_not_incomplete():
+    ac = _solution('sols/ac.cpp')
+    hosts = [_host(name, [_never_compiled('ac.cpp', 'good')]) for name in 'abc']
+
+    measured = kattis.measure_solutions(hosts, {('good', 'ac.cpp'): ac}, 2)[
+        'sols/ac.cpp'
+    ]
+
+    assert measured.bad_codes == ('CE',)
+    assert measured.compile_error_hosts == ('a', 'b', 'c')
+    assert measured.time_ms is None
+    assert not measured.complete
+
+
+def test_a_compile_error_is_read_off_the_expectation_alone():
+    sol = cli.CalibSolution.model_validate(
+        {
+            'file': 'slow.cpp',
+            'category': 'slow',
+            'tests': [],
+            'expect_alt': {'state': 'norun', 'why': 'ce'},
+        }
+    )
+    slow = _solution('sols/slow.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+
+    measured = kattis.measure_solutions(
+        [_host('a', [sol])], {('slow', 'slow.cpp'): slow}, 2
+    )['sols/slow.cpp']
+
+    assert measured.bad_codes == ('CE',)
+    assert measured.compile_error_hosts == ('a',)
+
+
+def test_a_compile_error_on_one_judge_is_named_alongside_the_others():
+    ac = _solution('sols/ac.cpp')
+    hosts = [
+        _host('a', [_sol('ac.cpp', 'good', [_test('t1', 'AC', 0.1)])]),
+        _host('b', [_never_compiled('ac.cpp', 'good')]),
+    ]
+
+    measured = kattis.measure_solutions(hosts, {('good', 'ac.cpp'): ac}, 1)[
+        'sols/ac.cpp'
+    ]
+
+    assert measured.bad_codes == ('CE',)
+    assert measured.compile_error_hosts == ('b',)
+
+
+def test_a_run_with_no_tests_and_no_compile_verdict_stays_incomplete():
+    ac = _solution('sols/ac.cpp')
+    sol = cli.CalibSolution(file='ac.cpp', category='good', verdict='Accepted')
+
+    measured = kattis.measure_solutions(
+        [_host('a', [sol])], {('good', 'ac.cpp'): ac}, 1
+    )['sols/ac.cpp']
+
+    assert measured.bad_codes == ()
+    assert measured.compile_error_hosts == ()
+    assert not measured.complete
+
+
+def test_per_test_verdicts_win_over_a_compile_word_in_the_run_verdict():
+    """Only a run with nothing executed is read off its run-level verdict."""
+    sol = cli.CalibSolution(
+        file='ac.cpp',
+        category='good',
+        verdict='Compilation Error',
+        tests=[_test('t1', 'AC', 0.1)],
+    )
+
+    assert not sol.failed_to_compile
+
+
 def test_only_judges_newer_than_the_request_count():
     calibration = cli.MojCalibration(
         checksum='x',
@@ -740,6 +837,21 @@ def test_a_test_no_judge_ran_is_not_replayed():
     assert kattis.replay_test(calibration, 'sols/wa.cpp', 't1', 1000) is None
     assert kattis.replay_test(calibration, 'sols/wa.cpp', 'gone', 1000) is None
     assert kattis.replay_test(calibration, 'sols/other.cpp', 't1', 1000) is None
+
+
+def test_a_solution_that_did_not_compile_replays_as_a_compile_error():
+    """Every test, at any limit -- never skipped, which would read as no verdict."""
+    calibration = _replayable(
+        [
+            _host('a', [_sol('wa.cpp', 'wrong', [_test('t1', 'AC', 0.1)])]),
+            _host('b', [_never_compiled('wa.cpp', 'wrong')]),
+        ]
+    )
+
+    for name in ('t1', 't2'):
+        test = kattis.replay_test(calibration, 'sols/wa.cpp', name, 1000)
+        assert test is not None
+        assert (test.code, test.time, test.tl) == ('CE', None, 1.0)
 
 
 def test_only_a_shipped_solution_within_the_cap_can_be_replayed():

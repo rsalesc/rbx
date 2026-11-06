@@ -41,6 +41,8 @@ from rbx.box.schema import Solution
 # correct (see `runner._OUTCOME_BY_MOJ_CODE`).
 _PASS_CODES = frozenset({'AC', 'AC,PE'})
 _TIMEOUT_CODE = 'TLE'
+# What a judge that never built the solution reports, as a per-test code would.
+_COMPILE_ERROR_CODE = 'CE'
 # The code for a test the judge never executed: the absence of a verdict, not one.
 _NOT_EXECUTED_CODES = frozenset({'NT'})
 
@@ -69,6 +71,9 @@ class KattisMeasurement:
     # The bad codes that are not a timeout (`WA`, `RE`, `CE`, ...), in the order
     # first met. A solution with any is broken for a reason other than its speed.
     bad_codes: Tuple[str, ...]
+    # The judges on which the solution never ran because it did not compile.
+    # Each also puts `CE` in `bad_codes`.
+    compile_error_hosts: Tuple[str, ...] = ()
 
     @property
     def measured(self) -> bool:
@@ -86,7 +91,14 @@ def _ms(seconds: Optional[float]) -> Optional[int]:
 def _per_host(
     sol: cli.CalibSolution, expected_tests: int
 ) -> Tuple[Optional[int], bool, bool, List[str]]:
-    """(worst ms, timed out, complete, bad codes) for one judge's run of one solution."""
+    """(worst ms, timed out, complete, bad codes) for one judge's run of one solution.
+
+    A solution that did not compile there has no tests to read, so its `CE` is
+    taken from the solution's own verdict -- the same bad code a per-test `CE`
+    would be, rather than a run that merely stopped early.
+    """
+    if sol.failed_to_compile:
+        return None, False, False, [_COMPILE_ERROR_CODE]
     tests = {
         name: test
         for name, test in sol.by_name.items()
@@ -209,6 +221,9 @@ def measure_solutions(
             timed_out=timed_out,
             complete=complete,
             bad_codes=tuple(bad),
+            compile_error_hosts=tuple(
+                name for name, sol in runs if sol.failed_to_compile
+            ),
         )
     return measurements
 
@@ -282,7 +297,8 @@ def replay_test(
     a failure on any judge beats a pass, and among equals the slower one wins.
     `None` when no judge ran it -- it was never shipped, or the run halted at an
     earlier timeout (`STOPWHEN_TLE`) -- which the caller reports as skipped,
-    exactly as it does for a testrun.
+    exactly as it does for a testrun. A judge on which the solution did not
+    compile reports `CE` for every test, so it is never read as skipped.
     """
     key = result.files.get(solution_path)
     if key is None:
@@ -291,6 +307,16 @@ def replay_test(
     for host in result.calib_hosts:
         for sol in host.sols:
             if (sol.category, sol.file) != key:
+                continue
+            if sol.failed_to_compile:
+                candidates.append(
+                    cli.TestrunTest(
+                        name=name,
+                        code=_COMPILE_ERROR_CODE,
+                        time=None,
+                        tl=time_limit_ms / 1000,
+                    )
+                )
                 continue
             test = sol.by_name.get(name)
             if test is not None and test.code not in _NOT_EXECUTED_CODES:

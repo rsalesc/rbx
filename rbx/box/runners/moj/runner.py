@@ -404,6 +404,17 @@ class MojRunnerError(RbxException):
         self.msg.append(message)
 
 
+# Why a solution that builds locally can fail to build on MOJ. Said wherever the
+# judge reports a compile error -- a testrun that ran nothing, or a calibration --
+# since MOJ hands back no compiler output to say it instead.
+MOJ_COMPILE_HINT = (
+    "MOJ compiles a submission from a single file, with the package's own "
+    'compile script (`scripts/<lang>/compile.sh`) -- not with the compiler or '
+    'the flags rbx uses locally, so a solution that builds here can still fail '
+    'there.'
+)
+
+
 def _run_never_started(
     solution: 'SolutionSkeleton', run: str, status: cli.TestrunStatus
 ) -> MojRunnerError:
@@ -456,9 +467,7 @@ def _run_never_started(
     if verdict and 'compil' in verdict.lower():
         lines.append(
             f'That usually means `{solution.path}` did not build on the judge. '
-            f"MOJ compiles a submission from a single file, with the package's "
-            f'own compile script -- not with the compiler or the flags rbx uses '
-            f'locally, so a solution that builds here can still fail there.'
+            + MOJ_COMPILE_HINT
         )
 
     lines.append(
