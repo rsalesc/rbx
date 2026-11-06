@@ -3,7 +3,17 @@ from __future__ import annotations
 import dataclasses
 import functools
 import math
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 import rich
 import rich.console
@@ -57,7 +67,7 @@ if TYPE_CHECKING:
     # `solutions` under TYPE_CHECKING, so importing it at run time closes no
     # cycle.
     from rbx.box.runners.base import SolutionRunner
-    from rbx.box.runners.moj.kattis import KattisCalibrationResult
+    from rbx.box.runners.moj.kattis import KattisCalibrationResult, KattisMeasurement
 
 
 class MissingLowerBoundError(RbxException):
@@ -1273,6 +1283,66 @@ def uses_moj_calibration(
     return callable(getattr(runner, 'estimate_by_calibration', None))
 
 
+def _judges_phrase(reporting: Sequence[str], hosts: Sequence[str]) -> str:
+    """Which judges reported something: all of them, or the ones that did."""
+    if len(hosts) > 1 and set(reporting) == set(hosts):
+        return f'every judge: {", ".join(reporting)}'
+    return f'on {", ".join(reporting)}'
+
+
+async def _print_moj_compile_error(
+    result: 'KattisCalibrationResult',
+    solution: Solution,
+    measurement: 'KattisMeasurement',
+) -> None:
+    """Say that an accepted solution did not compile on MOJ, and where to see why.
+
+    The compiler output is not in the calibration, only in the judge's
+    per-solution report. That is fetched (`fetch_compile_report`) and saved to a
+    file through the warning stack, which lists it again on the way out: the
+    scraped stderr when the report reads as expected, the whole report when it
+    does not. When nothing could be fetched, the command that downloads it is
+    quoted instead.
+    """
+    from rbx.box.runners.moj.kattis import compile_report_command
+    from rbx.box.runners.moj.runner import MOJ_COMPILE_HINT, fetch_compile_report
+    from rbx.box.sanitizers import warning_stack
+
+    path = str(solution.path)
+    report = await fetch_compile_report(result, path)
+    if report is None:
+        content, suffix = None, '.moj-compile.log'
+        judge = f'MOJ ({", ".join(measurement.compile_error_hosts)})'
+    elif report.stderr is not None:
+        content, suffix = report.stderr + '\n', '.moj-compile.log'
+        judge = f'MOJ ({report.host})'
+    else:
+        content, suffix = report.html, '.moj-report.html'
+        judge = f'MOJ ({report.host})'
+    error = warning_stack.get_warning_stack().add_remote_compilation_error(
+        solution.path, judge, content, suffix=suffix
+    )
+
+    if error.log is not None and report is not None and report.stderr is not None:
+        see = f'Its compiler output on {report.host} is in {href(error.log)}.'
+    elif error.log is not None and report is not None:
+        see = f'The report from {report.host} is in {href(error.log)}.'
+    else:
+        command = compile_report_command(result, path)
+        see = (
+            f'See the full report with `{command}`.'
+            if command is not None
+            else 'Compile the file on its own, with the flags of that script, '
+            'to see the error.'
+        )
+    console.console.print(
+        f'[error]✗ {solution.href()} is expected to be accepted, but it did '
+        f'not compile on MOJ '
+        f'({_judges_phrase(measurement.compile_error_hosts, measurement.hosts)}'
+        f'). {MOJ_COMPILE_HINT} {see}[/error]'
+    )
+
+
 def _render_calibration_report(
     target: rich.console.Console, result: 'KattisCalibrationResult'
 ) -> None:
@@ -1289,6 +1359,11 @@ def _render_calibration_report(
     for measurement in result.measurements.values():
         if not measurement.hosts:
             verdict = '[error]not reported[/error]'
+        elif measurement.compile_error_hosts:
+            verdict = (
+                f'[error]Compilation Error[/error] '
+                f'({_judges_phrase(measurement.compile_error_hosts, measurement.hosts)})'
+            )
         elif measurement.bad_codes:
             verdict = f'[error]{", ".join(measurement.bad_codes)}[/error]'
         elif measurement.timed_out:
@@ -1387,6 +1462,9 @@ async def _estimate_with_moj_calibration(
                 f'[error]✗ No judge reported on {solution.href()}, so it bounds '
                 f'nothing.[/error]'
             )
+            ok = False
+        elif measurement.compile_error_hosts:
+            await _print_moj_compile_error(result, solution, measurement)
             ok = False
         elif measurement.timed_out:
             console.console.print(

@@ -1,3 +1,4 @@
+import dataclasses
 import functools
 import pathlib
 import shutil
@@ -31,6 +32,25 @@ def sanitizer_log_name(path: pathlib.Path) -> pathlib.Path:
     return path.with_suffix(path.suffix + '.log')
 
 
+def remote_compilation_log_name(path: pathlib.Path, suffix: str) -> pathlib.Path:
+    """Where a solution's remote compiler output is kept, beside its sanitizer
+    log: `sols/a.cpp` -> `sols/a.cpp.moj-compile.log` (with `suffix`
+    `.moj-compile.log`)."""
+    return path.with_suffix(path.suffix + suffix)
+
+
+@dataclasses.dataclass(frozen=True)
+class RemoteCompilationError:
+    """A solution a remote judge failed to compile, and where its output is."""
+
+    path: pathlib.Path
+    # Who failed it, as the setter would name it: `MOJ (judge-sp1)`.
+    judge: str
+    # The saved compiler output (or the judge's whole report, when it could not
+    # be read), or `None` when nothing could be fetched.
+    log: Optional[pathlib.Path]
+
+
 class WarningStack:
     def __init__(self, root: pathlib.Path):
         self.root = root
@@ -49,6 +69,10 @@ class WarningStack:
         self.kinds: Dict[pathlib.Path, 'AssetKind'] = {}
         # Tests that repeat an earlier one, in the order the build met them.
         self.duplicate_tests: List['DuplicateTest'] = []
+        # Solutions a remote judge could not compile, by path. No issue covers
+        # them (the issues view reads the last local run), so nothing marks them
+        # reported.
+        self.remote_compilation_errors: Dict[pathlib.Path, RemoteCompilationError] = {}
         # Paths whose compiler warnings / linter messages / sanitizer findings
         # another report already showed in this process -- the issues section
         # at the end of `rbx run` (#968). The stack still records them, so the
@@ -134,6 +158,26 @@ class WarningStack:
                 shutil.copyfileobj(f, fout)
         self.sanitizer_warnings[code.path] = dest_path
 
+    def add_remote_compilation_error(
+        self,
+        path: pathlib.Path,
+        judge: str,
+        content: Optional[str] = None,
+        suffix: str = '.log',
+    ) -> RemoteCompilationError:
+        """Record that `judge` could not compile `path`, saving `content` -- what
+        it said -- to a file in the warnings dir when there is any."""
+        log: Optional[pathlib.Path] = None
+        if content is not None:
+            log = _get_warning_runs_dir(self.root).joinpath(
+                remote_compilation_log_name(path, suffix)
+            )
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.write_text(content)
+        error = RemoteCompilationError(path=path, judge=judge, log=log)
+        self.remote_compilation_errors[path] = error
+        return error
+
     def add_linter_warning(
         self,
         code: CodeItem,
@@ -154,6 +198,7 @@ class WarningStack:
         self.duplicate_tests.clear()
         self.sanitizer_warnings.clear()
         self.linter_warnings.clear()
+        self.remote_compilation_errors.clear()
         self.reported_compilation.clear()
         self.reported_linter.clear()
         self.reported_sanitizer.clear()
@@ -231,7 +276,8 @@ def print_warning_stack_report():
     warnings = stack.unreported_warnings()
     sanitizer_warnings = stack.unreported_sanitizer_warnings()
     duplicates = stack.unreported_duplicate_tests()
-    if not warnings and not sanitizer_warnings and not duplicates:
+    remote = sorted(stack.remote_compilation_errors.values(), key=lambda e: e.path)
+    if not warnings and not sanitizer_warnings and not duplicates and not remote:
         return
     console.console.rule('[status]Warning stack[/status]')
     console.console.print(
@@ -271,6 +317,17 @@ def print_warning_stack_report():
             console.console.print(
                 f'- {href(path)}, example log at {href(stack.sanitizer_warnings[path])}'
             )
+        console.console.print()
+
+    if remote:
+        console.console.print(f'{len(remote)} solutions did not compile remotely')
+        for error in remote:
+            where = (
+                f', compiler output at {href(error.log)}'
+                if error.log is not None
+                else ''
+            )
+            console.console.print(f'- {href(error.path)} on {error.judge}{where}')
         console.console.print()
 
     if duplicates:

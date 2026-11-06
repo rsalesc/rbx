@@ -6,9 +6,11 @@ The shapes the fakes answer with are the ones the park returned on 2026-10-31
 `docs/plans/2026-11-01-moj-parallel-run-and-kattis-calibration-design.md`.
 """
 
+import asyncio
 import pathlib
 import shutil
 from typing import Dict, List, Optional, Tuple
+from unittest import mock
 
 import pytest
 
@@ -247,6 +249,103 @@ def test_a_wrong_answer_is_a_bad_code_and_a_missing_solution_is_unmeasured():
 
     assert measured['sols/wa.cpp'].bad_codes == ('WA',)
     assert not measured['sols/gone.cpp'].measured
+
+
+def _never_compiled(file: str, category: str) -> cli.CalibSolution:
+    """The shape `moj --json calib` reported on 2026-11-05 for a solution missing
+    an `#include`: no tests, a run-level verdict and a `norun` expectation."""
+    return cli.CalibSolution.model_validate(
+        {
+            'file': file,
+            'lang': 'cpp',
+            'category': category,
+            'verdict': 'Compilation Error',
+            'tests': [],
+            'method': 'moj',
+            'expect': {
+                'state': 'norun',
+                'why': 'ce',
+                'counts': {},
+                'tmax': None,
+                'tl': 15,
+                'drift': 0,
+                'method': 'moj',
+            },
+        }
+    )
+
+
+def test_a_solution_that_did_not_compile_is_a_compile_error_not_incomplete():
+    ac = _solution('sols/ac.cpp')
+    hosts = [_host(name, [_never_compiled('ac.cpp', 'good')]) for name in 'abc']
+
+    measured = kattis.measure_solutions(hosts, {('good', 'ac.cpp'): ac}, 2)[
+        'sols/ac.cpp'
+    ]
+
+    assert measured.bad_codes == ('CE',)
+    assert measured.compile_error_hosts == ('a', 'b', 'c')
+    assert measured.time_ms is None
+    assert not measured.complete
+
+
+def test_a_compile_error_is_read_off_the_expectation_alone():
+    sol = cli.CalibSolution.model_validate(
+        {
+            'file': 'slow.cpp',
+            'category': 'slow',
+            'tests': [],
+            'expect_alt': {'state': 'norun', 'why': 'ce'},
+        }
+    )
+    slow = _solution('sols/slow.cpp', ExpectedOutcome.TIME_LIMIT_EXCEEDED)
+
+    measured = kattis.measure_solutions(
+        [_host('a', [sol])], {('slow', 'slow.cpp'): slow}, 2
+    )['sols/slow.cpp']
+
+    assert measured.bad_codes == ('CE',)
+    assert measured.compile_error_hosts == ('a',)
+
+
+def test_a_compile_error_on_one_judge_is_named_alongside_the_others():
+    ac = _solution('sols/ac.cpp')
+    hosts = [
+        _host('a', [_sol('ac.cpp', 'good', [_test('t1', 'AC', 0.1)])]),
+        _host('b', [_never_compiled('ac.cpp', 'good')]),
+    ]
+
+    measured = kattis.measure_solutions(hosts, {('good', 'ac.cpp'): ac}, 1)[
+        'sols/ac.cpp'
+    ]
+
+    assert measured.bad_codes == ('CE',)
+    assert measured.compile_error_hosts == ('b',)
+
+
+def test_a_run_with_no_tests_and_no_compile_verdict_stays_incomplete():
+    ac = _solution('sols/ac.cpp')
+    sol = cli.CalibSolution(file='ac.cpp', category='good', verdict='Accepted')
+
+    measured = kattis.measure_solutions(
+        [_host('a', [sol])], {('good', 'ac.cpp'): ac}, 1
+    )['sols/ac.cpp']
+
+    assert measured.bad_codes == ()
+    assert measured.compile_error_hosts == ()
+    assert not measured.complete
+
+
+def test_per_test_verdicts_win_over_a_compile_word_in_the_run_verdict():
+    """Only a run with nothing executed is read off its run-level verdict."""
+    sol = cli.CalibSolution(
+        file='ac.cpp',
+        category='good',
+        verdict='Compilation Error',
+        tests=[_test('t1', 'AC', 0.1)],
+    )
+
+    assert not sol.failed_to_compile
 
 
 def test_only_judges_newer_than_the_request_count():
@@ -742,9 +841,175 @@ def test_a_test_no_judge_ran_is_not_replayed():
     assert kattis.replay_test(calibration, 'sols/other.cpp', 't1', 1000) is None
 
 
+def test_a_solution_that_did_not_compile_replays_as_a_compile_error():
+    """Every test, at any limit -- never skipped, which would read as no verdict."""
+    calibration = _replayable(
+        [
+            _host('a', [_sol('wa.cpp', 'wrong', [_test('t1', 'AC', 0.1)])]),
+            _host('b', [_never_compiled('wa.cpp', 'wrong')]),
+        ]
+    )
+
+    for name in ('t1', 't2'):
+        test = kattis.replay_test(calibration, 'sols/wa.cpp', name, 1000)
+        assert test is not None
+        assert (test.code, test.time, test.tl) == ('CE', None, 1.0)
+
+
 def test_only_a_shipped_solution_within_the_cap_can_be_replayed():
     calibration = _replayable([])
 
     assert calibration.can_replay('sols/wa.cpp', 10_000)
     assert not calibration.can_replay('sols/wa.cpp', 10_001)
     assert not calibration.can_replay('sols/other.cpp', 1000)
+
+
+def _compile_failed_result(reports: List[str]) -> kattis.KattisCalibrationResult:
+    """`rsalesc#rbxt-ab2113f5-kattis` on 2026-11-06: `broken.cpp` failed to
+    compile on every judge, and each judge kept a report named after it."""
+    hosts = [
+        cli.CalibHost(
+            host='a',
+            at=200,
+            sols=[_sol('main.cpp', 'good', [_test('t1', 'AC', 0.1)])],
+            reports=reports,
+        ),
+        cli.CalibHost(
+            host='b',
+            at=200,
+            sols=[_never_compiled('broken.cpp', 'good')],
+            reports=reports,
+        ),
+    ]
+    return kattis.KattisCalibrationResult(
+        moj_id='rsalesc#rbxt-ab2113f5-kattis',
+        hosts=('a', 'b'),
+        measurements={},
+        moj_limits_ms={},
+        reused=False,
+        calib_hosts=tuple(hosts),
+        files={
+            'sols/main.cpp': ('good', 'main.cpp'),
+            'sols/broken.cpp': ('good', 'broken.cpp'),
+        },
+    )
+
+
+def test_a_compile_error_points_at_the_report_holding_the_compiler_output():
+    result = _compile_failed_result(['good-broken.cpp', 'good-main.cpp'])
+
+    assert kattis.compile_report_command(result, 'sols/broken.cpp') == (
+        "moj calib-report 'rsalesc#rbxt-ab2113f5-kattis' --host b "
+        '--sol good-broken.cpp -o moj-calib-b-good-broken.cpp.html'
+    )
+    # It compiled: there is nothing to point at.
+    assert kattis.compile_report_command(result, 'sols/main.cpp') is None
+
+
+def test_no_report_is_quoted_when_the_judge_kept_none():
+    result = _compile_failed_result(['good-main.cpp'])
+
+    assert kattis.compile_report_command(result, 'sols/broken.cpp') is None
+
+
+_CE_REPORT = (
+    pathlib.Path(__file__).parent / 'testdata' / 'calib_report_compile_error.html'
+)
+
+
+def test_the_compiler_output_is_read_off_a_real_report():
+    """The report `moj calib-report` served on 2026-11-06 for `broken.cpp`."""
+    stderr = kattis.compile_stderr(_CE_REPORT.read_text())
+
+    assert stderr is not None
+    lines = stderr.splitlines()
+    assert lines[0] == 'broken.cpp: In function ‘int main()’:'
+    assert lines[1] == 'broken.cpp:8:5: error: ‘vector’ was not declared in this scope'
+    # Unescaped, not `&lt;vector&gt;`.
+    assert '  +++ |+#include <vector>' in lines
+    assert lines[-1] == '      |             ^'
+    # The `cage-run` panel after it is sandbox noise, not the compiler's.
+    assert 'Creating output file' not in stderr
+
+
+@pytest.mark.parametrize(
+    'report',
+    [
+        # An accepted solution's report: no compile section at all.
+        '<h1 id="resumo">Resumo</h1><div class="panel-h">stderr</div><pre>x</pre>',
+        # A compile section whose `stderr` panel is empty.
+        '<h1 id="compilacao">Erro</h1><div class="panel-h">stderr</div><pre>\n</pre>',
+        # A `<pre>` with no `stderr` label in front of it.
+        '<h1 id="compilacao">Erro</h1><div class="panel-h">cage-run</div><pre>x</pre>',
+        # The `stderr` label is in the section, the `<pre>` only after the next one.
+        '<h1 id="compilacao">Erro</h1><div class="panel-h">stderr</div>'
+        '<h1 id="ambiente">A</h1><pre>x</pre>',
+        '',
+        'not html at all <<<',
+    ],
+)
+def test_a_report_of_any_other_shape_yields_nothing(report):
+    assert kattis.compile_stderr(report) is None
+
+
+def test_the_compiler_output_is_fetched_from_the_first_judge_that_kept_it():
+    result = _compile_failed_result(['good-broken.cpp'])
+    calls = []
+
+    async def fake_calib_report(problem_id, host, name, out):
+        calls.append((problem_id, host, name))
+        out.write_text(_CE_REPORT.read_text())
+
+    with mock.patch.object(cli, 'calib_report', fake_calib_report):
+        report = asyncio.run(
+            runner_module.fetch_compile_report(result, 'sols/broken.cpp')
+        )
+
+    assert calls == [('rsalesc#rbxt-ab2113f5-kattis', 'b', 'good-broken.cpp')]
+    assert report is not None
+    assert report.host == 'b'
+    assert report.html == _CE_REPORT.read_text()
+    assert report.stderr is not None
+    assert 'was not declared in this scope' in report.stderr
+
+
+def test_a_report_of_another_shape_is_kept_whole_with_no_stderr():
+    result = _compile_failed_result(['good-broken.cpp'])
+
+    async def redesigned(problem_id, host, name, out):
+        out.write_text('<h1 id="erro">new layout</h1>')
+
+    with mock.patch.object(cli, 'calib_report', redesigned):
+        report = asyncio.run(
+            runner_module.fetch_compile_report(result, 'sols/broken.cpp')
+        )
+
+    assert report == runner_module.CompileReport(
+        host='b', html='<h1 id="erro">new layout</h1>', stderr=None
+    )
+
+
+def test_a_failed_download_is_no_compiler_output_not_an_error():
+    result = _compile_failed_result(['good-broken.cpp'])
+
+    async def refuse(problem_id, host, name, out):
+        raise cli.MojCliError('404')
+
+    with mock.patch.object(cli, 'calib_report', refuse):
+        assert (
+            asyncio.run(runner_module.fetch_compile_report(result, 'sols/broken.cpp'))
+            is None
+        )
+
+
+def test_nothing_is_fetched_when_no_judge_kept_a_report():
+    result = _compile_failed_result(['good-main.cpp'])
+
+    async def unexpected(*args):
+        raise AssertionError('no report is listed, so none may be fetched')
+
+    with mock.patch.object(cli, 'calib_report', unexpected):
+        assert (
+            asyncio.run(runner_module.fetch_compile_report(result, 'sols/broken.cpp'))
+            is None
+        )

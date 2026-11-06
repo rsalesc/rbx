@@ -364,6 +364,20 @@ class MojCheckHost(BaseModel):
 MojCheck.model_rebuild()
 
 
+class CalibExpect(BaseModel):
+    """What a judge's calibration concluded about one solution's expectation.
+
+    Only the part rbx reads: `state` is `norun` when the solution never ran, and
+    `why` then names the reason in MOJ's own code (`ce` for a compile error,
+    observed 2026-11-05).
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    state: Optional[str] = None
+    why: Optional[str] = None
+
+
 class CalibSolution(BaseModel):
     """One solution of one judge's calibration, as `moj --json calib` reports it.
 
@@ -384,11 +398,32 @@ class CalibSolution(BaseModel):
     # known to have survived.
     etl: Optional[float] = None
     tests: List[TestrunTest] = []
+    # A solution that never compiled has no `tests` at all; these are what say so:
+    # `verdict` in words (`Compilation Error`), `expect.why` as a code (`ce`).
+    expect: Optional[CalibExpect] = None
+    expect_alt: Optional[CalibExpect] = None
 
     @property
     def by_name(self) -> Dict[str, TestrunTest]:
         """The tests keyed by name, last entry winning. See `TestrunStatus.by_name`."""
         return {test.name: test for test in self.tests}
+
+    @property
+    def failed_to_compile(self) -> bool:
+        """Whether this judge never ran the solution because it did not build.
+
+        Only when no test carries a verdict: a run that produced per-test codes
+        is read from those. `compil` rather than the exact string, as the testrun
+        path does, so the Portuguese spelling (`Erro de Compilacao`) counts too.
+        """
+        if any(test.code != 'NT' for test in self.tests):
+            return False
+        if self.verdict and 'compil' in self.verdict.lower():
+            return True
+        return any(
+            expect is not None and expect.why == 'ce'
+            for expect in (self.expect, self.expect_alt)
+        )
 
 
 class CalibHost(BaseModel):
@@ -411,6 +446,10 @@ class CalibHost(BaseModel):
     # Languages with a `sols/good` solution that no accepted run calibrated here.
     missing: List[str] = []
     sols: List[CalibSolution] = []
+    # The per-solution `report.html` this judge kept, named `<category>-<file>`,
+    # fetched with `moj calib-report`. A solution that did not compile has one
+    # too, carrying the compiler's stderr (observed 2026-11-06).
+    reports: List[str] = []
 
 
 class CalibMethodLimits(BaseModel):
@@ -835,6 +874,19 @@ async def calib(problem_id: str) -> MojCalibration:
     """The problem's whole calibration: per judge, per solution, per test."""
     payload = await _run_moj_json(['calib', problem_id])
     return MojCalibration.model_validate(payload if isinstance(payload, dict) else {})
+
+
+async def calib_report(
+    problem_id: str, host: str, name: str, out: pathlib.Path
+) -> None:
+    """Download one judge's `report.html` for one calibrated solution to `out`.
+
+    `name` is as `CalibHost.reports` lists it (`<category>-<file>`). The report
+    is HTML with no published structure; see `kattis.compile_stderr`.
+    """
+    await _run_moj(
+        ['calib-report', problem_id, '--host', host, '--sol', name, '-o', str(out)]
+    )
 
 
 async def testrun(ref: Union[str, pathlib.Path], solution: pathlib.Path) -> str:

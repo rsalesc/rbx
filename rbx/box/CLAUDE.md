@@ -437,7 +437,19 @@ then `moj calib` read back through
 *any* judge timed it out; slow: the weakest judge's evidence -- the fastest finish
 over the judges that ran every test without a timeout, else, when every judge timed
 it out, the shortest timeout; one judge that stopped early without a timeout leaves
-it unmeasured). The result seeds `_EstimationContext` and `SlowKnowledge`
+it unmeasured; a judge on which it never compiled -- no tests, run-level `verdict`
+`Compilation Error` or `expect.why == 'ce'`, `CalibSolution.failed_to_compile` --
+counts as a `CE` bad code, named per judge in `compile_error_hosts`, and replays as
+`CE` on every test; `calib` carries no compiler output, but the judge's
+per-solution report does, so the error quotes `kattis.compile_report_command`
+when `hosts[].reports` lists `<category>-<file>`, and `runner.fetch_compile_report`
+downloads it and scrapes the `stderr` panel of its `#compilacao` section
+(`kattis.compile_stderr`; best effort, `None` on any other shape, since the HTML
+is not a published contract). That output is saved, not printed: the warning
+stack's `add_remote_compilation_error` writes `.rbx/warnings/<sol>.moj-compile.log`
+(or the whole report as `.moj-report.html` when it cannot be read) and lists it
+on the way out -- `rbx time` prints the stack before its failure exit, since
+`new_package_cd` only prints it on a clean return). The result seeds `_EstimationContext` and `SlowKnowledge`
 directly, so picker, groups and profile are reused, and `_validate_upper_bound(
 calibrated=...)` runs nothing.
 

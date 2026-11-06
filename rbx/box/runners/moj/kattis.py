@@ -32,6 +32,7 @@ Design: `docs/plans/2026-11-01-moj-parallel-run-and-kattis-calibration-design.md
 """
 
 import dataclasses
+import html.parser
 from typing import Dict, List, Optional, Tuple
 
 from rbx.box.runners.moj import cli
@@ -41,6 +42,8 @@ from rbx.box.schema import Solution
 # correct (see `runner._OUTCOME_BY_MOJ_CODE`).
 _PASS_CODES = frozenset({'AC', 'AC,PE'})
 _TIMEOUT_CODE = 'TLE'
+# What a judge that never built the solution reports, as a per-test code would.
+_COMPILE_ERROR_CODE = 'CE'
 # The code for a test the judge never executed: the absence of a verdict, not one.
 _NOT_EXECUTED_CODES = frozenset({'NT'})
 
@@ -69,6 +72,9 @@ class KattisMeasurement:
     # The bad codes that are not a timeout (`WA`, `RE`, `CE`, ...), in the order
     # first met. A solution with any is broken for a reason other than its speed.
     bad_codes: Tuple[str, ...]
+    # The judges on which the solution never ran because it did not compile.
+    # Each also puts `CE` in `bad_codes`.
+    compile_error_hosts: Tuple[str, ...] = ()
 
     @property
     def measured(self) -> bool:
@@ -86,7 +92,14 @@ def _ms(seconds: Optional[float]) -> Optional[int]:
 def _per_host(
     sol: cli.CalibSolution, expected_tests: int
 ) -> Tuple[Optional[int], bool, bool, List[str]]:
-    """(worst ms, timed out, complete, bad codes) for one judge's run of one solution."""
+    """(worst ms, timed out, complete, bad codes) for one judge's run of one solution.
+
+    A solution that did not compile there has no tests to read, so its `CE` is
+    taken from the solution's own verdict -- the same bad code a per-test `CE`
+    would be, rather than a run that merely stopped early.
+    """
+    if sol.failed_to_compile:
+        return None, False, False, [_COMPILE_ERROR_CODE]
     tests = {
         name: test
         for name, test in sol.by_name.items()
@@ -209,6 +222,9 @@ def measure_solutions(
             timed_out=timed_out,
             complete=complete,
             bad_codes=tuple(bad),
+            compile_error_hosts=tuple(
+                name for name, sol in runs if sol.failed_to_compile
+            ),
         )
     return measurements
 
@@ -270,6 +286,122 @@ def _at_limit(test: cli.TestrunTest, time_limit_ms: int) -> cli.TestrunTest:
     )
 
 
+def compile_report(
+    result: KattisCalibrationResult, solution_path: str
+) -> Optional[Tuple[str, str]]:
+    """`(host, report name)` of the report that shows why `solution_path` did not
+    compile: the first judge that failed it and kept a report for it.
+
+    That report carries the judge's compiler stderr -- `calib` itself does not.
+    `None` when no such judge listed one, so nothing is fetched or quoted that
+    would only answer with a 404.
+    """
+    key = result.files.get(solution_path)
+    if key is None:
+        return None
+    report = f'{key[0]}-{key[1]}'
+    for host in result.calib_hosts:
+        for sol in host.sols:
+            if (sol.category, sol.file) != key or not sol.failed_to_compile:
+                continue
+            if report in host.reports:
+                return host.host, report
+    return None
+
+
+def compile_report_command(
+    result: KattisCalibrationResult, solution_path: str
+) -> Optional[str]:
+    """The `moj calib-report` command that downloads `compile_report`."""
+    found = compile_report(result, solution_path)
+    if found is None:
+        return None
+    host, report = found
+    return (
+        f"moj calib-report '{result.moj_id}' --host {host} --sol {report} "
+        f'-o moj-calib-{host}-{report}.html'
+    )
+
+
+class _CompileStderrParser(html.parser.HTMLParser):
+    """The text of the `stderr` panel's `<pre>` in the `compilacao` section.
+
+    The structure read, observed 2026-11-06 (server build 9c14089):
+
+        <h1 id="compilacao">Erro de compilação</h1>
+        <p class="muted">...</p>
+        <div class="panel-h">stderr</div>
+        <pre class="">...compiler output...</pre>
+        <div class="panel-h">cage-run</div>
+        <pre class="">...sandbox noise...</pre>
+        <h1 id="ambiente">...
+
+    Keyed on the section id and the panel label -- the two things that are names
+    rather than prose -- and bounded by the next `<h1>`, so a report without
+    that exact shape yields nothing instead of the wrong `<pre>`.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._in_section = False
+        self._in_label = False
+        self._label = ''
+        self._armed = False
+        self._in_pre = False
+        self._chunks: List[str] = []
+        self.stderr: Optional[str] = None
+
+    def handle_starttag(self, tag, attrs):
+        if self.stderr is not None:
+            return
+        attributes = dict(attrs)
+        if tag == 'h1':
+            self._in_section = attributes.get('id') == 'compilacao'
+            self._armed = False
+        elif not self._in_section:
+            return
+        elif tag == 'div' and 'panel-h' in (attributes.get('class') or '').split():
+            self._in_label = True
+            self._label = ''
+        elif tag == 'pre' and self._armed:
+            self._in_pre = True
+            self._chunks = []
+
+    def handle_endtag(self, tag):
+        if self._in_label and tag == 'div':
+            self._in_label = False
+            self._armed = self._label.strip() == 'stderr'
+        elif self._in_pre and tag == 'pre':
+            self._in_pre = False
+            self._armed = False
+            self.stderr = ''.join(self._chunks)
+
+    def handle_data(self, data):
+        if self._in_label:
+            self._label += data
+        elif self._in_pre:
+            self._chunks.append(data)
+
+
+def compile_stderr(report_html: str) -> Optional[str]:
+    """The compiler's stderr out of a calibration `report.html`, or `None`.
+
+    Best effort: the report is MOJ's HTML, with no published structure, so a
+    report of any other shape -- an accepted solution's, or a redesigned one --
+    gives `None`, never a guess. An empty panel gives `None` too: there is
+    nothing to show.
+    """
+    parser = _CompileStderrParser()
+    try:
+        parser.feed(report_html)
+        parser.close()
+    except Exception:
+        return None
+    if parser.stderr is None or not parser.stderr.strip():
+        return None
+    return parser.stderr.rstrip('\n')
+
+
 def replay_test(
     result: KattisCalibrationResult,
     solution_path: str,
@@ -282,7 +414,8 @@ def replay_test(
     a failure on any judge beats a pass, and among equals the slower one wins.
     `None` when no judge ran it -- it was never shipped, or the run halted at an
     earlier timeout (`STOPWHEN_TLE`) -- which the caller reports as skipped,
-    exactly as it does for a testrun.
+    exactly as it does for a testrun. A judge on which the solution did not
+    compile reports `CE` for every test, so it is never read as skipped.
     """
     key = result.files.get(solution_path)
     if key is None:
@@ -291,6 +424,16 @@ def replay_test(
     for host in result.calib_hosts:
         for sol in host.sols:
             if (sol.category, sol.file) != key:
+                continue
+            if sol.failed_to_compile:
+                candidates.append(
+                    cli.TestrunTest(
+                        name=name,
+                        code=_COMPILE_ERROR_CODE,
+                        time=None,
+                        tl=time_limit_ms / 1000,
+                    )
+                )
                 continue
             test = sol.by_name.get(name)
             if test is not None and test.code not in _NOT_EXECUTED_CODES:
