@@ -9,6 +9,51 @@ from rbx.box.schema import (
 )
 
 
+def _render_text(profile: LimitsProfile) -> str:
+    from rich.console import Console
+
+    from rbx.box.limits_info import build_limits_table
+
+    out = Console(width=200, record=True, file=None)
+    out.print(build_limits_table(profile))
+    return out.export_text()
+
+
+def test_bound_solutions_are_colored_by_expected_outcome():
+    from rbx.box.limits_info import _source_cell
+    from rbx.box.schema import ExpectedOutcome
+
+    profile = LimitsProfile(
+        timeLimit=1300,
+        groups=[
+            TimingGroupReport(
+                languages=['cpp'],
+                timeLimit=1300,
+                origin=TimingGroupOrigin.ESTIMATED,
+                solutionCount=1,
+                fastest=100,
+                slowest=630,
+                lowerBound=TimingBound(value=1260, solution='sols/ac.cpp'),
+                upperBound=TimingBound(value=4066, solution='sols/tle.cpp'),
+            ),
+        ],
+    )
+    from rich.console import Console
+
+    console = Console(width=200, file=None)
+    cell = _source_cell(build_limits_table_rows(profile)[1])
+    styles = {
+        segment.text: segment.style
+        for segment in console.render(cell)
+        if segment.text in ('ac.cpp', 'tle.cpp')
+    }
+    # Same colors as an accepted / too slow expectation anywhere else in rbx.
+    assert str(styles['ac.cpp'].color.name) == ExpectedOutcome.ACCEPTED.style()
+    assert (
+        str(styles['tle.cpp'].color.name) == ExpectedOutcome.TIME_LIMIT_EXCEEDED.style()
+    )
+
+
 def test_rows_from_group_metadata():
     profile = LimitsProfile(
         timeLimit=2000,
@@ -92,7 +137,7 @@ def test_base_row_shows_estimated_provenance():
     assert rows[0].time_limit_ms == 1000
     # When estimated, the base row reports the same provenance as group rows,
     # pooled across every solution.
-    assert rows[0].source == 'estimated (fastest 100 ms / slowest 500 ms)'
+    assert rows[0].source == 'estimated · AC 100–500 ms'
     assert rows[0].solutions == 3
 
 
@@ -225,9 +270,11 @@ def test_report_source_estimated_includes_ms_unit():
         fastest=280,
         slowest=600,
     )
-    # The fastest/slowest figures are times, so they carry the same "ms" unit
-    # shown in the Time Limit column.
-    assert _report_source(report) == 'estimated (fastest 280 ms / slowest 600 ms)'
+    # The fastest/slowest accepted times, as one range carrying the same "ms"
+    # unit shown in the Time Limit column.
+    assert _report_source(report) == 'estimated · AC 280–600 ms'
+    report.fastest = 600
+    assert _report_source(report) == 'estimated · AC 600 ms'
 
 
 def test_report_source_multiplier_renders_increment_when_present():
@@ -268,12 +315,12 @@ def test_highlight_ms_colors_number_and_dims_unit():
 def test_highlight_ms_colors_every_time_in_a_string():
     from rbx.box.limits_info import _highlight_ms
 
-    # Times embedded in the Source column (fastest/slowest) get the same
+    # Times embedded in the Source column (a range, a bound) get the same
     # treatment, so the figures match the Time Limit column.
-    out = _highlight_ms('estimated (fastest 280 ms / slowest 600 ms)')
+    out = _highlight_ms('estimated · AC 280–600 ms, ≥ 900 ms')
     assert out == (
-        'estimated (fastest [timelimit]280[/timelimit] [dim]ms[/dim] / '
-        'slowest [timelimit]600[/timelimit] [dim]ms[/dim])'
+        'estimated · AC [timelimit]280–600[/timelimit] [dim]ms[/dim], '
+        '≥ [timelimit]900[/timelimit] [dim]ms[/dim]'
     )
 
 
@@ -313,7 +360,9 @@ def test_bounding_solution_names_survive_rendering(capsys):
     )
     render_limits_table(profile)
     out = ' '.join(capsys.readouterr().out.split())
-    assert 'sols/tle[x].cpp' in out
+    # Only the file name is shown: the directory crowds the cell.
+    assert 'tle[x].cpp' in out
+    assert 'sols/' not in out
 
 
 def test_the_row_holds_the_real_solution_name_not_an_escaped_one():
@@ -333,9 +382,9 @@ def test_the_row_holds_the_real_solution_name_not_an_escaped_one():
             ),
         ],
     )
-    source = build_limits_table_rows(profile)[1].source
-    assert 'sols/tle[x].cpp' in source
-    assert '\\' not in source
+    bound = build_limits_table_rows(profile)[1].upper_bound
+    assert bound is not None
+    assert bound.solution == 'sols/tle[x].cpp'
 
 
 def test_estimated_time_renders_cyan_with_ms():
@@ -549,12 +598,14 @@ def test_estimated_row_names_the_solutions_that_bound_it():
             ),
         ],
     )
-    source = build_limits_table_rows(profile)[1].source
+    row = build_limits_table_rows(profile)[1]
     # "why is the limit 1300?" -- both sides of the range and who set them.
-    assert '1260 ms' in source
-    assert 'sols/slow_ac.cpp' in source
-    assert '4066 ms' in source
-    assert 'sols/tle.cpp' in source
+    assert row.lower_bound == TimingBound(value=1260, solution='sols/slow_ac.cpp')
+    assert row.upper_bound == TimingBound(value=4066, solution='sols/tle.cpp')
+    out = _render_text(profile)
+    # One line per bound, naming the solution by its file name only.
+    assert '≥ 1260 ms slow_ac.cpp' in out
+    assert '≤ 4066 ms tle.cpp' in out
 
 
 def test_a_derived_lower_bound_is_not_restated():
@@ -574,10 +625,12 @@ def test_a_derived_lower_bound_is_not_restated():
             ),
         ],
     )
-    source = build_limits_table_rows(profile)[1].source
-    assert '2600 ms' not in source
-    assert '4066 ms' in source
-    assert 'sols/tle.py' in source
+    row = build_limits_table_rows(profile)[1]
+    assert row.lower_bound is None
+    out = _render_text(profile)
+    assert '2600 ms' in out  # the Time Limit column, not a bound
+    assert '≥ 2600 ms' not in out
+    assert '≤ 4066 ms tle.py' in out
 
 
 def test_caption_notes_the_solutions_that_violate_the_upper_bound():
@@ -606,7 +659,7 @@ def test_caption_notes_the_solutions_that_violate_the_upper_bound():
     assert '[error]' in caption
 
 
-def test_caption_notes_the_confirmed_slow_solutions():
+def test_confirmed_slow_solutions_get_no_caption():
     from rbx.box.limits_info import build_limits_table
 
     profile = LimitsProfile(
@@ -626,9 +679,9 @@ def test_caption_notes_the_confirmed_slow_solutions():
         ],
     )
     caption = build_limits_table(profile).caption or ''
-    assert '1 solution' in caption
-    assert 'sols/hopeless.cpp' not in caption
-    assert '[success]' in caption
+    # Only problems are captioned: a confirmed slow solution is the healthy case.
+    assert 'confirmed' not in caption
+    assert '✓' not in caption
 
 
 def test_no_upper_validation_caption_without_slow_solutions():

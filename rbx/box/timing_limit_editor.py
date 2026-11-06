@@ -15,7 +15,12 @@ import typer
 from rbx import console
 from rbx.box import estimation_checksum, limits_info, package, timing_edit
 from rbx.box.formatting import href
-from rbx.box.schema import InferenceRole, LimitsProfile, TimingGroupReport
+from rbx.box.schema import (
+    ExpectedOutcome,
+    InferenceRole,
+    LimitsProfile,
+    TimingGroupReport,
+)
 
 if TYPE_CHECKING:
     from prompt_toolkit.formatted_text import AnyFormattedText
@@ -163,7 +168,8 @@ class LimitEditorState:
 
 
 _SOLUTION_STATUS = {
-    timing_edit.SolutionStatus.OK: '[success]✓[/success]',
+    # Blank, so the solutions that need attention stand out.
+    timing_edit.SolutionStatus.OK: '',
     timing_edit.SolutionStatus.THIN: '[warning]⚠ thin margin[/warning]',
     timing_edit.SolutionStatus.FAILS: '[error]✗ fails[/error]',
     timing_edit.SolutionStatus.PASSES: '[error]✗ passes[/error]',
@@ -260,7 +266,11 @@ def build_solutions_table(profile: LimitsProfile, target: Optional[int]):
             ratio += f' [dim](≥ {required:g}×)[/dim]'
         table.add_row(
             rich.markup.escape(check.path),
-            'accepted' if lower else 'too slow',
+            (
+                f'[{ExpectedOutcome.ACCEPTED.style()}]accepted[/]'
+                if lower
+                else f'[{ExpectedOutcome.TIME_LIMIT_EXCEEDED.style()}]too slow[/]'
+            ),
             time,
             allows,
             ratio,
