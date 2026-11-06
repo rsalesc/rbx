@@ -28,7 +28,8 @@ export type AssetCategory =
   | 'validator'
   | 'visualizer'
   | 'testplan'
-  | 'manual_test';
+  | 'manual_test'
+  | 'time_profile';
 
 const CATEGORIES: readonly AssetCategory[] = [
   'manifest',
@@ -41,6 +42,7 @@ const CATEGORIES: readonly AssetCategory[] = [
   'visualizer',
   'testplan',
   'manual_test',
+  'time_profile',
 ];
 
 export interface ListedAsset {
@@ -213,6 +215,7 @@ const SPLIT: readonly CategorySpec[] = [
   { label: 'Validators', icon: 'shield', members: ['validator'] },
   { label: 'Visualizer', icon: 'eye', members: ['visualizer'] },
   { label: 'Tests', icon: 'beaker', members: ['testplan', 'manual_test'] },
+  { label: 'Time profiles', icon: 'watch', members: ['time_profile'] },
 ];
 
 const ROLE: Record<AssetCategory, string> = {
@@ -226,6 +229,7 @@ const ROLE: Record<AssetCategory, string> = {
   visualizer: 'visualizer',
   testplan: 'testplan',
   manual_test: 'manual test',
+  time_profile: 'time profile',
 };
 
 const OUTCOME: Record<string, string> = {
@@ -425,6 +429,10 @@ export function slotOf(asset: ListedAsset): Slot | undefined {
       return d.main === 'true' ? { key: 'validator:main', label: 'Validator', order: 420 } : undefined;
     case 'visualizer':
       return { key: 'visualizer', label: 'Visualizer', order: 430 };
+    case 'time_profile':
+      return d.profile === undefined
+        ? undefined
+        : { key: `time_profile:${d.profile}`, label: `${d.profile} time profile`, order: 350 };
     case 'manifest':
       return { key: 'manifest', label: 'problem.rbx.yml', order: 900 };
     default:

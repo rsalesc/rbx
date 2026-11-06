@@ -123,3 +123,27 @@ a.bold { font-weight: 600; }
 
 .fatal, .loading { margin: 40px auto; max-width: 640px; display: flex; flex-direction: column; gap: 10px; }
 .fatal pre { white-space: pre-wrap; background: var(--vscode-textCodeBlock-background); padding: 8px; }
+
+/* Problem / profile navigation, above the header. */
+.profile-nav { display: flex; align-items: center; gap: 6px; padding: 10px 0 0; flex-wrap: wrap; }
+.profile-nav select {
+  background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border, transparent); padding: 3px 6px; max-width: 360px;
+}
+.profile-nav .tabs { display: inline-flex; margin-left: 12px; border-bottom: 1px solid var(--vscode-panel-border); }
+.profile-nav .tab {
+  background: none; color: var(--vscode-foreground); opacity: 0.7; border-radius: 0;
+  border-bottom: 2px solid transparent; padding: 4px 12px;
+}
+.profile-nav .tab:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
+.profile-nav .tab.active { opacity: 1; border-bottom-color: var(--vscode-focusBorder); font-weight: 600; }
+
+/* Dragging the limit. */
+.strip.draggable { cursor: ew-resize; touch-action: none; user-select: none; }
+.strip .tl-hit { fill: transparent; cursor: ew-resize; }
+.strip.draggable .pt { cursor: pointer; }
+body.dragging, body.dragging * { cursor: ew-resize !important; user-select: none; }
+
+/* rbx has not answered for the value on screen yet. */
+.updating .status, .updating .badges, .updating .band, .updating .pt { opacity: 0.45; transition: opacity 120ms; }
+.updating-note { font-size: 0.85em; opacity: 0.7; display: inline-flex; align-items: center; gap: 4px; }

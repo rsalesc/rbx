@@ -10,7 +10,7 @@ const parsed = parseInspect(JSON.stringify(fixture));
 
 test('renders every group, its solutions and the staleness banner', () => {
   assert.ok(parsed.ok);
-  const html = renderDocument({ result: parsed.result, busy: false });
+  const html = renderDocument({ result: parsed.result, updating: false });
   assert.match(html, /cpp, c/);
   assert.match(html, /java, kotlin/);
   assert.match(html, /quadratic\.java: TLE margin &lt; ×1\.5/);
@@ -25,8 +25,8 @@ test('renders every group, its solutions and the staleness banner', () => {
 test('renders rbx errors and host errors instead of the document', () => {
   const html = renderDocument({
     result: { version: 1, profile: 'x', path: 'p', errors: ['bad yaml'] },
-    busy: false,
+    updating: false,
   });
   assert.match(html, /bad yaml/);
-  assert.match(renderDocument({ busy: false, error: 'no rbx' }), /no rbx/);
+  assert.match(renderDocument({ updating: false, error: 'no rbx' }), /no rbx/);
 });

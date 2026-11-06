@@ -27,7 +27,7 @@ import {
   profileLocation,
 } from './rbx/limitsInspect';
 import { resolveRbx, run } from './rbxProcess';
-import type { ViewState } from './webview/limitsRender';
+import type { NavInfo, NavProblem, ViewState } from './webview/limitsRender';
 
 export const LIMITS_EDITOR_VIEW_TYPE = 'rbx.limitsProfile';
 
@@ -45,16 +45,37 @@ type Inbound =
   | { type: 'openText' }
   | { type: 'reestimate' }
   | { type: 'open'; path: string }
-  | { type: 'edit'; edit: ProfileEdit };
+  | { type: 'nav'; root?: string; profile?: string }
+  | { type: 'edit'; edit: ProfileEdit; preview?: boolean; seq?: number };
 
+interface WantedEdit {
+  readonly edit: ProfileEdit;
+  /** A drag in progress: answer, but leave the document alone. */
+  readonly preview: boolean;
+  readonly seq: number;
+}
+
+/**
+ * One open profile editor.
+ *
+ * Every call to rbx goes through one queue, `pump`, with at most one call in
+ * flight. An edit asked for while another is running does not wait in line: it
+ * *replaces* whatever was waiting, since the client always sends an absolute
+ * value (the limit it wants, not "+100"). So any number of clicks or drag steps
+ * costs at most one call more than the one already running, and nothing in the
+ * webview is ever disabled while it happens.
+ */
 class ProfileSession implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private result?: InspectResult;
   private error?: string;
-  private busy = false;
   private timer?: NodeJS.Timeout;
-  /** Bumped per request so a slow, superseded answer is dropped. */
-  private generation = 0;
+  private inFlight = false;
+  private editInFlight = false;
+  private wanted?: WantedEdit;
+  private refreshWanted = false;
+  /** The newest edit rbx has answered for; the client keeps its optimistic values until then. */
+  private answeredSeq = 0;
   /** The text an edit just wrote, whose change event must not re-ask rbx. */
   private expectText?: string;
 
@@ -63,6 +84,7 @@ class ProfileSession implements vscode.Disposable {
     private readonly panel: vscode.WebviewPanel,
     private readonly root: string,
     private readonly profile: string,
+    private readonly active: ActiveProblem,
   ) {
     this.disposables.push(
       vscode.workspace.onDidChangeTextDocument((e) => {
@@ -73,7 +95,7 @@ class ProfileSession implements vscode.Disposable {
         }
         this.schedule();
       }),
-      // The staleness badge depends on solutions and tests, which change on
+      // The staleness banner depends on solutions and tests, which change on
       // disk under the profile: re-ask when anything in the package is saved,
       // and when a run or build finishes.
       vscode.workspace.onDidSaveTextDocument((d) => {
@@ -83,13 +105,17 @@ class ProfileSession implements vscode.Disposable {
         if (panel.visible) this.schedule();
       }),
       panel.webview.onDidReceiveMessage((m: Inbound) => void this.receive(m)),
+      active.onDidChange(() => void this.post()),
     );
     const watcher = vscode.workspace.createFileSystemWatcher(
       new vscode.RelativePattern(root, '{.rbx/runs/report.yml,build/**/*.in,problem.rbx.yml}'),
     );
     watcher.onDidChange(() => this.schedule());
     watcher.onDidCreate(() => this.schedule());
-    this.disposables.push(watcher);
+    const profiles = vscode.workspace.createFileSystemWatcher('**/.limits/*.yml', false, true, false);
+    profiles.onDidCreate(() => void this.post());
+    profiles.onDidDelete(() => void this.post());
+    this.disposables.push(watcher, profiles);
   }
 
   dispose(): void {
@@ -97,14 +123,55 @@ class ProfileSession implements vscode.Disposable {
     this.disposables.forEach((d) => d.dispose());
   }
 
-  private post(): void {
-    const state: ViewState = { result: this.result, busy: this.busy, error: this.error };
+  private async post(): Promise<void> {
+    const state: ViewState = {
+      result: this.result,
+      updating: this.editInFlight || this.wanted !== undefined,
+      error: this.error,
+      nav: await navInfo(this.active, this.root, this.profile),
+      seq: this.answeredSeq,
+    };
     void this.panel.webview.postMessage({ type: 'state', state });
   }
 
   private schedule(): void {
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => void this.refresh(), REFRESH_DEBOUNCE_MS);
+    this.timer = setTimeout(() => {
+      this.refreshWanted = true;
+      void this.pump();
+    }, REFRESH_DEBOUNCE_MS);
+  }
+
+  private request(wanted: WantedEdit): void {
+    this.wanted = wanted;
+    void this.post();
+    void this.pump();
+  }
+
+  private async pump(): Promise<void> {
+    if (this.inFlight) return;
+    const wanted = this.wanted;
+    if (wanted === undefined && !this.refreshWanted) return;
+    this.inFlight = true;
+    try {
+      if (wanted !== undefined) {
+        this.wanted = undefined;
+        this.editInFlight = true;
+        await this.runEdit(wanted);
+        this.answeredSeq = Math.max(this.answeredSeq, wanted.seq);
+      } else {
+        this.refreshWanted = false;
+        const result = await this.inspect();
+        if (result !== undefined) this.result = result;
+      }
+    } catch (e) {
+      log(`time profile: ${String(e)}`);
+    } finally {
+      this.inFlight = false;
+      this.editInFlight = false;
+    }
+    await this.post();
+    void this.pump();
   }
 
   private async inspect(edit?: ProfileEdit): Promise<InspectResult | undefined> {
@@ -129,43 +196,20 @@ class ProfileSession implements vscode.Disposable {
     return parsed.result;
   }
 
-  async refresh(): Promise<void> {
-    const generation = ++this.generation;
-    const result = await this.inspect();
-    if (generation !== this.generation) return;
-    if (result !== undefined) this.result = result;
-    this.post();
-  }
-
-  private async applyEdit(edit: ProfileEdit): Promise<void> {
-    const generation = ++this.generation;
-    this.busy = true;
-    this.post();
-    try {
-      const result = await this.inspect(edit);
-      if (generation !== this.generation) return;
-      if (result === undefined) return;
-      if (result.errors.length > 0 || result.yaml === undefined) {
-        void vscode.window.showWarningMessage(result.errors.join(' ') || 'rbx returned no edit.');
-        return;
-      }
-      if (result.yaml !== this.document.getText()) {
-        const whole = new vscode.Range(
-          this.document.positionAt(0),
-          this.document.positionAt(this.document.getText().length),
-        );
-        const workspaceEdit = new vscode.WorkspaceEdit();
-        workspaceEdit.replace(this.document.uri, whole, result.yaml);
-        this.expectText = result.yaml;
-        await vscode.workspace.applyEdit(workspaceEdit);
-      }
-      this.result = result;
-    } finally {
-      if (generation === this.generation) {
-        this.busy = false;
-        this.post();
-      }
+  private async runEdit(wanted: WantedEdit): Promise<void> {
+    const result = await this.inspect(wanted.edit);
+    if (result === undefined) return;
+    if (result.errors.length > 0 || result.yaml === undefined) {
+      void vscode.window.showWarningMessage(result.errors.join(' ') || 'rbx returned no edit.');
+      return;
     }
+    this.result = result;
+    if (wanted.preview || result.yaml === this.document.getText()) return;
+    const whole = new vscode.Range(this.document.positionAt(0), this.document.positionAt(this.document.getText().length));
+    const workspaceEdit = new vscode.WorkspaceEdit();
+    workspaceEdit.replace(this.document.uri, whole, result.yaml);
+    this.expectText = result.yaml;
+    await vscode.workspace.applyEdit(workspaceEdit);
   }
 
   private async receive(message: Inbound): Promise<void> {
@@ -173,17 +217,21 @@ class ProfileSession implements vscode.Disposable {
       case 'ready':
       case 'refresh':
         this.error = undefined;
-        this.post();
-        await this.refresh();
+        this.refreshWanted = true;
+        await this.post();
+        await this.pump();
         return;
       case 'edit':
-        await this.applyEdit(message.edit);
+        this.request({ edit: message.edit, preview: message.preview === true, seq: message.seq ?? 0 });
         return;
       case 'openText':
         await vscode.commands.executeCommand('vscode.openWith', this.document.uri, 'default');
         return;
       case 'reestimate':
         await reestimate(this.root, this.profile);
+        return;
+      case 'nav':
+        await this.navigate(message.root ?? this.root, message.profile ?? this.profile);
         return;
       case 'open': {
         const target = vscode.Uri.file(path.join(this.root, message.path));
@@ -192,6 +240,53 @@ class ProfileSession implements vscode.Disposable {
       }
     }
   }
+
+  /**
+   * Show another profile in this editor's place: same column, and the old tab
+   * closed unless it holds unsaved edits -- moving through a contest's
+   * profiles should not leave a trail of tabs behind.
+   */
+  private async navigate(root: string, profile: string): Promise<void> {
+    const profiles = await listProfiles(root);
+    if (profiles.length === 0) return;
+    const chosen = profiles.includes(profile) ? profile : profiles.includes(this.profile) ? this.profile : profiles[0];
+    const uri = vscode.Uri.file(path.join(root, '.limits', `${chosen}.yml`));
+    if (uri.fsPath === this.document.uri.fsPath) return;
+    if (root !== this.root) this.active.select(root);
+    const oldTab = findProfileTab(this.document.uri);
+    await vscode.commands.executeCommand('vscode.openWith', uri, LIMITS_EDITOR_VIEW_TYPE, {
+      viewColumn: this.panel.viewColumn,
+      preview: false,
+    });
+    if (oldTab !== undefined && !this.document.isDirty) {
+      await vscode.window.tabGroups.close(oldTab);
+    }
+  }
+}
+
+function findProfileTab(uri: vscode.Uri): vscode.Tab | undefined {
+  for (const group of vscode.window.tabGroups.all) {
+    for (const tab of group.tabs) {
+      const input = tab.input;
+      if (
+        input instanceof vscode.TabInputCustom &&
+        input.viewType === LIMITS_EDITOR_VIEW_TYPE &&
+        input.uri.fsPath === uri.fsPath
+      ) {
+        return tab;
+      }
+    }
+  }
+  return undefined;
+}
+
+async function navInfo(active: ActiveProblem, root: string, profile: string): Promise<NavInfo> {
+  const choices = active.problems();
+  const known = choices.some((c) => c.root === root) ? choices : [...choices, { root, label: path.basename(root) }];
+  const problems: NavProblem[] = await Promise.all(
+    known.map(async (c) => ({ root: c.root, label: c.label, group: c.group, profiles: await listProfiles(c.root) })),
+  );
+  return { problems, root, profile };
 }
 
 /**
@@ -207,7 +302,10 @@ async function reestimate(root: string, profile: string): Promise<void> {
 }
 
 export class LimitsEditorProvider implements vscode.CustomTextEditorProvider {
-  constructor(private readonly extensionUri: vscode.Uri) {}
+  constructor(
+    private readonly extensionUri: vscode.Uri,
+    private readonly active: ActiveProblem,
+  ) {}
 
   resolveCustomTextEditor(document: vscode.TextDocument, panel: vscode.WebviewPanel): void {
     const location = profileLocation(document.uri.fsPath);
@@ -219,11 +317,11 @@ export class LimitsEditorProvider implements vscode.CustomTextEditorProvider {
     if (location === undefined) {
       void panel.webview.postMessage({
         type: 'state',
-        state: { busy: false, error: 'Not a limits profile: expected .limits/<name>.yml.' },
+        state: { updating: false, error: 'Not a limits profile: expected .limits/<name>.yml.' },
       });
       return;
     }
-    const session = new ProfileSession(document, panel, location.root, location.profile);
+    const session = new ProfileSession(document, panel, location.root, location.profile, this.active);
     panel.onDidDispose(() => session.dispose());
   }
 
@@ -255,7 +353,7 @@ export class LimitsEditorProvider implements vscode.CustomTextEditorProvider {
   }
 }
 
-async function listProfiles(root: string): Promise<string[]> {
+export async function listProfiles(root: string): Promise<string[]> {
   try {
     const names = await fs.readdir(path.join(root, '.limits'));
     return names.filter((n) => /\.ya?ml$/.test(n)).map((n) => n.replace(/\.ya?ml$/, '')).sort();
@@ -303,7 +401,7 @@ export function registerLimitsEditor(context: vscode.ExtensionContext, active: A
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(
       LIMITS_EDITOR_VIEW_TYPE,
-      new LimitsEditorProvider(context.extensionUri),
+      new LimitsEditorProvider(context.extensionUri, active),
       { webviewOptions: { retainContextWhenHidden: true } },
     ),
     vscode.commands.registerCommand('rbx.openTimeProfile', () => openTimeProfile(active)),

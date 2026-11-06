@@ -104,17 +104,17 @@ function statusChip(s: SolutionCheck, tl: number | null, m: Margins): string {
 
 // ---------------------------------------------------------------- the strip
 
-interface Domain {
+export interface Domain {
   readonly lo: number;
   readonly hi: number;
 }
 
-const STRIP_W = 1000;
+export const STRIP_W = 1000;
 const STRIP_H = 64;
 const PAD_X = 16;
 const AXIS_Y = 40;
 
-function domainFor(rows: Row[], toTle: number | undefined): Domain {
+export function domainFor(rows: Row[], toTle: number | undefined): Domain {
   const values: number[] = [];
   for (const row of rows) {
     if (row.timeLimit !== null) {
@@ -137,6 +137,12 @@ function domainFor(rows: Row[], toTle: number | undefined): Domain {
 function xOf(value: number, d: Domain): number {
   const t = (Math.log10(Math.max(value, d.lo)) - Math.log10(d.lo)) / (Math.log10(d.hi) - Math.log10(d.lo));
   return PAD_X + Math.min(1, Math.max(0, t)) * (STRIP_W - 2 * PAD_X);
+}
+
+/** The limit at viewBox x, the inverse of `xOf`. */
+export function msAtX(x: number, d: Domain): number {
+  const t = Math.min(1, Math.max(0, (x - PAD_X) / (STRIP_W - 2 * PAD_X)));
+  return 10 ** (Math.log10(d.lo) + t * (Math.log10(d.hi) - Math.log10(d.lo)));
 }
 
 function ticks(d: Domain): number[] {
@@ -177,7 +183,7 @@ function strip(row: Row, d: Domain, m: Margins): string {
   if (row.timeLimit !== null) {
     const x = xOf(row.timeLimit, d);
     parts.push(
-      `<line class="tl" x1="${x}" y1="${AXIS_Y - 22}" x2="${x}" y2="${AXIS_Y + 14}"/><text class="tllabel" x="${x}" y="${AXIS_Y - 25}">TL ${esc(ms(row.timeLimit))}</text>`,
+      `<rect class="tl-hit" x="${x - 9}" y="${AXIS_Y - 34}" width="18" height="50"><title>Drag to change the limit</title></rect><line class="tl" x1="${x}" y1="${AXIS_Y - 22}" x2="${x}" y2="${AXIS_Y + 14}"/><text class="tllabel" x="${x}" y="${AXIS_Y - 25}">TL ${esc(ms(row.timeLimit))}</text>`,
     );
     if (toTle !== undefined) {
       const xt = xOf(row.timeLimit * toTle, d);
@@ -207,7 +213,8 @@ function strip(row: Row, d: Domain, m: Margins): string {
       );
     }
   }
-  return `<svg class="strip" viewBox="0 0 ${STRIP_W} ${STRIP_H}" preserveAspectRatio="xMidYMid meet" role="img">${parts.join('')}</svg>`;
+  const drag = row.editable ? ` data-action="drag" data-row="${row.key}"` : '';
+  return `<svg class="strip${row.editable ? ' draggable' : ''}"${drag} viewBox="0 0 ${STRIP_W} ${STRIP_H}" preserveAspectRatio="xMidYMid meet" role="img">${parts.join('')}</svg>`;
 }
 
 // ---------------------------------------------------------------- the table
@@ -329,45 +336,26 @@ function checkBadges(check: GroupCheck | null, m: Margins): string {
     );
   }
 
-  if (out.length === 0 && check.ok) {
-    const lines: string[] = [];
-    if (check.min_ms !== null) {
-      lines.push(
-        `Accepted: the slowest takes ${ms(check.slowest_ms)}; with ×${m.ac ?? '?'} headroom it needs TL ≥ ${ms(check.min_ms)}.`,
-      );
-    }
-    if (check.max_ms !== null) {
-      lines.push(`Too slow: ${check.max_solution ?? 'every slow solution'} keeps a ×${k ?? '?'} margin for TL ≤ ${ms(check.max_ms)}.`);
-    }
-    if (check.confirmed.length > 0) {
-      lines.push(`Seen still running past TL × ${k ?? '?'} = ${ms(tleAt)}: ${check.confirmed.join(', ')}.`);
-    }
-    if (lines.length === 0) {
-      lines.push('Nothing recorded for this group bounds the limit.');
-    }
-    out.push(badge('ok', `margins hold at ${ms(tl)}`, lines.join('\n')));
-  }
   return out.join(' ');
 }
 
-function limitEditor(row: Row, step: number, disabled: boolean): string {
+function limitEditor(row: Row, step: number): string {
   const value = row.timeLimit ?? '';
-  const dis = disabled ? ' disabled' : '';
   return `<span class="tl-editor">
-    <button class="icon" data-action="step" data-row="${row.key}" data-delta="${-step}" title="−${step} ms"${dis}><i class="codicon codicon-remove"></i></button>
-    <input type="number" min="1" step="${step}" value="${value}" data-action="set" data-row="${row.key}" aria-label="time limit in ms"${dis}/>
+    <button class="icon" data-action="step" data-row="${row.key}" data-delta="${-step}" title="−${step} ms"><i class="codicon codicon-remove"></i></button>
+    <input type="number" min="1" step="${step}" value="${value}" data-action="set" data-row="${row.key}" aria-label="time limit in ms"/>
     <span class="unit">ms</span>
-    <button class="icon" data-action="step" data-row="${row.key}" data-delta="${step}" title="+${step} ms"${dis}><i class="codicon codicon-add"></i></button>
+    <button class="icon" data-action="step" data-row="${row.key}" data-delta="${step}" title="+${step} ms"><i class="codicon codicon-add"></i></button>
   </span>`;
 }
 
-function handSet(row: Row, disabled: boolean): string {
+function handSet(row: Row): string {
   const estimated = row.check?.estimated;
   if (estimated === null || estimated === undefined) {
     return '';
   }
   return `<span class="handset" title="Set by hand; the evidence was measured at ${esc(ms(estimated))}">✎ estimated ${esc(ms(estimated))}
-    <button class="link" data-action="revert" data-row="${row.key}"${disabled ? ' disabled' : ''}>revert</button></span>`;
+    <button class="link" data-action="revert" data-row="${row.key}">revert</button></span>`;
 }
 
 function derivation(row: Row): string {
@@ -384,10 +372,10 @@ function derivation(row: Row): string {
   return '';
 }
 
-function groupSection(row: Row, d: Domain, m: Margins, step: number, busy: boolean, title: string): string {
+function groupSection(row: Row, d: Domain, m: Margins, step: number, title: string): string {
   const r = row.report;
   const origin = r ? `<span class="origin o-${r.origin}">${esc(r.origin)}${r.isLeftover ? ' · leftover' : ''}</span>` : '';
-  const editor = row.editable ? limitEditor(row, step, busy) : derivation(row) || `<b>${esc(ms(row.timeLimit))}</b>`;
+  const editor = row.editable ? limitEditor(row, step) : derivation(row) || `<b>${esc(ms(row.timeLimit))}</b>`;
   const measured =
     r && r.solutionCount
       ? `<span class="dim">${r.solutionCount} solution(s) · fastest ${esc(ms(r.fastest))} · slowest ${esc(ms(r.slowest))}</span>`
@@ -398,7 +386,7 @@ function groupSection(row: Row, d: Domain, m: Margins, step: number, busy: boole
       <span class="langs">${title}</span>
       ${editor}
       ${origin}
-      ${handSet(row, busy)}
+      ${handSet(row)}
       <span class="badges">${checkBadges(row.check, m)}</span>
     </div>
     ${measured ? `<div class="measured">${measured}</div>` : ''}
@@ -409,11 +397,56 @@ function groupSection(row: Row, d: Domain, m: Margins, step: number, busy: boole
 
 // ---------------------------------------------------------------- document
 
+/** Every problem the editor can jump to, and the profiles each one has. */
+export interface NavProblem {
+  readonly root: string;
+  readonly label: string;
+  readonly group?: string;
+  readonly profiles: readonly string[];
+}
+
+export interface NavInfo {
+  readonly problems: readonly NavProblem[];
+  readonly root: string;
+  readonly profile: string;
+}
+
 export interface ViewState {
   readonly result?: InspectResult;
-  readonly busy: boolean;
+  /** rbx is answering an edit: the checks on screen may be a step behind. */
+  readonly updating: boolean;
+  readonly nav?: NavInfo;
+  /** The newest edit (by the client's sequence number) this state answers for. */
+  readonly seq?: number;
   /** The host's own failure: rbx missing, a crash, an unreadable answer. */
   readonly error?: string;
+}
+
+function navBar(nav: NavInfo | undefined): string {
+  if (nav === undefined) return '';
+  const index = nav.problems.findIndex((p) => p.root === nav.root);
+  const current = nav.problems[index];
+  const many = nav.problems.length > 1;
+  const options = nav.problems
+    .map((p) => {
+      const sel = p.root === nav.root ? ' selected' : '';
+      const none = p.profiles.length === 0 ? ' disabled' : '';
+      const hint = p.profiles.length === 0 ? ' — no profiles' : ` — ${p.profiles.join(', ')}`;
+      return `<option value="${esc(p.root)}"${sel}${none}>${esc(p.label)}${esc(hint)}</option>`;
+    })
+    .join('');
+  const tabs = (current?.profiles ?? [nav.profile])
+    .map(
+      (name) =>
+        `<button class="tab${name === nav.profile ? ' active' : ''}" data-action="navProfile" data-profile="${esc(name)}">${esc(name)}</button>`,
+    )
+    .join('');
+  const problemNav = many
+    ? `<button class="icon" data-action="navStep" data-delta="-1" title="Previous problem (Alt+←)"><i class="codicon codicon-chevron-left"></i></button>
+       <select data-action="navProblem" aria-label="problem">${options}</select>
+       <button class="icon" data-action="navStep" data-delta="1" title="Next problem (Alt+→)"><i class="codicon codicon-chevron-right"></i></button>`
+    : `<span class="dim">${esc(current?.label ?? '')}</span>`;
+  return `<nav class="profile-nav">${problemNav}<span class="tabs" role="tablist">${tabs}</span></nav>`;
 }
 
 const STALE_TEXT: Record<string, string> = {
@@ -451,7 +484,12 @@ function effectiveLine(result: InspectResult): string {
   </section>`;
 }
 
-export function renderDocument(state: ViewState): string {
+export interface RenderOptions {
+  /** A strip scale to keep, so a drag does not rescale under the cursor. */
+  readonly domain?: Domain;
+}
+
+export function renderDocument(state: ViewState, opts: RenderOptions = {}): string {
   if (state.error !== undefined) {
     return `<div class="fatal"><i class="codicon codicon-error"></i> ${esc(state.error)}
       <div><button data-action="openText">Open as text</button> <button data-action="refresh">Retry</button></div></div>`;
@@ -465,14 +503,13 @@ export function renderDocument(state: ViewState): string {
       <pre>${esc(result.errors.join('\n'))}</pre>
       <div><button data-action="openText">Open as text</button></div></div>`;
   }
-  const busy = state.busy;
   const step = result.multipliers?.timeResolution ?? 100;
   const toTle = result.multipliers?.timeLimitToTle;
   const margins: Margins = { ac: result.multipliers?.acToTimeLimit, toTle };
   const rows = result.rows ?? [];
   const base = rows.find((r) => r.key === 'base');
   const groups = rows.filter((r) => r.key !== 'base');
-  const d = domainFor(rows, toTle);
+  const d = opts.domain ?? domainFor(rows, toTle);
 
   const stale = result.stale
     ? `<div class="banner warn"><i class="codicon codicon-warning"></i> ${esc(STALE_TEXT[result.stale] ?? 'This profile is stale.')}
@@ -486,41 +523,40 @@ export function renderDocument(state: ViewState): string {
         <button data-action="reestimate">Estimate ${esc(result.profile)}</button></div>`
     : '';
 
-  const dis = busy ? ' disabled' : '';
   const baseEditor =
     base && base.editable
-      ? limitEditor(base, step, busy)
-      : `<input type="number" min="1" step="${step}" value="${result.timeLimit ?? ''}" data-action="set" data-row="base" placeholder="package" aria-label="base time limit"${dis}/> <span class="unit">ms</span>`;
+      ? limitEditor(base, step)
+      : `<input type="number" min="1" step="${step}" value="${result.timeLimit ?? ''}" data-action="set" data-row="base" placeholder="package" aria-label="base time limit"/> <span class="unit">ms</span>`;
 
   const header = `<header>
     <div class="title"><h2><i class="codicon codicon-watch"></i> ${esc(result.profile)}</h2>
       <span class="dim path">${esc(result.path)}</span>
       <span class="spacer"></span>
-      ${busy ? '<i class="codicon codicon-loading codicon-modifier-spin" title="rbx is working"></i>' : ''}
+      ${state.updating ? '<span class="updating-note"><i class="codicon codicon-loading codicon-modifier-spin"></i> checking…</span>' : ''}
       <button class="secondary" data-action="reestimate" title="rbx time -p ${esc(result.profile)}"><i class="codicon codicon-play"></i> Re-estimate</button>
       <button class="secondary" data-action="openText" title="Open the YAML"><i class="codicon codicon-go-to-file"></i> YAML</button>
     </div>
     ${stale}${inherit}${notEstimated}
-    <div class="limits ${result.inheritFromPackage ? 'muted' : ''}">
+    <div class="limits ${result.inheritFromPackage ? 'muted' : ''} ${state.updating ? 'updating' : ''}">
       <label>Base TL ${baseEditor}</label>
-      ${base ? handSet(base, busy) : ''}
+      ${base ? handSet(base) : ''}
       ${base ? `<span class="badges">${checkBadges(base.check, margins)}</span>` : ''}
-      <label>ML <input type="number" min="1" value="${result.memoryLimit ?? ''}" placeholder="${result.effective?.package.memoryLimit ?? ''}" data-action="memory" aria-label="memory limit in MB"${dis}/> <span class="unit">MB</span></label>
-      <label class="check"><input type="checkbox" data-action="inherit" ${result.inheritFromPackage ? 'checked' : ''}${dis}/> use problem.rbx.yml limits</label>
+      <label>ML <input type="number" min="1" value="${result.memoryLimit ?? ''}" placeholder="${result.effective?.package.memoryLimit ?? ''}" data-action="memory" aria-label="memory limit in MB"/> <span class="unit">MB</span></label>
+      <label class="check"><input type="checkbox" data-action="inherit" ${result.inheritFromPackage ? 'checked' : ''}/> use problem.rbx.yml limits</label>
     </div>
     ${multipliersLine(result)}
   </header>`;
 
   const groupSections = groups
-    .map((g) => groupSection(g, d, margins, step, busy, esc((g.report?.languages ?? []).join(', '))))
+    .map((g) => groupSection(g, d, margins, step, esc((g.report?.languages ?? []).join(', '))))
     .join('');
   const leftover =
     base && base.solutions.length > 0
-      ? groupSection({ ...base, editable: false, check: null }, d, margins, step, busy, 'other languages (base limit)')
+      ? groupSection({ ...base, editable: false, check: null }, d, margins, step, 'other languages (base limit)')
       : '';
   const onlyBase =
     groups.length === 0 && base && (base.solutions.length > 0 || base.check)
-      ? groupSection(base, d, margins, step, busy, 'all languages')
+      ? groupSection(base, d, margins, step, 'all languages')
       : '';
   const noSolutions = !result.hasSolutions && rows.some((r) => r.report)
     ? `<div class="banner info"><i class="codicon codicon-info"></i> This profile recorded no per-solution timings (older rbx); showing group summaries only.</div>`
@@ -535,8 +571,8 @@ export function renderDocument(state: ViewState): string {
     <span><span class="swatch tle"></span> TL × timeLimitToTle</span>
   </div>`;
 
-  return `${header}
-    <main class="${result.inheritFromPackage ? 'muted' : ''}">
+  return `${navBar(state.nav)}${header}
+    <main class="${result.inheritFromPackage ? 'muted' : ''} ${state.updating ? 'updating' : ''}">
       ${noSolutions}
       ${groups.length > 0 || onlyBase ? `<h3>Groups</h3>${legend}` : ''}
       ${groupSections}${onlyBase}${leftover}
