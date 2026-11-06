@@ -21,7 +21,8 @@
     "workspaceContains:**/problem.rbx.yml",
     "onView:rbx.run",
     "onView:rbx.testset",
-    "onView:rbx.stress"
+    "onView:rbx.stress",
+    "onCustomEditor:rbx.limitsProfile"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -490,6 +491,24 @@
         "title": "Open Statement Source",
         "category": "rbx",
         "icon": "$(go-to-file)"
+      },
+      {
+        "command": "rbx.openTimeProfile",
+        "title": "Open Time Profile",
+        "category": "rbx",
+        "icon": "$(watch)"
+      },
+      {
+        "command": "rbx.reopenTimeProfileAsView",
+        "title": "Open as Time Profile View",
+        "category": "rbx",
+        "icon": "$(watch)"
+      },
+      {
+        "command": "rbx.reopenTimeProfileAsText",
+        "title": "Reopen Time Profile as YAML",
+        "category": "rbx",
+        "icon": "$(go-to-file)"
       }
     ],
     "menus": {
@@ -533,6 +552,16 @@
           "command": "rbx.irunInput",
           "when": "rbx.dispatchEnabled && resourceScheme == untitled",
           "group": "navigation@0"
+        },
+        {
+          "command": "rbx.reopenTimeProfileAsView",
+          "when": "resourceScheme == file && resourcePath =~ /\\/\\.limits\\/[^/]+\\.yml$/ && activeCustomEditorId != 'rbx.limitsProfile'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "rbx.reopenTimeProfileAsText",
+          "when": "activeCustomEditorId == 'rbx.limitsProfile'",
+          "group": "navigation@1"
         }
       ],
       "commandPalette": [
@@ -667,6 +696,14 @@
         {
           "command": "rbx.assets.openSource",
           "when": "false"
+        },
+        {
+          "command": "rbx.reopenTimeProfileAsView",
+          "when": "resourcePath =~ /\\/\\.limits\\/[^/]+\\.yml$/"
+        },
+        {
+          "command": "rbx.reopenTimeProfileAsText",
+          "when": "activeCustomEditorId == 'rbx.limitsProfile'"
         }
       ],
       "view/title": [
@@ -779,6 +816,11 @@
           "command": "rbx.assets.refresh",
           "when": "view == rbx.assets",
           "group": "navigation@3"
+        },
+        {
+          "command": "rbx.openTimeProfile",
+          "when": "view == rbx.run || view == rbx.testset",
+          "group": "navigation@1"
         }
       ],
       "webview/context": [
@@ -1320,6 +1362,18 @@
             "description": "For `stress`, `add-finding`, `irun` and `promote`: the arguments after the subcommand."
           }
         }
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "rbx.limitsProfile",
+        "displayName": "rbx Time Profile",
+        "selector": [
+          {
+            "filenamePattern": "**/.limits/*.yml"
+          }
+        ],
+        "priority": "option"
       }
     ]
   },

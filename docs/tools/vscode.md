@@ -15,8 +15,9 @@ take over the terminal you are typing `rbx` into.
     runs the same command in a terminal you can see and interrupt, and the
     extension shows what the command writes into the package. It does call {{rbx}} itself
     for a few small things -- drawing a visualization, asking what a
-    variable expands to, listing the groups a stress finding can go to and
-    previewing a testplan change -- and for those it has to find an `rbx` to call, which
+    variable expands to, listing the groups a stress finding can go to,
+    previewing a testplan change and drawing a time profile -- and for
+    those it has to find an `rbx` to call, which
     [Finding rbx](#finding-rbx) covers.
 
 ## Installing
@@ -478,14 +479,117 @@ The preview keeps showing the last PDF that did build, under a banner that
 lists what went wrong. Clicking an entry opens the source at that line, and
 **Log** opens the full output of `pdflatex` for anything the summary leaves out.
 
+## Editing a time profile
+
+`rbx time` saves the limit it estimates in a
+[limits profile](../setters/profiling/profiles.md), `.limits/<name>.yml`,
+together with what each solution measured on the way. The extension opens that
+file as a page that shows why the limit is what it is, and lets you change it
+with those measurements in view.
+
+There are several ways in:
+
+- the watch button in the title bar of the run view or the **Tests** view;
+- the `local` profile's time limit in the status bar, for the problem the run
+  view is on;
+- the CodeLens over `timeLimit:` in `problem.rbx.yml`, one per profile;
+- the **Assets** view, next to the run view, which lists what a package
+  declares and keeps its profiles in a **Time profiles** folder.
+
+A profile you open from the Explorer still opens as YAML. The watch button in
+the editor's title bar turns it into the page, and the page's **YAML** button
+turns it back.
+
+![The time profile page: one strip per language group with its limit and the
+range the measurements allow, and a table of solutions under each
+strip](vscode/time-profile.png)
+
+Each [language group](../setters/profiling/language-groups.md) gets a strip on a
+logarithmic time axis. A dot is an accepted solution, a cross is a slow
+solution that finished, and a triangle is a slow one only seen still running at
+that time.
+
+The solid line marks the limit. The dashed one marks the limit times
+`timeLimitToTle`, the margin a slow solution has to keep, which
+[time limit ratios](../setters/profiling/computing.md#time-limit-ratios) cover.
+The green band spans every limit the measurements allow.
+
+Under each strip, a table lists the group's solutions with their measured time,
+the bound each one puts on the limit, and how it fares at the limit on screen.
+A solution's name takes the color of the outcome `problem.rbx.yml` declares for
+it. Each group's header shows a badge for every check the limit breaks, and
+hovering a status or a badge shows the arithmetic behind it.
+
+### Changing a limit
+
+Drag a group's limit along its strip, step it with **−** and **+**, or type a
+value. Only a limit the estimate measured can move. A group derived from
+another one, such as `3× cpp = 300 ms`, follows that group, so changing it
+means re-estimating.
+
+**Base TL** is the limit of every language outside a group, and **ML** sets the
+profile's memory limit.
+
+The statuses follow the new limit right away, with the same checks as
+[tuning an estimate by hand](../setters/profiling/profiles.md#tuning-an-estimate-by-hand)
+in the terminal, and no solution runs:
+
+| Status | Meaning |
+| --- | --- |
+| `ok` | The solution meets the bound it puts on the limit. |
+| `thin headroom` | An accepted solution passes, but with less headroom than `acToTimeLimit` asks for. |
+| `would get TLE` | An accepted solution needs more time than the limit gives it. |
+| `margin < ×N` | A slow solution still times out, but finishes before the limit times `timeLimitToTle`, which is `N`. |
+| `would be accepted` | A slow solution finishes within the limit itself. |
+| `unverified` | A slow solution was only seen still running at a time below the limit times `timeLimitToTle`. |
+| `unchecked` | The estimate never ran this slow solution, or no `timeLimitToTle` is set to check it against. |
+
+A limit you set by hand is marked next to the estimate it replaced, and
+**revert** puts the estimate back. The checkbox that uses the limits in
+`problem.rbx.yml` makes the profile
+[inherit from the package](../setters/profiling/profiles.md#inheriting-from-the-package)
+and keeps the estimate in the file, so clearing it brings the estimate back.
+While it's ticked, the group limits can't move, and **Base TL** and **ML** are
+kept in the file but not applied.
+
+Every change is an edit to the YAML, so undo, save and your diff work as they do
+for any file. A drag is one edit, made when you let go.
+
+### The last run
+
+At the bottom of each group, under a dashed line, are the solutions the last
+run judged and the estimate didn't measure: every solution expected to fail,
+plus any slow solution the estimate didn't need to run. Running
+[`rbx time --run-all`](../setters/profiling/estimating.md#checking-the-rest-of-the-package),
+or any `rbx run`, fills them in.
+
+Each row shows the verdict the run gave,
+whether it matches the declared outcome, the slowest test, and the limit it ran
+under. A run made under another profile names that profile in the line over its rows.
+
+Those verdicts aren't judged again when you move the limit. A row whose limit
+differs from the one on screen turns yellow and gets a ⚠, and hovering it shows
+both limits. Running the solutions again updates it.
+
+### Moving between profiles
+
+Tabs at the top of the page switch between the problem's profiles. In a
+contest, the picker beside them moves to another problem, and so do the arrows
+or ++alt+left++ and ++alt+right++. The page keeps the profile you were on when
+the other problem has one with that name.
+
+When the solutions, the interactor or the tests changed since the profile was
+estimated, a banner [says it's stale](../setters/profiling/profiles.md#when-an-estimate-goes-stale).
+Its **Re-estimate** button runs `rbx time -p <name>` in a terminal.
+
 ## Finding rbx
 
-Drawing a visualization and reading a statement's variables both call {{rbx}},
-so the extension has to find one. It tries `PATH` first and then asks a login
-shell, because the extension host inherits the `PATH` of whatever launched VS
-Code -- open the editor from Finder or the Dock rather than from a terminal and
-that `PATH` is a bare one, without the `~/.local/bin` that `uv tool install`
-and `pipx` write into.
+Drawing a visualization, reading a statement's variables and drawing a time
+profile all call {{rbx}}, so the extension has to find one. It tries `PATH`
+first and then asks a login shell, because the extension host inherits the
+`PATH` of whatever launched VS Code -- open the editor from Finder or the Dock
+rather than from a terminal and that `PATH` is a bare one, without the
+`~/.local/bin` that `uv tool install` and `pipx` write into.
 
 If neither finds it, point `rbx.executable` at the binary. The setting is
 per-folder, so a workspace holding packages on different {{rbx}} versions can

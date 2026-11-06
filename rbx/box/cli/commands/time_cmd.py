@@ -472,3 +472,74 @@ async def preship(
         benchmark_level=benchmark_level,
         keep_checker_stderr=keep_checker_stderr,
     )
+
+
+@app.command('time-inspect', hidden=True)
+@package.within_problem
+def time_inspect(
+    profile: _Profile = 'local',
+    stdin: Annotated[
+        bool,
+        typer.Option(
+            '--stdin',
+            help='Read the profile from stdin (an unsaved editor buffer) '
+            'instead of from .limits/<profile>.yml.',
+        ),
+    ] = False,
+    set_time: Annotated[
+        Optional[str],
+        typer.Option(
+            '--set',
+            help='Set a time limit: base=<ms> or <group index>=<ms>.',
+        ),
+    ] = None,
+    revert: Annotated[
+        Optional[str],
+        typer.Option(
+            '--revert',
+            help='Put a hand-set limit back to its estimate: base or a group index.',
+        ),
+    ] = None,
+    memory: Annotated[
+        Optional[int],
+        typer.Option('--memory', help='Set the memory limit, in MB.'),
+    ] = None,
+    inherit: Annotated[
+        Optional[bool],
+        typer.Option(
+            '--inherit/--no-inherit',
+            help='Use the limits from problem.rbx.yml, or stop using them.',
+        ),
+    ] = None,
+):
+    """What a limits profile says and what an edit would break, as JSON.
+
+    The backend of the VS Code time-profile editor. Writes nothing: an edit
+    comes back as the edited YAML, for the editor to apply to its buffer.
+    """
+    import json
+    import sys
+
+    from rbx.box import limits_inspect
+
+    if stdin:
+        source = sys.stdin.read()
+    else:
+        path = package.get_limits_file(profile)
+        source = path.read_text() if path.is_file() else ''
+
+    parsed_set = None
+    if set_time is not None:
+        key, _, value = set_time.partition('=')
+        try:
+            parsed_set = (key.strip(), int(value))
+        except ValueError:
+            console.console.print(f'[error]Bad --set value {set_time!r}.[/error]')
+            raise typer.Exit(2) from None
+
+    edit = limits_inspect.Edit(
+        set_time=parsed_set, revert=revert, memory=memory, inherit=inherit
+    )
+    result = limits_inspect.inspect(source, profile, edit)
+    sys.stdout.write(json.dumps(result))
+    sys.stdout.write('\n')

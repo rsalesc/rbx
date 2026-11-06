@@ -362,7 +362,9 @@ function fileItem(id: string, label: string, description: string, asset: ListedA
   item.command =
     asset.category === 'statement'
       ? { command: 'rbx.assets.openStatement', title: 'Open Statement and Preview', arguments: [uri] }
-      : { command: 'vscode.open', title: 'Open', arguments: [uri] };
+      : asset.category === 'time_profile'
+        ? { command: 'vscode.openWith', title: 'Open Time Profile', arguments: [uri, 'rbx.limitsProfile'] }
+        : { command: 'vscode.open', title: 'Open', arguments: [uri] };
   item.contextValue = `rbx.asset.${asset.category}`;
   return item;
 }

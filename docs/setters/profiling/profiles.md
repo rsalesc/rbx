@@ -216,6 +216,10 @@ To try an edit without saving it, add `--dry`, as in
 rbx time -e -p boca --dry
 ```
 
+!!! tip "In VS Code"
+    The [{{rbx}} extension](../../tools/vscode.md#editing-a-time-profile) shows the same checks
+    on a page, where you can drag a limit and watch each solution's status change.
+
 ## Inheriting from the package
 
 Some targets do not need limits of their own — they should use whatever `problem.rbx.yml` says.

@@ -1,0 +1,159 @@
+body {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  padding: 0 20px 32px;
+  max-width: 1100px;
+}
+h2 { font-size: 1.35em; margin: 0; display: flex; align-items: center; gap: 6px; }
+h3 { font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.7; margin: 22px 0 6px; }
+.dim { opacity: 0.65; }
+.muted { opacity: 0.45; }
+.spacer { flex: 1; }
+code { font-family: var(--vscode-editor-font-family); }
+
+header { position: sticky; top: 0; z-index: 2; background: var(--vscode-editor-background); padding: 14px 0 10px; border-bottom: 1px solid var(--vscode-panel-border); }
+.title { display: flex; align-items: center; gap: 10px; }
+.title .path { font-size: 0.9em; }
+.limits { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin-top: 10px; }
+.limits label { display: inline-flex; align-items: center; gap: 6px; }
+.rule { margin-top: 8px; font-size: 0.92em; }
+.rule .k { opacity: 0.65; margin-right: 6px; }
+
+input[type=number] {
+  width: 76px; background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent); padding: 3px 6px; font-family: var(--vscode-editor-font-family);
+}
+input[type=number]:focus { outline: 1px solid var(--vscode-focusBorder); }
+.unit { opacity: 0.6; font-size: 0.9em; }
+button {
+  background: var(--vscode-button-background); color: var(--vscode-button-foreground);
+  border: none; padding: 4px 10px; cursor: pointer; border-radius: 2px; display: inline-flex; align-items: center; gap: 4px;
+}
+button:hover { background: var(--vscode-button-hoverBackground); }
+button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+button.icon { background: transparent; color: var(--vscode-foreground); padding: 2px; }
+button.icon:hover { background: var(--vscode-toolbar-hoverBackground); }
+button.link { background: none; color: var(--vscode-textLink-foreground); padding: 0 2px; }
+button:disabled { opacity: 0.5; cursor: default; }
+.tl-editor { display: inline-flex; align-items: center; gap: 2px; }
+
+.banner { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 6px 10px; border-radius: 3px; }
+.banner.warn { background: var(--vscode-inputValidation-warningBackground); border: 1px solid var(--vscode-inputValidation-warningBorder); }
+.banner.info { background: var(--vscode-inputValidation-infoBackground); border: 1px solid var(--vscode-inputValidation-infoBorder); }
+.banner button { margin-left: auto; }
+
+.group { border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: 10px 12px; margin: 10px 0; }
+.group-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.langs { font-weight: 600; min-width: 110px; }
+.measured { margin-top: 4px; font-size: 0.9em; }
+.origin { font-size: 0.8em; padding: 1px 6px; border-radius: 8px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
+.derived { font-family: var(--vscode-editor-font-family); }
+.handset { font-size: 0.9em; color: var(--vscode-editorWarning-foreground); }
+.badges { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.badge { font-size: 0.85em; padding: 1px 7px; border-radius: 3px; border: 1px solid; }
+.badge.ok { color: var(--vscode-testing-iconPassed); border-color: var(--vscode-testing-iconPassed); }
+.badge.warn { color: var(--vscode-editorWarning-foreground); border-color: var(--vscode-editorWarning-foreground); }
+.badge.err { color: var(--vscode-errorForeground); border-color: var(--vscode-errorForeground); }
+
+.strip { width: 100%; height: auto; display: block; margin: 6px 0 2px; overflow: visible; }
+.strip .axis { stroke: var(--vscode-foreground); stroke-opacity: 0.35; stroke-width: 1; }
+.strip .tick { stroke: var(--vscode-foreground); stroke-opacity: 0.35; }
+.strip .ticklabel { fill: var(--vscode-foreground); fill-opacity: 0.55; font-size: 10px; text-anchor: middle; dominant-baseline: hanging; }
+.strip .band, .swatch.band { fill: var(--vscode-testing-iconPassed); fill-opacity: 0.12; background: color-mix(in srgb, var(--vscode-testing-iconPassed) 20%, transparent); }
+.strip .tl { stroke: var(--vscode-focusBorder); stroke-width: 2.5; }
+.strip .tllabel { fill: var(--vscode-focusBorder); font-size: 11px; font-weight: 600; text-anchor: middle; }
+.strip .tle { stroke: var(--vscode-focusBorder); stroke-width: 1.5; stroke-dasharray: 4 3; stroke-opacity: 0.8; }
+.strip .tlelabel { fill: var(--vscode-focusBorder); font-size: 10px; text-anchor: middle; fill-opacity: 0.8; }
+.strip .survived { font-size: 12px; fill: currentColor; }
+.pt { cursor: pointer; }
+circle.pt, .pt .fill, path.pt.fill { stroke: var(--vscode-editor-background); stroke-width: 1.5; }
+g.pt path { stroke-width: 2.5; fill: none; }
+g.pt path.fill { stroke-width: 1.5; }
+.st-ok { --c: var(--vscode-testing-iconPassed); }
+.st-thin, .st-unverified { --c: var(--vscode-editorWarning-foreground); }
+.st-fails, .st-passes { --c: var(--vscode-errorForeground); }
+.st-unchecked { --c: var(--vscode-disabledForeground); }
+circle.pt, .pt .fill, path.pt.fill { fill: var(--c); }
+g.pt path:not(.fill), path.pt:not(.fill) { stroke: var(--c); }
+g.pt { color: var(--c); }
+
+.swatch { display: inline-block; width: 14px; height: 10px; vertical-align: middle; }
+.swatch.tl { height: 2px; background: var(--vscode-focusBorder); }
+.swatch.tle { height: 0; border-top: 2px dashed var(--vscode-focusBorder); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.85em; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+
+table.sols { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 0.93em; table-layout: fixed; }
+table.sols col.c-lang { width: 70px; }
+table.sols col.c-role { width: 56px; }
+table.sols col.c-num { width: 110px; }
+table.sols col.c-status { width: 150px; }
+/* Header and cell share one padding, and nothing inside a cell adds its own
+   horizontal padding or border, so every header sits over its column's text. */
+table.sols th, table.sols td { padding: 3px 8px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.sols th { font-weight: normal; opacity: 0.6; border-bottom: 1px solid var(--vscode-panel-border); }
+table.sols td { border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border) 50%, transparent); }
+table.sols tr:hover td { background: var(--vscode-list-hoverBackground); }
+table.sols a { text-decoration: none; }
+/* Link blue only for a solution with no declared expectation: a coloured one
+   must win, and `table.sols a` would outrank a bare `.hue-*` class. */
+table.sols a:not([class*="hue-"]) { color: var(--vscode-textLink-foreground); }
+a:hover { text-decoration: underline; }
+a.bold { font-weight: 600; }
+/* Expected outcome, in the run view's own hue table (webview/style.css). */
+.hue-green { color: var(--vscode-charts-green); }
+.hue-red { color: var(--vscode-charts-red); }
+.hue-yellow { color: var(--vscode-charts-yellow); }
+.hue-blue { color: var(--vscode-charts-blue); }
+.hue-purple { color: var(--vscode-charts-purple); }
+.hue-orange { color: var(--vscode-charts-orange); }
+.hue-dim { color: var(--vscode-descriptionForeground); }
+.hue-neutral { color: var(--vscode-foreground); }
+.role { font-size: 0.85em; font-weight: 600; }
+.role.ac { color: var(--vscode-testing-iconPassed); }
+.role.tle { color: var(--vscode-editorWarning-foreground); }
+.status { color: var(--c); cursor: help; }
+.status::before { content: '● '; }
+.badge { cursor: help; }
+
+.effective .effs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.eff { padding: 2px 8px; border-radius: 3px; background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-panel-border); font-variant-numeric: tabular-nums; }
+
+.fatal, .loading { margin: 40px auto; max-width: 640px; display: flex; flex-direction: column; gap: 10px; }
+.fatal pre { white-space: pre-wrap; background: var(--vscode-textCodeBlock-background); padding: 8px; }
+
+/* Problem / profile navigation, above the header. */
+.profile-nav { display: flex; align-items: center; gap: 6px; padding: 10px 0 0; flex-wrap: wrap; }
+.profile-nav select {
+  background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border, transparent); padding: 3px 6px; max-width: 360px;
+}
+.profile-nav .tabs { display: inline-flex; margin-left: 12px; border-bottom: 1px solid var(--vscode-panel-border); }
+.profile-nav .tab {
+  background: none; color: var(--vscode-foreground); opacity: 0.7; border-radius: 0;
+  border-bottom: 2px solid transparent; padding: 4px 12px;
+}
+.profile-nav .tab:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground); }
+.profile-nav .tab.active { opacity: 1; border-bottom-color: var(--vscode-focusBorder); font-weight: 600; }
+
+/* Dragging the limit. */
+.strip.draggable { cursor: ew-resize; touch-action: none; user-select: none; }
+.strip .tl-hit { fill: transparent; cursor: ew-resize; }
+.strip.draggable .pt { cursor: pointer; }
+body.dragging, body.dragging * { cursor: ew-resize !important; user-select: none; }
+
+/* rbx has not answered for the value on screen yet. */
+.updating .status, .updating .badges, .updating .band, .updating .pt { opacity: 0.45; transition: opacity 120ms; }
+.updating-note { font-size: 0.85em; opacity: 0.7; display: inline-flex; align-items: center; gap: 4px; }
+
+/* Rows from the last run: under the estimate, set apart by a rule and a tint. */
+table.sols tr.run-sep td {
+  padding-top: 10px; border-bottom: 1px dashed var(--vscode-panel-border);
+  font-size: 0.85em; opacity: 0.75; text-transform: none;
+}
+table.sols tr.run-row td { background: color-mix(in srgb, var(--vscode-textBlockQuote-background) 55%, transparent); font-style: italic; }
+table.sols tr.run-row td .status { font-style: normal; }
+.role.run { color: var(--vscode-descriptionForeground); font-style: normal; }
+.warn-text { color: var(--vscode-editorWarning-foreground); }

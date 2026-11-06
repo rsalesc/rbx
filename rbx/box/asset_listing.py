@@ -43,6 +43,7 @@ AssetCategory = Literal[
     'visualizer',
     'testplan',
     'manual_test',
+    'time_profile',
 ]
 
 
@@ -192,6 +193,22 @@ def _statement_assets(root: pathlib.Path) -> List[ListedAsset]:
     return res
 
 
+def _time_profile_assets(root: pathlib.Path) -> List[ListedAsset]:
+    # Every `.limits/<name>.yml`, whether or not anything selects it: a profile
+    # is chosen by name at run or package time, never declared in the manifest.
+    limits_dir = root / '.limits'
+    if not limits_dir.is_dir():
+        return []
+    return [
+        ListedAsset(
+            category='time_profile',
+            path=_abs(root, path.relative_to(root)),
+            detail={'profile': path.stem},
+        )
+        for path in sorted(limits_dir.glob('*.yml'))
+    ]
+
+
 def _problem_assets(pkg: Package, root: pathlib.Path) -> List[ListedAsset]:
     assets: List[ListedAsset] = [
         ListedAsset(
@@ -216,6 +233,7 @@ def _problem_assets(pkg: Package, root: pathlib.Path) -> List[ListedAsset]:
     if pkg.visualizer is not None:
         assets += _code_assets('visualizer', [pkg.visualizer], root)
     assets += _test_assets(pkg, root)
+    assets += _time_profile_assets(root)
     _mark_main(assets, root)
     return assets
 

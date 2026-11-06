@@ -40,6 +40,7 @@ _COMMANDS = [
     ),
     LazyCommand('diff', 'rbx.box.cli.commands.ui_cmds:app', hidden=True),
     LazyCommand('serve', 'rbx.box.cli.commands.ui_cmds:app', hidden=True),
+    LazyCommand('time-inspect', 'rbx.box.cli.commands.time_cmd:app', hidden=True),
     LazyCommand(
         'edit, e',
         'rbx.box.cli.commands.create:app',
