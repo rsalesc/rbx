@@ -362,7 +362,8 @@ def main(
             '--contest',
             help=(
                 'Select a contest variant by id (when contest.rbx.yml has '
-                'use_variants: true). Defaults to the RBX_CONTEST env var.'
+                'sibling variants). Defaults to the RBX_CONTEST env var; optional '
+                'when only one contest applies.'
             ),
             envvar='RBX_CONTEST',
             autocompletion=annotations._adapt('contest_variant'),  # noqa: SLF001

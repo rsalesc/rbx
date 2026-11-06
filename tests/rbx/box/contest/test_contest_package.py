@@ -259,6 +259,7 @@ class TestFindContestYamlVariantAware:
     def test_dispatcher_no_selection_returns_none(self, tmp_path):
         (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
         (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-contest\n')
+        (tmp_path / 'contest.div2.rbx.yml').write_text('name: div2-c\n')
         cp_module.find_contest_yaml.cache_clear()
         assert cp_module.find_contest_yaml(tmp_path) is None
 
@@ -339,6 +340,7 @@ class TestSelectedVariantId:
     def test_dispatcher_without_selection_dies(self, tmp_path: pathlib.Path):
         (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
         (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-c\n')
+        (tmp_path / 'contest.div2.rbx.yml').write_text('name: div2-c\n')
 
         with pytest.raises(typer.Exit):
             cp_module.get_selected_variant_id(tmp_path)
@@ -488,3 +490,117 @@ class TestFindContestPackageOrDieDispatcher:
         assert 'div1' in out
         assert 'div2' in out
         assert '-C' in out  # picker hint
+
+
+class TestImplicitVariantSelection:
+    """No `-C`, but only one contest can be meant (#1004)."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_caches(self):
+        cp_module.find_contest_yaml.cache_clear()
+        yield
+        cp_module.find_contest_yaml.cache_clear()
+
+    @staticmethod
+    def _problem(root: pathlib.Path, name: str) -> pathlib.Path:
+        (root / name).mkdir()
+        (root / name / 'problem.rbx.yml').write_text(f'name: {name.lower()}\n')
+        return root / name
+
+    @staticmethod
+    def _contest(path: pathlib.Path, *problems: str) -> None:
+        lines = [f'name: {path.name.split(".")[1]}-c', 'problems:']
+        for p in problems:
+            lines += [f'  - short_name: {p}', f'    path: {p}']
+        path.write_text('\n'.join(lines) + '\n')
+
+    def test_dispatcher_with_one_variant_picks_it(self, tmp_path: pathlib.Path):
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        (tmp_path / 'contest.div1.rbx.yml').write_text('name: div1-c\n')
+
+        assert (
+            cp_module.find_contest_yaml(tmp_path) == tmp_path / 'contest.div1.rbx.yml'
+        )
+        assert cp_module.get_selected_variant_id(tmp_path) == 'div1'
+
+    def test_dispatcher_picks_the_only_variant_listing_the_problem(
+        self, tmp_path: pathlib.Path
+    ):
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        self._problem(tmp_path, 'A')
+        b = self._problem(tmp_path, 'B')
+        self._contest(tmp_path / 'contest.div1.rbx.yml', 'A', 'B')
+        self._contest(tmp_path / 'contest.div2.rbx.yml', 'A')
+
+        assert cp_module.find_contest_yaml(b) == tmp_path / 'contest.div1.rbx.yml'
+        # From a subdirectory of the problem, too.
+        (b / 'sols').mkdir()
+        assert (
+            cp_module.find_contest_yaml(b / 'sols') == tmp_path / 'contest.div1.rbx.yml'
+        )
+
+    def test_dispatcher_problem_in_several_variants_stays_unselected(
+        self, tmp_path: pathlib.Path
+    ):
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        a = self._problem(tmp_path, 'A')
+        self._contest(tmp_path / 'contest.div1.rbx.yml', 'A')
+        self._contest(tmp_path / 'contest.div2.rbx.yml', 'A')
+
+        assert cp_module.find_contest_yaml(a) is None
+
+    def test_dispatcher_contest_root_with_several_variants_stays_unselected(
+        self, tmp_path: pathlib.Path
+    ):
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        self._problem(tmp_path, 'A')
+        self._contest(tmp_path / 'contest.div1.rbx.yml', 'A')
+        self._contest(tmp_path / 'contest.div2.rbx.yml')
+
+        assert cp_module.find_contest_yaml(tmp_path) is None
+
+    def test_canonical_keeps_precedence_when_it_lists_the_problem(
+        self, tmp_path: pathlib.Path
+    ):
+        a = self._problem(tmp_path, 'A')
+        (tmp_path / 'contest.rbx.yml').write_text(
+            'name: main\nproblems:\n  - short_name: A\n    path: A\n'
+        )
+        self._contest(tmp_path / 'contest.div1.rbx.yml', 'A')
+
+        assert cp_module.find_contest_yaml(a) == tmp_path / 'contest.rbx.yml'
+
+    def test_sibling_picked_when_canonical_does_not_list_the_problem(
+        self, tmp_path: pathlib.Path
+    ):
+        a = self._problem(tmp_path, 'A')
+        b = self._problem(tmp_path, 'B')
+        (tmp_path / 'contest.rbx.yml').write_text(
+            'name: main\nproblems:\n  - short_name: A\n    path: A\n'
+        )
+        self._contest(tmp_path / 'contest.div1.rbx.yml', 'B')
+
+        assert cp_module.find_contest_yaml(a) == tmp_path / 'contest.rbx.yml'
+        assert cp_module.find_contest_yaml(b) == tmp_path / 'contest.div1.rbx.yml'
+        # The contest root itself still means the canonical.
+        assert cp_module.find_contest_yaml(tmp_path) == tmp_path / 'contest.rbx.yml'
+
+    def test_explicit_selection_wins(self, tmp_path: pathlib.Path):
+        (tmp_path / 'contest.rbx.yml').write_text('use_variants: true\n')
+        self._problem(tmp_path, 'A')
+        b = self._problem(tmp_path, 'B')
+        self._contest(tmp_path / 'contest.div1.rbx.yml', 'A', 'B')
+        self._contest(tmp_path / 'contest.div2.rbx.yml', 'A')
+
+        assert (
+            cp_module.find_contest_yaml(b, contest_id='div2')
+            == tmp_path / 'contest.div2.rbx.yml'
+        )
+
+    def test_broken_variant_disables_the_implicit_pick(self, tmp_path: pathlib.Path):
+        a = self._problem(tmp_path, 'A')
+        (tmp_path / 'contest.rbx.yml').write_text('name: main\n')
+        self._contest(tmp_path / 'contest.div1.rbx.yml', 'A')
+        (tmp_path / 'contest.div2.rbx.yml').write_text('problems: [oops\n')
+
+        assert cp_module.find_contest_yaml(a) == tmp_path / 'contest.rbx.yml'

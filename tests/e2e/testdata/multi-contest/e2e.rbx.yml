@@ -31,6 +31,17 @@ scenarios:
             - div1
             - div2
 
+  - name: summary-inside-B-autopicks-div1
+    description: >-
+      B is only listed in div1, so from inside B the contest is unambiguous
+      and `contest summary` loads div1 without -C (#1004).
+    steps:
+      - cmd: contest summary
+        cwd: B
+        expect:
+          stdout_contains:
+            - div1-c
+
   - name: summary-with-c-succeeds
     description: 'rbx -C div1 contest summary loads the div1 variant successfully.'
     steps:

@@ -117,6 +117,82 @@ def find_contest_root(
     return walker
 
 
+def _enclosing_problem_dir(
+    root: pathlib.Path, contest_root: pathlib.Path
+) -> Optional[pathlib.Path]:
+    """The problem package `root` sits in, if it is inside `contest_root`."""
+    walker = utils.abspath(root)
+    while True:
+        if (walker / PROBLEM_YAML_NAME).is_file():
+            return walker
+        if walker == contest_root or walker == walker.parent:
+            return None
+        walker = walker.parent
+
+
+def _contest_lists_problem(
+    contest_yaml: pathlib.Path, problem_dir: pathlib.Path
+) -> bool:
+    """Whether the contest in `contest_yaml` has `problem_dir` in `problems[]`.
+
+    Reads the yml without `find_contest_package`'s problem-folder validation:
+    that loads every problem, and loading a problem resolves its contest, which
+    lands back here.
+    """
+    contest_root = contest_yaml.parent
+    problem_yaml = problem_dir / PROBLEM_YAML_NAME
+    for problem in load_yaml_model(contest_yaml, Contest).problems:
+        problem_path = problem.get_path()
+        candidate = (
+            problem_path if problem_path.is_absolute() else contest_root / problem_path
+        ) / PROBLEM_YAML_NAME
+        if candidate.is_file() and candidate.samefile(problem_yaml):
+            return True
+    return False
+
+
+def _implicit_variant_id(
+    root: pathlib.Path,
+    contest_root: pathlib.Path,
+    variants: Dict[Optional[str], pathlib.Path],
+) -> Optional[str]:
+    """The sibling variant to use when nothing was selected, if unambiguous (#1004).
+
+    Returns None to mean "keep the default": the canonical contest when there
+    is one, nothing (the picker error) in an unselected dispatcher.
+
+    - Inside a problem, the contest that lists it, when exactly one does. The
+      canonical keeps precedence whenever it lists the problem itself.
+    - Otherwise, in a dispatcher, its only variant, when it has just one.
+    """
+    siblings = [vid for vid in variants if vid is not None]
+    if not siblings:
+        return None
+
+    problem_dir = _enclosing_problem_dir(root, contest_root)
+    if problem_dir is not None:
+        try:
+            containing = [
+                vid
+                for vid, path in variants.items()
+                if _contest_lists_problem(path, problem_dir)
+            ]
+        except Exception:
+            # A variant that does not load (say, a half-written sibling) must
+            # not break commands that never asked for it, nor be guessed past:
+            # keep the explicit-only behavior and let a real selection report it.
+            return None
+        if len(containing) == 1:
+            return containing[0]
+        if containing:
+            # Listed by several: ambiguous, unless the canonical is one of them.
+            return None
+
+    if None not in variants and len(siblings) == 1:
+        return siblings[0]
+    return None
+
+
 def get_contest_cache_dir(
     root: pathlib.Path = pathlib.Path(),
 ) -> Optional[pathlib.Path]:
@@ -157,8 +233,11 @@ def find_contest_yaml(
     variants = discover_contest_variants(contest_root)
 
     if effective_id is None:
+        implicit = _implicit_variant_id(root, contest_root, variants)
+        if implicit is not None:
+            return variants[implicit]
         # Returns the canonical default if there is one, else None
-        # (dispatcher with no selection).
+        # (dispatcher with no unambiguous selection).
         return variants.get(None)
 
     if effective_id in variants and effective_id is not None:

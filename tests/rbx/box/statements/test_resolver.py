@@ -232,9 +232,7 @@ class TestResolveStandalone:
                 return_value=pathlib.Path('/contest'),
             ),
             mock.patch.object(
-                resolver.contest_state,
-                'resolve_explicit_selection',
-                return_value=None,
+                resolver.contest_package, 'find_contest_yaml', return_value=None
             ),
             mock.patch.object(
                 resolver.contest_package,
@@ -244,3 +242,23 @@ class TestResolveStandalone:
         ):
             with pytest.raises(StatementResolverError):
                 resolver.resolve_standalone(st, StatementKind.STATEMENTS)
+
+    def test_implicitly_selected_dispatcher_does_not_error(self):
+        # A dispatcher whose selection is implied (#1004) resolves a contest
+        # file, so it is not a "forgot -C" situation.
+        st = _problem_statement(language='en', variant='default')
+        with (
+            mock.patch.object(resolver, 'find_contest_for_problem', return_value=None),
+            mock.patch.object(
+                resolver.contest_package,
+                'find_contest_root',
+                return_value=pathlib.Path('/contest'),
+            ),
+            mock.patch.object(
+                resolver.contest_package,
+                'find_contest_yaml',
+                return_value=pathlib.Path('/contest/contest.div1.rbx.yml'),
+            ),
+        ):
+            resolved = resolver.resolve_standalone(st, StatementKind.STATEMENTS)
+        assert resolved.is_fallback
