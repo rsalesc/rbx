@@ -76,7 +76,7 @@ class _CalibratingRunner:
         self.run_all: List[bool] = []
 
     async def estimate_by_calibration(
-        self, entries, strategy, progress=None, run_all=False
+        self, entries, strategy, progress=None, run_all=False, force=False
     ):
         self.calls.append(strategy)
         self.run_all.append(run_all)
