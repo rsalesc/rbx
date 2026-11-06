@@ -12,9 +12,11 @@ from rbx import utils
 from rbx.box import cli, limits_info, package, timing_edit, timing_limit_editor
 from rbx.box.schema import (
     EstimationSolutionTiming,
+    ExpectedOutcome,
     InferenceRole,
     LimitModifiers,
     LimitsProfile,
+    LimitsProfileRun,
     TimingBound,
     TimingGroupOrigin,
     TimingGroupReport,
@@ -23,6 +25,7 @@ from rbx.box.schema import (
 )
 from rbx.box.testing import testing_package
 from rbx.box.timing_limit_editor import LimitEditorState, prompt_limits_edit
+from rbx.grading.steps import Outcome
 
 
 def _profile() -> LimitsProfile:
@@ -186,6 +189,54 @@ def test_solutions_table_follows_the_selected_row():
     assert '> 2000 ms' in cpp and '? unverified' in cpp
     base = _plain(timing_limit_editor.build_solutions_table(profile, None))
     assert 'sols/ac.cpp' in base and 'sols/Ac.java' in base
+
+
+def _with_runs() -> LimitsProfile:
+    profile = _with_timings()
+    profile.runs = [
+        LimitsProfileRun(
+            path='sols/wa.cpp',
+            language='cpp',
+            timeLimit=1000,
+            expectedOutcome=ExpectedOutcome.WRONG_ANSWER,
+            outcome=Outcome.WRONG_ANSWER,
+            matchesExpectation=True,
+            time=120,
+        ),
+        LimitsProfileRun(
+            path='sols/Slow.java',
+            language='java',
+            timeLimit=2000,
+            expectedOutcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED,
+            outcome=Outcome.ACCEPTED,
+            matchesExpectation=False,
+            time=1900,
+            complete=False,
+        ),
+    ]
+    return profile
+
+
+def test_solutions_table_lists_the_run_all_verdicts_of_the_row():
+    cpp = _plain(timing_limit_editor.build_solutions_table(_with_runs(), 0))
+    assert 'from rbx time --run-all' in cpp
+    assert 'sols/wa.cpp' in cpp and 'sols/Slow.java' not in cpp
+    assert 'WA' in cpp and 'at 1000 ms' in cpp and '⚠' not in cpp
+    # A run that matched carries no mark, like the rest of the table.
+    assert '✓' not in cpp and '✗' not in cpp
+    java = _plain(timing_limit_editor.build_solutions_table(_with_runs(), 1))
+    assert '✗ AC (partial)' in java
+
+
+def test_a_run_judged_at_another_limit_is_flagged():
+    profile = timing_edit.with_time_limit(_with_runs(), 0, 1100)
+    cpp = _plain(timing_limit_editor.build_solutions_table(profile, 0))
+    assert 'at 1000 ms ⚠' in cpp
+
+
+def test_no_run_section_without_runs():
+    cpp = _plain(timing_limit_editor.build_solutions_table(_with_timings(), 0))
+    assert '--run-all' not in cpp
 
 
 def test_solutions_table_falls_back_without_timings():

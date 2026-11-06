@@ -286,7 +286,8 @@ def inspect(
             },
             'editable': timing_edit.is_editable(profile),
             'hasSolutions': bool(profile.solutions),
-            'rows': _with_last_run(_rows(profile), profile, root),
+            'rows': _with_runs(_rows(profile), profile, root),
+            'runsSource': 'profile' if profile.runs else 'lastRun',
             'lastRun': _last_run_header(root),
             'effective': _effective(profile, root),
             'stale': _stale(profile),
@@ -348,6 +349,47 @@ def _language_of(path: str) -> Optional[str]:
     except Exception:
         return None
     return None
+
+
+def _attach(rows: List[Dict[str, Any]], language: Optional[str], entry) -> None:
+    """File one run under the group row of its language, else the base row."""
+    for row in rows[1:]:
+        if language in (row['report'] or {}).get('languages', []):
+            row['runSolutions'].append(entry)
+            return
+    rows[0]['runSolutions'].append(entry)
+
+
+def _with_runs(
+    rows: List[Dict[str, Any]], profile: LimitsProfile, root: pathlib.Path
+) -> List[Dict[str, Any]]:
+    """Attach to each row the solutions judged on top of the estimate.
+
+    The profile's own `runs` section, written by `rbx time --run-all`, when it
+    has one: it belongs to this profile and outlives the next `rbx run`. The
+    last run's report otherwise (`_with_last_run`), for a profile estimated
+    without `--run-all` or before rbx recorded the runs.
+    """
+    if not profile.runs:
+        return _with_last_run(rows, profile, root)
+    for row in rows:
+        row['runSolutions'] = []
+    for run in profile.runs:
+        _attach(
+            rows,
+            run.language,
+            {
+                'path': run.path,
+                'language': run.language,
+                'expectedOutcome': run.expectedOutcome.name,
+                'outcome': run.outcome.value if run.outcome else None,
+                'matchesExpectation': run.matchesExpectation,
+                'complete': run.complete is not False,
+                'maxTime': run.time,
+                'timeLimit': run.timeLimit,
+            },
+        )
+    return rows
 
 
 def _with_last_run(

@@ -49,6 +49,7 @@ from rbx.box.solutions import (
     consume_and_key_evaluation_items,
     fail_fast_abort_predicate,
     get_inference_solutions,
+    get_solution_outcome_report,
     inference_role_of,
     print_run_report,
     run_solutions,
@@ -2087,8 +2088,12 @@ async def _run_remaining(
     benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
     keep_checker_stderr: bool = False,
     calibration: Optional['KattisCalibrationResult'] = None,
+    recorded: Optional[List[schema.LimitsProfileRun]] = None,
 ) -> bool:
     """Run whatever the estimate did not, at the limit the estimate produced.
+
+    ``recorded``, when given, receives one `LimitsProfileRun` per solution judged
+    here, for the `runs` section of the limits profile.
 
     ``calibration``, from `rbx time --run-all --runner moj`, has already judged
     every solution under the `inferenceTimeout` cap: the ones it can answer for
@@ -2157,6 +2162,7 @@ async def _run_remaining(
             fail_fast=fail_fast,
             benchmark_level=benchmark_level,
             keep_checker_stderr=keep_checker_stderr,
+            recorded=recorded,
         )
     if testrun:
         if replayed:
@@ -2181,6 +2187,7 @@ async def _run_remaining(
                 fail_fast=fail_fast,
                 benchmark_level=benchmark_level,
                 keep_checker_stderr=keep_checker_stderr,
+                recorded=recorded,
             )
             and ok
         )
@@ -2198,6 +2205,7 @@ async def _run_batch(
     fail_fast: bool,
     benchmark_level: benchmark.BenchmarkLevel,
     keep_checker_stderr: bool,
+    recorded: Optional[List[schema.LimitsProfileRun]] = None,
 ) -> bool:
     """Judge `batch` at the estimated limits on `batch_runner`, and report it."""
     # Every language present is named, never only the ones with an entry of
@@ -2285,6 +2293,10 @@ async def _run_batch(
                 '[warning]The timing summary was omitted: a solution that stopped '
                 'early is only timed on the testcases that ran.[/warning]'
             )
+        if recorded is not None:
+            # After the report, which is what resolved every deferred: reading
+            # them here costs nothing, since a `Deferred` memoizes its result.
+            recorded.extend(await _record_runs(result, batch, limits))
         return ok
     finally:
         # Same reasoning as both phases above: the report is what consumes this
@@ -2292,6 +2304,50 @@ async def _run_batch(
         # -- and if it raised, the batch belongs to a run that ended early,
         # which is precisely what this `finally` is here for.
         await result.close()
+
+
+async def _record_runs(
+    result: RunSolutionResult,
+    batch: List[Solution],
+    limits: Dict[str, int],
+) -> List[schema.LimitsProfileRun]:
+    """What `--run-all` got for each solution in `batch`, as the profile keeps it."""
+    structured = consume_and_key_evaluation_items(result.items, result.skeleton)
+    runs: List[schema.LimitsProfileRun] = []
+    for solution in batch:
+        evals = []
+        for group_evals in structured.get(str(solution.path), {}).values():
+            for ev in group_evals:
+                if ev is not None:
+                    evals.append(await ev())
+        report = get_solution_outcome_report(
+            solution,
+            result.skeleton,
+            evals,
+            # The level `_run_batch` ran at, so `isDoubleTL` is read the same
+            # way the printed report read it.
+            VerificationLevel.FULL,
+            # Already reported above; this only reads the verdict back.
+            report_issues=False,
+        )
+        judged = [e for e in evals if e.result.outcome != Outcome.SKIPPED]
+        times = [int(e.log.time * 1000) for e in judged if e.log.time is not None]
+        complete = len(judged) == len(result.skeleton.entries)
+        runs.append(
+            schema.LimitsProfileRun(
+                path=str(solution.path),
+                language=find_language_name(solution),
+                timeLimit=limits[find_language_name(solution)],
+                expectedOutcome=solution.outcome,
+                outcome=Outcome.worst_outcome(e.result.outcome for e in evals)
+                if evals
+                else None,
+                matchesExpectation=report.status.ok(),
+                time=max(times) if times else None,
+                complete=None if complete else False,
+            )
+        )
+    return runs
 
 
 async def compute_time_limits(
@@ -2447,19 +2503,39 @@ async def compute_time_limits(
         )
         sharing.capture_and_share(rec, fmt=share, title='rbx time report')
 
-    if run_all and not await _run_remaining(
-        estimated_tl,
-        ran,
-        check=check,
-        detailed=detailed,
-        runs=runs,
-        fail_fast=fail_fast,
-        runner=runner,
-        benchmark_level=benchmark_level,
-        keep_checker_stderr=keep_checker_stderr,
-        # Shipped every solution, so it already judged them all.
-        calibration=calibration,
-    ):
+    if not run_all:
+        return estimated_tl
+
+    recorded: List[schema.LimitsProfileRun] = []
+    try:
+        remaining_ok = await _run_remaining(
+            estimated_tl,
+            ran,
+            check=check,
+            detailed=detailed,
+            runs=runs,
+            fail_fast=fail_fast,
+            runner=runner,
+            benchmark_level=benchmark_level,
+            keep_checker_stderr=keep_checker_stderr,
+            # Shipped every solution, so it already judged them all.
+            calibration=calibration,
+            recorded=recorded,
+        )
+    finally:
+        # Written a second time, now with the `runs` section, and whether or
+        # not every solution behaved: a failing verdict is the one most worth
+        # keeping. Only what finished is recorded -- a batch interrupted midway
+        # records nothing of itself. The first write stands on its own, so the
+        # profile on disk is never left without its limits.
+        if recorded and not dry:
+            limits.runs = recorded
+            limits_path.write_text(limits_info.profile_to_yaml(limits))
+            console.console.print(
+                f'[status]Recorded the verdicts of {len(recorded)} solution(s) in '
+                f'[item]{href(limits_path)}[/item].[/status]'
+            )
+    if not remaining_ok:
         # Raised rather than folded into the `None` the estimation returns: that
         # `None` means no limit was produced and nothing was written, and this is
         # the opposite case -- the limit is estimated, checked and saved, and a

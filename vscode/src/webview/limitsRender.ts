@@ -261,14 +261,26 @@ function since(iso: string | null | undefined): string {
  * judged, at the limit it ran under -- not at the limit now on screen, which it
  * flags when the two differ: nothing here is re-judged.
  */
-function runRows(runs: RunSolution[], tl: number | null, profile: string, lastRun: LastRun | null | undefined): string {
+function runRows(
+  runs: RunSolution[],
+  tl: number | null,
+  profile: string,
+  lastRun: LastRun | null | undefined,
+  source: 'profile' | 'lastRun' = 'lastRun',
+): string {
   if (runs.length === 0) return '';
+  const fromProfile = source === 'profile';
+  const origin = fromProfile ? 'rbx time --run-all' : 'the last run';
   const otherProfile =
+    !fromProfile &&
     lastRun && lastRun.profiles.length > 0 && !lastRun.profiles.includes(profile)
       ? ` · <span class="warn-text" title="The run resolved its limits from ${esc(lastRun.profiles.join(', '))}, not ${esc(profile)}">under ${esc(lastRun.profiles.join(', '))}</span>`
       : '';
-  const when = lastRun?.endedAt ? ` · ${esc(since(lastRun.endedAt))}` : lastRun && !lastRun.finished ? ' · still running' : '';
-  const sep = `<tr class="run-sep"><td colspan="6"><i class="codicon codicon-history"></i> From the last run${otherProfile}${when}</td></tr>`;
+  // The profile's own runs say nothing about when the last run ended.
+  const when = fromProfile
+    ? ''
+    : lastRun?.endedAt ? ` · ${esc(since(lastRun.endedAt))}` : lastRun && !lastRun.finished ? ' · still running' : '';
+  const sep = `<tr class="run-sep"><td colspan="6"><i class="codicon codicon-history"></i> From ${fromProfile ? '<code>rbx time --run-all</code>' : 'the last run'}${otherProfile}${when}</td></tr>`;
   const body = runs
     .map((r) => {
       const display = expectationDisplay(r.expectedOutcome);
@@ -290,7 +302,7 @@ function runRows(runs: RunSolution[], tl: number | null, profile: string, lastRu
       return `<tr class="run-row">
         <td>${solutionLink({ path: r.path, expectedOutcome: r.expectedOutcome } as SolutionCheck)}</td>
         <td>${esc(r.language ?? '?')}</td>
-        <td><span class="role run" title="Judged by the last run, not measured by the estimate">run</span></td>
+        <td><span class="role run" title="Judged by ${origin}, not measured by the estimate">run</span></td>
         <td class="num">${r.maxTime !== null ? esc(ms(r.maxTime)) : '—'}</td>
         <td class="num">${at}</td>
         <td>${status}${incomplete}</td>
@@ -307,6 +319,7 @@ function solutionTable(
   runs: RunSolution[] = [],
   profile = '',
   lastRun?: LastRun | null,
+  source?: 'profile' | 'lastRun',
 ): string {
   // A slow solution the estimate never ran, which the run did judge, is shown
   // once: as the run's row, which actually says something about it.
@@ -344,7 +357,7 @@ function solutionTable(
   return `<table class="sols">
     <colgroup><col class="c-sol"><col class="c-lang"><col class="c-role"><col class="c-num"><col class="c-num"><col class="c-status"></colgroup>
     <thead><tr><th>solution</th><th>lang</th><th>role</th><th class="num">time</th><th class="num">allows</th><th>status</th></tr></thead>
-    <tbody>${body}${runRows(runs, tl, profile, lastRun)}</tbody></table>`;
+    <tbody>${body}${runRows(runs, tl, profile, lastRun, source)}</tbody></table>`;
 }
 
 // ---------------------------------------------------------------- rows
@@ -483,7 +496,7 @@ function groupSection(
     </div>
     ${measured ? `<div class="measured">${measured}</div>` : ''}
     ${hasStrip ? strip(row, d, m) : ''}
-    ${solutionTable(row.solutions, row.timeLimit, m, row.runSolutions ?? [], result?.profile ?? '', result?.lastRun)}
+    ${solutionTable(row.solutions, row.timeLimit, m, row.runSolutions ?? [], result?.profile ?? '', result?.lastRun, result?.runsSource)}
   </section>`;
 }
 

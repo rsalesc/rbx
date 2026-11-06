@@ -30,8 +30,10 @@ Estimate one, and read it back:
 
 Besides the two limits, the file stores the per-language `modifiers` {{rbx}} derived, the ratios
 it estimated under, a per-group record of where each number came from, and, at the end, a
-`solutions` list with what each solution measured. You do not have to read that record,
-and you should not hand-maintain it — it is written for you, and
+`solutions` list with what each solution measured. A profile written by
+[`rbx time --run-all`](estimating.md#checking-the-rest-of-the-package) also ends with a `runs`
+list: the verdict every other solution got at the estimated limit. You don't have to read any of
+it, and you shouldn't hand-maintain it — it is written for you, and
 the [`LimitsProfile`](/schemas/LimitsProfile.json) schema is the authority on what it holds.
 
 The two fields you *will* set by hand are the limits themselves:
@@ -205,6 +207,11 @@ maximum. Step the limit and watch which solution's check changes.
 A profile estimated before {{rbx}} recorded these timings shows a hint instead. Run `rbx time`
 on it again before you edit it to fill them in, since a new estimate replaces any limit you set
 by hand.
+
+A profile with a `runs` list adds a section under `from rbx time --run-all`, with one row per
+solution showing its expected outcome, verdict and slowest time next to the limit it ran at.
+Since the editor never judges those rows again, stepping away from that limit turns the row's
+`at N ms` yellow and adds a ⚠.
 
 The profile keeps the estimate next to your limit. Every later limits table marks that row as
 set by hand next to the estimate it replaced, and keeps the Check column.

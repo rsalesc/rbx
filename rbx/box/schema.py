@@ -1443,6 +1443,55 @@ never run.""",
     )
 
 
+class LimitsProfileRun(BaseModel):
+    """How one solution fared when judged at the limit a profile estimated.
+
+    Not evidence the limit was computed from -- that is `EstimationSolutionTiming`
+    -- but the verdict the rest of the package got under it, recorded by
+    `rbx time --run-all` (and `rbx preship`) after the estimate was written.
+    """
+
+    # Ignored rather than refused, for the reason `LimitsProfile` gives.
+    model_config = ConfigDict(extra='ignore')
+
+    path: str = Field(description='The solution, as named in `problem.rbx.yml`.')
+
+    language: str = Field(description='The language it ran as.')
+
+    timeLimit: int = Field(
+        description="""The time limit, in milliseconds, it was judged at: the
+estimated limit of its language at the time it ran. A limit changed by hand
+afterwards does not change it, so a run can be told apart from the limit it no
+longer describes."""
+    )
+
+    expectedOutcome: ExpectedOutcome = Field(
+        description='The outcome `problem.rbx.yml` expects of it.'
+    )
+
+    outcome: Optional[Outcome] = Field(
+        default=None,
+        description='The worst verdict it got. Absent when no testcase was judged.',
+    )
+
+    matchesExpectation: bool = Field(
+        description='Whether it behaved as `problem.rbx.yml` says it does.'
+    )
+
+    time: Optional[int] = Field(
+        default=None,
+        description="""Its running time, in milliseconds, on its slowest testcase.
+Absent when no testcase reported a time.""",
+    )
+
+    complete: Optional[bool] = Field(
+        default=None,
+        description="""`false` when the run stopped before judging every testcase
+(`--fail-fast`): its verdict holds, but its time is only a lower bound. Absent
+when every testcase was judged.""",
+    )
+
+
 class LimitsProfile(BaseModel):
     # Unknown keys are ignored, not refused -- the one model in this file that
     # tolerates them, and deliberately.
@@ -1542,6 +1591,18 @@ The timing of every solution the estimate was computed from. Written by
 `rbx time` and read by `rbx time --edit`, which checks a hand-set limit against
 each solution. Presentation-only; never used for limit resolution. Absent on a
 profile estimated before it was recorded.
+""",
+    )
+
+    # After `solutions`, and apart from it: these are not what the limit was
+    # computed from, but what the rest of the package got under it.
+    runs: Optional[List[LimitsProfileRun]] = Field(
+        default=None,
+        description="""
+The verdict of every solution the estimate did not run, judged at the estimated
+limit. Written by `rbx time --run-all` and `rbx preship` once those runs finish.
+Presentation-only; never used for limit resolution. Absent when the profile was
+written without `--run-all`.
 """,
     )
 

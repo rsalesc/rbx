@@ -64,8 +64,8 @@ export interface SolutionCheck {
 }
 
 /**
- * A solution the last run judged and the estimate did not measure, read off
- * `.rbx/runs/report.yml` -- typically what `rbx time --run-all` adds.
+ * A solution judged on top of the estimate: read off the profile's `runs`
+ * section (`rbx time --run-all`), or else off `.rbx/runs/report.yml`.
  */
 export interface RunSolution {
   readonly path: string;
@@ -132,6 +132,12 @@ export interface InspectResult {
   readonly rows?: Row[];
   readonly effective?: EffectiveLimits;
   readonly lastRun?: LastRun | null;
+  /**
+   * Where `runSolutions` came from: the profile's own `runs` section, written
+   * by `rbx time --run-all`, or the last run's report. Absent on an older rbx,
+   * which only ever read the last run.
+   */
+  readonly runsSource?: 'profile' | 'lastRun';
   /** The checksum bucket that moved since the estimate, or null. */
   readonly stale?: 'solutions' | 'interactor' | 'tests' | null;
 }

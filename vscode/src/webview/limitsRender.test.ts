@@ -97,6 +97,39 @@ test('the navigation bar lists every problem and the current one tabs', () => {
   assert.equal((html.match(/data-action="navProfile"/g) ?? []).length, 3);
 });
 
+test('labels the runs the profile recorded as rbx time --run-all, not the last run', () => {
+  assert.ok(parsed.ok);
+  const result = parsed.result;
+  const rows = (result.rows ?? []).map((row) =>
+    row.key === '0'
+      ? {
+          ...row,
+          runSolutions: [
+            {
+              path: 'solutions/wrong/review-no-wrap.cpp',
+              language: 'cpp',
+              expectedOutcome: 'INCORRECT',
+              outcome: 'wrong-answer',
+              matchesExpectation: true,
+              complete: true,
+              maxTime: 12,
+              timeLimit: 500,
+            },
+          ],
+        }
+      : row,
+  );
+  const html = renderDocument({
+    // A last run under another profile, which the profile's own runs ignore.
+    result: { ...result, rows, runsSource: 'profile', lastRun: { profiles: ['moj'], finished: true } },
+    updating: false,
+  });
+  assert.match(html, /From <code>rbx time --run-all<\/code>/);
+  assert.doesNotMatch(html, /From the last run/);
+  assert.doesNotMatch(html, /under moj/);
+  assert.equal((html.match(/class="run-row"/g) ?? []).length, 1);
+});
+
 test('appends the last run under the estimate, flagged when it ran at another limit', () => {
   assert.ok(parsed.ok);
   const result = parsed.result;

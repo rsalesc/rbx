@@ -175,31 +175,17 @@ SOLUTIONS_HEADER = (
     '# Presentation-only: never used to resolve a limit.\n'
 )
 
+RUNS_HEADER = (
+    '# How every other solution fared at the estimated limit (`rbx time --run-all`).\n'
+    '# Not part of the estimate, and never used to resolve a limit.\n'
+)
 
-def profile_to_yaml(profile: LimitsProfile) -> str:
-    """A limits profile as written to `.limits/<name>.yml`.
 
-    The per-solution timings go last, one solution per line, under a comment
-    saying what they are for: they are the longest and least read part of the
-    file, and a setter opening it is there for the limits above them.
-    """
+def _flow_list(key: str, entries: list) -> str:
     import yaml
 
-    if not profile.solutions:
-        return utils.model_to_yaml(profile)
-    head = profile.model_copy()
-    head.solutions = None
-    entries = [
-        # The role in the spelling a setter writes in `problem.rbx.yml`
-        # (`inference: lower`); `InferenceRole` reads either back.
-        {
-            **timing.model_dump(mode='json', exclude_none=True),
-            'role': timing.role.value.lower(),
-        }
-        for timing in profile.solutions
-    ]
-    tail = yaml.dump(
-        {'solutions': entries},
+    return yaml.dump(
+        {key: entries},
         Dumper=getattr(yaml, 'CSafeDumper', yaml.SafeDumper),
         sort_keys=False,
         allow_unicode=True,
@@ -207,7 +193,40 @@ def profile_to_yaml(profile: LimitsProfile) -> str:
         default_flow_style=None,
         width=10_000,
     )
-    return utils.model_to_yaml(head) + '\n' + SOLUTIONS_HEADER + tail
+
+
+def profile_to_yaml(profile: LimitsProfile) -> str:
+    """A limits profile as written to `.limits/<name>.yml`.
+
+    The per-solution timings go last, one solution per line, under a comment
+    saying what they are for: they are the longest and least read part of the
+    file, and a setter opening it is there for the limits above them. The
+    `--run-all` verdicts follow, in a section of their own, since they are not
+    what the limit was computed from.
+    """
+    if not profile.solutions and not profile.runs:
+        return utils.model_to_yaml(profile)
+    head = profile.model_copy()
+    head.solutions = None
+    head.runs = None
+    out = utils.model_to_yaml(head)
+    if profile.solutions:
+        entries = [
+            # The role in the spelling a setter writes in `problem.rbx.yml`
+            # (`inference: lower`); `InferenceRole` reads either back.
+            {
+                **timing.model_dump(mode='json', exclude_none=True),
+                'role': timing.role.value.lower(),
+            }
+            for timing in profile.solutions
+        ]
+        out += '\n' + SOLUTIONS_HEADER + _flow_list('solutions', entries)
+    if profile.runs:
+        entries = [
+            run.model_dump(mode='json', exclude_none=True) for run in profile.runs
+        ]
+        out += '\n' + RUNS_HEADER + _flow_list('runs', entries)
+    return out
 
 
 def get_display_limits_profile(

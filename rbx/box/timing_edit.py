@@ -24,6 +24,7 @@ from rbx.box.schema import (
     InferenceRole,
     LimitModifiers,
     LimitsProfile,
+    LimitsProfileRun,
     TimingBound,
     TimingGroupReport,
     TimingMultipliers,
@@ -294,6 +295,19 @@ def group_solutions(
         return list(profile.solutions)
     languages = set(report.languages)
     return [timing for timing in profile.solutions if timing.language in languages]
+
+
+def group_runs(
+    profile: LimitsProfile, report: Optional[TimingGroupReport]
+) -> List[LimitsProfileRun]:
+    """The `rbx time --run-all` verdicts a row is about, picked the way
+    `group_solutions` picks timings. Empty when the profile recorded none."""
+    if not profile.runs:
+        return []
+    if report is None or report is profile.baseEstimate:
+        return list(profile.runs)
+    languages = set(report.languages)
+    return [run for run in profile.runs if run.language in languages]
 
 
 class SolutionStatus(str, enum.Enum):
