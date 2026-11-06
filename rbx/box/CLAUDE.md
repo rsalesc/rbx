@@ -440,7 +440,9 @@ it out, the shortest timeout; one judge that stopped early without a timeout lea
 it unmeasured; a judge on which it never compiled -- no tests, run-level `verdict`
 `Compilation Error` or `expect.why == 'ce'`, `CalibSolution.failed_to_compile` --
 counts as a `CE` bad code, named per judge in `compile_error_hosts`, and replays as
-`CE` on every test). The result seeds `_EstimationContext` and `SlowKnowledge`
+`CE` on every test; `calib` carries no compiler output, but the judge's
+per-solution report does, so the error quotes `kattis.compile_report_command`
+when `hosts[].reports` lists `<category>-<file>`). The result seeds `_EstimationContext` and `SlowKnowledge`
 directly, so picker, groups and profile are reused, and `_validate_upper_bound(
 calibrated=...)` runs nothing.
 

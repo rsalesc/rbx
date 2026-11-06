@@ -285,6 +285,33 @@ def _at_limit(test: cli.TestrunTest, time_limit_ms: int) -> cli.TestrunTest:
     )
 
 
+def compile_report_command(
+    result: KattisCalibrationResult, solution_path: str
+) -> Optional[str]:
+    """The `moj calib-report` command that shows why `solution_path` did not
+    compile, from the first judge that failed it and kept a report for it.
+
+    That report carries the judge's compiler stderr -- `calib` itself does not.
+    `None` when no such judge listed a report, so no command is quoted that
+    would only answer with a 404.
+    """
+    key = result.files.get(solution_path)
+    if key is None:
+        return None
+    category, file = key
+    report = f'{category}-{file}'
+    for host in result.calib_hosts:
+        for sol in host.sols:
+            if (sol.category, sol.file) == key and sol.failed_to_compile:
+                if report in host.reports:
+                    out = f'moj-calib-{host.host}-{report}.html'
+                    return (
+                        f"moj calib-report '{result.moj_id}' --host {host.host} "
+                        f'--sol {report} -o {out}'
+                    )
+    return None
+
+
 def replay_test(
     result: KattisCalibrationResult,
     solution_path: str,

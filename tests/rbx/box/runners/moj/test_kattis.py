@@ -860,3 +860,51 @@ def test_only_a_shipped_solution_within_the_cap_can_be_replayed():
     assert calibration.can_replay('sols/wa.cpp', 10_000)
     assert not calibration.can_replay('sols/wa.cpp', 10_001)
     assert not calibration.can_replay('sols/other.cpp', 1000)
+
+
+def _compile_failed_result(reports: List[str]) -> kattis.KattisCalibrationResult:
+    """`rsalesc#rbxt-ab2113f5-kattis` on 2026-11-06: `broken.cpp` failed to
+    compile on every judge, and each judge kept a report named after it."""
+    hosts = [
+        cli.CalibHost(
+            host='a',
+            at=200,
+            sols=[_sol('main.cpp', 'good', [_test('t1', 'AC', 0.1)])],
+            reports=reports,
+        ),
+        cli.CalibHost(
+            host='b',
+            at=200,
+            sols=[_never_compiled('broken.cpp', 'good')],
+            reports=reports,
+        ),
+    ]
+    return kattis.KattisCalibrationResult(
+        moj_id='rsalesc#rbxt-ab2113f5-kattis',
+        hosts=('a', 'b'),
+        measurements={},
+        moj_limits_ms={},
+        reused=False,
+        calib_hosts=tuple(hosts),
+        files={
+            'sols/main.cpp': ('good', 'main.cpp'),
+            'sols/broken.cpp': ('good', 'broken.cpp'),
+        },
+    )
+
+
+def test_a_compile_error_points_at_the_report_holding_the_compiler_output():
+    result = _compile_failed_result(['good-broken.cpp', 'good-main.cpp'])
+
+    assert kattis.compile_report_command(result, 'sols/broken.cpp') == (
+        "moj calib-report 'rsalesc#rbxt-ab2113f5-kattis' --host b "
+        '--sol good-broken.cpp -o moj-calib-b-good-broken.cpp.html'
+    )
+    # It compiled: there is nothing to point at.
+    assert kattis.compile_report_command(result, 'sols/main.cpp') is None
+
+
+def test_no_report_is_quoted_when_the_judge_kept_none():
+    result = _compile_failed_result(['good-main.cpp'])
+
+    assert kattis.compile_report_command(result, 'sols/broken.cpp') is None

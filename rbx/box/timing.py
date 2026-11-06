@@ -1375,6 +1375,7 @@ async def _estimate_with_moj_calibration(
     timeout (at `inferenceTimeout`, MOJ's `CALIBRATIONTL`), a wrong verdict, or a
     solution the judges did not report all stop the estimate.
     """
+    from rbx.box.runners.moj.kattis import compile_report_command
     from rbx.box.runners.moj.runner import MOJ_COMPILE_HINT, outcome_for_moj_code
     from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 
@@ -1411,13 +1412,18 @@ async def _estimate_with_moj_calibration(
             )
             ok = False
         elif measurement.compile_error_hosts:
+            command = compile_report_command(result, str(solution.path))
+            see = (
+                f'See the compiler output with `{command}`.'
+                if command is not None
+                else 'Compile the file on its own, with the flags of that script, '
+                'to see the error.'
+            )
             console.console.print(
                 f'[error]✗ {solution.href()} is expected to be accepted, but it did '
                 f'not compile on MOJ '
                 f'({_judges_phrase(measurement.compile_error_hosts, measurement.hosts)}'
-                f'). {MOJ_COMPILE_HINT} MOJ does not report the compiler output '
-                f'of a calibration: compile the file on its own, with the flags '
-                f'of that script, to see the error.[/error]'
+                f'). {MOJ_COMPILE_HINT} {see}[/error]'
             )
             ok = False
         elif measurement.timed_out:

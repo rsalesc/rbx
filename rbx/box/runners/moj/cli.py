@@ -446,6 +446,10 @@ class CalibHost(BaseModel):
     # Languages with a `sols/good` solution that no accepted run calibrated here.
     missing: List[str] = []
     sols: List[CalibSolution] = []
+    # The per-solution `report.html` this judge kept, named `<category>-<file>`,
+    # fetched with `moj calib-report`. A solution that did not compile has one
+    # too, carrying the compiler's stderr (observed 2026-11-06).
+    reports: List[str] = []
 
 
 class CalibMethodLimits(BaseModel):
