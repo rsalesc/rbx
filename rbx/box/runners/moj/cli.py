@@ -876,6 +876,19 @@ async def calib(problem_id: str) -> MojCalibration:
     return MojCalibration.model_validate(payload if isinstance(payload, dict) else {})
 
 
+async def calib_report(
+    problem_id: str, host: str, name: str, out: pathlib.Path
+) -> None:
+    """Download one judge's `report.html` for one calibrated solution to `out`.
+
+    `name` is as `CalibHost.reports` lists it (`<category>-<file>`). The report
+    is HTML with no published structure; see `kattis.compile_stderr`.
+    """
+    await _run_moj(
+        ['calib-report', problem_id, '--host', host, '--sol', name, '-o', str(out)]
+    )
+
+
 async def testrun(ref: Union[str, pathlib.Path], solution: pathlib.Path) -> str:
     """Queue one solution against a problem, and return the run id.
 

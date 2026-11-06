@@ -6,9 +6,11 @@ The shapes the fakes answer with are the ones the park returned on 2026-10-31
 `docs/plans/2026-11-01-moj-parallel-run-and-kattis-calibration-design.md`.
 """
 
+import asyncio
 import pathlib
 import shutil
 from typing import Dict, List, Optional, Tuple
+from unittest import mock
 
 import pytest
 
@@ -908,3 +910,86 @@ def test_no_report_is_quoted_when_the_judge_kept_none():
     result = _compile_failed_result(['good-main.cpp'])
 
     assert kattis.compile_report_command(result, 'sols/broken.cpp') is None
+
+
+_CE_REPORT = (
+    pathlib.Path(__file__).parent / 'testdata' / 'calib_report_compile_error.html'
+)
+
+
+def test_the_compiler_output_is_read_off_a_real_report():
+    """The report `moj calib-report` served on 2026-11-06 for `broken.cpp`."""
+    stderr = kattis.compile_stderr(_CE_REPORT.read_text())
+
+    assert stderr is not None
+    lines = stderr.splitlines()
+    assert lines[0] == 'broken.cpp: In function ‘int main()’:'
+    assert lines[1] == 'broken.cpp:8:5: error: ‘vector’ was not declared in this scope'
+    # Unescaped, not `&lt;vector&gt;`.
+    assert '  +++ |+#include <vector>' in lines
+    assert lines[-1] == '      |             ^'
+    # The `cage-run` panel after it is sandbox noise, not the compiler's.
+    assert 'Creating output file' not in stderr
+
+
+@pytest.mark.parametrize(
+    'report',
+    [
+        # An accepted solution's report: no compile section at all.
+        '<h1 id="resumo">Resumo</h1><div class="panel-h">stderr</div><pre>x</pre>',
+        # A compile section whose `stderr` panel is empty.
+        '<h1 id="compilacao">Erro</h1><div class="panel-h">stderr</div><pre>\n</pre>',
+        # A `<pre>` with no `stderr` label in front of it.
+        '<h1 id="compilacao">Erro</h1><div class="panel-h">cage-run</div><pre>x</pre>',
+        # The `stderr` label is in the section, the `<pre>` only after the next one.
+        '<h1 id="compilacao">Erro</h1><div class="panel-h">stderr</div>'
+        '<h1 id="ambiente">A</h1><pre>x</pre>',
+        '',
+        'not html at all <<<',
+    ],
+)
+def test_a_report_of_any_other_shape_yields_nothing(report):
+    assert kattis.compile_stderr(report) is None
+
+
+def test_the_compiler_output_is_fetched_from_the_first_judge_that_kept_it():
+    result = _compile_failed_result(['good-broken.cpp'])
+    calls = []
+
+    async def fake_calib_report(problem_id, host, name, out):
+        calls.append((problem_id, host, name))
+        out.write_text(_CE_REPORT.read_text())
+
+    with mock.patch.object(cli, 'calib_report', fake_calib_report):
+        stderr = asyncio.run(
+            runner_module.fetch_compile_stderr(result, 'sols/broken.cpp')
+        )
+
+    assert calls == [('rsalesc#rbxt-ab2113f5-kattis', 'b', 'good-broken.cpp')]
+    assert stderr is not None and 'was not declared in this scope' in stderr
+
+
+def test_a_failed_download_is_no_compiler_output_not_an_error():
+    result = _compile_failed_result(['good-broken.cpp'])
+
+    async def refuse(problem_id, host, name, out):
+        raise cli.MojCliError('404')
+
+    with mock.patch.object(cli, 'calib_report', refuse):
+        assert (
+            asyncio.run(runner_module.fetch_compile_stderr(result, 'sols/broken.cpp'))
+            is None
+        )
+
+
+def test_nothing_is_fetched_when_no_judge_kept_a_report():
+    result = _compile_failed_result(['good-main.cpp'])
+
+    async def unexpected(*args):
+        raise AssertionError('no report is listed, so none may be fetched')
+
+    with mock.patch.object(cli, 'calib_report', unexpected):
+        assert (
+            asyncio.run(runner_module.fetch_compile_stderr(result, 'sols/broken.cpp'))
+            is None
+        )

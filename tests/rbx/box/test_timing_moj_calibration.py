@@ -8,7 +8,7 @@ the upload, the freshness wait) is `tests/rbx/box/runners/moj/test_kattis.py`.
 """
 
 import asyncio
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from unittest import mock
 
 import pytest
@@ -58,9 +58,17 @@ def _measure(
 class _CalibratingRunner:
     """A backend that answers the estimate with a canned calibration."""
 
-    def __init__(self, measurements: List[KattisMeasurement], limits: Dict[str, int]):
+    def __init__(
+        self,
+        measurements: List[KattisMeasurement],
+        limits: Dict[str, int],
+        calib_hosts: Tuple[cli.CalibHost, ...] = (),
+        files: Optional[Dict[str, Tuple[str, str]]] = None,
+    ):
         self.measurements = measurements
         self.limits = limits
+        self.calib_hosts = calib_hosts
+        self.files = files or {}
         self.calls: List[timing_config.TimingStrategy] = []
         self.run_all: List[bool] = []
 
@@ -75,6 +83,8 @@ class _CalibratingRunner:
             measurements={str(m.solution.path): m for m in self.measurements},
             moj_limits_ms=self.limits,
             reused=False,
+            calib_hosts=self.calib_hosts,
+            files=self.files,
         )
 
 
@@ -539,3 +549,62 @@ def test_the_calibration_table_names_the_judges_that_failed_to_compile(capsys):
     assert 'Compilation Error (on b)' in out
     assert 'did not compile on MOJ (on b)' in out
     assert 'incomplete' not in out
+
+
+@pytest.mark.usefixtures('pkg')
+def test_the_judges_compiler_output_is_shown_under_the_error(capsys):
+    hosts = _never_compiled_on('ab', 'good', 'ac.cpp')
+    for host in hosts:
+        host.reports = ['good-ac.cpp']
+    runner = _CalibratingRunner(
+        _calibrated(hosts, {'sols/ac.cpp': 'good'}),
+        limits={},
+        calib_hosts=tuple(hosts),
+        files={'sols/ac.cpp': ('good', 'ac.cpp')},
+    )
+    # Brackets that would be markup, and more lines than are shown inline.
+    stderr = '\n'.join(
+        ['ac.cpp:1:1: error: [[nodiscard]] x[0] <vector>']
+        + [f'note {i}' for i in range(50)]
+    )
+    fetched = []
+
+    async def fake_fetch(result, path):
+        fetched.append(path)
+        return stderr
+
+    with mock.patch('rbx.box.runners.moj.runner.fetch_compile_stderr', fake_fetch):
+        assert _estimate(runner) is None
+
+    out = capsys.readouterr().out
+    assert fetched == ['sols/ac.cpp']
+    assert "moj calib-report 'alice#rbxt-x-kattis' --host a --sol good-ac.cpp" in (
+        ' '.join(out.split())
+    )
+    assert 'Compiler output on a:' in out
+    assert 'ac.cpp:1:1: error: [[nodiscard]] x[0] <vector>' in out
+    assert 'note 38' in out
+    assert 'note 39' not in out
+    assert '11 more line(s) in the full report' in out
+
+
+@pytest.mark.usefixtures('pkg')
+def test_no_compiler_output_still_quotes_the_report(capsys):
+    hosts = _never_compiled_on('a', 'good', 'ac.cpp')
+    hosts[0].reports = ['good-ac.cpp']
+    runner = _CalibratingRunner(
+        _calibrated(hosts, {'sols/ac.cpp': 'good'}),
+        limits={},
+        calib_hosts=tuple(hosts),
+        files={'sols/ac.cpp': ('good', 'ac.cpp')},
+    )
+
+    async def nothing(result, path):
+        return None
+
+    with mock.patch('rbx.box.runners.moj.runner.fetch_compile_stderr', nothing):
+        assert _estimate(runner) is None
+
+    out = ' '.join(capsys.readouterr().out.split())
+    assert 'See the full report with `moj calib-report' in out
+    assert 'Compiler output' not in out

@@ -32,6 +32,7 @@ Design: `docs/plans/2026-11-01-moj-parallel-run-and-kattis-calibration-design.md
 """
 
 import dataclasses
+import html.parser
 from typing import Dict, List, Optional, Tuple
 
 from rbx.box.runners.moj import cli
@@ -285,31 +286,120 @@ def _at_limit(test: cli.TestrunTest, time_limit_ms: int) -> cli.TestrunTest:
     )
 
 
-def compile_report_command(
+def compile_report(
     result: KattisCalibrationResult, solution_path: str
-) -> Optional[str]:
-    """The `moj calib-report` command that shows why `solution_path` did not
-    compile, from the first judge that failed it and kept a report for it.
+) -> Optional[Tuple[str, str]]:
+    """`(host, report name)` of the report that shows why `solution_path` did not
+    compile: the first judge that failed it and kept a report for it.
 
     That report carries the judge's compiler stderr -- `calib` itself does not.
-    `None` when no such judge listed a report, so no command is quoted that
+    `None` when no such judge listed one, so nothing is fetched or quoted that
     would only answer with a 404.
     """
     key = result.files.get(solution_path)
     if key is None:
         return None
-    category, file = key
-    report = f'{category}-{file}'
+    report = f'{key[0]}-{key[1]}'
     for host in result.calib_hosts:
         for sol in host.sols:
-            if (sol.category, sol.file) == key and sol.failed_to_compile:
-                if report in host.reports:
-                    out = f'moj-calib-{host.host}-{report}.html'
-                    return (
-                        f"moj calib-report '{result.moj_id}' --host {host.host} "
-                        f'--sol {report} -o {out}'
-                    )
+            if (sol.category, sol.file) != key or not sol.failed_to_compile:
+                continue
+            if report in host.reports:
+                return host.host, report
     return None
+
+
+def compile_report_command(
+    result: KattisCalibrationResult, solution_path: str
+) -> Optional[str]:
+    """The `moj calib-report` command that downloads `compile_report`."""
+    found = compile_report(result, solution_path)
+    if found is None:
+        return None
+    host, report = found
+    return (
+        f"moj calib-report '{result.moj_id}' --host {host} --sol {report} "
+        f'-o moj-calib-{host}-{report}.html'
+    )
+
+
+class _CompileStderrParser(html.parser.HTMLParser):
+    """The text of the `stderr` panel's `<pre>` in the `compilacao` section.
+
+    The structure read, observed 2026-11-06 (server build 9c14089):
+
+        <h1 id="compilacao">Erro de compilação</h1>
+        <p class="muted">...</p>
+        <div class="panel-h">stderr</div>
+        <pre class="">...compiler output...</pre>
+        <div class="panel-h">cage-run</div>
+        <pre class="">...sandbox noise...</pre>
+        <h1 id="ambiente">...
+
+    Keyed on the section id and the panel label -- the two things that are names
+    rather than prose -- and bounded by the next `<h1>`, so a report without
+    that exact shape yields nothing instead of the wrong `<pre>`.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._in_section = False
+        self._in_label = False
+        self._label = ''
+        self._armed = False
+        self._in_pre = False
+        self._chunks: List[str] = []
+        self.stderr: Optional[str] = None
+
+    def handle_starttag(self, tag, attrs):
+        if self.stderr is not None:
+            return
+        attributes = dict(attrs)
+        if tag == 'h1':
+            self._in_section = attributes.get('id') == 'compilacao'
+            self._armed = False
+        elif not self._in_section:
+            return
+        elif tag == 'div' and 'panel-h' in (attributes.get('class') or '').split():
+            self._in_label = True
+            self._label = ''
+        elif tag == 'pre' and self._armed:
+            self._in_pre = True
+            self._chunks = []
+
+    def handle_endtag(self, tag):
+        if self._in_label and tag == 'div':
+            self._in_label = False
+            self._armed = self._label.strip() == 'stderr'
+        elif self._in_pre and tag == 'pre':
+            self._in_pre = False
+            self._armed = False
+            self.stderr = ''.join(self._chunks)
+
+    def handle_data(self, data):
+        if self._in_label:
+            self._label += data
+        elif self._in_pre:
+            self._chunks.append(data)
+
+
+def compile_stderr(report_html: str) -> Optional[str]:
+    """The compiler's stderr out of a calibration `report.html`, or `None`.
+
+    Best effort: the report is MOJ's HTML, with no published structure, so a
+    report of any other shape -- an accepted solution's, or a redesigned one --
+    gives `None`, never a guess. An empty panel gives `None` too: there is
+    nothing to show.
+    """
+    parser = _CompileStderrParser()
+    try:
+        parser.feed(report_html)
+        parser.close()
+    except Exception:
+        return None
+    if parser.stderr is None or not parser.stderr.strip():
+        return None
+    return parser.stderr.rstrip('\n')
 
 
 def replay_test(

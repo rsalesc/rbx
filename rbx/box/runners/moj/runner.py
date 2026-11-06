@@ -415,6 +415,31 @@ MOJ_COMPILE_HINT = (
 )
 
 
+async def fetch_compile_stderr(
+    result: kattis.KattisCalibrationResult, solution_path: str
+) -> Optional[str]:
+    """The judge's compiler stderr for a calibrated solution that did not compile.
+
+    One `moj calib-report` download, read by `kattis.compile_stderr`. **Best
+    effort, and only ever extra**: the caller has already said the solution did
+    not compile and quoted the command that shows why, so any failure here -- no
+    report listed, the download refused, a report of another shape -- comes back
+    `None` and costs the setter nothing but this convenience.
+    """
+    found = kattis.compile_report(result, solution_path)
+    if found is None:
+        return None
+    host, report = found
+    with tempfile.TemporaryDirectory(prefix='rbx-moj-report-') as tmp:
+        out = pathlib.Path(tmp) / 'report.html'
+        try:
+            await cli.calib_report(result.moj_id, host, report, out)
+            text = out.read_text(errors='replace')
+        except (cli.MojCliError, OSError):
+            return None
+    return kattis.compile_stderr(text)
+
+
 def _run_never_started(
     solution: 'SolutionSkeleton', run: str, status: cli.TestrunStatus
 ) -> MojRunnerError:

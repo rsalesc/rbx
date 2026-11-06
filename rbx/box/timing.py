@@ -17,6 +17,7 @@ from typing import (
 
 import rich
 import rich.console
+import rich.text
 import typer
 from ordered_set import OrderedSet
 from pydantic import BaseModel, Field
@@ -67,7 +68,7 @@ if TYPE_CHECKING:
     # `solutions` under TYPE_CHECKING, so importing it at run time closes no
     # cycle.
     from rbx.box.runners.base import SolutionRunner
-    from rbx.box.runners.moj.kattis import KattisCalibrationResult
+    from rbx.box.runners.moj.kattis import KattisCalibrationResult, KattisMeasurement
 
 
 class MissingLowerBoundError(RbxException):
@@ -1290,6 +1291,58 @@ def _judges_phrase(reporting: Sequence[str], hosts: Sequence[str]) -> str:
     return f'on {", ".join(reporting)}'
 
 
+# How much of the judge's compiler output is shown inline. The first errors are
+# the ones that matter, and the full report is one quoted command away.
+_MOJ_COMPILE_STDERR_LINES = 40
+
+
+async def _print_moj_compile_error(
+    result: 'KattisCalibrationResult',
+    solution: Solution,
+    measurement: 'KattisMeasurement',
+) -> None:
+    """Say that an accepted solution did not compile on MOJ, and show why.
+
+    The compiler output is not in the calibration, only in the judge's
+    per-solution report, so it is fetched (`fetch_compile_stderr`) and shown when
+    the report reads as expected. The command that downloads the full report is
+    quoted either way, since the inline part is a best-effort scrape.
+    """
+    from rbx.box.runners.moj.kattis import compile_report, compile_report_command
+    from rbx.box.runners.moj.runner import MOJ_COMPILE_HINT, fetch_compile_stderr
+
+    path = str(solution.path)
+    command = compile_report_command(result, path)
+    see = (
+        f'See the full report with `{command}`.'
+        if command is not None
+        else 'Compile the file on its own, with the flags of that script, '
+        'to see the error.'
+    )
+    console.console.print(
+        f'[error]✗ {solution.href()} is expected to be accepted, but it did '
+        f'not compile on MOJ '
+        f'({_judges_phrase(measurement.compile_error_hosts, measurement.hosts)}'
+        f'). {MOJ_COMPILE_HINT} {see}[/error]'
+    )
+    stderr = await fetch_compile_stderr(result, path)
+    found = compile_report(result, path)
+    if stderr is None or found is None:
+        return
+    lines = stderr.splitlines()
+    shown = lines[:_MOJ_COMPILE_STDERR_LINES]
+    console.console.print(f'[status]Compiler output on {found[0]}:[/status]')
+    # Plain `Text`, never markup: compiler output is full of brackets.
+    console.console.print(
+        rich.text.Text('\n'.join(f'  {line}' for line in shown)), soft_wrap=True
+    )
+    if len(lines) > len(shown):
+        console.console.print(
+            f'[status]  ... {len(lines) - len(shown)} more line(s) in the full '
+            f'report.[/status]'
+        )
+
+
 def _render_calibration_report(
     target: rich.console.Console, result: 'KattisCalibrationResult'
 ) -> None:
@@ -1375,8 +1428,7 @@ async def _estimate_with_moj_calibration(
     timeout (at `inferenceTimeout`, MOJ's `CALIBRATIONTL`), a wrong verdict, or a
     solution the judges did not report all stop the estimate.
     """
-    from rbx.box.runners.moj.kattis import compile_report_command
-    from rbx.box.runners.moj.runner import MOJ_COMPILE_HINT, outcome_for_moj_code
+    from rbx.box.runners.moj.runner import outcome_for_moj_code
     from rbx.box.testcase_extractors import extract_generation_testcases_from_groups
 
     lower_solutions = get_inference_solutions(InferenceRole.LOWER)
@@ -1412,19 +1464,7 @@ async def _estimate_with_moj_calibration(
             )
             ok = False
         elif measurement.compile_error_hosts:
-            command = compile_report_command(result, str(solution.path))
-            see = (
-                f'See the compiler output with `{command}`.'
-                if command is not None
-                else 'Compile the file on its own, with the flags of that script, '
-                'to see the error.'
-            )
-            console.console.print(
-                f'[error]✗ {solution.href()} is expected to be accepted, but it did '
-                f'not compile on MOJ '
-                f'({_judges_phrase(measurement.compile_error_hosts, measurement.hosts)}'
-                f'). {MOJ_COMPILE_HINT} {see}[/error]'
-            )
+            await _print_moj_compile_error(result, solution, measurement)
             ok = False
         elif measurement.timed_out:
             console.console.print(

@@ -442,7 +442,10 @@ it unmeasured; a judge on which it never compiled -- no tests, run-level `verdic
 counts as a `CE` bad code, named per judge in `compile_error_hosts`, and replays as
 `CE` on every test; `calib` carries no compiler output, but the judge's
 per-solution report does, so the error quotes `kattis.compile_report_command`
-when `hosts[].reports` lists `<category>-<file>`). The result seeds `_EstimationContext` and `SlowKnowledge`
+when `hosts[].reports` lists `<category>-<file>`, and `runner.fetch_compile_stderr`
+downloads it and scrapes the `stderr` panel of its `#compilacao` section
+(`kattis.compile_stderr`) to show inline -- best effort, `None` on any other
+shape, since the HTML is not a published contract). The result seeds `_EstimationContext` and `SlowKnowledge`
 directly, so picker, groups and profile are reused, and `_validate_upper_bound(
 calibrated=...)` runs nothing.
 
