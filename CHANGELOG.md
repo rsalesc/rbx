@@ -1,3 +1,14 @@
+## 2.5.3 (2026-11-06)
+
+### Feat
+
+- **moj**: let the Interaction section stand in for empty Input/Output (#1019)
+- **contest**: imply the contest variant when only one applies (#1018)
+
+### Fix
+
+- **moj**: report a calibration compile error as CE, not incomplete (#1017)
+
 ## 2.5.2 (2026-11-05)
 
 ### Feat
