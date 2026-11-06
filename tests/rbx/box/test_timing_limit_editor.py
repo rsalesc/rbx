@@ -221,7 +221,9 @@ def test_solutions_table_lists_the_run_all_verdicts_of_the_row():
     cpp = _plain(timing_limit_editor.build_solutions_table(_with_runs(), 0))
     assert 'from rbx time --run-all' in cpp
     assert 'sols/wa.cpp' in cpp and 'sols/Slow.java' not in cpp
-    assert '✓ WA' in cpp and 'at 1000 ms' in cpp and '⚠' not in cpp
+    assert 'WA' in cpp and 'at 1000 ms' in cpp and '⚠' not in cpp
+    # A run that matched carries no mark, like the rest of the table.
+    assert '✓' not in cpp and '✗' not in cpp
     java = _plain(timing_limit_editor.build_solutions_table(_with_runs(), 1))
     assert '✗ AC (partial)' in java
 

@@ -16,6 +16,7 @@ from rbx import console
 from rbx.box import estimation_checksum, limits_info, package, timing_edit
 from rbx.box.formatting import href
 from rbx.box.schema import (
+    ExpectedOutcome,
     InferenceRole,
     LimitsProfile,
     LimitsProfileRun,
@@ -168,7 +169,8 @@ class LimitEditorState:
 
 
 _SOLUTION_STATUS = {
-    timing_edit.SolutionStatus.OK: '[success]✓[/success]',
+    # Blank, so the solutions that need attention stand out.
+    timing_edit.SolutionStatus.OK: '',
     timing_edit.SolutionStatus.THIN: '[warning]⚠ thin margin[/warning]',
     timing_edit.SolutionStatus.FAILS: '[error]✗ fails[/error]',
     timing_edit.SolutionStatus.PASSES: '[error]✗ passes[/error]',
@@ -265,7 +267,11 @@ def build_solutions_table(profile: LimitsProfile, target: Optional[int]):
             ratio += f' [dim](≥ {required:g}×)[/dim]'
         table.add_row(
             rich.markup.escape(check.path),
-            'accepted' if lower else 'too slow',
+            (
+                f'[{ExpectedOutcome.ACCEPTED.style()}]accepted[/]'
+                if lower
+                else f'[{ExpectedOutcome.TIME_LIMIT_EXCEEDED.style()}]too slow[/]'
+            ),
             time,
             allows,
             ratio,
@@ -296,7 +302,8 @@ def _add_run_rows(table, runs: List[LimitsProfileRun], time_limit: int) -> None:
     for run in runs:
         verdict = run.outcome.short_name() if run.outcome is not None else 'not run'
         if run.matchesExpectation:
-            check = f'[success]✓ {verdict}[/success]'
+            # No ✓, as in the rest of the table: only a mismatch should stand out.
+            check = f'[dim]{verdict}[/dim]'
         else:
             check = f'[error]✗ {verdict}[/error]'
         if run.complete is False:
