@@ -847,6 +847,16 @@ def solution_time_cell(time_ms: Optional[int], timed_out: bool = False) -> str:
     return f'>{time_ms} ms' if timed_out else f'{time_ms} ms'
 
 
+def _solution_cell(path: str) -> str:
+    """The solution's link, in its expected outcome's colour like everywhere
+    else in rbx -- or plain, when the problem no longer lists it."""
+    if package.find_problem_package() is not None:
+        solution = package.get_solution_or_nil(path)
+        if solution is not None:
+            return solution.href()
+    return href(path)
+
+
 def _verdict_at_limit(timing: EstimationSolutionTiming, time_limit: int) -> str:
     """What the solution gets at the estimated limit, coloured by whether that is
     what its role expects: an accepted one passing, a too-slow one timing out."""
@@ -885,7 +895,7 @@ def build_solutions_table(
     for timing in profile.solutions:
         timed_out = timing.time is None and timing.survivedAt is not None
         table.add_row(
-            href(timing.path),
+            _solution_cell(timing.path),
             solution_role_cell(timing.role),
             solution_time_cell(
                 timing.survivedAt if timed_out else timing.time, timed_out=timed_out

@@ -8,10 +8,46 @@ from rich.console import Console
 from rbx.box import limits_info
 from rbx.box.schema import (
     EstimationSolutionTiming,
+    ExpectedOutcome,
     InferenceRole,
     LimitModifiers,
     LimitsProfile,
 )
+
+
+def _solution_colors(profile: LimitsProfile) -> dict:
+    out = Console(width=200, file=None)
+    table = limits_info.build_solutions_table(profile)
+    assert table is not None
+    return {
+        segment.text.strip(): segment.style.color.name
+        for segment in out.render(table)
+        if segment.text.strip().startswith('sols/') and segment.style
+        if segment.style.color is not None
+    }
+
+
+def test_solutions_take_their_expected_outcome_colour(testing_pkg):
+    testing_pkg.add_solution('sols/ac.cpp', outcome=ExpectedOutcome.ACCEPTED)
+    testing_pkg.add_solution(
+        'sols/tle.cpp', outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED
+    )
+    profile = LimitsProfile(
+        timeLimit=1000,
+        solutions=[
+            EstimationSolutionTiming(
+                path='sols/ac.cpp', language='cpp', role=InferenceRole.LOWER, time=1
+            ),
+            EstimationSolutionTiming(
+                path='sols/tle.cpp', language='cpp', role=InferenceRole.UPPER, time=9
+            ),
+        ],
+    )
+
+    assert _solution_colors(profile) == {
+        'sols/ac.cpp': ExpectedOutcome.ACCEPTED.style(),
+        'sols/tle.cpp': ExpectedOutcome.TIME_LIMIT_EXCEEDED.style(),
+    }
 
 
 def _rows(profile: LimitsProfile) -> List[List[str]]:
