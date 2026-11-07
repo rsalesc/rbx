@@ -1,3 +1,9 @@
+## 2.6.3 (2026-11-07)
+
+### Feat
+
+- **time**: add --run-pass to run only the passing rest after the estimate (#1030)
+
 ## 2.6.2 (2026-11-07)
 
 ### Feat
