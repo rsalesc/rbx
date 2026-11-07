@@ -1,9 +1,11 @@
 import asyncio
 import fnmatch
 import json
+import pathlib
 import shutil
 import stat
 import subprocess
+from typing import List
 from unittest import mock
 
 import pytest
@@ -446,6 +448,71 @@ def test_points_problems_never_halt_early(testing_pkg, tmp_path):
     assert 'STOPWHEN_WA=y' not in conf
     assert 'STOPWHEN_TLE=y' not in conf
     assert 'STOPWHEN_RE=y' not in conf
+
+
+def _set_serial_package_in_env(testing_pkg) -> None:
+    env_path = testing_pkg.preset.path('env.rbx.yml')
+    env = env_path.read_text()
+    line = '    unifiedTimeLimit: true\n'
+    assert line in env
+    env_path.write_text(env.replace(line, line + '    package:\n      serial: true\n'))
+    testing_utils.clear_all_functools_cache()
+
+
+def _directives(conf_path: pathlib.Path) -> List[str]:
+    return [
+        line
+        for line in conf_path.read_text().splitlines()
+        if line and not line.startswith('#')
+    ]
+
+
+def test_a_package_is_judged_in_parallel_by_default(moj_binary_package):
+    directives = _directives(moj_binary_package / 'conf')
+    assert not [line for line in directives if line.startswith('ALLOWPARALLELTEST')]
+
+
+def test_a_serial_package_judges_one_test_at_a_time_and_halts_at_a_tle(
+    testing_pkg, tmp_path
+):
+    _set_serial_package_in_env(testing_pkg)
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.add_testgroup_with_manual_testcases('samples', [])
+    testing_pkg.save()
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples'])
+    )
+
+    directives = _directives(into_path / 'conf')
+    assert 'ALLOWPARALLELTEST=n' in directives
+    for key in ['STOPWHEN_WA=y', 'STOPWHEN_TLE=y', 'STOPWHEN_RE=y']:
+        assert key in directives
+    assert 'STOPWHEN_TLE=n' not in directives
+
+
+def test_a_serial_points_package_still_never_halts_early(testing_pkg, tmp_path):
+    """One test at a time, a halt fires from the second test on, and
+    score-summary.sh scores every unexecuted group as failed."""
+    _set_serial_package_in_env(testing_pkg)
+    testing_pkg.add_file('check.cpp').write_text(CHECKER)
+    testing_pkg.set_checker('check.cpp')
+    testing_pkg.add_solution('sol.cpp', outcome='accepted').write_text('int main(){}\n')
+    testing_pkg.yml.scoring = ScoreType.POINTS
+    testing_pkg.add_testgroup_with_manual_testcases('samples', [])
+    testing_pkg.add_testgroup_with_manual_testcases('easy', [])
+    testing_pkg.yml.testcases[-1].score = 100
+    testing_pkg.save()
+
+    into_path = run_packager(
+        testing_pkg, tmp_path, build_entries(tmp_path, ['samples', 'easy'])
+    )
+
+    directives = _directives(into_path / 'conf')
+    assert 'ALLOWPARALLELTEST=n' in directives
+    assert not [line for line in directives if line.startswith('STOPWHEN_')]
 
 
 # -- tests ------------------------------------------------------------------

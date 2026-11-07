@@ -56,3 +56,13 @@ def test_serial_calibration_is_read_off_the_environment_extensions():
 def test_serial_calibration_rejects_bad_settings(serial):
     with pytest.raises(ValidationError):
         MojExtension.model_validate({'calibration': {'serial': serial}})
+
+
+def test_package_serial_defaults_to_off():
+    assert MojExtension().package.serial is False
+
+
+def test_package_serial_is_read_off_the_environment_extensions():
+    extensions = Extensions.model_validate({'moj': {'package': {'serial': True}}})
+    assert extensions.moj is not None
+    assert extensions.moj.package.serial is True
