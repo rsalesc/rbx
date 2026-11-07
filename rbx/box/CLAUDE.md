@@ -429,7 +429,9 @@ order and appends it after every other test; `by_name` keeps it.
 `timing.uses_moj_calibration` is false and `rbx time` takes the generic two-phase
 testrun path (`MAX_INFLIGHT_TESTRUNS = 1`, serial judge). `runs` > 1 makes
 `MojRunner._submit_and_poll` testrun each solution that many times for the
-ESTIMATION/VALIDATION purposes (never RUN), round `i > 0` cached under
+ESTIMATION/VALIDATION purposes (never RUN), holding the slot across all of a
+solution's rounds (taken per round, the semaphore's FIFO interleaves every
+solution's rounds; skipped when every round is cached), round `i > 0` cached under
 `<key>-round<i>`, and `_merge_testruns` keeps per test the whole entry (verdict and
 time) of the slowest (`pick: max`) or fastest (`pick: min`) measured round. This is
 not `--runs`/nruns, which the MOJ runner still refuses.

@@ -1464,8 +1464,8 @@ async def test_the_board_names_the_testrun_once_it_is_submitted(
     seen: List[List[str]] = []
     original = runner._wait_for_testrun  # noqa: SLF001
 
-    async def watching(run, solution, board, since):
-        status = await original(run, solution, board, since)
+    async def watching(run, solution, board, *args):
+        status = await original(run, solution, board, *args)
         seen.append([chip.text for chip in board.get(str(solution.path))])
         return status
 
@@ -1806,3 +1806,72 @@ async def test_runs_are_ignored_outside_serial_mode(testing_pkg, tmp_path, monke
     await _run(runner, ctx)
 
     assert len(fake.submissions) == 1
+
+
+async def test_serial_rounds_of_one_solution_run_back_to_back(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """The slot is held across a solution's rounds, so rounds of different
+    solutions do not interleave and the first solution finishes first."""
+    _serial(monkeypatch, enabled=True, runs=2)
+    runner, fake, ctx = await _prepared(
+        testing_pkg,
+        tmp_path,
+        monkeypatch,
+        groups=['samples'],
+        solutions=[
+            ('sol.cpp', ExpectedOutcome.ACCEPTED),
+            ('other.cpp', ExpectedOutcome.ACCEPTED),
+        ],
+        purpose=RunPurpose.ESTIMATION,
+    )
+    fake.results_by_round['sol.cpp'] = _THREE_ROUNDS[:2]
+    fake.results_by_round['other.cpp'] = _THREE_ROUNDS[:2]
+    # A poll that answers `queued` first makes each testrun yield, so the
+    # solutions' tasks really contend for the slot.
+    fake.polls_until_done = 2
+
+    first = runner.run_solution(ctx.skeleton.solutions[0], ctx.skeleton.entries, ctx)
+    second = runner.run_solution(ctx.skeleton.solutions[1], ctx.skeleton.entries, ctx)
+    for deferred in [*first, *second]:
+        await deferred()
+
+    assert [name for _, _, name, _ in fake.submissions] == [
+        'sol.cpp',
+        'sol.cpp',
+        'other.cpp',
+        'other.cpp',
+    ]
+
+
+async def test_serial_rounds_say_which_round_and_how_long_since_queued(
+    testing_pkg, tmp_path, monkeypatch
+):
+    _serial(monkeypatch, enabled=True, runs=2)
+    runner, fake, ctx = await _prepared(
+        testing_pkg,
+        tmp_path,
+        monkeypatch,
+        groups=['samples'],
+        purpose=RunPurpose.ESTIMATION,
+    )
+    fake.results_by_round['sol.cpp'] = _THREE_ROUNDS[:2]
+
+    await _run(runner, ctx)
+
+    texts = [chip.text for chip in ctx.progress_board.get('sol.cpp')]
+    assert 'round 2/2' in texts
+    assert texts[-1].endswith(' since queued')
+
+
+async def test_a_single_run_shows_no_round_chip(testing_pkg, tmp_path, monkeypatch):
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples']
+    )
+    fake.results['sol.cpp'] = _THREE_ROUNDS[0]
+
+    await _run(runner, ctx)
+
+    texts = [chip.text for chip in ctx.progress_board.get('sol.cpp')]
+    assert not any(text.startswith('round ') for text in texts)
+    assert texts[-1].endswith(' since queued')
