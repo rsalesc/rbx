@@ -600,10 +600,17 @@ class TestMojExpander:
         """Third-party code entering the package, exactly as with BOCA."""
         assert remote.MojExpander().needs_review()
 
-    def test_a_submission_still_being_judged_is_not_downloaded(
+    def _raise_not_archived(self, *_args):
+        raise api.MojApiError(
+            'MOJ answered 404 for `/submission/source`: Submission source not found.',
+            status_code=404,
+            code='source_notfound',
+        )
+
+    def test_a_submission_still_being_judged_is_explained(
         self, testing_pkg: testing_package.TestingPackage, monkeypatch
     ):
-        """Observed live on 2026-08-24, and the reason this check exists.
+        """Observed live on 2026-08-24.
 
         MOJ archives the source only after the judging daemon produces a verdict,
         so asking for a pending one gets `404 source_notfound` -- byte for byte
@@ -611,7 +618,6 @@ class TestMojExpander:
         listed. Saying "still judging" is the difference between waiting a moment
         and hunting for a wrong id.
         """
-        downloaded = []
         row = api.SubmissionRow(
             subid=_SUB, lang='cpp', epoch=1755000000, verdict='Not Answered Yet'
         )
@@ -622,17 +628,45 @@ class TestMojExpander:
         monkeypatch.setattr(
             remote.api, 'list_submissions', lambda c, t, any_submission: {_SUB: row}
         )
-        monkeypatch.setattr(
-            remote.api,
-            'download_source',
-            lambda c, t, r: downloaded.append(r) or 'x\n',
-        )
+        monkeypatch.setattr(remote.api, 'download_source', self._raise_not_archived)
 
         with pytest.raises(MojCliError) as exc_info:
             remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
 
         assert 'still judging' in str(exc_info.value)
-        assert not downloaded
+
+    def test_a_submission_awaiting_manual_review_is_downloaded(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        """A pending verdict in the listing does not mean there is no source.
+
+        With manual review, a submission reads `Not Answered Yet` until a judge
+        votes, though the daemon judged it and archived the source long before
+        -- and that source is what the judge reviewing it wants to run. So MOJ is
+        asked rather than second-guessed.
+        """
+        asked = self._serve(
+            monkeypatch,
+            self._rows(_SUB, verdict='Not Answered Yet'),
+            source='int main() {}\n',
+        )
+
+        result = remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        assert result is not None
+        assert result.read_text() == 'int main() {}\n'
+        assert asked['source'] == 1
+
+    def test_a_settled_submission_whose_source_is_gone_is_not_called_pending(
+        self, testing_pkg: testing_package.TestingPackage, monkeypatch
+    ):
+        """ "Still judging" is said only about a row that reads as pending."""
+        self._serve(monkeypatch, self._rows(_SUB), source=self._raise_not_archived)
+
+        with pytest.raises(api.MojApiError) as exc_info:
+            remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
+
+        assert 'still judging' not in str(exc_info.value)
 
     # -- Reusing the listing. --------------------------------------------------
 
@@ -709,7 +743,11 @@ class TestMojExpander:
         self, testing_pkg: testing_package.TestingPackage, monkeypatch
     ):
         """Its verdict is still moving, and the source only exists once it stops."""
-        pending = self._serve(monkeypatch, self._rows(_SUB, verdict='On queue'))
+        pending = self._serve(
+            monkeypatch,
+            self._rows(_SUB, verdict='On queue'),
+            source=self._raise_not_archived,
+        )
         with pytest.raises(MojCliError):
             remote.MojExpander().expand(pathlib.Path(f'@moj/sbc2026/{_SUB}'))
         assert pending['listing'] == 1

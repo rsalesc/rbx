@@ -299,6 +299,22 @@ def test_download_surfaces_a_missing_source(get_calls):
     with pytest.raises(MojCliError) as exc_info:
         api.download_source('sbc2026', 'tok', row)
     assert 'Submission source not found' in str(exc_info.value)
+    # What the expander reads to call a pending submission "still judging".
+    assert isinstance(exc_info.value, api.MojApiError)
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.code == 'source_notfound'
+
+
+def test_an_error_page_without_an_envelope_has_no_code(get_calls):
+    """nginx answers some failures itself, as HTML, with no MOJ error code."""
+    _, holder = get_calls
+    holder['response'] = _Response(status_code=502, text='<html>Bad Gateway</html>')
+    row = api.SubmissionRow(subid=_SUB, lang='cpp', epoch=1755000000)
+
+    with pytest.raises(api.MojApiError) as exc_info:
+        api.download_source('sbc2026', 'tok', row)
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.code is None
 
 
 def test_moj_host_is_sent_when_set(monkeypatch: pytest.MonkeyPatch, get_calls):

@@ -52,6 +52,20 @@ _TIMEOUT_S = 30
 PENDING_VERDICTS = frozenset({'', 'not answered yet', 'on queue', 'running', 'judging'})
 
 
+class MojApiError(MojCliError):
+    """MOJ's API answered a call with an error status.
+
+    Carries the status and MOJ's own error `code` (`source_notfound`,
+    `judge_required`, ...) so a caller can tell one refusal from another without
+    parsing the message, which is for the setter.
+    """
+
+    def __init__(self, message: str, status_code: int, code: Optional[str] = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
+
+
 class SubmissionRow(BaseModel):
     """One line of a MOJ history listing, reduced to what a download needs."""
 
@@ -62,13 +76,15 @@ class SubmissionRow(BaseModel):
 
     @property
     def is_pending(self) -> bool:
-        """Whether the judge is still working on this submission.
+        """Whether the listing still shows this submission as unjudged.
 
-        Worth knowing before a download, because the source is archived by the
-        judging daemon *after* it produces a verdict (`FLOW.md`, step 5). Ask for
-        a pending submission's source and MOJ answers `404 source_notfound` --
-        the same reply it gives for an id that does not exist, about one that
-        plainly does and that rbx has just listed.
+        A hint for reading a failed download, never a reason to skip one. The
+        source is archived by the judging daemon *after* it produces a verdict
+        (`FLOW.md`, step 5), so a submission still being judged answers `404
+        source_notfound` -- the same reply as an id that does not exist. But the
+        listing verdict is not the daemon's: in a contest with manual review a
+        submission reads `Not Answered Yet` until a judge votes, long after the
+        daemon has judged it and archived the source the judge is meant to read.
         """
         return self.verdict.strip().lower() in PENDING_VERDICTS
 
@@ -157,20 +173,24 @@ def _get(path: str, contest: str, token: str, **params: str) -> 'requests.Respon
     # `{"success":false,"error":{"message":..,"code":..}}` on every handled
     # failure; an nginx error page on the rest, which `.json()` refuses.
     message = None
+    code = None
     try:
         body = response.json()
         if isinstance(body, dict):
             error = body.get('error')
             if isinstance(error, dict):
                 message = error.get('message')
+                code = error.get('code')
             message = message or body.get('message')
     except ValueError:
         pass
 
     detail = f': {message}' if message else ''
-    raise MojCliError(
+    raise MojApiError(
         f'MOJ answered {response.status_code} for `{path}`{detail}.\n'
-        f'Contest `{contest}`, server `{base_url()}`.'
+        f'Contest `{contest}`, server `{base_url()}`.',
+        status_code=response.status_code,
+        code=code if isinstance(code, str) else None,
     )
 
 
