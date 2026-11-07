@@ -1136,6 +1136,16 @@ class MojPackager(BasePackager):
 
     # -- time limits ----------------------------------------------------------
 
+    def _serial(self) -> bool:
+        """`extensions.moj.package.serial`, for a package a setter builds.
+
+        A probe decides parallelism and halting from the run it serves (see
+        `_parallelism_lines` and `_stopwhen_lines`), never from this.
+        """
+        if self.probe is not None:
+            return False
+        return environment.get_extension_or_default('moj', MojExtension).package.serial
+
     def _unified_time_limit(self) -> bool:
         """Whether to emit `TLUNIFIED=y`: `extensions.moj.unifiedTimeLimit`.
 
@@ -1430,11 +1440,15 @@ class MojPackager(BasePackager):
                 '# counts as failed -- the submission would lose points it had earned.',
                 '',
             ]
+        # `extensions.moj.package.serial` halts at a TLE too. Never for a POINTS
+        # problem (above): one test at a time, the halt fires from the second
+        # test on, and every later group would be scored as failed.
+        stop_on_tle = 'y' if self._serial() else 'n'
         return [
             '# Halt at the first failing test. The verdict of an all-or-nothing problem',
             '# is already decided by then, so the remaining tests only cost judge time.',
             'STOPWHEN_WA=y',
-            'STOPWHEN_TLE=n',
+            f'STOPWHEN_TLE={stop_on_tle}',
             'STOPWHEN_RE=y',
             '',
         ]
@@ -1466,13 +1480,20 @@ class MojPackager(BasePackager):
 
         Left at MOJ's default for a package a setter builds: there, parallelism is a
         judging-speed feature and the limits are pinned through `TLOVERRIDE`, so what
-        the judge measures decides nothing.
+        the judge measures decides nothing. `extensions.moj.package.serial` is the
+        setter's way to ask for one test at a time anyway (`ALLOWPARALLELTEST=n`).
 
         Note `MAXPARALLELTESTS` is applied *after* this knob and would override
         it. The packager emits it nowhere, and a probe must never grow one.
         """
         if self.probe is None:
-            return []
+            if not self._serial():
+                return []
+            return [
+                '# Judge the testset one test at a time (extensions.moj.package.serial).',
+                'ALLOWPARALLELTEST=n',
+                '',
+            ]
         if self.probe.judge_in_parallel:
             return [
                 '# Judge the testset in parallel, as a student submission is judged:',

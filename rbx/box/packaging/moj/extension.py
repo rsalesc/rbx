@@ -66,6 +66,20 @@ class MojCalibration(RejectsRemovedFields):
     )
 
 
+class MojPackageSettings(RejectsRemovedFields):
+    """How `rbx package moj` asks MOJ to judge the package."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    serial: bool = Field(
+        default=False,
+        description='Judge one test at a time (`ALLOWPARALLELTEST=n` in `conf`) and, '
+        'on an all-or-nothing problem, stop at the first test over the time limit '
+        '(`STOPWHEN_TLE=y`). Off, MOJ judges the tests in parallel and runs every one '
+        'past a timeout.',
+    )
+
+
 class MojExtension(RejectsRemovedFields):
     """Environment-level extensions for MOJ packaging."""
 
@@ -84,6 +98,10 @@ class MojExtension(RejectsRemovedFields):
         'languages, as if they were one. Per-language limits pinned from the `moj` '
         'limits profile still apply on top of it. Toggling it makes MOJ recalibrate '
         'the problem.',
+    )
+    package: MojPackageSettings = Field(
+        default_factory=MojPackageSettings,
+        description='How `rbx package moj` asks MOJ to judge the package.',
     )
     calibration: MojCalibration = Field(
         default_factory=MojCalibration,

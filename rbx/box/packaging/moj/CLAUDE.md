@@ -273,7 +273,10 @@ measures, so it does too.
 
 A package a setter builds is left at MOJ's default: there, parallelism is a
 judging-speed feature and the limits are pinned through `TLOVERRIDE`, so what the judge
-measures decides nothing.
+measures decides nothing. **Unless `extensions.moj.package.serial`** (`MojPackageSettings`,
+setter packages only, read by `MojPackager._serial`): then `ALLOWPARALLELTEST=n`, and a
+BINARY problem's `STOPWHEN_TLE` flips to `y`. A POINTS problem still gets no `STOPWHEN_*`
+-- one test at a time the halt fires from the second test on (see `STOPWHEN_*` above).
 
 **A judging probe is the exception: `rbx run` goes parallel.** `ProbePackage.judge_in_parallel`
 (set by the runner for `RunPurpose.RUN` only) emits `ALLOWPARALLELTEST=y` and `TLERERUN=y`
