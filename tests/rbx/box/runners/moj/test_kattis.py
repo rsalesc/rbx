@@ -1043,3 +1043,31 @@ def test_nothing_is_fetched_when_no_judge_kept_a_report():
             asyncio.run(runner_module.fetch_compile_report(result, 'sols/broken.cpp'))
             is None
         )
+
+
+async def test_run_pass_ships_only_the_passing_rest_to_a_problem_of_its_own(
+    calibrating_pkg, tmp_path, monkeypatch
+):
+    """`--run-pass`: the rest expected to pass, in `pass`; not the wrong one, and
+    no slow one the multipliers do not ask to check."""
+    calibrating_pkg.add_solution('any.cpp', outcome='any').write_text('int main(){}\n')
+    fake = FakeKattisMoj(tmp_path / 'snapshots', [_check(False), _check(True, j=5)])
+    fake.install(monkeypatch)
+    fake.calib_answer = cli.MojCalibration(
+        hosts=[_host('j', [_sol('sol.cpp', 'good', [_test('a', 'AC', 0.1)])], at=5)]
+    )
+
+    await MojRunner().estimate_by_calibration(
+        build_entries(tmp_path, ['samples']),
+        _strategy(timeLimitToTle=None),
+        run_pass=True,
+    )
+
+    problem, uploaded = fake.uploads[-1]
+    assert problem.endswith('-kattis-pass')
+    shipped = sorted(
+        str(path.relative_to(uploaded / 'sols'))
+        for path in (uploaded / 'sols').rglob('*')
+        if path.is_file()
+    )
+    assert shipped == ['good/sol.cpp', 'pass/any.cpp']

@@ -491,6 +491,15 @@ def inference_role_of(solution: Solution) -> Optional[InferenceRole]:
     return None
 
 
+def expected_to_pass(solution: Solution) -> bool:
+    """Whether `problem.rbx.yml` allows this solution an accepted verdict.
+
+    The solutions `rbx time --run-pass` runs once the estimate is done, out of
+    the ones it did not need; MOJ files the same ones under `sols/pass`.
+    """
+    return solution.outcome.match(Outcome.ACCEPTED)
+
+
 def get_inference_solutions(role: InferenceRole) -> List[Solution]:
     return [
         solution

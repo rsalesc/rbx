@@ -770,6 +770,7 @@ class MojRunner:
         progress: Optional['utils.StatusProgress'] = None,
         run_all: bool = False,
         force: bool = False,
+        run_pass: bool = False,
     ) -> kattis.KattisCalibrationResult:
         """Have MOJ measure every solution the estimate is about, and read it back.
 
@@ -789,7 +790,9 @@ class MojRunner:
         estimated limit needs (`kattis.replay_test`). It goes to a problem of its
         own, `<id>-kattis-all`: the fingerprint covers the shipped solutions, so
         the two packages would otherwise evict each other's calibration each time
-        the flag is toggled.
+        the flag is toggled. `run_pass` (`rbx time --run-pass`) ships only the
+        other solutions expected to pass, to `<id>-kattis-pass`, for the same
+        reason.
 
         Skips the upload and the calibration when this machine last uploaded the
         same package to the same problem and the judge reports it calibrated: the
@@ -803,7 +806,7 @@ class MojRunner:
         fingerprint is what gets recorded, so the next unforced run reuses this
         fresh calibration instead of uploading again.
         """
-        mode = _calibrated_mode(strategy, run_all=run_all)
+        mode = _calibrated_mode(strategy, run_all=run_all, run_pass=run_pass)
         shim = _ProgressOnly(progress)
 
         if progress:
@@ -811,7 +814,11 @@ class MojRunner:
         login = await cli.whoami()
         moj_id = problem_id.derived_id(
             self._problem_id(login),
-            KATTIS_ALL_ID_SUFFIX if run_all else KATTIS_ID_SUFFIX,
+            KATTIS_ALL_ID_SUFFIX
+            if run_all
+            else KATTIS_PASS_ID_SUFFIX
+            if run_pass
+            else KATTIS_ID_SUFFIX,
         )
 
         packager = MojPackager(
@@ -2115,6 +2122,8 @@ KATTIS_ID_SUFFIX = 'kattis'
 # `rbx time --run-all`: the same calibration with every solution shipped. See
 # `MojRunner.estimate_by_calibration`.
 KATTIS_ALL_ID_SUFFIX = 'kattis-all'
+# `rbx time --run-pass`: only the passing rest is shipped, another package again.
+KATTIS_PASS_ID_SUFFIX = 'kattis-pass'
 
 
 class _ProgressOnly:
@@ -2125,7 +2134,9 @@ class _ProgressOnly:
 
 
 def _calibrated_mode(
-    strategy: 'timing_config.TimingStrategy', run_all: bool = False
+    strategy: 'timing_config.TimingStrategy',
+    run_all: bool = False,
+    run_pass: bool = False,
 ) -> ProbeCalibrated:
     """The package mode for this strategy, or a refusal naming the field.
 
@@ -2155,7 +2166,8 @@ def _calibrated_mode(
     return ProbeCalibrated(
         cap_ms=strategy.inferenceTimeout,
         ship_slow=multipliers is not None and multipliers.timeLimitToTle is not None,
-        ship_rest=run_all,
+        ship_rest=run_all or run_pass,
+        rest_passing_only=run_pass and not run_all,
         kattis=params,
     )
 
@@ -2184,7 +2196,7 @@ def _shipped_languages(mode: ProbeCalibrated) -> Tuple[str, ...]:
             f'so the judge could not calibrate them:\n{listed}\n'
             f'Give the language a `moj` id in the `extensions.moj` block of '
             f'`env.rbx.yml`, or mark the solutions `inference: false` (and '
-            f'leave `--run-all` off, which ships every solution).'
+            f'leave `--run-all` and `--run-pass` off, which ship the rest).'
         )
     if not languages:
         raise MojRunnerError(

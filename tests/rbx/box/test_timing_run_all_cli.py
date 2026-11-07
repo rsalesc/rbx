@@ -70,6 +70,25 @@ def test_run_all_asks_for_the_extra_run(
     assert seen['run_all'] is True
 
 
+def test_run_pass_asks_for_the_passing_extra_run(
+    runner: CliRunner, testing_pkg: testing_package.TestingPackage
+):
+    result, seen = _invoke(runner, ['time', '--auto', '--run-pass'])
+
+    assert result.exit_code == 0, result.output
+    assert seen['run_pass'] is True
+    assert seen['run_all'] is False
+
+
+def test_run_pass_and_run_all_together_are_refused(
+    runner: CliRunner, testing_pkg: testing_package.TestingPackage
+):
+    result, seen = _invoke(runner, ['time', '--auto', '--run-all', '--run-pass'])
+
+    assert result.exit_code == 1
+    assert not seen
+
+
 def test_fail_fast_reaches_the_extra_run(
     runner: CliRunner, testing_pkg: testing_package.TestingPackage
 ):

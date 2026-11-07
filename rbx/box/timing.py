@@ -1412,6 +1412,7 @@ async def _estimate_with_moj_calibration(
     strategy: timing_config.TimingStrategy,
     run_all: bool = False,
     force_calibration: bool = False,
+    run_pass: bool = False,
 ) -> Optional[
     Tuple[
         _EstimationContext,
@@ -1465,6 +1466,7 @@ async def _estimate_with_moj_calibration(
             progress=s,
             run_all=run_all,
             force=force_calibration,
+            run_pass=run_pass,
         )
 
     console.console.print()
@@ -2106,8 +2108,12 @@ async def _run_remaining(
     keep_checker_stderr: bool = False,
     calibration: Optional['KattisCalibrationResult'] = None,
     recorded: Optional[List[schema.LimitsProfileRun]] = None,
+    only_passing: bool = False,
 ) -> bool:
     """Run whatever the estimate did not, at the limit the estimate produced.
+
+    ``only_passing`` (`rbx time --run-pass`) narrows that to the solutions
+    expected to pass (`expected_to_pass`), leaving the wrong ones unrun.
 
     ``recorded``, when given, receives one `LimitsProfileRun` per solution judged
     here, for the `runs` section of the limits profile.
@@ -2137,15 +2143,19 @@ async def _run_remaining(
     those. A slow solution the upper-bound check already settled is not reported
     as fitting in 2x TL -- that check asked a stricter question and answered it.
     """
+    from rbx.box.solutions import expected_to_pass
+
     remaining = [
         solution
         for solution in package.get_solutions()
         if str(solution.path) not in already_run
+        and (not only_passing or expected_to_pass(solution))
     ]
     if not remaining:
+        which = 'solution expected to pass' if only_passing else 'solution'
         console.console.print(
-            '[status]Every solution already ran while the time limit was being '
-            'estimated. Nothing left to run.[/status]'
+            f'[status]Every {which} already ran while the time limit was being '
+            f'estimated. Nothing left to run.[/status]'
         )
         return True
 
@@ -2383,6 +2393,7 @@ async def compute_time_limits(
     benchmark_level: benchmark.BenchmarkLevel = benchmark.BenchmarkLevel.NONE,
     keep_checker_stderr: bool = False,
     force_calibration: bool = False,
+    run_pass: bool = False,
 ):
     if package.get_main_solution() is None:
         # An error, not a warning: with no accepted solution nothing bounds the
@@ -2394,7 +2405,8 @@ async def compute_time_limits(
 
     # Seeded with what phase 1 is about to run -- every solution that bounds the
     # limit from below -- and added to by phase 2 as it decides which slow ones
-    # it actually has to ask about. `--run-all` runs the complement.
+    # it actually has to ask about. `--run-all` runs the complement, and
+    # `--run-pass` the part of it expected to pass.
     ran: Set[str] = {
         str(solution.path) for solution in get_inference_solutions(InferenceRole.LOWER)
     }
@@ -2407,7 +2419,11 @@ async def compute_time_limits(
         # `_estimate_with_moj_calibration`.
         assert runner is not None
         prepared = await _estimate_with_moj_calibration(
-            runner, strategy, run_all=run_all, force_calibration=force_calibration
+            runner,
+            strategy,
+            run_all=run_all,
+            force_calibration=force_calibration,
+            run_pass=run_pass,
         )
         if prepared is None:
             return None
@@ -2527,7 +2543,7 @@ async def compute_time_limits(
         )
         sharing.capture_and_share(rec, fmt=share, title='rbx time report')
 
-    if not run_all:
+    if not run_all and not run_pass:
         return estimated_tl
 
     recorded: List[schema.LimitsProfileRun] = []
@@ -2545,6 +2561,7 @@ async def compute_time_limits(
             # Shipped every solution, so it already judged them all.
             calibration=calibration,
             recorded=recorded,
+            only_passing=run_pass and not run_all,
         )
     finally:
         # Written a second time, now with the `runs` section, and whether or
