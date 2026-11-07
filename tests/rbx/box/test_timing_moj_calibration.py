@@ -443,6 +443,7 @@ def test_serial_calibration_takes_the_testrun_path(monkeypatch):
     """`extensions.moj.calibration.serial.enabled` opts out of the calibration."""
     serial = MojExtension(
         calibration=MojCalibration(serial=MojSerialCalibration(enabled=True))
+        # `runs` and `pick` sit beside `serial` now, not inside it.
     )
     monkeypatch.setattr(
         environment, 'get_extension_or_default', lambda name, cls: serial

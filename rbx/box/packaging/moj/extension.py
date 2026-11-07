@@ -2,7 +2,7 @@ import typing
 
 from pydantic import ConfigDict, Field, model_validator
 
-from rbx.utils import RejectsRemovedFields
+from rbx.utils import RejectsRemovedFields, Removed
 
 # The language ids mojtools ships a `lang/<id>/` directory for. `py2`/`py3` are legacy
 # spellings that `build-and-test.sh` normalizes to `py`; they stay accepted so a
@@ -42,16 +42,16 @@ class MojSerialCalibration(RejectsRemovedFields):
         'judges every solution at once. Slower, but a solution is never measured '
         'next to another one of the same run.',
     )
-    runs: int = Field(
-        default=1,
-        ge=1,
-        description='How many times to testrun each solution. Each testcase keeps '
-        'one of the times, picked by `pick`.',
+    # Moved up to `calibration` in rbx 2.6.4, where they apply to both paths.
+    runs: typing.Annotated[typing.Optional[int], Removed()] = Field(
+        default=None,
+        deprecated='`extensions.moj.calibration.serial.runs` moved to '
+        '`extensions.moj.calibration.runs`, which also repeats a MOJ calibration.',
     )
-    pick: typing.Literal['max', 'min'] = Field(
-        default='max',
-        description='Which of the `runs` times a testcase keeps: `max`, the slowest, '
-        "or `min`, the fastest. A testcase keeps that run's verdict too.",
+    pick: typing.Annotated[typing.Optional[str], Removed()] = Field(
+        default=None,
+        deprecated='`extensions.moj.calibration.serial.pick` moved to '
+        '`extensions.moj.calibration.pick`.',
     )
 
 
@@ -60,6 +60,18 @@ class MojCalibration(RejectsRemovedFields):
 
     model_config = ConfigDict(extra='forbid')
 
+    runs: int = Field(
+        default=1,
+        ge=1,
+        description='How many times to measure each solution: that many MOJ '
+        'calibrations, or that many testruns of each solution in `serial` mode. '
+        'Each testcase keeps one of the times, picked by `pick`.',
+    )
+    pick: typing.Literal['max', 'min'] = Field(
+        default='max',
+        description='Which of the `runs` times a testcase keeps: `max`, the slowest, '
+        "or `min`, the fastest. A testcase keeps that run's verdict too.",
+    )
     serial: MojSerialCalibration = Field(
         default_factory=MojSerialCalibration,
         description='Measure with serial testruns instead of a MOJ calibration.',
