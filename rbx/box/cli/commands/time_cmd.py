@@ -142,6 +142,7 @@ async def _estimate(
     benchmark_level: int,
     keep_checker_stderr: bool,
     force_calibration: bool = False,
+    run_pass: bool = False,
 ) -> None:
     """The body of `rbx time`, shared with `rbx preship`.
 
@@ -297,6 +298,7 @@ async def _estimate(
         benchmark_level=level,
         keep_checker_stderr=keep_checker_stderr,
         force_calibration=force_calibration,
+        run_pass=run_pass,
     )
     if estimated is None:
         # Every failure of the estimation -- an unsatisfiable range, a solution
@@ -370,6 +372,15 @@ async def time(
             'against the estimated time limit.',
         ),
     ] = False,
+    run_pass: Annotated[
+        bool,
+        typer.Option(
+            '--run-pass',
+            help='Like --run-all, but only run the solutions expected to pass -- an '
+            'accepted one marked inference: false, an accepted-or-tle -- leaving the '
+            'wrong ones unrun.',
+        ),
+    ] = False,
     fail_fast: _FailFast = False,
     keep_checker_stderr: _KeepCheckerStderr = False,
     edit: Annotated[
@@ -405,6 +416,7 @@ async def time(
                 ('--share', share is not None),
                 ('--skip-slow', skip_slow),
                 ('--run-all', run_all),
+                ('--run-pass', run_pass),
                 ('--fail-fast', fail_fast),
                 ('--force-calibration', force_calibration),
             )
@@ -420,6 +432,12 @@ async def time(
 
         await timing_limit_editor.edit_time_limits(profile, dry=dry)
         return
+    if run_all and run_pass:
+        console.console.print(
+            '[error]--run-all already runs every solution --run-pass would; pass '
+            'one of them.[/error]'
+        )
+        raise typer.Exit(1)
     await _estimate(
         check=check,
         validate=validate,
@@ -438,6 +456,7 @@ async def time(
         benchmark_level=benchmark_level,
         keep_checker_stderr=keep_checker_stderr,
         force_calibration=force_calibration,
+        run_pass=run_pass,
     )
 
 

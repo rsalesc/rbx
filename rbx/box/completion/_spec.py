@@ -540,6 +540,16 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Like --run-all, but only run the solutions expected to pass -- '
+                    'an accepted one marked inference: false, an accepted-or-tle -- '
+                    'leaving the wrong ones unrun.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--run-pass'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Whether to stop running a solution as soon as it gets a '
                     'non-accepted verdict. Applies only to the solutions run after '
                     'the estimation, and is only meant for quick experimentation, '

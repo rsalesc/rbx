@@ -81,12 +81,20 @@ class _CalibratingRunner:
         self.files = files or {}
         self.calls: List[timing_config.TimingStrategy] = []
         self.run_all: List[bool] = []
+        self.run_pass: List[bool] = []
 
     async def estimate_by_calibration(
-        self, entries, strategy, progress=None, run_all=False, force=False
+        self,
+        entries,
+        strategy,
+        progress=None,
+        run_all=False,
+        force=False,
+        run_pass=False,
     ):
         self.calls.append(strategy)
         self.run_all.append(run_all)
+        self.run_pass.append(run_pass)
         return KattisCalibrationResult(
             moj_id='alice#rbxt-x-kattis',
             hosts=('judge',),

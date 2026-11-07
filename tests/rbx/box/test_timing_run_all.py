@@ -287,3 +287,35 @@ async def test_a_slow_solution_the_validation_never_ran_stays_off_the_ledger():
 
     assert not mock_run_solutions.called
     assert ledger == set()
+
+
+async def test_only_passing_runs_just_the_solutions_expected_to_pass():
+    """`rbx time --run-pass`: an accepted-or-tle one and an `any` one run; the
+    wrong one and the slow one are left unrun."""
+    solutions = [
+        _solution('sols/ac.cpp', outcome=ExpectedOutcome.ACCEPTED),
+        _solution('sols/aotle.cpp', outcome=ExpectedOutcome.ACCEPTED_OR_TLE),
+        _solution('sols/any.cpp', outcome=ExpectedOutcome.ANY),
+        _solution('sols/slow.cpp', outcome=ExpectedOutcome.TIME_LIMIT_EXCEEDED),
+        _solution('sols/wa.cpp'),
+    ]
+
+    run = await _run_remaining(
+        solutions, already_run=['sols/ac.cpp'], only_passing=True
+    )
+
+    assert run.tracked == ['sols/aotle.cpp', 'sols/any.cpp']
+
+
+async def test_only_passing_runs_nothing_when_no_passing_solution_is_left():
+    solutions = [
+        _solution('sols/ac.cpp', outcome=ExpectedOutcome.ACCEPTED),
+        _solution('sols/wa.cpp'),
+    ]
+
+    run = await _run_remaining(
+        solutions, already_run=['sols/ac.cpp'], only_passing=True
+    )
+
+    assert not run.ran
+    assert run.ok

@@ -275,7 +275,9 @@ class ProbeCalibrated:
       to check (`timeLimitToTle`), or `ship_rest` asked for everything;
     - every other solution, in `sols/wrong` or `sols/pass`, when `ship_rest`
       (`rbx time --run-all`): they decide nothing, and are only judged so the
-      run report can show every solution from the same calibration.
+      run report can show every solution from the same calibration. With
+      `rest_passing_only` (`rbx time --run-pass`), only the ones expected to
+      pass, which all land in `sols/pass`.
 
     `kattis` carries the problem's `timing.multipliers`, only so MOJ's own
     Kattis limit -- which it computes from the same measurements regardless --
@@ -285,6 +287,7 @@ class ProbeCalibrated:
     cap_ms: int
     ship_slow: bool = False
     ship_rest: bool = False
+    rest_passing_only: bool = False
     kattis: Optional[KattisParameters] = None
 
 
@@ -297,10 +300,10 @@ def calibrated_solutions(mode: ProbeCalibrated) -> List[Solution]:
     """
     # Imported here: `solutions` reaches the runners, which import this module.
     from rbx.box.schema import InferenceRole
-    from rbx.box.solutions import get_inference_solutions
+    from rbx.box.solutions import expected_to_pass, get_inference_solutions
 
     shipped = list(get_inference_solutions(InferenceRole.LOWER))
-    if mode.ship_slow or mode.ship_rest:
+    if mode.ship_slow or (mode.ship_rest and not mode.rest_passing_only):
         shipped.extend(get_inference_solutions(InferenceRole.UPPER))
     if mode.ship_rest:
         taken = {str(solution.path) for solution in shipped}
@@ -308,6 +311,7 @@ def calibrated_solutions(mode: ProbeCalibrated) -> List[Solution]:
             solution
             for solution in package.get_solutions()
             if str(solution.path) not in taken
+            and (not mode.rest_passing_only or expected_to_pass(solution))
         )
     return shipped
 
@@ -1915,9 +1919,9 @@ class MojPackager(BasePackager):
         # shipped precisely to be run. `wrong` and `pass` both run, under the same
         # cap; which one only decides the label MOJ shows.
         # Imported here, for the same reason as above.
-        from rbx.grading.steps import Outcome
+        from rbx.box.solutions import expected_to_pass
 
-        return 'pass' if solution.outcome.match(Outcome.ACCEPTED) else 'wrong'
+        return 'pass' if expected_to_pass(solution) else 'wrong'
 
     def solution_content(self, solution: Solution) -> bytes:
         """The bytes to ship for a solution.
