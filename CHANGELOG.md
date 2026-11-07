@@ -1,3 +1,14 @@
+## 2.6.4 (2026-11-07)
+
+### Feat
+
+- **moj**: move runs and pick up to extensions.moj.calibration (#1032)
+- **moj**: add extensions.moj.package.serial to judge a package serially (#1031)
+
+### Refactor
+
+- **moj**: make extensions.moj.calibration.serial a plain boolean (#1033)
+
 ## 2.6.3 (2026-11-07)
 
 ### Feat
