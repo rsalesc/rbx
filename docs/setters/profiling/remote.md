@@ -42,6 +42,22 @@ estimated.
 {{rbx}} remembers what it already asked MOJ to run, so running `rbx time` again on an unchanged
 problem costs no judge time at all.
 
+MOJ runs the solutions side by side, and a solution that uses a lot of memory gets slower
+next to others. To measure each solution alone instead, one test at a time, set
+`extensions.moj.calibration.serial` in your `env.rbx.yml`:
+
+```yaml title="env.rbx.yml"
+extensions:
+  moj:
+    calibration:
+      serial:
+        enabled: true
+        runs: 3    # run each solution 3 times
+        pick: max  # keep each test's slowest time; `min` keeps its fastest
+```
+
+It's slower: each solution waits for the one before it, and runs `runs` times.
+
 To estimate the `moj` profile on your own machine instead, pass `--runner local`.
 
 ### What it needs, and what it cannot tell you
