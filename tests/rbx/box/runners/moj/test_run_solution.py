@@ -1708,10 +1708,17 @@ def test_the_host_is_read_off_a_status_that_carries_one():
 # -- serial calibration: repeated testruns --------------------------------------
 
 
-def _serial(monkeypatch: pytest.MonkeyPatch, **settings) -> None:
-    """`extensions.moj.calibration.serial` set to `settings` for this test."""
+def _serial(
+    monkeypatch: pytest.MonkeyPatch,
+    enabled: bool,
+    runs: int = 1,
+    pick: str = 'max',
+) -> None:
+    """`extensions.moj.calibration` with `serial.enabled`, `runs` and `pick`."""
     moj = MojExtension(
-        calibration=MojCalibration(serial=MojSerialCalibration(**settings))
+        calibration=MojCalibration(
+            runs=runs, pick=pick, serial=MojSerialCalibration(enabled=enabled)
+        )
     )
     original = environment.get_extension_or_default
     monkeypatch.setattr(

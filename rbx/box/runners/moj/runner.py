@@ -21,7 +21,6 @@ import json
 import pathlib
 import re
 import tempfile
-import uuid
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -44,7 +43,7 @@ from rbx.box.code import find_language
 from rbx.box.deferred import Deferred
 from rbx.box.exception import RbxException
 from rbx.box.generation_schema import GenerationTestcaseEntry
-from rbx.box.packaging.moj.extension import MojExtension, MojSerialCalibration
+from rbx.box.packaging.moj.extension import MojCalibration, MojExtension
 from rbx.box.packaging.moj.moj_language_utils import get_moj_language_from_rbx_language
 from rbx.box.packaging.moj.packager import (
     HALT_VERDICTS,
@@ -351,9 +350,9 @@ class _TestrunResult:
     cached: bool = False
 
 
-def _serial_settings() -> MojSerialCalibration:
-    """`extensions.moj.calibration.serial`, defaulted."""
-    return environment.get_extension_or_default('moj', MojExtension).calibration.serial
+def _calibration_settings() -> MojCalibration:
+    """`extensions.moj.calibration`, defaulted."""
+    return environment.get_extension_or_default('moj', MojExtension).calibration
 
 
 def _round_key(key: str, round_index: int) -> str:
@@ -373,17 +372,6 @@ def _since_chip(since: '_Elapsed') -> RunnerChip:
     return RunnerChip(f'{since} since queued')
 
 
-def _pick_test(candidates: List[cli.TestrunTest], pick: str) -> cli.TestrunTest:
-    """The one of a testcase's runs `pick` keeps: the slowest or the fastest
-    measured one. An unmeasured run (no `time`) only wins when no run measured,
-    since it says nothing about how long the testcase takes."""
-    measured = [test for test in candidates if test.time is not None]
-    if not measured:
-        return candidates[-1]
-    choose = max if pick == 'max' else min
-    return choose(measured, key=lambda test: test.time)
-
-
 def _merge_testruns(
     results: List[_TestrunResult], expected_names: List[str], pick: str
 ) -> _TestrunResult:
@@ -400,7 +388,7 @@ def _merge_testruns(
             if name not in names:
                 names.append(name)
     tests = {
-        name: _pick_test(
+        name: cli.pick_test(
             [result.tests[name] for result in results if name in result.tests], pick
         )
         for name in names
@@ -798,13 +786,13 @@ class MojRunner:
         same package to the same problem and the judge reports it calibrated: the
         calibration is then simply read again.
 
-        `force` (`rbx time --force-calibration`) uploads and calibrates anyway, for
-        when the park changed under an unchanged package. The judge keys its own
-        state on the package, and `moj calibrate` does not queue a calibration it
-        considers already done, so re-sending the same bytes is not enough: a
-        nonce comment goes into `conf` (`_force_new_package`). The *clean*
-        fingerprint is what gets recorded, so the next unforced run reuses this
-        fresh calibration instead of uploading again.
+        `force` (`rbx time --force-calibration`) calibrates again anyway, for when
+        the park changed under an unchanged package. No upload is needed for that:
+        `moj calibrate` re-runs the calibration of a package the judge already
+        holds (measured 2026-11-07: two back-to-back requests on an unchanged
+        `rbxt-` package, two fresh calibrations, same `pkg_version`). The same
+        holds for every round after the first under
+        `extensions.moj.calibration.runs`.
         """
         mode = _calibrated_mode(strategy, run_all=run_all, run_pass=run_pass)
         shim = _ProgressOnly(progress)
@@ -856,41 +844,31 @@ class MojRunner:
                 ) from e
             fingerprint = _directory_fingerprint(package_path)
 
-            since = None if force else _recorded_calibration(moj_id, fingerprint)
-            reused = since is not None and (await cli.check(moj_id)).is_ready
-            if not reused:
-                _forget_calibration(moj_id)
-                if force:
-                    _force_new_package(package_path)
-                size = _directory_size(package_path)
-                await _with_ticker(
-                    shim,
-                    cli.upload(moj_id, package_path),
-                    f'Uploading the calibration package to [item]{moj_id}[/item] '
-                    f'([item]{utils.format_size(size)}[/item])... {{elapsed}}',
+            # `extensions.moj.calibration.runs` calibrations, merged per test by
+            # `pick` (`kattis.merge_rounds`). Only the first may reuse an unchanged
+            # package's calibration; every later one is forced, or it would read
+            # that same calibration back again.
+            settings = _calibration_settings()
+            rounds: List[List[cli.CalibHost]] = []
+            reused = False
+            for round_index in range(settings.runs):
+                if settings.runs > 1 and progress:
+                    progress.update(
+                        f'Calibrating on MOJ, round {round_index + 1}/'
+                        f'{settings.runs}...'
+                    )
+                calibration, hosts, reused = await self._calibrate_round(
+                    moj_id,
+                    package_path,
+                    fingerprint,
+                    recalibrate=force or round_index > 0,
+                    progress=progress,
+                    shim=shim,
                 )
-
-        if not reused:
-            # Read *before* queueing: what `moj check` reports right after
-            # `moj calibrate` may still be the previous calibration, and only a
-            # judge that calibrated after this moment describes this package.
-            before = (await cli.check(moj_id)).calibrated_at
-            since = max(before.values(), default=0)
-            queued = await _calibrate_everywhere(moj_id)
-            calibration = await self._wait_for_fresh_calibration(
-                moj_id, since, queued, progress
-            )
-            _record_calibration(moj_id, fingerprint, since)
-        else:
-            calibration = await cli.calib(moj_id)
-
-        hosts = calibration.hosts_after(since)
-        if not hosts:
-            raise MojRunnerError(
-                f'MOJ reports `{moj_id}` calibrated, but no judge calibration newer '
-                f'than the package rbx just sent carries any measurement.\n'
-                f'See what the judges reported with `moj calib {moj_id}`.'
-            )
+                rounds.append(hosts)
+        if settings.runs > 1:
+            hosts = kattis.merge_rounds(rounds, pick=settings.pick)
+            reused = False
         off_cap = kattis.check_cap(hosts, solutions_by_file, mode.cap_ms)
         if off_cap:
             shown = '\n'.join(
@@ -937,6 +915,62 @@ class MojRunner:
             },
             names_by_entry=_names_by_entry(packager),
         )
+
+    async def _calibrate_round(
+        self,
+        moj_id: str,
+        package_path: pathlib.Path,
+        fingerprint: str,
+        recalibrate: bool,
+        progress: Optional['utils.StatusProgress'],
+        shim: '_ProgressOnly',
+    ) -> Tuple[cli.MojCalibration, List[cli.CalibHost], bool]:
+        """One calibration of the package at `package_path`, read back: the whole
+        calibration, the judges that calibrated it, and whether it was reused.
+
+        Reused when this machine last uploaded the same package and the judge
+        reports it calibrated, unless `recalibrate` asks for a fresh one. Uploaded
+        only when the judge may not hold this package: a fresh calibration of one
+        it does hold is just `moj calibrate` again.
+        """
+        recorded = _recorded_calibration(moj_id, fingerprint)
+        reused = (
+            recorded is not None
+            and not recalibrate
+            and (await cli.check(moj_id)).is_ready
+        )
+        since: Optional[int] = recorded
+        if not reused:
+            if recorded is None:
+                _forget_calibration(moj_id)
+                size = _directory_size(package_path)
+                await _with_ticker(
+                    shim,
+                    cli.upload(moj_id, package_path),
+                    f'Uploading the calibration package to [item]{moj_id}[/item] '
+                    f'([item]{utils.format_size(size)}[/item])... {{elapsed}}',
+                )
+            # Read *before* queueing: what `moj check` reports right after
+            # `moj calibrate` may still be the previous calibration, and only a
+            # judge that calibrated after this moment describes this package.
+            before = (await cli.check(moj_id)).calibrated_at
+            since = max(before.values(), default=0)
+            queued = await _calibrate_everywhere(moj_id)
+            calibration = await self._wait_for_fresh_calibration(
+                moj_id, since, queued, progress
+            )
+            _record_calibration(moj_id, fingerprint, since)
+        else:
+            calibration = await cli.calib(moj_id)
+
+        hosts = calibration.hosts_after(since)
+        if not hosts:
+            raise MojRunnerError(
+                f'MOJ reports `{moj_id}` calibrated, but no judge calibration newer '
+                f'than the package rbx just sent carries any measurement.\n'
+                f'See what the judges reported with `moj calib {moj_id}`.'
+            )
+        return calibration, hosts, reused
 
     async def _wait_for_fresh_calibration(
         self,
@@ -1189,7 +1223,8 @@ class MojRunner:
         """Testrun one solution as many times as this run asks, merged per test.
 
         Once, except for an `rbx time` phase under
-        `extensions.moj.calibration.serial` with `runs` above one: then the
+        `extensions.moj.calibration.serial.enabled` with `calibration.runs` above
+        one: then the
         solution is testrun `runs` times, back to back, and each testcase keeps
         the time (and the verdict) of the run `pick` names. See
         `_merge_testruns`.
@@ -1238,16 +1273,18 @@ class MojRunner:
                         slot_held=True,
                     )
                 )
-        return _merge_testruns(results, expected_names, pick=_serial_settings().pick)
+        return _merge_testruns(
+            results, expected_names, pick=_calibration_settings().pick
+        )
 
     def _testrun_rounds(self) -> int:
         """How many testruns each solution of this run gets: `runs` only for an
         `rbx time` phase in serial mode, since a plain `rbx run` wants verdicts,
         not a timing to repeat."""
-        serial = _serial_settings()
-        if not serial.enabled or self._purpose in (None, RunPurpose.RUN):
+        settings = _calibration_settings()
+        if not settings.serial.enabled or self._purpose in (None, RunPurpose.RUN):
             return 1
-        return serial.runs
+        return settings.runs
 
     async def _submit_and_poll_once(
         self,
@@ -2203,20 +2240,6 @@ def _shipped_languages(mode: ProbeCalibrated) -> Tuple[str, ...]:
             'There is no accepted solution to estimate the time limit from.'
         )
     return tuple(languages)
-
-
-def _force_new_package(package_path: pathlib.Path) -> None:
-    """Make the package differ from whatever the judge holds, without changing it.
-
-    A comment line in `conf`, which mojtools sources as shell, so nothing reads
-    it. Unique per call, so a forced run is never mistaken by the judge for the
-    package it already calibrated -- not even the previous forced one.
-    """
-    conf = package_path / 'conf'
-    text = conf.read_text()
-    if text and not text.endswith('\n'):
-        text += '\n'
-    conf.write_text(f'{text}# rbx: forced recalibration {uuid.uuid4().hex}\n')
 
 
 async def _calibrate_everywhere(moj_id: str) -> List[str]:

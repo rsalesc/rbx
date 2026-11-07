@@ -14,6 +14,8 @@ from unittest import mock
 
 import pytest
 
+from rbx.box import environment
+from rbx.box.packaging.moj.extension import MojCalibration, MojExtension
 from rbx.box.runners.moj import cli, kattis
 from rbx.box.runners.moj import runner as runner_module
 from rbx.box.runners.moj.runner import MojRunner, MojRunnerError
@@ -616,12 +618,12 @@ async def test_an_unchanged_package_reads_the_calibration_again(
     assert second.measurements == first.measurements
 
 
-async def test_a_forced_calibration_uploads_a_changed_package_and_calibrates(
+async def test_a_forced_calibration_calibrates_again_without_uploading(
     calibrating_pkg, tmp_path, monkeypatch
 ):
-    """`rbx time --force-calibration`: the judge would not recalibrate the same
-    bytes, so the forced package differs from it -- by a comment, never a setting
-    -- and the next unforced run reuses the fresh calibration."""
+    """`rbx time --force-calibration`: `moj calibrate` recalibrates a package the
+    judge already holds (measured 2026-11-07), so nothing is uploaded again, and
+    the next unforced run reuses the fresh calibration."""
     fake = FakeKattisMoj(
         tmp_path / 'snapshots',
         [_check(False), _check(True, j=5), _check(True, j=5), _check(True, j=9)],
@@ -639,11 +641,99 @@ async def test_a_forced_calibration_uploads_a_changed_package_and_calibrates(
     assert not first.reused
     assert not forced.reused
     assert after.reused
-    assert len(fake.uploads) == 2
+    assert len(fake.uploads) == 1
     assert len(fake.calibrations) == 2
-    (_, clean), (_, changed) = fake.uploads
-    assert _conf(clean) == _conf(changed)
-    assert (clean / 'conf').read_text() != (changed / 'conf').read_text()
+
+
+async def test_runs_calibrates_that_many_times_from_one_upload(
+    calibrating_pkg, tmp_path, monkeypatch
+):
+    """`extensions.moj.calibration.runs`: the first round uploads, every later
+    one just calibrates again."""
+    moj = MojExtension(calibration=MojCalibration(runs=2))
+    original = environment.get_extension_or_default
+    monkeypatch.setattr(
+        environment,
+        'get_extension_or_default',
+        lambda name, cls: moj if name == 'moj' else original(name, cls),
+    )
+    fake = FakeKattisMoj(
+        tmp_path / 'snapshots',
+        [_check(False), _check(True, j=5), _check(True, j=5), _check(True, j=9)],
+    )
+    fake.install(monkeypatch)
+    fake.calib_answer = cli.MojCalibration(
+        hosts=[_host('j', [_sol('sol.cpp', 'good', [_test('a', 'AC', 0.1)])], at=9)]
+    )
+
+    result = await MojRunner().estimate_by_calibration(
+        build_entries(tmp_path, ['samples']), _strategy()
+    )
+
+    assert not result.reused
+    assert len(fake.uploads) == 1
+    assert len(fake.calibrations) == 2
+    assert result.measurements['sol.cpp'].time_ms == 100
+
+
+@pytest.mark.parametrize('pick, expected', [('max', [400, 300]), ('min', [200, 100])])
+def test_merged_rounds_keep_each_test_of_the_picked_round(pick, expected):
+    rounds = [
+        [
+            _host(
+                'j',
+                [
+                    _sol(
+                        'sol.cpp',
+                        'good',
+                        [_test('a', 'AC', 0.2), _test('b', 'AC', 0.3)],
+                    )
+                ],
+            )
+        ],
+        [
+            _host(
+                'j',
+                [
+                    _sol(
+                        'sol.cpp',
+                        'good',
+                        [_test('a', 'AC', 0.4), _test('b', 'AC', 0.1)],
+                    )
+                ],
+            )
+        ],
+    ]
+
+    (host,) = kattis.merge_rounds(rounds, pick=pick)
+
+    (sol,) = host.sols
+    assert [round(test.time * 1000) for test in sol.tests] == expected
+
+
+def test_merged_rounds_keep_a_round_that_did_not_compile():
+    broken = cli.CalibSolution(
+        file='sol.cpp', category='good', tests=[], verdict='Compilation Error'
+    )
+    rounds = [
+        [_host('j', [_sol('sol.cpp', 'good', [_test('a', 'AC', 0.2)])])],
+        [_host('j', [broken])],
+    ]
+
+    (host,) = kattis.merge_rounds(rounds, pick='max')
+
+    assert host.sols[0].failed_to_compile
+
+
+def test_merged_rounds_keep_every_judge_any_round_saw():
+    rounds = [
+        [_host('j1', [_sol('sol.cpp', 'good', [_test('a', 'AC', 0.2)])])],
+        [_host('j2', [_sol('sol.cpp', 'good', [_test('a', 'AC', 0.3)])])],
+    ]
+
+    merged = kattis.merge_rounds(rounds, pick='max')
+
+    assert [host.host for host in merged] == ['j1', 'j2']
 
 
 async def test_ratios_moj_cannot_take_are_refused_before_uploading(

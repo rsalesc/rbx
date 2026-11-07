@@ -427,8 +427,16 @@ order and appends it after every other test; `by_name` keeps it.
 
 **Serial mode (`extensions.moj.calibration.serial`).** With `enabled: true`,
 `timing.uses_moj_calibration` is false and `rbx time` takes the generic two-phase
-testrun path (`MAX_INFLIGHT_TESTRUNS = 1`, serial judge). `runs` > 1 makes
-`MojRunner._submit_and_poll` testrun each solution that many times for the
+testrun path (`MAX_INFLIGHT_TESTRUNS = 1`, serial judge). `calibration.runs` and
+`calibration.pick` sit beside `serial` (they moved out of it in 2.6.4; the old
+spelling is a `Removed()` field) and apply to both paths. On the calibration path,
+`estimate_by_calibration` runs `runs` calibrations through `_calibrate_round` -- only
+the first may reuse, later ones re-queue `moj calibrate` on the package the judge
+already holds, **no re-upload** (measured 2026-11-07: an unchanged `rbxt-` package
+recalibrated twice back to back, same `pkg_version`; `--force-calibration` uses the
+same path) -- and `kattis.merge_rounds` folds them per judge, per test, with
+`cli.pick_test` before `measure_solutions` pools across judges. On the serial path,
+`runs` > 1 makes `MojRunner._submit_and_poll` testrun each solution that many times for the
 ESTIMATION/VALIDATION purposes (never RUN), holding the slot across all of a
 solution's rounds (taken per round, the semaphore's FIFO interleaves every
 solution's rounds; skipped when every round is cached), round `i > 0` cached under

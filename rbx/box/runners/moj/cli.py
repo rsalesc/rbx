@@ -190,6 +190,18 @@ class TestrunTest(BaseModel):
     tl: Optional[float] = None
 
 
+def pick_test(candidates: List[TestrunTest], pick: str) -> TestrunTest:
+    """The one of a testcase's runs `pick` keeps: the slowest (`max`) or the
+    fastest (`min`) measured one, whole -- verdict and time together. An
+    unmeasured run (no `time`) only wins when no run measured, since it says
+    nothing about how long the testcase takes."""
+    measured = [test for test in candidates if test.time is not None]
+    if not measured:
+        return candidates[-1]
+    choose = max if pick == 'max' else min
+    return choose(measured, key=lambda test: test.time)
+
+
 class TestrunStatus(BaseModel):
     """The state of one testrun, as `moj testrun-status` reports it."""
 
@@ -834,7 +846,9 @@ def queued_hosts(output: str) -> List[str]:
 
 
 async def calibrate(problem_id: str, *, all_judges: bool = False) -> List[str]:
-    """Queue a calibration. Repeating it does not queue a second one.
+    """Queue a calibration. Repeating it while one is still queued queues no
+    second one (`already_queued`); once that one is done, it queues a fresh one,
+    of the package the judge holds -- no upload needed (measured 2026-11-07).
 
     Without `all_judges` the request is **global**: the server queues it once and
     whichever judge is free first picks it up. That is what a throwaway probe

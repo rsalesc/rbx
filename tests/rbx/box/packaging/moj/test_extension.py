@@ -34,28 +34,46 @@ def test_unified_time_limit_is_read_off_the_environment_extensions():
     assert extensions.moj.unifiedTimeLimit is True
 
 
-def test_serial_calibration_defaults_to_off_one_run_max():
-    serial = MojExtension().calibration.serial
-    assert (serial.enabled, serial.runs, serial.pick) == (False, 1, 'max')
+def test_calibration_defaults_to_one_run_max_not_serial():
+    calibration = MojExtension().calibration
+    assert (calibration.runs, calibration.pick, calibration.serial.enabled) == (
+        1,
+        'max',
+        False,
+    )
 
 
-def test_serial_calibration_is_read_off_the_environment_extensions():
+def test_calibration_is_read_off_the_environment_extensions():
     extensions = Extensions.model_validate(
         {
             'moj': {
-                'calibration': {'serial': {'enabled': True, 'runs': 3, 'pick': 'min'}}
+                'calibration': {'runs': 3, 'pick': 'min', 'serial': {'enabled': True}}
             }
         }
     )
     assert extensions.moj is not None
-    serial = extensions.moj.calibration.serial
-    assert (serial.enabled, serial.runs, serial.pick) == (True, 3, 'min')
+    calibration = extensions.moj.calibration
+    assert (calibration.runs, calibration.pick, calibration.serial.enabled) == (
+        3,
+        'min',
+        True,
+    )
 
 
-@pytest.mark.parametrize('serial', [{'runs': 0}, {'pick': 'median'}, {'run': 2}])
-def test_serial_calibration_rejects_bad_settings(serial):
+@pytest.mark.parametrize(
+    'calibration', [{'runs': 0}, {'pick': 'median'}, {'run': 2}, {'serial': {'x': 1}}]
+)
+def test_calibration_rejects_bad_settings(calibration):
     with pytest.raises(ValidationError):
-        MojExtension.model_validate({'calibration': {'serial': serial}})
+        MojExtension.model_validate({'calibration': calibration})
+
+
+@pytest.mark.parametrize('field', ['runs', 'pick'])
+def test_the_old_serial_spelling_names_where_the_field_moved(field):
+    with pytest.raises(ValidationError, match=f'calibration.{field}`'):
+        MojExtension.model_validate(
+            {'calibration': {'serial': {'enabled': True, field: 2}}}
+        )
 
 
 def test_package_serial_defaults_to_off():

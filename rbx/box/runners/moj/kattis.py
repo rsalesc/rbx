@@ -178,6 +178,51 @@ def _pool_weakest(
     return None, False, False
 
 
+def merge_rounds(rounds: List[List[cli.CalibHost]], pick: str) -> List[cli.CalibHost]:
+    """Several calibrations of one package, folded into one per judge.
+
+    Per judge, per solution, each test keeps the whole entry -- verdict and time
+    -- of the round `pick` names (`cli.pick_test`), exactly as repeated serial
+    testruns do, so `measure_solutions` then pools over judges as it would for a
+    single calibration. A solution that failed to compile in any round stays that
+    round's: it is broken, and its other rounds' tests say nothing more. A judge
+    that calibrated in only some rounds is merged over those.
+    """
+    by_host: Dict[str, List[cli.CalibHost]] = {}
+    for hosts in rounds:
+        for host in hosts:
+            by_host.setdefault(host.host, []).append(host)
+
+    merged: List[cli.CalibHost] = []
+    for runs in by_host.values():
+        sols: Dict[Tuple[str, str], List[cli.CalibSolution]] = {}
+        for host in runs:
+            for sol in host.sols:
+                sols.setdefault((sol.category, sol.file), []).append(sol)
+        merged_sols: List[cli.CalibSolution] = []
+        for versions in sols.values():
+            broken = [sol for sol in versions if sol.failed_to_compile]
+            if broken:
+                merged_sols.append(broken[-1])
+                continue
+            tests: Dict[str, List[cli.TestrunTest]] = {}
+            for sol in versions:
+                for name, test in sol.by_name.items():
+                    tests.setdefault(name, []).append(test)
+            merged_sols.append(
+                versions[-1].model_copy(
+                    update={
+                        'tests': [
+                            cli.pick_test(candidates, pick)
+                            for candidates in tests.values()
+                        ]
+                    }
+                )
+            )
+        merged.append(runs[-1].model_copy(update={'sols': merged_sols}))
+    return merged
+
+
 def measure_solutions(
     hosts: List[cli.CalibHost],
     solutions_by_file: Dict[Tuple[str, str], Solution],
