@@ -325,17 +325,23 @@ class MojExpander(Expander):
                 )
             )
 
-        if row.is_pending:
-            # The judging daemon archives the source only once it has a verdict,
-            # so downloading now would answer `404 source_notfound` -- the same
-            # reply as for an id that does not exist, about one just listed.
-            raise MojCliError(
-                f'MOJ is still judging submission `{subid}` (`{row.verdict}`).\n'
-                f'Its source is only downloadable once it has a verdict; try '
-                f'again in a moment.'
-            )
-
-        return self._download(contest, token, row)
+        try:
+            return self._download(contest, token, row)
+        except api.MojApiError as e:
+            # A pending verdict is not refused up front: with manual review a
+            # submission reads `Not Answered Yet` until a judge votes, though
+            # the daemon judged it and archived its source long before -- that
+            # source is exactly what a judge wants to run. Only MOJ knows whether
+            # the source exists yet, so it is asked, and its 404 is what gets
+            # explained: about a row just listed, it means "not archived yet",
+            # not "no such submission".
+            if row.is_pending and e.status_code == 404:
+                raise MojCliError(
+                    f'MOJ is still judging submission `{subid}` '
+                    f'(`{row.verdict}`).\nIts source is only downloadable once '
+                    f'the judge has run it; try again in a moment.'
+                ) from e
+            raise
 
 
 REGISTERED_EXPANDERS: List['Expander'] = [
