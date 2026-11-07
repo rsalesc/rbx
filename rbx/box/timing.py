@@ -1290,7 +1290,7 @@ def uses_moj_calibration(
 
     return not environment.get_extension_or_default(
         'moj', MojExtension
-    ).calibration.serial.enabled
+    ).calibration.serial
 
 
 def _judges_phrase(reporting: Sequence[str], hosts: Sequence[str]) -> str:

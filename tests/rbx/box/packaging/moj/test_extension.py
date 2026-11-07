@@ -36,7 +36,7 @@ def test_unified_time_limit_is_read_off_the_environment_extensions():
 
 def test_calibration_defaults_to_one_run_max_not_serial():
     calibration = MojExtension().calibration
-    assert (calibration.runs, calibration.pick, calibration.serial.enabled) == (
+    assert (calibration.runs, calibration.pick, calibration.serial) == (
         1,
         'max',
         False,
@@ -45,15 +45,11 @@ def test_calibration_defaults_to_one_run_max_not_serial():
 
 def test_calibration_is_read_off_the_environment_extensions():
     extensions = Extensions.model_validate(
-        {
-            'moj': {
-                'calibration': {'runs': 3, 'pick': 'min', 'serial': {'enabled': True}}
-            }
-        }
+        {'moj': {'calibration': {'runs': 3, 'pick': 'min', 'serial': True}}}
     )
     assert extensions.moj is not None
     calibration = extensions.moj.calibration
-    assert (calibration.runs, calibration.pick, calibration.serial.enabled) == (
+    assert (calibration.runs, calibration.pick, calibration.serial) == (
         3,
         'min',
         True,
@@ -61,19 +57,12 @@ def test_calibration_is_read_off_the_environment_extensions():
 
 
 @pytest.mark.parametrize(
-    'calibration', [{'runs': 0}, {'pick': 'median'}, {'run': 2}, {'serial': {'x': 1}}]
+    'calibration',
+    [{'runs': 0}, {'pick': 'median'}, {'run': 2}, {'serial': {'enabled': True}}],
 )
 def test_calibration_rejects_bad_settings(calibration):
     with pytest.raises(ValidationError):
         MojExtension.model_validate({'calibration': calibration})
-
-
-@pytest.mark.parametrize('field', ['runs', 'pick'])
-def test_the_old_serial_spelling_names_where_the_field_moved(field):
-    with pytest.raises(ValidationError, match=f'calibration.{field}`'):
-        MojExtension.model_validate(
-            {'calibration': {'serial': {'enabled': True, field: 2}}}
-        )
 
 
 def test_package_serial_defaults_to_off():

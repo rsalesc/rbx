@@ -18,7 +18,6 @@ from rbx.box import environment, package, timing, timing_config
 from rbx.box.packaging.moj.extension import (
     MojCalibration,
     MojExtension,
-    MojSerialCalibration,
 )
 from rbx.box.runners.moj import cli, kattis
 from rbx.box.runners.moj.kattis import KattisCalibrationResult, KattisMeasurement
@@ -440,11 +439,8 @@ def test_every_strategy_with_a_calibrating_backend_takes_this_path():
 
 
 def test_serial_calibration_takes_the_testrun_path(monkeypatch):
-    """`extensions.moj.calibration.serial.enabled` opts out of the calibration."""
-    serial = MojExtension(
-        calibration=MojCalibration(serial=MojSerialCalibration(enabled=True))
-        # `runs` and `pick` sit beside `serial` now, not inside it.
-    )
+    """`extensions.moj.calibration.serial` opts out of the calibration."""
+    serial = MojExtension(calibration=MojCalibration(serial=True))
     monkeypatch.setattr(
         environment, 'get_extension_or_default', lambda name, cls: serial
     )

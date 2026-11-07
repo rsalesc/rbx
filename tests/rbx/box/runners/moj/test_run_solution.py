@@ -26,7 +26,6 @@ from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntr
 from rbx.box.packaging.moj.extension import (
     MojCalibration,
     MojExtension,
-    MojSerialCalibration,
 )
 from rbx.box.runners.base import RunPurpose
 from rbx.box.runners.moj import cli
@@ -1714,12 +1713,8 @@ def _serial(
     runs: int = 1,
     pick: str = 'max',
 ) -> None:
-    """`extensions.moj.calibration` with `serial.enabled`, `runs` and `pick`."""
-    moj = MojExtension(
-        calibration=MojCalibration(
-            runs=runs, pick=pick, serial=MojSerialCalibration(enabled=enabled)
-        )
-    )
+    """`extensions.moj.calibration` with `serial`, `runs` and `pick`."""
+    moj = MojExtension(calibration=MojCalibration(runs=runs, pick=pick, serial=enabled))
     original = environment.get_extension_or_default
     monkeypatch.setattr(
         environment,

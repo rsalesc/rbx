@@ -425,11 +425,10 @@ Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 parallel test to its own CPU group. MOJ then reruns only the *first* TLE in name
 order and appends it after every other test; `by_name` keeps it.
 
-**Serial mode (`extensions.moj.calibration.serial`).** With `enabled: true`,
+**Serial mode (`extensions.moj.calibration.serial: true`).** With it,
 `timing.uses_moj_calibration` is false and `rbx time` takes the generic two-phase
 testrun path (`MAX_INFLIGHT_TESTRUNS = 1`, serial judge). `calibration.runs` and
-`calibration.pick` sit beside `serial` (they moved out of it in 2.6.4; the old
-spelling is a `Removed()` field) and apply to both paths. On the calibration path,
+`calibration.pick` sit beside `serial` and apply to both paths. On the calibration path,
 `estimate_by_calibration` runs `runs` calibrations through `_calibrate_round` -- only
 the first may reuse, later ones re-queue `moj calibrate` on the package the judge
 already holds, **no re-upload** (measured 2026-11-07: an unchanged `rbxt-` package
