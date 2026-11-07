@@ -1360,7 +1360,10 @@ def _render_calibration_report(
     import rich.table
 
     table = rich.table.Table(
-        title=f'MOJ calibration ({", ".join(result.hosts)})', title_justify='left'
+        title=f'MOJ calibration ({", ".join(result.hosts)})',
+        title_justify='left',
+        title_style='bold bright_white',
+        header_style='bold bright_white',
     )
     table.add_column('Solution')
     table.add_column('Role')
@@ -1382,17 +1385,17 @@ def _render_calibration_report(
             verdict = '[warning]incomplete[/warning]'
         else:
             verdict = '[success]AC[/success]'
-        time = '-' if measurement.time_ms is None else f'{measurement.time_ms} ms'
-        if measurement.timed_out and measurement.time_ms is not None:
-            time = f'>{measurement.time_ms} ms'
+        roles = {'good': InferenceRole.LOWER, 'slow': InferenceRole.UPPER}
         table.add_row(
             measurement.solution.href(),
             # `wrong` and `pass` are only shipped under `--run-all`: they bound
             # nothing, and are judged at the estimated limit afterwards.
-            {'good': 'accepted', 'slow': 'too slow'}.get(
-                measurement.category, 'run-all'
+            limits_info.solution_role_cell(roles[measurement.category])
+            if measurement.category in roles
+            else 'run-all',
+            limits_info.solution_time_cell(
+                measurement.time_ms, timed_out=measurement.timed_out
             ),
-            time,
             verdict,
         )
     target.print(table)
@@ -2495,6 +2498,7 @@ async def compute_time_limits(
         limits_path.parent.mkdir(parents=True, exist_ok=True)
         limits_path.write_text(limits_info.profile_to_yaml(limits))
 
+    limits_info.render_solutions_table(limits, title=f'Solution times ({profile})')
     limits_info.render_limits_table(limits, title=f'Time limits ({profile})')
 
     if share is not None:
@@ -2515,6 +2519,9 @@ async def compute_time_limits(
             # Nothing ran locally or by testrun: the calibration *is* the report.
             _render_calibration_report(rec, calibration)
         rec.print()
+        limits_info.render_solutions_table(
+            limits, title=f'Solution times ({profile})', target=rec
+        )
         rec.print(
             limits_info.build_limits_table(limits, title=f'Time limits ({profile})')
         )
