@@ -225,8 +225,8 @@ package by definition).
 rbx time --share png    # or: --share text
 ```
 
-Captures the run report and the limits table and copies it to your clipboard, for pasting into
-wherever the argument about a time limit is happening.
+Captures the run report, each solution's time and the limits table, and copies them to your
+clipboard, for pasting into wherever the argument about a time limit is happening.
 
 ## Every flag
 

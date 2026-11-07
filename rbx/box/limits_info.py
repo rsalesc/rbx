@@ -2,7 +2,7 @@ import contextvars
 import functools
 import pathlib
 import re
-from typing import Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional
 
 import typer
 from pydantic import BaseModel
@@ -10,8 +10,11 @@ from pydantic import BaseModel
 from rbx import console, utils
 from rbx.box import package, timing_edit
 from rbx.box.environment import VerificationLevel
+from rbx.box.formatting import href
 from rbx.box.schema import (
+    EstimationSolutionTiming,
     ExpectedOutcome,
+    InferenceRole,
     LimitModifiers,
     LimitsProfile,
     TimingBound,
@@ -20,6 +23,10 @@ from rbx.box.schema import (
 )
 from rbx.box.yaml_validation import load_yaml_model
 from rbx.grading.limits import Limits
+
+if TYPE_CHECKING:
+    import rich.console
+    import rich.table
 
 profile_var = contextvars.ContextVar[Optional[str]]('profile', default=None)
 
@@ -818,3 +825,82 @@ def render_limits_table(
     profile: LimitsProfile, title: str = 'Time limits', show_check: bool = False
 ) -> None:
     console.console.print(build_limits_table(profile, title, show_check=show_check))
+
+
+# -- the per-solution table ---------------------------------------------------
+#
+# One row per solution a limit was estimated from, printed right before the limits
+# table on every `rbx time` path -- local, testrun or MOJ calibration alike -- so
+# the setter sees the times behind the limits whatever measured them. The MOJ
+# calibration report draws its rows with the same cells.
+
+
+def solution_role_cell(role: InferenceRole) -> str:
+    """Which side of the limit a solution bounds, in the table's words."""
+    return 'accepted' if role == InferenceRole.LOWER else 'too slow'
+
+
+def solution_time_cell(time_ms: Optional[int], timed_out: bool = False) -> str:
+    """A measured time; `>N ms` when it was still running at `N`; `-` unmeasured."""
+    if time_ms is None:
+        return '-'
+    return f'>{time_ms} ms' if timed_out else f'{time_ms} ms'
+
+
+def _verdict_at_limit(timing: EstimationSolutionTiming, time_limit: int) -> str:
+    """What the solution gets at the estimated limit, coloured by whether that is
+    what its role expects: an accepted one passing, a too-slow one timing out."""
+    expects_tle = timing.role == InferenceRole.UPPER
+    if timing.time is not None:
+        tle = timing.time > time_limit
+    elif timing.survivedAt is not None:
+        tle = timing.survivedAt >= time_limit
+        if not tle:
+            # Seen running at a lower limit only: says nothing about this one.
+            return '[bright_black]unknown[/bright_black]'
+    else:
+        return '[bright_black]not run[/bright_black]'
+    style = 'success' if tle == expects_tle else 'error'
+    return f'[{style}]{"TLE" if tle else "AC"}[/{style}]'
+
+
+def build_solutions_table(
+    profile: LimitsProfile, title: str = 'Solution times'
+) -> Optional['rich.table.Table']:
+    """The solutions `profile` was estimated from, or `None` if it recorded none."""
+    import rich.table
+
+    if not profile.solutions:
+        return None
+    table = rich.table.Table(
+        title=title,
+        title_justify='left',
+        title_style='bold bright_white',
+        header_style='bold bright_white',
+    )
+    table.add_column('Solution')
+    table.add_column('Role')
+    table.add_column('Time', justify='right')
+    table.add_column('At limit')
+    for timing in profile.solutions:
+        timed_out = timing.time is None and timing.survivedAt is not None
+        table.add_row(
+            href(timing.path),
+            solution_role_cell(timing.role),
+            solution_time_cell(
+                timing.survivedAt if timed_out else timing.time, timed_out=timed_out
+            ),
+            _verdict_at_limit(timing, profile.timelimit_for_language(timing.language)),
+        )
+    return table
+
+
+def render_solutions_table(
+    profile: LimitsProfile,
+    title: str = 'Solution times',
+    target: Optional['rich.console.Console'] = None,
+) -> None:
+    """Print `build_solutions_table`, if the profile recorded any solution."""
+    table = build_solutions_table(profile, title)
+    if table is not None:
+        (target or console.console).print(table)
