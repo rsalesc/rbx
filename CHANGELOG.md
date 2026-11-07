@@ -1,3 +1,21 @@
+## 2.6.2 (2026-11-07)
+
+### Feat
+
+- **time**: show a per-solution times table before the limits table (#1028)
+- **moj**: add extensions.moj.calibration.serial for serial testrun timing (#1026)
+- **time**: add --force-calibration to recalibrate an unchanged package (#1024)
+
+### Fix
+
+- **time**: colour the solution times table by expected outcome (#1029)
+- **moj**: run a solution's serial rounds back to back and label them (#1027)
+- **time**: show the last run beside a profile only when both used the same runner (#1023)
+
+### Perf
+
+- **moj**: pin the calibration probe's cap without TLMOD sums (#1025)
+
 ## 2.6.1 (2026-11-06)
 
 ### Feat

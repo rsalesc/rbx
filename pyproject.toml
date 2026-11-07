@@ -1,6 +1,6 @@
 [project]
 name = "rbx-cp"
-version = "2.6.1"
+version = "2.6.2"
 description = ""
 readme = "README.md"
 requires-python = ">=3.10"
