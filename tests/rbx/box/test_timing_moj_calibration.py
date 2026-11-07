@@ -14,7 +14,12 @@ from unittest import mock
 
 import pytest
 
-from rbx.box import package, timing, timing_config
+from rbx.box import environment, package, timing, timing_config
+from rbx.box.packaging.moj.extension import (
+    MojCalibration,
+    MojExtension,
+    MojSerialCalibration,
+)
 from rbx.box.runners.moj import cli, kattis
 from rbx.box.runners.moj.kattis import KattisCalibrationResult, KattisMeasurement
 from rbx.box.runners.moj.runner import CompileReport
@@ -424,6 +429,19 @@ def test_every_strategy_with_a_calibrating_backend_takes_this_path():
     assert timing.uses_moj_calibration(runner, formula)
     assert not timing.uses_moj_calibration(None, _strategy())
     assert not timing.uses_moj_calibration(object(), _strategy())
+
+
+def test_serial_calibration_takes_the_testrun_path(monkeypatch):
+    """`extensions.moj.calibration.serial.enabled` opts out of the calibration."""
+    serial = MojExtension(
+        calibration=MojCalibration(serial=MojSerialCalibration(enabled=True))
+    )
+    monkeypatch.setattr(
+        environment, 'get_extension_or_default', lambda name, cls: serial
+    )
+    runner = _CalibratingRunner([], limits={})
+
+    assert not timing.uses_moj_calibration(runner, _strategy())
 
 
 @pytest.mark.usefixtures('pkg')

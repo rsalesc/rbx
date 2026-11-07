@@ -42,6 +42,7 @@ from rbx.box.code import find_language
 from rbx.box.deferred import Deferred
 from rbx.box.exception import RbxException
 from rbx.box.generation_schema import GenerationTestcaseEntry
+from rbx.box.packaging.moj.extension import MojExtension, MojSerialCalibration
 from rbx.box.packaging.moj.moj_language_utils import get_moj_language_from_rbx_language
 from rbx.box.packaging.moj.packager import (
     HALT_VERDICTS,
@@ -348,6 +349,53 @@ class _TestrunResult:
     cached: bool = False
 
 
+def _serial_settings() -> MojSerialCalibration:
+    """`extensions.moj.calibration.serial`, defaulted."""
+    return environment.get_extension_or_default('moj', MojExtension).calibration.serial
+
+
+def _pick_test(candidates: List[cli.TestrunTest], pick: str) -> cli.TestrunTest:
+    """The one of a testcase's runs `pick` keeps: the slowest or the fastest
+    measured one. An unmeasured run (no `time`) only wins when no run measured,
+    since it says nothing about how long the testcase takes."""
+    measured = [test for test in candidates if test.time is not None]
+    if not measured:
+        return candidates[-1]
+    choose = max if pick == 'max' else min
+    return choose(measured, key=lambda test: test.time)
+
+
+def _merge_testruns(
+    results: List[_TestrunResult], expected_names: List[str], pick: str
+) -> _TestrunResult:
+    """Several testruns of one solution, folded into one result per testcase.
+
+    A testcase keeps the whole entry of the run `pick` picks, verdict included,
+    rather than one run's verdict and another's time: a TLE with an AC's time is
+    a result no run produced. A testcase any run reported is reported; the
+    missing ones are those no run reported.
+    """
+    names: List[str] = []
+    for result in results:
+        for name in result.tests:
+            if name not in names:
+                names.append(name)
+    tests = {
+        name: _pick_test(
+            [result.tests[name] for result in results if name in result.tests], pick
+        )
+        for name in names
+    }
+    return _TestrunResult(
+        run=', '.join(result.run for result in results),
+        tests=tests,
+        expected=len(expected_names),
+        missing=[name for name in expected_names if name not in tests],
+        verdict=results[-1].verdict,
+        cached=all(result.cached for result in results),
+    )
+
+
 def _retrieve_exception(task: 'asyncio.Task') -> None:
     """Consume a background testrun's exception so nothing else has to.
 
@@ -585,6 +633,8 @@ class MojRunner:
         # to be the ones the *uploaded* package used, not the ones a fresh
         # packager would produce from whatever the tree holds now.
         self._moj_id: Optional[str] = None
+        # The purpose `prepare` staged for; see `_testrun_rounds`.
+        self._purpose: Optional[RunPurpose] = None
         self._packager: Optional[MojPackager] = None
         self._names_by_entry: Optional[Dict[Tuple[str, int], str]] = None
         # The fingerprint of the probe package this run measures against, set
@@ -619,6 +669,7 @@ class MojRunner:
         login = await cli.whoami()
 
         purpose = ctx.purpose
+        self._purpose = purpose
         # One remote problem per purpose. They run under different limits and
         # different stop rules, and both live *in the package*, so a single
         # problem would be re-uploaded and re-calibrated every time two purposes
@@ -1109,6 +1160,49 @@ class MojRunner:
         expected_names: List[str],
         board: RunProgress,
     ) -> '_TestrunResult':
+        """Testrun one solution as many times as this run asks, merged per test.
+
+        Once, except for an `rbx time` phase under
+        `extensions.moj.calibration.serial` with `runs` above one: then the
+        solution is testrun `runs` times, back to back, and each testcase keeps
+        the time (and the verdict) of the run `pick` names. See
+        `_merge_testruns`.
+
+        Round 0 keys the cache exactly as a single run does, so turning `runs` up
+        reuses what a single run already measured; every later round adds its
+        index to the key, so it is a measurement of its own rather than a replay
+        of the first one.
+        """
+        rounds = self._testrun_rounds()
+        if rounds == 1:
+            return await self._submit_and_poll_once(
+                solution, expected_names, board, round_index=0
+            )
+        results = []
+        for round_index in range(rounds):
+            results.append(
+                await self._submit_and_poll_once(
+                    solution, expected_names, board, round_index=round_index
+                )
+            )
+        return _merge_testruns(results, expected_names, pick=_serial_settings().pick)
+
+    def _testrun_rounds(self) -> int:
+        """How many testruns each solution of this run gets: `runs` only for an
+        `rbx time` phase in serial mode, since a plain `rbx run` wants verdicts,
+        not a timing to repeat."""
+        serial = _serial_settings()
+        if not serial.enabled or self._purpose in (None, RunPurpose.RUN):
+            return 1
+        return serial.runs
+
+    async def _submit_and_poll_once(
+        self,
+        solution: 'SolutionSkeleton',
+        expected_names: List[str],
+        board: RunProgress,
+        round_index: int,
+    ) -> '_TestrunResult':
         """Submit one solution and wait for its verdicts, keyed by MOJ test name.
 
         Holds a slot for the whole submit-and-wait, not just for the submit: what
@@ -1140,6 +1234,8 @@ class MojRunner:
         """
         content = self._solution_content(solution)
         key = self._cache_key(solution, content)
+        if round_index > 0:
+            key = f'{key}-round{round_index}'
 
         cached = _load_cached_testrun(key)
         if cached is not None:
