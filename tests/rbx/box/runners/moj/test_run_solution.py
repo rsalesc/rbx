@@ -21,7 +21,14 @@ from typing import Dict, List, Optional, Tuple
 import pytest
 
 from rbx import utils
+from rbx.box import environment
 from rbx.box.generation_schema import GenerationMetadata, GenerationTestcaseEntry
+from rbx.box.packaging.moj.extension import (
+    MojCalibration,
+    MojExtension,
+    MojSerialCalibration,
+)
+from rbx.box.runners.base import RunPurpose
 from rbx.box.runners.moj import cli
 from rbx.box.runners.moj import runner as runner_module
 from rbx.box.runners.moj.runner import MojRunner, MojRunnerError
@@ -110,6 +117,10 @@ class FakeJudge(FakeMoj):
         # solution filename -> the `tests` array to answer with, in the order the
         # judge chooses to report it.
         self.results: Dict[str, List[cli.TestrunTest]] = {}
+        # solution filename -> one `tests` array per testrun of it, in submission
+        # order, for a run that testruns a solution more than once. Takes
+        # precedence over `results` when set.
+        self.results_by_round: Dict[str, List[List[cli.TestrunTest]]] = {}
         # solution filename -> the *whole* finished status to answer with, for the
         # shapes `results` cannot express: a run that failed as a whole and never
         # entered the testset carries a verdict and a `total_tests`, and those two
@@ -156,6 +167,16 @@ class FakeJudge(FakeMoj):
         filename = self.filename_of(run)
         if filename in self.statuses:
             return self.statuses[filename]
+        if filename in self.results_by_round:
+            earlier = [
+                submitted
+                for submitted, _, name, _ in self.submissions
+                if name == filename
+            ]
+            return cli.TestrunStatus(
+                status='done',
+                tests=self.results_by_round[filename][earlier.index(run)],
+            )
         return cli.TestrunStatus(status='done', tests=self.results[filename])
 
     def filename_of(self, run: str) -> str:
@@ -184,6 +205,7 @@ async def _prepared(
     solutions=None,
     entries: Optional[List[GenerationTestcaseEntry]] = None,
     progress: Optional[RecordingProgress] = None,
+    purpose: Optional[RunPurpose] = None,
 ):
     """A runner that has already uploaded and calibrated, and its fake judge."""
     minimal_package(testing_pkg)
@@ -200,6 +222,7 @@ async def _prepared(
         if entries is not None
         else build_entries(tmp_path, groups or ['samples', 'main']),
         solutions=solutions,
+        purpose=purpose,
     )
     ctx.progress = progress
     runner = MojRunner()
@@ -1680,3 +1703,106 @@ def test_the_host_is_read_off_a_status_that_carries_one():
     """
     assert cli.TestrunStatus(status='done', host='judge-sp1').host == 'judge-sp1'
     assert cli.TestrunStatus(status='done').host is None
+
+
+# -- serial calibration: repeated testruns --------------------------------------
+
+
+def _serial(monkeypatch: pytest.MonkeyPatch, **settings) -> None:
+    """`extensions.moj.calibration.serial` set to `settings` for this test."""
+    moj = MojExtension(
+        calibration=MojCalibration(serial=MojSerialCalibration(**settings))
+    )
+    original = environment.get_extension_or_default
+    monkeypatch.setattr(
+        environment,
+        'get_extension_or_default',
+        lambda name, cls: moj if name == 'moj' else original(name, cls),
+    )
+
+
+_THREE_ROUNDS = [
+    [_test(SAMPLE_NAMES[0], 'AC', 0.30), _test(SAMPLE_NAMES[1], 'AC', 0.10)],
+    [_test(SAMPLE_NAMES[0], 'AC', 0.20), _test(SAMPLE_NAMES[1], 'TLE', 1.50)],
+    [_test(SAMPLE_NAMES[0], 'AC', 0.40), _test(SAMPLE_NAMES[1], 'AC', 0.05)],
+]
+
+
+@pytest.mark.parametrize(
+    'pick, expected',
+    [
+        ('max', [(Outcome.ACCEPTED, 0.40), (Outcome.TIME_LIMIT_EXCEEDED, 1.50)]),
+        ('min', [(Outcome.ACCEPTED, 0.20), (Outcome.ACCEPTED, 0.05)]),
+    ],
+)
+async def test_serial_runs_testrun_each_solution_n_times_and_pick_per_test(
+    pick, expected, testing_pkg, tmp_path, monkeypatch
+):
+    """Each testcase keeps the time -- and the verdict -- of the run `pick` names."""
+    _serial(monkeypatch, enabled=True, runs=3, pick=pick)
+    runner, fake, ctx = await _prepared(
+        testing_pkg,
+        tmp_path,
+        monkeypatch,
+        groups=['samples'],
+        purpose=RunPurpose.ESTIMATION,
+    )
+    fake.results_by_round['sol.cpp'] = _THREE_ROUNDS
+
+    evals = await _run(runner, ctx)
+
+    assert len(fake.submissions) == 3
+    assert [(e.result.outcome, e.log.time) for e in evals] == expected
+
+
+async def test_serial_runs_are_cached_per_round(testing_pkg, tmp_path, monkeypatch):
+    """A second `rbx time` replays all three rounds instead of re-measuring, and
+    does not answer every round from the first one's cache entry."""
+    _serial(monkeypatch, enabled=True, runs=3, pick='max')
+    runner, fake, ctx = await _prepared(
+        testing_pkg,
+        tmp_path,
+        monkeypatch,
+        groups=['samples'],
+        purpose=RunPurpose.ESTIMATION,
+    )
+    fake.results_by_round['sol.cpp'] = _THREE_ROUNDS
+    await _run(runner, ctx)
+
+    again = MojRunner()
+    await again.prepare(ctx)
+    evals = await _run(again, ctx)
+
+    assert len(fake.submissions) == 3
+    assert [e.log.time for e in evals] == [0.40, 1.50]
+
+
+async def test_a_plain_run_testruns_once_even_in_serial_mode(
+    testing_pkg, tmp_path, monkeypatch
+):
+    """`runs` repeats the `rbx time` measurements, not a plain `rbx run`."""
+    _serial(monkeypatch, enabled=True, runs=3)
+    runner, fake, ctx = await _prepared(
+        testing_pkg, tmp_path, monkeypatch, groups=['samples'], purpose=RunPurpose.RUN
+    )
+    fake.results['sol.cpp'] = _THREE_ROUNDS[0]
+
+    await _run(runner, ctx)
+
+    assert len(fake.submissions) == 1
+
+
+async def test_runs_are_ignored_outside_serial_mode(testing_pkg, tmp_path, monkeypatch):
+    _serial(monkeypatch, enabled=False, runs=3)
+    runner, fake, ctx = await _prepared(
+        testing_pkg,
+        tmp_path,
+        monkeypatch,
+        groups=['samples'],
+        purpose=RunPurpose.ESTIMATION,
+    )
+    fake.results['sol.cpp'] = _THREE_ROUNDS[0]
+
+    await _run(runner, ctx)
+
+    assert len(fake.submissions) == 1

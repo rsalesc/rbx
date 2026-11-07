@@ -425,9 +425,18 @@ Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 parallel test to its own CPU group. MOJ then reruns only the *first* TLE in name
 order and appends it after every other test; `by_name` keeps it.
 
-**`rbx time --runner moj` runs no testruns at all, whatever the strategy.**
-`timing.uses_moj_calibration` (true for any backend with `estimate_by_calibration`)
-routes it to `_estimate_with_moj_calibration`, which calls
+**Serial mode (`extensions.moj.calibration.serial`).** With `enabled: true`,
+`timing.uses_moj_calibration` is false and `rbx time` takes the generic two-phase
+testrun path (`MAX_INFLIGHT_TESTRUNS = 1`, serial judge). `runs` > 1 makes
+`MojRunner._submit_and_poll` testrun each solution that many times for the
+ESTIMATION/VALIDATION purposes (never RUN), round `i > 0` cached under
+`<key>-round<i>`, and `_merge_testruns` keeps per test the whole entry (verdict and
+time) of the slowest (`pick: max`) or fastest (`pick: min`) measured round. This is
+not `--runs`/nruns, which the MOJ runner still refuses.
+
+**Otherwise `rbx time --runner moj` runs no testruns at all, whatever the strategy.**
+`timing.uses_moj_calibration` (true for any backend with `estimate_by_calibration`,
+unless serial mode is on) routes it to `_estimate_with_moj_calibration`, which calls
 `MojRunner.estimate_by_calibration`: one `ProbeCalibrated(cap_ms, ship_slow,
 ship_rest, kattis)` package (LOWER solutions in `sols/good`, UPPER in `sols/slow`
 only when the multipliers set `timeLimitToTle`, filed by inference role, all chosen

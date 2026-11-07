@@ -30,6 +30,42 @@ MojLanguage = typing.Literal[
 ]
 
 
+class MojSerialCalibration(RejectsRemovedFields):
+    """How `rbx time --runner moj` measures when it testruns serially."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    enabled: bool = Field(
+        default=False,
+        description='Estimate `rbx time --runner moj` from serial testruns, one '
+        'solution and one test at a time, instead of one MOJ calibration that '
+        'judges every solution at once. Slower, but a solution is never measured '
+        'next to another one of the same run.',
+    )
+    runs: int = Field(
+        default=1,
+        ge=1,
+        description='How many times to testrun each solution. Each testcase keeps '
+        'one of the times, picked by `pick`.',
+    )
+    pick: typing.Literal['max', 'min'] = Field(
+        default='max',
+        description='Which of the `runs` times a testcase keeps: `max`, the slowest, '
+        "or `min`, the fastest. A testcase keeps that run's verdict too.",
+    )
+
+
+class MojCalibration(RejectsRemovedFields):
+    """How `rbx time --runner moj` measures solutions on MOJ."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    serial: MojSerialCalibration = Field(
+        default_factory=MojSerialCalibration,
+        description='Measure with serial testruns instead of a MOJ calibration.',
+    )
+
+
 class MojExtension(RejectsRemovedFields):
     """Environment-level extensions for MOJ packaging."""
 
@@ -48,6 +84,10 @@ class MojExtension(RejectsRemovedFields):
         'languages, as if they were one. Per-language limits pinned from the `moj` '
         'limits profile still apply on top of it. Toggling it makes MOJ recalibrate '
         'the problem.',
+    )
+    calibration: MojCalibration = Field(
+        default_factory=MojCalibration,
+        description='How `rbx time --runner moj` measures solutions on MOJ.',
     )
     strictStatement: bool = Field(
         default=False,

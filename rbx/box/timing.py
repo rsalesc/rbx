@@ -1282,7 +1282,15 @@ def uses_moj_calibration(
     has no counterpart for.
     """
     del strategy  # Every strategy calibrates; kept for the callers' symmetry.
-    return callable(getattr(runner, 'estimate_by_calibration', None))
+    if not callable(getattr(runner, 'estimate_by_calibration', None)):
+        return False
+    # `extensions.moj.calibration.serial` asks for the two-phase testrun path
+    # instead: one solution, one test at a time, never next to another one.
+    from rbx.box.packaging.moj.extension import MojExtension
+
+    return not environment.get_extension_or_default(
+        'moj', MojExtension
+    ).calibration.serial.enabled
 
 
 def _judges_phrase(reporting: Sequence[str], hosts: Sequence[str]) -> str:
