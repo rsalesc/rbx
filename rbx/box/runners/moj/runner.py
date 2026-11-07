@@ -14,6 +14,7 @@ Design: `docs/plans/2026-08-20-moj-remote-runner-design.md`.
 """
 
 import asyncio
+import contextlib
 import dataclasses
 import hashlib
 import json
@@ -29,6 +30,7 @@ from typing import (
     FrozenSet,
     List,
     Optional,
+    Sequence,
     Tuple,
     TypeVar,
 )
@@ -352,6 +354,23 @@ class _TestrunResult:
 def _serial_settings() -> MojSerialCalibration:
     """`extensions.moj.calibration.serial`, defaulted."""
     return environment.get_extension_or_default('moj', MojExtension).calibration.serial
+
+
+def _round_key(key: str, round_index: int) -> str:
+    """The cache key of one round: round 0 is a single run's own key, so turning
+    `runs` up reuses what a single run measured; a later round is its own."""
+    return key if round_index == 0 else f'{key}-round{round_index}'
+
+
+def _round_chips(round_index: int, rounds: int) -> List[RunnerChip]:
+    """`round 2/3`, when there is more than one round to tell apart."""
+    return [RunnerChip(f'round {round_index + 1}/{rounds}')] if rounds > 1 else []
+
+
+def _since_chip(since: '_Elapsed') -> RunnerChip:
+    """How long this solution has been waiting on MOJ, its queue for the slot
+    included -- not how long it ran, which is `judged in`."""
+    return RunnerChip(f'{since} since queued')
 
 
 def _pick_test(candidates: List[cli.TestrunTest], pick: str) -> cli.TestrunTest:
@@ -1174,17 +1193,44 @@ class MojRunner:
         of the first one.
         """
         rounds = self._testrun_rounds()
+        # One clock per solution, started before the slot is taken: what it
+        # counts is the whole wait a setter is enduring for this solution --
+        # queueing behind other solutions included, which on
+        # `MAX_INFLIGHT_TESTRUNS = 1` is most of it -- across all its rounds.
+        since = _Elapsed()
         if rounds == 1:
             return await self._submit_and_poll_once(
-                solution, expected_names, board, round_index=0
+                solution, expected_names, board, since, round_index=0, rounds=1
             )
+
+        # The slot is held across every round, so one solution's rounds run back
+        # to back. Taken per round instead, the slot's FIFO hands it to every
+        # other solution's round before this one's next: rounds interleave, and
+        # the first solution only finishes once nearly every round of every
+        # solution has. Not taken at all when every round is cached, for the
+        # reason the cache is consulted before the slot in the first place.
+        assert self._testrun_slots is not None
+        content = self._solution_content(solution)
+        key = self._cache_key(solution, content)
+        all_cached = all(
+            _load_cached_testrun(_round_key(key, round_index)) is not None
+            for round_index in range(rounds)
+        )
+        slot = contextlib.nullcontext() if all_cached else self._testrun_slots
         results = []
-        for round_index in range(rounds):
-            results.append(
-                await self._submit_and_poll_once(
-                    solution, expected_names, board, round_index=round_index
+        async with slot:
+            for round_index in range(rounds):
+                results.append(
+                    await self._submit_and_poll_once(
+                        solution,
+                        expected_names,
+                        board,
+                        since,
+                        round_index=round_index,
+                        rounds=rounds,
+                        slot_held=True,
+                    )
                 )
-            )
         return _merge_testruns(results, expected_names, pick=_serial_settings().pick)
 
     def _testrun_rounds(self) -> int:
@@ -1201,9 +1247,16 @@ class MojRunner:
         solution: 'SolutionSkeleton',
         expected_names: List[str],
         board: RunProgress,
+        since: '_Elapsed',
         round_index: int,
+        rounds: int,
+        slot_held: bool = False,
     ) -> '_TestrunResult':
         """Submit one solution and wait for its verdicts, keyed by MOJ test name.
+
+        `slot_held` says the caller already holds the slot for this solution's
+        whole series of rounds (see `_submit_and_poll`), so this one does not
+        take it again.
 
         Holds a slot for the whole submit-and-wait, not just for the submit: what
         `MAX_INFLIGHT_TESTRUNS` bounds is how much of the shared judge park rbx
@@ -1233,9 +1286,8 @@ class MojRunner:
         thing already in flight.
         """
         content = self._solution_content(solution)
-        key = self._cache_key(solution, content)
-        if round_index > 0:
-            key = f'{key}-round{round_index}'
+        key = _round_key(self._cache_key(solution, content), round_index)
+        round_chips = _round_chips(round_index, rounds)
 
         cached = _load_cached_testrun(key)
         if cached is not None:
@@ -1244,6 +1296,7 @@ class MojRunner:
                 board,
                 solution,
                 RunnerChip(f'testrun {run}'),
+                *round_chips,
                 RunnerChip('cached', style='green'),
                 *_judged_chips(status),
             )
@@ -1258,30 +1311,30 @@ class MojRunner:
             result.cached = True
             return result
 
-        # Started before the slot is taken, so what it counts is the whole wait
-        # a setter is actually enduring -- queueing behind other solutions
-        # included, which on `MAX_INFLIGHT_TESTRUNS = 1` is most of it.
-        since = _Elapsed()
-
         assert self._testrun_slots is not None
-        async with self._testrun_slots:
+        slot = contextlib.nullcontext() if slot_held else self._testrun_slots
+        async with slot:
             run = await self._submit(solution, content)
             self._say(
                 board,
                 solution,
                 RunnerChip(f'testrun {run}'),
+                *round_chips,
                 RunnerChip('submitted'),
-                RunnerChip(str(since)),
+                _since_chip(since),
             )
-            status = await self._wait_for_testrun(run, solution, board, since)
+            status = await self._wait_for_testrun(
+                run, solution, board, since, round_chips
+            )
 
         self._say(
             board,
             solution,
             RunnerChip(f'testrun {run}'),
+            *round_chips,
             RunnerChip('done', style='green'),
             *_judged_chips(status),
-            RunnerChip(str(since)),
+            _since_chip(since),
         )
 
         result = self._result_from_status(solution, run, status, expected_names)
@@ -1535,6 +1588,7 @@ class MojRunner:
         solution: 'SolutionSkeleton',
         board: RunProgress,
         since: '_Elapsed',
+        round_chips: Sequence[RunnerChip] = (),
     ) -> cli.TestrunStatus:
         """Poll until the judge is finished with `run`. Bounded, and on the board.
 
@@ -1554,7 +1608,9 @@ class MojRunner:
             status = await cli.testrun_status(run)
             if status.done:
                 return status
-            self._say(board, solution, *self._poll_chips(run, status, since))
+            self._say(
+                board, solution, *self._poll_chips(run, status, since, round_chips)
+            )
             if attempt + 1 < TESTRUN_POLL_ATTEMPTS:
                 await asyncio.sleep(TESTRUN_POLL_INTERVAL_SECONDS)
 
@@ -1573,9 +1629,10 @@ class MojRunner:
         run: str,
         status: cli.TestrunStatus,
         since: '_Elapsed',
+        round_chips: Sequence[RunnerChip] = (),
     ) -> List[RunnerChip]:
         """What one in-flight poll has to say. Only what the judge reported."""
-        chips = [RunnerChip(f'testrun {run}')]
+        chips = [RunnerChip(f'testrun {run}'), *round_chips]
         if status.status:
             chips.append(RunnerChip(status.status))
         if status.host:
@@ -1585,7 +1642,7 @@ class MojRunner:
         # of what the validation phase submits -- stuck at 0 while it works fine.
         if status.total_tests:
             chips.append(RunnerChip(f'{status.correct or 0}/{status.total_tests} ok'))
-        chips.append(RunnerChip(str(since)))
+        chips.append(_since_chip(since))
         return chips
 
     async def _evaluation_from_job(
