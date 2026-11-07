@@ -44,7 +44,7 @@ problem costs no judge time at all.
 
 MOJ runs the solutions side by side, and a solution that uses a lot of memory gets slower
 next to others. To measure each solution alone instead, one test at a time, set
-`extensions.moj.calibration.serial.enabled` in your `env.rbx.yml`. With or without it, `runs`
+`extensions.moj.calibration.serial` in your `env.rbx.yml`. With or without it, `runs`
 measures every solution that many times and `pick` chooses which time each test keeps:
 
 ```yaml title="env.rbx.yml"
@@ -53,8 +53,7 @@ extensions:
     calibration:
       runs: 3      # measure each solution 3 times
       pick: max    # keep each test's slowest time; `min` keeps its fastest
-      serial:
-        enabled: true
+      serial: true
 ```
 
 `runs` and `serial` both make `rbx time` slower: each extra run measures every solution again,

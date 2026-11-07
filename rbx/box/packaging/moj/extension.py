@@ -2,7 +2,7 @@ import typing
 
 from pydantic import ConfigDict, Field, model_validator
 
-from rbx.utils import RejectsRemovedFields, Removed
+from rbx.utils import RejectsRemovedFields
 
 # The language ids mojtools ships a `lang/<id>/` directory for. `py2`/`py3` are legacy
 # spellings that `build-and-test.sh` normalizes to `py`; they stay accepted so a
@@ -30,31 +30,6 @@ MojLanguage = typing.Literal[
 ]
 
 
-class MojSerialCalibration(RejectsRemovedFields):
-    """How `rbx time --runner moj` measures when it testruns serially."""
-
-    model_config = ConfigDict(extra='forbid')
-
-    enabled: bool = Field(
-        default=False,
-        description='Estimate `rbx time --runner moj` from serial testruns, one '
-        'solution and one test at a time, instead of one MOJ calibration that '
-        'judges every solution at once. Slower, but a solution is never measured '
-        'next to another one of the same run.',
-    )
-    # Moved up to `calibration` in rbx 2.6.4, where they apply to both paths.
-    runs: typing.Annotated[typing.Optional[int], Removed()] = Field(
-        default=None,
-        deprecated='`extensions.moj.calibration.serial.runs` moved to '
-        '`extensions.moj.calibration.runs`, which also repeats a MOJ calibration.',
-    )
-    pick: typing.Annotated[typing.Optional[str], Removed()] = Field(
-        default=None,
-        deprecated='`extensions.moj.calibration.serial.pick` moved to '
-        '`extensions.moj.calibration.pick`.',
-    )
-
-
 class MojCalibration(RejectsRemovedFields):
     """How `rbx time --runner moj` measures solutions on MOJ."""
 
@@ -72,9 +47,12 @@ class MojCalibration(RejectsRemovedFields):
         description='Which of the `runs` times a testcase keeps: `max`, the slowest, '
         "or `min`, the fastest. A testcase keeps that run's verdict too.",
     )
-    serial: MojSerialCalibration = Field(
-        default_factory=MojSerialCalibration,
-        description='Measure with serial testruns instead of a MOJ calibration.',
+    serial: bool = Field(
+        default=False,
+        description='Estimate `rbx time --runner moj` from serial testruns, one '
+        'solution and one test at a time, instead of one MOJ calibration that '
+        'judges every solution at once. Slower, but a solution is never measured '
+        'next to another one of the same run.',
     )
 
 

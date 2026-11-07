@@ -1223,8 +1223,8 @@ class MojRunner:
         """Testrun one solution as many times as this run asks, merged per test.
 
         Once, except for an `rbx time` phase under
-        `extensions.moj.calibration.serial.enabled` with `calibration.runs` above
-        one: then the
+        `extensions.moj.calibration.serial` with `calibration.runs` above one:
+        then the
         solution is testrun `runs` times, back to back, and each testcase keeps
         the time (and the verdict) of the run `pick` names. See
         `_merge_testruns`.
@@ -1282,7 +1282,7 @@ class MojRunner:
         `rbx time` phase in serial mode, since a plain `rbx run` wants verdicts,
         not a timing to repeat."""
         settings = _calibration_settings()
-        if not settings.serial.enabled or self._purpose in (None, RunPurpose.RUN):
+        if not settings.serial or self._purpose in (None, RunPurpose.RUN):
             return 1
         return settings.runs
 
