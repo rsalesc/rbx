@@ -11,7 +11,7 @@ from rbx.grading.judge.sandboxes.stupid_sandbox import StupidSandbox
 
 # Pipes are shrunk to this size (where the platform honours it at all) so the
 # noise below overflows every pipe between the two programs -- a capture tee
-# adds a second one -- without making a char-mode tee crawl through megabytes.
+# adds a second one -- while staying cheap to tee.
 PIPE_BYTES = 64 * 1024
 NOISE_BYTES = 512 * 1024
 
@@ -52,18 +52,18 @@ def sandbox(file_cacher: FileCacher, monkeypatch: pytest.MonkeyPatch):
 @pytest.mark.parametrize(
     'solution_stdout,merged_capture,tee_mode',
     [
-        (None, None, 'char'),
-        (pathlib.Path('solution.out'), None, 'char'),
+        (None, None, 'chunk'),
+        (pathlib.Path('solution.out'), None, 'chunk'),
         (pathlib.Path('solution.out'), None, 'line'),
-        (pathlib.Path('solution.out'), pathlib.Path('merged.txt'), 'char'),
+        (pathlib.Path('solution.out'), pathlib.Path('merged.txt'), 'chunk'),
     ],
-    ids=['raw', 'tee-char', 'tee-line', 'tee-merged'],
+    ids=['raw', 'tee-chunk', 'tee-line', 'tee-merged'],
 )
 def test_interactor_outlives_solution_that_skips_its_output(
     sandbox: StupidSandbox,
     solution_stdout: Optional[pathlib.Path],
     merged_capture: Optional[pathlib.Path],
-    tee_mode: Literal['char', 'line'],
+    tee_mode: Literal['chunk', 'line'],
 ):
     solution_params = SandboxParams(
         timeout=5000, wallclock_timeout=10000, stdout_file=solution_stdout
@@ -91,3 +91,49 @@ def test_interactor_outlives_solution_that_skips_its_output(
     assert "got ['!', '6']" in sandbox.get_file_to_string(
         pathlib.Path('interactor.err')
     )
+
+
+BULK_LINES = 150_000
+
+# Sends every query at once, then checks every answer.
+BULK_INTERACTOR = """
+import sys
+n = int(sys.argv[1])
+sys.stdout.write('%d\\n' % n)
+sys.stdout.write(''.join('%d\\n' % i for i in range(n)))
+sys.stdout.flush()
+answers = [int(sys.stdin.readline()) for _ in range(n)]
+sys.exit(0 if answers == [2 * i for i in range(n)] else 1)
+"""
+
+BULK_SOLUTION = """
+import sys
+n = int(sys.stdin.readline())
+xs = [int(sys.stdin.readline()) for _ in range(n)]
+sys.stdout.write(''.join('%d\\n' % (2 * x) for x in xs))
+sys.stdout.flush()
+"""
+
+
+def test_high_traffic_interaction_is_captured_line_by_line(sandbox: StupidSandbox):
+    sandbox.create_file_from_string(pathlib.Path('bulk_interactor.py'), BULK_INTERACTOR)
+    sandbox.create_file_from_string(pathlib.Path('bulk_solution.py'), BULK_SOLUTION)
+    params = SandboxParams(timeout=20000, wallclock_timeout=40000)
+
+    solution_log, interactor_log = sandbox.run_communication(
+        [sys.executable, 'bulk_solution.py'],
+        params,
+        [sys.executable, 'bulk_interactor.py', str(BULK_LINES)],
+        params.model_copy(deep=True),
+        CommunicationParams(merged_capture=pathlib.Path('merged.txt')),
+    )
+
+    assert solution_log.exitcode == 0
+    assert interactor_log.exitcode == 0
+    expected = (
+        ['<', '>', f'<{BULK_LINES}']
+        + [f'<{i}' for i in range(BULK_LINES)]
+        + [f'>{2 * i}' for i in range(BULK_LINES)]
+    )
+    merged = sandbox.get_file_to_string(pathlib.Path('merged.txt'), maxlen=None)
+    assert merged.splitlines() == expected

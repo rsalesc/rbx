@@ -1254,7 +1254,7 @@ async def run_coordinated(
             interactor_params,
             CommunicationParams(
                 merged_capture=merged_capture,
-                tee_mode='line' if line_capture else 'char',
+                tee_mode='line' if line_capture else 'chunk',
                 tee_stderr=tee_stderr,
             ),
         )

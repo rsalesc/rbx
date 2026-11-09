@@ -977,7 +977,7 @@ async def run_item(
             # ``rbx irun --merge-stderr`` for batch tasks.
             merged_capture_path = pathlib.Path(MERGED_CAPTURE_FILENAME)
             prepared.sandbox_params.merged_capture = merged_capture_path
-            prepared.sandbox_params.tee_mode = 'line' if line_capture else 'char'
+            prepared.sandbox_params.tee_mode = 'line' if line_capture else 'chunk'
             prepared.artifacts.outputs.append(
                 GradingFileOutput(
                     src=merged_capture_path,

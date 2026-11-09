@@ -62,7 +62,7 @@ Main implementation. "Stupid" because it doesn't use OS-level sandboxing (unlike
 6. Returns `SandboxLog` with timing, memory, exit status
 
 **Communication execution (`execute_communication()`):**
-- Sets up bidirectional pipes between solution and interactor using `tee.py`/`line_tee.py`
+- Sets up bidirectional pipes between solution and interactor using `chunk_tee.py`/`line_tee.py`
 - Captures interaction data for debugging (`.pio` files)
 - Monitors both processes simultaneously
 
@@ -156,13 +156,13 @@ Uses Python `contextvars` to manage execution context:
 
 Performance profiling for sandbox execution. Tracks compilation and execution times. `print_summary()` registered via `atexit` when profiling is enabled.
 
-## Output Handling (`judge/sandboxes/tee.py`, `line_tee.py`)
+## Output Handling (`judge/sandboxes/chunk_tee.py`, `line_tee.py`)
 
-Helper scripts for interactive problem communication:
-- **`tee.py`** -- Character-level tee: reads stdin char-by-char, writes to stdout + stderr (with prefix) + extra file
-- **`line_tee.py`** -- Line-level tee: same but operates line-by-line (more efficient for non-interactive output)
+Helper scripts that sit on a pipe and copy it to the peer (stdout), a clean extra file, and the merged capture (stderr, every line prefixed with a marker: `<` interactor, `>` solution, `!` stderr):
+- **`chunk_tee.py`** (`tee_mode='chunk'`, the interactive default) -- `os.read`s whatever is available (up to 64 KiB) on raw fds and forwards it to the peer **first**, so a partial line written and flushed still arrives at once while the copy costs one iteration per chunk, not per byte (#1035: the old byte-at-a-time `tee.py` added seconds per test to MB-scale interactions and turned accepted solutions into ILE/TLE). Into the merged capture it writes only **complete marked lines**, holding a mid-line chunk tail back until its newline (or EOF): up to three tees append to that file concurrently, and the line-based reader (`testcase_utils.parse_interaction`) would mis-attribute a line split by another tee's write. On `EPIPE` from the peer it exits quietly, so the writer sees a broken pipe as without a tee, and no traceback lands in the capture.
+- **`line_tee.py`** (`tee_mode='line'`) -- forwards only on newline; used when a caller asks for `line_capture`.
 
-Both are forked from BAPCtools and used to capture interaction data between solution and interactor.
+`'char'` is a legacy alias of `'chunk'` (`sandbox.TeeMode`'s validator): sandbox params are persisted inside cached `SandboxLog`s, so the old name must still read back.
 
 ## Key Design Decisions
 

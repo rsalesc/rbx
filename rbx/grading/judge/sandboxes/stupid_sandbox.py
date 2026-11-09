@@ -215,7 +215,7 @@ class StupidSandbox(SandboxBase):
             / 'grading'
             / 'judge'
             / 'sandboxes'
-            / 'tee.py'
+            / 'chunk_tee.py'
         ) as file:
             return file
 
