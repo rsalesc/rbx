@@ -11,12 +11,26 @@ import stat
 import subprocess
 import sys
 import typing
-from typing import IO, Any, Dict, List, Literal, Optional, Tuple
+from typing import IO, Annotated, Any, Dict, List, Literal, Optional, Tuple
 
 import pydantic
 
 from rbx import utils
 from rbx.grading.judge import cacher, storage
+
+
+def _upgrade_tee_mode(value: Any) -> Any:
+    # 'char' named the old byte-at-a-time tee, which the chunk tee replaced
+    # (#1035). Sandbox params are persisted inside cached logs, so the old name
+    # is still read back and means the tee that now does its job.
+    return 'chunk' if value == 'char' else value
+
+
+# 'chunk' forwards whatever is available as soon as it is read, which is what
+# an interaction needs; 'line' forwards only on a newline.
+TeeMode = Annotated[
+    Literal['chunk', 'line'], pydantic.BeforeValidator(_upgrade_tee_mode)
+]
 
 logger = logging.getLogger(__name__)
 
@@ -150,9 +164,9 @@ class SandboxParams(pydantic.BaseModel):
     # still produced. Used by ``rbx irun --merge-stderr`` for batch tasks. Left
     # unset for every other run, so it never affects normal execution or caching.
     merged_capture: Optional[pathlib.Path] = None
-    # Tee granularity for ``merged_capture`` ('line' or 'char'). Defaults to
-    # line-level teeing, which keeps each marked line atomic in the merged file.
-    tee_mode: Optional[Literal['char', 'line']] = None
+    # Tee granularity for ``merged_capture`` ('line' or 'chunk'). Defaults to
+    # line-level teeing. Both keep each marked line atomic in the merged file.
+    tee_mode: Optional[TeeMode] = None
 
     def get_cacheable_params(self) -> Dict[str, Any]:
         return self.model_dump(mode='json', exclude_unset=True, exclude_none=True)
@@ -216,7 +230,7 @@ class CommunicationParams(pydantic.BaseModel):
     """Parameters for the communication."""
 
     merged_capture: Optional[pathlib.Path] = None
-    tee_mode: Optional[Literal['char', 'line']] = 'char'
+    tee_mode: Optional[TeeMode] = 'chunk'
     # When True, the solution's stderr is also tee'd into ``merged_capture``
     # (marked '!'), interleaved with the interactor/solution dialogue in true
     # write order, while still being written to the solution's stderr file.
