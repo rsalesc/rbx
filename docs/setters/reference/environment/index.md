@@ -104,7 +104,7 @@ languages:
   omitted (or `null`), the linter applies to all kinds.
 
 The valid `applies_to` tokens are the asset kinds: `generator`, `validator`,
-`solution`, `checker`, `interactor`, and `visualizer`. Plural spellings
+`solution`, `checker`, `interactor`, `visualizer`, and `grader`. Plural spellings
 (`generators`, `solutions`, ...) are also accepted.
 
 The effective scope for a linter on a given asset is the intersection of the
@@ -117,6 +117,12 @@ linter's own supported kinds and the `applies_to` you configure.
   each contain a side-effecting call (e.g. `f(rnd.next(), rnd.next())`). C++
   leaves argument evaluation order unspecified, so such calls can produce
   different results across compilers.
+- `rbx-header` (C++, generators and graders): checks how a source includes
+  `rbx.h`. A generator must not include it at all (see
+  [Generators and `rbx.h`](../../../generators-and-rbx-h.md)). A
+  [grader](../../grading/graders.md) must include it after its task header,
+  so the task header compiles in the grader exactly as it does in a
+  participant's solution. Both checks are errors.
 
 ### Suppressing a linter in a file
 

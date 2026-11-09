@@ -745,6 +745,11 @@ async def compile_item(
         grader = _grader_for(code, kind)
         command_mapping = file_mapping
         if grader is not None:
+            # The grader is never compiled on its own: it is linted here, as
+            # the second translation unit of every solution.
+            from rbx.box.linters.asset_kind import AssetKind
+
+            await run_linters(grader, AssetKind.GRADER)
             command_mapping = file_mapping.model_copy(
                 update={'compilable': f'{grader.path} {file_mapping.compilable}'}
             )
