@@ -165,6 +165,30 @@ def make_public_source(source: str) -> str:
     return _RBX_INCLUDE_RE.sub(lambda _: public_shim().rstrip('\n'), stripped)
 
 
+def includes_rbx_header(source: str) -> bool:
+    return _RBX_INCLUDE_RE.search(source) is not None
+
+
+def inline_rbx_header(source: str, header: str) -> str:
+    """`source` with `header` (rbx.h's text) pasted over its first `#include "rbx.h"`.
+
+    Later includes are dropped: rbx.h is guarded, so they would add nothing.
+    For judges that compile every submission next to the grader's files: with
+    rbx.h inlined, it no longer has to ship beside the solution, secrets, vars
+    and all.
+    """
+    pasted = False
+
+    def replace(_: re.Match) -> str:
+        nonlocal pasted
+        if pasted:
+            return ''
+        pasted = True
+        return '// rbx.h (inlined by rbx).\n' + header.rstrip('\n')
+
+    return _RBX_INCLUDE_RE.sub(replace, source)
+
+
 def judge_input(raw: bytes, group: Optional[str]) -> bytes:
     """A test as judges see it: the hidden header, then the raw input."""
     secrets = get_secrets()

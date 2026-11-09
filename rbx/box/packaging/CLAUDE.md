@@ -32,7 +32,13 @@ upload skips the validator (Polygon would validate the judge view). Polygon decl
 the grader as a resource with `for-types="cpp.*"`, compile stage, solution asset, and
 uploads it with no `sourceType` (Polygon refuses one on a resource). CMS
 (`cms/graders.py`) stores `grader.cpp` (Batch, `compilation="grader"`) or `stub.cpp`
-(Communication, CMS 1.5.1's `"stub"`) plus `.h` headers and rbx.h as managers.
+(Communication, CMS 1.5.1's `"stub"`) plus its `.h` headers as managers. CMS compiles
+every manager header next to the submission, so **rbx.h is never a manager**: under
+`--cms` the packager pastes it into `files/grader.cpp` (`graders.inline_rbx_header`,
+via `PolygonPackager._files_content`), and `_grader_files` refuses a grader-closure
+header that includes rbx.h (#970). `files/rbx.h` still ships, for the checker and
+interactor `cms_conf.py` compiles. Not a security boundary: batch graders do not
+resist a deliberate cheater; the stub + interactor model does.
 `run_packager` builds `build/attachments/<name>.zip` (`attachments.build`) and sets
 `packager.attachments_path`; CMS ships it as a task attachment, Polygon only warns.
 Design: `docs/plans/2026-10-25-graders-design.md`.

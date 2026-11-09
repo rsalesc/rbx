@@ -72,33 +72,39 @@ A grader is an ordinary C++ program built around one object from `rbx.h`,
 #include <cstdio>
 #include <vector>
 
-#include "rbx.h"
 #include "sumgame.h"
+#include "rbx.h" // (1)!
 
 int main() {
-  rbx::grader::Grader grader; // (1)!
+  rbx::grader::Grader grader; // (2)!
 
   int n;
   std::scanf("%d", &n);
   std::vector<long long> a(n);
   for (auto &x : a) std::scanf("%lld", &x);
 
-  long long result = grader.run([&] { // (2)!
+  long long result = grader.run([&] { // (3)!
     return sum_all(a);
   });
 
-  std::printf("%lld\n", result); // (3)!
+  std::printf("%lld\n", result); // (4)!
 }
 ```
 
-1. The constructor reads and checks the hidden header that {{rbx}} puts at the top of
+1. `rbx.h` goes after `sumgame.h`. It includes standard headers of its own, so a
+   `sumgame.h` read after it could compile here while missing an `#include` it needs,
+   then fail in the participant's solution, which includes it without `rbx.h`. If
+   `rbx.h` comes before a task header, the
+   [`rbx-header` linter](../reference/environment/index.md#available-linters) stops
+   the build with an error.
+2. The constructor reads and checks the hidden header that {{rbx}} puts at the top of
    every test. More on it in [Reading the hidden header](#reading-the-hidden-header).
-2. `run` wraps the part where the participant's code runs. Before calling the lambda,
-   it closes `stdin`, so the participant's code can't read the rest of the input, and
+3. `run` wraps the part where the participant's code runs. Before calling the lambda,
+   it closes `stdin`, so code that reads the input by mistake gets nothing, and
    frames the output. Anything the participant prints to `stdout` inside the lambda
    is caught, and the checker turns it into a wrong answer. `run` returns what the
    lambda returns.
-3. Once `run` returns, the grader prints its answer as usual.
+4. Once `run` returns, the grader prints its answer as usual.
 
 Why all this? Your grader runs inside the same program as the participant's code,
 so a careless solution could read the input before the grader does, or print an
@@ -166,11 +172,11 @@ test, gets an empty group name, so `getVar` returns the package-level values the
     `secret` changes every test and answer the judges hold, so upload the problem
     again afterwards.
 
-!!! warning "The secrets are a tripwire"
-    The secrets live in the same program as the participant's code, and the judge
-    compiles that code next to the grader. A participant determined to cheat can
-    read them, as with any IOI-style grader. They stop mistakes and casual attempts,
-    and anything a participant must never see belongs in an
+!!! warning "A grader catches mistakes, not cheaters"
+    A participant determined to cheat can read the secrets, print the end-of-output
+    marker that `run` adds, or read the input again after the grader closes `stdin`.
+    As with any IOI-style grader, these tricks stop careless solutions, not deliberate
+    ones. To keep data hidden, or to enforce the checks after `run` returns, use an
     [interactor](interactors.md), which runs as a separate program.
 
 ## Writing checkers and interactors
@@ -280,6 +286,9 @@ builds anything.
   and the tests with their hidden header. When uploading, {{rbx}} uploads the tests as
   files and skips the validator, since Polygon would run it on the header.
   Polygon packages can't hold attachments, so add the archive to the problem by hand.
-- CMS receives the grader, its headers and `rbx.h`, and the archive as a task
-  attachment. CMS only makes `.h` headers available when it compiles a submission,
+- CMS receives the grader and its headers, and the archive as a task attachment.
+  CMS only makes `.h` headers available when it compiles a submission,
   so packaging fails if the grader depends on any other file.
+- {{rbx}} pastes `rbx.h` into the CMS grader, so no header named `rbx.h`, with your
+  variables in it, is available to submissions. For the same reason, packaging
+  fails if any of the grader's headers includes `rbx.h`.

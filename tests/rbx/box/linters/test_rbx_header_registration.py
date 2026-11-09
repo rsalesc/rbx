@@ -3,7 +3,7 @@ from rbx.box.linters import registry
 from rbx.box.linters.asset_kind import AssetKind
 
 
-def test_rbx_header_is_registered_and_scoped_to_generators():
+def test_rbx_header_is_registered_and_scoped_to_generators_and_graders():
     linter = registry.get_linter('rbx-header')
     assert linter.name == 'rbx-header'
-    assert linter.applies_to == {AssetKind.GENERATOR}
+    assert linter.applies_to == {AssetKind.GENERATOR, AssetKind.GRADER}

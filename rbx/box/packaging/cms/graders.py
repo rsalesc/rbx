@@ -30,7 +30,9 @@ def grader_config(pkg: Package, grader_files: Sequence[str]) -> Dict:
     """`CONFIG['grader']` of `cms_conf.py`: the managers to store, by stored name.
 
     Values are file names under `files/`, the grader's closure as the Polygon
-    packager flattened it, plus rbx.h.
+    packager flattened it. rbx.h is not one: CMS compiles every manager header
+    next to the contestant's solution, so the packager inlines rbx.h into the
+    grader instead.
     """
     managers: Dict[str, str] = {}
     bad: List[str] = []

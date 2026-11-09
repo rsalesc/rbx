@@ -12,8 +12,8 @@ from rbx.utils import StatusProgress
 _GRADER = """
 #include <cstdio>
 
-#include "rbx.h"
 #include "twice.h"
+#include "rbx.h"
 
 int main() {
   rbx::grader::Grader grader;

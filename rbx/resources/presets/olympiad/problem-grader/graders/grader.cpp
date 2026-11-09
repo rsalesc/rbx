@@ -1,7 +1,9 @@
 #include <cstdio>
 
-#include "rbx.h"
 #include "aplusb.h"
+// rbx.h after the task header, so aplusb.h compiles on its own, as it must in
+// the contestant's solution.
+#include "rbx.h"
 // A grader, compiled together with every solution. It owns main(): it reads
 // the test, calls the participant's function and prints what it returned.
 // Docs: https://rsalesc.github.io/rbx/setters/grading/graders/

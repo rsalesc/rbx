@@ -90,8 +90,8 @@ def test_attachments_accept_files_and_samples():
 
 def test_cms_batch_grader_config():
     pkg = _package(grader={'path': 'graders/grader.cpp', 'secret': 's3cr3t'})
-    assert cms_graders.grader_config(pkg, ['grader.cpp', 'rbx.h', 'task.h']) == {
-        'managers': {'grader.cpp': 'grader.cpp', 'rbx.h': 'rbx.h', 'task.h': 'task.h'},
+    assert cms_graders.grader_config(pkg, ['grader.cpp', 'task.h']) == {
+        'managers': {'grader.cpp': 'grader.cpp', 'task.h': 'task.h'},
         'task_type': 'Batch',
         'task_type_parameters': ['grader', ['', ''], 'comparator'],
     }
@@ -103,9 +103,25 @@ def test_cms_stub_is_stored_as_stub_cpp():
         grader={'path': 'graders/grader.cpp', 'secret': 's3cr3t'},
         interactor={'path': 'interactor.cpp'},
     )
-    assert cms_graders.grader_config(pkg, ['grader.cpp', 'rbx.h']) == {
-        'managers': {'stub.cpp': 'grader.cpp', 'rbx.h': 'rbx.h'},
+    assert cms_graders.grader_config(pkg, ['grader.cpp', 'guess.h']) == {
+        'managers': {'stub.cpp': 'grader.cpp', 'guess.h': 'guess.h'},
     }
+
+
+def test_inline_rbx_header_pastes_it_once_in_place_of_the_include():
+    source = '#include "task.h"\n#include "rbx.h"\nint x;\n#include <rbx.h>\n'
+    inlined = graders.inline_rbx_header(source, '#pragma rbx\nint header;\n')
+    assert '#include "rbx.h"' not in inlined
+    assert '#include <rbx.h>' not in inlined
+    assert inlined.count('int header;') == 1
+    assert inlined.index('#include "task.h"') < inlined.index('int header;')
+    assert inlined.index('int header;') < inlined.index('int x;')
+
+
+def test_includes_rbx_header():
+    assert graders.includes_rbx_header('#include "rbx.h"\n')
+    assert graders.includes_rbx_header('  #  include <rbx.h> // judge\n')
+    assert not graders.includes_rbx_header('#include "task.h"\n// rbx.h\n')
 
 
 def test_cms_refuses_a_grader_dependency_it_cannot_compile_with():

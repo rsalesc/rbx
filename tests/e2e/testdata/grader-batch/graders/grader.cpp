@@ -1,8 +1,8 @@
 #include <cstdio>
 #include <vector>
 
-#include "rbx.h"
 #include "sumgame.h"
+#include "rbx.h"
 
 int main() {
   rbx::grader::Grader grader;

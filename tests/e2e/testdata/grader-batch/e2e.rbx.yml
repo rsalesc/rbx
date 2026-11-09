@@ -39,8 +39,10 @@ scenarios:
   - name: grader-polygon-cms-package
     description: |
       Polygon declares the grader as a resource compiled with every solution;
-      CMS gets it (with its header and rbx.h) as managers of a Batch task with
-      grader compilation, and the attachments archive as a task attachment.
+      CMS gets it and its header as managers of a Batch task with grader
+      compilation, and the attachments archive as a task attachment. rbx.h is
+      inlined into the grader rather than stored as a manager, since CMS puts
+      every manager header next to the contestant's solution.
       The archive's grader is the public one: no SECRET block, no rbx.h.
     steps:
       - cmd: package polygon --cms
@@ -56,7 +58,9 @@ scenarios:
             path: build/problem.zip
             entries:
               problem.xml: '/(?s)path="files/grader.cpp"[^>]*for-types="cpp.\*".*<stage name="compile"/>.*<asset name="solution"/>/'
-              files/cms_conf.py: "'task_type_parameters': ['grader', ['', ''], 'comparator']"
+              files/cms_conf.py: "/(?s)^(?!.*'rbx\\.h': 'rbx\\.h').*'task_type_parameters': \\['grader', \\['', ''\\], 'comparator'\\]/"
+              # rbx.h inlined, after the task header the linter keeps first.
+              files/grader.cpp: '/(?s)^(?!.*#include "rbx\.h").*#include "sumgame\.h".*rbx\.h \(inlined by rbx\)/'
               tests/02: '/^[0-9a-f]{32}\napprox\n/'
       - cmd: package polygon --cms
         expect:

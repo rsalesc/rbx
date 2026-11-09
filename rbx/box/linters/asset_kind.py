@@ -5,6 +5,7 @@ from rbx.box.schema import (
     Checker,
     CodeItem,
     Generator,
+    Grader,
     Interactor,
     Solution,
     Visualizer,
@@ -18,6 +19,7 @@ class AssetKind(enum.Enum):
     CHECKER = 'checker'
     INTERACTOR = 'interactor'
     VISUALIZER = 'visualizer'
+    GRADER = 'grader'
 
 
 # Order matters: check most-specific subclasses first.
@@ -27,6 +29,7 @@ _TYPE_TO_KIND = [
     (Checker, AssetKind.CHECKER),
     (Interactor, AssetKind.INTERACTOR),
     (Visualizer, AssetKind.VISUALIZER),
+    (Grader, AssetKind.GRADER),
 ]
 
 

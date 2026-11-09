@@ -442,12 +442,39 @@ class PolygonPackager(BasePackager):
         if dep_graph is not None:
             closure.update(pathlib.Path(dep) for dep in dep_graph.files())
         files = [f for f in ns.files if f.source_path in closure]
-        names = {f.flat_name for f in files}
-        # rbx.h sits next to every submission once it is a manager, secrets and
-        # vars included, so it ships only when the grader actually includes it.
-        if any(b'rbx.h' in f.content for f in files):
-            names.add('rbx.h')
-        return sorted(names)
+        # A manager sits next to every submission, so rbx.h (secrets and vars
+        # included) is never one: the grader gets it inlined instead (see
+        # `_files_content`). Every other file of the closure is a manager, so
+        # none of them may include rbx.h.
+        leaking = [
+            f.flat_name
+            for f in files
+            if f.flat_name != GRADER_SOURCE
+            and graders.includes_rbx_header(f.content.decode('utf-8'))
+        ]
+        if leaking:
+            console.console.print(
+                f'[error]Problem [item]{pkg.name}[/item] cannot be packaged for '
+                f'CMS: {", ".join(leaking)} includes rbx.h, but CMS compiles '
+                "every grader header along with the contestant's solution. "
+                'Include rbx.h from the grader itself instead.[/error]'
+            )
+            raise typer.Exit(1)
+        return sorted(f.flat_name for f in files)
+
+    def _files_content(self, flat_file: flattening.FlatFile) -> bytes:
+        """What `files/` holds for `flat_file`.
+
+        With `--cms`, the grader gets rbx.h inlined, so rbx.h need not be a
+        manager CMS puts beside every submission.
+        """
+        if not self.cms or flat_file.flat_name != GRADER_SOURCE:
+            return flat_file.content
+        if package.find_problem_package_or_die().grader is None:
+            return flat_file.content
+        return graders.inline_rbx_header(
+            flat_file.content.decode('utf-8'), header.get_header().read_text()
+        ).encode('utf-8')
 
     async def package(
         self,
@@ -503,7 +530,7 @@ class PolygonPackager(BasePackager):
             else:
                 dest = files_path / flat_file.flat_name
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(flat_file.content)
+            dest.write_bytes(self._files_content(flat_file))
         if pkg.grader is not None:
             # The sidecar Polygon itself writes next to a grader resource.
             (files_path / f'{GRADER_SOURCE}.json').write_text(
