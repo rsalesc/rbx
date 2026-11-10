@@ -132,6 +132,8 @@ Low-level sandboxed execution layer:
 - `contest.rbx.yml`: Contest-level settings. May be a single contest, a dispatcher (`use_variants: true`) with all contests in sibling `contest.<id>.rbx.yml` files, or a real contest WITH sibling variants (canonical is the default, siblings are extra variants). Selected via `-C <id>` or `RBX_CONTEST=<id>`. See `docs/plans/2026-05-06-multi-contest-design.md`.
 - `env.rbx.yml`: Language settings, compilation flags, sandbox configuration
 
+Bundled presets live in `rbx/resources/presets/`. Files every preset must share (e.g. `contest/statements/icpc.sty`, with its en/pt/es strings) have their single source in `presets/_shared/`: edit there and run `mise run sync-presets`, never a preset's copy. `tests/rbx/box/presets/test_shared_preset_files.py` fails on drift. They are copies, not symlinks, because remote installs copy only the preset's own directory.
+
 ### Submodules
 
 - `box/contest/`: Contest management and multi-problem operations

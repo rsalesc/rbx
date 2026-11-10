@@ -319,4 +319,4 @@ class TestContestChrome:
     def test_style_defines_the_scoring_section(self, preset_path: pathlib.Path):
         style = (preset_path / 'contest' / 'statements' / 'icpc.sty').read_text()
         assert r'\newcommand{\scoringdesc}' in style
-        assert style.count(r'\def\strScoring{') == 2  # pt and en
+        assert style.count(r'\def\strScoring{') == 3  # pt, es and en

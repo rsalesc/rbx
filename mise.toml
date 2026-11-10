@@ -115,6 +115,10 @@ description = "Regenerate the committed completion spec from the Typer app"
 # textually reproducible (the drift test is dict-based, but this avoids churn).
 run = "python -m rbx.box.completion.serialize && ruff format rbx/box/completion/_spec.py"
 
+[tasks.sync-presets]
+description = "Copy rbx/resources/presets/_shared/ into every bundled preset"
+run = "python scripts/sync_preset_shared.py"
+
 [tasks.record]
 description = "Record documentation asciinema casts (all, or the named ones)"
 run = "python scripts/record.py"
