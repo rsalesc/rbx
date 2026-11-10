@@ -100,7 +100,9 @@
 \texttt{#1}
 }
 
+% Strings for the statement language `\lang` (pt, es; anything else is English).
 \def\portuguese{pt}
+\def\spanish{es}
 \ifx\lang\portuguese
 	\def\strTaskSheet{Caderno de Problemas}
 	\def\strSolutionSheet{Caderno de Soluções}
@@ -121,10 +123,36 @@
 	\def\strExamples{Exemplos}
 	\def\strSolution{Solução}
 	\def\strNotes{Observações}
+	\def\strScoring{Pontuação}
 	\def\strInfoSheet{Folha de Informações}
 	\def\strLimits{Limites}
 	\def\strTimeLimit{Tempo limite}
 	\def\strMemoryLimit{Memória limite}
+\else\ifx\lang\spanish
+	\def\strTaskSheet{Cuaderno de Problemas}
+	\def\strSolutionSheet{Cuaderno de Soluciones}
+	\def\strSponsored{Patrocinio}
+	\def\strHosted{Realización}
+	\def\strOrganized{Organización}
+	\def\strProblem{Problema }
+	\def\strAuthor{Autor}
+	\def\strExplanation{Explicación del ejemplo }
+	\def\strInput{Entrada}
+	\def\strOutput{Salida}
+	\def\strInteraction{Interacción}
+	\def\strSampleinput{Ejemplo de entrada }
+	\def\strSampleoutput{Ejemplo de salida }
+	\def\strSampleinteraction{Ejemplo de interacción }
+	\def\strInteractionread{Lectura}
+	\def\strInteractionwrite{Escritura}
+	\def\strExamples{Ejemplos}
+	\def\strSolution{Solución}
+	\def\strNotes{Notas}
+	\def\strScoring{Puntuación}
+	\def\strInfoSheet{Hoja de Información}
+	\def\strLimits{Límites}
+	\def\strTimeLimit{Límite de tiempo}
+	\def\strMemoryLimit{Límite de memoria}
 \else
 	\def\strTaskSheet{Task Sheet}
 	\def\strSolutionSheet{Solution Sheet}
@@ -145,11 +173,12 @@
 	\def\strExamples{Examples}
 	\def\strSolution{Solution}
 	\def\strNotes{Notes}
+	\def\strScoring{Scoring}
 	\def\strInfoSheet{Information Sheet}
 	\def\strLimits{Limits}
 	\def\strTimeLimit{Time limit}
 	\def\strMemoryLimit{Memory limit}
-\fi
+\fi\fi
 
 \newcommand{\includeProblem}[3][]
 {
@@ -191,6 +220,10 @@
 
 \newcommand{\interactiondesc}[1]{
 	\subsection*{\strInteraction}
+	{#1}}
+
+\newcommand{\scoringdesc}[1]{
+	\subsection*{\strScoring}
 	{#1}}
 
 \newcommand{\sampledesc}[2]{
