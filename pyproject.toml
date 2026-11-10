@@ -101,6 +101,9 @@ pre_bump_hooks = [
   # outdated-extension hint can tell a stale install apart. Not a
   # version_files entry: see the script's docstring.
   "python3 scripts/sync_vscode_version.py",
+  # Bundled presets carry copies of rbx/resources/presets/_shared/ (#969); sync
+  # them so the bump commit -- and the tag remote installs read -- has them.
+  "python3 scripts/sync_preset_shared.py --stage",
 ]
 version_files = [
   "pyproject.toml:^version = ",

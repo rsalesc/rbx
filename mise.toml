@@ -80,6 +80,9 @@ description = "Clean build the package"
 # a wheel built without it is broken for users only -- every test still passes.
 run = [
   "rm -rf dist/ rbx/resources/vscode/",
+  # Presets must match rbx/resources/presets/_shared/; the release bump syncs
+  # them (a pre_bump_hook), this refuses a wheel built from drifted copies.
+  "python scripts/sync_preset_shared.py --check",
   "mise run vscode:vsix",
   "uv build",
   # Guard against a stray directory being swept into a release; see

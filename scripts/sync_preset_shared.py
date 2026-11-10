@@ -4,8 +4,8 @@ Some files -- the contest's `statements/icpc.sty` first of all -- must be the
 same in every preset rbx ships, or a fix (or a new statement language) lands in
 one preset and silently not in the others (#969). Their single source is
 `rbx/resources/presets/_shared/`, laid out like a preset: a file at
-`_shared/<path>` is copied to `<preset>/<path>` for every preset in
-`registry.yml`.
+`_shared/<path>` is copied to `<preset>/<path>` for every bundled preset (each
+folder under `presets/` holding a `preset.rbx.yml`).
 
 Why copies rather than symlinks: a preset is also installed straight from the
 repository (`rsalesc/rbx/rbx/resources/presets/<name>`, at a tool tag), which
@@ -14,25 +14,30 @@ symlinks. A link reaching out to `_shared/` would arrive dangling. So every
 preset stays self-contained, and `--check` -- which a test calls -- is what
 keeps the copies from drifting.
 
-Edit the file under `_shared/`, then run `mise run sync-presets`.
+Edit the file under `_shared/`, then run `mise run sync-presets`. It also runs
+as a commitizen `pre_bump_hook`, so a release's bump commit -- and the tag that
+remote installs fetch presets from -- always carries synced copies; and
+`mise run build` runs `--check`, so a wheel is never built from drifted ones.
+Standard library only: hooks run under whatever `python3` is on PATH.
 """
 
 import argparse
 import pathlib
+import subprocess
 import sys
 from typing import List, Optional, Sequence, Tuple
-
-import yaml
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 PRESETS_DIR = REPO_ROOT / 'rbx' / 'resources' / 'presets'
 SHARED_DIR = PRESETS_DIR / '_shared'
-REGISTRY = PRESETS_DIR / 'registry.yml'
 
 
 def bundled_presets() -> List[pathlib.Path]:
-    registry = yaml.safe_load(REGISTRY.read_text())
-    return [PRESETS_DIR / entry['uri'] for entry in registry['presets']]
+    return sorted(
+        d
+        for d in PRESETS_DIR.iterdir()
+        if d.is_dir() and d != SHARED_DIR and (d / 'preset.rbx.yml').is_file()
+    )
 
 
 def shared_files() -> List[pathlib.Path]:
@@ -65,6 +70,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         action='store_true',
         help='Only report out-of-sync copies; exit 1 if there are any.',
     )
+    parser.add_argument(
+        '--stage',
+        action='store_true',
+        help='`git add` every copy written. The bump commit is made with '
+        '`git commit -a`, which would miss a copy new to its preset.',
+    )
     args = parser.parse_args(argv)
 
     stale = out_of_sync()
@@ -78,6 +89,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.write_bytes(src.read_bytes())
             print(f'updated {dst.relative_to(REPO_ROOT)}')
+    if args.stage and stale:
+        subprocess.run(
+            ['git', 'add', '--', *map(str, stale)], cwd=REPO_ROOT, check=True
+        )
     return 0
 
 
