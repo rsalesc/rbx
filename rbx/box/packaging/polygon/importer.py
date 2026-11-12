@@ -98,9 +98,8 @@ def _populate_statements(
         iso639_code = lang.lang_to_code(statement.language)
 
         pkg_statement = BoxStatement(
-            name=f'statement-{statement.language}',
             language=iso639_code,
-            path=_get_statement_path(statement),
+            file=_get_statement_path(statement),
             type=StatementType.PDF,
         )
 
