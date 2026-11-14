@@ -22,7 +22,7 @@ from rbx.box.environment import Environment
 from rbx.box.packaging.cms import communication, polygon_loader
 from rbx.box.packaging.cms.extension import CmsExtension
 from rbx.box.schema import Interactor, TaskType
-from rbx.config import get_app_file
+from rbx.config import get_app_file, get_resources_file
 from tests.rbx.box.packaging.cms._entries import build_entries
 
 
@@ -84,7 +84,7 @@ def cms_modules(monkeypatch):
 def _polygon_package(root: pathlib.Path, inputs: List[str]) -> pathlib.Path:
     """The parts of a Polygon package the conf reads: `problem.xml` and tests."""
     (root / 'files').mkdir(parents=True)
-    (root / 'files' / 'check.cpp').write_text('// checker')
+    (root / 'files' / polygon_loader.CHECKER_SOURCE).write_text('// checker')
     (root / 'files' / 'cms_testlib.h').write_text('// cms testlib')
     (root / 'tests').mkdir()
     for i, data in enumerate(inputs):
@@ -233,6 +233,7 @@ def test_interactive_files_ship_the_manager_sources(testing_pkg, tmp_path):
     polygon_loader.write_files(testing_pkg.yml, [], files)
 
     assert sorted(p.name for p in files.iterdir()) == [
+        'check.cpp',
         'cms_checker.cpp',
         'cms_conf.py',
         'cms_manager.cpp',
@@ -246,7 +247,11 @@ def test_batch_files_ship_the_conf_and_the_cms_testlib(testing_pkg, tmp_path):
 
     polygon_loader.write_files(testing_pkg.yml, [], files)
 
-    assert sorted(p.name for p in files.iterdir()) == ['cms_conf.py', 'cms_testlib.h']
+    assert sorted(p.name for p in files.iterdir()) == [
+        'check.cpp',
+        'cms_conf.py',
+        'cms_testlib.h',
+    ]
     assert '#ifdef RBX_CMS' in (files / 'cms_testlib.h').read_text()
 
 
@@ -261,7 +266,7 @@ def test_batch_conf_builds_the_checker_against_the_cms_testlib(
     manager = namespace['datasets']['tests']['managers']['checker']
     assert manager.filename == 'checker'
     assert manager.digest.startswith('built from ')
-    assert manager.digest.endswith('check.cpp')
+    assert manager.digest.endswith('/' + polygon_loader.CHECKER_SOURCE)
     (command,) = compilations
     assert '-DRBX_CMS' in command
     # Compiled from a copy where `testlib.h` is the CMS variant.
@@ -332,3 +337,49 @@ def test_interactive_conf_builds_the_manager_and_runner_with_their_flags(
         assert command[:5] == ['g++', '-x', 'c++', '-std=c++17', '-O1']
         assert '-static' in command
     assert any(flag.startswith('-DRBX_CMS_CHECKER=') for flag in manager)
+
+
+def test_files_give_the_importer_a_stub_checker(testing_pkg, tmp_path):
+    files = tmp_path / 'files'
+    files.mkdir()
+
+    polygon_loader.write_files(testing_pkg.yml, [], files)
+
+    # The importer compiles `check.cpp` itself and aborts on failure (#971).
+    assert (files / 'check.cpp').read_text() == polygon_loader.LOADER_CHECKER_STUB
+
+
+def test_the_runner_includes_the_real_checker():
+    runner = get_resources_file(
+        pathlib.Path('packagers') / 'cms' / communication.CHECKER_RUNNER_SOURCE
+    ).read_text()
+
+    assert f'#include "{polygon_loader.CHECKER_SOURCE}"' in runner
+    assert '#include "check.cpp"' not in runner
+
+
+def test_the_stub_checker_builds_as_the_importer_builds_it(tmp_path):
+    # CMS 1.5.1 runs `g++ -x c++ -O2 -static -DCMS -I <cms> -include
+    # <cms>/testlib.h -o checker check.cpp`: no `-std` (gcc 13 means gnu++17)
+    # and its own testlib. macOS cannot link `-static`, so it is left out.
+    testlib = get_app_file(pathlib.Path('testlib.h'), predownloaded=True)
+    (tmp_path / 'check.cpp').write_text(polygon_loader.LOADER_CHECKER_STUB)
+    subprocess.check_call(
+        ['g++', '-x', 'c++', '-std=gnu++17', '-O2', '-DCMS']
+        + ['-I', str(testlib.parent), '-include', str(testlib)]
+        + ['-o', 'checker', 'check.cpp'],
+        cwd=tmp_path,
+    )
+
+    # Should CMS ever run it, it is a judge error, never a verdict. (Popen:
+    # this module fakes `subprocess.run`.)
+    run = subprocess.Popen(
+        [str(tmp_path / 'checker'), 'input', 'correct', 'contestant'],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    stdout, stderr = run.communicate()
+    assert run.returncode != 0
+    assert stdout == ''
+    assert 'placeholder checker' in stderr

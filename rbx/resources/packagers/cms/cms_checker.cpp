@@ -3,7 +3,8 @@
 //
 // Called as `checker <input> <interactor output> <answer>`, exactly how rbx
 // runs a legacy interactor's checker, with stdout and stderr still CMS's.
-// Expects the problem's checker next to it as `check.cpp`.
+// Expects the problem's checker next to it as `rbx_check.cpp` (CMS's
+// importer compiles `check.cpp` on its own, so that name holds a stub).
 #include "rbx_cms_report.h"
 #include "testlib.h"
 
@@ -28,5 +29,5 @@ int main(int argc, char *argv[]) {
 }
 
 #define main rbx_checker_main
-#include "check.cpp"
+#include "rbx_check.cpp"
 #undef main
