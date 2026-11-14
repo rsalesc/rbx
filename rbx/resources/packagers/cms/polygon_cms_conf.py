@@ -108,7 +108,9 @@ def _communication(config):
 
 def _checker(config):
     # Built against rbx's testlib patched for CMS (`-DRBX_CMS`), in a copy of
-    # `files/` so `#include "testlib.h"` finds that variant first.
+    # `files/` so `#include "testlib.h"` finds that variant first. It replaces
+    # the checker the importer built from `files/check.cpp`, a stub that is
+    # there only so the importer's own compile cannot fail.
     from cms.db import Manager
     from cms.db.filecacher import FileCacher
 

@@ -7,6 +7,8 @@ tested with the CMS helpers, under `tests/rbx/box/packaging/cms/`.
 
 import types
 
+from rbx.box import package
+from rbx.box.packaging.cms import polygon_loader
 from rbx.box.packaging.polygon import xml_schema as polygon_schema
 from rbx.box.packaging.polygon.packager import (
     PolygonContestPackager,
@@ -62,3 +64,38 @@ def test_a_statementless_problem_takes_its_first_title_for_cms(testing_pkg):
     assert names == [
         polygon_schema.Name(language='portuguese', value='Soma', main=True)
     ]
+
+
+def _checker_package(testing_pkg):
+    testing_pkg.add_file('checkers/checker.cpp').write_text(
+        '#include "testlib.h"\nint main(){}\n'
+    )
+    testing_pkg.set_checker('checkers/checker.cpp')
+    testing_pkg.save()
+
+
+def test_the_checker_ships_as_check_cpp_without_cms(testing_pkg):
+    _checker_package(testing_pkg)
+    packager = PolygonPackager([])
+
+    ns = packager._flatten_sources()  # noqa: SLF001
+
+    assert ns.flat_name_for(package.get_checker_or_builtin()) == 'check.cpp'
+    assert packager._get_checker().source.path == 'files/check.cpp'  # noqa: SLF001
+
+
+def test_the_checker_moves_out_of_the_importers_way_for_cms(testing_pkg):
+    # CMS's importer compiles `files/check.cpp` with its own flags and testlib,
+    # and aborts the import when that fails (#971); that name is its stub.
+    _checker_package(testing_pkg)
+    packager = PolygonPackager([], cms=True)
+
+    ns = packager._flatten_sources()  # noqa: SLF001
+
+    checker = package.get_checker_or_builtin()
+    assert ns.flat_name_for(checker) == polygon_loader.CHECKER_SOURCE
+    assert 'check.cpp' not in {f.flat_name for f in ns.files}
+    # Polygon reads the real checker; only CMS's importer reads the stub.
+    assert packager._get_checker().source.path == (  # noqa: SLF001
+        f'files/{polygon_loader.CHECKER_SOURCE}'
+    )

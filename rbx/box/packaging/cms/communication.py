@@ -4,7 +4,8 @@ CMS's Communication task type runs a single program, the manager, against the
 contestant. rbx's manager (`cms_manager.cpp`) compiles the problem's testlib
 interactor in, and for a legacy interactor hands its output to the problem's
 checker (`cms_checker.cpp`), as rbx does locally. Both sources expect the
-problem's `interactor.cpp` / `check.cpp`, `testlib.h` and `rbx.h` next to them.
+problem's `interactor.cpp` / `rbx_check.cpp`, `testlib.h` and `rbx.h` next to
+them.
 """
 
 import pathlib

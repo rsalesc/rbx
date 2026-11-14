@@ -3,8 +3,10 @@
 CMS's Polygon importer compiles `check.cpp` against its own patched testlib
 (0.9.21), which prints a `quitp` value verbatim as the outcome -- so rbx's
 percentage would score 100 times too much, and CMS does not clamp it -- and hides
-the checker's message. `cms_conf.py` builds the checker itself instead, against
-this variant of the testlib rbx ships, compiled with `-DRBX_CMS`:
+the checker's message. `cms_conf.py` builds the checker itself instead, from
+`rbx_check.cpp` (`check.cpp` is only a stub for the importer, see
+`polygon_loader.LOADER_CHECKER`), against this variant of the testlib rbx ships,
+compiled with `-DRBX_CMS`:
 
 - CMS runs `checker <input> <correct output> <contestant output>`, so the last
   two arguments are swapped back into testlib's order.

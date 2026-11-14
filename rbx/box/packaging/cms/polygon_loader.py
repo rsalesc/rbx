@@ -21,8 +21,29 @@ from rbx.box.schema import CodeItem, Package
 from rbx.config import get_resources_file, get_testlib
 
 CONF_FILE = 'cms_conf.py'
-# Where the Polygon packager puts the checker, and the importer looks for it.
-CHECKER_SOURCE = 'check.cpp'
+# Where the importer looks for a checker. It compiles it itself, with no `-std`
+# and against its own testlib (0.9.21), and aborts the whole import when that
+# fails -- even though `cms_conf.py` replaces the binary it builds (#971). So
+# with `--cms` it holds `LOADER_CHECKER_STUB`, which any compiler accepts, and
+# the real checker goes to `CHECKER_SOURCE`.
+LOADER_CHECKER = 'check.cpp'
+# Where the Polygon packager puts the checker with `--cms`, for `cms_conf.py`
+# (and, behind a legacy interactor, `cms_checker.cpp`) to build.
+CHECKER_SOURCE = 'rbx_check.cpp'
+LOADER_CHECKER_STUB = """\
+// Written by rbx for CMS's Polygon importer, which compiles files/check.cpp
+// with its own flags and testlib, and fails the import if that does not build.
+// Its binary is never used: files/cms_conf.py builds the real checker,
+// rbx_check.cpp, and stores it in its place. Should this one ever run, it
+// fails the evaluation rather than accepting the submission.
+#include <cstdio>
+
+int main() {
+  std::fputs("rbx: CMS ran the placeholder checker instead of rbx_check.cpp\\n",
+             stderr);
+  return 1;
+}
+"""
 # What the CMS host compiles a checker or interactor with when its language
 # sets no `flags` (see `CmsLanguageExtension.flags`).
 DEFAULT_FLAGS = '-std=gnu++20 -O2'
@@ -109,7 +130,9 @@ def write_files(
     grader_files: Sequence[str] = (),
     attachments_path: Optional[pathlib.Path] = None,
 ):
-    """Write `cms_conf.py`, and the sources it compiles, into `files/`."""
+    """Write `cms_conf.py`, the sources it compiles, and the importer's stub
+    checker into `files/`."""
+    (files_path / LOADER_CHECKER).write_text(LOADER_CHECKER_STUB)
     (files_path / CONF_FILE).write_text(
         render_conf(pkg, entries, cms_settings, grader_files, attachments_path)
     )

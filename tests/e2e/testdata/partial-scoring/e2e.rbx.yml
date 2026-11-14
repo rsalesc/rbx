@@ -47,6 +47,11 @@ scenarios:
               problem.xml: '/(?s)<names>\s*<name language="english" value="partial-scoring" main="true"/>.*treat-points-from-checker-as-percent="true".*name="big"[^>]*points-policy="each-test"/'
               files/cms_conf.py: "[20.0, '^(003|001|002)$'], [20.0, '^(004|001|002)$'], [20.0, '^(005|001|002)$']"
               files/cms_testlib.h: "#ifdef RBX_CMS"
+              # CMS's importer compiles `files/check.cpp` on its own and aborts
+              # the import if it fails (#971), so that is a stub; the real
+              # checker is `rbx_check.cpp`, which `cms_conf.py` builds.
+              files/check.cpp: "placeholder checker"
+              files/rbx_check.cpp: "quitp"
 
   - name: points-refused-by-domjudge
     description: |
