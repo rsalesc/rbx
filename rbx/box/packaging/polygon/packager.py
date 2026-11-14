@@ -246,13 +246,23 @@ class PolygonPackager(BasePackager):
         lang, title = next(iter(pkg.titles.items()), ('en', pkg.name))
         return polygon_schema.Name(language=code_to_langs([lang])[0], value=title)
 
+    def _checker_file(self) -> str:
+        """The checker's name in `files/`.
+
+        With `--cms`, `files/check.cpp` is the CMS importer's stub instead (see
+        `cms_polygon_loader.LOADER_CHECKER`).
+        """
+        if self.cms:
+            return cms_polygon_loader.CHECKER_SOURCE
+        return 'check.cpp'
+
     def _get_checker(self) -> polygon_schema.Checker:
         # TODO: support other checker languages
         return polygon_schema.Checker(
             name='rbx::checker',
             type='testlib',
             source=polygon_schema.File(
-                path='files/check.cpp',
+                path=f'files/{self._checker_file()}',
                 type=get_polygon_language_from_code_item(
                     package.get_checker_or_builtin()
                 ),
@@ -326,7 +336,7 @@ class PolygonPackager(BasePackager):
         pkg = package.find_problem_package_or_die()
         checker = package.get_checker_or_builtin()
         sources = [checker]
-        reserved = {package.get_relative_source_path(checker): 'check.cpp'}
+        reserved = {package.get_relative_source_path(checker): self._checker_file()}
         if pkg.interactor is not None:
             sources.append(pkg.interactor)
             reserved[package.get_relative_source_path(pkg.interactor)] = (
@@ -518,8 +528,8 @@ class PolygonPackager(BasePackager):
         files_path.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(get_testlib(), files_path / 'testlib.h')
         shutil.copyfile(header.get_header(), files_path / 'rbx.h')
-        # Solutions go to solutions/; check.cpp, interactor.cpp and every dep,
-        # rewritten, go to files/.
+        # Solutions go to solutions/; the checker, interactor.cpp and every
+        # dep, rewritten, go to files/.
         solutions_path = into_path / 'solutions'
         solution_names = {
             ns.flat_name_for(solution) for solution in package.get_solutions()
