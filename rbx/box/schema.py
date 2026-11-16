@@ -550,6 +550,17 @@ Whether this interactor is a legacy interactor and needs a checker to be specifi
         description="""Whether the interactor should capture the pipes.""",
     )
 
+    processes: Optional[int] = Field(
+        default=None,
+        ge=2,
+        description="""
+How many copies of the solution run at once against this interactor, as in CMS
+`Communication` with `num_processes`. Each copy gets its 0-based index as its
+first command-line argument, and the interactor talks to them through
+`rbx::registerFanoutInteraction`. Unset means a single process.
+""",
+    )
+
 
 class Grader(CodeItem):
     """A grader compiled together with every solution (IOI function-call tasks).
@@ -1863,6 +1874,33 @@ that is correct and used as reference -- and should have the `accepted` outcome.
     @property
     def expanded_vars(self) -> Vars:
         return expand_vars(self.vars)
+
+    @property
+    def is_communication(self) -> bool:
+        """Whether an interactor judges this problem, with one process or several.
+
+        Ask this when the code needs *an interactor* (compile it, pass it along,
+        take the answer from its output); ask `is_interactive` / `is_fanout`
+        when it depends on how many processes it talks to.
+        """
+        return self.type == TaskType.COMMUNICATION
+
+    @property
+    def fanout_processes(self) -> Optional[int]:
+        """How many contestant processes the interactor talks to, when more than one."""
+        if not self.is_communication or self.interactor is None:
+            return None
+        return self.interactor.processes
+
+    @property
+    def is_fanout(self) -> bool:
+        """A communication problem whose interactor talks to several processes."""
+        return self.fanout_processes is not None
+
+    @property
+    def is_interactive(self) -> bool:
+        """A communication problem with a single contestant process."""
+        return self.is_communication and not self.is_fanout
 
     @property
     def score_type(self) -> ScoreType:
