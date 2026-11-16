@@ -406,4 +406,5 @@ T getVar(const std::string &first, const Args &...rest) {
 }
 
 //<rbx::grader>
+//<rbx::fanout>
 #endif

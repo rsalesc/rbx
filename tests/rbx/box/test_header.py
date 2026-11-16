@@ -26,6 +26,7 @@ _ALL_SENTINELS = [
     'bool_var_groups',
     'bool_var',
     'grader',
+    'fanout',
 ]
 
 
