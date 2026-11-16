@@ -227,12 +227,12 @@ skill. `rbx/box/CLAUDE.md` documents the predicates.
 
 ## Follow-ups
 
-- CMS packaging via `rbx package polygon --cms` (brainstormed, separate issue): the
+- CMS packaging via `rbx package polygon --cms` (#1043): the
   Polygon packager declares `fanout` only with `--cms` (refused without it and with `--upload`);
   `task_type_parameters` -> `[N, 'alone'|'stub', 'std_io']`; one `cms_manager.cpp` with
   `-DRBX_CMS_FANOUT` forwarding argv to the interactor and calling `rbx::fanout::close_all()`
   in `report_at_exit`; time limit written as is (CMS also sums CPU); grader stub unchanged;
   verified on the remote CMS 1.5.1 harness.
-- TUI and VS Code support for the tagged format (one issue).
-- Rendering fanout samples in statements.
+- TUI and VS Code support for the tagged format: #1044.
+- Rendering fanout samples in statements: #1045.
 - Fanout variant of the olympiad preset: #1042.
