@@ -15,7 +15,6 @@ from rbx.box.schema import (
     CodeItem,
     OutputFromItemWithDigest,
     OutputFromWithDigest,
-    TaskType,
     Testcase,
     Visualizer,
 )
@@ -161,7 +160,7 @@ def get_answer_from_with_digest(
 
 async def _compile_interactor() -> Optional[str]:
     pkg = package.find_problem_package_or_die()
-    if pkg.type == TaskType.COMMUNICATION:
+    if pkg.is_communication:
         return await checkers.compile_interactor()
     return None
 

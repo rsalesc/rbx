@@ -713,7 +713,7 @@ async def generate_outputs_for_testcases(
 
     pkg = package.find_problem_package_or_die()
 
-    if pkg.type == TaskType.COMMUNICATION and needs_output:
+    if pkg.is_communication and needs_output:
         interactor_digest = await checkers.compile_interactor(progress)
     else:
         interactor_digest = None

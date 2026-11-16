@@ -25,7 +25,6 @@ from rbx.box.schema import (
     LimitsProfile,
     Package,
     Solution,
-    TaskType,
 )
 
 # Independent of `ISSUES_FORMAT_VERSION` on purpose: the `ProblemSummary` shape
@@ -194,7 +193,7 @@ def time_limit_varies_by_language(profile: LimitsProfile) -> bool:
 
 def get_problem_flags(pkg: Package) -> ProblemFlags:
     return ProblemFlags(
-        is_interactive=pkg.type == TaskType.COMMUNICATION,
+        is_interactive=pkg.is_communication,
         has_validator=pkg.validator is not None,
         has_custom_checker=pkg.checker is not None,
     )

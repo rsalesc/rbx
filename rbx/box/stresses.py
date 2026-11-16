@@ -41,7 +41,6 @@ from rbx.box.schema import (
     GeneratorCall,
     Solution,
     Stress,
-    TaskType,
     Testcase,
 )
 from rbx.box.solutions import (
@@ -649,7 +648,7 @@ async def run_stress(
         finders_digest[str(finder_item.path)] = await _compile_finder(finder_item)
 
     interactor_digest = None
-    if pkg.type == TaskType.COMMUNICATION:
+    if pkg.is_communication:
         interactor_digest = await checkers.compile_interactor(progress=progress)
 
     all_validators = package.get_all_validators()

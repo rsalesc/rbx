@@ -79,6 +79,10 @@ class RunnerCapabilities:
     supports_abort: bool = True
     # Can drive an interactor against the solution, for COMMUNICATION problems.
     supports_interactive: bool = True
+    # Can run several contestant processes against one interactor
+    # (`interactor.processes`). Off unless a backend says so: no remote judge
+    # rbx drives has the model.
+    supports_fanout: bool = False
     # Can build and run the solution under a sanitizer.
     supports_sanitizers: bool = True
     # Can run the solutions *without* checking their output. A remote judge

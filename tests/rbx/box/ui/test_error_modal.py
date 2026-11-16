@@ -103,6 +103,8 @@ async def test_visualizer_error_routes_to_error_modal():
 
     pkg = mock.Mock()
     pkg.type = TaskType.BATCH
+    pkg.is_communication = False
+    pkg.is_interactive = False
 
     async def _no_testcases():
         return []
