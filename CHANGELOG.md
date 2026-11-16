@@ -1,3 +1,19 @@
+## 2.7.0 (2026-11-16)
+
+### Feat
+
+- **presets**: share one icpc.sty across bundled presets, add spanish (#1038)
+- **graders**: stop shipping rbx.h to CMS and lint its include order (#1037)
+
+### Fix
+
+- **cms**: ship a stub check.cpp so the importer's compile cannot fail (#1041)
+- **moj**: download submissions awaiting manual review (#1034)
+
+### Perf
+
+- **grading**: tee interactive pipes in chunks instead of bytes (#1036)
+
 ## 2.6.4 (2026-11-07)
 
 ### Feat
