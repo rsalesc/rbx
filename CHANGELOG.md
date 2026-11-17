@@ -1,3 +1,9 @@
+## 2.8.0 (2026-11-17)
+
+### Feat
+
+- fanout communication problems (N processes, one interactor) (#1046)
+
 ## 2.7.0 (2026-11-16)
 
 ### Feat
