@@ -123,9 +123,20 @@ class _Channel:
         )
 
 
+@dataclasses.dataclass
+class _TeeRoute:
+    """A pipe the capture tee copies: what it reads, into what (None: no peer),
+    the clean copy it keeps (None: none) and how it marks it in the capture."""
+
+    marker: str
+    reads: typing.IO[bytes]
+    writes: Optional[typing.IO[bytes]]
+    extra: Optional[pathlib.Path]
+
+
 # An upper bound on the descriptors a run holds at once per contestant process:
 # its channel's pipes (eight when teed), the copy of its stdin, its stderr pipe
-# and file, and the merged capture each of its three tees appends to.
+# and file, and the tee's clean copy of each of its three routes.
 _FILES_PER_PROCESS = 16
 # Slack on top of what is open already, for other threads' files.
 _FILES_MARGIN = 32
@@ -580,26 +591,13 @@ class StupidSandbox(SandboxBase):
             params.stdout_file is not None or interactor_params.stdout_file is not None
         )
 
-    def _get_tee_executable(
-        self, communication_params: CommunicationParams
-    ) -> pathlib.Path:
-        if communication_params.tee_mode == 'line':
-            with importlib.resources.as_file(
-                importlib.resources.files('rbx')
-                / 'grading'
-                / 'judge'
-                / 'sandboxes'
-                / 'line_tee.py'
-            ) as file:
-                return file
+    def _get_tee_script(self, name: str) -> List[str]:
         with importlib.resources.as_file(
-            importlib.resources.files('rbx')
-            / 'grading'
-            / 'judge'
-            / 'sandboxes'
-            / 'chunk_tee.py'
+            importlib.resources.files('rbx') / 'grading' / 'judge' / 'sandboxes' / name
         ) as file:
-            return file
+            # `-S`: a tee imports nothing but the standard library, and skipping
+            # `site` saves ~1.3 ms per spawn in the Docker image.
+            return [sys.executable, '-S', str(utils.abspath(file))]
 
     def _get_tee_command(
         self,
@@ -607,12 +605,10 @@ class StupidSandbox(SandboxBase):
         communication_params: CommunicationParams,
         extra: Optional[str] = None,
     ) -> List[str]:
-        return [
-            sys.executable,
-            str(utils.abspath(self._get_tee_executable(communication_params))),
-            char,
-            extra or '/dev/null',
-        ]
+        script = (
+            'line_tee.py' if communication_params.tee_mode == 'line' else 'chunk_tee.py'
+        )
+        return [*self._get_tee_script(script), char, extra or '/dev/null']
 
     def _get_tee_program(
         self,
@@ -638,6 +634,43 @@ class StupidSandbox(SandboxBase):
                 io, pgid, sized_pipes=communication_params.processes == 1
             ),
         )
+
+    def _get_capture_tee(
+        self,
+        routes: List[_TeeRoute],
+        communication_params: CommunicationParams,
+        pgid: Optional[int],
+    ) -> Program:
+        """The one tee of a communication run, copying every route at once (see
+        `chunk_tee.py`): each tee is one more process a message wakes on its
+        way."""
+        command = self._get_tee_script('chunk_tee.py')
+        if communication_params.tee_mode == 'line':
+            command.append('--line')
+        command.append('--routes')
+        fds: List[int] = []
+        for route in routes:
+            command += [
+                route.marker,
+                str(route.reads.fileno()),
+                '-' if route.writes is None else str(route.writes.fileno()),
+                str(self.relative_path(route.extra)) if route.extra else '/dev/null',
+            ]
+            fds.append(route.reads.fileno())
+            if route.writes is not None:
+                fds.append(route.writes.fileno())
+        io = ProgramIO(
+            input=subprocess.DEVNULL,
+            output=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if communication_params.merged_capture:
+            io.stderr = self.relative_path(communication_params.merged_capture).open(
+                'ab'
+            )
+        params = self._get_tee_program_params(io, pgid, sized_pipes=False)
+        params.pass_fds = tuple(fds)
+        return Program(command, params)
 
     @contextlib.contextmanager
     def _local_capture(
@@ -839,6 +872,8 @@ class StupidSandbox(SandboxBase):
 
         exit_order = _ExitOrder()
         channels: List[_Channel] = []
+        tee_routes: List[_TeeRoute] = []
+        stderr_writers: List[Optional[typing.IO[bytes]]] = [None] * n
         liveness: List[typing.IO[bytes]] = []
         tees: List[Program] = []
         programs: List[Program] = []
@@ -857,45 +892,54 @@ class StupidSandbox(SandboxBase):
                     '(e.g. `ulimit -n`) or run fewer processes at once.'
                 ) from e
 
-            # The processes (and their tees) before the interactor: until it
-            # starts nothing can talk, so a process that exits meanwhile quit on
-            # its own, first.
+            # What the capture tee copies: each channel both ways, and each
+            # process's stderr when that goes into the merged capture too.
             for i, channel in enumerate(channels):
                 if channel.tee_to_process is not None:
                     assert channel.tee_to_interactor is not None
-                    # The '>' tee first, as it always was. A tee forwards a chunk
-                    # before it logs it, so the capture can show a reply ahead of
-                    # the line it answers; measured, the other spawn order makes
-                    # that ~5x likelier on macOS (8% vs 1.5% of runs of
-                    # `test_run_coordinated_with_merged_capture`).
-                    started(
-                        self._get_tee_program(
+                    tee_routes.append(
+                        _TeeRoute(
                             marker(i, '>'),
-                            stdin=channel.tee_to_interactor[0],
-                            stdout=channel.tee_to_interactor[1],
-                            capture=capture_path(params),
-                            pgid=group_id,
-                            communication_params=communication_params,
-                        ),
-                        tees,
+                            *channel.tee_to_interactor,
+                            extra=capture_path(params),
+                        )
                     )
-                    started(
-                        self._get_tee_program(
+                    tee_routes.append(
+                        _TeeRoute(
                             marker(i, '<'),
-                            stdin=channel.tee_to_process[0],
-                            stdout=channel.tee_to_process[1],
-                            capture=capture_path(interactor_params),
-                            pgid=group_id,
-                            communication_params=communication_params,
-                        ),
-                        tees,
+                            *channel.tee_to_process,
+                            extra=capture_path(interactor_params),
+                        )
                     )
-                    # What the process writes reaches the interactor through
-                    # this tee.
-                    exit_order.watch_hangup(i, channel.tee_to_interactor[0])
-                    for end in (*channel.tee_to_process, *channel.tee_to_interactor):
-                        end.close()
+                if should_tee_stderr:
+                    # The tee writes the clean copy to the process's stderr file
+                    # and the marked copy to the merged capture.
+                    stderr_reader, stderr_writers[i] = _make_pipe(sized=not fanout)
+                    tee_routes.append(
+                        _TeeRoute(marker(i, '!'), stderr_reader, None, stderr_path(i))
+                    )
 
+            # The tee, then the processes, then the interactor: until it starts
+            # nothing can talk, so a process that exits meanwhile quit on its
+            # own, first.
+            if tee_routes:
+                started(
+                    self._get_capture_tee(
+                        tee_routes, communication_params, pgid=group_id
+                    ),
+                    tees,
+                )
+                for i, channel in enumerate(channels):
+                    if channel.tee_to_interactor is not None:
+                        # What the process writes reaches the interactor through
+                        # the tee.
+                        exit_order.watch_hangup(i, channel.tee_to_interactor[0])
+                for route in tee_routes:
+                    route.reads.close()
+                    if route.writes is not None:
+                        route.writes.close()
+
+            for i, channel in enumerate(channels):
                 program_params = self._get_program_params(params)
                 program_params.io = self._get_io(params, pipe_io=True)
                 # Its wall clock starts with the interactor's, below.
@@ -905,7 +949,7 @@ class StupidSandbox(SandboxBase):
                     # past the quota Linux refuses with EPERM, failing the spawn.
                     program_params.pipesize = -1
                 # The process gets its own copy of the read end it consumes. Ours
-                # stays open, so the interactor -- or its capture tee -- never
+                # stays open, so the interactor -- or the capture tee -- never
                 # writes into a pipe nobody holds: a process may answer and exit
                 # without reading everything the interactor still has to say,
                 # and once it is gone we drain the rest (as BAPCtools' relay and
@@ -916,23 +960,8 @@ class StupidSandbox(SandboxBase):
                 )
                 program_params.io.output = channel.process_writes
                 path = stderr_path(i)
-                stderr_writer: Optional[typing.IO[bytes]] = None
-                if should_tee_stderr:
-                    # The tee writes the clean copy to the process's stderr file
-                    # and the marked copy to the merged capture.
-                    stderr_reader, stderr_writer = _make_pipe(sized=not fanout)
-                    started(
-                        self._get_tee_program(
-                            marker(i, '!'),
-                            stdin=stderr_reader,
-                            stdout=subprocess.DEVNULL,
-                            capture=path,
-                            pgid=group_id,
-                            communication_params=communication_params,
-                        ),
-                        tees,
-                    )
-                    stderr_reader.close()
+                stderr_writer = stderr_writers[i]
+                if stderr_writer is not None:
                     program_params.io.stderr = stderr_writer
                 elif path is not None:
                     program_params.io.stderr = self.relative_path(path)
@@ -1015,6 +1044,11 @@ class StupidSandbox(SandboxBase):
                 program.close()
             for channel in channels:
                 channel.close()
+            for route in tee_routes:
+                route.reads.close()
+            for writer in stderr_writers:
+                if writer is not None:
+                    writer.close()
             for end in liveness:
                 end.close()
             exit_order.close()

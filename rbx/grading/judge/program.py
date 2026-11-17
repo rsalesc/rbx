@@ -100,13 +100,12 @@ class ProgramParams:
     # Start the wall clock when `Program.start_wall_clock` says so instead of at
     # the spawn: a communication run starts its solution processes before the
     # interactor, and until that one runs nothing can talk, so the startup of
-    # the others (and of their capture tees) must not eat a process's budget.
+    # the others (and of the capture tee) must not eat a process's budget.
     defer_wall_clock: bool = False
     # Whether the child sets its resource limits before exec. A capture tee
     # needs none, and without a `preexec_fn` CPython can spawn with vfork on
     # Linux: measured in the Docker image, 192 tees spawned from a 200 MB parent
-    # took 1.25 ms each instead of 2.4-2.9 ms (a fanout run of 64 processes with
-    # capture starts 192 of them before the interactor).
+    # took 1.25 ms each instead of 2.4-2.9 ms.
     rlimits: bool = True
 
 
