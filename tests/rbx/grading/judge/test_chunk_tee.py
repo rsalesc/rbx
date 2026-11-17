@@ -4,6 +4,7 @@ import pathlib
 import select
 import subprocess
 import sys
+import threading
 import time
 
 import pytest
@@ -264,3 +265,59 @@ def test_line_mode_routes_forward_whole_lines_only(tmp_path: pathlib.Path):
     assert proc.wait(timeout=10) == 0
     os.close(from_tee)
     assert (tmp_path / 'merged').read_bytes() == b'<123\n'
+
+
+@pytest.mark.parametrize('line', [False, True], ids=['chunk', 'line'])
+def test_a_long_line_costs_linear_time(tmp_path: pathlib.Path, line: bool):
+    # 64 MiB with no newline until the end: searching the whole held line on
+    # every read took ~13 s here, against ~0.1 s for one pass.
+    data = b'1 ' * (32 * 1024 * 1024) + b'\n'
+    to_r, to_tee = os.pipe()
+    from_tee, to_peer = os.pipe()
+    proc = _start_routes(tmp_path, [('>', to_r, to_peer, 'extra')], line=line)
+    os.close(to_r)
+    os.close(to_peer)
+    received = []
+
+    def peer() -> None:
+        while chunk := os.read(from_tee, 1 << 20):
+            received.append(len(chunk))
+
+    reader = threading.Thread(target=peer)
+    reader.start()
+    start = time.monotonic()
+    view = memoryview(data)
+    while view:
+        view = view[os.write(to_tee, view) :]
+    os.close(to_tee)
+    assert proc.wait(timeout=60) == 0
+    elapsed = time.monotonic() - start
+    reader.join()
+    os.close(from_tee)
+
+    assert sum(received) == len(data)
+    assert (tmp_path / 'merged').stat().st_size == len(data) + 1
+    assert elapsed < 5, f'{elapsed:.1f} s for one 64 MiB line'
+
+
+def test_a_peer_gone_mid_line_captures_each_line_once(tmp_path: pathlib.Path):
+    to_r, to_tee = os.pipe()
+    from_tee, to_peer = os.pipe()
+    proc = _start_routes(tmp_path, [('>', to_r, to_peer, 'extra')])
+    os.close(to_r)
+    os.close(to_peer)
+
+    os.write(to_tee, b'abc')
+    # Through the tee, so `abc` is its held tail when the peer goes.
+    assert _read_within(from_tee, 3) == b'abc'
+    os.close(from_tee)
+    # One write, so one read: its forward is the one that finds the peer gone.
+    try:
+        os.write(to_tee, b'def\nxyz')
+    except BrokenPipeError:
+        pass
+    os.close(to_tee)
+    assert proc.wait(timeout=10) == 0
+
+    assert (tmp_path / 'merged').read_bytes() == b'>abcdef\n>xyz\n'
+    assert (tmp_path / 'extra').read_bytes() == b'abcdef\nxyz'

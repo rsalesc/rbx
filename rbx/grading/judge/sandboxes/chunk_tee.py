@@ -126,8 +126,12 @@ class Route:
         self.extra = extra
         self.line = line
         # The tail of the last chunk, after its last newline: not captured yet
-        # (and, with `line`, not forwarded yet either).
-        self.tail = b''
+        # (and, with `line`, not forwarded yet either). Grown in place, so a
+        # line spanning many chunks costs a copy per chunk, not per byte read.
+        self.tail = bytearray()
+        # Complete lines read but not captured yet: the read that took them
+        # writes them after forwarding, unless the forward ended the route.
+        self.lines = bytearray()
         # Read, and still to be written to the peer.
         self.out = bytearray()
         # Whether `src` is still read: until its EOF, or its peer is gone.
@@ -189,18 +193,25 @@ class Tee:
         if not chunk:
             self.end(route)
             return
-        data = route.tail + chunk if route.tail else chunk
-        newline = data.rfind(b'\n')
-        if route.line:
-            # Whole lines only.
-            self.forward(route, data[: newline + 1])
+        # Only the new chunk is searched: the tail has no newline. Searching the
+        # whole held line again on every read made a long line quadratic.
+        newline = chunk.rfind(b'\n')
+        if newline < 0:
+            route.tail += chunk
         else:
-            # Forward first: the capture stays off the latency path.
-            self.forward(route, chunk)
+            route.lines = route.tail + chunk[: newline + 1]
+            route.tail = bytearray(chunk[newline + 1 :])
+        # Forward first: the capture stays off the latency path. With `line`,
+        # whole lines only. A forward that finds the peer gone ends the route,
+        # and `end` captures these lines, then the tail, in that order.
+        self.forward(route, route.lines if route.line else chunk)
         route.extra.write(chunk)
-        if newline >= 0:
-            write_all(self.cap, mark_lines(route.marker, data[: newline + 1]))
-        route.tail = data[newline + 1 :]
+        self.capture(route)
+
+    def capture(self, route: Route) -> None:
+        if route.lines:
+            write_all(self.cap, mark_lines(route.marker, route.lines))
+            route.lines = bytearray()
 
     def forward(self, route: Route, data) -> None:
         if route.dst is None or not data:
@@ -254,9 +265,10 @@ class Tee:
         # Not closed (unless the peer is gone): it was kept until exit when
         # every pipe had a tee of its own.
         self.watch(route.src, 0)
+        self.capture(route)
         if route.tail:
             tail = bytes(route.tail)
-            route.tail = b''
+            route.tail = bytearray()
             if route.line:
                 self.forward(route, tail)
             # A last line without a newline still ends its record: the capture
