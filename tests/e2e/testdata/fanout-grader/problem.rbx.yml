@@ -1,0 +1,31 @@
+name: fanout-grader
+type: communication
+timeLimit: 1000
+memoryLimit: 256
+grader:
+  path: graders/grader.cpp
+  # Any long random string; the hidden header and framing derive from it.
+  secret: fanout-relay-3f9a1c7e5b2d4086
+interactor:
+  path: interactor.cpp
+  # Three copies of the solution, each linked with the grader stub.
+  processes: 3
+validator:
+  path: validator.cpp
+generators:
+  - name: gen
+    path: gens/gen.cpp
+testcases:
+  - name: samples
+    testcaseGlob: manual/*.in
+  - name: main
+    generators:
+      - name: gen
+        args: 10 1
+      - name: gen
+        args: 200 2
+solutions:
+  - path: sols/main.cpp
+    outcome: ACCEPTED
+  - path: sols/wa.cpp
+    outcome: WRONG_ANSWER
