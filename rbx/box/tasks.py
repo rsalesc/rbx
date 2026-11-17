@@ -109,6 +109,17 @@ def _name_failing_process(
     """Say which process a fanout verdict is about."""
     if len(logs) == 1 or result.outcome not in _PROCESS_FAILURES:
         return result
+    if result.outcome == Outcome.TIME_LIMIT_EXCEEDED and decider is not None:
+        decider_log = logs[decider]
+        assert decider_log is not None
+        if decider_log.exitstatus not in (
+            SandboxBase.EXIT_TIMEOUT,
+            SandboxBase.EXIT_TIMEOUT_WALL,
+        ):
+            # The deciding process failed some other way (crashed, say) and it
+            # is the summed CPU time that is over: naming the processes that
+            # crashed would call a crash a time limit.
+            decider = None
     if decider is not None:
         who = _name_processes(_failed_like(logs, decider))
     elif result.outcome == Outcome.TIME_LIMIT_EXCEEDED:
