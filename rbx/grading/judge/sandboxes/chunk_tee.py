@@ -20,7 +20,7 @@ The merged capture is shared with the tees of the other direction (and of the
 solution's stderr), so only *complete* marked lines are written to it, one
 ``write`` each batch: a chunk that ends mid-line keeps its tail until the newline
 arrives, so another tee can never land in the middle of a marked line. A last
-line without a newline is written at EOF.
+line without a newline is written at EOF, with one.
 """
 
 import os
@@ -78,8 +78,12 @@ def main() -> None:
             last_newline = pending.rfind(b'\n')
             complete = pending[: last_newline + 1]
             tail = pending[last_newline + 1 :]
+            # A last line without a newline still ends its record: the capture
+            # is shared, and the next tee's append would otherwise land on the
+            # same line. (The reader drops line ends anyway.)
             write_all(
-                cap, mark_lines(marker, complete) + (marker + tail if tail else b'')
+                cap,
+                mark_lines(marker, complete) + (marker + tail + b'\n' if tail else b''),
             )
 
 

@@ -677,11 +677,14 @@ class SandboxBase(abc.ABC):
         interactor's.
 
         With one copy, the interactor talks to it over its own stdin/stdout. With
-        more, copy i gets `i` as its last argument, the interactor's stdin/stdout
-        are `/dev/null`, and the interactor gets a `<from_i> <to_i>` pair of
-        `/dev/fd/K` paths per copy after its own arguments: `from_i` reads what
-        copy i writes, `to_i` writes what copy i reads. Their stderr is merged into
-        `params.stderr_file`, grouped by copy, every line tagged `[i] `.
+        more, copy i gets `i` as its last argument, and the interactor gets a
+        `<from_i> <to_i>` pair of `/dev/fd/K` paths per copy after its own
+        arguments: `from_i` reads what copy i writes, `to_i` writes what copy i
+        reads. Its stdout is `/dev/null` and its stdin is not for reading (the
+        sandbox uses it to tell when the interactor starts to exit). The copies'
+        stderr is merged into `params.stderr_file`, grouped by copy, every line
+        tagged `[i] `. Each log's `exit_index` orders the moments the programs
+        stopped.
         """
         pass
 

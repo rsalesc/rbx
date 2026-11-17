@@ -77,7 +77,8 @@ def test_marks_every_line_and_copies_the_extra_file_verbatim(
     assert _finish(proc) == data
 
     assert (tmp_path / 'extra').read_bytes() == data
-    assert (tmp_path / 'merged').read_bytes() == b'>1 2\n>\n>  3\n>last'
+    # The clean copy is verbatim; the shared capture ends every record.
+    assert (tmp_path / 'merged').read_bytes() == b'>1 2\n>\n>  3\n>last\n'
 
 
 def test_a_line_split_across_chunks_is_captured_whole(tmp_path: pathlib.Path):
@@ -95,7 +96,7 @@ def test_a_line_split_across_chunks_is_captured_whole(tmp_path: pathlib.Path):
     assert (tmp_path / 'merged').read_bytes() == b'<1234\n'
 
     assert _finish(proc) == b''
-    assert (tmp_path / 'merged').read_bytes() == b'<1234\n<5'
+    assert (tmp_path / 'merged').read_bytes() == b'<1234\n<5\n'
 
 
 def test_copies_megabytes_unchanged(tmp_path: pathlib.Path):

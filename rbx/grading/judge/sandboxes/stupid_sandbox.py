@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import contextlib
+import ctypes
 import dataclasses
+import errno
 import fcntl
+import functools
 import importlib.resources
 import logging
 import os
 import pathlib
 import resource
+import select
 import shutil
 import signal
 import subprocess
@@ -15,7 +19,7 @@ import sys
 import tempfile
 import threading
 import typing
-from typing import Iterator, List, Optional, Tuple
+from typing import Dict, Hashable, Iterator, List, Optional, Tuple
 
 from rbx import utils
 from rbx.grading.judge.cacher import FileCacher
@@ -23,6 +27,7 @@ from rbx.grading.judge.program import (
     FileLike,
     Program,
     ProgramCode,
+    ProgramError,
     ProgramIO,
     ProgramParams,
     ProgramResult,
@@ -52,15 +57,18 @@ def _drain(pipe: typing.IO[bytes]) -> None:
         pipe.close()
 
 
-def _make_pipe() -> Tuple[typing.IO[bytes], typing.IO[bytes]]:
+def _make_pipe(sized: bool = True) -> Tuple[typing.IO[bytes], typing.IO[bytes]]:
     """A pipe as two unbuffered file objects (read end, write end).
 
     File objects, never bare fds: a `Program` closes what it was given more than
     once, and a second `os.close` could hit an unrelated fd that reused the
-    number. Sized like the pipes `subprocess` makes (where the OS allows it).
+    number. `sized` makes it as large as the pipes `subprocess` makes (Linux
+    only) -- which a fanout run must not ask for: its 4-8 pipes per process
+    would soon exceed the user's `pipe-user-pages-soft`, past which Linux hands
+    every new pipe, this run's and any other's, a single page.
     """
     read_fd, write_fd = os.pipe()
-    if BUFFER_SIZE_BYTES > 0 and hasattr(fcntl, 'F_SETPIPE_SZ'):
+    if sized and BUFFER_SIZE_BYTES > 0 and hasattr(fcntl, 'F_SETPIPE_SZ'):
         try:
             fcntl.fcntl(write_fd, fcntl.F_SETPIPE_SZ, BUFFER_SIZE_BYTES)
         except OSError:
@@ -96,15 +104,15 @@ class _Channel:
             end.close()
 
     @staticmethod
-    def open(teed: bool) -> '_Channel':
+    def open(teed: bool, sized: bool) -> '_Channel':
         if not teed:
-            to_r, to_w = _make_pipe()
-            from_r, from_w = _make_pipe()
+            to_r, to_w = _make_pipe(sized)
+            from_r, from_w = _make_pipe(sized)
             return _Channel(from_r, to_w, to_r, from_w)
-        i2t_r, i2t_w = _make_pipe()
-        t2p_r, t2p_w = _make_pipe()
-        p2t_r, p2t_w = _make_pipe()
-        t2i_r, t2i_w = _make_pipe()
+        i2t_r, i2t_w = _make_pipe(sized)
+        t2p_r, t2p_w = _make_pipe(sized)
+        p2t_r, p2t_w = _make_pipe(sized)
+        t2i_r, t2i_w = _make_pipe(sized)
         return _Channel(
             interactor_reads=t2i_r,
             interactor_writes=i2t_w,
@@ -141,6 +149,280 @@ def _ensure_open_files(needed: int) -> None:
             resource.setrlimit(resource.RLIMIT_NOFILE, (wanted, hard))
     except (ValueError, OSError):
         pass
+
+
+# `pidfd_open`'s number on every architecture rbx runs on (Linux 5.3+).
+_SYS_PIDFD_OPEN = 434
+
+
+def _pidfd_open(pid: int) -> int:
+    """A pidfd for `pid`: readable once it has exited.
+
+    `os.pidfd_open` is missing from some Python builds -- the standalone CPython
+    the Docker image runs, for one -- so the system call is made directly then.
+    """
+    if hasattr(os, 'pidfd_open'):
+        return os.pidfd_open(pid)
+    libc = ctypes.CDLL(None, use_errno=True)
+    fd = libc.syscall(_SYS_PIDFD_OPEN, pid, 0)
+    if fd < 0:
+        err = ctypes.get_errno()
+        raise OSError(err, os.strerror(err))
+    return fd
+
+
+@functools.cache
+def _has_pidfds() -> bool:
+    if sys.platform != 'linux' or not hasattr(select, 'epoll'):
+        return False
+    try:
+        os.close(_pidfd_open(os.getpid()))
+    except (OSError, AttributeError):
+        return False
+    return True
+
+
+# What `_ExitOrder`'s own wake-up pipe is watched as.
+_WAKE = object()
+
+
+class _ExitOrder:
+    """The order in which the interactor and the processes stopped, as the
+    kernel saw it.
+
+    Reaping is no clock: by the time `wait4` returns, several programs may have
+    exited, and they come back in whatever order the kernel lists children. A
+    kernel event queue -- kqueue on macOS, epoll over pidfds on Linux -- queues
+    each event when it happens, so it gives the true order however late (or
+    loaded) the reaper was. It is read as the run goes (`start`), not at the end,
+    since epoll forgets some watches early.
+
+    The interactor counts as stopped when it *starts* to exit: its exit closes
+    its pipes, and a process woken by that EOF can finish exiting before the
+    interactor does. So the interactor also holds the only write ends of
+    liveness pipes nobody writes to (`watch_eof`), which its exit closes before
+    the pipes it talks over -- one below them and one above, since kernels close
+    an exiting process's descriptors in ascending order (older Linux) or in
+    descending order (measured: macOS, and Linux 6 too).
+
+    A process, likewise, counts as stopped when its stdout loses its last
+    writer (`watch_hangup`): that is the moment the interactor can see it go,
+    and a busy kernel can take long enough to finish its exit that the
+    interactor, woken by the EOF, starts exiting first (measured in Docker at 48
+    processes and up; never on macOS).
+    """
+
+    def __init__(self) -> None:
+        self._kqueue = select.kqueue() if hasattr(select, 'kqueue') else None
+        self._epoll = select.epoll() if self._kqueue is None and _has_pidfds() else None
+        # What each queued event is about, by (filter, ident) for kqueue (a pid
+        # and an fd may share a number) and by fd for epoll.
+        self._keys: Dict[Tuple[int, int], Hashable] = {}
+        # Descriptors this object opened, closed with it.
+        self._own_fds: List[int] = []
+        self._order: List[Hashable] = []
+        self._follower: Optional[threading.Thread] = None
+        self._wake: Optional[int] = None
+        self._stopped = False
+
+    @property
+    def available(self) -> bool:
+        return self._kqueue is not None or self._epoll is not None
+
+    def _saw(self, key: Hashable) -> None:
+        if key is _WAKE:
+            self._stopped = True
+        elif key not in self._order:
+            self._order.append(key)
+
+    def _take(self, events) -> None:
+        assert self._kqueue is not None
+        for event in events:
+            key = self._keys.get((event.filter, event.ident))
+            if key is None:
+                continue
+            if event.flags & select.KQ_EV_ERROR:
+                # Registering on a process that already exited (a zombie) is
+                # refused with ESRCH: it stopped before anything watched since.
+                if event.filter == select.KQ_FILTER_PROC and event.data == errno.ESRCH:
+                    self._saw(key)
+                continue
+            self._saw(key)
+
+    def watch_exit(self, key: Hashable, pid: int) -> None:
+        if self._kqueue is not None:
+            self._keys[(select.KQ_FILTER_PROC, pid)] = key
+            # Whatever is queued already happened first.
+            self.collect()
+            self._take(
+                self._kqueue.control(
+                    [
+                        select.kevent(
+                            pid,
+                            select.KQ_FILTER_PROC,
+                            select.KQ_EV_ADD | select.KQ_EV_ONESHOT,
+                            select.KQ_NOTE_EXIT,
+                        )
+                    ],
+                    1,
+                    0,
+                )
+            )
+        elif self._epoll is not None:
+            # A pidfd of a process that already exited is readable at once.
+            pidfd = _pidfd_open(pid)
+            self._own_fds.append(pidfd)
+            self._register(pidfd, select.EPOLLIN, key)
+
+    def _register(self, fd: int, mask: int, key: Hashable) -> None:
+        assert self._epoll is not None
+        if (0, fd) in self._keys:
+            # A descriptor watched and closed since (`watch_hangup`) left its
+            # number behind; epoll names events by number, so take a fresh one.
+            fd = fcntl.fcntl(fd, fcntl.F_DUPFD, max(f for _, f in self._keys) + 1)
+            os.set_inheritable(fd, False)
+            self._own_fds.append(fd)
+        self._keys[(0, fd)] = key
+        # One event each, and never unregistered: a watched descriptor may be
+        # closed already.
+        self._epoll.register(fd, mask | select.EPOLLONESHOT)
+
+    def watch_eof(self, key: Hashable, read_end: typing.IO[bytes]) -> None:
+        """`key` stopped when `read_end` sees EOF. Nothing must write to it."""
+        fd = read_end.fileno()
+        if self._kqueue is not None:
+            self._keys[(select.KQ_FILTER_READ, fd)] = key
+            self.collect()
+            self._take(
+                self._kqueue.control(
+                    [
+                        select.kevent(
+                            fd,
+                            select.KQ_FILTER_READ,
+                            select.KQ_EV_ADD | select.KQ_EV_ONESHOT,
+                        )
+                    ],
+                    1,
+                    0,
+                )
+            )
+        elif self._epoll is not None:
+            self._register(fd, select.EPOLLIN, key)
+
+    def watch_hangup(self, key: Hashable, read_end: typing.IO[bytes]) -> None:
+        """`key` stopped when the last writer of `read_end`'s pipe closes it.
+
+        The caller closes its `read_end` right after: epoll keeps the watch for
+        as long as another holder of that read end (the interactor, a tee) has
+        it, and holding one ourselves would spare the writer the SIGPIPE it gets
+        once that holder is gone. Linux only -- kqueue drops a watch with its
+        descriptor, and macOS orders these exits right without (measured).
+        """
+        if self._epoll is not None:
+            # The hangup only, never the data passing through. (Named, not
+            # implied by an empty mask: with only EPOLLONESHOT, epoll counts the
+            # watch as disabled.)
+            self._register(read_end.fileno(), select.EPOLLHUP, key)
+
+    def _read(self, timeout: Optional[float]) -> bool:
+        """Record one batch of events, waiting up to `timeout` (`None`: as long
+        as it takes) for it. Whether there was any."""
+        if self._kqueue is not None:
+            events = self._kqueue.control(None, 64, timeout)
+            self._take(events)
+            return bool(events)
+        if self._epoll is not None:
+            events = self._epoll.poll(-1 if timeout is None else timeout)
+            for fd, _ in events:
+                key = self._keys.get((0, fd))
+                if key is not None:
+                    self._saw(key)
+            return bool(events)
+        return False
+
+    def collect(self) -> None:
+        """Read every event queued so far, in the order they happened."""
+        while self._read(0):
+            pass
+
+    def start(self) -> None:
+        """Keep reading events as they happen, until `ranks`.
+
+        Not just at the end: epoll drops a hangup watch -- its queued event
+        too -- once the last holder of the watched read end closes it, which
+        the interactor does when it exits, long before the run is over.
+        Nothing may be watched from here on.
+        """
+        if not self.available:
+            return
+        self.collect()
+        wake_read, self._wake = os.pipe()
+        self._own_fds += [wake_read, self._wake]
+        if self._kqueue is not None:
+            self._keys[(select.KQ_FILTER_READ, wake_read)] = _WAKE
+            self._kqueue.control(
+                # One-shot like every watch here: the byte waking it is never
+                # read, so a level-triggered watch would fire forever.
+                [
+                    select.kevent(
+                        wake_read,
+                        select.KQ_FILTER_READ,
+                        select.KQ_EV_ADD | select.KQ_EV_ONESHOT,
+                    )
+                ],
+                0,
+                0,
+            )
+        else:
+            self._register(wake_read, select.EPOLLIN, _WAKE)
+        self._follower = threading.Thread(target=self._follow, daemon=True)
+        self._follower.start()
+
+    def _follow(self) -> None:
+        while not self._stopped:
+            self._read(None)
+
+    def _stop(self) -> None:
+        if self._follower is not None:
+            assert self._wake is not None
+            os.write(self._wake, b'.')
+            self._follower.join()
+            self._follower = None
+
+    def ranks(self) -> Optional[Dict[Hashable, int]]:
+        """Each watched key's place in the order, or `None` if any is missing."""
+        if not self.available:
+            return None
+        self._stop()
+        self.collect()
+        watched = set(self._keys.values()) - {_WAKE}
+        if not watched.issubset(self._order):
+            return None
+        return {key: rank for rank, key in enumerate(self._order)}
+
+    def close(self) -> None:
+        self._stop()
+        for queue in (self._kqueue, self._epoll):
+            if queue is not None:
+                queue.close()
+        for fd in self._own_fds:
+            os.close(fd)
+        self._own_fds = []
+
+
+def _liveness_pipe(
+    above: int = -1,
+) -> Tuple[typing.IO[bytes], typing.IO[bytes]]:
+    """A pipe whose write end is numbered above `above`, for `_ExitOrder.watch_eof`."""
+    read_end, write_end = _make_pipe(sized=False)
+    if write_end.fileno() > above:
+        return read_end, write_end
+    # F_DUPFD's copy is inheritable; it must reach only the program it is
+    # handed to.
+    high = fcntl.fcntl(write_end.fileno(), fcntl.F_DUPFD, above + 1)
+    os.set_inheritable(high, False)
+    write_end.close()
+    return read_end, open(high, 'wb', buffering=0)
 
 
 class StupidSandbox(SandboxBase):
@@ -253,7 +535,7 @@ class StupidSandbox(SandboxBase):
         )
 
     def _get_tee_program_params(
-        self, io: ProgramIO, pgid: Optional[int]
+        self, io: ProgramIO, pgid: Optional[int], sized_pipes: bool = True
     ) -> ProgramParams:
         return ProgramParams(
             chdir=self.chdir,
@@ -262,7 +544,7 @@ class StupidSandbox(SandboxBase):
             memory_limit=None,
             io=io,
             pgid=pgid,
-            pipesize=BUFFER_SIZE_BYTES,
+            pipesize=BUFFER_SIZE_BYTES if sized_pipes else -1,
         )
 
     def _get_sandbox_log(
@@ -288,11 +570,13 @@ class StupidSandbox(SandboxBase):
         params: SandboxParams,
         interactor_params: SandboxParams,
         merged_capture: Optional[pathlib.Path] = None,
+        fanout: bool = False,
     ) -> bool:
-        return (
-            params.stdout_file is not None
-            or interactor_params.stdout_file is not None
-            or merged_capture is not None
+        if merged_capture is not None:
+            return True
+        # The clean copies (`.pin`/`.pout`) are written for one process only.
+        return not fanout and (
+            params.stdout_file is not None or interactor_params.stdout_file is not None
         )
 
     def _get_tee_executable(
@@ -349,7 +633,9 @@ class StupidSandbox(SandboxBase):
                 communication_params,
                 str(self.relative_path(capture)) if capture else None,
             ),
-            self._get_tee_program_params(io, pgid),
+            self._get_tee_program_params(
+                io, pgid, sized_pipes=communication_params.processes == 1
+            ),
         )
 
     @contextlib.contextmanager
@@ -508,7 +794,9 @@ class StupidSandbox(SandboxBase):
         fanout = n > 1
         # Where the tees append, not where the capture ends up (`run_fanout`).
         merged_capture = communication_params.merged_capture
-        should_tee = self._needs_teeing(params, interactor_params, merged_capture)
+        should_tee = self._needs_teeing(
+            params, interactor_params, merged_capture, fanout=fanout
+        )
         # Tee the processes' stderr into the merged capture (marked '!') only
         # when we already have a merged file to append to.
         should_tee_stderr = (
@@ -532,27 +820,45 @@ class StupidSandbox(SandboxBase):
             return None if fanout else stdout_of.stdout_file
 
         _ensure_open_files(n * _FILES_PER_PROCESS)
-        channels = [_Channel.open(should_tee) for _ in range(n)]
 
-        # Every program joins the process group of the first one started, so
-        # one `wait4` reaps them all and one `killpg` stops them all.
+        # Every program joins the process group of the first one started, which
+        # leads it (`setpgid(0, 0)`), so one `wait4` reaps them all and one
+        # `killpg` stops them all. Its pid is the group's id: asking the kernel
+        # instead fails once the leader has exited.
         group_id: Optional[int] = None
 
-        def started(program: Program) -> Program:
+        def started(program: Program, into: List[Program]) -> Program:
             nonlocal group_id
+            # Recorded before anything else can fail, so the cleanup below
+            # always knows it.
+            into.append(program)
             if group_id is None:
-                group_id = os.getpgid(program.pid)
+                group_id = program.pid
             return program
 
-        # The processes (and their tees) before the interactor. Until it starts
-        # nothing can talk, so a process that exits meanwhile quit on its own --
-        # really first. From the interactor on, every exit is reaped as it
-        # happens, so `exit_index` orders them truly; exits that piled up while
-        # we were still starting programs would be reaped in whatever order the
-        # kernel lists children.
+        exit_order = _ExitOrder()
+        channels: List[_Channel] = []
+        liveness: List[typing.IO[bytes]] = []
         tees: List[Program] = []
         programs: List[Program] = []
+        started_interactor: List[Program] = []
         try:
+            try:
+                for _ in range(n):
+                    channels.append(_Channel.open(should_tee, sized=not fanout))
+            except OSError as e:
+                if e.errno not in (errno.EMFILE, errno.ENFILE):
+                    raise
+                soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+                raise ProgramError(
+                    f'Cannot open the pipes for {n} solution process(es): {e}. '
+                    f'The open-file limit is {soft} (hard limit {hard}); raise it '
+                    '(e.g. `ulimit -n`) or run fewer processes at once.'
+                ) from e
+
+            # The processes (and their tees) before the interactor: until it
+            # starts nothing can talk, so a process that exits meanwhile quit on
+            # its own, first.
             for i, channel in enumerate(channels):
                 if channel.tee_to_process is not None:
                     assert channel.tee_to_interactor is not None
@@ -561,42 +867,47 @@ class StupidSandbox(SandboxBase):
                     # the line it answers; measured, the other spawn order makes
                     # that ~5x likelier on macOS (8% vs 1.5% of runs of
                     # `test_run_coordinated_with_merged_capture`).
-                    tees.append(
-                        started(
-                            self._get_tee_program(
-                                marker(i, '>'),
-                                stdin=channel.tee_to_interactor[0],
-                                stdout=channel.tee_to_interactor[1],
-                                capture=capture_path(params),
-                                pgid=group_id,
-                                communication_params=communication_params,
-                            )
-                        )
+                    started(
+                        self._get_tee_program(
+                            marker(i, '>'),
+                            stdin=channel.tee_to_interactor[0],
+                            stdout=channel.tee_to_interactor[1],
+                            capture=capture_path(params),
+                            pgid=group_id,
+                            communication_params=communication_params,
+                        ),
+                        tees,
                     )
-                    tees.append(
-                        started(
-                            self._get_tee_program(
-                                marker(i, '<'),
-                                stdin=channel.tee_to_process[0],
-                                stdout=channel.tee_to_process[1],
-                                capture=capture_path(interactor_params),
-                                pgid=group_id,
-                                communication_params=communication_params,
-                            )
-                        )
+                    started(
+                        self._get_tee_program(
+                            marker(i, '<'),
+                            stdin=channel.tee_to_process[0],
+                            stdout=channel.tee_to_process[1],
+                            capture=capture_path(interactor_params),
+                            pgid=group_id,
+                            communication_params=communication_params,
+                        ),
+                        tees,
                     )
+                    # What the process writes reaches the interactor through
+                    # this tee.
+                    exit_order.watch_hangup(i, channel.tee_to_interactor[0])
                     for end in (*channel.tee_to_process, *channel.tee_to_interactor):
                         end.close()
 
                 program_params = self._get_program_params(params)
                 program_params.io = self._get_io(params, pipe_io=True)
+                if fanout:
+                    # Nor any pipe `subprocess` makes for it (see `_make_pipe`):
+                    # past the quota Linux refuses with EPERM, failing the spawn.
+                    program_params.pipesize = -1
                 # The process gets its own copy of the read end it consumes. Ours
-                # stays open, so the interactor -- or its capture tee -- never writes
-                # into a pipe nobody holds: a process may answer and exit without
-                # reading everything the interactor still has to say, and once it is
-                # gone we drain the rest (as BAPCtools' relay and problemtools do)
-                # instead of letting the interactor die of SIGPIPE, or block forever
-                # on a full pipe.
+                # stays open, so the interactor -- or its capture tee -- never
+                # writes into a pipe nobody holds: a process may answer and exit
+                # without reading everything the interactor still has to say,
+                # and once it is gone we drain the rest (as BAPCtools' relay and
+                # problemtools do) instead of letting the interactor die of
+                # SIGPIPE, or block forever on a full pipe.
                 program_params.io.input = open(
                     os.dup(channel.process_reads.fileno()), 'rb', buffering=0
                 )
@@ -604,33 +915,35 @@ class StupidSandbox(SandboxBase):
                 path = stderr_path(i)
                 stderr_writer: Optional[typing.IO[bytes]] = None
                 if should_tee_stderr:
-                    # The tee writes the clean copy to the process's stderr file and
-                    # the marked copy to the merged capture.
-                    stderr_reader, stderr_writer = _make_pipe()
-                    tees.append(
-                        started(
-                            self._get_tee_program(
-                                marker(i, '!'),
-                                stdin=stderr_reader,
-                                stdout=subprocess.DEVNULL,
-                                capture=path,
-                                pgid=group_id,
-                                communication_params=communication_params,
-                            )
-                        )
+                    # The tee writes the clean copy to the process's stderr file
+                    # and the marked copy to the merged capture.
+                    stderr_reader, stderr_writer = _make_pipe(sized=not fanout)
+                    started(
+                        self._get_tee_program(
+                            marker(i, '!'),
+                            stdin=stderr_reader,
+                            stdout=subprocess.DEVNULL,
+                            capture=path,
+                            pgid=group_id,
+                            communication_params=communication_params,
+                        ),
+                        tees,
                     )
                     stderr_reader.close()
                     program_params.io.stderr = stderr_writer
                 elif path is not None:
                     program_params.io.stderr = self.relative_path(path)
                 program_params.pgid = group_id
-                programs.append(
-                    started(
-                        Program(
-                            command + [str(i)] if fanout else command, program_params
-                        )
-                    )
+                process = started(
+                    Program(command + [str(i)] if fanout else command, program_params),
+                    programs,
                 )
+                exit_order.watch_exit(i, process.pid)
+                if channel.tee_to_interactor is None:
+                    # Watched before the interactor starts, like everything
+                    # `exit_order` sees: a watch armed late records its event
+                    # late, and a whole exchange can fit in that gap.
+                    exit_order.watch_hangup(i, channel.interactor_reads)
                 channel.process_writes.close()
                 if stderr_writer is not None:
                     stderr_writer.close()
@@ -638,24 +951,44 @@ class StupidSandbox(SandboxBase):
             interactor_program_params = self._get_program_params(interactor_params)
             interactor_io = self._get_io(interactor_params, pipe_io=True)
             if fanout:
-                interactor_io.input = subprocess.DEVNULL
-                interactor_io.output = subprocess.DEVNULL
-                fds: List[int] = []
+                interactor_program_params.pipesize = -1
+            protocol_fds: List[int] = []
+            if fanout:
                 for channel in channels:
-                    fds += [
+                    protocol_fds += [
                         channel.interactor_reads.fileno(),
                         channel.interactor_writes.fileno(),
                     ]
                 interactor_command = interactor_command + [
-                    f'/dev/fd/{fd}' for fd in fds
+                    f'/dev/fd/{fd}' for fd in protocol_fds
                 ]
-                interactor_program_params.pass_fds = tuple(fds)
+                # Liveness, below the protocol fds: its stdin, as a write end
+                # (it reads nothing there; its stdout may carry debug prints).
+                low_read, low_write = _liveness_pipe()
+                liveness += [low_read, low_write]
+                interactor_io.input = low_write
+                interactor_io.output = subprocess.DEVNULL
             else:
                 interactor_io.input = channels[0].interactor_reads
                 interactor_io.output = channels[0].interactor_writes
+            # Liveness, above the protocol fds (with one process, those are its
+            # stdin/stdout).
+            high_read, high_write = _liveness_pipe(above=max(protocol_fds, default=2))
+            liveness += [high_read, high_write]
+            interactor_program_params.pass_fds = (*protocol_fds, high_write.fileno())
             interactor_program_params.io = interactor_io
             interactor_program_params.pgid = group_id
-            interactor = Program(interactor_command, interactor_program_params)
+            # Armed while we still hold the write ends, so they cannot fire yet.
+            for end in liveness[0::2]:
+                exit_order.watch_eof('interactor', end)
+            interactor = started(
+                Program(interactor_command, interactor_program_params),
+                started_interactor,
+            )
+            exit_order.watch_exit('interactor', interactor.pid)
+            exit_order.start()
+            for end in liveness[1::2]:
+                end.close()
         except BaseException:
             # A program that could not start (say, a missing interactor) must not
             # strand the ones already started, blocked on pipes nobody will ever
@@ -665,7 +998,7 @@ class StupidSandbox(SandboxBase):
                     os.killpg(group_id, signal.SIGKILL)
                 except OSError:
                     pass
-            for program in (*programs, *tees):
+            for program in (*started_interactor, *programs, *tees):
                 try:
                     _, status, ru = os.wait4(program.pid, 0)
                     program.process_exit(status, ru)
@@ -674,6 +1007,9 @@ class StupidSandbox(SandboxBase):
                 program.close()
             for channel in channels:
                 channel.close()
+            for end in liveness:
+                end.close()
+            exit_order.close()
             raise
         assert group_id is not None
         # The interactor holds its own ends now; ours would keep EOF (and
@@ -688,10 +1024,23 @@ class StupidSandbox(SandboxBase):
         process_index = {program.pid: i for i, program in enumerate(programs)}
         tee_by_pid = {tee.pid: tee for tee in tees}
 
+        def kill_group() -> None:
+            try:
+                os.killpg(group_id, signal.SIGKILL)
+            except OSError:
+                pass
+
+        # Once the interactor and every process are gone, the tees should see
+        # EOF at once; one still running is held open by something they left
+        # behind (a grandchild holding stdout), and is given this long.
+        tee_timer = threading.Timer(DRAIN_GRACE_SECONDS, kill_group)
+        tee_timer.daemon = True
+        tee_timer_started = False
         reaped = 0
+        main_left = 1 + n
 
         def on_exit(pid: int, status: int, ru) -> None:
-            nonlocal reaped, interactor_result
+            nonlocal reaped, interactor_result, main_left, tee_timer_started
             idx = reaped
             reaped += 1
             if pid == interactor.pid:
@@ -700,21 +1049,20 @@ class StupidSandbox(SandboxBase):
                     program_result, interactor_params
                 )
                 interactor_result.exit_index = idx
+                main_left -= 1
                 # Kill the processes still running if the interactor failed,
                 # whatever was reaped before: a capture tee may exit (and be
                 # reaped) ahead of the interactor it reads from. If it did not
                 # fail, they see EOF and finish within their own limits.
                 if program_result.exitcode != 0 and any(r is None for r in results):
-                    try:
-                        os.killpg(group_id, signal.SIGKILL)
-                    except Exception:
-                        pass
+                    kill_group()
             elif pid in process_index:
                 i = process_index[pid]
                 program_result = programs[i].process_exit(status, ru)
                 result = self._get_sandbox_log(program_result, params)
                 result.exit_index = idx
                 results[i] = result
+                main_left -= 1
                 if interactor_result is None:
                     drainer = threading.Thread(
                         target=_drain, args=(channels[i].process_reads,), daemon=True
@@ -727,41 +1075,49 @@ class StupidSandbox(SandboxBase):
                 tee_by_pid[pid].process_exit(status, ru)
             else:
                 raise RuntimeError(f'Unknown pid: {pid}')
+            if main_left == 0 and reaped < 1 + n + len(tees) and not tee_timer_started:
+                tee_timer_started = True
+                tee_timer.start()
 
-        while reaped < 1 + n + len(tees):
-            pid, status, ru = os.wait4(-group_id, 0)
-            if pid == interactor.pid:
-                # Programs that exited before we looked come back in whatever
-                # order the kernel lists them -- oldest first on Linux, newest
-                # first on macOS. Between the interactor and a process that both
-                # had, the process goes first, on both: a process that failed
-                # first (say, crashed, so the interactor read EOF) must not be
-                # blamed on the interactor, and the opposite -- a process killed
-                # by SIGPIPE writing to an interactor already gone -- is told
-                # apart by its signal (`checkers.check_communication`).
-                for program in programs:
-                    if results[process_index[program.pid]] is None:
-                        other, other_status, other_ru = os.wait4(
-                            program.pid, os.WNOHANG
-                        )
-                        if other:
-                            on_exit(other, other_status, other_ru)
-            on_exit(pid, status, ru)
+        try:
+            while reaped < 1 + n + len(tees):
+                pid, status, ru = os.wait4(-group_id, 0)
+                if pid in process_index and interactor_result is None:
+                    # Ties go to the interactor: if it has exited as well, it is
+                    # indexed first (what `exit_order` refines, when the kernel
+                    # can tell).
+                    other, other_status, other_ru = os.wait4(interactor.pid, os.WNOHANG)
+                    if other:
+                        on_exit(other, other_status, other_ru)
+                on_exit(pid, status, ru)
+        finally:
+            tee_timer.cancel()
 
         # Every writer has been reaped by now, so the drainers are at EOF --
         # unless something the interactor spawned still holds a write end.
         for drainer in drainers:
             drainer.join(DRAIN_GRACE_SECONDS)
             if drainer.is_alive():
-                try:
-                    os.killpg(group_id, signal.SIGKILL)
-                except Exception:
-                    pass
+                kill_group()
                 drainer.join()
+        # Nothing the run started outlives it: whatever is left in the group is
+        # something a program spawned and left behind. (The group can only be
+        # gone, not reused, this soon after its last member was reaped.)
+        kill_group()
         for channel in channels:
             channel.process_reads.close()
         for program in (interactor, *programs, *tees):
             program.close()
+
+        ranks = exit_order.ranks()
+        exit_order.close()
+        for end in liveness:
+            end.close()
+        if ranks is not None:
+            interactor_result.exit_index = ranks['interactor']
+            for i, result in enumerate(results):
+                assert result is not None
+                result.exit_index = ranks[i]
 
         if fanout and params.stderr_file is not None:
             self._merge_process_stderr(
