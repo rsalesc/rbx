@@ -1,0 +1,13 @@
+scenarios:
+  - name: fanout-grader-run
+    description: |
+      The fanout relay through a grader stub: each of the three processes is
+      the stub (graders/grader.cpp) linked with the solution's relay(). The
+      interactor is the plain fanout one: rbx::registerFanoutInteraction
+      consumes the grader's hidden input header itself.
+    steps:
+      - cmd: run
+        expect:
+          solutions:
+            sols/main.cpp: ac
+            sols/wa.cpp: wa

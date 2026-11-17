@@ -457,3 +457,45 @@ def test_timing_profile_carries_the_checksum_into_the_limits():
     profile = TimingProfile(timeLimit=1000, estimationChecksum='v1.l.aaaaaaaa')
 
     assert profile.to_limits().estimationChecksum == 'v1.l.aaaaaaaa'
+
+
+# --- Fanout ------------------------------------------------------------------
+
+interactor_segment = estimation_checksum._interactor_segment  # noqa: SLF001
+
+
+def _with_interactor(pkg: testing_package.TestingPackage, processes=None) -> None:
+    from rbx.box.schema import Interactor, TaskType
+
+    pkg.set_type(TaskType.COMMUNICATION)
+    pkg.add_file('interactor.cpp').write_text('int main() { return 0; }\n')
+    pkg.yml.interactor = Interactor(path='interactor.cpp', processes=processes)
+    pkg.save()
+
+
+def test_the_process_count_moves_the_interactor_segment(
+    pkg: testing_package.TestingPackage,
+):
+    _with_interactor(pkg, processes=2)
+    two = interactor_segment()
+
+    _with_interactor(pkg, processes=3)
+
+    assert interactor_segment() != two
+
+
+def test_an_interactive_problem_keeps_its_pre_fanout_interactor_segment(
+    pkg: testing_package.TestingPackage,
+):
+    _with_interactor(pkg)
+
+    # The segment as it was digested before `processes` existed.
+    assert interactor_segment() == (
+        estimation_checksum._digest_model(  # noqa: SLF001
+            estimation_checksum._InteractorSegment(  # noqa: SLF001
+                interactor=estimation_checksum._fingerprint_code(  # noqa: SLF001
+                    pkg.yml.interactor
+                )
+            )
+        )
+    )

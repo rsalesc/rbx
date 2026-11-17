@@ -45,6 +45,8 @@ def _mounted_test_explorer(tmp_path, monkeypatch, entries):
     monkeypatch.chdir(tmp_path)
     pkg = mock.Mock()
     pkg.type = TaskType.BATCH
+    pkg.is_communication = False
+    pkg.is_interactive = False
     patches = _all(
         mock.patch.object(
             test_explorer.package, 'find_problem_package_or_die', return_value=pkg

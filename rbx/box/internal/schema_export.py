@@ -3,6 +3,7 @@ from typing import List, Type
 
 from pydantic import BaseModel
 
+from rbx.box import schema_urls
 from rbx.box.contest.schema import Contest
 from rbx.box.environment import Environment
 from rbx.box.package import Package
@@ -23,6 +24,9 @@ MODELS: List[Type[BaseModel]] = [
     Statement,
     LimitsProfile,
 ]
+
+# `model_to_yaml` writes a schema header only for these, by name.
+assert {model.__name__ for model in MODELS} == schema_urls.PUBLISHED_SCHEMAS
 
 
 def export_schemas(into: pathlib.Path) -> None:

@@ -116,7 +116,27 @@ def preprocess_header(header: str) -> str:
     from rbx.box import graders
 
     header = _replace_sentinel(header, 'grader', graders.header_block())
+    # After the grader block: the fanout helpers consume its input header.
+    header = _replace_sentinel(header, 'fanout', _fanout_block())
     return header
+
+
+def _fanout_block() -> str:
+    """What replaces rbx.h's `//<rbx::fanout>` sentinel.
+
+    The fanout interactor helpers (`rbx::registerFanoutInteraction`) for a
+    problem whose interactor talks to several processes, nothing otherwise, so
+    every other problem's rbx.h stays byte-identical.
+    """
+    pkg = package.find_problem_package_or_die()
+    if not pkg.is_fanout:
+        return ''
+    with importlib.resources.as_file(
+        importlib.resources.files('rbx') / 'resources' / 'templates' / 'rbx_fanout.h'
+    ) as file:
+        template = file.read_text()
+    consume = 'grader::detail::consumeInputHeader();' if pkg.grader is not None else ''
+    return template.replace('{{CONSUME_GRADER_HEADER}}', consume)
 
 
 def _replace_sentinel(header: str, name: str, replacement: str) -> str:

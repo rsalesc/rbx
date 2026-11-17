@@ -1,0 +1,42 @@
+scenarios:
+  - name: fanout-run
+    description: |
+      Three copies of each solution relay a value through a testlib
+      interactor (rbx::registerFanoutInteraction); process i answers
+      value + i + 1, reading i from argv[1]. Pins the CMS judging rules:
+      CPU time summed across processes, a process failing after the
+      interactor accepted still fails, and real isolation between processes.
+    steps:
+      - cmd: run
+        expect:
+          solutions:
+            sols/main.cpp: ac
+            sols/chatty.cpp: ac
+            sols/wa-ignores-index.cpp: wa
+            sols/wa-shared-state.cpp: wa
+            sols/re-after-accept.cpp: re
+            sols/re-process-1.cpp: re
+            sols/tle-sum.cpp: tle
+
+  - name: fanout-capture
+    description: |
+      The capture tags every line with the process it came from, and
+      `irun -p` prints the tagged interaction.
+    steps:
+      - cmd: build
+        expect:
+          file_contains:
+            build/tests/samples/000.pio: '/\[0\]<5\n\[0\]>6\n\[1\]<6\n\[1\]>8\n\[2\]<8\n\[2\]>11\n/'
+      - cmd: irun sols/main.cpp -t samples/0 -p -v4
+        expect:
+          stdout_contains: "[2] 11"
+
+  - name: fanout-refused-by-packagers
+    description: No judge runs several processes against one interactor yet.
+    steps:
+      - cmd: package pkg
+        expect_exit: 1
+        expect:
+          stdout_contains:
+            - does not support
+            - interactor.processes

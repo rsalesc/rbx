@@ -231,6 +231,29 @@ class TestGetProblemSummary:
         result = get_problem_summary(pkg, [], [])
         assert result.short_name is None
 
+    def test_an_interactive_interactor_is_shown_by_its_path(self):
+        from rbx.box.schema import Interactor
+
+        interactor = Interactor(path=pathlib.Path('interactor.cpp'))
+        pkg = _make_package(type=TaskType.COMMUNICATION, interactor=interactor)
+
+        result = get_problem_summary(pkg, [], [])
+
+        assert result.interactor_display == interactor.display()
+
+    def test_a_fanout_interactor_shows_its_process_count(self):
+        from rbx.box.schema import Interactor
+
+        interactor = Interactor(path=pathlib.Path('interactor.cpp'), processes=3)
+        pkg = _make_package(type=TaskType.COMMUNICATION, interactor=interactor)
+
+        result = get_problem_summary(pkg, [], [])
+
+        assert result.interactor_display == (
+            f'{interactor.display()} (fanout, 3 processes)'
+        )
+        assert result.flags.is_interactive is True
+
 
 class TestGetContestProblemSummary:
     def test_basic(self):

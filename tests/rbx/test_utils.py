@@ -37,6 +37,16 @@ class SampleModel(BaseModel):
     created_at: datetime
 
 
+@pytest.fixture(autouse=True)
+def _publish_every_schema(monkeypatch):
+    """These tests are about the YAML `model_to_yaml` writes, header included;
+    `model_to_yaml` writes the header only for a published schema, which none of
+    these test models has."""
+    from rbx.box import schema_urls
+
+    monkeypatch.setattr(schema_urls, 'is_published', lambda model_cls: True)
+
+
 @pytest.fixture
 def sample_model():
     """Create a sample model for testing."""

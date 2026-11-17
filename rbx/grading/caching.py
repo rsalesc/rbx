@@ -505,6 +505,10 @@ class DependencyCache:
             ):
                 if logs.run is not None:
                     reference_logs.run = logs.run.model_copy(deep=True)
+                if logs.runs is not None:
+                    reference_logs.runs = [
+                        log.model_copy(deep=True) for log in logs.runs
+                    ]
                 if logs.interactor_run is not None:
                     reference_logs.interactor_run = logs.interactor_run.model_copy(
                         deep=True

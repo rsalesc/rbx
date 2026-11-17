@@ -1,4 +1,7 @@
 import textwrap
+from typing import Optional
+
+import pytest
 
 from rbx import testing_utils
 from rbx.box import checkers, code, tasks
@@ -437,3 +440,137 @@ class TestKeepCheckerStderr:
 
         assert evaluation.log.checker_stderr_absolute_path is None
         assert not list(testing_pkg.path('outputs').glob('*.checker.err'))
+
+
+# The naming contract of a fanout verdict: pure functions, tested directly.
+name_processes = tasks._name_processes  # noqa: SLF001
+name_failing_process = tasks._name_failing_process  # noqa: SLF001
+
+
+def _process_log(exitstatus: str = SandboxBase.EXIT_OK, exitcode: int = 0):
+    from rbx.grading.steps import RunLog
+
+    return RunLog(exitstatus=exitstatus, exitcode=exitcode)
+
+
+class TestNameProcesses:
+    def test_one_process(self):
+        assert name_processes([3]) == 'process 3'
+
+    def test_a_short_run_is_listed(self):
+        assert name_processes([2, 0]) == 'processes 0, 2'
+        assert name_processes([4, 5]) == 'processes 4, 5'
+
+    def test_a_long_run_is_a_range(self):
+        assert name_processes(list(range(16))) == 'processes 0-15'
+        assert name_processes([0, 1, 2, 7]) == 'processes 0-2, 7'
+
+    def test_abbreviated_after_six_runs(self):
+        # The even processes of 16: eight runs of one.
+        assert name_processes(list(range(0, 16, 2))) == (
+            'processes 0, 2, 4, 6, 8, 10, ... (8 in all)'
+        )
+
+
+class TestNameFailingProcess:
+    def _result(self, outcome: Outcome, message: str = 'boom'):
+        from rbx.grading.steps import CheckerResult
+
+        return CheckerResult(outcome=outcome, message=message)
+
+    def test_one_process_is_left_untouched(self):
+        logs = [_process_log(SandboxBase.EXIT_NONZERO_RETURN, 1)]
+
+        result = name_failing_process(self._result(Outcome.RUNTIME_ERROR), 0, logs)
+
+        assert result.message == 'boom'
+
+    def test_the_deciding_process_is_named(self):
+        logs = [
+            _process_log(),
+            _process_log(),
+            _process_log(SandboxBase.EXIT_NONZERO_RETURN, 1),
+        ]
+
+        result = name_failing_process(self._result(Outcome.RUNTIME_ERROR), 2, logs)
+
+        assert result.message == 'process 2: boom'
+
+    def test_no_message_is_just_the_name(self):
+        logs = [_process_log(SandboxBase.EXIT_NONZERO_RETURN, 1), _process_log()]
+
+        result = name_failing_process(
+            self._result(Outcome.RUNTIME_ERROR, message=''), 0, logs
+        )
+
+        assert result.message == 'process 0'
+
+    def test_every_process_that_failed_like_the_decider_is_named(self):
+        logs = [
+            _process_log(SandboxBase.EXIT_TIMEOUT_WALL),
+            _process_log(),
+            _process_log(SandboxBase.EXIT_TIMEOUT_WALL),
+        ]
+
+        result = name_failing_process(
+            self._result(Outcome.TIME_LIMIT_EXCEEDED, message=''), 2, logs
+        )
+
+        assert result.message == 'processes 0, 2'
+
+    def test_processes_the_group_kill_stopped_are_not_named_beside_a_crash(self):
+        logs = [
+            _process_log(SandboxBase.EXIT_SIGNAL, -6),
+            _process_log(SandboxBase.EXIT_SIGNAL, -9),
+            _process_log(SandboxBase.EXIT_SIGNAL, -6),
+            _process_log(SandboxBase.EXIT_SIGNAL, -9),
+        ]
+
+        result = name_failing_process(
+            self._result(Outcome.RUNTIME_ERROR, message=''), 0, logs
+        )
+
+        assert result.message == 'processes 0, 2'
+
+    def test_a_tle_with_no_decider_is_the_processes_together(self):
+        logs = [_process_log(), _process_log(), _process_log()]
+
+        result = name_failing_process(
+            self._result(Outcome.TIME_LIMIT_EXCEEDED, message=''), None, logs
+        )
+
+        assert result.message == 'the processes together'
+
+    def test_a_summed_tle_is_not_blamed_on_the_processes_that_crashed(self):
+        # The summed CPU time is over the limit, and the decider crashed rather
+        # than timing out: naming the crashed processes would call a crash a
+        # time limit.
+        logs = [
+            _process_log(SandboxBase.EXIT_SIGNAL, -6),
+            _process_log(),
+            _process_log(SandboxBase.EXIT_SIGNAL, -6),
+        ]
+
+        result = name_failing_process(
+            self._result(Outcome.TIME_LIMIT_EXCEEDED, message=''), 0, logs
+        )
+
+        assert result.message == 'the processes together'
+
+    @pytest.mark.parametrize('decider', [None, 1])
+    def test_an_interactor_verdict_never_names_a_process(self, decider: Optional[int]):
+        logs = [
+            _process_log(SandboxBase.EXIT_SIGNAL, -9),
+            _process_log(SandboxBase.EXIT_SIGNAL, -9),
+        ]
+
+        result = name_failing_process(self._result(Outcome.WRONG_ANSWER), decider, logs)
+
+        assert result.message == 'boom'
+
+    def test_a_non_tle_without_a_decider_is_left_untouched(self):
+        logs = [_process_log(), _process_log()]
+
+        result = name_failing_process(self._result(Outcome.RUNTIME_ERROR), None, logs)
+
+        assert result.message == 'boom'

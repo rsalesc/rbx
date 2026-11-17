@@ -13,7 +13,7 @@ from rbx.grading.steps import Evaluation
 
 class LocalRunner:
     name = 'local'
-    caps = RunnerCapabilities()
+    caps = RunnerCapabilities(supports_fanout=True)
 
     async def prepare(self, ctx: RunContext) -> None:
         return None

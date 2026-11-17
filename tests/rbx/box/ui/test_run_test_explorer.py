@@ -98,6 +98,8 @@ def _mounted_run_test_explorer(tmp_path: pathlib.Path, monkeypatch, main_solutio
 
     pkg = mock.Mock()
     pkg.type = TaskType.BATCH
+    pkg.is_communication = False
+    pkg.is_interactive = False
     run_prefix = tmp_path / 'runs' / 'main' / '1-gen-000'
     build_prefix = tmp_path / 'tests' / '1-gen-000'
     patches = _all(
@@ -188,6 +190,8 @@ def _mounted_filterable(tmp_path, monkeypatch, entries, outcomes):
 
     pkg = mock.Mock()
     pkg.type = TaskType.BATCH
+    pkg.is_communication = False
+    pkg.is_interactive = False
     evals = [(_eval(o) if o is not None else None) for o in outcomes]
     patches = _all(
         mock.patch.object(

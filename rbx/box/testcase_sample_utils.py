@@ -1,6 +1,7 @@
 import pathlib
 from typing import List, Optional, Tuple
 
+import rich.markup
 import typer
 from pydantic import BaseModel
 
@@ -72,9 +73,35 @@ def _build_sample_interaction(
                 path=chunk_path.resolve(),
                 data=chunk_entry.data,
                 pipe=chunk_entry.pipe,
+                process=chunk_entry.process,
             )
         )
     return SampleTestcaseInteraction(entries=interaction.entries, chunks=chunks)
+
+
+def _check_interaction_processes(
+    interaction: TestcaseInteraction, path: pathlib.Path
+) -> None:
+    """A fanout sample's lines name processes that exist; nobody else's do."""
+    pkg = package.find_problem_package_or_die()
+    tagged = any(entry.process is not None for entry in interaction.entries)
+    n = pkg.fanout_processes
+    if n is not None:
+        if interaction.entries and not tagged:
+            raise TestcaseInteractionParsingError(
+                f'{path}: tag every line with the process it belongs to, e.g. `[0]< 3`.'
+            )
+        for entry in interaction.entries:
+            if entry.process is not None and entry.process >= n:
+                raise TestcaseInteractionParsingError(
+                    f'{path}: names process {entry.process}, but the interactor '
+                    f'talks to {n} (0 to {n - 1}).'
+                )
+    elif tagged:
+        raise TestcaseInteractionParsingError(
+            f"{path}: tags lines with a process ([k]), but this problem's "
+            'interactor talks to one process.'
+        )
 
 
 def _resolve_explanation_path(
@@ -169,9 +196,11 @@ def _get_statement_sample_from_entry(
         if interaction_path is not None:
             try:
                 interaction = parse_interaction(interaction_path)
+                _check_interaction_processes(interaction, interaction_path)
             except TestcaseInteractionParsingError as e:
                 console.console.print(
-                    f'Error parsing interactive sample: [error]{e}[/error]'
+                    'Error parsing interactive sample: '
+                    f'[error]{rich.markup.escape(str(e))}[/error]'
                 )
                 raise typer.Exit(1) from e
 

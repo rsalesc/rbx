@@ -1,5 +1,7 @@
 import pathlib
-from typing import Optional, Type
+from typing import List, Optional, Type
+
+from pydantic import BaseModel
 
 from rbx.box import checkers, environment, graders, limits_info, package, state
 from rbx.box.code import (
@@ -15,13 +17,17 @@ from rbx.grading import profiling
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.limits import Limits
 from rbx.grading.steps import (
+    CheckerResult,
     DigestOrDest,
     DigestOrSource,
     Evaluation,
     GradingFileInput,
     GradingFileOutput,
+    Outcome,
+    RunLog,
     TestcaseIO,
     TestcaseLog,
+    combine_process_logs,
 )
 from rbx.utils import model_to_yaml, write_text_atomic
 
@@ -29,6 +35,100 @@ from rbx.utils import model_to_yaml, write_text_atomic
 # time in communication tasks, so the interactor never times out before the
 # solution does. Mirrors BOCA's `ittime = ttime + 1`.
 _INTERACTOR_WALL_MARGIN_MS = 1000
+
+# Verdicts a contestant process earns by itself, as opposed to the interactor's.
+_PROCESS_FAILURES = (
+    Outcome.TIME_LIMIT_EXCEEDED,
+    Outcome.IDLENESS_LIMIT_EXCEEDED,
+    Outcome.MEMORY_LIMIT_EXCEEDED,
+    Outcome.RUNTIME_ERROR,
+    Outcome.OUTPUT_LIMIT_EXCEEDED,
+)
+
+
+class _ProcessLogs(BaseModel):
+    """The `.sol.log` of a fanout run: one log per process, in process order."""
+
+    processes: List[RunLog]
+
+
+# How many runs of process indices a verdict names before it abbreviates.
+_MAX_NAMED_RUNS = 6
+
+
+def _name_processes(indices: List[int]) -> str:
+    """`process 3`, `processes 0, 2`, `processes 0-15, 17`."""
+    if len(indices) == 1:
+        return f'process {indices[0]}'
+    runs: List[List[int]] = []
+    for i in sorted(indices):
+        if runs and runs[-1][1] == i - 1:
+            runs[-1][1] = i
+        else:
+            runs.append([i, i])
+    parts: List[str] = []
+    for first, last in runs:
+        if last - first >= 2:
+            parts.append(f'{first}-{last}')
+        else:
+            parts.extend(str(i) for i in range(first, last + 1))
+    named = ', '.join(parts[:_MAX_NAMED_RUNS])
+    if len(parts) > _MAX_NAMED_RUNS:
+        named += f', ... ({len(indices)} in all)'
+    return f'processes {named}'
+
+
+def _failed_like(logs: List[Optional[RunLog]], decider: int) -> List[int]:
+    """The processes that failed the way the deciding one did.
+
+    Processes stuck together hit their wall limits at about the same moment, and
+    whichever timer fired first decides; naming only that one blames an idle
+    process. A crash also compares the exit code, so the processes the group
+    kill stopped (SIGKILL) are not named beside one that crashed on its own.
+    """
+    log = logs[decider]
+    assert log is not None
+    crashed = log.exitstatus in (
+        SandboxBase.EXIT_SIGNAL,
+        SandboxBase.EXIT_NONZERO_RETURN,
+    )
+    return [
+        i
+        for i, other in enumerate(logs)
+        if other is not None
+        and other.exitstatus == log.exitstatus
+        and (not crashed or other.exitcode == log.exitcode)
+    ]
+
+
+def _name_failing_process(
+    result: CheckerResult,
+    decider: Optional[int],
+    logs: List[Optional[RunLog]],
+) -> CheckerResult:
+    """Say which process a fanout verdict is about."""
+    if len(logs) == 1 or result.outcome not in _PROCESS_FAILURES:
+        return result
+    if result.outcome == Outcome.TIME_LIMIT_EXCEEDED and decider is not None:
+        decider_log = logs[decider]
+        assert decider_log is not None
+        if decider_log.exitstatus not in (
+            SandboxBase.EXIT_TIMEOUT,
+            SandboxBase.EXIT_TIMEOUT_WALL,
+        ):
+            # The deciding process failed some other way (crashed, say) and it
+            # is the summed CPU time that is over: naming the processes that
+            # crashed would call a crash a time limit.
+            decider = None
+    if decider is not None:
+        who = _name_processes(_failed_like(logs, decider))
+    elif result.outcome == Outcome.TIME_LIMIT_EXCEEDED:
+        # No process failed alone: only their summed CPU time can be over.
+        who = 'the processes together'
+    else:
+        return result
+    result.message = f'{who}: {result.message}' if result.message else who
+    return result
 
 
 def get_testcase_output_path(
@@ -340,6 +440,10 @@ async def _run_communication_solution_on_testcase(
 
     async def run_fn(retry_index: int) -> Evaluation:
         sandbox_type = package.get_sandbox_type()
+        processes = package.find_problem_package_or_die().fanout_processes or 1
+        # A fanout run has no single pair of pipes to capture apart: only the
+        # merged, process-tagged `.pio` is written.
+        capture_apart = capture_pipes and processes == 1
 
         language = find_language_name(solution)
         limits = limits_override or get_limits_for_language(
@@ -366,7 +470,7 @@ async def _run_communication_solution_on_testcase(
         )
 
         interactor_capture_path = (
-            output_path.with_suffix('.pin') if capture_pipes else None
+            output_path.with_suffix('.pin') if capture_apart else None
         )
         interactor_item = CommunicationItem(
             code=package.get_interactor(),
@@ -393,7 +497,7 @@ async def _run_communication_solution_on_testcase(
             file_prefix='interactor',
         )
         solution_capture_path = (
-            output_path.with_suffix('.pout') if capture_pipes else None
+            output_path.with_suffix('.pout') if capture_apart else None
         )
         solution_item = CommunicationItem(
             code=solution,
@@ -411,7 +515,7 @@ async def _run_communication_solution_on_testcase(
         merged_capture_path = (
             output_path.with_suffix('.pio') if (capture_pipes or merge_stderr) else None
         )
-        interactor_run_log, run_log = await run_communication(
+        interactor_run_log, run_logs = await run_communication(
             interactor=interactor_item,
             solution=solution_item,
             retry_index=retry_index,
@@ -422,6 +526,13 @@ async def _run_communication_solution_on_testcase(
             # stays atomic in the merged file.
             line_capture=line_capture or merge_stderr,
             tee_stderr=merge_stderr,
+            processes=processes,
+        )
+        run_log, decider = combine_process_logs(run_logs)
+        # Per-process logs of a fanout run; `None` for one process, whose log is
+        # `run_log` itself.
+        process_logs = (
+            [log for log in run_logs if log is not None] if processes > 1 else None
         )
 
         checker_result = await checkers.check_communication(
@@ -433,6 +544,7 @@ async def _run_communication_solution_on_testcase(
             output_path,
             checker_stderr_path=checker_error_path,
         )
+        checker_result = _name_failing_process(checker_result, decider, run_logs)
 
         eval = Evaluation(
             result=checker_result,
@@ -449,6 +561,7 @@ async def _run_communication_solution_on_testcase(
                 checker_stderr_absolute_path=_resolve_checker_stderr_path(
                     checker_error_path
                 ),
+                processes=process_logs or None,
             ),
         )
 
@@ -459,7 +572,11 @@ async def _run_communication_solution_on_testcase(
             interactor_log_path.write_text(model_to_yaml(interactor_run_log))
         solution_log_path = output_path.with_suffix('.sol.log')
         solution_log_path.unlink(missing_ok=True)
-        if run_log is not None:
+        if process_logs:
+            solution_log_path.write_text(
+                model_to_yaml(_ProcessLogs(processes=process_logs))
+            )
+        elif run_log is not None:
             solution_log_path.write_text(model_to_yaml(run_log))
         return eval
 

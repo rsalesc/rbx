@@ -41,7 +41,6 @@ from rbx.box.schema import (
     GeneratorCall,
     Solution,
     Stress,
-    TaskType,
     Testcase,
 )
 from rbx.box.solutions import (
@@ -131,10 +130,19 @@ def _keep_finding_artifacts(
 
     for index, evaluation in sorted(evaluations.items()):
         out_path = directory / f'{index}.out'
-        for src, dst in (
-            (evaluation.log.stdout_absolute_path, out_path),
+        stdout = evaluation.log.stdout_absolute_path
+        copies = [
+            (stdout, out_path),
             (evaluation.log.stderr_absolute_path, out_path.with_suffix('.err')),
-        ):
+        ]
+        if stdout is not None:
+            # A communication run's capture and interactor stderr, which
+            # explain its verdict.
+            copies += [
+                (stdout.with_suffix(suffix), out_path.with_suffix(suffix))
+                for suffix in ('.pio', '.int.err')
+            ]
+        for src, dst in copies:
             if src is not None and src.is_file():
                 shutil.copyfile(src, dst)
         _write_kept_evaluation(out_path, evaluation)
@@ -649,7 +657,7 @@ async def run_stress(
         finders_digest[str(finder_item.path)] = await _compile_finder(finder_item)
 
     interactor_digest = None
-    if pkg.type == TaskType.COMMUNICATION:
+    if pkg.is_communication:
         interactor_digest = await checkers.compile_interactor(progress=progress)
 
     all_validators = package.get_all_validators()

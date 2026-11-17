@@ -17,6 +17,7 @@ from rbx.box import (
     estimation_checksum,
     limits_info,
     package,
+    solutions,
     timing,
     timing_config,
 )
@@ -174,6 +175,11 @@ async def _estimate(
     solution_runner = runners_registry.get_runner(
         runners_registry.resolve_runner_name(runner, profile)
     )
+    # And before the build, for the same reason: a backend that cannot run this
+    # problem at all (say, a fanout one on MOJ) is refused now, not after a whole
+    # build -- and MOJ's calibration never reaches `run_solutions`, whose check
+    # would otherwise be the only one.
+    solutions.check_problem_support(solution_runner)
     # Refused rather than ignored: on a backend that measures by running the
     # solutions there is no calibration to force, and a flag that silently does
     # nothing reads as a fresh measurement that never happened.

@@ -1253,3 +1253,47 @@ class TestPartiallyCorrect:
         assert not ExpectedOutcome.ACCEPTED.match(Outcome.PARTIALLY_CORRECT)
         assert not ExpectedOutcome.ACCEPTED_OR_TLE.match(Outcome.PARTIALLY_CORRECT)
         assert not ExpectedOutcome.WRONG_ANSWER.match(Outcome.PARTIALLY_CORRECT)
+
+
+class TestFanoutPredicates:
+    def _package(self, type='communication', interactor=None):
+        from rbx.box.schema import Package
+
+        fields = {'interactor': interactor} if interactor is not None else {}
+        return Package.model_validate(
+            {
+                'name': 'okay',
+                'type': type,
+                'timeLimit': 1000,
+                'memoryLimit': 256,
+                **fields,
+            }
+        )
+
+    def test_a_single_process_is_spelled_by_leaving_processes_unset(self):
+        with pytest.raises(ValidationError):
+            self._package(interactor={'path': 'interactor.cpp', 'processes': 1})
+
+    def test_several_processes_make_a_fanout_problem(self):
+        pkg = self._package(interactor={'path': 'interactor.cpp', 'processes': 3})
+
+        assert pkg.is_communication
+        assert pkg.is_fanout
+        assert pkg.fanout_processes == 3
+        assert not pkg.is_interactive
+
+    def test_an_interactor_without_processes_is_interactive(self):
+        pkg = self._package(interactor={'path': 'interactor.cpp'})
+
+        assert pkg.is_communication
+        assert pkg.is_interactive
+        assert not pkg.is_fanout
+        assert pkg.fanout_processes is None
+
+    def test_a_batch_problem_is_none_of_them(self):
+        pkg = self._package(type='batch')
+
+        assert not pkg.is_communication
+        assert not pkg.is_interactive
+        assert not pkg.is_fanout
+        assert pkg.fanout_processes is None

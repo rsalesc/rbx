@@ -19,7 +19,9 @@ with open(extra, 'w') as f:
         # single call so that, when several tees append to the same merged file
         # concurrently (e.g. a solution's stdout and stderr in batch mode), the
         # marker can never be split away from its line by an interleaving write.
-        sys.stderr.write(c + line)
+        # A last line without a newline still gets one there, or the next
+        # tee's append would land on the same line of the shared capture.
+        sys.stderr.write(c + line if line.endswith('\n') else c + line + '\n')
         sys.stderr.flush()
 
         # Write to program.

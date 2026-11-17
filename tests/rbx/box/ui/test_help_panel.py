@@ -117,6 +117,8 @@ def _mounted_test_explorer():
 
     pkg = mock.Mock()
     pkg.type = TaskType.BATCH
+    pkg.is_communication = False
+    pkg.is_interactive = False
 
     package_patch = mock.patch.object(
         test_explorer.package,

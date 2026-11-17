@@ -1461,3 +1461,126 @@ async def test_run_coordinated_stress_mode_disables_transient_fallback(
             assert (cleandir / 'sol_out.txt').read_text().strip() == 'world'
             assert another_artifacts.logs is not None
             assert not another_artifacts.logs.cached
+
+
+# Process i (from its last argument; 0 alone) exits with code i, once the
+# interactor read its line.
+FANOUT_INTERACTOR = """
+import sys
+paths = sys.argv[1:]
+if not paths:
+    sys.stderr.write(sys.stdin.readline())
+for k in range(len(paths) // 2):
+    sys.stderr.write(open(paths[2 * k]).readline())
+"""
+FANOUT_SOLUTION = """
+import sys
+index = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+print('process', index, flush=True)
+sys.exit(index)
+"""
+
+
+async def _run_fanout(
+    file_cacher: FileCacher,
+    sandbox: SandboxBase,
+    dependency_cache: DependencyCache,
+    processes: int,
+):
+    from rbx.grading.steps import CoordinatedRunParams
+
+    artifacts = GradingArtifacts()
+    for name, text in (
+        ('interactor.py', FANOUT_INTERACTOR),
+        ('solution.py', FANOUT_SOLUTION),
+    ):
+        executable = DigestOrSource.create(await file_cacher.put_file_text(text))
+        artifacts.inputs.append(
+            GradingFileInput(**executable.expand(), dest=pathlib.Path(name))
+        )
+    artifacts.outputs.append(
+        GradingFileOutput(
+            src=pathlib.Path('interactor.err'), dest=pathlib.Path('int_err.txt')
+        )
+    )
+    interactor = CoordinatedRunParams(
+        command=f'{sys.executable} interactor.py',
+        params=SandboxParams(stderr_file=pathlib.Path('interactor.err')),
+        metadata=RunLogMetadata(),
+    )
+    solution = CoordinatedRunParams(
+        command=f'{sys.executable} solution.py',
+        params=SandboxParams(),
+        metadata=RunLogMetadata(),
+    )
+    interactor_log, solution_logs = await steps_with_caching.run_fanout_coordinated(
+        interactor=interactor,
+        solution=solution,
+        artifacts=artifacts,
+        sandbox=sandbox,
+        dependency_cache=dependency_cache,
+        processes=processes,
+    )
+    return artifacts, interactor_log, solution_logs
+
+
+async def test_run_fanout_coordinated_caches_every_process_log(
+    cleandir: pathlib.Path,
+    dependency_cache: DependencyCache,
+    sandbox: SandboxBase,
+    file_cacher: FileCacher,
+):
+    artifacts, interactor_log, logs = await _run_fanout(
+        file_cacher, sandbox, dependency_cache, 3
+    )
+    assert artifacts.logs is not None and not artifacts.logs.cached
+    assert interactor_log is not None and interactor_log.exitcode == 0
+    assert [log.exitcode for log in logs if log is not None] == [0, 1, 2]
+    assert (cleandir / 'int_err.txt').read_text() == (
+        'process 0\nprocess 1\nprocess 2\n'
+    )
+
+    artifacts, interactor_log, cached_logs = await _run_fanout(
+        file_cacher, sandbox, dependency_cache, 3
+    )
+    assert artifacts.logs is not None and artifacts.logs.cached
+    assert cached_logs == logs
+    assert artifacts.logs.run == logs[0]
+
+
+async def test_run_fanout_coordinated_misses_when_processes_change(
+    cleandir: pathlib.Path,
+    dependency_cache: DependencyCache,
+    sandbox: SandboxBase,
+    file_cacher: FileCacher,
+):
+    await _run_fanout(file_cacher, sandbox, dependency_cache, 3)
+
+    artifacts, _, logs = await _run_fanout(file_cacher, sandbox, dependency_cache, 2)
+    assert artifacts.logs is not None and not artifacts.logs.cached
+    assert [log.exitcode for log in logs if log is not None] == [0, 1]
+    assert (cleandir / 'int_err.txt').read_text() == 'process 0\nprocess 1\n'
+
+
+async def test_a_cache_entry_from_before_runs_restores_as_one_process(
+    cleandir: pathlib.Path,
+    dependency_cache: DependencyCache,
+    sandbox: SandboxBase,
+    file_cacher: FileCacher,
+):
+    _, _, logs = await _run_fanout(file_cacher, sandbox, dependency_cache, 1)
+    assert [log.exitcode for log in logs if log is not None] == [0]
+    # Rewrite every entry as one cached before `runs` existed.
+    db = dependency_cache.get_db()
+    for key in list(db.keys()):
+        fingerprint = db[key]
+        for holder in fingerprint.logs:
+            holder.__dict__.pop('runs', None)
+        db[key] = fingerprint
+
+    artifacts, _, cached_logs = await _run_fanout(
+        file_cacher, sandbox, dependency_cache, 1
+    )
+    assert artifacts.logs is not None and artifacts.logs.cached
+    assert artifacts.logs.runs is None
+    assert cached_logs == logs

@@ -8,7 +8,7 @@ import threading
 import typing
 from enum import Enum
 from time import monotonic
-from typing import IO, Any, Dict, List, Optional, Union
+from typing import IO, Any, Dict, List, Optional, Tuple, Union
 
 import psutil
 
@@ -94,6 +94,19 @@ class ProgramParams:
     env: Dict[str, str] = dataclasses.field(default_factory=dict)
     pgid: Optional[int] = None
     pipesize: int = -1
+    # Descriptors the program inherits under their own numbers, besides its
+    # stdin/stdout/stderr (a fanout interactor's pipes, named `/dev/fd/K`).
+    pass_fds: Tuple[int, ...] = ()
+    # Start the wall clock when `Program.start_wall_clock` says so instead of at
+    # the spawn: a communication run starts its solution processes before the
+    # interactor, and until that one runs nothing can talk, so the startup of
+    # the others (and of the capture tee) must not eat a process's budget.
+    defer_wall_clock: bool = False
+    # Whether the child sets its resource limits before exec. A capture tee
+    # needs none, and without a `preexec_fn` CPython can spawn with vfork on
+    # Linux: measured in the Docker image, 192 tees spawned from a 200 MB parent
+    # took 1.25 ms each instead of 2.4-2.9 ms.
+    rlimits: bool = True
 
 
 def enforces_address_space() -> bool:
@@ -352,6 +365,9 @@ class Program:
         self.command = command
         self.params = params
         self.popen: Optional[subprocess.Popen] = None
+        # The child, pinned by (pid, create_time): what the watchdogs sample and
+        # kill. `None` if it was already gone when we looked.
+        self._process: Optional[psutil.Process] = None
         self._files = []
 
         self._stop_wall_handler = threading.Event()
@@ -380,11 +396,23 @@ class Program:
         return self.popen.pid
 
     def _kill_process(self):
-        if self.popen is not None:
-            self.popen.kill()
+        # Never through `Popen.kill`: it polls first, and that poll reaps a child
+        # that has just exited -- out from under the caller's `wait4`, which then
+        # fails with ECHILD (seen when a whole fanout run hits the wall limit at
+        # once, and the group kill races the watchdogs). psutil checks that the
+        # pid still names our child and signals it without reaping anything.
+        if self._process is None:
+            return
+        try:
+            self._process.kill()
+        except psutil.Error:
+            pass
 
     def _handle_wall(self):
-        if self._stop_wall_handler.wait(self.params.wall_time_limit):
+        timeout = self.params.wall_time_limit
+        if timeout is not None:
+            timeout = max(0.0, timeout - (monotonic() - self.start_time))
+        if self._stop_wall_handler.wait(timeout):
             return
         self._stop_alarm_handler.set()
         self._alarm_msg = 'wall timelimit'
@@ -400,8 +428,10 @@ class Program:
     def _handle_alarm(self):
         # Pin the child by (pid, create_time) so a poll after PID reuse
         # cannot read another process's stats and trigger a false MLE/TLE.
+        process = self._process
+        if process is None:
+            return
         try:
-            process = psutil.Process(self.pid)
             create_time = process.create_time()
             self._sample_rss(process)
         except psutil.Error:
@@ -434,6 +464,12 @@ class Program:
         self._files = self.params.io.get_file_objects()
         if maxrss_inherits_parent():
             self._rss_baseline = get_self_rss()
+        spawn_kwargs: Dict[str, Any]
+        if not self.params.rlimits and sys.version_info >= (3, 11):
+            # Joins the group without a `preexec_fn` (see `rlimits`).
+            spawn_kwargs = {'process_group': self.params.pgid or 0}
+        else:
+            spawn_kwargs = {'preexec_fn': get_preexec_fn(self.params)}
         try:
             self.popen = subprocess.Popen(
                 self.command,
@@ -442,17 +478,32 @@ class Program:
                 stderr=self._files[2],
                 cwd=self.params.chdir,
                 env={**os.environ, **self.params.env},
-                preexec_fn=get_preexec_fn(self.params),
                 pipesize=self.params.pipesize,
+                pass_fds=self.params.pass_fds,
+                **spawn_kwargs,
             )
         except FileNotFoundError as e:
             raise ProgramNotFoundError(self.command[0]) from e
         except PermissionError as e:
             raise ProgramNotFoundError(self.command[0], permission_denied=True) from e
         self.start_time = monotonic()
+        try:
+            # Nobody can have reaped the child yet, so the pid is still ours.
+            self._process = psutil.Process(self.popen.pid)
+        except psutil.Error:
+            self._process = None
 
-        threading.Thread(target=self._handle_wall, daemon=True).start()
+        if not self.params.defer_wall_clock:
+            threading.Thread(target=self._handle_wall, daemon=True).start()
         threading.Thread(target=self._handle_alarm, daemon=True).start()
+
+    def start_wall_clock(self, at: float) -> None:
+        """Measure and limit the wall time from `at` (a `monotonic()` reading)
+        on, for a program spawned with `defer_wall_clock`. CPU time is still the
+        program's own, from its spawn."""
+        assert self.params.defer_wall_clock
+        self.start_time = at
+        threading.Thread(target=self._handle_wall, daemon=True).start()
 
     def close_pipes(self):
         if self.popen is None:
@@ -470,11 +521,20 @@ class Program:
 
     def process_exit(self, exitstatus, ru) -> ProgramResult:
         wall_time = monotonic() - self.start_time
+        # Reaped, so the watchdogs are done: without this, a program reaped by
+        # the caller (`os.wait4` on its process group) leaves its wall-clock
+        # thread asleep until the limit -- forever, for a tee, which has none.
+        self._stop_wall_handler.set()
+        self._stop_alarm_handler.set()
         _maybe_close_files(self._files)
         cpu_time = get_cpu_time(ru)
         memory_used = get_child_memory_usage(ru, self._rss_baseline, self._peak_rss)
         file_sizes = get_file_sizes(self.params.io)
         exitcode = os.waitstatus_to_exitcode(exitstatus)
+        if self.popen is not None:
+            # Tell `Popen` too, so it never signals or waits for the pid -- by
+            # now possibly another process's -- in `kill()` or its own cleanup.
+            self.popen.returncode = exitcode
         killing_signal = None
         program_codes = []
 

@@ -37,6 +37,8 @@ class SampleInteractionChunkHandle:
     path: str
     pipe: int
     data: Optional[str] = None
+    # The contestant process of a fanout sample's chunk; `None` otherwise.
+    process: Optional[int] = None
 
 
 @dataclasses.dataclass
@@ -53,9 +55,9 @@ class SampleSource:
     has_output: bool = False
     explanation_path: Optional[pathlib.Path] = None
     explanation_from_blocks: bool = False
-    interaction_chunks: List[Tuple[pathlib.Path, int]] = dataclasses.field(
-        default_factory=list
-    )
+    # `(path, pipe, process)`, `process` being `None` but for a fanout sample; a
+    # `(path, pipe)` pair is read as one with no process.
+    interaction_chunks: List[Tuple] = dataclasses.field(default_factory=list)
 
 
 def _resolve_explanation(
@@ -173,13 +175,23 @@ def stage_samples(
 
         if source.interaction_chunks:
             chunks: List[SampleInteractionChunkHandle] = []
-            for chunk_index, (chunk_path, pipe) in enumerate(source.interaction_chunks):
+            for chunk_index, chunk in enumerate(source.interaction_chunks):
+                chunk_path, pipe, *rest = chunk
+                process = rest[0] if rest else None
                 chunk_name = f'chunk_{chunk_index:03d}.txt'
                 shutil.copyfile(chunk_path, folder / chunk_name)
                 chunks.append(
-                    SampleInteractionChunkHandle(path=f'{rel}/{chunk_name}', pipe=pipe)
+                    SampleInteractionChunkHandle(
+                        path=f'{rel}/{chunk_name}', pipe=pipe, process=process
+                    )
                 )
-            handle.interaction = SampleInteractionHandle(chunks=chunks)
+            interaction = SampleInteractionHandle(chunks=chunks)
+            if any(chunk.process is not None for chunk in chunks):
+                # Fanout: templates do not render several processes yet (#1045),
+                # so the data stays out of `interaction`, which they do render.
+                handle.fanout_interaction = interaction
+            else:
+                handle.interaction = interaction
 
         handles.append(handle)
 

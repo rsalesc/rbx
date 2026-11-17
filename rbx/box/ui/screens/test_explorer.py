@@ -9,7 +9,7 @@ from textual.widgets import Footer, Header, OptionList, RichLog
 from rbx import console
 from rbx.box import package, visualizers
 from rbx.box.exception import RbxException
-from rbx.box.schema import TaskType, Testcase
+from rbx.box.schema import Testcase
 from rbx.box.testcase_extractors import (
     GenerationTestcaseEntry,
     extract_generation_testcases_from_groups,
@@ -92,7 +92,7 @@ class TestExplorerScreen(TestListSearchMixin, Screen):
         metadata.display = not metadata.display
 
     def _is_interactive(self) -> bool:
-        return package.find_problem_package_or_die().type == TaskType.COMMUNICATION
+        return package.find_problem_package_or_die().is_interactive
 
     def _update_selected_test(self, index: Optional[int]):
         input = self.query_one('#test-input', FileLog)
@@ -137,7 +137,7 @@ class TestExplorerScreen(TestListSearchMixin, Screen):
 
     def is_interactive(self) -> bool:
         pkg = package.find_problem_package_or_die()
-        return pkg.type == TaskType.COMMUNICATION
+        return pkg.is_interactive
 
     def action_show_output(self):
         if self.is_interactive():

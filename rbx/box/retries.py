@@ -73,22 +73,9 @@ def _move_to_temp_dir(path: pathlib.Path, temp_dir: pathlib.Path) -> FileToRecov
 def _move_logs_to_temp_dir(
     eval: Evaluation, temp_dir: pathlib.Path
 ) -> List[FileToRecover]:
-    recover = []
-    if (
-        eval.log.stdout_absolute_path is not None
-        and eval.log.stdout_absolute_path.exists()
-    ):
-        recover.append(_move_to_temp_dir(eval.log.stdout_absolute_path, temp_dir))
-    if (
-        eval.log.stderr_absolute_path is not None
-        and eval.log.stderr_absolute_path.exists()
-    ):
-        recover.append(_move_to_temp_dir(eval.log.stderr_absolute_path, temp_dir))
-    if eval.log.log_absolute_path is not None and eval.log.log_absolute_path.exists():
-        recover.append(_move_to_temp_dir(eval.log.log_absolute_path, temp_dir))
-    if eval.log.eval_absolute_path is not None and eval.log.eval_absolute_path.exists():
-        recover.append(_move_to_temp_dir(eval.log.eval_absolute_path, temp_dir))
-    return recover
+    # Every file of the attempt, so the one kept never pairs its verdict with
+    # another attempt's capture or interactor log.
+    return [_move_to_temp_dir(path, temp_dir) for path in eval.log.artifact_paths()]
 
 
 def get_retrier_config(nruns: int = 0) -> RepeatsConfig:
@@ -127,6 +114,10 @@ class Retrier:
                 chosen_eval = _merge_evaluations(eval, next_eval)
 
                 if id(chosen_eval) == id(eval):
+                    # The later attempt's files go, so none of them outlives
+                    # the earlier one it lost to (a capture this one lacks).
+                    for path in next_eval.log.artifact_paths():
+                        path.unlink()
                     # Must recover originally moved files.
                     for file in recover:
                         file.to_path.parent.mkdir(parents=True, exist_ok=True)

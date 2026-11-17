@@ -101,6 +101,14 @@ class _InteractorSegment(BaseModel):
     interactor: _CodeFingerprint
 
 
+class _FanoutInteractorSegment(BaseModel):
+    # A model of its own, so every one-process problem keeps the checksum it
+    # had before fanout existed.
+    interactor: _CodeFingerprint
+    # The process count moves the times an estimate was taken from.
+    processes: int
+
+
 class _TestsSegment(BaseModel):
     # (group, index, input digest), sorted.
     tests: List[Tuple[str, int, str]]
@@ -186,9 +194,15 @@ def _interactor_segment() -> str:
     pkg = package.find_problem_package_or_die()
     if pkg.interactor is None:
         return _ABSENT
-    return _digest_model(
-        _InteractorSegment(interactor=_fingerprint_code(pkg.interactor))
-    )
+    fingerprint = _fingerprint_code(pkg.interactor)
+    if pkg.is_fanout:
+        assert pkg.fanout_processes is not None
+        return _digest_model(
+            _FanoutInteractorSegment(
+                interactor=fingerprint, processes=pkg.fanout_processes
+            )
+        )
+    return _digest_model(_InteractorSegment(interactor=fingerprint))
 
 
 def _tests_segment() -> Optional[str]:

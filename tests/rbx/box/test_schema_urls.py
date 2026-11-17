@@ -89,3 +89,27 @@ class TestSchemaUrl:
         assert schema_urls.schema_url(Package, tmp_path) == (
             'https://rsalesc.github.io/rbx-schemas/1.4/Package.json'
         )
+
+
+class TestSchemaHeader:
+    """`model_to_yaml` names a schema only for a model that has one published: a
+    URL naming no file is an error in every editor that reads it."""
+
+    def test_a_published_model_gets_the_header(self, tmp_path):
+        from rbx import utils
+        from rbx.box import schema
+
+        package = schema.Package(name='okay', timeLimit=1000, memoryLimit=256)
+
+        assert utils.model_to_yaml(package, root=tmp_path).startswith(
+            '# yaml-language-server: $schema='
+        )
+
+    def test_an_unpublished_model_gets_none(self, tmp_path):
+        from rbx import utils
+        from rbx.grading import steps
+
+        dumped = utils.model_to_yaml(steps.RunLog(exitstatus='ok'), root=tmp_path)
+
+        assert 'yaml-language-server' not in dumped
+        assert dumped == 'exitstatus: ok\n'

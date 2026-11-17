@@ -247,3 +247,48 @@ class TestInteractiveChunks:
         assert chunks[1].path == '.samples/000/chunk_001.txt'
         assert chunks[1].pipe == 1
         assert (root / '.samples' / '000' / 'chunk_000.txt').read_text() == 'reads'
+
+    def test_process_tagged_chunks_stage_into_fanout_interaction(self, tmp_path):
+        src = tmp_path / 'src'
+        _write(src / '000.in')
+        _write(src / 'chunk0.txt', '5')
+        _write(src / 'chunk1.txt', '6')
+        source = SampleSource(
+            input_path=src / '000.in',
+            interaction_chunks=[(src / 'chunk0.txt', 0, 0), (src / 'chunk1.txt', 1, 2)],
+        )
+
+        root = tmp_path / 'overlay'
+        root.mkdir()
+        handles = sample_staging.stage_samples(
+            problem_root=root, root_prefix='', sources=[source]
+        )
+
+        # Templates do not render several processes yet (#1045).
+        assert handles[0].interaction is None
+        chunks = handles[0].fanout_interaction.chunks
+        assert [(c.path, c.pipe, c.process) for c in chunks] == [
+            ('.samples/000/chunk_000.txt', 0, 0),
+            ('.samples/000/chunk_001.txt', 1, 2),
+        ]
+
+    def test_chunks_without_a_process_stage_into_interaction(self, tmp_path):
+        src = tmp_path / 'src'
+        _write(src / '000.in')
+        _write(src / 'chunk0.txt', '5')
+        _write(src / 'chunk1.txt', '6')
+        source = SampleSource(
+            input_path=src / '000.in',
+            # A 2-tuple and a 3-tuple with no process read the same.
+            interaction_chunks=[(src / 'chunk0.txt', 0), (src / 'chunk1.txt', 1, None)],
+        )
+
+        root = tmp_path / 'overlay'
+        root.mkdir()
+        handles = sample_staging.stage_samples(
+            problem_root=root, root_prefix='', sources=[source]
+        )
+
+        assert handles[0].fanout_interaction is None
+        chunks = handles[0].interaction.chunks
+        assert [(c.pipe, c.process) for c in chunks] == [(0, None), (1, None)]

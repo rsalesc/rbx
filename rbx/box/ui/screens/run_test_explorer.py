@@ -11,7 +11,7 @@ from textual.widgets import Footer, Header, OptionList
 from rbx import console
 from rbx.box import package, visualizers
 from rbx.box.exception import RbxException
-from rbx.box.schema import TaskType, Testcase
+from rbx.box.schema import Testcase
 from rbx.box.solutions import SolutionReportSkeleton, SolutionSkeleton
 from rbx.box.testcase_extractors import (
     GenerationTestcaseEntry,
@@ -134,7 +134,7 @@ class RunTestExplorerScreen(TestListSearchMixin, Screen):
         self.query_one('#test-list', OptionList).focus()
 
     def _is_interactive(self) -> bool:
-        return package.find_problem_package_or_die().type == TaskType.COMMUNICATION
+        return package.find_problem_package_or_die().is_interactive
 
     def _get_rendering_data(
         self, solution: SolutionSkeleton, entry: GenerationTestcaseEntry
@@ -225,7 +225,7 @@ class RunTestExplorerScreen(TestListSearchMixin, Screen):
 
     def should_show_interaction(self) -> bool:
         pkg = package.find_problem_package_or_die()
-        return pkg.type == TaskType.COMMUNICATION and self.skeleton.capture_pipes
+        return pkg.is_interactive and self.skeleton.capture_pipes
 
     def action_show_output(self):
         if self.should_show_interaction():

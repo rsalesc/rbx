@@ -25,6 +25,29 @@ VERSIONED_BASE_URL = 'https://rsalesc.github.io/rbx-schemas'
 # pin.
 SCHEMA_PIN_FLOOR: Tuple[int, int] = (1, 0)
 
+# The models whose schemas are published, by name: what
+# `rbx.box.internal.schema_export.MODELS` exports, which checks the two agree.
+# Named rather than imported, since importing the models would load most of
+# `rbx.box` for every YAML file written.
+PUBLISHED_SCHEMAS = frozenset(
+    {
+        'Package',
+        'Environment',
+        'Contest',
+        'Preset',
+        'PresetLock',
+        'PresetRegistry',
+        'Statement',
+        'LimitsProfile',
+    }
+)
+
+
+def is_published(model_cls: Type[BaseModel]) -> bool:
+    """Whether `model_cls` has a published schema. Any other model's URL names
+    a file that does not exist, which editors flag as an error."""
+    return model_cls.__name__ in PUBLISHED_SCHEMAS
+
 
 @functools.cache
 def preset_min_version(root: pathlib.Path) -> Optional[str]:

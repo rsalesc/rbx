@@ -85,7 +85,6 @@ from rbx.box.schema import (
     InferenceRole,
     ScoreType,
     Solution,
-    TaskType,
     Testcase,
     TestcaseGroup,
 )
@@ -852,7 +851,7 @@ async def _compile_checking_digests(check: bool) -> Tuple[Optional[str], Optiona
     """The (checker, interactor) digests a run judges its outputs with."""
     pkg = package.find_problem_package_or_die()
 
-    if pkg.type == TaskType.COMMUNICATION:
+    if pkg.is_communication:
         checker_digest = (
             await checkers.compile_checker()
             if check and package.get_checker_or_nil() is not None
@@ -992,12 +991,31 @@ def _check_capabilities(
             f'backend that can skip checking.'
         )
 
+    check_problem_support(runner)
+
+
+def check_problem_support(runner: 'SolutionRunner') -> None:
+    """Refuse a problem the backend cannot run at all, whatever is asked of it.
+
+    The part of `_check_capabilities` that depends only on the problem, so a
+    command can call it before it builds anything, and a backend that measures
+    without going through `run_solutions` (MOJ's calibration) can call it too.
+    """
+    from rbx.box.runners.base import RunnerCapabilityError
+
+    caps = runner.caps
     pkg = package.find_problem_package_or_die()
-    if pkg.type == TaskType.COMMUNICATION and not caps.supports_interactive:
+    if pkg.is_communication and not caps.supports_interactive:
         raise RunnerCapabilityError(
             f'Runner `{runner.name}` cannot drive an interactor, but this problem '
             f'is of type `communication`. Run this on a backend that can drive '
             f'one.'
+        )
+    if pkg.is_fanout and not caps.supports_fanout:
+        raise RunnerCapabilityError(
+            f'Runner `{runner.name}` cannot run several processes against one '
+            f'interactor, but this problem sets `interactor.processes`. Run this '
+            f'locally.'
         )
 
 
@@ -1303,7 +1321,7 @@ async def _generate_testcase_interactively(
 
     if main_solution_digest is not None and not is_output_manual:
         pkg = package.find_problem_package_or_die()
-        if pkg.type == TaskType.COMMUNICATION:
+        if pkg.is_communication:
             interactor_digest = await checkers.compile_interactor(progress)
         else:
             interactor_digest = None
@@ -1360,7 +1378,7 @@ async def _run_interactive_solutions(
 ) -> AsyncIterator[EvaluationItem]:
     pkg = package.find_problem_package_or_die()
 
-    if pkg.type == TaskType.COMMUNICATION:
+    if pkg.is_communication:
         checker_digest = await checkers.compile_checker() if check else None
         interactor_digest = await checkers.compile_interactor()
     else:
@@ -1594,7 +1612,7 @@ async def run_and_print_interactive_solutions(
             # Interleaved view: the merged capture already weaves stderr (red)
             # into the output/interaction in true line order, so render it in
             # place of the plain Output + separate Stderr sections.
-            rule = 'Interaction' if pkg.type == TaskType.COMMUNICATION else 'Output'
+            rule = 'Interaction' if pkg.is_communication else 'Output'
             console.console.rule(rule, style='status')
             print_best_output(
                 [merged_path],
@@ -1603,7 +1621,7 @@ async def run_and_print_interactive_solutions(
                 capture_pipes=skeleton.capture_pipes,
             )
         elif print and stdout_path is not None:
-            if pkg.type == TaskType.COMMUNICATION:
+            if pkg.is_communication:
                 console.console.rule('Interaction', style='status')
                 output_files = get_all_interaction_files(stdout_path) + [
                     stdout_path.with_suffix('.pout'),

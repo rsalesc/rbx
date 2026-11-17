@@ -79,6 +79,12 @@ class BasePackager(ABC):
         return False
 
     @classmethod
+    def supports_fanout(cls) -> bool:
+        """Whether the judge can run several contestant processes against one
+        interactor (`interactor.processes`). None can yet: CMS is #1043."""
+        return False
+
+    @classmethod
     def supports_points(cls) -> bool:
         """Whether the judge scores a problem by points (`scoring: points`).
 
@@ -273,7 +279,7 @@ def mentions_points(code: CodeItem) -> bool:
 
 def _sources_awarding_points(pkg: Package) -> List[CodeItem]:
     sources: List[CodeItem] = [package.get_checker_or_builtin()]
-    if pkg.type == TaskType.COMMUNICATION and pkg.interactor is not None:
+    if pkg.is_communication and pkg.interactor is not None:
         sources.append(pkg.interactor)
     return [code for code in sources if mentions_points(code)]
 
@@ -323,6 +329,18 @@ async def run_packager(
             f'[error]Packager [item]{packager_cls.name()}[/item] does not support '
             'problems with a grader. Graders can be packaged for Polygon and CMS '
             '([item]rbx package polygon --cms[/item]).[/error]'
+        )
+        raise typer.Exit(1)
+
+    # Also before the build: no judge runs several processes against one interactor yet.
+    if (
+        package.find_problem_package_or_die().is_fanout
+        and not packager_cls.supports_fanout()
+    ):
+        console.console.print(
+            f'[error]Packager [item]{packager_cls.name()}[/item] does not support '
+            'problems whose interactor talks to several processes '
+            '([item]interactor.processes[/item]).[/error]'
         )
         raise typer.Exit(1)
 

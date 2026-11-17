@@ -2,7 +2,7 @@
 
 Everything about the box -- creating it, staging and symlinking files into it,
 reading outputs back, cleaning it up -- is inherited unchanged and happens on the
-host. Only the two methods that start processes are forwarded, to an agent in a
+host. Only the two methods that start processes (`run`, `run_fanout`) are forwarded, to an agent in a
 container that sees the box at the same absolute path and runs them with the
 very same `StupidSandbox` code (see `docker_agent`). What the container adds is
 the machine those programs run on: a Linux kernel that honours the stack and
@@ -98,18 +98,19 @@ class DockerSandbox(StupidSandbox):
     def run(self, command: List[str], params: SandboxParams) -> SandboxLog:
         return self._backend().client().run(self.get_root_path(), command, params)
 
-    def run_communication(
+    def run_fanout(
         self,
         command: List[str],
         params: SandboxParams,
         interactor_command: List[str],
         interactor_params: SandboxParams,
         communication_params: Optional[CommunicationParams] = None,
-    ) -> Tuple[SandboxLog, SandboxLog]:
+    ) -> Tuple[List[SandboxLog], SandboxLog]:
+        # `run_communication` is the one-process case, served by the base class.
         return (
             self._backend()
             .client()
-            .run_communication(
+            .run_fanout(
                 self.get_root_path(),
                 command,
                 params,

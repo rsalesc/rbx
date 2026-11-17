@@ -25,7 +25,6 @@ from rbx.box.schema import (
     LimitsProfile,
     Package,
     Solution,
-    TaskType,
 )
 
 # Independent of `ISSUES_FORMAT_VERSION` on purpose: the `ProblemSummary` shape
@@ -194,10 +193,18 @@ def time_limit_varies_by_language(profile: LimitsProfile) -> bool:
 
 def get_problem_flags(pkg: Package) -> ProblemFlags:
     return ProblemFlags(
-        is_interactive=pkg.type == TaskType.COMMUNICATION,
+        is_interactive=pkg.is_communication,
         has_validator=pkg.validator is not None,
         has_custom_checker=pkg.checker is not None,
     )
+
+
+def _interactor_display(pkg: Package) -> Optional[str]:
+    if pkg.interactor is None:
+        return None
+    if pkg.is_fanout:
+        return f'{pkg.interactor.display()} (fanout, {pkg.fanout_processes} processes)'
+    return pkg.interactor.display()
 
 
 def get_problem_summary(
@@ -214,7 +221,7 @@ def get_problem_summary(
         output_limit_kb=pkg.outputLimit,
         testcase_counts=count_testcases(testcase_entries),
         flags=get_problem_flags(pkg),
-        interactor_display=pkg.interactor.display() if pkg.interactor else None,
+        interactor_display=_interactor_display(pkg),
         checker_display=pkg.checker.display() if pkg.checker else None,
         validator_display=pkg.validator.display() if pkg.validator else None,
         solutions=solutions,

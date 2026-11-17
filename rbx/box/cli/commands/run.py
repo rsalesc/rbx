@@ -35,6 +35,7 @@ from rbx.box.runners.base import RunPurpose
 from rbx.box.sanitizers import warning_stack
 from rbx.box.schema import ExpectedOutcome
 from rbx.box.solutions import (
+    check_problem_support,
     fail_fast_abort_predicate,
     get_exact_matching_solutions,
     get_matching_solutions,
@@ -213,6 +214,9 @@ async def run(
     solution_runner = runners_registry.get_runner(
         runners_registry.resolve_runner_name(runner, limits_info.get_active_profile())
     )
+    # A backend that cannot run this problem at all is refused before the build
+    # too; `run_solutions` would only refuse it after.
+    check_problem_support(solution_runner)
 
     main_solution = package.get_main_solution()
     if check and main_solution is None:

@@ -61,10 +61,16 @@ Main implementation. "Stupid" because it doesn't use OS-level sandboxing (unlike
 5. Enforces limits: kills on TLE, MLE, OLE, ILE (idleness)
 6. Returns `SandboxLog` with timing, memory, exit status
 
-**Communication execution (`execute_communication()`):**
-- Sets up bidirectional pipes between solution and interactor using `chunk_tee.py`/`line_tee.py`
-- Captures interaction data for debugging (`.pio` files)
-- Monitors both processes simultaneously
+**Communication execution (`run_fanout()`; `run_communication()` is its one-process case):**
+- Runs N copies of the solution against one interactor (`CommunicationParams.processes`). N = 1 is an interactive problem: the interactor talks over its stdin/stdout. N > 1 is fanout: copy i gets `i` as its last argument, the interactor gets a `/dev/fd/K` pair per copy (`<from_i> <to_i>`, inherited via `pass_fds`), and the copies' stderr is merged into the solution's stderr file, grouped by copy, each line tagged `[i] `. There is one implementation; never add an N > 1-only path.
+- Every pipe end the parent hands to a program is closed right after that program starts, or EOF/SIGPIPE never arrive. The group's id is the first program's pid (it leads the group); never ask `getpgid`, which fails once the leader exited. Any exception while starting programs kills and reaps those already started.
+- **`exit_index` comes from the kernel, not from reaping** (`_ExitOrder`): reaping order is whatever order the kernel lists zombies in, and under load the reaper sees several at once. A kqueue (macOS) or epoll over pidfds (Linux; `_pidfd_open` falls back to the raw syscall where `os.pidfd_open` is missing, as in the Docker image's Python) records each event as it happens, read by a follower thread while the run goes on. A program counts as stopped when it *starts* to exit: the interactor owns the only write ends of liveness pipes it never writes (fd 0 for N > 1, and one fd above every protocol fd -- kernels close an exiting process's fds ascending or descending, measured descending on macOS and Linux 6), and a copy's stdout losing its last writer is watched on Linux (epoll keeps that watch while the interactor/tee holds the read end; we must not hold one, or the copy loses its SIGPIPE). Every watch is armed before the dialogue can start. Measured: crash-first and interactor-rejects-first ordered right in every run, N = 1..64, idle and under load, native and Docker; the reaper-only fallback (no event queue) breaks ties toward the interactor.
+- **A process's wall clock starts with the interactor**, not at its own spawn (`ProgramParams.defer_wall_clock`, `Program.start_wall_clock`): the tee and the processes are started first and nothing can talk until the interactor runs, so startup (~1 s for 64 processes with capture, in Docker) must not come out of a process's wall budget. CPU time is still the process's own. Tees spawn with `rlimits=False` (no `preexec_fn`, so CPython can vfork on Linux; ~2x cheaper spawns measured in the Docker image).
+- Kill rule: the interactor failing kills the group; the interactor accepting leaves the copies to see EOF and finish within their own limits. Once the interactor and every copy are reaped, tees get `DRAIN_GRACE_SECONDS` before the group is killed (a grandchild holding a pipe), and a final `killpg` leaves nothing the run started alive.
+- N > 1 never sizes pipes (`F_SETPIPE_SZ`, ours or `subprocess`'s `pipesize`): its pipes would soon exceed the user's `pipe-user-pages-soft`, after which Linux refuses with EPERM (surfacing as a bogus "permission denied" spawn failure) and shrinks every other run's pipes. Running out of descriptors opening the channels is a `ProgramError` naming N and the limit.
+- Sets up the capture tee: **one** `chunk_tee.py --routes` process per run, copying every channel both ways and, with `tee_stderr`, each process's stderr (markers `<`/`>`/`!`, or `[i]<`... for fanout; `.pin`/`.pout` only for N = 1, so N > 1 tees only for a merged capture). Never one tee per pipe: in Docker that tripled a fanout round trip (see Output Handling). Every record the tee appends to the merged capture ends with a newline, a last unterminated line included. The merged capture is appended to in a **local** temp file (`_local_capture`) and copied into the box afterwards: through Docker Desktop's file share, concurrent `O_APPEND` writes overwrite each other (measured).
+- A program reaped by the caller must go through `Program.process_exit`, which stops its watchdog threads (a tee has no wall limit, so its thread would otherwise sleep forever).
+- Only the caller reaps. The watchdogs kill through the `psutil.Process` pinned at spawn, never `Popen.kill`/`poll`/`wait`: `Popen.kill` polls first, and that poll reaps a child that has just exited out from under the caller's `wait4`, which then fails with ECHILD (seen when every process of a fanout run hits the wall limit at once while the group kill lands).
 
 **Key parameters:**
 - `SandboxParams` -- `stdin`, `stdout_file`, `stderr_file`, `extra_files`, `address_space_limit`, `time_limit`, `wall_time_limit`, `memory_limit`, `stack_limit`, `max_processes`, `set_hostname`, `allow_network`
@@ -74,7 +80,7 @@ Main implementation. "Stupid" because it doesn't use OS-level sandboxing (unlike
 
 Selected when the setter config has `docker.enabled` (`rbx/box/docker_runtime.py`
 builds the image, runs the container, binds the backend). It **subclasses
-`StupidSandbox` and overrides only `run`/`run_communication`** (plus
+`StupidSandbox` and overrides only `run`/`run_fanout`** (plus
 `create_symlink`): the box is prepared on the host as usual, and an agent in the
 container runs the *same* `StupidSandbox` code on it (`StupidSandbox(path=box)`),
 reached over one `docker exec -i` per process with JSON lines. Never duplicate
@@ -95,7 +101,7 @@ execution logic there -- change `StupidSandbox` and both paths get it. Rules:
   "optimise" that lock away without re-running the measurement in the design doc.
 - **Who gets a freed slot is a priority queue**, not whoever polls first:
   `RBX_DOCKER_PRIORITY` (lower first; unset sorts after every explicit value,
-  `UNSET_PRIORITY`) rides on every `run`/`run_communication` request
+  `UNSET_PRIORITY`) rides on every `run`/`run_fanout` request
   (`AgentClient.priority`, read once in `docker_runtime`). `rbx each`/`rbx on`
   set it to the problem's position, via `CommandEntry.env` -- folded into the
   shell command as `export ...` so a resumed history run keeps it. Waiters make
@@ -159,8 +165,14 @@ Performance profiling for sandbox execution. Tracks compilation and execution ti
 ## Output Handling (`judge/sandboxes/chunk_tee.py`, `line_tee.py`)
 
 Helper scripts that sit on a pipe and copy it to the peer (stdout), a clean extra file, and the merged capture (stderr, every line prefixed with a marker: `<` interactor, `>` solution, `!` stderr):
-- **`chunk_tee.py`** (`tee_mode='chunk'`, the interactive default) -- `os.read`s whatever is available (up to 64 KiB) on raw fds and forwards it to the peer **first**, so a partial line written and flushed still arrives at once while the copy costs one iteration per chunk, not per byte (#1035: the old byte-at-a-time `tee.py` added seconds per test to MB-scale interactions and turned accepted solutions into ILE/TLE). Into the merged capture it writes only **complete marked lines**, holding a mid-line chunk tail back until its newline (or EOF): up to three tees append to that file concurrently, and the line-based reader (`testcase_utils.parse_interaction`) would mis-attribute a line split by another tee's write. On `EPIPE` from the peer it exits quietly, so the writer sees a broken pipe as without a tee, and no traceback lands in the capture.
-- **`line_tee.py`** (`tee_mode='line'`) -- forwards only on newline; used when a caller asks for `line_capture`.
+- **`chunk_tee.py`** -- the tee of every communication run, one process for all its pipes (`--routes <marker> <in fd> <out fd|-> <extra>...`, fds inherited via `pass_fds`; `chunk_tee.py <marker> <extra>` is one route from stdin to stdout). One process, not one per pipe, because each tee is one more process a message wakes on its way, and in the Docker Desktop VM waking a process on another vCPU is what costs: measured in the image, a fanout round trip took 62-67 us at N = 2..16 with a tee per pipe and 23-30 us with one tee (11-19 us with no tee; pinning every process to one CPU gave 11-23 us, so it is wake-ups, not the tee's own work). Natively the two cost the same, 14-16 us. It waits on epoll (Linux) or kqueue (macOS), so a wake-up costs the same however many routes there are.
+  - It `os.read`s whatever is available (up to 64 KiB) and forwards it to the peer **first**, so a partial line written and flushed still arrives at once while the copy costs one iteration per chunk, not per byte (#1035: the old byte-at-a-time `tee.py` added seconds per test to MB-scale interactions and turned accepted solutions into ILE/TLE). With `--line` (`tee_mode='line'`, when a caller asks for `line_capture`) it forwards whole lines only.
+  - Peers are written non-blocking, so a peer that does not read never stalls the other routes; a route stops reading while 64 KiB of it wait for the peer, so the writer still blocks on its own pipe as it would without a tee.
+  - Into the merged capture it writes only **complete marked lines**, holding a mid-line chunk tail back until its newline (or EOF), and in the order it moved the data, so a reply is never logged ahead of the line it answers.
+  - On `EPIPE` from a peer it closes that route's input, so the writer sees a broken pipe as without a tee, and no traceback lands in the capture. A route's input is otherwise kept open until the tee exits (`_ExitOrder.watch_hangup` watches it).
+- **`line_tee.py`** -- forwards only on newline; used by a batch run's merged capture in line mode (`rbx irun --merge-stderr`): two tees, one per stream, with no peer.
+
+Tees run as `python -S`: they import only the standard library, and skipping `site` saves ~1.3 ms per spawn in the Docker image.
 
 `'char'` is a legacy alias of `'chunk'` (`sandbox.TeeMode`'s validator): sandbox params are persisted inside cached `SandboxLog`s, so the old name must still read back.
 

@@ -1,7 +1,7 @@
 import asyncio
 import pathlib
 import signal
-from typing import Dict, Iterator, Tuple
+from typing import Dict, Iterator, List, Tuple
 
 import pytest
 
@@ -11,7 +11,7 @@ from rbx.box.schema import Testcase
 from rbx.box.testing import testing_package
 from rbx.grading.judge.sandbox import SandboxBase
 from rbx.grading.limits import Limits
-from rbx.grading.steps import Outcome, RunLog, RunLogMetadata
+from rbx.grading.steps import Outcome, RunLog, RunLogMetadata, combine_process_logs
 
 INTERESTING_CHECKERS = [
     'checkers/checker.cpp',
@@ -1192,3 +1192,100 @@ class TestCheckCommunicationInteractorOverranItsLimits:
         )
 
         assert result.outcome == Outcome.RUNTIME_ERROR
+
+
+class TestCheckCommunicationFanout:
+    """The processes of a fanout run, folded by `combine_process_logs`, through
+    the same verdict ladder as one process."""
+
+    def _processes(self, run_log: RunLog, n: int) -> List[RunLog]:
+        # Exit indices after the interactor's (0): it went first.
+        return [
+            run_log.model_copy(deep=True, update={'exitindex': i + 1}) for i in range(n)
+        ]
+
+    @pytest.mark.usefixtures('interactor_exit_first')
+    async def test_summed_cpu_time_over_the_limit_is_tle(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        processes = self._processes(run_log, 3)
+        for process in processes:
+            # Each well under the 1 s limit, 1.5 s together.
+            process.time = 0.5
+
+        combined, decider = combine_process_logs(list(processes))
+        result = await checkers.check_communication(
+            checker_digest,
+            combined,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert decider is None
+        assert result.outcome == Outcome.TIME_LIMIT_EXCEEDED
+
+    @pytest.mark.usefixtures('interactor_exit_first')
+    async def test_a_process_failing_after_the_interactor_accepted_is_rte(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        processes = self._processes(run_log, 3)
+        processes[1].exitcode = 1
+        processes[1].exitstatus = SandboxBase.EXIT_NONZERO_RETURN
+
+        combined, decider = combine_process_logs(list(processes))
+        result = await checkers.check_communication(
+            checker_digest,
+            combined,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert decider == 1
+        assert result.outcome == Outcome.RUNTIME_ERROR
+
+    @pytest.mark.usefixtures('interactor_exit_first')
+    async def test_the_interactor_rejecting_first_is_wa_though_the_processes_were_killed(
+        self,
+        checker_digest: str,
+        testcase: Testcase,
+        program_output: pathlib.Path,
+        interactor_stderr: pathlib.Path,
+        run_log: RunLog,
+        interactor_run_log: RunLog,
+    ) -> None:
+        interactor_run_log.exitcode = 1
+        interactor_run_log.exitstatus = SandboxBase.EXIT_NONZERO_RETURN
+        interactor_stderr.write_text('wrong answer process 1 answered 7')
+        processes = self._processes(run_log, 3)
+        for process in processes:
+            # Stopped by the group kill once the interactor failed.
+            process.exitcode = -signal.SIGKILL
+            process.exitstatus = SandboxBase.EXIT_SIGNAL
+
+        combined, _ = combine_process_logs(list(processes))
+        result = await checkers.check_communication(
+            checker_digest,
+            combined,
+            interactor_run_log,
+            interactor_stderr,
+            testcase,
+            program_output,
+        )
+
+        assert result.outcome == Outcome.WRONG_ANSWER
