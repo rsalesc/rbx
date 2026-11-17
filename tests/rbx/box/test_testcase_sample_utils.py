@@ -1194,3 +1194,111 @@ async def test_build_samples_skips_statement_files_when_not_opted_in(
     mocks['compile_output_validators'].assert_not_called()
     mocks['validate_file'].assert_not_called()
     mocks['check_sample'].assert_not_called()
+
+
+def _make_communication(
+    testing_pkg: testing_package.TestingPackage, processes: Optional[int] = None
+) -> None:
+    from rbx.box.schema import TaskType
+
+    testing_pkg.set_type(TaskType.COMMUNICATION)
+    testing_pkg.set_interactor('interactor.cpp')
+    if processes is not None:
+        assert testing_pkg.yml.interactor is not None
+        testing_pkg.yml.interactor.processes = processes
+        testing_pkg.save()
+
+
+async def _samples_with_interaction(
+    tmp_path: pathlib.Path,
+    mock_extract_generation_testcases_from_groups,
+    interaction: str,
+):
+    dest_input = tmp_path / 'dest.in'
+    (tmp_path / 'dest.interaction').write_text(interaction)
+    mock_extract_generation_testcases_from_groups.return_value = [
+        create_entry(
+            TestcaseEntry(group='samples', index=0), copied_to_input=dest_input
+        )
+    ]
+    return await testcase_sample_utils.get_statement_samples()
+
+
+def _printed(capsys) -> str:
+    # Rich wraps long lines (the paths are long): compare words, not lines.
+    return ' '.join(capsys.readouterr().out.split())
+
+
+class TestFanoutSampleInteractions:
+    async def test_a_fanout_sample_keeps_its_processes(
+        self,
+        tmp_path,
+        mock_extract_generation_testcases_from_groups,
+        testing_pkg: testing_package.TestingPackage,
+    ):
+        _make_communication(testing_pkg, processes=3)
+
+        samples = await _samples_with_interaction(
+            tmp_path,
+            mock_extract_generation_testcases_from_groups,
+            '[0]< 5\n[0]> 6\n[2]< 6\n[2]> 9\n',
+        )
+
+        interaction = list(samples)[0].interaction
+        assert interaction is not None
+        assert [(e.process, e.pipe, e.data) for e in interaction.entries] == [
+            (0, 0, '5'),
+            (0, 1, '6'),
+            (2, 0, '6'),
+            (2, 1, '9'),
+        ]
+        assert [chunk.process for chunk in interaction.chunks] == [0, 0, 2, 2]
+
+    async def test_a_process_out_of_range_is_an_error(
+        self,
+        tmp_path,
+        mock_extract_generation_testcases_from_groups,
+        testing_pkg: testing_package.TestingPackage,
+        capsys,
+    ):
+        _make_communication(testing_pkg, processes=3)
+
+        with pytest.raises(typer.Exit):
+            await _samples_with_interaction(
+                tmp_path,
+                mock_extract_generation_testcases_from_groups,
+                '[0]< 5\n[5]> 6\n',
+            )
+        assert 'names process 5' in _printed(capsys)
+
+    async def test_an_untagged_fanout_sample_is_an_error(
+        self,
+        tmp_path,
+        mock_extract_generation_testcases_from_groups,
+        testing_pkg: testing_package.TestingPackage,
+        capsys,
+    ):
+        _make_communication(testing_pkg, processes=3)
+
+        with pytest.raises(typer.Exit):
+            await _samples_with_interaction(
+                tmp_path, mock_extract_generation_testcases_from_groups, '< 5\n> 6\n'
+            )
+        assert 'tag every line' in _printed(capsys)
+
+    async def test_a_tagged_sample_of_an_interactive_problem_is_an_error(
+        self,
+        tmp_path,
+        mock_extract_generation_testcases_from_groups,
+        testing_pkg: testing_package.TestingPackage,
+        capsys,
+    ):
+        _make_communication(testing_pkg)
+
+        with pytest.raises(typer.Exit):
+            await _samples_with_interaction(
+                tmp_path,
+                mock_extract_generation_testcases_from_groups,
+                '[0]< 5\n[0]> 6\n',
+            )
+        assert 'talks to one process' in _printed(capsys)

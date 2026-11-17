@@ -633,3 +633,71 @@ def test_print_stderr_section_handles_missing_file(tmp_path, monkeypatch):
     monkeypatch.setattr(testcase_utils.console, 'console', rec)
     assert testcase_utils.print_stderr_section(tmp_path / 'nope.stderr') is False
     assert testcase_utils.print_stderr_section(None) is False
+
+
+class TestFanoutInteractionParsing:
+    """A fanout capture tags every line with its process: `[k]<5`."""
+
+    def test_parses_a_tagged_capture(self, tmp_path: pathlib.Path):
+        pio = tmp_path / '000.pio'
+        pio.write_text('<\n>\n[0]<5\n[0]>6\n[1]<6\n[1]!dbg\n[1]>8\n')
+
+        interaction = parse_interaction(pio)
+
+        assert interaction.entries == [
+            TestcaseInteractionEntry(data='5', pipe=0, process=0),
+            TestcaseInteractionEntry(data='6', pipe=1, process=0),
+            TestcaseInteractionEntry(data='6', pipe=0, process=1),
+            TestcaseInteractionEntry(data='dbg', pipe=2, process=1),
+            TestcaseInteractionEntry(data='8', pipe=1, process=1),
+        ]
+
+    def test_parses_a_tagged_interaction_file(self, tmp_path: pathlib.Path):
+        interaction_file = tmp_path / '000.interaction'
+        interaction_file.write_text('[0]< 3\n[12]> 4\n')
+
+        interaction = parse_interaction(interaction_file)
+
+        assert interaction.entries == [
+            TestcaseInteractionEntry(data='3', pipe=0, process=0),
+            TestcaseInteractionEntry(data='4', pipe=1, process=12),
+        ]
+
+    @pytest.mark.parametrize(
+        'content', ['[0]< 3\n> 4\n', '< 3\n[0]> 4\n'], ids=['tagged', 'untagged']
+    )
+    def test_mixing_tagged_and_untagged_lines_raises(
+        self, tmp_path: pathlib.Path, content: str
+    ):
+        interaction_file = tmp_path / '000.interaction'
+        interaction_file.write_text(content)
+
+        with pytest.raises(TestcaseInteractionParsingError, match='mixes'):
+            parse_interaction(interaction_file)
+
+    def test_an_untagged_file_parses_as_before(self, tmp_path: pathlib.Path):
+        pio = tmp_path / '000.pio'
+        pio.write_text('<\n>\n<5\n>6\n!dbg\n')
+
+        interaction = parse_interaction(pio)
+
+        assert interaction.entries == [
+            TestcaseInteractionEntry(data='5', pipe=0),
+            TestcaseInteractionEntry(data='6', pipe=1),
+            TestcaseInteractionEntry(data='dbg', pipe=2),
+        ]
+        assert all(entry.process is None for entry in interaction.entries)
+
+    def test_merging_splits_where_the_process_changes(self):
+        entries = [
+            TestcaseInteractionEntry(data='1', pipe=0, process=0),
+            TestcaseInteractionEntry(data='2', pipe=0, process=0),
+            TestcaseInteractionEntry(data='3', pipe=0, process=1),
+            TestcaseInteractionEntry(data='4', pipe=1, process=1),
+        ]
+
+        assert merge_interaction_entries(entries) == [
+            TestcaseInteractionEntry(data='1\n2', pipe=0, process=0),
+            TestcaseInteractionEntry(data='3', pipe=0, process=1),
+            TestcaseInteractionEntry(data='4', pipe=1, process=1),
+        ]

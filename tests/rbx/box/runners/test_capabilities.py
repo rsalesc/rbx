@@ -409,3 +409,35 @@ async def test_a_batch_backend_keeps_its_verdicts_even_when_the_run_aborts(
         item.eval is deferred
         for item, deferred in zip(result.items, returned, strict=True)
     )
+
+
+def test_only_the_local_runner_runs_fanout_problems():
+    from rbx.box.runners.domjudge.runner import DomjudgeRunner
+    from rbx.box.runners.local import LocalRunner
+    from rbx.box.runners.moj.runner import MojRunner
+
+    assert LocalRunner.caps.supports_fanout
+    assert not MojRunner.caps.supports_fanout
+    assert not DomjudgeRunner.caps.supports_fanout
+    # Off unless a backend says so.
+    assert not RunnerCapabilities().supports_fanout
+
+
+async def test_a_fanout_problem_is_refused_by_a_backend_without_fanout(testing_pkg):
+    from rbx.box.schema import TaskType
+
+    testing_pkg.set_type(TaskType.COMMUNICATION)
+    testing_pkg.set_interactor('interactor.cpp')
+    testing_pkg.yml.interactor.processes = 3
+    testing_pkg.save()
+    runner = LimitedRunner(caps=RunnerCapabilities())
+
+    with pytest.raises(RunnerCapabilityError) as exc:
+        await run_solutions(verification=VerificationLevel.FULL, runner=runner)
+
+    assert str(exc.value) == (
+        'Runner `limited` cannot run several processes against one interactor, '
+        'but this problem sets `interactor.processes`. Run this locally.'
+    )
+    assert runner.prepared == 0
+    assert runner.calls == 0

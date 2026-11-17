@@ -1,3 +1,4 @@
+import importlib.resources
 import pathlib
 import shutil
 import subprocess
@@ -1314,3 +1315,72 @@ class TestVarArgsAreReadableByBothLibraries:
             input='',
         )
         assert result.stdout == expected
+
+
+# What a fanout package adds to rbx.h, and nothing else does.
+fanout_block = header._fanout_block  # noqa: SLF001
+
+
+def _make_communication(
+    testing_pkg: testing_package.TestingPackage, processes=None, grader=False
+) -> None:
+    testing_pkg.set_type(schema.TaskType.COMMUNICATION)
+    testing_pkg.set_interactor('interactor.cpp')
+    assert testing_pkg.yml.interactor is not None
+    if processes is not None:
+        testing_pkg.yml.interactor.processes = processes
+    if grader:
+        testing_pkg.yml.grader = schema.Grader(
+            path=pathlib.Path('grader.cpp'), secret='fanout-header-secret'
+        )
+    testing_pkg.save()
+
+
+class TestFanoutHeader:
+    def _template(self) -> str:
+        return (
+            importlib.resources.files('rbx')
+            .joinpath('resources', 'templates', 'rbx.h')
+            .read_text()
+        )
+
+    def test_a_fanout_package_gets_the_fanout_helpers(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        _make_communication(testing_pkg, processes=3)
+
+        header.generate_header()
+
+        generated = pathlib.Path('rbx.h').read_text()
+        assert 'registerFanoutInteraction' in generated
+        assert '//<rbx::' not in generated
+        # Without a grader there is no hidden input header to consume.
+        assert 'consumeInputHeader();' not in generated
+
+    def test_the_fanout_helpers_are_all_a_fanout_package_adds(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        _make_communication(testing_pkg)
+        interactive = header.preprocess_header(self._template())
+        testing_pkg.yml.interactor.processes = 3
+        testing_pkg.save()
+        fanout = header.preprocess_header(self._template())
+
+        assert 'fanout' not in interactive.lower()
+        assert '//<rbx::' not in interactive
+        assert fanout.replace(fanout_block(), '', 1) == interactive
+
+    def test_an_interactive_package_header_is_a_batch_one(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        batch = header.preprocess_header(self._template())
+        _make_communication(testing_pkg)
+
+        assert header.preprocess_header(self._template()) == batch
+
+    def test_with_a_grader_the_helpers_consume_its_input_header(
+        self, testing_pkg: testing_package.TestingPackage
+    ):
+        _make_communication(testing_pkg, processes=3, grader=True)
+
+        assert 'grader::detail::consumeInputHeader();' in fanout_block()
