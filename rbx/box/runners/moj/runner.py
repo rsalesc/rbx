@@ -794,6 +794,12 @@ class MojRunner:
         holds for every round after the first under
         `extensions.moj.calibration.runs`.
         """
+        # Never through `run_solutions`, so its capability check is repeated here,
+        # before a probe package of a problem MOJ cannot run is built (fanout).
+        from rbx.box.solutions import check_problem_support
+
+        check_problem_support(self)
+
         mode = _calibrated_mode(strategy, run_all=run_all, run_pass=run_pass)
         shim = _ProgressOnly(progress)
 

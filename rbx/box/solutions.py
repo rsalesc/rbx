@@ -991,6 +991,19 @@ def _check_capabilities(
             f'backend that can skip checking.'
         )
 
+    check_problem_support(runner)
+
+
+def check_problem_support(runner: 'SolutionRunner') -> None:
+    """Refuse a problem the backend cannot run at all, whatever is asked of it.
+
+    The part of `_check_capabilities` that depends only on the problem, so a
+    command can call it before it builds anything, and a backend that measures
+    without going through `run_solutions` (MOJ's calibration) can call it too.
+    """
+    from rbx.box.runners.base import RunnerCapabilityError
+
+    caps = runner.caps
     pkg = package.find_problem_package_or_die()
     if pkg.is_communication and not caps.supports_interactive:
         raise RunnerCapabilityError(

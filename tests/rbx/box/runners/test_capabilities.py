@@ -11,6 +11,7 @@ running a downgraded one under the same name.
 import dataclasses
 import pathlib
 from typing import List, Optional
+from unittest import mock
 
 import pytest
 
@@ -441,3 +442,80 @@ async def test_a_fanout_problem_is_refused_by_a_backend_without_fanout(testing_p
     )
     assert runner.prepared == 0
     assert runner.calls == 0
+
+
+def _fanout_problem(testing_pkg) -> None:
+    from rbx.box.schema import TaskType
+
+    testing_pkg.set_type(TaskType.COMMUNICATION)
+    testing_pkg.set_interactor('interactor.cpp')
+    testing_pkg.yml.interactor.processes = 3
+    testing_pkg.save()
+
+
+_MOJ_REFUSAL = (
+    'Runner `moj` cannot run several processes against one interactor, but this '
+    'problem sets `interactor.processes`. Run this locally.'
+)
+
+
+@pytest.mark.parametrize(
+    'runner, profile',
+    [('moj', 'local'), (None, 'moj')],
+    ids=['--runner moj', '-p moj'],
+)
+async def test_rbx_time_refuses_a_fanout_problem_on_moj_before_building(
+    testing_pkg, runner: Optional[str], profile: str
+):
+    """MOJ's calibration never goes through `run_solutions`, so `rbx time` has to
+    refuse on its own -- and before the build, which is pure waste here."""
+    from rbx.box.cli.commands import time_cmd
+    from rbx.box.runners.moj.runner import MojRunner
+
+    _fanout_problem(testing_pkg)
+
+    with (
+        mock.patch('rbx.box.builder.build') as build,
+        mock.patch.object(MojRunner, 'estimate_by_calibration') as estimate,
+    ):
+        with pytest.raises(RunnerCapabilityError) as exc:
+            await time_cmd._estimate(  # noqa: SLF001
+                check=True,
+                validate=True,
+                detailed=False,
+                strategy=None,
+                auto=True,
+                runs=0,
+                profile=profile,
+                integrate=False,
+                runner=runner,
+                share=None,
+                skip_slow=False,
+                dry=True,
+                run_all=False,
+                fail_fast=False,
+                benchmark_level=0,
+                keep_checker_stderr=False,
+            )
+
+    assert str(exc.value) == _MOJ_REFUSAL
+    build.assert_not_called()
+    estimate.assert_not_called()
+
+
+async def test_moj_calibration_refuses_a_fanout_problem_before_building_a_probe(
+    testing_pkg,
+):
+    from rbx.box.runners.moj import runner as moj_runner
+
+    _fanout_problem(testing_pkg)
+
+    with mock.patch.object(moj_runner, 'MojPackager') as packager:
+        with pytest.raises(RunnerCapabilityError) as exc:
+            await moj_runner.MojRunner().estimate_by_calibration(
+                [],
+                mock.Mock(),
+            )
+
+    assert str(exc.value) == _MOJ_REFUSAL
+    packager.assert_not_called()
