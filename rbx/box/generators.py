@@ -44,6 +44,7 @@ from rbx.box.testset_findings import DuplicateTest
 from rbx.grading.async_executor import AsyncStreamer, IdentifiedResult
 from rbx.grading.judge.digester import digest_file
 from rbx.grading.steps import (
+    CAPTURE_SUFFIXES,
     DigestHolder,
     DigestOrDest,
     DigestOrSource,
@@ -201,20 +202,11 @@ def _copy_testcase_outputs_over(
         return has_copied
 
     reference_path = testcase.outputPath or testcase.inputPath
-    if _copy_testcase_output_over(
-        reference_path, dest.outputPath, '.pin', dry_run=dry_run
-    ):
-        has_copied = True
-
-    if _copy_testcase_output_over(
-        reference_path, dest.outputPath, '.pout', dry_run=dry_run
-    ):
-        has_copied = True
-
-    if _copy_testcase_output_over(
-        reference_path, dest.outputPath, '.pio', dry_run=dry_run
-    ):
-        has_copied = True
+    for suffix in CAPTURE_SUFFIXES:
+        if _copy_testcase_output_over(
+            reference_path, dest.outputPath, suffix, dry_run=dry_run
+        ):
+            has_copied = True
 
     # A hand-written `.interaction` is never copied over: it is statement-only
     # (read straight from next to the manual input, see testcase_sample_utils),

@@ -338,6 +338,14 @@ class PreprocessLog(RunLog):
         return ' '.join(self.cmd)
 
 
+# The captures of a communication run, beside its output: the interactor's and
+# the solution's sides of the dialogue, and the merged `.pio`.
+CAPTURE_SUFFIXES = ('.pin', '.pout', '.pio')
+# Files a communication run leaves next to a testcase's output, besides the
+# ones a `TestcaseLog` points at directly.
+_SIBLING_ARTIFACT_SUFFIXES = (*CAPTURE_SUFFIXES, '.int.err', '.int.log', '.sol.log')
+
+
 class TestcaseLog(RunLog):
     # Unmeasured by default, unlike `RunLog`: an evaluation is persisted to a
     # `.eval` artifact with its `None` fields omitted, so a testcase that never
@@ -358,6 +366,26 @@ class TestcaseLog(RunLog):
     # are their aggregate (CPU time summed, wall time and memory maxima). `None`
     # -- every other run -- is dropped from the `.eval`.
     processes: Optional[List[RunLog]] = None
+
+    def artifact_paths(self) -> List[pathlib.Path]:
+        """Every file of this evaluation that exists on disk."""
+        candidates = [
+            self.stdout_absolute_path,
+            self.stderr_absolute_path,
+            self.log_absolute_path,
+            self.eval_absolute_path,
+            self.checker_stderr_absolute_path,
+        ]
+        if self.stdout_absolute_path is not None:
+            candidates += [
+                self.stdout_absolute_path.with_suffix(suffix)
+                for suffix in _SIBLING_ARTIFACT_SUFFIXES
+            ]
+        paths: List[pathlib.Path] = []
+        for path in candidates:
+            if path is not None and path.exists() and path not in paths:
+                paths.append(path)
+        return paths
 
 
 class RunTiming(BaseModel):
