@@ -355,6 +355,9 @@ class Program:
         self.command = command
         self.params = params
         self.popen: Optional[subprocess.Popen] = None
+        # The child, pinned by (pid, create_time): what the watchdogs sample and
+        # kill. `None` if it was already gone when we looked.
+        self._process: Optional[psutil.Process] = None
         self._files = []
 
         self._stop_wall_handler = threading.Event()
@@ -383,8 +386,17 @@ class Program:
         return self.popen.pid
 
     def _kill_process(self):
-        if self.popen is not None:
-            self.popen.kill()
+        # Never through `Popen.kill`: it polls first, and that poll reaps a child
+        # that has just exited -- out from under the caller's `wait4`, which then
+        # fails with ECHILD (seen when a whole fanout run hits the wall limit at
+        # once, and the group kill races the watchdogs). psutil checks that the
+        # pid still names our child and signals it without reaping anything.
+        if self._process is None:
+            return
+        try:
+            self._process.kill()
+        except psutil.Error:
+            pass
 
     def _handle_wall(self):
         if self._stop_wall_handler.wait(self.params.wall_time_limit):
@@ -403,8 +415,10 @@ class Program:
     def _handle_alarm(self):
         # Pin the child by (pid, create_time) so a poll after PID reuse
         # cannot read another process's stats and trigger a false MLE/TLE.
+        process = self._process
+        if process is None:
+            return
         try:
-            process = psutil.Process(self.pid)
             create_time = process.create_time()
             self._sample_rss(process)
         except psutil.Error:
@@ -454,6 +468,11 @@ class Program:
         except PermissionError as e:
             raise ProgramNotFoundError(self.command[0], permission_denied=True) from e
         self.start_time = monotonic()
+        try:
+            # Nobody can have reaped the child yet, so the pid is still ours.
+            self._process = psutil.Process(self.popen.pid)
+        except psutil.Error:
+            self._process = None
 
         threading.Thread(target=self._handle_wall, daemon=True).start()
         threading.Thread(target=self._handle_alarm, daemon=True).start()
