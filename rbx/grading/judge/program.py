@@ -8,7 +8,7 @@ import threading
 import typing
 from enum import Enum
 from time import monotonic
-from typing import IO, Any, Dict, List, Optional, Union
+from typing import IO, Any, Dict, List, Optional, Tuple, Union
 
 import psutil
 
@@ -94,6 +94,9 @@ class ProgramParams:
     env: Dict[str, str] = dataclasses.field(default_factory=dict)
     pgid: Optional[int] = None
     pipesize: int = -1
+    # Descriptors the program inherits under their own numbers, besides its
+    # stdin/stdout/stderr (a fanout interactor's pipes, named `/dev/fd/K`).
+    pass_fds: Tuple[int, ...] = ()
 
 
 def enforces_address_space() -> bool:
@@ -444,6 +447,7 @@ class Program:
                 env={**os.environ, **self.params.env},
                 preexec_fn=get_preexec_fn(self.params),
                 pipesize=self.params.pipesize,
+                pass_fds=self.params.pass_fds,
             )
         except FileNotFoundError as e:
             raise ProgramNotFoundError(self.command[0]) from e
@@ -470,11 +474,20 @@ class Program:
 
     def process_exit(self, exitstatus, ru) -> ProgramResult:
         wall_time = monotonic() - self.start_time
+        # Reaped, so the watchdogs are done: without this, a program reaped by
+        # the caller (`os.wait4` on its process group) leaves its wall-clock
+        # thread asleep until the limit -- forever, for a tee, which has none.
+        self._stop_wall_handler.set()
+        self._stop_alarm_handler.set()
         _maybe_close_files(self._files)
         cpu_time = get_cpu_time(ru)
         memory_used = get_child_memory_usage(ru, self._rss_baseline, self._peak_rss)
         file_sizes = get_file_sizes(self.params.io)
         exitcode = os.waitstatus_to_exitcode(exitstatus)
+        if self.popen is not None:
+            # Tell `Popen` too, so it never signals or waits for the pid -- by
+            # now possibly another process's -- in `kill()` or its own cleanup.
+            self.popen.returncode = exitcode
         killing_signal = None
         program_codes = []
 

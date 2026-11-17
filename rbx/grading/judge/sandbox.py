@@ -235,6 +235,9 @@ class CommunicationParams(pydantic.BaseModel):
     # (marked '!'), interleaved with the interactor/solution dialogue in true
     # write order, while still being written to the solution's stderr file.
     tee_stderr: bool = False
+    # How many contestant processes run against the interactor at once. One is
+    # an interactive problem; more is a fanout one (`interactor.processes`).
+    processes: int = pydantic.Field(default=1, ge=1)
 
 
 class SandboxLog(pydantic.BaseModel):
@@ -643,7 +646,6 @@ class SandboxBase(abc.ABC):
     ) -> SandboxLog:
         pass
 
-    @abc.abstractmethod
     def run_communication(
         self,
         command: List[str],
@@ -652,6 +654,35 @@ class SandboxBase(abc.ABC):
         interactor_params: SandboxParams,
         communication_params: Optional[CommunicationParams] = None,
     ) -> Tuple[SandboxLog, SandboxLog]:
+        """One contestant process against the interactor: `run_fanout` with one."""
+        communication_params = (
+            communication_params or CommunicationParams()
+        ).model_copy(update={'processes': 1})
+        logs, interactor_log = self.run_fanout(
+            command, params, interactor_command, interactor_params, communication_params
+        )
+        return logs[0], interactor_log
+
+    @abc.abstractmethod
+    def run_fanout(
+        self,
+        command: List[str],
+        params: SandboxParams,
+        interactor_command: List[str],
+        interactor_params: SandboxParams,
+        communication_params: Optional[CommunicationParams] = None,
+    ) -> Tuple[List[SandboxLog], SandboxLog]:
+        """Run `communication_params.processes` copies of `command` against one
+        interactor, all at once, and return their logs (in process order) and the
+        interactor's.
+
+        With one copy, the interactor talks to it over its own stdin/stdout. With
+        more, copy i gets `i` as its last argument, the interactor's stdin/stdout
+        are `/dev/null`, and the interactor gets a `<from_i> <to_i>` pair of
+        `/dev/fd/K` paths per copy after its own arguments: `from_i` reads what
+        copy i writes, `to_i` writes what copy i reads. Their stderr is merged into
+        `params.stderr_file`, grouped by copy, every line tagged `[i] `.
+        """
         pass
 
     @abc.abstractmethod

@@ -437,8 +437,8 @@ def _run_request(request: Dict[str, Any], hangup: Optional[Hangup] = None) -> An
     if op == 'run':
         log = sandbox.run(request['command'], params)
         return log.model_dump(mode='json')
-    if op == 'run_communication':
-        solution_log, interactor_log = sandbox.run_communication(
+    if op == 'run_fanout':
+        solution_logs, interactor_log = sandbox.run_fanout(
             request['command'],
             params,
             request['interactor_command'],
@@ -446,7 +446,7 @@ def _run_request(request: Dict[str, Any], hangup: Optional[Hangup] = None) -> An
             CommunicationParams.model_validate(request['communication_params']),
         )
         return [
-            solution_log.model_dump(mode='json'),
+            [log.model_dump(mode='json') for log in solution_logs],
             interactor_log.model_dump(mode='json'),
         ]
     raise ValueError(f'unknown op {op!r}')
@@ -735,7 +735,7 @@ class AgentClient:
         )
         return SandboxLog.model_validate(result)
 
-    def run_communication(
+    def run_fanout(
         self,
         root: pathlib.Path,
         command: List[str],
@@ -743,10 +743,10 @@ class AgentClient:
         interactor_command: List[str],
         interactor_params: SandboxParams,
         communication_params: CommunicationParams,
-    ) -> Tuple[SandboxLog, SandboxLog]:
-        solution, interactor = self.request(
+    ) -> Tuple[List[SandboxLog], SandboxLog]:
+        solutions, interactor = self.request(
             {
-                'op': 'run_communication',
+                'op': 'run_fanout',
                 'priority': self.priority,
                 'root': str(root),
                 'expect': manifest(root),
@@ -757,8 +757,9 @@ class AgentClient:
                 'communication_params': communication_params.model_dump(mode='json'),
             }
         )
-        return SandboxLog.model_validate(solution), SandboxLog.model_validate(
-            interactor
+        return (
+            [SandboxLog.model_validate(solution) for solution in solutions],
+            SandboxLog.model_validate(interactor),
         )
 
     def close(self) -> None:

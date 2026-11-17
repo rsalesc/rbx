@@ -61,10 +61,13 @@ Main implementation. "Stupid" because it doesn't use OS-level sandboxing (unlike
 5. Enforces limits: kills on TLE, MLE, OLE, ILE (idleness)
 6. Returns `SandboxLog` with timing, memory, exit status
 
-**Communication execution (`execute_communication()`):**
-- Sets up bidirectional pipes between solution and interactor using `chunk_tee.py`/`line_tee.py`
-- Captures interaction data for debugging (`.pio` files)
-- Monitors both processes simultaneously
+**Communication execution (`run_fanout()`; `run_communication()` is its one-process case):**
+- Runs N copies of the solution against one interactor (`CommunicationParams.processes`). N = 1 is an interactive problem: the interactor talks over its stdin/stdout. N > 1 is fanout: copy i gets `i` as its last argument, the interactor gets a `/dev/fd/K` pair per copy (`<from_i> <to_i>`, inherited via `pass_fds`) and `/dev/null` stdin/stdout, and the copies' stderr is merged into the solution's stderr file, grouped by copy, each line tagged `[i] `. There is one implementation; never add an N > 1-only path.
+- Every pipe end the parent hands to a program is closed right after that program starts, or EOF/SIGPIPE never arrive.
+- The copies (and their tees) start **before** the interactor, which starts last: until it runs nothing can talk, so exits are reaped as they happen and `exit_index` orders them. When the interactor is reaped, any copy that has also exited is reaped first (ties go to the copies on Linux and macOS alike; `checkers` tells a SIGPIPE'd copy apart).
+- Kill rule: the interactor failing kills the group; the interactor accepting leaves the copies to see EOF and finish within their own limits.
+- Sets up the capture tees (`chunk_tee.py`/`line_tee.py`, markers `<`/`>`/`!`, or `[i]<`... for fanout; `.pin`/`.pout` only for N = 1). The merged capture is appended to in a **local** temp file (`_local_capture`) and copied into the box afterwards: through Docker Desktop's file share, concurrent `O_APPEND` writes overwrite each other (measured).
+- A program reaped by the caller must go through `Program.process_exit`, which stops its watchdog threads (a tee has no wall limit, so its thread would otherwise sleep forever).
 
 **Key parameters:**
 - `SandboxParams` -- `stdin`, `stdout_file`, `stderr_file`, `extra_files`, `address_space_limit`, `time_limit`, `wall_time_limit`, `memory_limit`, `stack_limit`, `max_processes`, `set_hostname`, `allow_network`
@@ -74,7 +77,7 @@ Main implementation. "Stupid" because it doesn't use OS-level sandboxing (unlike
 
 Selected when the setter config has `docker.enabled` (`rbx/box/docker_runtime.py`
 builds the image, runs the container, binds the backend). It **subclasses
-`StupidSandbox` and overrides only `run`/`run_communication`** (plus
+`StupidSandbox` and overrides only `run`/`run_fanout`** (plus
 `create_symlink`): the box is prepared on the host as usual, and an agent in the
 container runs the *same* `StupidSandbox` code on it (`StupidSandbox(path=box)`),
 reached over one `docker exec -i` per process with JSON lines. Never duplicate
@@ -95,7 +98,7 @@ execution logic there -- change `StupidSandbox` and both paths get it. Rules:
   "optimise" that lock away without re-running the measurement in the design doc.
 - **Who gets a freed slot is a priority queue**, not whoever polls first:
   `RBX_DOCKER_PRIORITY` (lower first; unset sorts after every explicit value,
-  `UNSET_PRIORITY`) rides on every `run`/`run_communication` request
+  `UNSET_PRIORITY`) rides on every `run`/`run_fanout` request
   (`AgentClient.priority`, read once in `docker_runtime`). `rbx each`/`rbx on`
   set it to the problem's position, via `CommandEntry.env` -- folded into the
   shell command as `export ...` so a resumed history run keeps it. Waiters make
