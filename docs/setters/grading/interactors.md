@@ -191,6 +191,56 @@ rbx compile solution.cpp
 # ... start interacting with the solution as the interactor ...
 ```
 
+## Several processes (fanout)
+
+Some problems run several copies of the solution at once against one interactor (a *fanout*
+problem), such as encoder/decoder tasks where one copy encodes a message and another decodes
+it. You set how many copies run with `processes`:
+
+```yaml title="problem.rbx.yml" hl_lines="4"
+type: COMMUNICATION
+interactor:
+  path: 'interactor.cpp'
+  processes: 2
+```
+
+The interactor calls `rbx::registerFanoutInteraction` instead of `registerInteraction`, and
+talks to copy `i` through `rbx::fanout::to(i)` and `rbx::fanout::from(i)` instead of `cout`
+and `ouf`:
+
+```cpp title="interactor.cpp"
+#include "testlib.h"
+#include "rbx.h"
+
+int main(int argc, char *argv[]) {
+    rbx::registerFanoutInteraction(argc, argv);
+    int x = inf.readInt();
+
+    rbx::fanout::to(0) << x << std::endl; // copy 0 encodes x...
+    int code = rbx::fanout::from(0).readInt();
+
+    rbx::fanout::to(1) << code << std::endl; // ...and copy 1 decodes it
+    if (rbx::fanout::from(1).readInt() != x) {
+        quitf(_wa, "copy 1 did not recover x");
+    }
+    quitf(_ok, "ok");
+}
+```
+
+Each copy still reads `stdin` and writes `stdout` as usual, and receives its index, starting at
+`0`, as its first command-line argument (`argv[1]` in C++).
+
+Judging also changes in two ways:
+
+- The time limit applies to the CPU time of all copies together.
+- If any copy fails (a crash, a non-zero exit code, or a time or memory limit), the test fails,
+  even if the interactor already accepted.
+
+When you print a run with `rbx irun -p`, each line of the interaction starts with the copy
+it belongs to, such as `[1]`.
+
+Packaging a fanout problem for a judge isn't supported yet, so `rbx package` refuses it.
+
 ## Do I need to write a checker?
 
 Short answer: no, you don't need to write a checker. In fact, the {{icpcformat}} doesn't support one.
