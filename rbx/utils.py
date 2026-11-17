@@ -435,10 +435,13 @@ def model_to_yaml(
 
     # Add schema path comment and convert to YAML.
     # Function-local import: rbx.box.presets imports this module.
-    from rbx.box.schema_urls import schema_url
+    from rbx.box.schema_urls import is_published, schema_url
 
-    path = schema_url(model.__class__, root or pathlib.Path())
-    schema_comment = f'# yaml-language-server: $schema={path}\n\n'
+    schema_comment = ''
+    # Only a published schema: a URL naming no file is an editor error.
+    if is_published(model.__class__):
+        path = schema_url(model.__class__, root or pathlib.Path())
+        schema_comment = f'# yaml-language-server: $schema={path}\n\n'
 
     yaml_content = yaml.dump(
         json_safe_data,
