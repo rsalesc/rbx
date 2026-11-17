@@ -52,14 +52,65 @@ class _ProcessLogs(BaseModel):
     processes: List[RunLog]
 
 
+# How many runs of process indices a verdict names before it abbreviates.
+_MAX_NAMED_RUNS = 6
+
+
+def _name_processes(indices: List[int]) -> str:
+    """`process 3`, `processes 0, 2`, `processes 0-15, 17`."""
+    if len(indices) == 1:
+        return f'process {indices[0]}'
+    runs: List[List[int]] = []
+    for i in sorted(indices):
+        if runs and runs[-1][1] == i - 1:
+            runs[-1][1] = i
+        else:
+            runs.append([i, i])
+    parts: List[str] = []
+    for first, last in runs:
+        if last - first >= 2:
+            parts.append(f'{first}-{last}')
+        else:
+            parts.extend(str(i) for i in range(first, last + 1))
+    named = ', '.join(parts[:_MAX_NAMED_RUNS])
+    if len(parts) > _MAX_NAMED_RUNS:
+        named += f', ... ({len(indices)} in all)'
+    return f'processes {named}'
+
+
+def _failed_like(logs: List[Optional[RunLog]], decider: int) -> List[int]:
+    """The processes that failed the way the deciding one did.
+
+    Processes stuck together hit their wall limits at about the same moment, and
+    whichever timer fired first decides; naming only that one blames an idle
+    process. A crash also compares the exit code, so the processes the group
+    kill stopped (SIGKILL) are not named beside one that crashed on its own.
+    """
+    log = logs[decider]
+    assert log is not None
+    crashed = log.exitstatus in (
+        SandboxBase.EXIT_SIGNAL,
+        SandboxBase.EXIT_NONZERO_RETURN,
+    )
+    return [
+        i
+        for i, other in enumerate(logs)
+        if other is not None
+        and other.exitstatus == log.exitstatus
+        and (not crashed or other.exitcode == log.exitcode)
+    ]
+
+
 def _name_failing_process(
-    result: CheckerResult, decider: Optional[int], processes: int
+    result: CheckerResult,
+    decider: Optional[int],
+    logs: List[Optional[RunLog]],
 ) -> CheckerResult:
     """Say which process a fanout verdict is about."""
-    if processes == 1 or result.outcome not in _PROCESS_FAILURES:
+    if len(logs) == 1 or result.outcome not in _PROCESS_FAILURES:
         return result
     if decider is not None:
-        who = f'process {decider}'
+        who = _name_processes(_failed_like(logs, decider))
     elif result.outcome == Outcome.TIME_LIMIT_EXCEEDED:
         # No process failed alone: only their summed CPU time can be over.
         who = 'the processes together'
@@ -482,7 +533,7 @@ async def _run_communication_solution_on_testcase(
             output_path,
             checker_stderr_path=checker_error_path,
         )
-        checker_result = _name_failing_process(checker_result, decider, processes)
+        checker_result = _name_failing_process(checker_result, decider, run_logs)
 
         eval = Evaluation(
             result=checker_result,
