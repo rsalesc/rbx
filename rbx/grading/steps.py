@@ -354,6 +354,10 @@ class TestcaseLog(RunLog):
     # dropped from the serialized `.eval`/`.log`, so a run without the flag
     # writes exactly the bytes it always did.
     checker_stderr_absolute_path: Optional[pathlib.Path] = None
+    # One log per process of a fanout run, in process order; the fields above
+    # are their aggregate (CPU time summed, wall time and memory maxima). `None`
+    # -- every other run -- is dropped from the `.eval`.
+    processes: Optional[List[RunLog]] = None
 
 
 class RunTiming(BaseModel):

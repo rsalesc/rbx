@@ -1051,7 +1051,10 @@ async def run_communication(
     line_capture: bool = False,
     tee_stderr: bool = False,
     retry_index: Optional[int] = None,
-) -> Tuple[Optional[RunLog], Optional[RunLog]]:
+    processes: int = 1,
+) -> Tuple[Optional[RunLog], List[Optional[RunLog]]]:
+    """Run `processes` copies of the solution against the interactor. Returns
+    the interactor's log and one log per solution process, in process order."""
     with package.get_new_sandbox() as sandbox:
         interactor_prepared = await interactor.prepare()
         solution_prepared = await solution.prepare()
@@ -1092,12 +1095,13 @@ async def run_communication(
             grading_context.CacheLevel.NO_CACHE,
             when=lambda: is_path_remote(solution.code.path),
         ):
-            return await steps_with_caching.run_coordinated(
+            return await steps_with_caching.run_fanout_coordinated(
                 interactor_run_params,
                 solution_run_params,
                 sandbox=sandbox,
                 artifacts=grading_artifacts,
                 dependency_cache=package.get_dependency_cache(),
+                processes=processes,
                 merged_capture=merged_capture_path,
                 line_capture=line_capture,
                 tee_stderr=tee_stderr,
