@@ -123,6 +123,9 @@ class SampleHandle:
     explanation: Optional[str] = None
     has_output: bool = True
     interaction: Optional[Any] = None
+    # A fanout sample's interaction, kept out of `interaction` until templates
+    # can render several processes (#1045).
+    fanout_interaction: Optional[Any] = None
 
 
 @dataclasses.dataclass

@@ -78,7 +78,10 @@ def to_sample_source(sample: StatementSample) -> sample_staging.SampleSource:
     """Project the heavy ``StatementSample`` onto the lightweight staging input."""
     chunks: List = []
     if sample.interaction is not None:
-        chunks = [(chunk.path, int(chunk.pipe)) for chunk in sample.interaction.chunks]
+        chunks = [
+            (chunk.path, int(chunk.pipe), chunk.process)
+            for chunk in sample.interaction.chunks
+        ]
     has_output = sample.outputPath is not None and sample.outputPath.is_file()
     return sample_staging.SampleSource(
         input_path=sample.inputPath,

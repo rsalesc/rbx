@@ -1,4 +1,5 @@
 import pathlib
+import re
 import shutil
 from typing import List, Optional, Tuple
 
@@ -12,6 +13,17 @@ from rbx.box.schema import TaskType, Testcase
 from rbx.box.testcase_schema import TestcaseEntry
 
 STDERR_PREFIX = '!'
+
+# A fanout capture tags each line with its process before the direction:
+# `[3]<5`, `[3]>6`, `[3]!debug`.
+_PROCESS_TAG = re.compile(r'\[(\d+)\]')
+
+
+def _split_process_tag(line: str) -> Tuple[Optional[int], str]:
+    match = _PROCESS_TAG.match(line)
+    if match is None:
+        return None, line
+    return int(match.group(1)), line[match.end() :]
 
 
 class TestcasePattern(BaseModel):
@@ -102,6 +114,9 @@ class TestcaseInteractionEntry(BaseModel):
     # Which participant produced this line: 0 = interactor, 1 = solution,
     # 2 = solution's stderr.
     pipe: int
+    # Which contestant process this line belongs to, for a fanout problem's
+    # `[k]`-tagged capture; `None` for a single-process one.
+    process: Optional[int] = None
 
 
 class TestcaseInteraction(BaseModel):
@@ -145,10 +160,10 @@ def merge_interaction_entries(
 ) -> List[TestcaseInteractionEntry]:
     """Collapse a list of entries into "chunks".
 
-    Consecutive entries produced by the same participant (same ``pipe``) are
-    merged into a single entry, joining their ``data`` with newlines. The
-    result is the chunked view of the dialogue: one entry per uninterrupted
-    turn instead of one entry per line. Used to build
+    Consecutive entries produced by the same participant (same ``pipe`` and,
+    in a fanout capture, the same ``process``) are merged into a single entry,
+    joining their ``data`` with newlines. The result is the chunked view of the
+    dialogue: one entry per uninterrupted turn instead of one entry per line. Used to build
     :class:`rbx.box.testcase_sample_utils.SampleInteractionChunk` for statement
     rendering.
 
@@ -156,7 +171,11 @@ def merge_interaction_entries(
     """
     merged_entries: List[TestcaseInteractionEntry] = []
     for entry in entries:
-        if len(merged_entries) > 0 and merged_entries[-1].pipe == entry.pipe:
+        if (
+            len(merged_entries) > 0
+            and merged_entries[-1].pipe == entry.pipe
+            and merged_entries[-1].process == entry.process
+        ):
             merged_entries[-1].data += '\n' + entry.data
         else:
             merged_entries.append(entry.model_copy())
@@ -175,9 +194,11 @@ def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
     ``.interaction`` files use the predetermined prefixes ``<`` (interactor)
     and ``>`` (solution); any other suffix (e.g. ``.pio``) reads the two
     prefixes from the first two lines of the file. Lines starting with ``!``
-    (the stderr prefix) become pipe 2 entries. Each remaining non-empty line
-    becomes one :class:`TestcaseInteractionEntry` (no merging is done here --
-    see :func:`merge_interaction_entries` for the chunked view).
+    (the stderr prefix) become pipe 2 entries. A fanout capture tags every line
+    with its process first (``[3]<5``); a file tags all its lines or none. Each
+    remaining non-empty line becomes one :class:`TestcaseInteractionEntry` (no
+    merging is done here -- see :func:`merge_interaction_entries` for the
+    chunked view).
     """
     entries = []
     # Hand-written `.interaction` files are documented as `< line`, so the one
@@ -199,22 +220,38 @@ def parse_interaction(file: pathlib.Path) -> TestcaseInteraction:
                     f'Failed to read interaction file {file}. Expected the first two lines to be the interactor and solution prefixes.'
                 ) from None
 
+        # Whether the file tags its lines with a process; set by the first line.
+        tagged: Optional[bool] = None
         while line := f.readline().strip():
+            process, line = _split_process_tag(line)
+            if tagged is None:
+                tagged = process is not None
+            elif tagged != (process is not None):
+                raise TestcaseInteractionParsingError(
+                    f'Invalid interaction file {file}: it mixes lines tagged with a '
+                    'process ([k]) and untagged ones.'
+                ) from None
             if line.startswith(interactor_prefix):
                 stripped = _drop_separator(
                     line[len(interactor_prefix) :].rstrip(), separator
                 )
-                entries.append(TestcaseInteractionEntry(data=stripped, pipe=0))
+                entries.append(
+                    TestcaseInteractionEntry(data=stripped, pipe=0, process=process)
+                )
             elif line.startswith(solution_prefix):
                 stripped = _drop_separator(
                     line[len(solution_prefix) :].rstrip(), separator
                 )
-                entries.append(TestcaseInteractionEntry(data=stripped, pipe=1))
+                entries.append(
+                    TestcaseInteractionEntry(data=stripped, pipe=1, process=process)
+                )
             elif line.startswith(STDERR_PREFIX):
                 stripped = _drop_separator(
                     line[len(STDERR_PREFIX) :].rstrip(), separator
                 )
-                entries.append(TestcaseInteractionEntry(data=stripped, pipe=2))
+                entries.append(
+                    TestcaseInteractionEntry(data=stripped, pipe=2, process=process)
+                )
             else:
                 raise TestcaseInteractionParsingError(
                     f'Invalid line in interaction file {file}. Expected the line to start with the interactor or solution prefix ({interactor_prefix} or {solution_prefix}).'
@@ -258,6 +295,8 @@ def print_interaction(interaction: TestcaseInteraction):
     for entry in interaction.entries:
         text = rich.text.Text(entry.data)
         text.stylize(interaction_entry_style(entry.pipe))
+        if entry.process is not None:
+            text = rich.text.Text.assemble((f'[{entry.process}] ', 'dim'), text)
         console.console.print(text)
 
 
