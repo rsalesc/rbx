@@ -199,6 +199,14 @@ def get_problem_flags(pkg: Package) -> ProblemFlags:
     )
 
 
+def _interactor_display(pkg: Package) -> Optional[str]:
+    if pkg.interactor is None:
+        return None
+    if pkg.is_fanout:
+        return f'{pkg.interactor.display()} (fanout, {pkg.fanout_processes} processes)'
+    return pkg.interactor.display()
+
+
 def get_problem_summary(
     pkg: Package,
     solutions: List[Solution],
@@ -213,7 +221,7 @@ def get_problem_summary(
         output_limit_kb=pkg.outputLimit,
         testcase_counts=count_testcases(testcase_entries),
         flags=get_problem_flags(pkg),
-        interactor_display=pkg.interactor.display() if pkg.interactor else None,
+        interactor_display=_interactor_display(pkg),
         checker_display=pkg.checker.display() if pkg.checker else None,
         validator_display=pkg.validator.display() if pkg.validator else None,
         solutions=solutions,
