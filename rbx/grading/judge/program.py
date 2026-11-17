@@ -97,6 +97,17 @@ class ProgramParams:
     # Descriptors the program inherits under their own numbers, besides its
     # stdin/stdout/stderr (a fanout interactor's pipes, named `/dev/fd/K`).
     pass_fds: Tuple[int, ...] = ()
+    # Start the wall clock when `Program.start_wall_clock` says so instead of at
+    # the spawn: a communication run starts its solution processes before the
+    # interactor, and until that one runs nothing can talk, so the startup of
+    # the others (and of their capture tees) must not eat a process's budget.
+    defer_wall_clock: bool = False
+    # Whether the child sets its resource limits before exec. A capture tee
+    # needs none, and without a `preexec_fn` CPython can spawn with vfork on
+    # Linux: measured in the Docker image, 192 tees spawned from a 200 MB parent
+    # took 1.25 ms each instead of 2.4-2.9 ms (a fanout run of 64 processes with
+    # capture starts 192 of them before the interactor).
+    rlimits: bool = True
 
 
 def enforces_address_space() -> bool:
@@ -399,7 +410,10 @@ class Program:
             pass
 
     def _handle_wall(self):
-        if self._stop_wall_handler.wait(self.params.wall_time_limit):
+        timeout = self.params.wall_time_limit
+        if timeout is not None:
+            timeout = max(0.0, timeout - (monotonic() - self.start_time))
+        if self._stop_wall_handler.wait(timeout):
             return
         self._stop_alarm_handler.set()
         self._alarm_msg = 'wall timelimit'
@@ -451,6 +465,12 @@ class Program:
         self._files = self.params.io.get_file_objects()
         if maxrss_inherits_parent():
             self._rss_baseline = get_self_rss()
+        spawn_kwargs: Dict[str, Any]
+        if not self.params.rlimits and sys.version_info >= (3, 11):
+            # Joins the group without a `preexec_fn` (see `rlimits`).
+            spawn_kwargs = {'process_group': self.params.pgid or 0}
+        else:
+            spawn_kwargs = {'preexec_fn': get_preexec_fn(self.params)}
         try:
             self.popen = subprocess.Popen(
                 self.command,
@@ -459,9 +479,9 @@ class Program:
                 stderr=self._files[2],
                 cwd=self.params.chdir,
                 env={**os.environ, **self.params.env},
-                preexec_fn=get_preexec_fn(self.params),
                 pipesize=self.params.pipesize,
                 pass_fds=self.params.pass_fds,
+                **spawn_kwargs,
             )
         except FileNotFoundError as e:
             raise ProgramNotFoundError(self.command[0]) from e
@@ -474,8 +494,17 @@ class Program:
         except psutil.Error:
             self._process = None
 
-        threading.Thread(target=self._handle_wall, daemon=True).start()
+        if not self.params.defer_wall_clock:
+            threading.Thread(target=self._handle_wall, daemon=True).start()
         threading.Thread(target=self._handle_alarm, daemon=True).start()
+
+    def start_wall_clock(self, at: float) -> None:
+        """Measure and limit the wall time from `at` (a `monotonic()` reading)
+        on, for a program spawned with `defer_wall_clock`. CPU time is still the
+        program's own, from its spawn."""
+        assert self.params.defer_wall_clock
+        self.start_time = at
+        threading.Thread(target=self._handle_wall, daemon=True).start()
 
     def close_pipes(self):
         if self.popen is None:

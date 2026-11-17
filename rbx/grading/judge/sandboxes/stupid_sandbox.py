@@ -545,6 +545,7 @@ class StupidSandbox(SandboxBase):
             io=io,
             pgid=pgid,
             pipesize=BUFFER_SIZE_BYTES if sized_pipes else -1,
+            rlimits=False,
         )
 
     def _get_sandbox_log(
@@ -897,6 +898,8 @@ class StupidSandbox(SandboxBase):
 
                 program_params = self._get_program_params(params)
                 program_params.io = self._get_io(params, pipe_io=True)
+                # Its wall clock starts with the interactor's, below.
+                program_params.defer_wall_clock = True
                 if fanout:
                     # Nor any pipe `subprocess` makes for it (see `_make_pipe`):
                     # past the quota Linux refuses with EPERM, failing the spawn.
@@ -985,6 +988,11 @@ class StupidSandbox(SandboxBase):
                 Program(interactor_command, interactor_program_params),
                 started_interactor,
             )
+            # Nothing could talk before the interactor started, however long
+            # the processes and tees took to spawn (~1 s for 64 processes with
+            # capture, in Docker): each process's wall time counts from here.
+            for program in programs:
+                program.start_wall_clock(interactor.start_time)
             exit_order.watch_exit('interactor', interactor.pid)
             exit_order.start()
             for end in liveness[1::2]:

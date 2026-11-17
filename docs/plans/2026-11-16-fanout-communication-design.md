@@ -119,7 +119,7 @@ before fanout-specific code lands.
 
 | who | CPU | wall | memory |
 | --- | --- | --- | --- |
-| each process | TL (enforced per process) | problem wall limit, from spawn | ML |
+| each process | TL (enforced per process) | problem wall limit, from the interactor's start | ML |
 | all processes | **sum >= TL -> TLE** | -- | -- |
 | interactor | N x TL + margin | solution wall + existing 1 s margin | as today |
 
