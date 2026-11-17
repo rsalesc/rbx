@@ -112,16 +112,19 @@ async def run(
     return artifacts.logs.run
 
 
-async def run_coordinated(
+async def run_fanout_coordinated(
     interactor: steps.CoordinatedRunParams,
     solution: steps.CoordinatedRunParams,
     artifacts: GradingArtifacts,
     sandbox: SandboxBase,
     dependency_cache: DependencyCache,
+    processes: int = 1,
     merged_capture: Optional[pathlib.Path] = None,
     line_capture: bool = False,
     tee_stderr: bool = False,
-) -> Tuple[Optional[RunLog], Optional[RunLog]]:
+) -> Tuple[Optional[RunLog], List[Optional[RunLog]]]:
+    """`steps.run_fanout_coordinated`, cached. Returns the interactor's log and
+    one log per solution process."""
     artifacts.logs = GradingLogsHolder()
 
     transient_fallback = (
@@ -145,6 +148,9 @@ async def run_coordinated(
     _with_executor(cacheable_params, sandbox)
     cacheable_params['line_capture'] = line_capture
     cacheable_params['tee_stderr'] = tee_stderr
+    # Only when it is not one, so every one-process key stays what it was.
+    if processes != 1:
+        cacheable_params['processes'] = processes
 
     if interactor.metadata is not None and interactor.metadata.retryIndex is not None:
         cacheable_params['interactor.__retry_index__'] = interactor.metadata.retryIndex
@@ -166,11 +172,12 @@ async def run_coordinated(
             if not is_cached:
                 with profiling.Profiler('steps.run_coordinated'):
                     profiling.add_to_counter('steps.run_coordinated')
-                    await steps.run_coordinated(
+                    await steps.run_fanout_coordinated(
                         interactor,
                         solution,
                         artifacts,
                         sandbox,
+                        processes=processes,
                         merged_capture=merged_capture,
                         line_capture=line_capture,
                         tee_stderr=tee_stderr,
@@ -179,7 +186,33 @@ async def run_coordinated(
                 cached_profile.stop()
                 profiling.add_to_counter('steps.run_coordinated[cached]')
 
-    return (
-        artifacts.logs.interactor_run,
-        artifacts.logs.run,
+    # An entry cached before `runs` existed holds only `run`: the one-process
+    # run it was.
+    runs = artifacts.logs.runs
+    return artifacts.logs.interactor_run, (
+        list(runs) if runs is not None else [artifacts.logs.run]
     )
+
+
+async def run_coordinated(
+    interactor: steps.CoordinatedRunParams,
+    solution: steps.CoordinatedRunParams,
+    artifacts: GradingArtifacts,
+    sandbox: SandboxBase,
+    dependency_cache: DependencyCache,
+    merged_capture: Optional[pathlib.Path] = None,
+    line_capture: bool = False,
+    tee_stderr: bool = False,
+) -> Tuple[Optional[RunLog], Optional[RunLog]]:
+    """One solution process against the interactor. Returns (interactor, solution)."""
+    interactor_log, solution_logs = await run_fanout_coordinated(
+        interactor,
+        solution,
+        artifacts,
+        sandbox,
+        dependency_cache,
+        merged_capture=merged_capture,
+        line_capture=line_capture,
+        tee_stderr=tee_stderr,
+    )
+    return interactor_log, solution_logs[0]

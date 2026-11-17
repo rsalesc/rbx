@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import sys
 from enum import Enum
-from typing import IO, Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import IO, Any, Dict, Iterable, List, Optional, Tuple, Union, cast
 
 import typer
 from pydantic import BaseModel, Field
@@ -114,9 +114,25 @@ class DigestHolder(BaseModel):
 
 class GradingLogsHolder(BaseModel):
     run: Optional['RunLog'] = None
+    # Every solution process of a coordinated run, in process order. `run` is
+    # the first, kept for the callers that only know one -- and an entry cached
+    # before this field existed has only `run`, which is exactly the
+    # one-process run it was.
+    runs: Optional[List['RunLog']] = None
     interactor_run: Optional['RunLog'] = None
     preprocess: Optional[List['PreprocessLog']] = None
     cached: bool = False
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        # The dependency cache pickles these, and unpickling restores `__dict__`
+        # as it was: a field added since would be missing, and reading it raise
+        # `AttributeError`. It reads as its default instead -- for `runs`, the
+        # `None` that means "the one-process run in `run`".
+        values = state.setdefault('__dict__', {})
+        for name, field in type(self).model_fields.items():
+            if name not in values:
+                values[name] = field.get_default(call_default_factory=True)
+        super().__setstate__(state)
 
 
 class DigestOrSource(BaseModel):
@@ -1059,6 +1075,54 @@ def _build_run_log(
     return run_log
 
 
+def combine_process_logs(
+    logs: List[Optional[RunLog]],
+) -> Tuple[Optional[RunLog], Optional[int]]:
+    """Fold the logs of a coordinated run's solution processes into the one log
+    judged, and say which process decided it.
+
+    One log comes back as is. Otherwise CPU time is summed, as CMS judges it
+    against the time limit; wall time and memory are the maxima, since both are
+    limited per process; and the exit fields come from the process that decides
+    the verdict -- the first to exit having failed, else the last to exit. Its
+    index comes back too, when a process failed.
+    """
+    if len(logs) == 1:
+        return logs[0], None
+    if any(log is None for log in logs):
+        return None, None
+    present = cast(List[RunLog], logs)
+    errored = [
+        i
+        for i, log in enumerate(present)
+        if log.exitstatus == SandboxBase.EXIT_SANDBOX_ERROR
+    ]
+    failed = [
+        i for i, log in enumerate(present) if log.exitstatus != SandboxBase.EXIT_OK
+    ]
+    decider: Optional[int] = None
+    if errored:
+        decider = errored[0]
+    elif failed:
+        decider = min(failed, key=lambda i: present[i].exitindex)
+    base = present[
+        decider
+        if decider is not None
+        else max(range(len(present)), key=lambda i: present[i].exitindex)
+    ]
+    combined = base.model_copy(deep=True)
+    times = [log.time for log in present]
+    combined.time = (
+        None if any(t is None for t in times) else sum(cast(List[float], times))
+    )
+    walls = [log.wall_time for log in present if log.wall_time is not None]
+    combined.wall_time = max(walls) if walls else None
+    memories = [log.memory for log in present if log.memory is not None]
+    combined.memory = max(memories) if memories else None
+    combined.warnings = any(log.warnings for log in present)
+    return combined, decider
+
+
 class CompilationError(RbxException):
     not_found_executable: Optional[str] = None
     # The compiler's own output, carried so a caller can persist it verbatim
@@ -1220,15 +1284,22 @@ class CoordinatedRunParams:
     metadata: Optional[RunLogMetadata] = None
 
 
-async def run_coordinated(
+async def run_fanout_coordinated(
     interactor: CoordinatedRunParams,
     solution: CoordinatedRunParams,
     artifacts: GradingArtifacts,
     sandbox: SandboxBase,
+    processes: int = 1,
     merged_capture: Optional[pathlib.Path] = None,
     line_capture: bool = False,
     tee_stderr: bool = False,
-) -> Tuple[Optional[RunLog], Optional[RunLog]]:
+) -> Tuple[Optional[RunLog], List[Optional[RunLog]]]:
+    """Run `processes` copies of the solution against the interactor, at once.
+
+    Returns the interactor's log and one log per process, in process order. The
+    processes' stderr lands merged, grouped and tagged, in the solution's
+    stderr file before the outputs are collected (`SandboxBase.run_fanout`).
+    """
     sandbox.reset()
 
     await _process_input_artifacts(artifacts, sandbox)
@@ -1245,38 +1316,83 @@ async def run_coordinated(
     # diagnosed. `steps_run_coordinated_test.py` pins that behaviour.
     _finalize_limits(solution.command, solution_params, sandbox)
 
-    try:
-        solution_sandbox_log, interactor_sandbox_log = await asyncio.to_thread(
-            sandbox.run_communication,
+    communication_params = CommunicationParams(
+        merged_capture=merged_capture,
+        tee_mode='line' if line_capture else 'chunk',
+        tee_stderr=tee_stderr,
+        processes=processes,
+    )
+
+    def run_in_sandbox() -> Tuple[List[SandboxLog], SandboxLog]:
+        if processes == 1:
+            # The one-process case of `run_fanout`, by its own name.
+            solution_sandbox_log, interactor_sandbox_log = sandbox.run_communication(
+                solution_cmd,
+                solution_params,
+                interactor_cmd,
+                interactor_params,
+                communication_params,
+            )
+            return [solution_sandbox_log], interactor_sandbox_log
+        return sandbox.run_fanout(
             solution_cmd,
             solution_params,
             interactor_cmd,
             interactor_params,
-            CommunicationParams(
-                merged_capture=merged_capture,
-                tee_mode='line' if line_capture else 'chunk',
-                tee_stderr=tee_stderr,
-            ),
+            communication_params,
+        )
+
+    solution_logs: List[RunLog]
+    try:
+        solution_sandbox_logs, interactor_sandbox_log = await asyncio.to_thread(
+            run_in_sandbox
         )
 
         if not await _process_output_artifacts(artifacts, sandbox):
-            return None, None
+            return None, [None] * processes
 
-        solution_log = _build_run_log(
-            solution_sandbox_log, sandbox, solution.params, solution.metadata
-        )
+        solution_logs = [
+            _build_run_log(log, sandbox, solution.params, solution.metadata)
+            for log in solution_sandbox_logs
+        ]
         interactor_log = _build_run_log(
             interactor_sandbox_log, sandbox, interactor.params, interactor.metadata
         )
     except ProgramError as e:
-        solution_log = _build_program_error_run_log(e, solution.metadata, sandbox)
+        solution_logs = [
+            _build_program_error_run_log(e, solution.metadata, sandbox)
+            for _ in range(processes)
+        ]
         interactor_log = _build_program_error_run_log(e, interactor.metadata, sandbox)
 
     if artifacts.logs is not None:
-        artifacts.logs.run = solution_log
+        artifacts.logs.run = solution_logs[0]
+        artifacts.logs.runs = solution_logs
         artifacts.logs.interactor_run = interactor_log
 
-    return solution_log, interactor_log
+    return interactor_log, cast(List[Optional[RunLog]], solution_logs)
+
+
+async def run_coordinated(
+    interactor: CoordinatedRunParams,
+    solution: CoordinatedRunParams,
+    artifacts: GradingArtifacts,
+    sandbox: SandboxBase,
+    merged_capture: Optional[pathlib.Path] = None,
+    line_capture: bool = False,
+    tee_stderr: bool = False,
+) -> Tuple[Optional[RunLog], Optional[RunLog]]:
+    """One solution process against the interactor. Returns (solution, interactor)."""
+    interactor_log, solution_logs = await run_fanout_coordinated(
+        interactor,
+        solution,
+        artifacts,
+        sandbox,
+        merged_capture=merged_capture,
+        line_capture=line_capture,
+        tee_stderr=tee_stderr,
+    )
+    return solution_logs[0], interactor_log
 
 
 def get_checker_sandbox_params() -> SandboxParams:
