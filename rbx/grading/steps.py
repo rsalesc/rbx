@@ -1048,18 +1048,34 @@ def _build_program_error_run_log(
     )
 
 
+def _reported_time(
+    time: Optional[float], exitstatus: str, timeout_ms: Optional[int]
+) -> Optional[float]:
+    """The time a run reports: its CPU time, but at least the time limit when
+    it timed out (a wall timeout can stop it having spent next to none)."""
+    if time is not None and exitstatus in (
+        SandboxBase.EXIT_TIMEOUT,
+        SandboxBase.EXIT_TIMEOUT_WALL,
+    ):
+        return max(time, (timeout_ms or 0.0) / 1000)
+    return time
+
+
 def _build_run_log(
     sandbox_log: SandboxLog,
     sandbox: SandboxBase,
     params: SandboxParams,
     metadata: Optional[RunLogMetadata] = None,
+    report_timeout: bool = True,
 ) -> RunLog:
+    """`report_timeout=False` keeps a timed-out run's measured CPU time: the
+    processes of a fanout run are judged on their sum, and `_reported_time` is
+    applied once, to that (`combine_process_logs`)."""
     execution_time = sandbox_log.execution_time
-    if execution_time is not None and (
-        sandbox_log.exitstatus == SandboxBase.EXIT_TIMEOUT
-        or sandbox_log.exitstatus == SandboxBase.EXIT_TIMEOUT_WALL
-    ):
-        execution_time = max(execution_time, (params.timeout or 0.0) / 1000)
+    if report_timeout:
+        execution_time = _reported_time(
+            execution_time, sandbox_log.exitstatus, params.timeout
+        )
 
     run_log = RunLog(
         exitcode=sandbox_log.exitcode,
@@ -1090,6 +1106,12 @@ def combine_process_logs(
     limited per process; and the exit fields come from the process that decides
     the verdict -- the first to exit having failed, else the last to exit. Its
     index comes back too, when a process failed.
+
+    The processes' logs carry their measured CPU time (`_build_run_log` with
+    `report_timeout=False`), and a timeout raises the sum to the time limit the
+    way it raises one process's time -- once: summing every timed-out process's
+    raised time reported 64 idle processes stuck at the wall limit as 64 time
+    limits.
     """
     if len(logs) == 1:
         return logs[0], None
@@ -1115,9 +1137,17 @@ def combine_process_logs(
         else max(range(len(present)), key=lambda i: present[i].exitindex)
     ]
     combined = base.model_copy(deep=True)
+    if combined.exitstatus == SandboxBase.EXIT_TIMEOUT_WALL:
+        # A process over its wall limit times the run out, as CMS judges it,
+        # rather than being idle as one process alone would be: with several,
+        # one waits while the others hold the dialogue. (Summing every timed-out
+        # process's raised time used to reach the same verdict by accident.)
+        combined.exitstatus = SandboxBase.EXIT_TIMEOUT
     times = [log.time for log in present]
-    combined.time = (
-        None if any(t is None for t in times) else sum(cast(List[float], times))
+    combined.time = _reported_time(
+        None if any(t is None for t in times) else sum(cast(List[float], times)),
+        combined.exitstatus,
+        combined.metadata.timeLimit if combined.metadata is not None else None,
     )
     walls = [log.wall_time for log in present if log.wall_time is not None]
     combined.wall_time = max(walls) if walls else None
@@ -1356,7 +1386,15 @@ async def run_fanout_coordinated(
             return None, [None] * processes
 
         solution_logs = [
-            _build_run_log(log, sandbox, solution.params, solution.metadata)
+            _build_run_log(
+                log,
+                sandbox,
+                solution.params,
+                solution.metadata,
+                # Several processes are judged on their sum, which
+                # `combine_process_logs` reports.
+                report_timeout=processes == 1,
+            )
             for log in solution_sandbox_logs
         ]
         interactor_log = _build_run_log(
