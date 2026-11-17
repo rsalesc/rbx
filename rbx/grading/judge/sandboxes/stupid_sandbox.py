@@ -748,7 +748,9 @@ class StupidSandbox(SandboxBase):
         assert program.pipes.output is not None
         assert program.pipes.stderr is not None
 
-        group_id = os.getpgid(program.pid)
+        # The program leads its own group (`setpgid(0, 0)` before exec), so its
+        # pid is the group's id; `getpgid` would fail once it has exited.
+        group_id = program.pid
         stdout_tee = self._get_tee_program(
             '>',
             stdin=program.pipes.output,
@@ -1132,6 +1134,28 @@ class StupidSandbox(SandboxBase):
                     if other:
                         on_exit(other, other_status, other_ru)
                 on_exit(pid, status, ru)
+        except BaseException:
+            # Reaping failed (an unknown pid, Ctrl-C): nothing the run started may
+            # outlive it, nor any thread or descriptor it holds -- the follower
+            # thread of `exit_order` included, which would block forever.
+            kill_group()
+            for program in (interactor, *programs, *tees):
+                try:
+                    _, status, ru = os.wait4(program.pid, 0)
+                    program.process_exit(status, ru)
+                except OSError:
+                    # Reaped already.
+                    pass
+                program.close()
+            # Their writers are dead, so the drainers are at EOF.
+            for drainer in drainers:
+                drainer.join(DRAIN_GRACE_SECONDS)
+            for channel in channels:
+                channel.process_reads.close()
+            exit_order.close()
+            for end in liveness:
+                end.close()
+            raise
         finally:
             tee_timer.cancel()
 

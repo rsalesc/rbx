@@ -12,6 +12,7 @@ import pathlib
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 from typing import Any, List, Optional, Tuple
 from unittest import mock
@@ -593,3 +594,60 @@ def test_running_out_of_file_descriptors_is_a_program_error_naming_n(
         result.stdout
     )
     assert 'open-file limit is 64' in result.stdout
+
+
+def _settled(check, timeout: float = 10.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if check():
+            return True
+        time.sleep(0.05)
+    return check()
+
+
+@pytest.mark.parametrize(
+    'merged_capture',
+    [None, pathlib.Path('merged.pio')],
+    ids=['no-capture', 'capture'],
+)
+def test_an_exception_while_reaping_leaves_nothing_behind(
+    sandbox: StupidSandbox, merged_capture: Optional[pathlib.Path]
+):
+    # Warm up first, so what a first run sets up for good (imports, the
+    # cacher's handles) is not counted against the run under test.
+    _run(sandbox, _py('relay.py'), _py('relay_interactor.py'), 2)
+    process = psutil.Process()
+    children = {p.pid for p in process.children(recursive=True)}
+    fds = process.num_fds()
+    threads = set(threading.enumerate())
+
+    real_wait4 = os.wait4
+
+    def interrupted_wait4(pid, options):
+        # Ctrl-C while the run waits on its group (a negative pid), never while
+        # cleaning up, which waits on each program's own pid.
+        if pid < 0:
+            raise KeyboardInterrupt
+        return real_wait4(pid, options)
+
+    start = time.monotonic()
+    with mock.patch.object(stupid_sandbox.os, 'wait4', interrupted_wait4):
+        with pytest.raises(KeyboardInterrupt):
+            _run(
+                sandbox,
+                _py('sleeper.py'),
+                _py('sleeper.py'),
+                3,
+                merged_capture=merged_capture,
+            )
+    # Killed, not waited for: every program sleeps 60 s.
+    assert time.monotonic() - start < 20
+
+    # Killed and reaped: not even a zombie is left.
+    assert {p.pid for p in process.children(recursive=True)} == children
+    # The follower thread of the exit order and every watchdog are gone, and
+    # every pipe the run opened is closed.
+    assert _settled(lambda: set(threading.enumerate()) <= threads), [
+        t.name for t in set(threading.enumerate()) - threads
+    ]
+    assert process.num_fds() == fds
