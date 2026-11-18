@@ -3,6 +3,7 @@ container, the checks that fail before anything starts, and the switches the
 rest of rbx reads.
 """
 
+import contextlib
 import pathlib
 from unittest import mock
 
@@ -88,15 +89,27 @@ def test_user_dockerfile_becomes_the_base(tmp_path: pathlib.Path):
     assert _runtime(dockerfile=str(user)).image_tag != tag
 
 
+@contextlib.contextmanager
+def _raises_unavailable(phrase: str):
+    """`pytest.raises(DockerUnavailableError)` whose message contains `phrase`.
+
+    The message is rendered by a rich console, which wraps it at the console
+    width -- on CI a long temporary path pushes the phrase across a line break.
+    """
+    with pytest.raises(DockerUnavailableError) as exc:
+        yield
+    assert phrase in ' '.join(str(exc.value).split())
+
+
 def test_missing_user_dockerfile_fails(tmp_path: pathlib.Path):
-    with pytest.raises(DockerUnavailableError, match='does not exist'):
+    with _raises_unavailable('does not exist'):
         _runtime(dockerfile=str(tmp_path / 'nope')).dockerfile()
 
 
 def test_box_root_inside_a_mount_is_refused(tmp_path: pathlib.Path):
     runtime = _runtime(mounts=[str(tmp_path)])
     with mock.patch.object(DockerRuntime, 'box_root', return_value=tmp_path / 'b'):
-        with pytest.raises(DockerUnavailableError, match='inside the mount'):
+        with _raises_unavailable('inside the mount'):
             runtime.validate()
 
 
@@ -107,7 +120,7 @@ def test_a_problem_outside_every_mount_is_refused(
     (tmp_path / 'problem').mkdir()
     monkeypatch.chdir(tmp_path / 'problem')
     runtime = _runtime(mounts=[str(tmp_path / 'mounted')])
-    with pytest.raises(DockerUnavailableError, match='not visible'):
+    with _raises_unavailable('not visible'):
         runtime.validate()
 
 

@@ -116,6 +116,46 @@ def mock_app_path(monkeysession, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def _current_event_loop() -> Iterator[None]:
+    """Make sure every test starts with a current, open event loop.
+
+    `syncer.sync` -- how every async Typer command runs -- calls
+    `asyncio.get_event_loop()`. Since Python 3.12 that raises once anything has
+    called `asyncio.set_event_loop(None)` (which `asyncio.run` does on its way
+    out), and from 3.14 it never creates a loop at all. So a test invoking the
+    CLI used to pass or fail depending on whether the test before it, in
+    pytest-randomly's order, had left a loop behind. The loop installed here is
+    removed afterwards, so nothing leaks into the next test either.
+    """
+    import asyncio
+    import warnings
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', DeprecationWarning)
+            current = asyncio.get_event_loop()
+    except RuntimeError:
+        current = None
+    installed = None
+    if current is None or current.is_closed():
+        installed = asyncio.new_event_loop()
+        asyncio.set_event_loop(installed)
+    try:
+        yield
+    finally:
+        if installed is not None:
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter('ignore', DeprecationWarning)
+                    still_ours = asyncio.get_event_loop() is installed
+            except RuntimeError:
+                still_ours = False
+            if still_ours:
+                asyncio.set_event_loop(None)
+            installed.close()
+
+
+@pytest.fixture(autouse=True)
 def _isolate_global_state() -> Iterator[None]:
     from rbx import testing_utils
     from rbx.box import global_package as _global_package
