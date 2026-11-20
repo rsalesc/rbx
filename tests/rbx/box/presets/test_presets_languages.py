@@ -33,6 +33,19 @@ def _load(path: pathlib.Path):
     return ruyaml.YAML().load(path.read_text())
 
 
+def _make_language_agnostic(package_dir: pathlib.Path) -> pathlib.Path:
+    """Rewrite the installed preset's problem template to declare no
+    `languages:` and use one statement file shared by every language."""
+    template = package_dir / '.local.rbx' / 'problem'
+    (template / 'problem.rbx.yml').write_text(
+        'name: "new-problem"\ntimeLimit: 1000\nmemoryLimit: 256\nstatements:\n'
+        '  - language: "*"\n    file: "statement/statement.rbx.tex"\n'
+        '    type: "rbxTeX"\n'
+    )
+    (template / 'statement' / 'statement.rbx.tex').write_text('shared')
+    return template
+
+
 class TestPickLanguages:
     def test_explicit_flag_wins_without_prompting(self, installed):
         with mock.patch('questionary.checkbox') as checkbox:
@@ -41,11 +54,27 @@ class TestPickLanguages:
             ) == ['pt']
         checkbox.assert_not_called()
 
-    def test_explicit_unknown_language_errors(self, installed):
+    def test_explicit_unknown_language_errors(self, installed, capsys):
         with pytest.raises(typer.Exit):
             presets.pick_languages(
                 _template(installed, False), is_contest=False, languages=['fr']
             )
+        # The error tells the user how to get past it.
+        assert '--ignore-language-mismatch' in capsys.readouterr().out
+
+    def test_ignore_mismatch_accepts_unknown_language(self, installed):
+        assert presets.pick_languages(
+            _template(installed, False),
+            is_contest=False,
+            languages=['fr', 'en'],
+            ignore_mismatch=True,
+        ) == ['fr', 'en']
+
+    def test_language_agnostic_template_accepts_any_language(self, installed):
+        _make_language_agnostic(installed)
+        assert presets.pick_languages(
+            _template(installed, False), is_contest=False, languages=['fr']
+        ) == ['fr']
 
     def test_single_language_template_never_prompts(self, tmp_path, testdata_path):
         package_dir = tmp_path / 'single'
@@ -128,6 +157,39 @@ class TestInstallPrunes:
         data = _load(installed / 'problem.rbx.yml')
         assert list(data['languages']) == ['en', 'pt', 'es']
         assert (installed / 'statement/statement-es.rbx.tex').exists()
+
+    def test_inherited_unshipped_language_with_ignore_mismatch(self, installed):
+        presets.install_problem(
+            installed,
+            languages=['fr'],
+            inherit_languages=True,
+            ignore_language_mismatch=True,
+        )
+
+        data = _load(installed / 'problem.rbx.yml')
+        assert 'languages' not in data
+        assert dict(data['titles']) == {'fr': 'New problem'}
+        assert (installed / 'statement/statement-fr.rbx.tex').exists()
+        assert (installed / 'statement/editorial-fr.rbx.tex').exists()
+        assert not (installed / 'statement/statement-en.rbx.tex').exists()
+
+    def test_contest_with_ignore_mismatch(self, installed):
+        presets.install_contest(
+            installed, languages=['en', 'fr'], ignore_language_mismatch=True
+        )
+
+        data = _load(installed / 'contest.rbx.yml')
+        assert list(data['languages']) == ['en', 'fr']
+        assert data['titles']['fr'] == 'New contest'
+
+    def test_language_agnostic_template_installs_any_language(self, installed):
+        _make_language_agnostic(installed)
+
+        presets.install_problem(installed, languages=['fr'], inherit_languages=True)
+
+        data = _load(installed / 'problem.rbx.yml')
+        assert 'languages' not in data
+        assert (installed / 'statement/statement.rbx.tex').read_text() == 'shared'
 
     def test_unknown_language_fails_before_copying_anything(self, installed):
         with pytest.raises(typer.Exit):

@@ -126,10 +126,57 @@ class TestPrune:
         # Shared chrome is untouched.
         assert (contest / 'statements/problem-sheet.rbx.tex').exists()
 
-    def test_unknown_language_is_kept_but_warned(self, problem, capsys):
+    def test_unshipped_language_clones_the_first_language(self, problem):
         lp.prune_languages(problem, ['en', 'fr'], is_contest=False)
 
-        assert list(_load(problem)['languages']) == ['en', 'fr']
+        data = _load(problem)
+        assert list(data['languages']) == ['en', 'fr']
+        assert dict(data['titles']) == {'en': 'New problem', 'fr': 'New problem'}
+        for kind in ('statement', 'editorial'):
+            assert (problem / f'statement/{kind}-fr.rbx.tex').read_text() == (
+                problem / f'statement/{kind}-en.rbx.tex'
+            ).read_text()
+
+    def test_unshipped_language_alone_clones_before_pruning(self, problem, preset):
+        # `en` is the clone source but is not kept: it must be copied before
+        # its files and title are pruned away.
+        lp.prune_languages(problem, ['fr'], is_contest=False, inherit=True)
+
+        data = _load(problem)
+        assert 'languages' not in data
+        assert dict(data['titles']) == {'fr': 'New problem'}
+        assert not (problem / 'statement/statement-en.rbx.tex').exists()
+        assert (problem / 'statement/statement-fr.rbx.tex').read_text() == (
+            preset / 'problem/statement/statement-en.rbx.tex'
+        ).read_text()
+
+    def test_language_agnostic_template_accepts_any_language(self, cleandir, capsys):
+        (cleandir / 'statement').mkdir()
+        (cleandir / 'statement/statement.rbx.tex').write_text('shared')
+        (cleandir / 'problem.rbx.yml').write_text(
+            'name: "prob"\ntimeLimit: 1000\nmemoryLimit: 256\nstatements:\n'
+            '  - language: "*"\n    file: "statement/statement.rbx.tex"\n'
+        )
+
+        lp.prune_languages(cleandir, ['pt'], is_contest=False, inherit=True)
+
+        data = _load(cleandir)
+        assert 'languages' not in data
+        assert 'titles' not in data
+        assert (cleandir / 'statement/statement.rbx.tex').read_text() == 'shared'
+        assert 'warning' not in capsys.readouterr().out.lower()
+
+    def test_language_agnostic_template_warns_on_missing_lang_files(
+        self, cleandir, capsys
+    ):
+        (cleandir / 'problem.rbx.yml').write_text(
+            'name: "prob"\ntimeLimit: 1000\nmemoryLimit: 256\nstatements:\n'
+            '  - language: "*"\n    file: "statement/statement-{lang}.rbx.tex"\n'
+        )
+
+        lp.prune_languages(cleandir, ['pt'], is_contest=False, inherit=True)
+
+        assert 'statement/statement-pt.rbx.tex' in capsys.readouterr().out
 
 
 class TestAdd:

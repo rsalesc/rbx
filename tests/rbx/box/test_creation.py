@@ -24,6 +24,7 @@ def _install_problem_stub(
     variant=None,
     languages=None,
     inherit_languages=False,
+    ignore_language_mismatch=False,
 ):
     """Mimic presets.install_problem: create the folder and a minimal package,
     and return the template that was installed."""
@@ -104,6 +105,14 @@ def test_create_passes_languages_through(cleandir, mock_presets):
     kwargs = mock_presets.install_problem.call_args.kwargs
     assert kwargs['languages'] == ['en', 'pt']
     assert kwargs['inherit_languages'] is False
+    assert kwargs['ignore_language_mismatch'] is False
+
+
+def test_create_passes_ignore_language_mismatch_through(cleandir, mock_presets):
+    creation.create('my-problem', ignore_language_mismatch=True)
+
+    kwargs = mock_presets.install_problem.call_args.kwargs
+    assert kwargs['ignore_language_mismatch'] is True
 
 
 def test_create_inside_contest_inherits_its_languages(cleandir, mock_presets):

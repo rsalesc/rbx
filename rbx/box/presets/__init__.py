@@ -954,13 +954,25 @@ def pick_variant(
     return None if answer == 'default' else answer
 
 
+IGNORE_LANGUAGE_MISMATCH_FLAG = '--ignore-language-mismatch'
+
+
 def pick_languages(
-    template: ResolvedTemplate, *, is_contest: bool, languages: Optional[List[str]]
+    template: ResolvedTemplate,
+    *,
+    is_contest: bool,
+    languages: Optional[List[str]],
+    ignore_mismatch: bool = False,
 ) -> Optional[List[str]]:
     """Which of the template's languages the new package keeps, prompting when
     the template ships more than one. None means keep every language (no
     pruning). An explicit `languages` always wins and is only checked against
-    what the template ships; never prompts when stdin is not a TTY."""
+    what the template ships; never prompts when stdin is not a TTY.
+
+    A template that declares no `languages:` is language-agnostic and accepts
+    any language. Otherwise a language it does not ship is an error, unless
+    `ignore_mismatch`: then `prune_languages` clones the template's first
+    language for it."""
     import questionary
 
     # Lazy import: language_packs loads the package schemas, which import us.
@@ -969,13 +981,18 @@ def pick_languages(
     shipped = language_packs.template_languages(template.path, is_contest=is_contest)
     if languages is not None:
         unknown = [lang for lang in languages if lang not in shipped]
-        if unknown:
+        if unknown and shipped and not ignore_mismatch:
             console.console.print(
                 f'[error]Template does not ship language(s) '
                 f'[item]{", ".join(unknown)}[/item].[/error]'
             )
             console.console.print(
-                f'Available languages: [item]{", ".join(shipped) or "none"}[/item].'
+                f'Available languages: [item]{", ".join(shipped)}[/item].'
+            )
+            console.console.print(
+                f'Re-run with [item]{IGNORE_LANGUAGE_MISMATCH_FLAG}[/item] to create '
+                'it anyway: each missing language gets a copy of the '
+                f'[item]{shipped[0]}[/item] files to translate in place.'
             )
             raise typer.Exit(1)
         return list(languages)
@@ -1540,11 +1557,14 @@ def install_contest(
     materialize: bool = True,
     variant: Optional[str] = None,
     languages: Optional[List[str]] = None,
+    ignore_language_mismatch: bool = False,
 ) -> ResolvedTemplate:
     """Install a contest package from the preset, returning the template used.
 
     `languages` restricts a multi-language template to those languages (see
     `pick_languages`; None prompts, or keeps all when there is no terminal).
+    `ignore_language_mismatch` accepts languages the template does not ship,
+    cloning its first language for each of them.
 
     Callers MUST pass the returned template to `generate_lock`, so the lock can
     never claim a different template than the one that was installed.
@@ -1560,7 +1580,12 @@ def install_contest(
     )
     template = get_active_template(dest_pkg, is_contest=True, variant=variant)
 
-    keep = pick_languages(template, is_contest=True, languages=languages)
+    keep = pick_languages(
+        template,
+        is_contest=True,
+        languages=languages,
+        ignore_mismatch=ignore_language_mismatch,
+    )
 
     expansions = _collect_expansions(template.expansion)
     console.console.print(
@@ -1591,11 +1616,14 @@ def install_problem(
     variant: Optional[str] = None,
     languages: Optional[List[str]] = None,
     inherit_languages: bool = False,
+    ignore_language_mismatch: bool = False,
 ) -> ResolvedTemplate:
     """Install a problem package from the preset, returning the template used.
 
     `languages` restricts a multi-language template to those languages (see
     `pick_languages`; None prompts, or keeps all when there is no terminal).
+    `ignore_language_mismatch` accepts languages the template does not ship,
+    cloning its first language for each of them.
     With `inherit_languages` the problem is left without a `languages:` list,
     following its contest's instead (`rbx contest add`).
 
@@ -1613,7 +1641,12 @@ def install_problem(
     )
     template = get_active_template(dest_pkg, is_contest=False, variant=variant)
 
-    keep = pick_languages(template, is_contest=False, languages=languages)
+    keep = pick_languages(
+        template,
+        is_contest=False,
+        languages=languages,
+        ignore_mismatch=ignore_language_mismatch,
+    )
 
     expansions = _collect_expansions(template.expansion)
     console.console.print(

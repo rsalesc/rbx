@@ -124,6 +124,13 @@ def create(
         Optional[List[str]],
         typer.Option('--languages', '-l', help=creation.LANGUAGES_OPTION_HELP),
     ] = None,
+    ignore_language_mismatch: Annotated[
+        bool,
+        typer.Option(
+            presets.IGNORE_LANGUAGE_MISMATCH_FLAG,
+            help=creation.IGNORE_LANGUAGE_MISMATCH_HELP,
+        ),
+    ] = False,
 ):
     console.console.print(f'Creating new contest at [item]{path}[/item]...')
 
@@ -147,6 +154,7 @@ def create(
             fetch_info,
             variant=variant,
             languages=creation.split_languages(languages),
+            ignore_language_mismatch=ignore_language_mismatch,
         )
 
         with cd.new_package_cd(dest_path):
@@ -324,6 +332,13 @@ def add(
             'shared with other contests.',
         ),
     ] = False,
+    ignore_language_mismatch: Annotated[
+        bool,
+        typer.Option(
+            presets.IGNORE_LANGUAGE_MISMATCH_FLAG,
+            help=creation.IGNORE_LANGUAGE_MISMATCH_HELP,
+        ),
+    ] = False,
 ):
     problem_path = pathlib.Path(path)
     name = problem_path.stem
@@ -349,7 +364,13 @@ def add(
     if not yaml_include.confirm_shared_edit(target, dest, dest.parent, yes=yes):
         raise typer.Exit(1)
 
-    creation.create(name, preset=preset, path=pathlib.Path(path), variant=variant)
+    creation.create(
+        name,
+        preset=preset,
+        path=pathlib.Path(path),
+        variant=variant,
+        ignore_language_mismatch=ignore_language_mismatch,
+    )
 
     contest_pkg = find_contest_package_or_die()
 

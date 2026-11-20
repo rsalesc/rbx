@@ -973,6 +973,17 @@ SPEC = {
                     'value': {'kind': 'none'},
                 },
                 {
+                    'help': 'Accept languages the preset does not ship (asked for with '
+                    '`-l`, or inherited from the contest) instead of failing. Each '
+                    "one gets a copy of the preset's first language's statement "
+                    'files, to translate in place.',
+                    'kind': 'option',
+                    'multiple': False,
+                    'names': ['--ignore-language-mismatch'],
+                    'takes_value': False,
+                    'value': {'kind': 'none'},
+                },
+                {
                     'help': 'Show this message and exit.',
                     'kind': 'option',
                     'multiple': False,
@@ -2797,6 +2808,18 @@ SPEC = {
                             'value': {'kind': 'none'},
                         },
                         {
+                            'help': 'Accept languages the preset does not ship (asked '
+                            'for with `-l`, or inherited from the contest) '
+                            'instead of failing. Each one gets a copy of the '
+                            "preset's first language's statement files, to "
+                            'translate in place.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--ignore-language-mismatch'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
                             'help': 'Show this message and exit.',
                             'kind': 'option',
                             'multiple': False,
@@ -2937,6 +2960,18 @@ SPEC = {
                             'kind': 'option',
                             'multiple': False,
                             'names': ['--yes', '-y'],
+                            'takes_value': False,
+                            'value': {'kind': 'none'},
+                        },
+                        {
+                            'help': 'Accept languages the preset does not ship (asked '
+                            'for with `-l`, or inherited from the contest) '
+                            'instead of failing. Each one gets a copy of the '
+                            "preset's first language's statement files, to "
+                            'translate in place.',
+                            'kind': 'option',
+                            'multiple': False,
+                            'names': ['--ignore-language-mismatch'],
                             'takes_value': False,
                             'value': {'kind': 'none'},
                         },

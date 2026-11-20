@@ -211,15 +211,19 @@ def prune_languages(
     """Restrict a freshly created package to `keep`: delete the other
     languages' pack files and titles, and rewrite `languages:` to `keep` (or
     drop it when `inherit`, for a problem that follows its contest). Returns
-    the deleted files."""
+    the deleted files.
+
+    A kept language the template does not ship (accepted with
+    `--ignore-language-mismatch`) gets a copy of the template's first
+    language's files and title, cloned before that language is pruned. A
+    template that declares no languages is language-agnostic: nothing is
+    cloned, and its kept languages only draw a warning when a `{lang}` file
+    they need is missing."""
     shipped = template_languages(root, is_contest=is_contest)
-    for lang in keep:
-        if lang not in shipped:
-            console.console.print(
-                f'[warning]Language [item]{lang}[/item] is not shipped by the '
-                f'template (available: [item]{", ".join(shipped) or "none"}[/item]). '
-                'Keeping it in the list, but no files were created for it.[/warning]'
-            )
+    if shipped:
+        for lang in keep:
+            if lang not in shipped:
+                _clone_pack(root, lang, from_lang=shipped[0], is_contest=is_contest)
     deleted: List[pathlib.Path] = []
     for lang in shipped:
         if lang in keep:
@@ -235,7 +239,65 @@ def prune_languages(
             edit.drop_title(lang)
     edit.set_languages(None if inherit else list(keep))
     edit.save()
+
+    for lang in keep:
+        missing = [
+            file
+            for file in pack_files(root, lang, is_contest=is_contest)
+            if not (root / file).is_file()
+        ]
+        if missing:
+            console.console.print(
+                f'[warning]The template has no files for language '
+                f'[item]{lang}[/item]: create '
+                f'[item]{", ".join(str(f) for f in missing)}[/item] before '
+                'building its statements.[/warning]'
+            )
     return deleted
+
+
+def _copy_missing(
+    root: pathlib.Path, sources: List[pathlib.Path], targets: List[pathlib.Path]
+) -> List[pathlib.Path]:
+    """Copy each source to its target (relative to `root`), never overwriting
+    an existing file. Returns the targets created."""
+    created: List[pathlib.Path] = []
+    for src, file in zip(sources, targets):
+        dest = root / file
+        if dest.exists():
+            continue
+        if not src.is_file():
+            console.console.print(
+                f'[warning]Skipping [item]{file}[/item]: source '
+                f'[item]{src}[/item] does not exist.[/warning]'
+            )
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dest)
+        created.append(file)
+    return created
+
+
+def _clone_pack(
+    root: pathlib.Path, lang: str, *, from_lang: str, is_contest: bool
+) -> List[pathlib.Path]:
+    """Give `lang` a copy of `from_lang`'s pack files and title inside the
+    package. Unlike `add_language`, the `languages:` list is left alone."""
+    created = _copy_missing(
+        root,
+        [root / f for f in pack_files(root, from_lang, is_contest=is_contest)],
+        pack_files(root, lang, is_contest=is_contest),
+    )
+    edit = _Edit(root, is_contest)
+    edit.set_title(lang, edit.get_title(from_lang) or _load(root, is_contest).name)
+    edit.save()
+    console.console.print(
+        f'[warning]The template does not ship language [item]{lang}[/item]: '
+        f'cloned its [item]{from_lang}[/item] files'
+        + (f' ([item]{", ".join(str(f) for f in created)}[/item])' if created else '')
+        + ' to translate in place.[/warning]'
+    )
+    return created
 
 
 def _die_unshipped(lang: str, shipped: List[str]) -> None:
@@ -285,26 +347,13 @@ def add_language(
     if from_lang is None and lang not in shipped:
         _die_unshipped(lang, shipped)
 
-    created: List[pathlib.Path] = []
     targets = pack_files(root, lang, is_contest=is_contest)
     sources = (
         [template / f for f in targets]
         if from_lang is None
         else [root / f for f in pack_files(root, from_lang, is_contest=is_contest)]
     )
-    for src, file in zip(sources, targets):
-        dest = root / file
-        if dest.exists():
-            continue
-        if not src.is_file():
-            console.console.print(
-                f'[warning]Skipping [item]{file}[/item]: source '
-                f'[item]{src}[/item] does not exist.[/warning]'
-            )
-            continue
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, dest)
-        created.append(file)
+    created = _copy_missing(root, sources, targets)
 
     edit = _Edit(root, is_contest)
     if from_lang is None:

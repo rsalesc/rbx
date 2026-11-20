@@ -40,6 +40,12 @@ LANGUAGES_OPTION_HELP = (
     'Omit to be prompted when the preset ships more than one language.'
 )
 
+IGNORE_LANGUAGE_MISMATCH_HELP = (
+    'Accept languages the preset does not ship (asked for with `-l`, or '
+    'inherited from the contest) instead of failing. Each one gets a copy of the '
+    "preset's first language's statement files, to translate in place."
+)
+
 
 def create(
     name: Annotated[
@@ -78,6 +84,12 @@ def create(
         Optional[List[str]],
         typer.Option('--languages', '-l', help=LANGUAGES_OPTION_HELP),
     ] = None,
+    ignore_language_mismatch: Annotated[
+        bool,
+        typer.Option(
+            presets.IGNORE_LANGUAGE_MISMATCH_FLAG, help=IGNORE_LANGUAGE_MISMATCH_HELP
+        ),
+    ] = False,
 ):
     dest_path = path or pathlib.Path(name)
     languages = split_languages(languages)
@@ -127,6 +139,7 @@ def create(
             variant=variant,
             languages=languages,
             inherit_languages=inherit_languages,
+            ignore_language_mismatch=ignore_language_mismatch,
         )
 
         # Change problem name.

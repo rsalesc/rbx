@@ -14,6 +14,7 @@ from rbx import annotations, config, console
 from rbx.box import (
     creation,
     package,
+    presets,
 )
 from rbx.box.contest.contest_package import (
     find_contest_yaml,
@@ -74,6 +75,13 @@ def create(
         Optional[List[str]],
         typer.Option('--languages', '-l', help=creation.LANGUAGES_OPTION_HELP),
     ] = None,
+    ignore_language_mismatch: Annotated[
+        bool,
+        typer.Option(
+            presets.IGNORE_LANGUAGE_MISMATCH_FLAG,
+            help=creation.IGNORE_LANGUAGE_MISMATCH_HELP,
+        ),
+    ] = False,
 ):
     if find_contest_yaml() is not None:
         console.console.print(
@@ -85,5 +93,10 @@ def create(
         raise typer.Exit(1)
 
     creation.create(
-        name, preset=preset, variant=variant, local=local, languages=languages
+        name,
+        preset=preset,
+        variant=variant,
+        local=local,
+        languages=languages,
+        ignore_language_mismatch=ignore_language_mismatch,
     )
