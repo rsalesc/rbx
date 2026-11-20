@@ -1,3 +1,9 @@
+## 2.8.1 (2026-11-21)
+
+### Feat
+
+- **presets**: accept any language from language-agnostic templates
+
 ## 2.8.0 (2026-11-17)
 
 ### Feat
