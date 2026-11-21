@@ -1,0 +1,56 @@
+# Annotations for the default preset's contest tree, rendered into
+# docs/setters/contest-scaffolding-walkthrough.md by the `contest_preset_tree()`
+# macro in main.py.
+#
+# Keyed by path, relative to rbx/resources/presets/default/contest. Same
+# contract as docs/_data/preset-tree.yml: the macro walks the preset and numbers
+# the entries it finds prose for, and a key the preset no longer ships is an
+# error rather than a no-op.
+#
+# Keep these short. The contest folder is mostly statement chrome, and the
+# statements walkthrough is what teaches it -- annotate what the reader needs to
+# recognize the folder, and point onward for the rest.
+
+contest.rbx.yml: |
+  The {{YAML}} configuration file for this contest -- the one file here you'll
+  edit today.
+
+statements: |
+  The statement chrome shared by every problem in the contest: the {{rbxTeX}}
+  templates, the LaTeX style and the assets they pull in.
+
+  This is the folder that makes a contest more than a list of problems. A
+  problem package carries its own text and nothing else, so the look of the
+  rendered document -- fonts, headers, the cover page -- is decided once, here.
+
+statements/problem-sheet.rbx.tex: |
+  The task sheet: the single document that joins every problem's statement
+  together, in contest order.
+
+statements/problem.rbx.tex: |
+  The template used when a problem is built on its own, with `rbx st b`.
+
+statements/problem-fragment.rbx.tex: |
+  The template used for the same problem when it's built *into* the task sheet.
+  Both of these delegate to `_problem-body.rbx.tex`, so a change to the way
+  problems look lands in one place.
+
+statements/editorial-sheet.rbx.tex: |
+  The editorial's counterpart to the task sheet. The `editorial-*` files mirror
+  the `problem-*` ones, one for one.
+
+statements/icpc.sty: |
+  The LaTeX style behind both sheets. This one is *tracked* by the preset, so
+  `rbx presets sync` can update it later -- the templates around it are left
+  alone so your edits survive.
+
+statements/info.jinja.tex: |
+  An information sheet listing each problem's limits. It's a `document`: a
+  contest-level file that never joins on problems.
+
+statements/instructions.tex: |
+  The general-information page printed before the problems. Plain LaTeX, and
+  yours to rewrite -- it's where you tell contestants how input and output work.
+
+statements/logo.png: |
+  The logo printed on the cover. Replace it with your own.
