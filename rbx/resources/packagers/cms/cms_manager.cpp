@@ -13,6 +13,11 @@
 // becomes it (fexecve), with `checker <input> <interactor output> <answer>`.
 // CMS never gives the manager the answer, so the stored test input carries it
 // (see split_input).
+//
+// With -DRBX_CMS_FANOUT, CMS runs N contestant processes and the manager as
+// `manager <from 0> <to 0> ... <from N-1> <to N-1>`, which is how rbx calls a
+// fanout interactor after its input and output: the fifos are forwarded
+// unchanged, and rbx::registerFanoutInteraction opens them.
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -23,6 +28,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "rbx_cms_report.h"
 #include "testlib.h"
@@ -41,6 +47,11 @@ __asm__(
 #endif
 
 int rbx_interactor_main(int argc, char *argv[]);
+#ifdef RBX_CMS_FANOUT
+// Defined after interactor.cpp brings in rbx.h's rbx::fanout.
+void rbx_cms_create_channels();
+void rbx_cms_close_channels();
+#endif
 
 namespace rbx_cms_manager {
 
@@ -100,8 +111,12 @@ void report_at_exit() {
   fflush(stdout);
   if (tout.is_open()) tout.close();
   // From here on the contestant reads EOF.
+#ifdef RBX_CMS_FANOUT
+  rbx_cms_close_channels();
+#else
   close(0);
   close(1);
+#endif
   std::string line = rbx_cms::read_verdict();
   rbx_cms::Verdict verdict = rbx_cms::classify(line);
 #ifdef RBX_CMS_CHECKER
@@ -126,10 +141,18 @@ void report_at_exit() {
 
 int main(int argc, char *argv[]) {
   using namespace rbx_cms_manager;
+#ifdef RBX_CMS_FANOUT
+  if (argc < 3 || (argc - 1) % 2 != 0) {
+    fprintf(stderr, "usage: %s (<fifo from user> <fifo to user>)...\n",
+            argv[0]);
+    return 1;
+  }
+#else
   if (argc < 3) {
     fprintf(stderr, "usage: %s <fifo from user> <fifo to user>\n", argv[0]);
     return 1;
   }
+#endif
   // The contestant may leave early; that is a verdict, not a crash.
   signal(SIGPIPE, SIG_IGN);
 
@@ -139,6 +162,27 @@ int main(int argc, char *argv[]) {
   output_path = path_of(memfd_with("output", ""));
   answer_path = path_of(memfd_with("answer", answer));
 
+  char name[] = "interactor";
+#ifdef RBX_CMS_FANOUT
+  rbx_cms::capture_verdict();
+  // CMS reads the outcome from stdout, so whatever the interactor prints there
+  // must not reach it.
+  int null = open("/dev/null", O_WRONLY);
+  if (null >= 0) {
+    dup2(null, 1);
+    close(null);
+  }
+
+  // The channels are a static that report_at_exit uses, and a static is
+  // destroyed before the exit handlers registered ahead of its construction.
+  rbx_cms_create_channels();
+  atexit(report_at_exit);
+  // The interactor opens the fifos itself, in the order CMS needs.
+  std::vector<char *> args = {name, input_path.data(), output_path.data()};
+  for (int i = 1; i < argc; i++) args.push_back(argv[i]);
+  args.push_back(nullptr);
+  int code = rbx_interactor_main(static_cast<int>(args.size()) - 1, args.data());
+#else
   // The contestant opens its stdin first, so the fifo to it must be opened
   // first too, or both sides block forever.
   int to_user = open(argv[2], O_WRONLY);
@@ -154,9 +198,9 @@ int main(int argc, char *argv[]) {
   close(to_user);
 
   atexit(report_at_exit);
-  char name[] = "interactor";
   char *args[] = {name, input_path.data(), output_path.data(), nullptr};
   int code = rbx_interactor_main(3, args);
+#endif
   rbx_cms::returned = true;
   rbx_cms::return_code = code;
   exit(code);
@@ -165,3 +209,8 @@ int main(int argc, char *argv[]) {
 #define main rbx_interactor_main
 #include "interactor.cpp"
 #undef main
+
+#ifdef RBX_CMS_FANOUT
+void rbx_cms_create_channels() { rbx::fanout::detail::channels(); }
+void rbx_cms_close_channels() { rbx::fanout::close_all(); }
+#endif

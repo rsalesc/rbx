@@ -5,7 +5,7 @@ from typing import List, Optional
 import syncer
 import typer
 
-from rbx import annotations
+from rbx import annotations, console
 from rbx.box import environment, package
 from rbx.box.naming import get_problem_name_with_contest_info
 from rbx.box.packaging.packager import run_packager
@@ -80,6 +80,15 @@ async def polygon(
     if cms:
         cms_support.ensure_supported(package.find_problem_package_or_die())
         cms_settings.warn_for_polygon(cms_settings.resolve())
+
+    if upload and package.find_problem_package_or_die().is_fanout:
+        console.console.print(
+            '[error]Polygon cannot judge problems whose interactor talks to '
+            'several processes ([item]interactor.processes[/item]), so they '
+            'cannot be uploaded. Package them for CMS with '
+            '[item]rbx package polygon --cms[/item] instead.[/error]'
+        )
+        raise typer.Exit(1)
 
     if upload_tests_raw and not upload:
         raise typer.BadParameter(

@@ -1,7 +1,8 @@
 """How CMS judges an rbx interactive problem.
 
 CMS's Communication task type runs a single program, the manager, against the
-contestant. rbx's manager (`cms_manager.cpp`) compiles the problem's testlib
+contestant -- or, for a fanout problem, against N copies of it at once. rbx's
+manager (`cms_manager.cpp`) compiles the problem's testlib
 interactor in, and for a legacy interactor hands its output to the problem's
 checker (`cms_checker.cpp`), as rbx does locally. Both sources expect the
 problem's `interactor.cpp` / `rbx_check.cpp`, `testlib.h` and `rbx.h` next to
@@ -16,16 +17,20 @@ from rbx.box.schema import Package, TaskType
 from rbx.config import get_resources_dir
 
 TASK_TYPE = 'Communication'
-# One contestant process, compiled alone, speaking through stdin/stdout.
-TASK_TYPE_PARAMETERS: List[Union[int, str]] = [1, 'alone', 'std_io']
 
 
 def task_type_parameters(pkg: Package) -> List[Union[int, str]]:
-    """With a grader, the contestant is compiled with it: CMS 1.5.1 calls that
-    `stub` (and the source `stub.cpp`); later versions renamed both `grader`."""
-    if pkg.grader is not None:
-        return [1, 'stub', 'std_io']
-    return TASK_TYPE_PARAMETERS
+    """`[processes, compilation, io]`.
+
+    One contestant process for an interactive problem, `interactor.processes`
+    for a fanout one: CMS then passes each its index as `argv[1]`, as rbx does.
+    Each speaks through stdin/stdout. With a grader, the contestant is compiled
+    with it: CMS 1.5.1 calls that `stub` (and the source `stub.cpp`); later
+    versions renamed both `grader`.
+    """
+    processes = pkg.fanout_processes or 1
+    compilation = 'stub' if pkg.grader is not None else 'alone'
+    return [processes, compilation, 'std_io']
 
 
 MANAGER_SOURCE = 'cms_manager.cpp'

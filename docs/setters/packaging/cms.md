@@ -20,7 +20,7 @@ Polygon can't describe. Pass `--cms` to `rbx package polygon` or
 - subtask scoring that follows your test groups
 - your checker, built so that CMS scores its [partial points](/setters/grading/scoring#awarding-partial-points) the way {{rbx}} does
 - the statement PDFs
-- a manager, for an interactive problem
+- a manager, for an interactive problem, including one with [several processes](/setters/grading/interactors#several-processes-fanout)
 
 ```bash
 rbx contest package polygon --cms

@@ -433,6 +433,11 @@ class PolygonPackager(BasePackager):
         return 'polygon'
 
     @classmethod
+    def supports_fanout(cls, cms: bool = False, **packager_kwargs) -> bool:
+        # Polygon cannot judge it; CMS reads the package's `cms_conf.py`.
+        return cms
+
+    @classmethod
     def supports_graders(cls) -> bool:
         return True
 

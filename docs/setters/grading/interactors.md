@@ -337,4 +337,6 @@ Judging also changes in two ways:
 When you print a run with `rbx irun -p`, each line of the interaction starts with the copy
 it belongs to, such as `[1]`.
 
-Packaging a fanout problem for a judge isn't supported yet, so `rbx package` refuses it.
+Of the judges {{rbx}} packages for, only {{cms}} can run a fanout problem: package it with
+`rbx package polygon --cms`, as [Packaging: CMS](../packaging/cms.md) describes. For every other
+judge, and for Polygon without `--cms`, `rbx package` refuses it before building anything.

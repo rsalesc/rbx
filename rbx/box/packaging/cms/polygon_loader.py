@@ -114,6 +114,8 @@ def render_conf(
             if communication.needs_checker(pkg)
             else None,
             'checker_runner_flags': compile_flags(pkg.checker),
+            # The manager forwards the fifos of every process to the interactor.
+            'fanout': pkg.is_fanout,
         }
     template = get_resources_file(
         pathlib.Path('packagers') / 'cms' / 'polygon_cms_conf.py'

@@ -79,9 +79,13 @@ class BasePackager(ABC):
         return False
 
     @classmethod
-    def supports_fanout(cls) -> bool:
+    def supports_fanout(cls, **packager_kwargs) -> bool:
         """Whether the judge can run several contestant processes against one
-        interactor (`interactor.processes`). None can yet: CMS is #1043."""
+        interactor (`interactor.processes`).
+
+        `packager_kwargs` are what the packager is built with, since a packager
+        may only support it in some modes (Polygon, with `--cms`).
+        """
         return False
 
     @classmethod
@@ -332,15 +336,15 @@ async def run_packager(
         )
         raise typer.Exit(1)
 
-    # Also before the build: no judge runs several processes against one interactor yet.
-    if (
-        package.find_problem_package_or_die().is_fanout
-        and not packager_cls.supports_fanout()
+    # Also before the build: only CMS runs several processes against one interactor.
+    if package.find_problem_package_or_die().is_fanout and not (
+        packager_cls.supports_fanout(**kwargs)
     ):
         console.console.print(
             f'[error]Packager [item]{packager_cls.name()}[/item] does not support '
             'problems whose interactor talks to several processes '
-            '([item]interactor.processes[/item]).[/error]'
+            '([item]interactor.processes[/item]). They can be packaged for CMS '
+            '([item]rbx package polygon --cms[/item]).[/error]'
         )
         raise typer.Exit(1)
 
