@@ -52,7 +52,7 @@ cmsImportTask -L polygon_task my-problem
 
 !!! warning "At most 9 processes"
     CMS 1.5.1 can't judge a problem with [several processes](/setters/grading/interactors#several-processes-fanout)
-    when `processes` is above 9: its submissions stay pending forever. {{rbx}} still
+    when `processes` is more than 9: its submissions never finish evaluating. {{rbx}} still
     builds the package, but warns you first.
 
 ### Italian YAML
