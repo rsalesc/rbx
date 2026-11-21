@@ -1,3 +1,9 @@
+## 2.8.2 (2026-11-21)
+
+### Feat
+
+- **cms**: package fanout communication problems for CMS (#1047)
+
 ## 2.8.1 (2026-11-21)
 
 ### Feat
