@@ -91,6 +91,8 @@ def _communication(config):
         checker = os.path.join(build, 'checker')
         _compile(config['checker_runner'], checker, config['checker_runner_flags'])
         defines.append('-DRBX_CMS_CHECKER="%s"' % checker)
+    if config.get('fanout'):
+        defines.append('-DRBX_CMS_FANOUT')
     manager = os.path.join(build, 'manager')
     _compile(config['manager'], manager, config['manager_flags'], *defines)
     dataset = {

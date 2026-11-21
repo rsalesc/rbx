@@ -32,7 +32,9 @@ scenarios:
           stdout_contains: "[2] 11"
 
   - name: fanout-refused-by-packagers
-    description: No judge runs several processes against one interactor yet.
+    description: |
+      Only CMS runs several processes against one interactor, so the other
+      packagers refuse, and Polygon's points at its CMS mode.
     steps:
       - cmd: package pkg
         expect_exit: 1
@@ -40,3 +42,26 @@ scenarios:
           stdout_contains:
             - does not support
             - interactor.processes
+      - cmd: package polygon
+        expect_exit: 1
+        expect:
+          stdout_contains: packaged for CMS
+      - cmd: package polygon --upload --cms
+        expect_exit: 1
+        expect:
+          stdout_contains: Polygon cannot judge
+
+  - name: fanout-cms-package
+    description: |
+      CMS runs it as Communication with three processes, each told its index,
+      and rbx's manager built in fanout mode: it hands every process's fifos
+      to the interactor, which opens them itself.
+    steps:
+      - cmd: package polygon --cms
+        expect:
+          zip_file_contains:
+            path: build/problem.zip
+            entries:
+              files/cms_conf.py: "/'task_type_parameters': \\[3, 'alone', 'std_io'\\].*'fanout': True/"
+              files/cms_manager.cpp: RBX_CMS_FANOUT
+              files/rbx.h: registerFanoutInteraction

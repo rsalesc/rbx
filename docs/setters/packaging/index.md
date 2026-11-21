@@ -33,6 +33,7 @@ and limitations:
 +-------------------------+---------------------+-----------------------------------------------------------+
 | [CMS](cms.md)           | CMS                 |                                                           |
 | (through Polygon)       |                     | :white_check_mark: Interactive problems (C++ only)        |
+|                         |                     | :white_check_mark: Fanout problems (C++ only)             |
 |                         |                     | :white_check_mark: Batch problems                         |
 |                         |                     | :white_check_mark: Test grouping                          |
 |                         |                     | :x: Limits per language                                   |

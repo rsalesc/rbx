@@ -11,3 +11,15 @@ scenarios:
           solutions:
             sols/main.cpp: ac
             sols/wa.cpp: wa
+
+  - name: fanout-grader-cms-package
+    description: |
+      On CMS every process is the stub (CMS 1.5.1 spells the grader `stub`)
+      linked with the submission, and gets its index as argv[1].
+    steps:
+      - cmd: package polygon --cms
+        expect:
+          zip_file_contains:
+            path: build/problem.zip
+            entries:
+              files/cms_conf.py: "/'stub.cpp': 'grader.cpp'.*'task_type_parameters': \\[3, 'stub', 'std_io'\\]/"

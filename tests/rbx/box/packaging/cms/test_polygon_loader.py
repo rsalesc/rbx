@@ -21,7 +21,7 @@ import pytest
 from rbx.box.environment import Environment
 from rbx.box.packaging.cms import communication, polygon_loader
 from rbx.box.packaging.cms.extension import CmsExtension
-from rbx.box.schema import Interactor, TaskType
+from rbx.box.schema import Grader, Interactor, TaskType
 from rbx.config import get_app_file, get_resources_file
 from tests.rbx.box.packaging.cms._entries import build_entries
 
@@ -118,12 +118,14 @@ def _config(conf: str) -> dict:
     return ast.literal_eval(line[len('CONFIG = ') :])
 
 
-def _interactive(testing_pkg, legacy: bool):
+def _interactive(testing_pkg, legacy: bool, processes: Optional[int] = None):
     if legacy:
         testing_pkg.set_checker('checker.cpp')
     testing_pkg.add_file('interactor.cpp').write_text('')
     testing_pkg.yml.type = TaskType.COMMUNICATION
-    testing_pkg.yml.interactor = Interactor(path='interactor.cpp', legacy=legacy)
+    testing_pkg.yml.interactor = Interactor(
+        path='interactor.cpp', legacy=legacy, processes=processes
+    )
     testing_pkg.save()
 
 
@@ -214,7 +216,43 @@ def test_modern_interactor_conf_compiles_only_the_manager(testing_pkg, tmp_path)
         'manager_flags': ['-std=gnu++20', '-O2'],
         'checker_runner': None,
         'checker_runner_flags': ['-std=gnu++20', '-O2'],
+        'fanout': False,
     }
+
+
+def test_fanout_conf_runs_every_process_through_the_manager(testing_pkg, tmp_path):
+    _interactive(testing_pkg, legacy=False, processes=3)
+
+    config = _config(polygon_loader.render_conf(testing_pkg.yml, []))
+
+    # CMS passes each process its index, as rbx does locally.
+    assert config['communication']['task_type_parameters'] == [3, 'alone', 'std_io']
+    assert config['communication']['fanout'] is True
+
+
+def test_fanout_grader_conf_compiles_every_process_with_the_stub(testing_pkg):
+    _interactive(testing_pkg, legacy=False, processes=2)
+    testing_pkg.add_file('grader.cpp').write_text('')
+    testing_pkg.yml.grader = Grader(path='grader.cpp', secret='0' * 32)
+    testing_pkg.save()
+
+    params = communication.task_type_parameters(testing_pkg.yml)
+
+    assert params == [2, 'stub', 'std_io']
+
+
+@pytest.mark.parametrize('processes', [None, 3])
+def test_conf_builds_the_fanout_manager_only_for_fanout(
+    testing_pkg, tmp_path, compilations, processes
+):
+    _interactive(testing_pkg, legacy=False, processes=processes)
+    conf = _polygon_package(tmp_path / 'A', ['1'])
+
+    _run(polygon_loader.render_conf(testing_pkg.yml, [], ALL_PUBLIC), str(conf))
+
+    (manager,) = compilations
+    assert manager[-1].endswith('cms_manager.cpp')
+    assert ('-DRBX_CMS_FANOUT' in manager) == (processes is not None)
 
 
 def test_legacy_interactor_conf_also_runs_the_checker(testing_pkg, tmp_path):

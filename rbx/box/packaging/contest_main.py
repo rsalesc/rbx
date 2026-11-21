@@ -128,6 +128,9 @@ async def polygon(
             with cd.new_package_cd(problem.get_path()):
                 package_utils.clear_package_cache()
                 cms_support.ensure_supported(package.find_problem_package_or_die())
+                cms_support.warn_about_process_limit(
+                    package.find_problem_package_or_die()
+                )
 
     await run_contest_packager(
         PolygonContestPackager,

@@ -20,7 +20,7 @@ Polygon can't describe. Pass `--cms` to `rbx package polygon` or
 - subtask scoring that follows your test groups
 - your checker, built so that CMS scores its [partial points](/setters/grading/scoring#awarding-partial-points) the way {{rbx}} does
 - the statement PDFs
-- a manager, for an interactive problem
+- a manager, for an interactive problem, including one with [several processes](/setters/grading/interactors#several-processes-fanout)
 
 ```bash
 rbx contest package polygon --cms
@@ -49,6 +49,11 @@ cmsImportTask -L polygon_task my-problem
     problem through a manager that {{rbx}} compiles from your interactor, and from your
     checker if the interactor needs one. Write both in C++: {{rbx}} refuses to build the
     package otherwise.
+
+!!! warning "At most 9 processes"
+    CMS 1.5.1 can't judge a problem with [several processes](/setters/grading/interactors#several-processes-fanout)
+    when `processes` is more than 9: its submissions never finish evaluating. {{rbx}} still
+    builds the package, but warns you first.
 
 ### Italian YAML
 
