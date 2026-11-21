@@ -79,6 +79,7 @@ async def polygon(
 
     if cms:
         cms_support.ensure_supported(package.find_problem_package_or_die())
+        cms_support.warn_about_process_limit(package.find_problem_package_or_die())
         cms_settings.warn_for_polygon(cms_settings.resolve())
 
     if upload and package.find_problem_package_or_die().is_fanout:

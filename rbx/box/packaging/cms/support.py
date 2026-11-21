@@ -21,6 +21,23 @@ def _refuse(pkg: Package, reason: str):
     raise typer.Exit(1)
 
 
+# Each CMS 1.5.1 worker cycles through 10 sandbox ids, and a fanout test needs
+# one for the manager plus one per process: from 10 processes on, two share an
+# id and the submission never finishes evaluating.
+MAX_STOCK_PROCESSES = 9
+
+
+def warn_about_process_limit(pkg: Package):
+    """Warn when stock CMS cannot run all of a fanout problem's processes."""
+    processes = pkg.fanout_processes
+    if processes is not None and processes > MAX_STOCK_PROCESSES:
+        console.console.print(
+            f'[warning]Problem [item]{pkg.name}[/item] runs {processes} processes, '
+            f'but stock CMS runs at most {MAX_STOCK_PROCESSES}: beyond that, '
+            'its submissions never finish evaluating.[/warning]'
+        )
+
+
 def ensure_supported(pkg: Package):
     """Refuse a problem CMS could not judge the way rbx does.
 

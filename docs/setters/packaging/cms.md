@@ -50,6 +50,11 @@ cmsImportTask -L polygon_task my-problem
     checker if the interactor needs one. Write both in C++: {{rbx}} refuses to build the
     package otherwise.
 
+!!! warning "At most 9 processes"
+    CMS 1.5.1 can't judge a problem with [several processes](/setters/grading/interactors#several-processes-fanout)
+    when `processes` is above 9: its submissions stay pending forever. {{rbx}} still
+    builds the package, but warns you first.
+
 ### Italian YAML
 
 Italian YAML is CMS's own format, the one its `italy_yaml` loader reads. {{rbx}} builds

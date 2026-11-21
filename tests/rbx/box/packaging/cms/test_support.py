@@ -57,3 +57,15 @@ def test_legacy_interactors_with_a_non_cpp_checker_are_refused(testing_pkg):
 
     with pytest.raises(typer.Exit):
         support.ensure_supported(testing_pkg.yml)
+
+
+@pytest.mark.parametrize('processes, warned', [(None, False), (9, False), (10, True)])
+def test_warns_past_the_stock_cms_process_limit(testing_pkg, capsys, processes, warned):
+    _interactive(testing_pkg, 'interactor.cpp')
+    testing_pkg.yml.interactor.processes = processes
+    testing_pkg.save()
+
+    support.warn_about_process_limit(testing_pkg.yml)
+
+    out = ' '.join(capsys.readouterr().out.split())
+    assert ('stock CMS runs at most 9' in out) == warned
